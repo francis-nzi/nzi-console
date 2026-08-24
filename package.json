@@ -1,0 +1,24 @@
+{
+  "name": "nzi-console",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @nzi/console",
+    "build": "npm run build -w @nzi/console",
+    "start": "npm run start -w @nzi/console",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "console:dev": "npm run dev -w @nzi/console",
+    "console:build": "npm run build -w @nzi/console"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

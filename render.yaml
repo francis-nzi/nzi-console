@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: nzi-console
+    runtime: node
+    region: frankfurt
+    plan: starter
+    branch: main
+    # Build from the monorepo root so workspace packages (@nzi/ui, @nzi/mock-data) resolve.
+    buildCommand: npm install && npm run build -w @nzi/console
+    startCommand: npm run start -w @nzi/console
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_APP_ENV
+        value: staging
+      # Non-production Supabase only — never production values.
+      # - key: NEXT_PUBLIC_SUPABASE_URL
+      #   sync: false
+      # - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+      #   sync: false
