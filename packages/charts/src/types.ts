@@ -1,6 +1,6 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "reduction_pathway" | "emissions_by_activity" | "intensity_pathway";
+export type ChartType = "emissions_scope_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "intensity_pathway";
 export type DataQuality = "Measured" | "Estimated" | "Spend-based" | "Survey";
 
 export type Provenance = {
@@ -37,4 +37,9 @@ export type ScopeDonutData = ChartEnvelope & { segments: ScopeSegment[]; total?:
 export type YearPoint = { year: number; value: number };
 export type PathwayMilestone = { year: number; value: number; label: string; kind: "baseline" | "interim" | "netzero" };
 export type ReductionPathwayData = ChartEnvelope & { actual: YearPoint[]; target: YearPoint[]; milestones: PathwayMilestone[] };
-export type AnyChartData = ScopeDonutData | ReductionPathwayData;
+export type ScopeYearValue = { scope: "1" | "2" | "3"; value: number };
+export type ScopeYearGroup = { year: number; values: ScopeYearValue[] };
+export type ScopeYearOnYearData = ChartEnvelope & { years: ScopeYearGroup[] };
+export type ActivityBar = { id: string; label: string; scope: "1" | "2" | "3"; value: number };
+export type EmissionsByActivityData = ChartEnvelope & { activities: ActivityBar[] };
+export type AnyChartData = ScopeDonutData | ReductionPathwayData | ScopeYearOnYearData | EmissionsByActivityData;

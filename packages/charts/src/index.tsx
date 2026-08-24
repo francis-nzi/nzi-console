@@ -3,6 +3,8 @@
 
 export { EmissionsScopeDonut, formatDate } from "./EmissionsScopeDonut";
 export { ReductionPathway } from "./ReductionPathway";
+export { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
+export { EmissionsByActivity } from "./EmissionsByActivity";
 
 export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, readableInkOn } from "./tokens";
@@ -16,4 +18,6 @@ export {
   reviewedCrpSnapshotSample,
   scopeDonutSample,
   reductionPathwaySample,
+  scopeYearOnYearSample,
+  emissionsByActivitySample,
 } from "./sample";
