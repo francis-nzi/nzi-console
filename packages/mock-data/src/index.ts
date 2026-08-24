@@ -2,6 +2,7 @@
 
 export * from "./clients";
 export * from "./jobs";
+export * from "./datasets";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 

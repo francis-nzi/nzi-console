@@ -49,6 +49,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-027 | Charts derived from data, never captured; content-addressed cache | Confirmed (24 Aug 2026) |
 | NZC-028 | Manifest-driven report assembly with validation as a hard publish gate | Confirmed (24 Aug 2026) |
 | NZC-029 | One chart asset across screen/PDF/portal, with provenance; no runtime browser provisioning | Confirmed (24 Aug 2026) |
+| NZC-030 | Dataset selection automated from reporting period, with audited manual additions | Confirmed (24 Aug 2026) |
 
 ---
 
@@ -280,6 +281,14 @@ The same rendered chart (same spec + data hash) serves screen, PDF and portal, a
 runtime download of Kaleido-Chrome and Playwright-Chromium is **eliminated**: charts are SVG (no browser),
 and any single retained HTML/SVG→PDF renderer is **pinned and installed at build/deploy**, never fetched
 into `/tmp` on first use. *Source: `WORKFLOWS.md` §6.1; `GRAPHICS_PIPELINE.md` §2.8, §3.3.*
+
+### NZC-030 — Automated dataset selection with manual additions [Confirmed 24 Aug 2026]
+Reporting-period dates drive automatic dataset selection, further constrained by geography, scope and
+factor method where applicable. Consultants may add other datasets manually when required, but the
+addition is explicit, requires a reason, retains the automatic recommendations, and is recorded in
+provenance and audit history. Period or geography mismatches generate visible warnings and may require
+reviewer approval. Existing calculated rows remain tied to their selected dataset/version until an
+explicit recalculation. *Confirmed by Francis, 24 Aug 2026.*
 
 ---
 

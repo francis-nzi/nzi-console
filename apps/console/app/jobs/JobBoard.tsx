@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
 import { type Job, type ScopeRow, type RowStatus, statusClass, statusLabel } from "@nzi/mock-data";
 import { NAV, USER } from "../lib/nav";
+import { CrpWorkspacePanel, type CrpStage } from "./CrpWorkspacePanels";
 
 type Filter = "all" | RowStatus;
 
@@ -102,6 +103,7 @@ function DrawerBody({ row }: { row: ScopeRow }) {
 export function JobBoard({ job }: { job: Job }) {
   const [selectedId, setSelectedId] = useState<string>("fgas");
   const [filter, setFilter] = useState<Filter>("all");
+  const [stage, setStage] = useState<CrpStage>("data");
 
   const rows = useMemo(
     () => (filter === "all" ? job.rows : job.rows.filter((r) => r.status === filter)),
@@ -141,8 +143,17 @@ export function JobBoard({ job }: { job: Job }) {
     { id: "complete", label: `Complete ${job.counts.complete}` },
   ];
 
+  const showEvidence = stage === "data" || stage === "mapping" || stage === "review";
+  const stages: Array<{ id: CrpStage; label: string }> = [
+    { id: "scope", label: "Scope defined" },
+    { id: "data", label: "Data entry" },
+    { id: "mapping", label: "Factor mapping" },
+    { id: "review", label: "Review & QA" },
+    { id: "report", label: "Report & publish" },
+  ];
+
   return (
-    <AppShell rail={rail} drawer={drawer}>
+    <AppShell rail={rail} drawer={showEvidence ? drawer : undefined}>
       <TopBar
         searchPlaceholder="Search sources, factors…"
         crumbs={
@@ -165,15 +176,12 @@ export function JobBoard({ job }: { job: Job }) {
         </div>
       </div>
 
-      <div className="nz-stepper">
-        <div className="nz-step done"><span className="n">✓</span><span className="lb">Scope defined</span><span className="bar" /></div>
-        <div className="nz-step active"><span className="n">2</span><span className="lb">Data entry</span><span className="bar" /></div>
-        <div className="nz-step todo"><span className="n">3</span><span className="lb">Factor mapping</span><span className="bar" /></div>
-        <div className="nz-step todo"><span className="n">4</span><span className="lb">Review &amp; QA</span><span className="bar" /></div>
-        <div className="nz-step todo"><span className="n">5</span><span className="lb">Report</span></div>
-      </div>
+      <div className="nz-stepper">{stages.map((item, index) => {
+        const activeIndex = stages.findIndex((candidate) => candidate.id === stage);
+        return <button key={item.id} type="button" className={`nz-step ${item.id === stage ? "active" : index < activeIndex ? "done" : "todo"}`} onClick={() => setStage(item.id)} style={{ border: 0, background: "transparent", textAlign: "left", cursor: "pointer" }}><span className="n">{index < activeIndex ? "✓" : index + 1}</span><span className="lb">{item.label}</span>{index < stages.length - 1 && <span className="bar" />}</button>;
+      })}</div>
 
-      <div className="nz-toolbar">
+      {stage === "data" && <div className="nz-toolbar">
         <div className="nz-filters">
           {filters.map((f) => (
             <button key={f.id} className={filter === f.id ? "on" : undefined} onClick={() => setFilter(f.id)}>
@@ -187,9 +195,9 @@ export function JobBoard({ job }: { job: Job }) {
           <button className="nz-btn">Import data</button>
           <button className="nz-btn pri">Run QA checks</button>
         </div>
-      </div>
+      </div>}
 
-      <div className="nz-body">
+      {stage === "data" && <div className="nz-body">
         <div className="nz-panel">
           <table className="nz-tbl">
             <thead>
@@ -220,7 +228,8 @@ export function JobBoard({ job }: { job: Job }) {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
+      {stage !== "data" && <CrpWorkspacePanel stage={stage} job={job} />}
     </AppShell>
   );
 }
