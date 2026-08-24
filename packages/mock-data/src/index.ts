@@ -3,6 +3,7 @@
 export * from "./clients";
 export * from "./jobs";
 export * from "./datasets";
+export * from "./portal";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 
