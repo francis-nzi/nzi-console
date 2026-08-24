@@ -1,11 +1,6 @@
 import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
-import {
-  EmissionsScopeDonut,
-  ReductionPathway,
-  scopeDonutSample,
-  reductionPathwaySample,
-} from "@nzi/charts";
 import { NAV, USER } from "../lib/nav";
+import { ChartProof } from "./ChartProof";
 
 // @nzi/charts preview — the CRP chart set on illustrative mock data.
 // One SVG spec renders here on screen, and the same components (chrome off)
@@ -29,18 +24,7 @@ export default function ChartsPage() {
         </div>
       </div>
       <div className="nz-body">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-            gap: 18,
-            maxWidth: 1120,
-            paddingTop: 16,
-          }}
-        >
-          <EmissionsScopeDonut data={scopeDonutSample} />
-          <ReductionPathway data={reductionPathwaySample} />
-        </div>
+        <div style={{ paddingTop: 16 }}><ChartProof target="screen" label="Consultant console" /></div>
       </div>
     </AppShell>
   );

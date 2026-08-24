@@ -246,12 +246,13 @@ number. Requirements:
   is exactly one allocator.
 - **Allocation is transactional with job creation and idempotent** — a retried "create job" never burns
   or duplicates a number (ties to NZC-014).
-- **Format is a presentation concern, not a second counter.** If a family tag or prefix is ever shown
-  (e.g. an `LCA-` badge), it is *display metadata over the single underlying number* — never a per-family
-  counter that would break global sequence. *(Whether numbers are bare-sequential or carry a display
-  prefix is itself an open sub-decision — see DECISIONS.md NZC-025.)*
-- **No gaps by design; gaps by exception are explicit.** Decide up front whether cancelled/aborted
-  creations may leave gaps (simplest, sequence-native) or must be gapless (requires a reservation model).
+- **Format — preserve the official universal `J` format (decided, NZC-025).** Numbers render as
+  `J000612`, `J000613`, `J000614` … regardless of family. Store the bare integer and render `J` plus six
+  zero-padded digits. Store the family separately and show it as a badge/label (`CRP`, `CON`, `LCA`,
+  `PCF`, `TRN`), never as part of the official job number.
+- **Gapless (decided, NZC-025).** No skipped numbers: **assign the number only at durable job creation**,
+  inside the creating transaction, so an aborted draft never consumes one (assign-on-commit avoids a heavy
+  reserve-and-release scheme). Cover numbering with a concurrency test.
 
 > This lets the modules be fully independent in workflow and UI while the one thing that must stay unified
 > — the job number — is owned by a single service.
@@ -379,10 +380,16 @@ mirroring the FuelCap phase discipline.
 
 ## 13. Open decisions
 
-Tracked and resolved in `DECISIONS.md`. The high-impact ones: the canonical scope-row model
-(`job_scope_rows` vs `crp_scope_entries`); the job-family + workflow-stage schema and **per-family module
-boundaries** (NZC-024); the **job-numbering scheme** — bare-sequential vs display-prefixed, and gap policy
-(NZC-025); the **single chart engine and SVG-first rendering** (NZC-026–NZC-029, detailed in
-`GRAPHICS_PIPELINE.md`); the permission matrix and staff-vs-portal principal model; Sales V2 terminology
-and lifecycle; the isolated-backend data strategy (synthetic vs anonymised clone); and how much of
-reporting (template/variable engine) is rebuilt vs reused via canonical services.
+Tracked and resolved in `DECISIONS.md`. The canonical scope-row model is now **confirmed as
+`job_scope_rows`**, with `crp_scope_entries` treated as legacy migration input. The isolated-backend data
+strategy is also confirmed: synthetic by default, with a formally vetted anonymised subset allowed only
+for restricted migration and compatibility testing. Reporting will be rebuilt natively in the isolated
+platform, using manifest-driven assembly and the shared SVG-first chart subsystem, while retaining the
+live reports as business-content compatibility references. The remaining high-impact items include the
+job-family + workflow-stage schema and **per-family module
+boundaries** (NZC-024); the shared official `J000612` job-numbering format and gap policy (NZC-025); the
+**single chart engine and SVG-first rendering** (NZC-026–NZC-029, detailed in
+`GRAPHICS_PIPELINE.md`); and Sales V2 terminology and lifecycle. The role set and permission model are
+confirmed in NZC-022, with the capability-level matrix intentionally refined as each workspace is
+designed. The four formerly Open decisions (NZC-008, NZC-020, NZC-021 and NZC-022) are now resolved; see
+`DECISIONS.md` for their confirmed outcomes.

@@ -1,6 +1,6 @@
-import { job712 } from "@nzi/mock-data";
-import { JobBoard } from "./JobBoard";
+import { jobs } from "@nzi/mock-data";
+import { JobsIndex } from "./JobsIndex";
 
 export default function JobsPage() {
-  return <JobBoard job={job712} />;
+  return <JobsIndex jobs={jobs} />;
 }

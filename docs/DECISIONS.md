@@ -27,7 +27,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-005 | Evidence-drawer-first; provenance + calculation lineage mandatory | Confirmed |
 | NZC-006 | Five explicit UI states — truth before availability | Proposed |
 | NZC-007 | The Job is the spine; job families are first-class | Proposed |
-| NZC-008 | One canonical scope-row model | Open |
+| NZC-008 | One canonical scope-row model | Confirmed (24 Aug 2026) |
 | NZC-009 | Explicit workflow stages with per-job history | Proposed |
 | NZC-010 | Data-quality tiers are first-class metadata | Confirmed |
 | NZC-011 | Factor/dataset provenance, versioning & cross-country audit | Proposed |
@@ -39,16 +39,16 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-017 | Sales V2 — contain and replace Business Development | Proposed |
 | NZC-018 | AI is task-specific, grounded and advisory only | Proposed |
 | NZC-019 | LCA/PCF is a distinct family with its own inner model | Proposed |
-| NZC-020 | Isolated-backend data strategy (synthetic vs anonymised) | Open |
-| NZC-021 | Reporting engine: reuse vs rebuild | Open |
-| NZC-022 | Explicit permission / SoD matrix | Open |
+| NZC-020 | Isolated-backend data strategy (synthetic by default; vetted anonymised subset for restricted testing) | Confirmed (24 Aug 2026) |
+| NZC-021 | Reporting engine: rebuild natively in the isolated platform | Confirmed (24 Aug 2026) |
+| NZC-022 | Explicit role-based permission / SoD matrix, refined by workspace | Confirmed (24 Aug 2026) |
 | NZC-023 | Xero/Stripe sandbox-only during redesign | Proposed |
 | NZC-024 | Separate job-family modules over a shared spine | Proposed |
-| NZC-025 | Single shared, sequential job-numbering service | Proposed (format/gap policy Open) |
-| NZC-026 | One SVG-first chart engine (`@nzi/charts`) for all surfaces | Proposed |
-| NZC-027 | Charts derived from data, never captured; content-addressed cache | Proposed |
-| NZC-028 | Manifest-driven report assembly with validation as a hard publish gate | Proposed |
-| NZC-029 | One chart asset across screen/PDF/portal, with provenance; no runtime browser provisioning | Proposed |
+| NZC-025 | Single shared job-numbering service · official `J000612` format · gapless | Confirmed (24 Aug 2026) |
+| NZC-026 | One SVG-first chart engine (`@nzi/charts`) for all surfaces | Confirmed (24 Aug 2026) |
+| NZC-027 | Charts derived from data, never captured; content-addressed cache | Confirmed (24 Aug 2026) |
+| NZC-028 | Manifest-driven report assembly with validation as a hard publish gate | Confirmed (24 Aug 2026) |
+| NZC-029 | One chart asset across screen/PDF/portal, with provenance; no runtime browser provisioning | Confirmed (24 Aug 2026) |
 
 ---
 
@@ -96,12 +96,18 @@ modelled cleanly rather than forced through CRP milestones. *Partially built in 
 detail and staged workflow are still thin.* *Source: `JOB_TYPE_AND_WORKFLOW_BRIEF.md`; live
 `core/migrations.py`.*
 
-### NZC-008 — One canonical scope-row model [Open]
+### NZC-008 — One canonical scope-row model [Confirmed 24 Aug 2026]
 The live schema has **two** measurement models: `job_scope_rows` (qty/uom/factor/calc_tco2e/override,
 factor-FK) and the older `crp_scope_entries` (amount/unit/factor/tco2e/method, `is_archived`). The console
 must pick one canonical model and treat the other as migration input.
-*Recommendation:* adopt `job_scope_rows` (richer provenance + override reason + factor FK) as canonical.
-*Decision owner: Francis. Blocks: Emissions/Jobs data model.*
+
+**Decision:** adopt `job_scope_rows` as the canonical emissions activity model. It is the source of truth
+for calculation, QA, reports, charts and portal data entry. The older `crp_scope_entries` model is legacy
+migration input only and must not remain a second write path or source of truth. This decision does not
+force non-CRP families into the CRP scope-row workspace; LCA/PCF retain their own inner models while
+sharing factor and provenance concepts where applicable.
+
+*Confirmed by Francis, 24 Aug 2026. Unblocks: Emissions/Jobs data model.*
 
 ### NZC-009 — Explicit workflow stages with history [Proposed]
 Model workflow as `workflow_template` → ordered `stage` → per-job `stage_history` (from/to, actor, time,
@@ -167,24 +173,52 @@ transport leg → scenario, with factor confidence/readiness and a supplier libr
 14040/14044, ISO 14067, ISO 14025 / EN 15804. It gets its own workspace, not the CRP scope-row grid.
 *Source: `WORKFLOWS.md` §12; live `lca_routes`, migrations 0058–0067.*
 
-### NZC-020 — Isolated-backend data strategy [Open]
-When moving from mock to wired-but-isolated, decide between **fully synthetic** seed data and an
-**anonymised production clone**. Neither may include real client PII in this repo/service.
-*Options:* (a) synthetic only — safest, least realistic; (b) anonymised clone — realistic, requires a
-vetted anonymisation pipeline. *Decision owner: Francis + data-protection. Blocks: Phase 3.*
+### NZC-020 — Isolated-backend data strategy [Confirmed 24 Aug 2026]
+**Synthetic data is the default** for development, demonstrations and routine testing. When migration,
+compatibility or realistic edge-case testing requires it, a small production-derived subset may be used
+only after passing a repeatable anonymisation pipeline, formal data-protection review and verification in
+a restricted non-production environment.
 
-### NZC-021 — Reporting engine: reuse vs rebuild [Open]
-The live report engine (`job_report_routes`, 239KB) + template/variable model + PDF/DOCX/certificate is
-large and mature. Decide whether the console **reuses** it via the canonical service (faster, keeps
-parity) or **rebuilds** the template/variable layer natively (cleaner, more work).
-*Recommendation:* reuse via canonical service initially; rebuild only if the redesign requires it.
-*Decision owner: Francis. Blocks: Reports workspace, Phase 3.*
+The production-derived subset must never be committed to GitHub or included in this Render service. By
+default, do not copy uploaded files, credentials, tokens, free-text notes, communications or personal
+contact data. Replace or remove client-identifying and commercially sensitive fields, regenerate or
+consistently remap identifiers, and verify the output before access is granted.
 
-### NZC-022 — Explicit permission / SoD matrix [Open]
-Define a named-permission matrix per capability (view/edit scope, change stage, edit financials, publish
-to portal, run prospecting, manage datasets, admin), server-enforced, with cross-domain checks on every
-handoff. Replaces the live platform's coarse/inconsistent guards. *Model on FuelCap's SoD matrix.*
-*Decision owner: Francis. Blocks: Platform & audit, Phase 3 writes.*
+*Confirmed by Francis, 24 Aug 2026. Unblocks the Phase 3 data strategy, subject to approval of the
+anonymisation pipeline before any production-derived data is copied.*
+
+### NZC-021 — Reporting engine: rebuild natively [Confirmed 24 Aug 2026]
+The isolated platform will **rebuild the reporting engine natively** rather than depend on the live
+`job_report_routes` implementation. The rebuilt engine owns versioned templates and typed variables,
+manifest-driven assembly, immutable report versions, validation, and HTML/PDF/DOCX/certificate outputs.
+It uses the shared SVG-first `@nzi/charts` subsystem and makes validation a hard gate before publish, PDF
+generation or portal release.
+
+Rebuild does not mean discarding validated business content. Existing report structures, required
+disclosures, calculation semantics and historical outputs are compatibility references and must be
+covered by explicit acceptance fixtures. The new implementation must not call the live production
+database or inherit human-captured chart assets, disconnected manifest validation, or runtime browser
+downloads.
+
+*Confirmed by Francis, 24 Aug 2026. Unblocks: Reports workspace and the isolated reporting architecture.*
+
+### NZC-022 — Explicit permission / SoD matrix [Confirmed 24 Aug 2026]
+Adopt explicit roles for **Administrator, Consultant, Reviewer, Finance, Methodology/Data administrator,
+and Read-only** staff. **Portal user** remains a separate principal type with access limited to its own
+client, granted jobs and permitted data-entry buckets/windows.
+
+Roles resolve to named, server-enforced permissions per capability (including view/edit scope, change
+stage, change factors, apply overrides, review, publish to portal, edit financials, manage datasets, run
+prospecting and administer access). Cross-domain handoffs must re-check authorisation; hiding a control in
+the UI is not enforcement. Staff portal impersonation/support access must be explicit and audited.
+
+The detailed permission matrix will be improved iteratively as each workspace and workflow is designed.
+High-risk controls remain load-bearing throughout that refinement: independent reviewer approval for
+report publication and material emissions overrides; separately controlled finance and methodology
+capabilities; reasoned administrator emergency overrides; and a complete audit trail.
+
+*Confirmed by Francis, 24 Aug 2026. Unblocks: Platform & audit design and Phase 3 write paths, with the
+capability-level matrix maintained as a living design artefact.*
 
 ### NZC-023 — Xero/Stripe sandbox-only during redesign [Proposed]
 All accounting/billing integration runs in test/sandbox mode until a separate, explicit approval to wire
@@ -200,38 +234,47 @@ Separation of modules must **not** fork the shared subsystems (esp. graphics —
 the "families as detail under one Jobs workspace" framing in earlier drafts. *Source: user requirement,
 24 Aug 2026; `JOB_TYPE_AND_WORKFLOW_BRIEF.md`; `ARCHITECTURE.md` §6.*
 
-### NZC-025 — Single shared, sequential job-numbering service [Proposed; format & gap policy Open]
+### NZC-025 — Single shared job-numbering service · official `J000612` format · gapless [Confirmed 24 Aug 2026]
 All job numbers come from **one authoritative allocator** and are **sequential across every family** (a
 CRP, an LCA and a training job draw from the same counter). Implemented as a single Postgres sequence or a
 numbering table guarded by an advisory lock, allocated **transactionally and idempotently** with job
 creation (NZC-014). Replaces today's ad-hoc free-form `jobs.job_number` unique varchar.
-**Open sub-decisions for Francis:** (a) **format** — bare global-sequential numbers, or a display
-prefix/badge per family over the *same* underlying counter (never a second counter); (b) **gap policy** —
-allow gaps from cancelled creations (sequence-native, simplest) or guarantee gapless (needs a reservation
-model). *Source: user requirement, 24 Aug 2026; `ARCHITECTURE.md` §6.3.*
 
-### NZC-026 — One SVG-first chart engine for all surfaces [Proposed]
+**Resolved knobs (Francis, 24 Aug 2026):**
+- **Format — preserve the official universal `J` format.** Numbers are shown as `J000612`, `J000613`,
+  `J000614` … regardless of job family. Store the bare integer and render it as `J` plus six zero-padded
+  digits. Store `job_family` separately and show it as a badge/label (`CRP`, `CON`, `LCA`, `PCF`, `TRN`),
+  never as part of the official job number.
+- **Gap policy — guaranteed gapless.** No skipped numbers. The pragmatic implementation: **assign the
+  number only at the durable creation of a real job**, inside the creating transaction — a draft/aborted
+  creation never consumes a number, so the sequence stays contiguous without a heavy reserve-and-release
+  scheme. If a design ever needs a number *before* commit, use a reservation table with explicit
+  release/rollback; prefer assign-on-commit. Numbering must be covered by a concurrency test.
+
+*Source: user requirement, 24 Aug 2026; `ARCHITECTURE.md` §6.3.*
+
+### NZC-026 — One SVG-first chart engine for all surfaces [Confirmed 24 Aug 2026]
 A single workspace package `@nzi/charts` renders a declarative chart spec to **SVG**, used identically on
 the console screen, in the PDF and in the client portal. Replaces the live platform's **three** rendering
 stacks (matplotlib + Plotly/Kaleido + human-captured `job_widget_pngs`). SVG-first removes the need for a
 headless browser to draw charts. *Source: user requirement (graphics dysfunction), 24 Aug 2026;
 `WORKFLOWS.md` §6.1; `GRAPHICS_PIPELINE.md`.*
 
-### NZC-027 — Charts derived, never captured; content-addressed cache [Proposed]
+### NZC-027 — Charts derived, never captured; content-addressed cache [Confirmed 24 Aug 2026]
 A chart is a pure function of *(reviewed job data + spec + tokens + version)*. There is **no human capture
 step**. Any cached render is keyed by a **hash of that input**, so a data change forces regeneration and
 staleness is structurally impossible. Retires `job_widget_pngs` as a source of truth (at most a
 content-addressed cache). Directly fixes the live stale/missing-image failures. *Source: `WORKFLOWS.md`
 §6.1; `GRAPHICS_PIPELINE.md` §2, §3.4.*
 
-### NZC-028 — Manifest-driven assembly with validation as a hard publish gate [Proposed]
+### NZC-028 — Manifest-driven assembly with validation as a hard publish gate [Confirmed 24 Aug 2026]
 Reports are assembled **only** from a versioned manifest (sections → required/optional charts), and
 validation (missing / unresolved / incoherent chart) **blocks** publish, PDF and portal push. This adopts
 and *wires in* the `report_manifests.py` + `report_manifest_validation.py` layer the live platform built
 but left disconnected — so nothing is ever published with a missing or stale chart. *Source: `WORKFLOWS.md`
 §6.1; `GRAPHICS_PIPELINE.md` §3.5.*
 
-### NZC-029 — One chart asset across surfaces, with provenance; no runtime browser provisioning [Proposed]
+### NZC-029 — One chart asset across surfaces, with provenance; no runtime browser provisioning [Confirmed 24 Aug 2026]
 The same rendered chart (same spec + data hash) serves screen, PDF and portal, and carries **provenance**
 (job data, factor set/version, spec version) so it expands in the evidence drawer like a scope row. The
 runtime download of Kaleido-Chrome and Playwright-Chromium is **eliminated**: charts are SVG (no browser),
@@ -242,15 +285,17 @@ into `/tmp` on first use. *Source: `WORKFLOWS.md` §6.1; `GRAPHICS_PIPELINE.md` 
 
 ## Decisions needing Francis first
 
-The **Open** items gate later phases and are the shortlist for the next review:
+There are currently **no Open decisions** in this register. Add new questions here as the detailed
+workspace designs expose choices requiring Francis's approval.
 
-1. **NZC-008** — canonical scope-row model (recommend `job_scope_rows`).
-2. **NZC-020** — synthetic vs anonymised data for the isolated backend.
-3. **NZC-021** — reuse vs rebuild the reporting engine.
-4. **NZC-022** — the permission / SoD matrix.
-5. **NZC-025 (sub)** — job-number **format** (bare-sequential vs display-prefixed) and **gap policy**
-   (allow gaps vs guaranteed gapless). The single-shared-allocator principle itself is settled; only these
-   two knobs need a call.
+*(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
+input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
+for restricted migration/compatibility testing. NZC-021 resolved 24 Aug 2026: rebuild reporting natively
+in the isolated platform. NZC-022 resolved 24 Aug 2026: explicit roles and named permissions, with the
+detailed matrix refined per workspace. NZC-025 resolved 24 Aug 2026: official zero-padded `J` numbers over
+one shared counter, with family stored separately; guaranteed gapless via assign-on-commit. NZC-026–029
+confirmed 24 Aug 2026: one derived, provenance-bearing SVG chart system across console, PDF and portal,
+with content identity and manifest validation as a hard publication gate.)*
 
 The **Proposed** items (NZC-006, 007, 009, 011–019, 023, **024, 026–029**) are recommendations ready to be
 confirmed as a batch once reviewed — including the job-family module separation and the whole graphics

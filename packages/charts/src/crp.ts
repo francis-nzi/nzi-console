@@ -1,0 +1,53 @@
+import { RENDERER_VERSION } from "./identity";
+import type { ReportManifest } from "./manifest";
+import { TOKENS_VERSION } from "./tokens";
+import type { ReductionPathwayData, ScopeDonutData } from "./types";
+
+export const CRP_RESOLVER_VERSION = 1;
+export type ReviewedScopeMeasurement = { scope: "1" | "2" | "3"; tco2e: number; factorSet: string; reviewed: boolean; included: boolean };
+export type ReviewedCrpSnapshot = {
+  id: string; jobId: string; jobNumber: string; client: string; reportingYear: number;
+  generatedAt: string; dataHash: string; measurements: ReviewedScopeMeasurement[];
+  pathway: {
+    actual: Array<{ year: number; value: number }>;
+    target: Array<{ year: number; value: number }>;
+    milestones: Array<{ year: number; value: number; label: string; kind: "baseline" | "interim" | "netzero" }>;
+  };
+};
+
+export const crpProfessionalManifest: ReportManifest = {
+  id: "crp_professional", family: "crp", version: 1,
+  charts: [
+    { id: "emissions_scope_donut", type: "emissions_scope_donut", specVersion: 1, required: true },
+    { id: "reduction_pathway", type: "reduction_pathway", specVersion: 1, required: true },
+  ],
+};
+
+export function resolveCrpCharts(snapshot: ReviewedCrpSnapshot): [ScopeDonutData, ReductionPathwayData] {
+  const included = snapshot.measurements.filter((row) => row.included && row.reviewed);
+  const unresolved = snapshot.measurements.some((row) => row.included && !row.reviewed);
+  const factorSets = Array.from(new Set(included.map((row) => row.factorSet))).sort();
+  const totals = new Map<string, number>([["1", 0], ["2", 0], ["3", 0]]);
+  for (const row of included) totals.set(row.scope, (totals.get(row.scope) ?? 0) + row.tco2e);
+  const provenance = {
+    jobId: snapshot.jobId, dataHash: snapshot.dataHash, factorSets, generatedAt: snapshot.generatedAt,
+    reviewedSnapshotId: snapshot.id, resolverVersion: CRP_RESOLVER_VERSION,
+    tokensVersion: TOKENS_VERSION, rendererVersion: RENDERER_VERSION,
+  };
+  const state = unresolved ? "degraded" as const : included.length === 0 ? "empty" as const : "success" as const;
+  const stateMessage = unresolved ? "Included measurements remain unreviewed. Publication is blocked." : included.length === 0 ? "No reviewed emissions are available." : undefined;
+  return [{
+    spec: { id: "emissions_scope_donut", type: "emissions_scope_donut", title: `${snapshot.reportingYear} carbon footprint by scope`, subtitle: `${snapshot.client} · ${snapshot.jobNumber}`, family: "crp", specVersion: 1 },
+    unit: "tCO₂e", state, stateMessage,
+    segments: [
+      { scope: "1", label: "Scope 1 — direct", value: totals.get("1") ?? 0 },
+      { scope: "2", label: "Scope 2 — electricity", value: totals.get("2") ?? 0 },
+      { scope: "3", label: "Scope 3 — value chain", value: totals.get("3") ?? 0 },
+    ], provenance,
+  }, {
+    spec: { id: "reduction_pathway", type: "reduction_pathway", title: "Emissions reduction pathway to net zero", subtitle: `${snapshot.client} · ${snapshot.jobNumber}`, family: "crp", specVersion: 1 },
+    unit: "tCO₂e", state, stateMessage,
+    actual: snapshot.pathway.actual, target: snapshot.pathway.target, milestones: snapshot.pathway.milestones,
+    provenance,
+  }];
+}

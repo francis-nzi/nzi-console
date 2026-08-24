@@ -5,8 +5,15 @@ export { EmissionsScopeDonut, formatDate } from "./EmissionsScopeDonut";
 export { ReductionPathway } from "./ReductionPathway";
 
 export * from "./types";
-export { tokens, scopeColor, readableInkOn } from "./tokens";
+export { tokens, TOKENS_VERSION, scopeColor, readableInkOn } from "./tokens";
+export { RENDERER_VERSION, chartAssetKey } from "./identity";
+export type { RenderTarget } from "./identity";
+export { validateManifest, assertPublishable } from "./manifest";
+export type { ReportManifest, ManifestValidation, ManifestIssue } from "./manifest";
+export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts } from "./crp";
+export type { ReviewedCrpSnapshot, ReviewedScopeMeasurement } from "./crp";
 export {
+  reviewedCrpSnapshotSample,
   scopeDonutSample,
   reductionPathwaySample,
 } from "./sample";

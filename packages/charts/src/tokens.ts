@@ -35,6 +35,9 @@ export const tokens = {
     "var(--font-inter, Inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
 } as const;
 
+/** Bump whenever a visual token changes. It participates in asset identity. */
+export const TOKENS_VERSION = 1;
+
 /**
  * Resolve a scope's colour from its key. A sub-scope like "3.4" resolves on its
  * leading digit ("3"). Falls back to pine for anything unrecognised.

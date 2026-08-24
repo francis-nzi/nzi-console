@@ -42,7 +42,7 @@ export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
     cursor += sweep;
     return {
       seg: s,
-      color: s.color ?? scopeColor(s.scope),
+      color: scopeColor(s.scope),
       d: end > start ? annularSector(CX, CY, R_OUT, R_IN, start, end) : "",
     };
   });
@@ -125,7 +125,7 @@ export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
       {/* Legend + values (identity via swatch; text in ink tokens) */}
       <g transform={`translate(${legendX} ${legendTop})`}>
         {segments.map((s, i) => {
-          const color = s.color ?? scopeColor(s.scope);
+          const color = scopeColor(s.scope);
           const y = i * rowH;
           return (
             <g key={s.scope} className="nzc-lrow" transform={`translate(0 ${y})`}>

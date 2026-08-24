@@ -1,6 +1,7 @@
 // Illustrative demonstrator data only — no real client data, no PII.
 
 export * from "./clients";
+export * from "./jobs";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 
@@ -39,7 +40,7 @@ export type Job = {
 
 export const job712: Job = {
   id: "712",
-  number: "#712",
+  number: "J000712",
   client: "Bushy Tails Ltd",
   year: 2024,
   owner: "A. Shaw",
@@ -55,7 +56,7 @@ export const job712: Job = {
       tco2e: "128.4 tCO₂e", quality: "Measured", provenance: "Measured (primary)", status: "complete",
       banner: { kind: "ok", text: "Validated. Activity data, unit and factor all resolved; included in the total." },
       lineage: [
-        { title: "Fuel invoices imported", detail: "Job #712 · 12 line items" },
+        { title: "Fuel invoices imported", detail: "Job J000712 · 12 line items" },
         { title: "Litres normalised & unit-checked", detail: "48,200 L confirmed" },
         { title: "Factor matched", detail: "DEFRA 2024 diesel" },
         { title: "Emissions computed", detail: "48,200 × 2.664 ÷ 1000 = 128.4" },
