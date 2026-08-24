@@ -1,5 +1,7 @@
 // Illustrative demonstrator data only — no real client data, no PII.
 
+export * from "./clients";
+
 export type RowStatus = "complete" | "needs" | "estimated";
 
 export type LineageStep = { title: string; detail: string };
