@@ -16,7 +16,8 @@ const VB_H = 300;
 const CX = 150;
 const CY = 150;
 const R_OUT = 118;
-const R_IN = 78;
+// 30px band: 25% slimmer than the original 40px ring, with outer size fixed.
+const R_IN = 88;
 const R_MID = (R_OUT + R_IN) / 2;
 const GAP_DEG = (2 / R_MID) * (180 / Math.PI); // 2px surface gap between segments
 

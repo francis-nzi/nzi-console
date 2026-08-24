@@ -18,7 +18,7 @@ export type ReviewedCrpSnapshot = {
 export const crpProfessionalManifest: ReportManifest = {
   id: "crp_professional", family: "crp", version: 1,
   charts: [
-    { id: "emissions_scope_donut", type: "emissions_scope_donut", specVersion: 1, required: true },
+    { id: "emissions_scope_donut", type: "emissions_scope_donut", specVersion: 2, required: true },
     { id: "reduction_pathway", type: "reduction_pathway", specVersion: 1, required: true },
   ],
 };
@@ -37,7 +37,7 @@ export function resolveCrpCharts(snapshot: ReviewedCrpSnapshot): [ScopeDonutData
   const state = unresolved ? "degraded" as const : included.length === 0 ? "empty" as const : "success" as const;
   const stateMessage = unresolved ? "Included measurements remain unreviewed. Publication is blocked." : included.length === 0 ? "No reviewed emissions are available." : undefined;
   return [{
-    spec: { id: "emissions_scope_donut", type: "emissions_scope_donut", title: `${snapshot.reportingYear} carbon footprint by scope`, subtitle: `${snapshot.client} · ${snapshot.jobNumber}`, family: "crp", specVersion: 1 },
+    spec: { id: "emissions_scope_donut", type: "emissions_scope_donut", title: `${snapshot.reportingYear} carbon footprint by scope`, subtitle: `${snapshot.client} · ${snapshot.jobNumber}`, family: "crp", specVersion: 2 },
     unit: "tCO₂e", state, stateMessage,
     segments: [
       { scope: "1", label: "Scope 1 — direct", value: totals.get("1") ?? 0 },
