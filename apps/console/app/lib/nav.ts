@@ -7,7 +7,7 @@ export const NAV: NavSection[] = [
       { id: "control", label: "Control Room", icon: "home", href: "/" },
       { id: "clients", label: "Clients", icon: "users", href: "/clients", count: 214 },
       { id: "jobs", label: "Jobs", icon: "jobs", href: "/jobs", count: 37 },
-      { id: "emissions", label: "Emissions", icon: "chart", href: "#" },
+      { id: "emissions", label: "Emissions", icon: "chart", href: "/charts" },
       { id: "datasets", label: "Datasets & factors", icon: "database", href: "#" },
       { id: "reports", label: "Reports", icon: "file", href: "#" },
       { id: "lca", label: "LCA / PCF / CBAM", icon: "layers", href: "#" },

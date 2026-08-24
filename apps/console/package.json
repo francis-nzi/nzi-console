@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nzi/charts": "*",
     "@nzi/mock-data": "*",
     "@nzi/ui": "*",
     "next": "^15.1.6",
