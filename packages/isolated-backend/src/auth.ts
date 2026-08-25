@@ -2,13 +2,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { CommandKey } from "@nzi/contracts";
 import { commandDefinitions } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
-import { withTenantRead } from "./postgres";
+import { withAuthTransaction } from "./postgres";
 
 export type StaffRole = "administrator" | "consultant" | "reviewer" | "finance" | "methodology-data-admin" | "read-only";
 export type StaffPermission =
   | "clients.create" | "jobs.create" | "jobs.stage.change" | "emissions.review" | "reports.publish"
   | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
-export type StaffSession = { userId: string; organisationId: string; issuedAt: number; expiresAt: number };
+export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
 export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
 
 export const rolePermissions: Record<StaffRole, readonly StaffPermission[]> = {
@@ -45,15 +45,17 @@ export function verifyStaffSession(token: string | undefined, secret: string | u
   if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) throw new AuthenticationError("Invalid staff session.");
   let session: StaffSession;
   try { session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as StaffSession; } catch { throw new AuthenticationError("Invalid staff session."); }
-  if (!session.userId?.trim() || !session.organisationId?.trim() || !Number.isInteger(session.issuedAt) || !Number.isInteger(session.expiresAt)) throw new AuthenticationError("Invalid staff session.");
+  if (!session.sessionId?.trim() || !session.userId?.trim() || !session.organisationId?.trim() || !Number.isInteger(session.issuedAt) || !Number.isInteger(session.expiresAt)) throw new AuthenticationError("Invalid staff session.");
   if (session.issuedAt > nowSeconds + 60 || session.expiresAt <= nowSeconds) throw new AuthenticationError("Staff session has expired.");
   return session;
 }
 
 export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSession): Promise<StaffPrincipal> {
-  return withTenantRead(pool, session.organisationId, async (db: Queryable) => {
-    const result = await db.query<{ role_id: StaffRole }>(`SELECT role_id FROM nzi_console.memberships
-      WHERE organisation_id=$1 AND user_id=$2 AND status='active'`, [session.organisationId, session.userId]);
+  return withAuthTransaction(pool, "read", async (db: Queryable) => {
+    const result = await db.query<{ role_id: StaffRole }>(`SELECT m.role_id FROM nzi_console.staff_sessions s
+      JOIN nzi_console.memberships m ON (m.organisation_id, m.user_id) = (s.organisation_id, s.user_id)
+      WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.user_id=$3 AND s.revoked_at IS NULL
+        AND s.expires_at > now() AND m.status='active'`, [session.organisationId, session.sessionId, session.userId]);
     const role = result.rows[0]?.role_id;
     if (!role || !(role in rolePermissions)) throw new AuthenticationError("No active staff membership exists.");
     return { ...session, role, permissions: rolePermissions[role] };

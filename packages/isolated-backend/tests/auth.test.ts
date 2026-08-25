@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { assertSameOrigin, AuthenticationError, AuthorizationError, authorizeCommand, issueStaffSession, rolePermissions, verifyStaffSession, type StaffPrincipal } from "../src/index";
 
 const secret = "a-dedicated-test-session-secret-that-is-long-enough";
-const session = { userId: "staff-a", organisationId: "org-a", issuedAt: 1_700_000_000, expiresAt: 1_700_003_600 };
+const session = { sessionId: "session-a", userId: "staff-a", organisationId: "org-a", issuedAt: 1_700_000_000, expiresAt: 1_700_003_600 };
 const principal = (role: StaffPrincipal["role"]): StaffPrincipal => ({ ...session, role, permissions: rolePermissions[role] });
 
 describe("staff authentication and authorization", () => {

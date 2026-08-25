@@ -26,3 +26,11 @@ services:
       # Non-production Supabase only — never commit this value.
       - key: NZI_ISOLATED_DATABASE_URL
         sync: false
+      - key: NZI_AUTH_ENABLED
+        value: "false"
+      - key: NZI_AUTH_REQUIRED
+        value: "false"
+      - key: NZI_CONSOLE_SESSION_SECRET
+        sync: false
+      - key: NZI_CONSOLE_MFA_ENCRYPTION_KEY
+        sync: false

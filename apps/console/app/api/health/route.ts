@@ -9,6 +9,8 @@ export function GET() {
     dataMode,
     isolation: dataMode === "fixture" ? "no-database" : "non-production-only",
     writes: process.env.NZI_WRITE_API_ENABLED === "true" ? "enabled" : "disabled",
+    authentication: process.env.NZI_AUTH_ENABLED === "true" ? "enabled" : "disabled",
+    authenticationRequired: process.env.NZI_AUTH_REQUIRED === "true",
     time: new Date().toISOString(),
   });
 }

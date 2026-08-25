@@ -15,8 +15,8 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001`–`0005` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
-client/job screen fields, and agreed staff-role constraint but are not executed by the web
+Migrations `0001`–`0006` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
+client/job screen fields, staff roles, and the isolated authentication tables/role but are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
@@ -49,3 +49,15 @@ same-origin POST, a valid signed and expiring `nzi_console_session` cookie, an a
 and the named command permission for its role. Tenant and actor headers are never trusted as identity.
 No login currently issues that cookie and the feature flag remains off, so `/api/health` reports
 `writes=disabled`; database readiness alone never makes mutation endpoints available.
+
+## Staff authentication gate
+
+Staff identity remains separate email/password plus TOTP MFA. Passwords use per-credential scrypt hashes;
+TOTP secrets use AES-256-GCM with a dedicated Render-only encryption key. Password success creates a
+single-use five-minute MFA challenge; MFA success creates an eight-hour revocable database session and a
+signed `HttpOnly; Secure; SameSite=Strict` cookie. Five failed password attempts lock sign-in for 15 minutes.
+
+Authentication activation is deliberately two-stage: `NZI_AUTH_ENABLED` permits login APIs, then
+`NZI_AUTH_REQUIRED` protects pages/APIs only after a synthetic administrator has completed an end-to-end
+login. Both remain false until dedicated session/encryption secrets and the initial credential are
+provisioned. Legacy `NZI_JWT_SECRET`, `MFA_ENCRYPTION_KEY`, and Microsoft variables are never read.

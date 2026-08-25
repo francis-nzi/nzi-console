@@ -2,7 +2,7 @@ import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg"
 import { validateDatabaseBoundary, type DatabaseBoundaryConfig } from "./databaseBoundary";
 import { TenantContextError } from "./errors";
 
-export type RuntimeDatabaseRole = "nzi_console_app" | "nzi_console_worker";
+export type RuntimeDatabaseRole = "nzi_console_app" | "nzi_console_worker" | "nzi_console_auth";
 export type Queryable = { query<T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }> };
 export type PoolLike = { connect(): Promise<PoolClient> };
 
@@ -41,4 +41,8 @@ export function withTenantRead<T>(pool: PoolLike, organisationId: string, work: 
 
 export function withTenantWrite<T>(pool: PoolLike, organisationId: string, work: (client: Queryable) => Promise<T>): Promise<T> {
   return withTenantTransaction(pool, organisationId, "nzi_console_app", "write", work);
+}
+
+export function withAuthTransaction<T>(pool: PoolLike, mode: "read" | "write", work: (client: Queryable) => Promise<T>): Promise<T> {
+  return withTenantTransaction(pool, "authentication", "nzi_console_auth", mode, work);
 }

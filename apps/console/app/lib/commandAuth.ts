@@ -1,15 +1,12 @@
 import "server-only";
-import { assertSameOrigin, authorizeCommand, resolveStaffPrincipal, verifyStaffSession } from "@nzi/isolated-backend";
+import { authorizeCommand } from "@nzi/isolated-backend";
 import type { CommandKey } from "@nzi/contracts";
-import { isolatedPool } from "./isolatedDatabase";
-
-const cookieValue = (header: string | null, name: string) => header?.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${name}=`))?.slice(name.length + 1);
+import { currentStaff, requireAuthOrigin } from "./staffSession";
 
 export async function requireCommandPrincipal(request: Request, key: CommandKey) {
   if (process.env.NZI_WRITE_API_ENABLED !== "true") throw new WriteApiDisabledError();
-  assertSameOrigin(request.headers.get("origin"), process.env.NZI_ISOLATED_API_URL);
-  const session = verifyStaffSession(cookieValue(request.headers.get("cookie"), "nzi_console_session"), process.env.NZI_CONSOLE_SESSION_SECRET);
-  const principal = await resolveStaffPrincipal(isolatedPool(), session);
+  requireAuthOrigin(request);
+  const principal = await currentStaff(request);
   authorizeCommand(principal, key);
   return principal;
 }

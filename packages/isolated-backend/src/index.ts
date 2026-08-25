@@ -3,6 +3,8 @@ import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
 export * from "./errors";
 export * from "./auth";
+export * from "./credentials";
+export * from "./login";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";

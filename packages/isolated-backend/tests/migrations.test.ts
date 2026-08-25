@@ -10,6 +10,7 @@ const security = readFileSync(resolve(here, "../migrations/0002_rls_and_roles.sq
 const membership = readFileSync(resolve(here, "../migrations/0003_runtime_role_membership.sql"), "utf8");
 const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_screen_fields.sql"), "utf8");
 const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sql"), "utf8");
+const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const syntheticSeed = readFileSync(resolve(here, "../seeds/0001_synthetic_demo.sql"), "utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -19,6 +20,7 @@ describe("isolated Postgres migrations", () => {
   it("allows the pooler principal to assume the RLS-bound runtime roles", () => { assert.match(membership, /GRANT nzi_console_app, nzi_console_worker TO CURRENT_USER/); });
   it("adds constrained screen fields through a migration rather than request-time DDL", () => { assert.match(screenFields, /completeness_percent integer CHECK/); assert.match(screenFields, /progress_percent integer CHECK/); assert.match(screenFields, /detail_json jsonb/); });
   it("constrains memberships to the agreed staff roles", () => { for (const role of ["administrator", "consultant", "reviewer", "finance", "methodology-data-admin", "read-only"]) assert.ok(staffRoles.includes(`'${role}'`)); });
+  it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("keeps the demonstration seed synthetic, idempotent and on the official number range", () => {
     assert.match(syntheticSeed, /Synthetic demonstration records only/);
     assert.match(syntheticSeed, /demo-nzi-console/);
