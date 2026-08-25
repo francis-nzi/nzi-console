@@ -129,8 +129,8 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
       subtitle={`${selected.sector} · ${selected.location}`}
       actions={
         <>
-          <button className="nz-btn">New job</button>
-          <button className="nz-btn pri">Open client</button>
+          <button className="nz-btn" onClick={() => router.push(`/jobs?client=${selected.id}`)}>New job</button>
+          <button className="nz-btn pri" onClick={() => router.push(`/clients/${selected.id}`)}>Open client</button>
         </>
       }
     >
@@ -201,6 +201,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
                     key={c.id}
                     className={`row${c.id === selectedId ? " sel" : ""}`}
                     onClick={() => setSelectedId(c.id)}
+                    onDoubleClick={() => router.push(`/clients/${c.id}`)}
                   >
                     <td style={{ fontWeight: 500 }}>{c.name}</td>
                     <td>{c.sector}</td>
