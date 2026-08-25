@@ -11,3 +11,11 @@ idempotency, an audit record and a transactional outbox event. Any thrown error 
 Before introducing Postgres: provision a separate non-production project, add migration-owned tables and
 composite tenant foreign keys, enable least-privilege RLS, then run the same two-tenant and forced-rollback
 tests against that adapter. Production NZI Pro credentials and data are prohibited.
+
+## Provisioning gate
+
+Migrations `0001` and `0002` define the prepared schema and RLS boundary but are not executed by the web
+service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
+`NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
+rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
+roles are `NOSUPERUSER`, `NOBYPASSRLS`, and cannot alter or delete audit history.

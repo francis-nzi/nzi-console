@@ -1,4 +1,5 @@
 import type { CommandContext, CommandKey, CommandOutcome } from "@nzi/contracts";
+export * from "./databaseBoundary";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };
