@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { listClients, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import { getCurrentPublishedCrpReport,listClients, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -27,6 +27,8 @@ describe("isolated Postgres adapter", () => {
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.quantity, 1250.5); assert.equal(row.calculatedTco2e, null); assert.equal(row.qualityTier, "spend-based"); assert.equal(row.version, 3);
   });
+
+  it("loads the current published report from its matching frozen snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",manifest_version:1,report_data_hash:"sha256:abc",published_at:"2026-08-25T18:00:00Z",snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable;const report=await getCurrentPublishedCrpReport(db,"job-a");assert.equal(report?.snapshot.jobNumber,"J000612");assert.equal(report?.reportVersionId,"report-a");});
 
   it("rolls back and releases the connection when a read fails", async () => {
     const calls: string[] = [];
