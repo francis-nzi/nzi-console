@@ -30,3 +30,8 @@ parameter. Each request opens a read-only transaction, assumes `nzi_console_app`
 context used by forced RLS, and releases the pooled connection after commit or rollback. The first read
 models expose canonical stored fields only; richer fixture presentation fields will be added through a
 synthetic seed and explicit schema evolution rather than fabricated by the adapter.
+
+The repeatable seed at `packages/isolated-backend/seeds/0001_synthetic_demo.sql` owns the fictional
+`demo-nzi-console` tenant. It contains organisation, client, and cross-family job records only, reserves
+the established `J000712`–`J000716` demonstrator range, and advances the global allocator to `J000717`.
+It is an explicit provisioning action and is never invoked by an application request or service startup.
