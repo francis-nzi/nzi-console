@@ -1,5 +1,5 @@
 import type { Queryable } from "./postgres";
-import type { DatasetOption, FactorOption, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type { DatasetOption, FactorOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type ClientScreenReadModel = {
@@ -89,13 +89,14 @@ type ScopeRow = {
   dataset_id: string | null; factor_id: string | null; factor_version: string | null; factor_label: string | null;
   quality_tier: ScopeQualityTier | null; calculated_tco2e: string | null; override_tco2e: string | null;
   override_reason: string | null; review_status: ScopeRowReadModel["reviewStatus"]; version: number; enabled: boolean;
+  reviewed_row_version:number|null;reviewed_by:string|null;reviewed_at:Date|string|null;reviewer_note:string|null;
   provenance_json: Record<string, unknown>; lineage_json: ScopeRowReadModel["lineage"];
 };
 
 export async function listScopeRows(db: Queryable, jobId: string): Promise<ScopeRowReadModel[]> {
   const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
       r.unit, r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
-      r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status, r.version, r.enabled,
+      r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status,r.reviewed_row_version,r.reviewed_by,r.reviewed_at,r.reviewer_note, r.version, r.enabled,
       r.provenance_json, r.lineage_json
     FROM nzi_console.job_scope_rows r
     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
@@ -106,9 +107,11 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
     calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e),
     overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
-    reviewStatus: row.review_status, version: row.version, enabled: row.enabled,
+    reviewStatus: row.review_status,reviewedRowVersion:row.reviewed_row_version??null,reviewedBy:row.reviewed_by??null,reviewedAt:row.reviewed_at==null?null:row.reviewed_at instanceof Date?row.reviewed_at.toISOString():String(row.reviewed_at),reviewerNote:row.reviewer_note??null, version: row.version, enabled: row.enabled,
     provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
 }
+
+export async function getScopeQaReadiness(db:Queryable,jobId:string):Promise<ScopeQaReadiness>{const {rows}=await db.query<{total:string;enabled:string;approved:string;pending:string;rejected:string;calculation_missing:string;quality_missing:string;independent_review_pending:string}>(`SELECT count(*)::text AS total,count(*) FILTER(WHERE enabled)::text AS enabled,count(*) FILTER(WHERE enabled AND review_status='approved')::text AS approved,count(*) FILTER(WHERE enabled AND review_status='pending')::text AS pending,count(*) FILTER(WHERE enabled AND review_status='rejected')::text AS rejected,count(*) FILTER(WHERE enabled AND calculated_tco2e IS NULL AND override_tco2e IS NULL)::text AS calculation_missing,count(*) FILTER(WHERE enabled AND quality_tier IS NULL)::text AS quality_missing,count(*) FILTER(WHERE enabled AND review_status<>'approved')::text AS independent_review_pending FROM nzi_console.job_scope_rows WHERE job_id=$1`,[jobId]);const r=rows[0]??{total:"0",enabled:"0",approved:"0",pending:"0",rejected:"0",calculation_missing:"0",quality_missing:"0",independent_review_pending:"0"};const result={total:Number(r.total),enabled:Number(r.enabled),approved:Number(r.approved),pending:Number(r.pending),rejected:Number(r.rejected),calculationMissing:Number(r.calculation_missing),qualityMissing:Number(r.quality_missing),independentReviewPending:Number(r.independent_review_pending),readyForReporting:false};result.readyForReporting=result.enabled>0&&result.calculationMissing===0&&result.qualityMissing===0&&result.independentReviewPending===0;return result;}
 
 type FactorRow = { dataset_id: string; dataset_name: string; dataset_version: string; factor_id: string; label: string; activity_unit: string; kgco2e_per_unit: string; scopes: string[]; selection_source: FactorOption["selectionSource"]; synthetic: boolean; warnings_json: string[] };
 export async function listJobFactorOptions(db: Queryable, jobId: string): Promise<FactorOption[]> {

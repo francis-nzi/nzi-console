@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { addManualDataset, changeJobStage, CommandValidationError, createJob, createScopeRow, IdempotencyConflictError, runPostgresCommand, updateScopeRow, VersionConflictError } from "../src/index";
+import { addManualDataset,approveScopeRow, changeJobStage, CommandValidationError, createJob, createScopeRow, IdempotencyConflictError,rejectScopeRow, runPostgresCommand, updateScopeRow, VersionConflictError } from "../src/index";
 
 const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, idempotencyKey: "create-job-1", correlationId: "corr-create-job-1" };
 const input = { clientId: "client-a", family: "crp" as const, title: "Synthetic CRP", workflowStage: "Setup", owner: "A. Owner", startDate: "2026-08-25", dueDate: "2026-12-31", reportingYear: 2026 };
@@ -89,7 +89,7 @@ describe("Postgres command boundary", () => {
     const updated = await updateScopeRow(pool, { jobId: "job-a", rowId: created.data.rowId, expectedVersion: 1, enabled: true, ...fields, quantity: 1400 }, { ...context, idempotencyKey: "scope-update" });
     assert.equal(updated.data.version, 2);
     const updateSql = calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.sql ?? "";
-    assert.match(updateSql, /calculated_tco2e=NULL/); assert.match(updateSql, /review_status='pending'/);
+    assert.match(updateSql, /calculated_tco2e=NULL/); assert.match(updateSql, /review_status='pending'/);assert.match(updateSql,/reviewed_by=NULL/);
     assert.ok(calls.filter((call) => call.sql.includes("INSERT INTO nzi_console.audit_events")).length >= 2);
   });
 
@@ -101,4 +101,6 @@ describe("Postgres command boundary", () => {
     const selection=calls.find(call=>call.sql.includes("INSERT INTO nzi_console.job_dataset_selections"));assert.equal(selection?.values?.[3],"Client methodology exception");
     const audit=calls.find(call=>call.sql.includes("INSERT INTO nzi_console.audit_events"));assert.equal(audit?.values?.[8],"Client methodology exception");
   });
+  it("requires independent complete evidence and writes immutable review history",async()=>{const calls:string[]=[];const client={async query(sql:string){calls.push(sql);if(sql.includes("FROM nzi_console.command_idempotency"))return{rows:[]};if(sql.includes("SELECT job_family FROM"))return{rows:[{job_family:"crp"}]};if(sql.includes("SELECT version,enabled"))return{rows:[{version:3,enabled:true,calculated_tco2e:"12.3",override_tco2e:null,quality_tier:"measured",provenance_json:{calculatedBy:"consultant-a"}}]};if(sql.includes("UPDATE nzi_console.job_scope_rows SET review_status"))return{rows:[{version:4}]};return{rows:[]};},release(){}};const result=await approveScopeRow({connect:async()=>client} as never,{jobId:"job-a",rowIds:["row-a"],expectedReviewVersion:3,reviewerNote:"Evidence checked"},{...context,idempotencyKey:"review-a",actorId:"reviewer-a"});assert.equal(result.data.decision,"approved");assert.ok(calls.some(sql=>sql.includes("INSERT INTO nzi_console.scope_row_review_history")));await assert.rejects(()=>approveScopeRow({connect:async()=>client} as never,{jobId:"job-a",rowIds:["row-a"],expectedReviewVersion:3},{...context,idempotencyKey:"review-self",actorId:"consultant-a"}),CommandValidationError);});
+  it("requires a note when rejecting",()=>assert.rejects(()=>rejectScopeRow(commandPool().pool,{jobId:"job-a",rowIds:["row-a"],expectedReviewVersion:1,reviewerNote:""},{...context,idempotencyKey:"reject-empty"}),CommandValidationError));
 });

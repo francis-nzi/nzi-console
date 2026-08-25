@@ -1,4 +1,4 @@
-import { createScopeRow, listScopeRows, withTenantRead } from "@nzi/isolated-backend";
+import { createScopeRow,getScopeQaReadiness, listScopeRows, withTenantRead } from "@nzi/isolated-backend";
 import type { CommandInputMap } from "@nzi/contracts";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params; const { pool, organisationId } = requireIsolatedApiContext();
-    return Response.json({ rows: await withTenantRead(pool, organisationId, (db) => listScopeRows(db, jobId)) });
+    return Response.json(await withTenantRead(pool, organisationId,async(db)=>({ rows: await listScopeRows(db, jobId),qa:await getScopeQaReadiness(db,jobId) })));
   } catch (error) { return apiFailure(error); }
 }
 
