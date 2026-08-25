@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
 import { clients, job712 } from "@nzi/mock-data";
+import { loadFixtureScreen } from "@nzi/api-client";
+import { hasData } from "@nzi/contracts";
 import { NAV, USER } from "./lib/nav";
+import { ScreenState } from "./lib/ScreenState";
 
 function num(s: string | null): number {
   return s ? Number(s.replace(/[^0-9.]/g, "")) : 0;
@@ -25,6 +28,8 @@ function Bar({ pct, color }: { pct: number; color: string }) {
 }
 
 export default function ControlRoom() {
+  const result = loadFixtureScreen("control", { clients, attentionJob: job712 });
+  if (!hasData(result)) return <ScreenState result={result}>{() => null}</ScreenState>;
   const portfolio = clients.reduce((n, c) => n + num(c.latestFootprint), 0);
   const openJobs = clients.reduce((n, c) => n + c.openJobs, 0);
   const reportsDue = clients.filter((c) => /202|Overdue/.test(c.nextReportDue)).length;

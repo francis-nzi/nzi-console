@@ -1,8 +1,11 @@
 import { ChartProof } from "../charts/ChartProof";
 import { EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway, ScopeYearOnYearBar, emissionsByActivitySample, emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample, reductionPathwaySample, scopeDonutSample, scopeYearOnYearSample } from "@nzi/charts";
+import { loadFixtureScreen } from "@nzi/api-client";
+import { ScreenState } from "../lib/ScreenState";
 
 export default function ReportPreviewPage() {
-  return (
+  const result = loadFixtureScreen("report", { report: { id: "CRP-J000712-preview", reviewedSnapshotId: "reviewed-crp-J000712-v1" } });
+  return <ScreenState result={result}>{() => (
     <main style={{ background: "#eef2f0", minHeight: "100vh", padding: 32, fontFamily: "var(--font-inter), Inter, sans-serif" }}>
       <section style={{ background: "white", maxWidth: 1180, margin: "0 auto", padding: 28, boxShadow: "0 4px 24px rgba(11,27,43,.08)" }}>
         <div style={{ color: "#0BA75E", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase" }}>NZI Professional Report · J000712</div>
@@ -26,5 +29,5 @@ export default function ReportPreviewPage() {
         </div>
       </section>
     </main>
-  );
+  )}</ScreenState>;
 }

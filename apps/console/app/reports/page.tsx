@@ -1,10 +1,16 @@
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { reportTemplates, reportVersions } from "@nzi/mock-data";
+import { loadFixtureScreen } from "@nzi/api-client";
+import { hasData } from "@nzi/contracts";
 import { NAV, USER } from "../lib/nav";
+import { ScreenState } from "../lib/ScreenState";
 
 export default function ReportsPage() {
-  const published = reportVersions.filter((version) => version.status === "published").length;
-  const ready = reportVersions.filter((version) => version.status === "validated").length;
+  const result = loadFixtureScreen<{ reports: typeof reportVersions; templates: typeof reportTemplates }>("reports", { reports: reportVersions, templates: reportTemplates });
+  if (!hasData(result)) return <ScreenState result={result}>{() => null}</ScreenState>;
+  const { reports, templates } = result.data;
+  const published = reports.filter((version) => version.status === "published").length;
+  const ready = reports.filter((version) => version.status === "validated").length;
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" user={USER} />}>
     <TopBar searchPlaceholder="Search reports, jobs, clients…" crumbs={<><b>Reports</b> <span className="muted">/</span> Versions</>} />
     <div className="nz-head"><div style={{ display: "flex" }}><div><h1>Reports</h1><div className="sub">Versioned templates · immutable outputs · manifest validation</div></div><button className="nz-btn pri" style={{ marginLeft: "auto" }}>Create report version</button></div></div>

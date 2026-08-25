@@ -1,6 +1,8 @@
 import { ManifestChartSet, crpChartSamples, crpProfessionalManifest } from "@nzi/charts";
 import { findReportVersion, reportVersions } from "@nzi/mock-data";
+import { loadFixtureScreen } from "@nzi/api-client";
 import { notFound } from "next/navigation";
+import { ScreenState } from "../../lib/ScreenState";
 import { PrintButton } from "./PrintButton";
 
 export function generateStaticParams() { return reportVersions.map((version) => ({ versionId: version.id })); }
@@ -8,6 +10,10 @@ export default async function ReportVersionPage({ params }: { params: Promise<{ 
   const { versionId } = await params;
   const version = findReportVersion(versionId);
   if (!version) notFound();
+  const result = loadFixtureScreen<{ report: typeof version }>("report", { report: version });
+  return <ScreenState result={result}>{(data) => <ReportVersion version={data.report} />}</ScreenState>;
+}
+function ReportVersion({ version }: { version: NonNullable<ReturnType<typeof findReportVersion>> }) {
   return <main className="report-canvas" style={{ minHeight: "100vh", background: "#E9EFEC", padding: "28px 18px", fontFamily: "var(--font-inter), Inter, sans-serif" }}>
     <style>{`@page{size:A4;margin:14mm}@media print{.report-canvas{background:white!important;padding:0!important}.report-toolbar{display:none!important}.report-sheet{box-shadow:none!important;max-width:none!important;padding:0!important}[data-report-manifest]>section>div{grid-template-columns:1fr!important}figure{break-inside:avoid;page-break-inside:avoid}section{break-inside:auto}}`}</style>
     <div className="report-toolbar" style={{ maxWidth: 1120, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 10 }}><a href="/reports" style={{ color: "#0B7A4B", textDecoration: "none", fontWeight: 600 }}>← Reports</a><span style={{ color: "#68766F", fontSize: 12 }}>{version.id} · immutable {version.status} version</span><div style={{ marginLeft: "auto" }}><PrintButton /></div></div>
