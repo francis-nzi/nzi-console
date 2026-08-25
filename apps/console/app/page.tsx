@@ -1,154 +1,21 @@
-import type { ReactNode } from "react";
-import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
-import { clients, job712 } from "@nzi/mock-data";
-import { loadFixtureScreen } from "@nzi/api-client";
-import { hasData } from "@nzi/contracts";
-import { NAV, USER } from "./lib/nav";
-import { ScreenState } from "./lib/ScreenState";
+import type {ReactNode} from "react";
+import Link from "next/link";
+import {AppShell,TopBar,WorkspaceRail} from "@nzi/ui";
+import {clients as fixtureClients,jobs as fixtureJobs,jobFamilyMeta} from "@nzi/mock-data";
+import type {ClientScreenReadModel,JobScreenReadModel} from "@nzi/isolated-backend";
+import {loadScreen} from "./lib/loadScreen";
+import {ScreenState} from "./lib/ScreenState";
+import {NAV,USER} from "./lib/nav";
 
-function num(s: string | null): number {
-  return s ? Number(s.replace(/[^0-9.]/g, "")) : 0;
-}
+export const dynamic="force-dynamic";
+const today=new Date().toISOString().slice(0,10);
+const dateLabel=(value:string)=>new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"Europe/London"}).format(new Date(`${value}T12:00:00Z`));
+const greeting=()=>{const hour=Number(new Intl.DateTimeFormat("en-GB",{hour:"2-digit",hour12:false,timeZone:"Europe/London"}).format(new Date()));return hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";};
 
-function PanelHead({ title, right }: { title: string; right?: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", padding: "13px 16px", borderBottom: "1px solid var(--line2)" }}>
-      <h2 style={{ fontSize: 14.5, fontWeight: 600, margin: 0 }}>{title}</h2>
-      {right && <div style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--t2)" }}>{right}</div>}
-    </div>
-  );
-}
+export default async function ControlRoom(){const [clientResult,jobResult]=await Promise.all([loadScreen<{clients:ClientScreenReadModel[]}>("clients",{clients:fixtureClients}),loadScreen<{jobs:JobScreenReadModel[]}>("jobs",{jobs:fixtureJobs})]);return <ScreenState result={clientResult}>{clientData=><ScreenState result={jobResult}>{jobData=><ControlRoomBoard clients={clientData.clients} jobs={jobData.jobs}/>}</ScreenState>}</ScreenState>}
 
-function Bar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <span style={{ width: 74, height: 6, background: "#E7ECE9", borderRadius: 6, overflow: "hidden", display: "inline-block" }}>
-      <span style={{ display: "block", height: "100%", width: `${pct}%`, background: color }} />
-    </span>
-  );
-}
+function ControlRoomBoard({clients,jobs}:{clients:ClientScreenReadModel[];jobs:JobScreenReadModel[]}){const activeJobs=jobs.filter(job=>["draft","open","on-hold"].includes(job.header.status)),overdue=activeJobs.filter(job=>job.header.dueDate<today),crpReview=activeJobs.filter(job=>job.detail.kind==="crp"&&job.detail.reviewedRows<job.detail.totalRows),attention=[...new Map([...overdue,...crpReview,...activeJobs.filter(job=>job.header.progressPct<40)].map(job=>[job.header.id,job])).values()].slice(0,6),avgProgress=activeJobs.length?Math.round(activeJobs.reduce((sum,job)=>sum+job.header.progressPct,0)/activeJobs.length):0,stages=[...new Map(activeJobs.map(job=>[job.header.workflowStage,0])).keys()].map(stage=>({stage,count:activeJobs.filter(job=>job.header.workflowStage===stage).length})).sort((a,b)=>b.count-a.count),stageMax=Math.max(...stages.map(item=>item.count),1),clientAttention=clients.filter(client=>client.status==="at-risk"||client.status==="onboarding"||client.completeness<80).slice(0,5);return <AppShell rail={<WorkspaceRail sections={NAV} activeId="control" user={USER}/>}><TopBar searchPlaceholder="Search clients, jobs and reports…" crumbs={<><b>Control Room</b><span className="muted">/</span> Today</>}/><div className="nz-head"><div style={{display:"flex",alignItems:"flex-start",gap:16}}><div><div className="eyebrow">Consultancy command centre</div><h1 style={{marginTop:5}}>{greeting()}, Francis</h1><div className="sub">What needs attention across clients, delivery and reporting.</div></div><div style={{marginLeft:"auto",display:"flex",gap:8}}><Link className="nz-btn" href="/clients">Open clients</Link><Link className="nz-btn pri" href="/jobs">Open jobs</Link></div></div></div><div className="nz-body" style={{paddingTop:16}}><div className="nz-metrics"><Metric label="Active clients" value={String(clients.filter(client=>client.status!=="prospect").length)} note={`${clients.filter(client=>client.status==="onboarding").length} onboarding`}/><Metric label="Live jobs" value={String(activeJobs.length)} note={`${overdue.length} overdue`}/><Metric label="Needs attention" value={String(attention.length+clientAttention.length)} note="Across delivery and clients"/><Metric label="Average progress" value={`${avgProgress}%`} note="Current live jobs"/></div><div style={{display:"grid",gridTemplateColumns:"minmax(0,1.45fr) minmax(300px,.8fr)",gap:16,alignItems:"start"}}><div style={{display:"grid",gap:16}}><section className="nz-panel"><PanelHead title="Priority actions" right={<Link href="/jobs">View all jobs →</Link>}/>{attention.length===0?<Empty text="No delivery actions need attention."/>:attention.map(job=>{const isOverdue=job.header.dueDate<today,reviewGap=job.detail.kind==="crp"?job.detail.totalRows-job.detail.reviewedRows:0;return <Link href={`/jobs/${job.header.id}`} key={job.header.id} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:12,padding:"14px 16px",borderBottom:"1px solid var(--line2)",color:"inherit",textDecoration:"none"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><b>{job.header.number}</b><span className="nz-st need">{jobFamilyMeta[job.header.family].code}</span><span style={{fontWeight:600}}>{job.header.client}</span></div><div className="sub" style={{fontSize:12,marginTop:4}}>{isOverdue?`Due ${dateLabel(job.header.dueDate)}`:reviewGap>0?`${reviewGap} emissions rows awaiting review`:`${job.header.progressPct}% complete`} · {job.header.workflowStage}</div></div><span className={`nz-st ${isOverdue?"nof":reviewGap>0?"est":"need"}`}>{isOverdue?"Overdue":reviewGap>0?"Review":"Progress"}</span></Link>})}</section><section className="nz-panel"><PanelHead title="Delivery pipeline" right={`${activeJobs.length} live jobs`}/><div style={{padding:16,display:"grid",gap:11}}>{stages.map(({stage,count})=><div key={stage} style={{display:"grid",gridTemplateColumns:"150px 1fr 24px",gap:12,alignItems:"center",fontSize:13}}><span>{stage}</span><span style={{height:8,borderRadius:8,background:"#E8EEEB",overflow:"hidden"}}><span style={{display:"block",height:"100%",width:`${Math.max(8,count/stageMax*100)}%`,background:"var(--emerald)"}}/></span><b className="num" style={{textAlign:"right"}}>{count}</b></div>)}</div></section><section className="nz-panel"><PanelHead title="Recently active jobs"/><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))"}}>{jobs.slice(0,3).map(job=><Link href={`/jobs/${job.header.id}`} key={job.header.id} style={{padding:16,borderRight:"1px solid var(--line2)",color:"inherit",textDecoration:"none"}}><div className="eyebrow">{job.header.number} · {jobFamilyMeta[job.header.family].code}</div><b style={{display:"block",margin:"7px 0 5px"}}>{job.header.client}</b><div className="sub" style={{fontSize:12}}>{job.header.workflowStage} · {job.header.progressPct}%</div></Link>)}</div></section></div><aside style={{display:"grid",gap:16}}><section className="nz-panel"><PanelHead title="Client pulse" right={<Link href="/clients">All clients →</Link>}/>{clientAttention.length===0?<Empty text="Client portfolio is on track."/>:clientAttention.map(client=><Link href="/clients" key={client.id} style={{display:"block",padding:"12px 16px",borderBottom:"1px solid var(--line2)",color:"inherit",textDecoration:"none"}}><div style={{display:"flex",alignItems:"center",gap:8}}><b style={{fontSize:13}}>{client.name}</b><span className={`nz-st ${client.status==="at-risk"?"nof":client.status==="onboarding"?"est":"need"}`} style={{marginLeft:"auto"}}>{client.status}</span></div><div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><span style={{height:6,background:"#E8EEEB",borderRadius:5,overflow:"hidden",flex:1}}><span style={{display:"block",height:"100%",width:`${client.completeness}%`,background:client.completeness>=80?"var(--emerald)":"var(--amber)"}}/></span><span className="num muted" style={{fontSize:11}}>{client.completeness}%</span></div></Link>)}</section><section className="nz-panel" style={{padding:16,background:"linear-gradient(145deg,#0B1B2B,#123D35)",color:"white"}}><div className="eyebrow" style={{color:"#7CE1AE"}}>Reporting</div><h2 style={{fontSize:18,margin:"8px 0"}}>Client review inbox</h2><p style={{fontSize:13,lineHeight:1.5,color:"#C8D8D2",margin:"0 0 14px"}}>Review client questions, approvals and published report status from one place.</p><Link href="/reports" className="nz-btn pri">Open report workflow</Link></section><section className="nz-panel"><PanelHead title="Quick actions"/><div style={{padding:10,display:"grid",gap:6}}><Link className="nz-btn" href="/jobs">Create or manage a job</Link><Link className="nz-btn" href="/reports">Validate and publish reports</Link><Link className="nz-btn" href="/platform">Manage portal access</Link></div></section></aside></div></div></AppShell>}
 
-export default function ControlRoom() {
-  const result = loadFixtureScreen("control", { clients, attentionJob: job712 });
-  if (!hasData(result)) return <ScreenState result={result}>{() => null}</ScreenState>;
-  const portfolio = clients.reduce((n, c) => n + num(c.latestFootprint), 0);
-  const openJobs = clients.reduce((n, c) => n + c.openJobs, 0);
-  const reportsDue = clients.filter((c) => /202|Overdue/.test(c.nextReportDue)).length;
-  const avgCompleteness = Math.round(clients.reduce((n, c) => n + c.completeness, 0) / clients.length);
-
-  const stages: Record<string, number> = {};
-  clients.forEach((c) => c.jobs.forEach((j) => { stages[j.status] = (stages[j.status] ?? 0) + 1; }));
-  const stageRows = Object.entries(stages).sort((a, b) => b[1] - a[1]);
-  const stageMax = Math.max(...stageRows.map(([, n]) => n), 1);
-
-  type Alert = { sev: "high" | "med" | "low"; text: string; meta: string };
-  const alerts: Alert[] = [];
-  clients.filter((c) => c.status === "at-risk").forEach((c) =>
-    alerts.push({ sev: "high", text: `${c.name} — report ${c.nextReportDue.toLowerCase()}`, meta: "At risk" }));
-  alerts.push({
-    sev: "med",
-    text: `Job ${job712.number} (${job712.client}) — ${job712.counts.needs} sources need data, 1 with no matched factor`,
-    meta: "Data entry",
-  });
-  clients.filter((c) => c.status === "onboarding").forEach((c) =>
-    alerts.push({ sev: "med", text: `${c.name} — onboarding baseline ${c.completeness}% complete`, meta: "Onboarding" }));
-  clients.filter((c) => c.status === "active" && c.completeness < 80).forEach((c) =>
-    alerts.push({ sev: "low", text: `${c.name} — data completeness ${c.completeness}%, below 80% target`, meta: "Data quality" }));
-
-  const sevColor: Record<Alert["sev"], string> = { high: "var(--coral)", med: "var(--amber)", low: "#378ADD" };
-
-  const upcoming = clients.filter((c) => /202|Overdue/.test(c.nextReportDue));
-  const withData = clients.filter((c) => c.completeness > 0);
-
-  const rail = <WorkspaceRail sections={NAV} activeId="control" user={USER} />;
-
-  return (
-    <AppShell rail={rail}>
-      <TopBar
-        searchPlaceholder="Search clients, jobs, factors…"
-        crumbs={<><b>Control Room</b> <span className="muted">/</span> Portfolio overview</>}
-      />
-
-      <div className="nz-head">
-        <h1>Control Room</h1>
-        <div className="sub">Portfolio overview · all clients · reporting cycle 2024</div>
-      </div>
-
-      <div className="nz-body" style={{ paddingTop: 16 }}>
-        <div className="nz-metrics">
-          <div className="nz-metric"><div className="l">Portfolio emissions (reported)</div><div className="v num">{portfolio.toLocaleString()} <span style={{ fontSize: 13, color: "var(--t3)" }}>tCO₂e</span></div></div>
-          <div className="nz-metric"><div className="l">Open jobs</div><div className="v num">{openJobs}</div></div>
-          <div className="nz-metric"><div className="l">Reports due / overdue</div><div className="v num">{reportsDue}</div></div>
-          <div className="nz-metric"><div className="l">Avg data completeness</div><div className="v num">{avgCompleteness}%</div></div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div className="nz-panel">
-              <PanelHead title="Needs attention" right={`${alerts.length} items`} />
-              <div>
-                {alerts.map((a, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 16px", borderBottom: "1px solid var(--line2)" }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: sevColor[a.sev], flex: "none" }} />
-                    <span style={{ fontSize: 13 }}>{a.text}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--t2)", background: "var(--paper)", border: "1px solid var(--line)", padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{a.meta}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="nz-panel">
-              <PanelHead title="Jobs by stage" right={`${stageRows.reduce((n, [, c]) => n + c, 0)} jobs`} />
-              <div style={{ padding: "6px 16px 12px" }}>
-                {stageRows.map(([label, n]) => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", fontSize: 13 }}>
-                    <span style={{ width: 150 }}>{label}</span>
-                    <span style={{ flex: 1, height: 7, background: "#E7ECE9", borderRadius: 6, overflow: "hidden" }}>
-                      <span style={{ display: "block", height: "100%", width: `${(n / stageMax) * 100}%`, background: "var(--emerald)" }} />
-                    </span>
-                    <span className="num" style={{ width: 22, textAlign: "right", color: "var(--t2)" }}>{n}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div className="nz-panel">
-              <PanelHead title="Upcoming reports" />
-              <div>
-                {upcoming.map((c) => {
-                  const overdue = /Overdue/.test(c.nextReportDue);
-                  return (
-                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid var(--line2)" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--t2)" }}>{c.nextReportDue}</div>
-                      </div>
-                      <span className={`nz-st ${overdue ? "nof" : "est"}`} style={{ marginLeft: "auto" }}>{overdue ? "Overdue" : "Due"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="nz-panel">
-              <PanelHead title="Data completeness" />
-              <div style={{ padding: "6px 16px 12px" }}>
-                {withData.map((c) => {
-                  const color = c.completeness >= 85 ? "var(--emerald)" : c.completeness >= 50 ? "var(--amber)" : "var(--coral)";
-                  return (
-                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0", fontSize: 12.5 }}>
-                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                      <Bar pct={c.completeness} color={color} />
-                      <span className="num" style={{ width: 34, textAlign: "right", color: "var(--t2)" }}>{c.completeness}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </AppShell>
-  );
-}
+function PanelHead({title,right}:{title:string;right?:ReactNode}){return <div style={{display:"flex",alignItems:"center",padding:"13px 16px",borderBottom:"1px solid var(--line2)"}}><h2 style={{fontSize:15,margin:0}}>{title}</h2>{right?<div className="sub" style={{marginLeft:"auto",fontSize:12}}>{right}</div>:null}</div>}
+function Metric({label,value,note}:{label:string;value:string;note:string}){return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div><div className="sub" style={{fontSize:11,marginTop:3}}>{note}</div></div>}
+function Empty({text}:{text:string}){return <div className="sub" style={{padding:18}}>{text}</div>}
