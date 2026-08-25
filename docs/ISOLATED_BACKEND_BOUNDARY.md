@@ -15,8 +15,8 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001`–`0006` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
-client/job screen fields, staff roles, and the isolated authentication tables/role but are not executed by the web
+Migrations `0001`–`0007` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
+client/job screen fields, staff roles, isolated authentication tables/role, and the credential-scoped membership lookup. They are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
@@ -47,8 +47,9 @@ outcome atomically. A real Supabase rollback test proves `J000717` remains avail
 The client/job command routes are deny-by-default. They require the explicit write feature flag, exact
 same-origin POST, a valid signed and expiring `nzi_console_session` cookie, an active tenant membership,
 and the named command permission for its role. Tenant and actor headers are never trusted as identity.
-No login currently issues that cookie and the feature flag remains off, so `/api/health` reports
-`writes=disabled`; database readiness alone never makes mutation endpoints available.
+The Clients and Jobs screens now submit through these routes with browser-generated idempotency and
+correlation IDs. Tenant, actor and permission identity still come only from the server session. The
+feature flag remains independently controlled, so database and UI readiness never enable mutations.
 
 ## Staff authentication gate
 
@@ -58,6 +59,6 @@ single-use five-minute MFA challenge; MFA success creates an eight-hour revocabl
 signed `HttpOnly; Secure; SameSite=Strict` cookie. Five failed password attempts lock sign-in for 15 minutes.
 
 Authentication activation is deliberately two-stage: `NZI_AUTH_ENABLED` permits login APIs, then
-`NZI_AUTH_REQUIRED` protects pages/APIs only after a synthetic administrator has completed an end-to-end
-login. Both remain false until dedicated session/encryption secrets and the initial credential are
-provisioned. Legacy `NZI_JWT_SECRET`, `MFA_ENCRYPTION_KEY`, and Microsoft variables are never read.
+`NZI_AUTH_REQUIRED` protects pages/APIs. Both are enabled after an end-to-end administrator login test;
+dedicated Render session/encryption secrets and the initial credential are provisioned. Legacy
+`NZI_JWT_SECRET`, `MFA_ENCRYPTION_KEY`, and Microsoft variables are never read.

@@ -16,7 +16,7 @@ FuelCap services.
 - **Health check path:** `/api/health`
 - **Auto-Deploy:** on commit to `main`
 - **Public URL:** `https://nzi-pro-api-prod.onrender.com`
-- **Live commit at record:** `318de1e` — "Wire client and job isolated read screens"
+- **Verified authentication commit:** `54340dd` — "Allow credential-scoped membership authentication"
 
 ## Environment variables
 
@@ -29,8 +29,14 @@ FuelCap services.
 | `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` |
 | `NZI_ISOLATED_API_URL` | `https://nzi-pro-api-prod.onrender.com` |
 | `NZI_ISOLATED_DATABASE_URL` | Secret non-production Supabase session-pooler URL; Render only |
+| `NZI_AUTH_ENABLED` | `true` |
+| `NZI_AUTH_REQUIRED` | `true` |
+| `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |
+| `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | Dedicated Render-only secret |
+| `NZI_WRITE_API_ENABLED` | Explicit independent gate for authenticated command routes |
 
-Clients and Jobs list screens use the isolated Supabase schema. Other workspaces remain on synthetic
+Clients and Jobs list screens use the isolated Supabase schema and expose authenticated client/job
+creation through the transactional command boundary. Other workspaces remain on synthetic
 `@nzi/mock-data` fixtures. The service retains unrelated legacy environment variables from its earlier
 use; the Console boundary ignores generic `DATABASE_URL` and accepts only `NZI_ISOLATED_DATABASE_URL`.
 
