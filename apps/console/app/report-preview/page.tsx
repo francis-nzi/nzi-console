@@ -23,6 +23,8 @@ import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
+import {validateManifest} from "@nzi/charts";
+import {ReportValidationAction} from "./ReportValidationAction";
 
 export default async function ReportPreviewPage({
   searchParams,
@@ -185,6 +187,7 @@ function LiveSnapshotPreview({
   const sites=charts.find(chart=>chart.spec.type==="emissions_site_donut") as SiteDonutData|undefined;
   const intensity=charts.find(chart=>chart.spec.type==="intensity_pathway") as IntensityPathwayData|undefined;
   const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
+  const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id);
   return (
     <main
       style={{
@@ -245,6 +248,7 @@ function LiveSnapshotPreview({
           {purchasedGoods&&<PurchasedGoodsBreakdown data={purchasedGoods}/>}
         </div>
         <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>
+        <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} ready={validation.valid}/>
         <ManifestChartSet
           manifest={crpProfessionalManifest}
           charts={charts}
