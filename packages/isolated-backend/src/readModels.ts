@@ -1,5 +1,5 @@
 import type { Queryable } from "./postgres";
-import type { ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type { FactorOption, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type ClientScreenReadModel = {
@@ -108,4 +108,17 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
     reviewStatus: row.review_status, version: row.version, enabled: row.enabled,
     provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
+}
+
+type FactorRow = { dataset_id: string; dataset_name: string; dataset_version: string; factor_id: string; label: string; activity_unit: string; kgco2e_per_unit: string; scopes: string[]; selection_source: FactorOption["selectionSource"]; synthetic: boolean; warnings_json: string[] };
+export async function listJobFactorOptions(db: Queryable, jobId: string): Promise<FactorOption[]> {
+  const { rows } = await db.query<FactorRow>(`SELECT d.dataset_id,d.name AS dataset_name,d.version AS dataset_version,
+      f.factor_id,f.label,f.activity_unit,f.kgco2e_per_unit,f.scopes,s.selection_source,d.synthetic,s.warnings_json
+    FROM nzi_console.job_dataset_selections s
+    JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(s.organisation_id,s.dataset_id)
+    JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(d.organisation_id,d.dataset_id)
+    WHERE s.job_id=$1 AND f.active=true ORDER BY lower(d.name),lower(f.label),f.factor_id`,[jobId]);
+  return rows.map((row) => ({ datasetId: row.dataset_id,datasetName: row.dataset_name,datasetVersion: row.dataset_version,
+    factorId: row.factor_id,label: row.label,activityUnit: row.activity_unit,kgco2ePerUnit:Number(row.kgco2e_per_unit),
+    scopes:row.scopes,selectionSource:row.selection_source,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
 }

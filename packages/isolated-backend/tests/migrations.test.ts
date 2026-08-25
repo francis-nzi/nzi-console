@@ -15,6 +15,8 @@ const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membe
 const scopeEvidence = readFileSync(resolve(here, "../migrations/0008_scope_row_evidence_metadata.sql"), "utf8");
 const syntheticSeed = readFileSync(resolve(here, "../seeds/0001_synthetic_demo.sql"), "utf8");
 const syntheticScopeSeed = readFileSync(resolve(here, "../seeds/0002_synthetic_crp_scope_rows.sql"), "utf8");
+const factorMigration = readFileSync(resolve(here, "../migrations/0009_factor_resolution.sql"), "utf8");
+const syntheticFactorSeed = readFileSync(resolve(here, "../seeds/0003_synthetic_factors.sql"), "utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
   it("uses composite tenant foreign keys for client, job, scope and report links", () => { assert.match(schema, /FOREIGN KEY \(organisation_id, client_id\)/); assert.match(schema, /FOREIGN KEY \(organisation_id, job_id\)/); });
@@ -36,5 +38,7 @@ describe("isolated Postgres migrations", () => {
     assert.ok(emailDomains.every((domain) => domain === "@synthetic.invalid"));
   });
   it("seeds canonical scope rows only for the synthetic demonstrator", () => { assert.match(syntheticScopeSeed, /Fictional activity data/); assert.match(syntheticScopeSeed, /job_scope_rows/); assert.match(syntheticScopeSeed, /demo-nzi-console/); assert.match(syntheticScopeSeed, /ON CONFLICT .* DO NOTHING/i); assert.doesNotMatch(syntheticScopeSeed, /crp_scope_entries/i); });
+  it("owns factor resolution in tenant-isolated migrations", () => { assert.match(factorMigration,/emission_factor_datasets/); assert.match(factorMigration,/job_dataset_selections/); assert.match(factorMigration,/ENABLE ROW LEVEL SECURITY/); assert.match(factorMigration,/selection_source <> 'manual'/); });
+  it("labels demonstration factors synthetic and never presents them as official values", () => { assert.match(syntheticFactorSeed,/Synthetic GB activity factors/); assert.match(syntheticFactorSeed,/Demonstration only/); assert.match(syntheticFactorSeed,/synthetic-gb-2026/); assert.doesNotMatch(syntheticFactorSeed,/UK Government GHG Conversion Factors/); });
   it("refuses missing, production, or unconfirmed database targets", () => { assert.throws(() => validateDatabaseBoundary({ appEnv: "staging" })); assert.throws(() => validateDatabaseBoundary({ appEnv: "production", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" })); const url = validateDatabaseBoundary({ appEnv: "staging", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" }); assert.equal(url.searchParams.get("application_name"), "nzi-console-isolated"); });
 });

@@ -88,6 +88,15 @@ export async function createJob(pool: PoolLike, input: CommandInputMap["job.crea
       (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year, owner_name, start_date, due_date, progress_percent, detail_json)
       VALUES ($1,$2,$3,$4,$5,$6,'open',$7,$8,$9,$10,$11,0,$12::jsonb) RETURNING job_number`,
       [context.organisationId, jobId, input.clientId, sequence, input.family, input.title.trim(), input.workflowStage.trim(), input.reportingYear ?? null, input.owner.trim(), input.startDate, input.dueDate, JSON.stringify(detail)]);
+    if (input.family === "crp") {
+      const reportingFrom = input.reportingYear ? `${input.reportingYear}-01-01` : input.startDate;
+      const reportingTo = input.reportingYear ? `${input.reportingYear}-12-31` : input.dueDate;
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,[context.organisationId,jobId,reportingFrom,reportingTo]);
+      await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
+        SELECT $1,$2,d.dataset_id,'automatic','Matched reporting period and geography.',$5 FROM nzi_console.emission_factor_datasets d
+        WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$3 AND d.valid_to>=$4 AND d.country_code IN ('GB','GLOBAL')
+        ON CONFLICT DO NOTHING`,[context.organisationId,jobId,reportingFrom,reportingTo,context.actorId]);
+    }
     return { data: { jobId, jobNumber: inserted.rows[0]!.job_number, sequence, clientId: input.clientId, family: input.family }, entityType: "job", entityId: jobId, topic: "job.created" };
   });
 }
@@ -154,5 +163,29 @@ export async function updateScopeRow(pool: PoolLike, input: CommandInputMap["sco
       [context.organisationId,input.jobId,input.rowId,input.scope,input.sourceLabel.trim(),input.quantity,input.unit?.trim()||null,input.datasetId,input.factorId,input.factorVersion,input.factorLabel,input.qualityTier,JSON.stringify(evidence.provenance),JSON.stringify(evidence.lineage),input.enabled,input.expectedVersion]);
     if (!updated.rows[0]) throw new VersionConflictError();
     return { data: { rowId: input.rowId, jobId: input.jobId, version: updated.rows[0].version }, entityType: "scope_row", entityId: input.rowId, topic: "scope.row.updated" };
+  });
+}
+
+export type CalculateScopeRowResult = { rowId: string; jobId: string; version: number; calculatedTco2e: number };
+export async function calculateScopeRow(pool: PoolLike,input: CommandInputMap["scope.row.calculate"],context: CommandContext): Promise<StoredOutcome<CalculateScopeRowResult>> {
+  return runPostgresCommand(pool,"scope.row.calculate",input,context,async (db) => {
+    await requireCrpJob(db,context.organisationId,input.jobId);
+    const found = await db.query<{ version:number; quantity:string|null; unit:string|null; scope:string; dataset_id:string|null; factor_id:string|null }>(`SELECT version,quantity,unit,scope,dataset_id,factor_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,[context.organisationId,input.jobId,input.rowId]);
+    const row=found.rows[0];
+    if (!row) throw new CommandValidationError([{field:"rowId",code:"NOT_FOUND",message:"Scope row was not found."}]);
+    if (row.version!==input.expectedVersion) throw new VersionConflictError();
+    if (row.quantity===null || !row.unit || !row.dataset_id || !row.factor_id) throw new CommandValidationError([{field:"rowId",code:"INCOMPLETE",message:"Quantity, unit and a selected factor are required before calculation."}]);
+    const factor = await db.query<{ label:string; activity_unit:string; kgco2e_per_unit:string; version:string; synthetic:boolean }>(`SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic FROM nzi_console.emission_factors f
+      JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
+      JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
+      WHERE f.organisation_id=$1 AND f.dataset_id=$3 AND f.factor_id=$4 AND f.active=true AND (split_part($5,'.',1)=ANY(f.scopes))`,[context.organisationId,input.jobId,row.dataset_id,row.factor_id,row.scope]);
+    const matched=factor.rows[0];
+    if (!matched) throw new CommandValidationError([{field:"factorId",code:"NOT_SELECTED",message:"The factor is not active, selected for this job, or valid for this scope."}]);
+    if (row.unit.trim().toLowerCase()!==matched.activity_unit.trim().toLowerCase()) throw new CommandValidationError([{field:"unit",code:"UNIT_MISMATCH",message:`Activity unit must be ${matched.activity_unit} for the selected factor.`}]);
+    const lineage=[{title:"Activity data captured",detail:`${row.quantity} ${row.unit}`},{title:"Factor resolved",detail:`${matched.label} · ${matched.version}`},{title:"Emissions calculated",detail:"quantity × kgCO₂e per unit ÷ 1,000"}];
+    const provenance={calculatedBy:context.actorId,calculatedAt:new Date().toISOString(),datasetId:row.dataset_id,factorId:row.factor_id,factorVersion:matched.version,kgCo2ePerUnit:matched.kgco2e_per_unit,synthetic:matched.synthetic};
+    const updated=await db.query<{version:number;calculated_tco2e:string}>(`UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,[context.organisationId,input.jobId,input.rowId,matched.version,matched.label,matched.kgco2e_per_unit,JSON.stringify(provenance),JSON.stringify(lineage),input.expectedVersion]);
+    if (!updated.rows[0]) throw new VersionConflictError();
+    return {data:{rowId:input.rowId,jobId:input.jobId,version:updated.rows[0].version,calculatedTco2e:Number(updated.rows[0].calculated_tco2e)},entityType:"scope_row",entityId:input.rowId,topic:"scope.row.calculated"};
   });
 }

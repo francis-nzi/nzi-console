@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "charts" | "datasets" | "reports" | "report" | "lca" | "portal" | "sales" | "platform";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "charts" | "datasets" | "reports" | "report" | "lca" | "portal" | "sales" | "platform";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -18,6 +18,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
   job: { key: "job", validate: (value) => record(value) && record(value.job), isEmpty: () => false },
   scopeRows: { key: "scopeRows", validate: (value) => rows(value, "rows"), isEmpty: () => false },
+  factorOptions: { key: "factorOptions", validate: (value) => rows(value, "factors"), isEmpty: () => false },
   charts: { key: "charts", validate: record, isEmpty: () => false },
   datasets: { key: "datasets", validate: (value) => rows(value, "datasets") && rows(value, "issues"), isEmpty: (value) => record(value) && (value.datasets as unknown[]).length === 0 },
   reports: { key: "reports", validate: (value) => rows(value, "reports"), isEmpty: (value) => record(value) && (value.reports as unknown[]).length === 0 },
