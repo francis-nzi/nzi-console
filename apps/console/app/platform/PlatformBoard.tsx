@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { platformSummary, tenantIsolationPass, type AuditEvent, type PlatformService, type StaffRole } from "@nzi/mock-data";
 import { commandDefinitions } from "@nzi/contracts";
@@ -10,17 +10,19 @@ import {PortalInviteAdmin} from "./PortalInviteAdmin";
 type View = "overview" | "audit" | "access" | "commands" | "workers";
 export function PlatformBoard({ services, events, roles }: { services: PlatformService[]; events: AuditEvent[]; roles: StaffRole[] }) {
   const [view, setView] = useState<View>("overview");
+  const [liveEvents,setLiveEvents]=useState(events);
   const [selectedId, setSelectedId] = useState(events[0]!.id);
   const [result, setResult] = useState<"all" | AuditEvent["result"]>("all");
-  const selected = events.find((event) => event.id === selectedId) ?? events[0]!;
+  useEffect(()=>{fetch("/api/isolated/audit-events",{cache:"no-store"}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(Array.isArray(body.events)&&body.events.length)setLiveEvents(body.events)}).catch(()=>undefined)},[]);
+  const selected = liveEvents.find((event) => event.id === selectedId) ?? liveEvents[0]!;
   const summary = platformSummary(services);
-  const visibleEvents = useMemo(() => result === "all" ? events : events.filter((event) => event.result === result), [events, result]);
+  const visibleEvents = useMemo(() => result === "all" ? liveEvents : liveEvents.filter((event) => event.result === result), [liveEvents, result]);
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="platform" user={USER} />} drawer={<EvidenceDrawer kicker={`Audit · ${selected.result}`} title={selected.action} subtitle={`${selected.entity} · ${selected.entityId}`} actions={<><button className="nz-btn">Export event</button><button className="nz-btn pri">Open record</button></>}><AuditEvidence event={selected} /></EvidenceDrawer>}>
     <TopBar searchPlaceholder="Search events, actors, correlation IDs…" crumbs={<><b>Platform & audit</b> <span className="muted">/</span> Operations</>} />
     <div className="nz-head"><div style={{ display: "flex", alignItems: "flex-start" }}><div><div className="eyebrow">Isolated environment · mock data</div><h1>Platform & audit</h1><div className="sub">Health · tenancy · permissions · immutable activity history</div></div><button className="nz-btn" style={{ marginLeft: "auto" }}>Export audit</button><button className="nz-btn pri" style={{ marginLeft: 8 }}>Run checks</button></div></div>
-    <div className="nz-body" style={{ paddingTop: 18 }}><div className="nz-metrics"><Metric label="Healthy services" value={`${summary.healthy}/${services.length}`} /><Metric label="Degraded" value={`${summary.degraded}`} /><Metric label="Critical audit events" value={`${events.filter((event) => event.severity === "critical").length}`} /><Metric label="Tenant checks" value={tenantIsolationPass(events) ? "Passing" : "Failed"} /></div>
+    <div className="nz-body" style={{ paddingTop: 18 }}><div className="nz-metrics"><Metric label="Healthy services" value={`${summary.healthy}/${services.length}`} /><Metric label="Degraded" value={`${summary.degraded}`} /><Metric label="Recorded events" value={`${liveEvents.length}`} /><Metric label="Tenant checks" value={tenantIsolationPass(liveEvents) ? "Passing" : "Failed"} /></div>
       <div className="nz-toolbar" style={{ padding: "18px 0 12px" }}><div className="nz-filters">{(["overview", "audit", "access", "commands", "workers"] as View[]).map((id) => <button key={id} className={view === id ? "on" : undefined} onClick={() => setView(id)}>{id}</button>)}</div>{view === "audit" ? <div className="nz-filters" style={{ marginLeft: "auto" }}>{(["all", "allowed", "denied", "failed"] as const).map((id) => <button key={id} className={result === id ? "on" : undefined} onClick={() => setResult(id)}>{id}</button>)}</div> : null}</div>
-      {view === "overview" && <Overview services={services} events={events} select={setSelectedId} />}
+      {view === "overview" && <Overview services={services} events={liveEvents} select={setSelectedId} />}
       {view === "audit" && <AuditLog events={visibleEvents} selectedId={selectedId} select={setSelectedId} />}
       {view === "access" && <><Access roles={roles} /><div style={{marginTop:20}}><PortalInviteAdmin/><PortalAccessAdmin /></div></>}
       {view === "commands" && <Commands />}
