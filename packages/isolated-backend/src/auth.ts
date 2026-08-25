@@ -9,6 +9,7 @@ export type StaffPermission =
   | "clients.create" | "jobs.create" | "jobs.stage.change" | "emissions.review" | "reports.publish"
   | "emissions.data.edit" | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
+export type PortalSession = { principal:"portal";sessionId:string;userId:string;clientId:string;organisationId:string;issuedAt:number;expiresAt:number };
 export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
 
 export const rolePermissions: Record<StaffRole, readonly StaffPermission[]> = {
@@ -49,6 +50,9 @@ export function verifyStaffSession(token: string | undefined, secret: string | u
   if (session.issuedAt > nowSeconds + 60 || session.expiresAt <= nowSeconds) throw new AuthenticationError("Staff session has expired.");
   return session;
 }
+
+export function issuePortalSession(session:PortalSession,secret:string):string{const payload=encode(JSON.stringify(session));return `${payload}.${sign(payload,requireSecret(secret))}`;}
+export function verifyPortalSession(token:string|undefined,secret:string|undefined,nowSeconds=Math.floor(Date.now()/1000)):PortalSession{if(!token)throw new AuthenticationError("Client portal authentication is required.");const [payload,signature,extra]=token.split(".");if(!payload||!signature||extra)throw new AuthenticationError("Invalid client portal session.");const expected=sign(payload,requireSecret(secret)),actualBuffer=Buffer.from(signature),expectedBuffer=Buffer.from(expected);if(actualBuffer.length!==expectedBuffer.length||!timingSafeEqual(actualBuffer,expectedBuffer))throw new AuthenticationError("Invalid client portal session.");let session:PortalSession;try{session=JSON.parse(Buffer.from(payload,"base64url").toString("utf8")) as PortalSession;}catch{throw new AuthenticationError("Invalid client portal session.");}if(session.principal!=="portal"||!session.sessionId?.trim()||!session.userId?.trim()||!session.clientId?.trim()||!session.organisationId?.trim()||!Number.isInteger(session.issuedAt)||!Number.isInteger(session.expiresAt))throw new AuthenticationError("Invalid client portal session.");if(session.issuedAt>nowSeconds+60||session.expiresAt<=nowSeconds)throw new AuthenticationError("Client portal session has expired.");return session;}
 
 export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSession): Promise<StaffPrincipal> {
   return withAuthTransaction(pool, "read", async (db: Queryable) => {

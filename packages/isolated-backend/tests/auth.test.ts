@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { assertSameOrigin, AuthenticationError, AuthorizationError, authorizeCommand, issueStaffSession, rolePermissions, verifyStaffSession, type StaffPrincipal } from "../src/index";
+import { assertSameOrigin, AuthenticationError, AuthorizationError, authorizeCommand, issuePortalSession,issueStaffSession, rolePermissions, verifyPortalSession,verifyStaffSession, type StaffPrincipal } from "../src/index";
 
 const secret = "a-dedicated-test-session-secret-that-is-long-enough";
 const session = { sessionId: "session-a", userId: "staff-a", organisationId: "org-a", issuedAt: 1_700_000_000, expiresAt: 1_700_003_600 };
@@ -32,4 +32,5 @@ describe("staff authentication and authorization", () => {
     assert.throws(() => assertSameOrigin("https://evil.example", "https://console.example"), AuthenticationError);
     assert.throws(() => assertSameOrigin(null, "https://console.example"), AuthenticationError);
   });
+  it("keeps client portal sessions typed and independent from staff sessions",()=>{const portal={principal:"portal" as const,sessionId:"portal-session",userId:"portal-user",clientId:"client-a",organisationId:"org-a",issuedAt:1_700_000_000,expiresAt:1_700_003_600};const token=issuePortalSession(portal,secret);assert.deepEqual(verifyPortalSession(token,secret,1_700_000_100),portal);assert.throws(()=>verifyPortalSession(issueStaffSession(session,secret),secret,1_700_000_100),AuthenticationError);});
 });
