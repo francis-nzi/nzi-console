@@ -9,6 +9,7 @@ const schema = readFileSync(resolve(here, "../migrations/0001_core_schema.sql"),
 const security = readFileSync(resolve(here, "../migrations/0002_rls_and_roles.sql"), "utf8");
 const membership = readFileSync(resolve(here, "../migrations/0003_runtime_role_membership.sql"), "utf8");
 const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_screen_fields.sql"), "utf8");
+const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sql"), "utf8");
 const syntheticSeed = readFileSync(resolve(here, "../seeds/0001_synthetic_demo.sql"), "utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -17,6 +18,7 @@ describe("isolated Postgres migrations", () => {
   it("allocates the global job sequence inside the caller transaction", () => { assert.match(schema, /CREATE FUNCTION allocate_job_sequence/); assert.match(schema, /UPDATE job_number_counter SET last_sequence = last_sequence \+ 1/); assert.match(security, /GRANT EXECUTE ON FUNCTION nzi_console\.allocate_job_sequence/); });
   it("allows the pooler principal to assume the RLS-bound runtime roles", () => { assert.match(membership, /GRANT nzi_console_app, nzi_console_worker TO CURRENT_USER/); });
   it("adds constrained screen fields through a migration rather than request-time DDL", () => { assert.match(screenFields, /completeness_percent integer CHECK/); assert.match(screenFields, /progress_percent integer CHECK/); assert.match(screenFields, /detail_json jsonb/); });
+  it("constrains memberships to the agreed staff roles", () => { for (const role of ["administrator", "consultant", "reviewer", "finance", "methodology-data-admin", "read-only"]) assert.ok(staffRoles.includes(`'${role}'`)); });
   it("keeps the demonstration seed synthetic, idempotent and on the official number range", () => {
     assert.match(syntheticSeed, /Synthetic demonstration records only/);
     assert.match(syntheticSeed, /demo-nzi-console/);

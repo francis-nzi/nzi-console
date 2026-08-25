@@ -5,5 +5,6 @@ import { auditEvents, platformServices, platformSummary, staffRoles, tenantIsola
 describe("Platform governance", () => {
   it("keeps degraded and unconfigured services distinct from failure", () => assert.deepEqual(platformSummary(platformServices), { healthy: 4, degraded: 1, failed: 0, unconfigured: 1 }));
   it("requires tenant and correlation evidence on every audit event", () => assert.equal(tenantIsolationPass(auditEvents), true));
-  it("keeps read-only staff mutation-free", () => assert.ok(staffRoles.find((role) => role.id === "readonly")!.restricted.includes("All mutations")));
+  it("keeps read-only staff mutation-free", () => assert.ok(staffRoles.find((role) => role.id === "read-only")!.restricted.includes("All mutations")));
+  it("shows all six agreed staff roles", () => assert.deepEqual(staffRoles.map((role) => role.id), ["administrator", "consultant", "reviewer", "finance", "methodology-data-admin", "read-only"]));
 });

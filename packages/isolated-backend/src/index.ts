@@ -2,6 +2,7 @@ import type { CommandContext, CommandKey, CommandOutcome } from "@nzi/contracts"
 import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
 export * from "./errors";
+export * from "./auth";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";

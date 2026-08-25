@@ -10,7 +10,7 @@ export function requireIsolatedApiContext() {
   return { organisationId, pool: isolatedPool() };
 }
 
-function isolatedPool() {
+export function isolatedPool() {
   if (!globalPool.nziIsolatedPool) {
     globalPool.nziIsolatedPool = createIsolatedPool({
       appEnv: process.env.NEXT_PUBLIC_APP_ENV,

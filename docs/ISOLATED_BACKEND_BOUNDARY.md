@@ -15,8 +15,8 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001`–`0004` define the schema, RLS boundary, pooler-to-runtime-role membership, and constrained
-client/job screen fields but are not executed by the web
+Migrations `0001`–`0005` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
+client/job screen fields, and agreed staff-role constraint but are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
@@ -29,7 +29,7 @@ server-owned `NZI_DEMO_ORGANISATION_ID`. Tenant identity is never accepted from 
 parameter. Each request opens a read-only transaction, assumes `nzi_console_app`, sets the local tenant
 context used by forced RLS, and releases the pooled connection after commit or rollback. The first read
 models expose canonical stored fields only. Clients and Jobs now share a server-side fixture/API loader;
-isolated mode renders those two list screens from the typed API while fixture mode remains the default.
+isolated mode renders those two list screens from the typed API.
 
 The repeatable seed at `packages/isolated-backend/seeds/0001_synthetic_demo.sql` owns the fictional
 `demo-nzi-console` tenant. It contains organisation, client, and cross-family job records only, reserves
@@ -44,6 +44,8 @@ It serialises each organisation/idempotency key, rejects reuse with a different 
 official job number in the caller transaction, and records the entity, audit event, outbox event, and stored
 outcome atomically. A real Supabase rollback test proves `J000717` remains available after forced rollback.
 
-HTTP write routes and UI submission remain disabled until staff identity and the confirmed role permissions
-are enforced server-side. `/api/health` reports this explicitly as `writes=disabled`; database readiness alone
-must never make mutation endpoints available.
+The client/job command routes are deny-by-default. They require the explicit write feature flag, exact
+same-origin POST, a valid signed and expiring `nzi_console_session` cookie, an active tenant membership,
+and the named command permission for its role. Tenant and actor headers are never trusted as identity.
+No login currently issues that cookie and the feature flag remains off, so `/api/health` reports
+`writes=disabled`; database readiness alone never makes mutation endpoints available.
