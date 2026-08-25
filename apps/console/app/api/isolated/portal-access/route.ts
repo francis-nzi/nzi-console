@@ -1,0 +1,7 @@
+import {listPortalAccess,PortalAccessValidationError,setPortalJobAccess} from "@nzi/isolated-backend";
+import {isolatedPool} from "../../../lib/isolatedDatabase";
+import {currentStaff,requireAuthOrigin} from "../../../lib/staffSession";
+import {authFailure} from "../../../lib/authResponse";
+export const dynamic="force-dynamic";
+export async function GET(request:Request){try{const principal=await currentStaff(request),users=await listPortalAccess(isolatedPool(),principal);return Response.json({users},{headers:{"Cache-Control":"private, no-store"}});}catch(error){return authFailure(error);}}
+export async function POST(request:Request){try{if(process.env.NZI_WRITE_API_ENABLED!=="true")return Response.json({code:"WRITE_API_DISABLED",message:"Write API is disabled."},{status:503});requireAuthOrigin(request);const principal=await currentStaff(request),body=await request.json() as {portalUserId?:unknown;jobId?:unknown;granted?:unknown};if(typeof body.portalUserId!=="string"||typeof body.jobId!=="string"||typeof body.granted!=="boolean")return Response.json({code:"INVALID_PORTAL_ACCESS",message:"A portal user, job and access state are required."},{status:422});const access=await setPortalJobAccess(isolatedPool(),principal,{portalUserId:body.portalUserId,jobId:body.jobId,granted:body.granted});return Response.json({access},{headers:{"Cache-Control":"no-store"}});}catch(error){if(error instanceof PortalAccessValidationError)return Response.json({code:"INVALID_PORTAL_ACCESS",message:error.message},{status:422});return authFailure(error);}}
