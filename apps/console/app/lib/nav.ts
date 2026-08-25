@@ -5,8 +5,8 @@ export const NAV: NavSection[] = [
     heading: "Workspaces",
     items: [
       { id: "control", label: "Control Room", icon: "home", href: "/" },
-      { id: "clients", label: "Clients", icon: "users", href: "/clients", count: 214 },
-      { id: "jobs", label: "Jobs", icon: "jobs", href: "/jobs", count: 37 },
+      { id: "clients", label: "Clients", icon: "users", href: "/clients" },
+      { id: "jobs", label: "Jobs", icon: "jobs", href: "/jobs" },
       { id: "emissions", label: "Emissions", icon: "chart", href: "/charts" },
       { id: "datasets", label: "Datasets & factors", icon: "database", href: "/datasets" },
       { id: "reports", label: "Reports", icon: "file", href: "/reports" },
@@ -16,7 +16,7 @@ export const NAV: NavSection[] = [
   {
     heading: "Growth & admin",
     items: [
-      { id: "bd", label: "Sales", icon: "trend", href: "/sales", count: 9 },
+      { id: "bd", label: "Sales", icon: "trend", href: "/sales" },
       { id: "platform", label: "Platform & audit", icon: "settings", href: "/platform" },
     ],
   },
