@@ -36,3 +36,14 @@ The repeatable seed at `packages/isolated-backend/seeds/0001_synthetic_demo.sql`
 the established `J000712`–`J000716` demonstrator range, uses only reserved `.invalid` contact addresses,
 and advances the global allocator to `J000717`.
 It is an explicit provisioning action and is never invoked by an application request or service startup.
+
+## Write-path gate
+
+The Postgres command executor supports typed client/job creation inside one tenant-scoped transaction.
+It serialises each organisation/idempotency key, rejects reuse with a different request hash, allocates the
+official job number in the caller transaction, and records the entity, audit event, outbox event, and stored
+outcome atomically. A real Supabase rollback test proves `J000717` remains available after forced rollback.
+
+HTTP write routes and UI submission remain disabled until staff identity and the confirmed role permissions
+are enforced server-side. `/api/health` reports this explicitly as `writes=disabled`; database readiness alone
+must never make mutation endpoints available.

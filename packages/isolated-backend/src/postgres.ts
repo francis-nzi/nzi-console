@@ -38,3 +38,7 @@ export async function withTenantTransaction<T>(
 export function withTenantRead<T>(pool: PoolLike, organisationId: string, work: (client: Queryable) => Promise<T>): Promise<T> {
   return withTenantTransaction(pool, organisationId, "nzi_console_app", "read", work);
 }
+
+export function withTenantWrite<T>(pool: PoolLike, organisationId: string, work: (client: Queryable) => Promise<T>): Promise<T> {
+  return withTenantTransaction(pool, organisationId, "nzi_console_app", "write", work);
+}

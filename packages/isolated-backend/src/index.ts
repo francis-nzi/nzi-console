@@ -3,6 +3,7 @@ import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
 export * from "./errors";
 export * from "./postgres";
+export * from "./postgresCommands";
 export * from "./readModels";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
