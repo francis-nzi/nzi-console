@@ -8,6 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(resolve(here, "../migrations/0001_core_schema.sql"), "utf8");
 const security = readFileSync(resolve(here, "../migrations/0002_rls_and_roles.sql"), "utf8");
 const membership = readFileSync(resolve(here, "../migrations/0003_runtime_role_membership.sql"), "utf8");
+const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_screen_fields.sql"), "utf8");
 const syntheticSeed = readFileSync(resolve(here, "../seeds/0001_synthetic_demo.sql"), "utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -15,12 +16,15 @@ describe("isolated Postgres migrations", () => {
   it("makes audit history non-updateable and non-deleteable", () => { assert.match(security, /REVOKE DELETE ON nzi_console\.audit_events/); assert.match(security, /REVOKE UPDATE ON nzi_console\.audit_events/); });
   it("allocates the global job sequence inside the caller transaction", () => { assert.match(schema, /CREATE FUNCTION allocate_job_sequence/); assert.match(schema, /UPDATE job_number_counter SET last_sequence = last_sequence \+ 1/); assert.match(security, /GRANT EXECUTE ON FUNCTION nzi_console\.allocate_job_sequence/); });
   it("allows the pooler principal to assume the RLS-bound runtime roles", () => { assert.match(membership, /GRANT nzi_console_app, nzi_console_worker TO CURRENT_USER/); });
+  it("adds constrained screen fields through a migration rather than request-time DDL", () => { assert.match(screenFields, /completeness_percent integer CHECK/); assert.match(screenFields, /progress_percent integer CHECK/); assert.match(screenFields, /detail_json jsonb/); });
   it("keeps the demonstration seed synthetic, idempotent and on the official number range", () => {
     assert.match(syntheticSeed, /Synthetic demonstration records only/);
     assert.match(syntheticSeed, /demo-nzi-console/);
     assert.match(syntheticSeed, /ON CONFLICT/);
     assert.match(syntheticSeed, /GREATEST\(last_sequence, 716\)/);
-    assert.doesNotMatch(syntheticSeed, /@[a-z0-9.-]+/i);
+    const emailDomains = [...syntheticSeed.matchAll(/@[a-z0-9.-]+/gi)].map((match) => match[0]);
+    assert.ok(emailDomains.length > 0);
+    assert.ok(emailDomains.every((domain) => domain === "@synthetic.invalid"));
   });
   it("refuses missing, production, or unconfirmed database targets", () => { assert.throws(() => validateDatabaseBoundary({ appEnv: "staging" })); assert.throws(() => validateDatabaseBoundary({ appEnv: "production", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" })); const url = validateDatabaseBoundary({ appEnv: "staging", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" }); assert.equal(url.searchParams.get("application_name"), "nzi-console-isolated"); });
 });

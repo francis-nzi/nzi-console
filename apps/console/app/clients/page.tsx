@@ -1,9 +1,11 @@
 import { clients } from "@nzi/mock-data";
-import { loadFixtureScreen } from "@nzi/api-client";
+import { loadScreen } from "../lib/loadScreen";
 import { ScreenState } from "../lib/ScreenState";
 import { ClientsBoard } from "./ClientsBoard";
 
-export default function ClientsPage() {
-  const result = loadFixtureScreen<{ clients: typeof clients }>("clients", { clients });
+export const dynamic = "force-dynamic";
+
+export default async function ClientsPage() {
+  const result = await loadScreen<{ clients: typeof clients }>("clients", { clients });
   return <ScreenState result={result}>{(data) => <ClientsBoard clients={data.clients} />}</ScreenState>;
 }

@@ -23,6 +23,6 @@ function isolatedPool() {
 
 export function apiFailure(error: unknown) {
   const correlationId = crypto.randomUUID();
-  const message = error instanceof Error ? error.message : "Isolated API request failed.";
-  return Response.json({ type: "about:blank", title: "Isolated API unavailable", status: 503, detail: message, correlationId }, { status: 503, headers: { "x-correlation-id": correlationId } });
+  void error;
+  return Response.json({ type: "about:blank", title: "Isolated API unavailable", status: 503, detail: "The isolated data service is unavailable.", correlationId }, { status: 503, headers: { "x-correlation-id": correlationId } });
 }

@@ -15,8 +15,8 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001`, `0002`, and `0003` define the prepared schema, RLS boundary, and pooler-to-runtime-role
-membership but are not executed by the web
+Migrations `0001`–`0004` define the schema, RLS boundary, pooler-to-runtime-role membership, and constrained
+client/job screen fields but are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
@@ -28,10 +28,11 @@ The isolated routes require `NZI_DATA_MODE=isolated-api`, the database boundary 
 server-owned `NZI_DEMO_ORGANISATION_ID`. Tenant identity is never accepted from a browser header or query
 parameter. Each request opens a read-only transaction, assumes `nzi_console_app`, sets the local tenant
 context used by forced RLS, and releases the pooled connection after commit or rollback. The first read
-models expose canonical stored fields only; richer fixture presentation fields will be added through a
-synthetic seed and explicit schema evolution rather than fabricated by the adapter.
+models expose canonical stored fields only. Clients and Jobs now share a server-side fixture/API loader;
+isolated mode renders those two list screens from the typed API while fixture mode remains the default.
 
 The repeatable seed at `packages/isolated-backend/seeds/0001_synthetic_demo.sql` owns the fictional
 `demo-nzi-console` tenant. It contains organisation, client, and cross-family job records only, reserves
-the established `J000712`–`J000716` demonstrator range, and advances the global allocator to `J000717`.
+the established `J000712`–`J000716` demonstrator range, uses only reserved `.invalid` contact addresses,
+and advances the global allocator to `J000717`.
 It is an explicit provisioning action and is never invoked by an application request or service startup.

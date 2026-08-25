@@ -1,11 +1,11 @@
 "use client";
 import { useMemo, useState } from "react";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
-import { clients, jobFamilyMeta, type FamilyJob, type JobFamily } from "@nzi/mock-data";
+import { jobFamilyMeta, type Client, type FamilyJob, type JobFamily } from "@nzi/mock-data";
 import { NAV, USER } from "../lib/nav";
 
 type Filter = "all" | JobFamily;
-export function JobsIndex({ jobs }: { jobs: FamilyJob[] }) {
+export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Client[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
   const [family, setFamily] = useState<JobFamily>("crp");
