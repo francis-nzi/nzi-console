@@ -11,6 +11,7 @@ import type {
   DatasetOption,
   EmissionsTargetReadModel,
   FactorOption,
+  SiteOption,
   ScopeQaReadiness,
   ScopeQualityTier,
   ScopeRowReadModel,
@@ -24,6 +25,8 @@ import { WorkflowStageControl } from "./WorkflowStageControl";
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
+  siteId:null,
+  siteLabel:null,
   quantity: null,
   unit: null,
   datasetId: null,
@@ -41,6 +44,8 @@ const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
 const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
+  siteId:r.siteId,
+  siteLabel:r.siteLabel,
   quantity: r.quantity,
   unit: r.unit,
   datasetId: r.datasetId,
@@ -65,6 +70,7 @@ export function CrpScopeWorkspace({
   factors,
   datasets,
   target,
+  sites,
 }: {
   job: FamilyJob;
   rows: ScopeRowReadModel[];
@@ -72,6 +78,7 @@ export function CrpScopeWorkspace({
   factors: FactorOption[];
   datasets: DatasetOption[];
   target: EmissionsTargetReadModel | null;
+  sites:SiteOption[];
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.readyForReporting
     ? {
@@ -119,6 +126,7 @@ export function CrpScopeWorkspace({
         jobId={job.header.id}
         row={selected}
         factors={factors}
+        sites={sites}
         notice={setNotice}
       />
       <div className="nz-sect">Calculation lineage</div>
@@ -173,6 +181,7 @@ export function CrpScopeWorkspace({
           <div className={`nz-banner ${notice.kind}`}>{notice.text}</div>
         )}
         <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+        <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
           datasets={datasets}
@@ -189,7 +198,7 @@ export function CrpScopeWorkspace({
               Factors are limited to datasets selected for this reporting
               period.
             </p>
-            <Fields value={draft} change={setDraft} factors={factors} />
+            <Fields value={draft} change={setDraft} factors={factors} sites={sites}/>
             <button className="nz-btn pri" disabled={pending}>
               {pending ? "Creating…" : "Create scope row"}
             </button>
@@ -206,6 +215,7 @@ export function CrpScopeWorkspace({
                 <tr>
                   <th>Source</th>
                   <th>Scope</th>
+                  <th>Site</th>
                   <th>Activity</th>
                   <th>Unit</th>
                   <th>Factor</th>
@@ -223,6 +233,7 @@ export function CrpScopeWorkspace({
                   >
                     <td>{r.sourceLabel}</td>
                     <td>{r.scope}</td>
+                    <td>{r.siteLabel??"Unallocated"}</td>
                     <td>{r.quantity ?? "—"}</td>
                     <td>{r.unit ?? "—"}</td>
                     <td>{r.factorLabel ?? "No factor"}</td>
@@ -249,6 +260,8 @@ function TargetPanel({jobId,reportingYear,target,notice}:{jobId:string;reporting
  const field=(label:string,key:keyof typeof value,step="1")=><label className="nz-fl">{label}<input className="nz-inp" type="number" step={step} value={value[key]} onChange={e=>setValue({...value,[key]:Number(e.target.value)})}/></label>;
  return <div className="nz-panel" style={{padding:16,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"end"}}><div><b>Reduction pathway target</b><div className="sub">Baseline, interim reduction and net-zero milestone used by the shared report chart.</div></div><span className={`nz-st ${target?"done":""}`}>{target?`Version ${target.version}`:"Not configured"}</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(120px,1fr))",gap:10,marginTop:12}}>{field("Baseline year","baselineYear")}{field("Baseline tCO₂e","baselineTco2e","any")}{field("Interim year","interimYear")}{field("Interim reduction %","interimReductionPercent","any")}{field("Net-zero year","netZeroYear")}</div><div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}><button className="nz-btn pri" disabled={pending} onClick={save}>{pending?"Saving…":"Save target"}</button></div></div>;
 }
+
+function SitePanel({jobId,sites,notice}:{jobId:string;sites:SiteOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){setPending(true);const result=await postBrowserCommand<{siteId:string;name:string}>(`/api/isolated/jobs/${jobId}/sites`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Site ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Client sites</b><div className="sub">Assign emissions rows to a controlled site list. Unassigned emissions remain visible as Unallocated.</div><div style={{display:"flex",gap:10,marginTop:12}}><input className="nz-inp" value={name} onChange={e=>setName(e.target.value)} placeholder="New site name"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>Add site</button><span className="nz-st done">{sites.length} sites</span></div></div>}
 
 function DatasetPanel({
   jobId,
@@ -356,10 +369,12 @@ function Fields({
   value,
   change,
   factors,
+  sites,
 }: {
   value: ScopeRowWriteFields;
   change: (v: ScopeRowWriteFields) => void;
   factors: FactorOption[];
+  sites:SiteOption[];
 }) {
   const available = factors.filter((f) =>
       f.scopes.includes(value.scope.split(".")[0]!),
@@ -415,6 +430,7 @@ function Fields({
           ))}
         </select>
       </label>
+      <label className="nz-fl">Site<select className="nz-sel" value={value.siteId??""} onChange={e=>{const site=sites.find(item=>item.id===e.target.value);change({...value,siteId:site?.id??null,siteLabel:site?.name??null});}}><option value="">Unallocated</option>{sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
       <label className="nz-fl">
         Quantity
         <input
@@ -478,11 +494,13 @@ function Editor({
   jobId,
   row,
   factors,
+  sites,
   notice,
 }: {
   jobId: string;
   row: ScopeRowReadModel;
   factors: FactorOption[];
+  sites:SiteOption[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
 }) {
   const router = useRouter(),
@@ -569,7 +587,7 @@ function Editor({
           ? "Save changes, then calculate."
           : "Calculated evidence is available."}
       </div>
-      <Fields value={value} change={setValue} factors={factors} />
+      <Fields value={value} change={setValue} factors={factors} sites={sites}/>
       <label>
         <input
           type="checkbox"

@@ -20,7 +20,7 @@ import {
 } from "@nzi/charts";
 import { loadFixtureScreen } from "@nzi/api-client";
 import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
-import type { EmissionsByActivityData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData } from "@nzi/charts";
+import type { EmissionsByActivityData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 
@@ -170,12 +170,15 @@ function LiveSnapshotPreview({
       sourceLabel: row.sourceLabel,
       tco2e: row.tco2e,
       factorSet: row.factorSet,
+      siteId:row.siteId,
+      siteLabel:row.siteLabel,
     })),
   });
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
   const activities=charts.find(chart=>chart.spec.type==="emissions_by_activity") as EmissionsByActivityData;
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;
   const annual=charts.find(chart=>chart.spec.type==="scope_year_on_year_bar") as ScopeYearOnYearData|undefined;
+  const sites=charts.find(chart=>chart.spec.type==="emissions_site_donut") as SiteDonutData|undefined;
   return (
     <main
       style={{
@@ -231,6 +234,7 @@ function LiveSnapshotPreview({
           {pathway&&<ReductionPathway data={pathway}/>}
           {annual&&<ScopeYearOnYearBar data={annual}/>}
           <EmissionsByActivity data={activities} />
+          {sites&&<EmissionsSiteDonut data={sites}/>}
         </div>
         <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>
         <ManifestChartSet

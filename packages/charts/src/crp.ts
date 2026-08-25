@@ -52,6 +52,8 @@ export type ReviewedCrpSnapshotCore = {
     sourceLabel: string;
     tco2e: number;
     factorSet: string;
+    siteId?:string|null;
+    siteLabel?:string|null;
   }>;
 };
 
@@ -306,5 +308,6 @@ export function resolveCrpCoreCharts(
   ];
   if(snapshot.target){const t=snapshot.target,interim=t.baselineTco2e*(1-t.interimReductionPercent/100),actualTotal=snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0);charts.splice(1,0,{spec:{id:"reduction_pathway",type:"reduction_pathway",title:"Emissions reduction pathway to net zero",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,actual:[{year:t.baselineYear,value:t.baselineTco2e},...(snapshot.reportingYear===t.baselineYear?[]:[{year:snapshot.reportingYear,value:actualTotal}])],target:[{year:t.baselineYear,value:t.baselineTco2e},{year:t.interimYear,value:interim},{year:t.netZeroYear,value:0}],milestones:[{year:t.baselineYear,value:t.baselineTco2e,label:"Baseline",kind:"baseline"},{year:t.interimYear,value:interim,label:`Interim -${t.interimReductionPercent}%`,kind:"interim"},{year:t.netZeroYear,value:0,label:"Net zero",kind:"netzero"}],provenance});}
   if((snapshot.annualComparison?.length??0)>1){charts.splice(charts.length-1,0,{spec:{id:"scope_year_on_year_bar",type:"scope_year_on_year_bar",title:"Annual emissions comparison by scope",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,years:snapshot.annualComparison!,provenance});}
+  if(snapshot.measurements.length){const siteTotals=new Map<string,{id:string;label:string;value:number}>();for(const row of snapshot.measurements){const id=row.siteId??"unallocated",label=row.siteLabel?.trim()||"Unallocated";const current=siteTotals.get(id)??{id,label,value:0};current.value+=row.tco2e;siteTotals.set(id,current);}charts.push({spec:{id:"emissions_site_donut",type:"emissions_site_donut",title:`${snapshot.reportingYear} emissions by site`,subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,sites:[...siteTotals.values()].sort((a,b)=>b.value-a.value),provenance});}
   return charts;
 }

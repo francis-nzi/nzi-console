@@ -452,6 +452,9 @@ async function requireCrpJob(
       },
     ]);
 }
+async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);}
+
+export async function createClientSite(pool:PoolLike,input:CommandInputMap["site.create"],context:CommandContext):Promise<StoredOutcome<{siteId:string;name:string}>>{return runPostgresCommand(pool,"site.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),siteId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by) VALUES ($1,$2,$3,$4,$5)`,[context.organisationId,siteId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That client site already exists."}]);throw error;}return{data:{siteId,name},entityType:"client_site",entityId:siteId,topic:"client.site.created"};});}
 
 export type CreateScopeRowResult = {
   rowId: string;
@@ -470,18 +473,20 @@ export async function createScopeRow(
     context,
     async (db) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
+      await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
       const rowId = randomUUID();
       const evidence = scopeEvidence(input, context);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,provenance_json,lineage_json)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,provenance_json,lineage_json)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb)`,
         [
           context.organisationId,
           rowId,
           input.jobId,
           input.scope,
           input.sourceLabel.trim(),
+          input.siteId??null,
           input.quantity,
           input.unit?.trim() || null,
           input.datasetId,
@@ -520,18 +525,20 @@ export async function updateScopeRow(
     context,
     async (db) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
+      await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
       const evidence = scopeEvidence(input, context);
       const updated = await db.query<{ version: number }>(
-        `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,
-      quantity=$6,unit=$7,dataset_id=$8,factor_id=$9,factor_version=$10,factor_label=$11,quality_tier=$12,
-      provenance_json=$13::jsonb,lineage_json=$14::jsonb,enabled=$15,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$16 RETURNING version`,
+        `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,
+      quantity=$7,unit=$8,dataset_id=$9,factor_id=$10,factor_version=$11,factor_label=$12,quality_tier=$13,
+      provenance_json=$14::jsonb,lineage_json=$15::jsonb,enabled=$16,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
+      version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$17 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
           input.rowId,
           input.scope,
           input.sourceLabel.trim(),
+          input.siteId??null,
           input.quantity,
           input.unit?.trim() || null,
           input.datasetId,
@@ -1044,6 +1051,8 @@ export async function createReviewedCrpSnapshot(
         version: number;
         scope: string;
         source_label: string;
+        site_id:string|null;
+        site_label:string|null;
         calculated_tco2e: string | null;
         override_tco2e: string | null;
         factor_label: string | null;
@@ -1053,7 +1062,7 @@ export async function createReviewedCrpSnapshot(
         reviewed_by: string | null;
         enabled: boolean;
       }>(
-        `SELECT scope_row_id,version,scope,source_label,calculated_tco2e,override_tco2e,factor_label,factor_version,quality_tier,review_status,reviewed_by,enabled FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 ORDER BY scope_row_id FOR SHARE`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.site_id,s.name AS site_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       const enabled = rowResult.rows.filter((row) => row.enabled);
@@ -1105,6 +1114,8 @@ export async function createReviewedCrpSnapshot(
           rowVersion: row.version,
           scope: row.scope.split(".")[0],
           sourceLabel: row.source_label,
+          siteId:row.site_id,
+          siteLabel:row.site_label,
           tco2e: Number(row.override_tco2e ?? row.calculated_tco2e),
           factorSet: [row.factor_label, row.factor_version]
             .filter(Boolean)
