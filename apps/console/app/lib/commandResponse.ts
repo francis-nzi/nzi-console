@@ -10,6 +10,7 @@ export function commandContext(request: Request, identity: { organisationId: str
     principal: "staff",
     idempotencyKey: request.headers.get("idempotency-key")?.trim() ?? "",
     correlationId: request.headers.get("x-correlation-id")?.trim() || crypto.randomUUID(),
+    reason: request.headers.get("x-command-reason")?.trim() || undefined,
   };
 }
 

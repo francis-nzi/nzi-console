@@ -18,7 +18,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
   job: { key: "job", validate: (value) => record(value) && record(value.job), isEmpty: () => false },
   scopeRows: { key: "scopeRows", validate: (value) => rows(value, "rows"), isEmpty: () => false },
-  factorOptions: { key: "factorOptions", validate: (value) => rows(value, "factors"), isEmpty: () => false },
+  factorOptions: { key: "factorOptions", validate: (value) => rows(value, "factors") && rows(value, "datasets"), isEmpty: () => false },
   charts: { key: "charts", validate: record, isEmpty: () => false },
   datasets: { key: "datasets", validate: (value) => rows(value, "datasets") && rows(value, "issues"), isEmpty: (value) => record(value) && (value.datasets as unknown[]).length === 0 },
   reports: { key: "reports", validate: (value) => rows(value, "reports"), isEmpty: (value) => record(value) && (value.reports as unknown[]).length === 0 },

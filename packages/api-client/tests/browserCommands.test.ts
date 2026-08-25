@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { postBrowserCommand, type BrowserCommandTransport } from "../src/index";
+import { postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandTransport } from "../src/index";
 
 describe("authenticated browser commands", () => {
   it("sends only command data and request identity, never tenant or actor identity", async () => {
@@ -34,4 +34,10 @@ describe("authenticated browser commands", () => {
     const network = await postBrowserCommand("/commands/jobs", {}, "idem-d", async () => { throw new Error("offline"); });
     assert.deepEqual(network, { state: "failed", message: "offline", retryable: true });
   });
+});
+
+it("keeps justification in dedicated request metadata for reason-aware commands", async () => {
+  let reason: string | null = null;
+  await postBrowserCommandWithReason("/commands/datasets", { datasetId: "demo" }, "idem-reason", "  Required exception  ", async (_path, init) => { reason = new Headers(init?.headers).get("x-command-reason"); return Response.json({ data: { ok: true } }, { status: 201 }); });
+  assert.equal(reason, "Required exception");
 });

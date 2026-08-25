@@ -1,5 +1,5 @@
 import type { Queryable } from "./postgres";
-import type { FactorOption, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type { DatasetOption, FactorOption, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type ClientScreenReadModel = {
@@ -121,4 +121,15 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
   return rows.map((row) => ({ datasetId: row.dataset_id,datasetName: row.dataset_name,datasetVersion: row.dataset_version,
     factorId: row.factor_id,label: row.label,activityUnit: row.activity_unit,kgco2ePerUnit:Number(row.kgco2e_per_unit),
     scopes:row.scopes,selectionSource:row.selection_source,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
+}
+
+type DatasetRow = { dataset_id:string;name:string;version:string;valid_from:Date|string;valid_to:Date|string;country_code:string;status:DatasetOption["status"];synthetic:boolean;selection_source:"automatic"|"manual"|null;reporting_from:Date|string;reporting_to:Date|string;job_country_code:string };
+export async function listJobDatasetOptions(db:Queryable,jobId:string):Promise<DatasetOption[]> {
+  const {rows}=await db.query<DatasetRow>(`SELECT d.dataset_id,d.name,d.version,d.valid_from,d.valid_to,d.country_code,d.status,d.synthetic,
+      s.selection_source,c.reporting_from,c.reporting_to,c.country_code AS job_country_code
+    FROM nzi_console.job_emissions_config c
+    JOIN nzi_console.emission_factor_datasets d ON d.organisation_id=c.organisation_id
+    LEFT JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.job_id,s.dataset_id)=(c.organisation_id,c.job_id,d.dataset_id)
+    WHERE c.job_id=$1 ORDER BY (s.dataset_id IS NULL),lower(d.name),d.valid_from DESC`,[jobId]);
+  return rows.map((row)=>{const reportingFrom=dateOnly(row.reporting_from),reportingTo=dateOnly(row.reporting_to),validFrom=dateOnly(row.valid_from),validTo=dateOnly(row.valid_to);const warnings:string[]=[];if(validFrom>reportingFrom||validTo<reportingTo)warnings.push("Does not cover the complete reporting period.");if(row.country_code!==row.job_country_code&&row.country_code!=="GLOBAL")warnings.push(`Geography ${row.country_code} differs from job geography ${row.job_country_code}.`);if(row.status!=="active")warnings.push(`Dataset status is ${row.status}.`);return {datasetId:row.dataset_id,name:row.name,version:row.version,validFrom,validTo,countryCode:row.country_code,status:row.status,synthetic:row.synthetic,selected:row.selection_source!==null,selectionSource:row.selection_source,applicable:warnings.length===0,warnings,reportingFrom,reportingTo,jobCountryCode:row.job_country_code};});
 }

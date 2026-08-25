@@ -189,3 +189,19 @@ export async function calculateScopeRow(pool: PoolLike,input: CommandInputMap["s
     return {data:{rowId:input.rowId,jobId:input.jobId,version:updated.rows[0].version,calculatedTco2e:Number(updated.rows[0].calculated_tco2e)},entityType:"scope_row",entityId:input.rowId,topic:"scope.row.calculated"};
   });
 }
+
+export type AddManualDatasetResult={jobId:string;datasetId:string;selectionSource:"manual";warnings:string[]};
+export async function addManualDataset(pool:PoolLike,input:CommandInputMap["dataset.override.add"],context:CommandContext):Promise<StoredOutcome<AddManualDatasetResult>> {
+  return runPostgresCommand(pool,"dataset.override.add",input,context,async(db)=>{
+    await requireCrpJob(db,context.organisationId,input.jobId);
+    const found=await db.query<{valid_from:Date|string;valid_to:Date|string;dataset_country:string;status:string;reporting_from:Date|string;reporting_to:Date|string;job_country:string}>(`SELECT d.valid_from,d.valid_to,d.country_code AS dataset_country,d.status,c.reporting_from,c.reporting_to,c.country_code AS job_country
+      FROM nzi_console.emission_factor_datasets d JOIN nzi_console.job_emissions_config c ON c.organisation_id=d.organisation_id AND c.job_id=$2
+      WHERE d.organisation_id=$1 AND d.dataset_id=$3`,[context.organisationId,input.jobId,input.datasetId]);
+    const item=found.rows[0]; if(!item)throw new CommandValidationError([{field:"datasetId",code:"NOT_FOUND",message:"Dataset was not found."}]);
+    const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);const validFrom=day(item.valid_from),validTo=day(item.valid_to),reportingFrom=day(item.reporting_from),reportingTo=day(item.reporting_to);const warnings:string[]=[];
+    if(validFrom>reportingFrom||validTo<reportingTo)warnings.push("Dataset does not cover the complete reporting period.");if(item.dataset_country!==item.job_country&&item.dataset_country!=="GLOBAL")warnings.push(`Dataset geography ${item.dataset_country} differs from job geography ${item.job_country}.`);if(item.status!=="active")warnings.push(`Dataset status is ${item.status}.`);
+    const inserted=await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,warnings_json,selected_by) VALUES ($1,$2,$3,'manual',$4,$5::jsonb,$6) ON CONFLICT (organisation_id,job_id,dataset_id) DO NOTHING RETURNING dataset_id`,[context.organisationId,input.jobId,input.datasetId,context.reason,JSON.stringify(warnings),context.actorId]);
+    if(!inserted.rows[0])throw new CommandValidationError([{field:"datasetId",code:"ALREADY_SELECTED",message:"Dataset is already selected for this job."}]);
+    return {data:{jobId:input.jobId,datasetId:input.datasetId,selectionSource:"manual",warnings},entityType:"job_dataset_selection",entityId:`${input.jobId}:${input.datasetId}`,topic:"dataset.override.added"};
+  });
+}
