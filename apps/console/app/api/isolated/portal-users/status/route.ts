@@ -1,0 +1,5 @@
+import {PortalAccessValidationError,setPortalUserEnabled} from "@nzi/isolated-backend";
+import {isolatedPool} from "../../../../lib/isolatedDatabase";
+import {currentStaff,requireAuthOrigin} from "../../../../lib/staffSession";
+import {authFailure} from "../../../../lib/authResponse";
+export async function POST(request:Request){try{if(process.env.NZI_WRITE_API_ENABLED!=="true")return Response.json({code:"WRITE_API_DISABLED",message:"Write API is disabled."},{status:503});requireAuthOrigin(request);const principal=await currentStaff(request),body=await request.json() as {portalUserId?:unknown;enabled?:unknown};if(typeof body.portalUserId!=="string"||typeof body.enabled!=="boolean")throw new PortalAccessValidationError("A portal user and account state are required.");return Response.json(await setPortalUserEnabled(isolatedPool(),principal,{portalUserId:body.portalUserId,enabled:body.enabled}),{headers:{"Cache-Control":"no-store"}});}catch(error){if(error instanceof PortalAccessValidationError)return Response.json({code:"INVALID_PORTAL_USER",message:error.message},{status:422});return authFailure(error);}}
