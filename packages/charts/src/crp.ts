@@ -1,7 +1,7 @@
 import { RENDERER_VERSION } from "./identity";
 import type { ReportManifest } from "./manifest";
 import { TOKENS_VERSION } from "./tokens";
-import type { ReductionPathwayData, ScopeDonutData } from "./types";
+import type { EmissionsByActivityData, ReductionPathwayData, ScopeDonutData } from "./types";
 
 export const CRP_RESOLVER_VERSION = 1;
 export type ReviewedScopeMeasurement = { scope: "1" | "2" | "3"; tco2e: number; factorSet: string; reviewed: boolean; included: boolean };
@@ -14,6 +14,7 @@ export type ReviewedCrpSnapshot = {
     milestones: Array<{ year: number; value: number; label: string; kind: "baseline" | "interim" | "netzero" }>;
   };
 };
+export type ReviewedCrpSnapshotCore={id:string;jobId:string;jobNumber:string;client:string;reportingYear:number;generatedAt:string;dataHash:string;measurements:Array<{rowId:string;scope:"1"|"2"|"3";sourceLabel:string;tco2e:number;factorSet:string}>};
 
 export const crpProfessionalManifest: ReportManifest = {
   id: "crp_professional", family: "crp", version: 1,
@@ -62,3 +63,5 @@ export function resolveCrpCharts(snapshot: ReviewedCrpSnapshot): [ScopeDonutData
     provenance,
   }];
 }
+
+export function resolveCrpCoreCharts(snapshot:ReviewedCrpSnapshotCore):[ScopeDonutData,EmissionsByActivityData]{const factorSets=Array.from(new Set(snapshot.measurements.map(row=>row.factorSet).filter(Boolean))).sort(),totals=new Map<string,number>([["1",0],["2",0],["3",0]]);for(const row of snapshot.measurements)totals.set(row.scope,(totals.get(row.scope)??0)+row.tco2e);const provenance={jobId:snapshot.jobId,dataHash:snapshot.dataHash,factorSets,generatedAt:snapshot.generatedAt,reviewedSnapshotId:snapshot.id,resolverVersion:CRP_RESOLVER_VERSION,tokensVersion:TOKENS_VERSION,rendererVersion:RENDERER_VERSION};const state=snapshot.measurements.length&&factorSets.length?"success" as const:"empty" as const;return[{spec:{id:"emissions_scope_donut",type:"emissions_scope_donut",title:`${snapshot.reportingYear} carbon footprint by scope`,subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:2},unit:"tCO₂e",state,stateMessage:state==="empty"?"No reviewed emissions are available.":undefined,segments:[{scope:"1",label:"Scope 1 — direct",value:totals.get("1")??0},{scope:"2",label:"Scope 2 — electricity",value:totals.get("2")??0},{scope:"3",label:"Scope 3 — value chain",value:totals.get("3")??0}],provenance},{spec:{id:"emissions_by_activity",type:"emissions_by_activity",title:"Largest emissions activities",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,stateMessage:state==="empty"?"No reviewed activities are available.":undefined,activities:[...snapshot.measurements].sort((a,b)=>b.tco2e-a.tco2e).map(row=>({id:row.rowId,label:row.sourceLabel,scope:row.scope,value:row.tco2e})),provenance}];}

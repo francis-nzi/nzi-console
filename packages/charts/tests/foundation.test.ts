@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveCrpCharts, crpProfessionalManifest, type ReviewedCrpSnapshot } from "../src/crp";
+import { resolveCrpCharts,resolveCrpCoreCharts, crpProfessionalManifest, type ReviewedCrpSnapshot } from "../src/crp";
 import { chartAssetKey } from "../src/identity";
 import { validateManifest } from "../src/manifest";
 import { crpChartSamples, reviewedCrpSnapshotSample } from "../src/sample";
@@ -46,3 +46,5 @@ test("the professional CRP manifest requires every catalogue chart", () => {
   assert.deepEqual(required, crpChartSamples.map((chart) => chart.spec.id));
   assert.equal(validateManifest(crpProfessionalManifest, crpChartSamples, reviewedCrpSnapshotSample.id).valid, true);
 });
+
+test("database core snapshots resolve supported charts but cannot bypass the full manifest",()=>{const charts=resolveCrpCoreCharts({id:"snapshot-core",jobId:"717",jobNumber:"J000717",client:"Synthetic Client",reportingYear:2026,generatedAt:"2026-08-25T00:00:00Z",dataHash:"sha256:core",measurements:[{rowId:"row-a",scope:"1",sourceLabel:"Synthetic fuel",tco2e:2.5,factorSet:"Demo v1"}]});assert.deepEqual(charts.map(chart=>chart.spec.id),["emissions_scope_donut","emissions_by_activity"]);const validation=validateManifest(crpProfessionalManifest,charts,"snapshot-core");assert.equal(validation.valid,false);assert.deepEqual(validation.issues.filter(issue=>issue.code==="missing_required_chart").map(issue=>issue.chartId),["reduction_pathway","scope_year_on_year_bar","emissions_site_donut","intensity_pathway","purchased_goods_breakdown"]);});

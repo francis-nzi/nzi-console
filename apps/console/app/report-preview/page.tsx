@@ -1,9 +1,13 @@
 import { ChartProof } from "../charts/ChartProof";
-import { EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway, ScopeYearOnYearBar, emissionsByActivitySample, emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample, reductionPathwaySample, scopeDonutSample, scopeYearOnYearSample } from "@nzi/charts";
+import { EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, ManifestChartSet,PurchasedGoodsBreakdown, ReductionPathway, ScopeYearOnYearBar,crpProfessionalManifest, emissionsByActivitySample, emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample, reductionPathwaySample,resolveCrpCoreCharts, scopeDonutSample, scopeYearOnYearSample } from "@nzi/charts";
 import { loadFixtureScreen } from "@nzi/api-client";
+import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
 import { ScreenState } from "../lib/ScreenState";
+import { loadScreen } from "../lib/loadScreen";
 
-export default function ReportPreviewPage() {
+export default async function ReportPreviewPage({searchParams}:{searchParams:Promise<{jobId?:string}>}) {
+  const {jobId}=await searchParams;
+  if(jobId){const result=await loadScreen<{snapshots:ReviewedCrpSnapshotReadModel[]}>("reviewedSnapshots",{snapshots:[]},`jobs/${jobId}/reviewed-snapshots`);return <ScreenState result={result}>{data=><LiveSnapshotPreview snapshot={data.snapshots[0]!}/>}</ScreenState>;}
   const result = loadFixtureScreen("report", { report: { id: "CRP-J000712-preview", reviewedSnapshotId: "reviewed-crp-J000712-v1" } });
   return <ScreenState result={result}>{() => (
     <main style={{ background: "#eef2f0", minHeight: "100vh", padding: 32, fontFamily: "var(--font-inter), Inter, sans-serif" }}>
@@ -31,3 +35,5 @@ export default function ReportPreviewPage() {
     </main>
   )}</ScreenState>;
 }
+
+function LiveSnapshotPreview({snapshot}:{snapshot:ReviewedCrpSnapshotReadModel}){const [scope,activities]=resolveCrpCoreCharts({id:snapshot.id,jobId:snapshot.jobId,jobNumber:snapshot.jobNumber,client:snapshot.client,reportingYear:snapshot.reportingYear,generatedAt:snapshot.createdAt,dataHash:snapshot.dataHash,measurements:snapshot.measurements.map(row=>({rowId:row.rowId,scope:row.scope,sourceLabel:row.sourceLabel,tco2e:row.tco2e,factorSet:row.factorSet}))});const charts=[scope,activities];return <main style={{background:"#eef2f0",minHeight:"100vh",padding:32,fontFamily:"var(--font-inter), Inter, sans-serif"}}><section style={{background:"white",maxWidth:1180,margin:"0 auto",padding:28}}><div style={{color:"#0BA75E",fontSize:11,fontWeight:700,letterSpacing:".12em"}}>DATABASE-BACKED REVIEWED SNAPSHOT · {snapshot.jobNumber}</div><h1 style={{color:"#0B1B2B"}}>{snapshot.reportingYear} Carbon performance</h1><p style={{color:"#51605A"}}>Snapshot v{snapshot.version} · {snapshot.dataHash} · created {snapshot.createdAt}</p><div className="nz-banner warn"><div><b>Preview only—publication remains blocked.</b><div style={{marginTop:4}}>These graphics resolve from canonical reviewed rows. The professional manifest still requires pathway, annual comparison, site, intensity and purchased-goods category inputs.</div></div></div><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(360px,1fr))",gap:18,margin:"22px 0"}}><EmissionsScopeDonut data={scope}/><EmissionsByActivity data={activities}/></div><h2 style={{color:"#0B1B2B"}}>Professional manifest validation</h2><ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshot.id}/></section></main>}

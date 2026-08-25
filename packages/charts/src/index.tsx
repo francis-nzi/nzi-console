@@ -16,8 +16,8 @@ export { RENDERER_VERSION, chartAssetKey } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";
 export type { ReportManifest, ReportManifestSection, ManifestValidation, ManifestIssue } from "./manifest";
-export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts } from "./crp";
-export type { ReviewedCrpSnapshot, ReviewedScopeMeasurement } from "./crp";
+export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts,resolveCrpCoreCharts } from "./crp";
+export type { ReviewedCrpSnapshot, ReviewedCrpSnapshotCore,ReviewedScopeMeasurement } from "./crp";
 export {
   reviewedCrpSnapshotSample,
   scopeDonutSample,
