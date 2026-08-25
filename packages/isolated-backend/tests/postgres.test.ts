@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listGrantedPortalJobs, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import { getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listGrantedPortalJobs,listReportVersionRegister, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -32,6 +32,7 @@ describe("isolated Postgres adapter", () => {
   it("returns no portal report unless the user, client and job grant all match",async()=>{const db={query:async(sql:string)=>({rows:sql.includes("portal_access_grants")?[]:[{report_version_id:"should-not-load"}]})} as Queryable;assert.equal(await getGrantedPublishedCrpReport(db,{portalUserId:"user-a",clientId:"client-a",jobId:"job-a"}),null);});
   it("surfaces approval and unread NZI response state on the portal job list",async()=>{const db={query:async()=>({rows:[{job_id:"job-a",job_number:"J000612",title:"Synthetic CRP",reporting_year:2026,report_version_id:"report-a",approved_at:"2026-08-25T18:00:00Z",has_unread_nzi_response:true}]})} as Queryable;const jobs=await listGrantedPortalJobs(db,{portalUserId:"portal-a",clientId:"client-a"});assert.equal(jobs[0]?.approved,true);assert.equal(jobs[0]?.approvedAt,"2026-08-25T18:00:00Z");assert.equal(jobs[0]?.hasUnreadNziResponse,true);});
   it("maps immutable tenant audit history without inventing denied events",async()=>{const db={query:async()=>({rows:[{audit_event_id:"audit-a",occurred_at:"2026-08-25T20:00:00Z",actor_id:"reviewer-a",principal_type:"staff",organisation_id:"org-a",action:"report.publish",entity_type:"report_version",entity_id:"report-a",correlation_id:"request-a",reason:null,before_json:{status:"validated"},after_json:{status:"published"}}]})} as Queryable;const events=await listAuditEvents(db);assert.equal(events[0]?.result,"allowed");assert.equal(events[0]?.action,"report.publish");assert.equal(events[0]?.after,'{"status":"published"}');});
+  it("maps the immutable report register with client review counts",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",job_id:"job-a",job_number:"J000612",client_name:"Synthetic Client",reporting_year:2026,status:"published",manifest_version:1,reviewed_snapshot_id:"snapshot-a",data_hash:"sha256:abc",created_at:"2026-08-25T18:00:00Z",published_at:"2026-08-25T19:00:00Z",approval_count:"1",comment_count:"2"}]})} as Queryable;const reports=await listReportVersionRegister(db);assert.equal(reports[0]?.jobNumber,"J000612");assert.equal(reports[0]?.approvalCount,1);assert.equal(reports[0]?.commentCount,2);});
 
   it("rolls back and releases the connection when a read fails", async () => {
     const calls: string[] = [];
