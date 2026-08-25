@@ -7,13 +7,13 @@ import { withAuthTransaction } from "./postgres";
 export type StaffRole = "administrator" | "consultant" | "reviewer" | "finance" | "methodology-data-admin" | "read-only";
 export type StaffPermission =
   | "clients.create" | "jobs.create" | "jobs.stage.change" | "emissions.review" | "reports.publish"
-  | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
+  | "emissions.data.edit" | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
 export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
 
 export const rolePermissions: Record<StaffRole, readonly StaffPermission[]> = {
-  administrator: ["clients.create", "jobs.create", "jobs.stage.change", "emissions.review", "reports.publish", "datasets.override", "portal.access.manage", "sales.convert", "finance.manage", "staff.access.manage"],
-  consultant: ["clients.create", "jobs.create", "jobs.stage.change", "sales.convert"],
+  administrator: ["clients.create", "jobs.create", "jobs.stage.change", "emissions.data.edit", "emissions.review", "reports.publish", "datasets.override", "portal.access.manage", "sales.convert", "finance.manage", "staff.access.manage"],
+  consultant: ["clients.create", "jobs.create", "jobs.stage.change", "emissions.data.edit", "sales.convert"],
   reviewer: ["jobs.stage.change", "emissions.review", "reports.publish", "portal.access.manage"],
   finance: ["finance.manage"],
   "methodology-data-admin": ["datasets.override"],

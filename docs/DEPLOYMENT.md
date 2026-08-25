@@ -37,7 +37,8 @@ FuelCap services.
 
 Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
 authenticated client/job creation plus versioned job-stage transitions through the transactional command
-boundary. Other workspaces remain on synthetic
+boundary. CRP jobs read and edit canonical `job_scope_rows`; `J000712` uses an explicit fictional evidence
+seed and newly created CRP jobs begin in a truthful empty state. Other workspaces remain on synthetic
 `@nzi/mock-data` fixtures. The service retains unrelated legacy environment variables from its earlier
 use; the Console boundary ignores generic `DATABASE_URL` and accepts only `NZI_ISOLATED_DATABASE_URL`.
 

@@ -12,7 +12,9 @@ const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_s
 const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
+const scopeEvidence = readFileSync(resolve(here, "../migrations/0008_scope_row_evidence_metadata.sql"), "utf8");
 const syntheticSeed = readFileSync(resolve(here, "../seeds/0001_synthetic_demo.sql"), "utf8");
+const syntheticScopeSeed = readFileSync(resolve(here, "../seeds/0002_synthetic_crp_scope_rows.sql"), "utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
   it("uses composite tenant foreign keys for client, job, scope and report links", () => { assert.match(schema, /FOREIGN KEY \(organisation_id, client_id\)/); assert.match(schema, /FOREIGN KEY \(organisation_id, job_id\)/); });
@@ -23,6 +25,7 @@ describe("isolated Postgres migrations", () => {
   it("constrains memberships to the agreed staff roles", () => { for (const role of ["administrator", "consultant", "reviewer", "finance", "methodology-data-admin", "read-only"]) assert.ok(staffRoles.includes(`'${role}'`)); });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });
+  it("adds mandatory evidence metadata to the canonical scope-row model", () => { for (const field of ["quality_tier", "provenance_json", "lineage_json", "factor_version", "enabled", "updated_at"]) assert.ok(scopeEvidence.includes(field)); assert.match(scopeEvidence, /quality_tier IN \('measured','estimated','spend-based','survey'\)/); });
   it("keeps the demonstration seed synthetic, idempotent and on the official number range", () => {
     assert.match(syntheticSeed, /Synthetic demonstration records only/);
     assert.match(syntheticSeed, /demo-nzi-console/);
@@ -32,5 +35,6 @@ describe("isolated Postgres migrations", () => {
     assert.ok(emailDomains.length > 0);
     assert.ok(emailDomains.every((domain) => domain === "@synthetic.invalid"));
   });
+  it("seeds canonical scope rows only for the synthetic demonstrator", () => { assert.match(syntheticScopeSeed, /Fictional activity data/); assert.match(syntheticScopeSeed, /job_scope_rows/); assert.match(syntheticScopeSeed, /demo-nzi-console/); assert.match(syntheticScopeSeed, /ON CONFLICT .* DO NOTHING/i); assert.doesNotMatch(syntheticScopeSeed, /crp_scope_entries/i); });
   it("refuses missing, production, or unconfirmed database targets", () => { assert.throws(() => validateDatabaseBoundary({ appEnv: "staging" })); assert.throws(() => validateDatabaseBoundary({ appEnv: "production", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" })); const url = validateDatabaseBoundary({ appEnv: "staging", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" }); assert.equal(url.searchParams.get("application_name"), "nzi-console-isolated"); });
 });

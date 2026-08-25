@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { commandDefinitions, isAllowedJobStageTransition, validateCommand, type CommandContext, type CommandInputMap, type CommandKey, type CommandOutcome, type WorkflowJobFamily } from "@nzi/contracts";
+import { commandDefinitions, isAllowedJobStageTransition, validateCommand, type CommandContext, type CommandInputMap, type CommandKey, type CommandOutcome, type ScopeRowWriteFields, type WorkflowJobFamily } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantWrite } from "./postgres";
@@ -114,5 +114,45 @@ export async function changeJobStage(pool: PoolLike, input: CommandInputMap["job
       [context.organisationId, input.jobId, input.toStage, input.expectedVersion]);
     if (!updated.rows[0]) throw new VersionConflictError();
     return { data: { jobId: input.jobId, fromStage: input.fromStage, toStage: input.toStage, version: updated.rows[0].version, stageEventId }, entityType: "job", entityId: input.jobId, topic: "job.stage.changed" };
+  });
+}
+
+const scopeEvidence = (input: ScopeRowWriteFields, context: CommandContext) => ({
+  provenance: { capturedBy: context.actorId, capturedAt: new Date().toISOString(), datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, qualityTier: input.qualityTier },
+  lineage: [
+    ...(input.quantity === null ? [] : [{ title: "Activity data captured", detail: `${input.quantity}${input.unit ? ` ${input.unit}` : ""}` }]),
+    ...(input.factorId ? [{ title: "Factor selected", detail: `${input.factorLabel ?? input.factorId}${input.factorVersion ? ` · ${input.factorVersion}` : ""}` }] : []),
+  ],
+});
+async function requireCrpJob(db: Queryable, organisationId: string, jobId: string) {
+  const found = await db.query<{ job_family: string }>("SELECT job_family FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2", [organisationId, jobId]);
+  if (!found.rows[0]) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "Job was not found." }]);
+  if (found.rows[0].job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Scope rows are available only for CRP jobs." }]);
+}
+
+export type CreateScopeRowResult = { rowId: string; jobId: string; version: number };
+export async function createScopeRow(pool: PoolLike, input: CommandInputMap["scope.row.create"], context: CommandContext): Promise<StoredOutcome<CreateScopeRowResult>> {
+  return runPostgresCommand(pool, "scope.row.create", input, context, async (db) => {
+    await requireCrpJob(db, context.organisationId, input.jobId);
+    const rowId = randomUUID(); const evidence = scopeEvidence(input, context);
+    await db.query(`INSERT INTO nzi_console.job_scope_rows
+      (organisation_id,scope_row_id,job_id,scope,source_label,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,provenance_json,lineage_json)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb)`,
+      [context.organisationId,rowId,input.jobId,input.scope,input.sourceLabel.trim(),input.quantity,input.unit?.trim()||null,input.datasetId,input.factorId,input.factorVersion,input.factorLabel,input.qualityTier,JSON.stringify(evidence.provenance),JSON.stringify(evidence.lineage)]);
+    return { data: { rowId, jobId: input.jobId, version: 1 }, entityType: "scope_row", entityId: rowId, topic: "scope.row.created" };
+  });
+}
+
+export type UpdateScopeRowResult = { rowId: string; jobId: string; version: number };
+export async function updateScopeRow(pool: PoolLike, input: CommandInputMap["scope.row.update"], context: CommandContext): Promise<StoredOutcome<UpdateScopeRowResult>> {
+  return runPostgresCommand(pool, "scope.row.update", input, context, async (db) => {
+    await requireCrpJob(db, context.organisationId, input.jobId); const evidence = scopeEvidence(input, context);
+    const updated = await db.query<{ version: number }>(`UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,
+      quantity=$6,unit=$7,dataset_id=$8,factor_id=$9,factor_version=$10,factor_label=$11,quality_tier=$12,
+      provenance_json=$13::jsonb,lineage_json=$14::jsonb,enabled=$15,calculated_tco2e=NULL,review_status='pending',
+      version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$16 RETURNING version`,
+      [context.organisationId,input.jobId,input.rowId,input.scope,input.sourceLabel.trim(),input.quantity,input.unit?.trim()||null,input.datasetId,input.factorId,input.factorVersion,input.factorLabel,input.qualityTier,JSON.stringify(evidence.provenance),JSON.stringify(evidence.lineage),input.enabled,input.expectedVersion]);
+    if (!updated.rows[0]) throw new VersionConflictError();
+    return { data: { rowId: input.rowId, jobId: input.jobId, version: updated.rows[0].version }, entityType: "scope_row", entityId: input.rowId, topic: "scope.row.updated" };
   });
 }

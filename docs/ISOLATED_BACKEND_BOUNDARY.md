@@ -15,8 +15,9 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001`–`0007` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
-client/job screen fields, staff roles, isolated authentication tables/role, and the credential-scoped membership lookup. They are not executed by the web
+Migrations `0001`–`0008` define the schema, RLS boundary, pooler-to-runtime-role membership, constrained
+client/job screen fields, staff roles, isolated authentication tables/role, the credential-scoped membership lookup,
+and canonical scope-row evidence metadata. They are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
@@ -56,6 +57,12 @@ and the named command permission for its role. Tenant and actor headers are neve
 The Clients, Jobs, and individual Job workspace screens submit through these routes with browser-generated idempotency and
 correlation IDs. Tenant, actor and permission identity still come only from the server session. The
 feature flag remains independently controlled, so database and UI readiness never enable mutations.
+
+CRP activity data uses only `nzi_console.job_scope_rows`. Tenant-scoped reads distinguish an empty job
+from zero emissions. Administrator and Consultant users with `emissions.data.edit` can create or
+version-update rows; edited activity/factor evidence invalidates the prior calculated value and returns
+review status to pending. Quality tier, factor version, provenance and lineage travel with the row.
+`crp_scope_entries` is never read or written.
 
 ## Staff authentication gate
 

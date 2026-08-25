@@ -1,4 +1,5 @@
 import type { Queryable } from "./postgres";
+import type { ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type ClientScreenReadModel = {
@@ -81,4 +82,30 @@ export async function listJobs(db: Queryable): Promise<JobScreenReadModel[]> {
     workflowStage: row.workflow_stage, owner: row.owner_name, startDate: dateOnly(row.start_date), dueDate: dateOnly(row.due_date),
     ...(row.quote_id === null ? {} : { quoteId: row.quote_id }), progressPct: row.progress_percent },
     detail: asDetail(row.job_family, row.detail_json), stageHistory: row.stage_history ?? [] }));
+}
+
+type ScopeRow = {
+  scope_row_id: string; job_id: string; scope: string; source_label: string; quantity: string | null; unit: string | null;
+  dataset_id: string | null; factor_id: string | null; factor_version: string | null; factor_label: string | null;
+  quality_tier: ScopeQualityTier | null; calculated_tco2e: string | null; override_tco2e: string | null;
+  override_reason: string | null; review_status: ScopeRowReadModel["reviewStatus"]; version: number; enabled: boolean;
+  provenance_json: Record<string, unknown>; lineage_json: ScopeRowReadModel["lineage"];
+};
+
+export async function listScopeRows(db: Queryable, jobId: string): Promise<ScopeRowReadModel[]> {
+  const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
+      r.unit, r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
+      r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status, r.version, r.enabled,
+      r.provenance_json, r.lineage_json
+    FROM nzi_console.job_scope_rows r
+    JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
+    WHERE r.job_id=$1 AND j.job_family='crp'
+    ORDER BY r.enabled DESC, split_part(r.scope,'.',1)::int, nullif(split_part(r.scope,'.',2),'')::int NULLS FIRST, lower(r.source_label), r.scope_row_id`, [jobId]);
+  return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,
+    quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
+    factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
+    calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e),
+    overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
+    reviewStatus: row.review_status, version: row.version, enabled: row.enabled,
+    provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
 }

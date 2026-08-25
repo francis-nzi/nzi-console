@@ -6,10 +6,10 @@ export type BrowserCommandResult<T> =
 
 export type BrowserCommandTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export async function postBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch): Promise<BrowserCommandResult<T>> {
+async function sendBrowserCommand<T>(method: "POST" | "PATCH", path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport): Promise<BrowserCommandResult<T>> {
   try {
     const response = await transport(path, {
-      method: "POST",
+      method,
       credentials: "same-origin",
       headers: {
         "content-type": "application/json",
@@ -27,3 +27,6 @@ export async function postBrowserCommand<T>(path: string, input: unknown, idempo
     return { state: "failed", message: error instanceof Error ? error.message : "The service could not be reached.", retryable: true };
   }
 }
+
+export function postBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("POST", path, input, idempotencyKey, transport); }
+export function patchBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("PATCH", path, input, idempotencyKey, transport); }

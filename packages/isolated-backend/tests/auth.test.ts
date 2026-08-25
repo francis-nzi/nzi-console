@@ -21,6 +21,7 @@ describe("staff authentication and authorization", () => {
 
   it("allows only named role permissions and keeps read-only mutation-free", () => {
     assert.doesNotThrow(() => authorizeCommand(principal("consultant"), "job.create"));
+    assert.doesNotThrow(() => authorizeCommand(principal("consultant"), "scope.row.update"));
     assert.throws(() => authorizeCommand(principal("consultant"), "report.publish"), AuthorizationError);
     assert.throws(() => authorizeCommand(principal("read-only"), "client.create"), AuthorizationError);
     assert.doesNotThrow(() => authorizeCommand(principal("methodology-data-admin"), "dataset.override.add"));

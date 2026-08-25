@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { listClients, listJobs, withTenantRead, type Queryable } from "../src/index";
+import { listClients, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -20,6 +20,12 @@ describe("isolated Postgres adapter", () => {
     await withTenantRead(pool as never, "org-a", async () => "ok");
     assert.deepEqual(calls.map((call) => call.sql), ["BEGIN READ ONLY", "SET LOCAL ROLE nzi_console_app", "SELECT set_config('app.organisation_id', $1, true)", "COMMIT"]);
     assert.deepEqual(calls[2]?.values, ["org-a"]);
+  });
+
+  it("maps canonical scope-row evidence without treating missing calculation as zero", async () => {
+    const db = { query: async () => ({ rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Purchased goods", quantity: "1250.5", unit: "GBP", dataset_id: "dataset-a", factor_id: "factor-a", factor_version: "2026 v1", factor_label: "Synthetic factor", quality_tier: "spend-based", calculated_tco2e: null, override_tco2e: null, override_reason: null, review_status: "pending", version: 3, enabled: true, provenance_json: { source: "synthetic" }, lineage_json: [{ title: "Captured", detail: "Synthetic" }] }] }) } as Queryable;
+    const row = (await listScopeRows(db, "job-a"))[0]!;
+    assert.equal(row.quantity, 1250.5); assert.equal(row.calculatedTco2e, null); assert.equal(row.qualityTier, "spend-based"); assert.equal(row.version, 3);
   });
 
   it("rolls back and releases the connection when a read fails", async () => {
