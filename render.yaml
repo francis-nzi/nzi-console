@@ -15,6 +15,8 @@ services:
         value: 20.18.0
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
+      - key: NZI_DATA_MODE
+        value: fixture
       # Non-production Supabase only — never production values.
       # - key: NEXT_PUBLIC_SUPABASE_URL
       #   sync: false

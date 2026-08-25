@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { loadFixtureScreen, requestScreen } from "../src/index";
+import { loadFixtureScreen, requestScreen, resolveDataMode } from "../src/index";
 
 describe("typed screen client", () => {
   it("rejects malformed fixture responses", () => assert.equal(loadFixtureScreen("platform", { services: [] }).state, "failed"));
@@ -9,4 +9,5 @@ describe("typed screen client", () => {
     const result = await requestScreen("clients", async () => { throw new Error("offline"); });
     assert.equal(result.state, "failed");
   });
+  it("requires an explicit isolated URL and refuses production API mode", () => { assert.throws(() => resolveDataMode("isolated-api", "staging")); assert.throws(() => resolveDataMode("isolated-api", "production", "https://isolated.invalid")); assert.deepEqual(resolveDataMode("fixture", "staging"), { mode: "fixture" }); });
 });

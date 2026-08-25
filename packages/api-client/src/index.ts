@@ -1,6 +1,13 @@
 import { contractFor, type ScreenIssue, type ScreenKey, type ScreenMeta, type ScreenResult } from "@nzi/contracts";
 
 export type LoadOptions = { requestId?: string; warning?: ScreenIssue; now?: () => Date };
+export type DataMode = "fixture" | "isolated-api";
+export function resolveDataMode(value: string | undefined, appEnv: string | undefined, apiBaseUrl?: string): { mode: DataMode; apiBaseUrl?: string } {
+  const mode: DataMode = value === "isolated-api" ? "isolated-api" : "fixture";
+  if (appEnv === "production" && mode === "isolated-api") throw new Error("NZI Console may not connect to an API while APP_ENV is production.");
+  if (mode === "isolated-api" && !apiBaseUrl?.trim()) throw new Error("Isolated API mode requires NZI_ISOLATED_API_URL.");
+  return { mode, ...(mode === "isolated-api" ? { apiBaseUrl } : {}) };
+}
 function meta(key: ScreenKey, source: ScreenMeta["source"], options: LoadOptions): ScreenMeta { return { contract: key, source, requestId: options.requestId ?? `${key}-local`, receivedAt: (options.now?.() ?? new Date()).toISOString() }; }
 
 export function loadFixtureScreen<T>(key: ScreenKey, value: unknown, options: LoadOptions = {}): ScreenResult<T> {

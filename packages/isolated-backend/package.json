@@ -1,0 +1,10 @@
+{
+  "name": "@nzi/isolated-backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "tsx --test tests/*.test.ts", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@nzi/contracts": "*" },
+  "devDependencies": { "tsx": "^4.20.5", "typescript": "^5.6.3" }
+}
