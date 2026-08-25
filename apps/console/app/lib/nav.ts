@@ -9,7 +9,7 @@ export const NAV: NavSection[] = [
       { id: "jobs", label: "Jobs", icon: "jobs", href: "/jobs", count: 37 },
       { id: "emissions", label: "Emissions", icon: "chart", href: "/charts" },
       { id: "datasets", label: "Datasets & factors", icon: "database", href: "#" },
-      { id: "reports", label: "Reports", icon: "file", href: "#" },
+      { id: "reports", label: "Reports", icon: "file", href: "/reports" },
       { id: "lca", label: "LCA / PCF / CBAM", icon: "layers", href: "#" },
     ],
   },
