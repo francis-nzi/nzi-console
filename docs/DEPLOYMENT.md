@@ -35,8 +35,9 @@ FuelCap services.
 | `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | Dedicated Render-only secret |
 | `NZI_WRITE_API_ENABLED` | Explicit independent gate for authenticated command routes |
 
-Clients and Jobs list screens use the isolated Supabase schema and expose authenticated client/job
-creation through the transactional command boundary. Other workspaces remain on synthetic
+Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
+authenticated client/job creation plus versioned job-stage transitions through the transactional command
+boundary. Other workspaces remain on synthetic
 `@nzi/mock-data` fixtures. The service retains unrelated legacy environment variables from its earlier
 use; the Console boundary ignores generic `DATABASE_URL` and accepts only `NZI_ISOLATED_DATABASE_URL`.
 

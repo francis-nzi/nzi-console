@@ -1,15 +1,18 @@
-import { findJob, job712, jobs } from "@nzi/mock-data";
-import { loadFixtureScreen } from "@nzi/api-client";
+import { job712, jobs, type FamilyJob } from "@nzi/mock-data";
 import { notFound } from "next/navigation";
+import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
 import { FamilyWorkspace } from "../FamilyWorkspace";
 import { JobBoard } from "../JobBoard";
 
-export function generateStaticParams() { return jobs.map((job) => ({ jobId: job.header.id })); }
+export const dynamic = "force-dynamic";
+
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const job = findJob(jobId);
-  if (!job) notFound();
-  const result = loadFixtureScreen<{ job: typeof job }>("job", { job });
-  return <ScreenState result={result}>{(data) => data.job.header.family === "crp" ? <JobBoard job={job712} /> : <FamilyWorkspace job={data.job} />}</ScreenState>;
+  const result = await loadScreen<{ jobs: FamilyJob[] }>("jobs", { jobs });
+  return <ScreenState result={result}>{(data) => {
+    const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
+    if (!job) notFound();
+    return job.header.family === "crp" && job.header.sequence === 712 ? <JobBoard job={job712} workflowJob={job} /> : <FamilyWorkspace job={job} />;
+  }}</ScreenState>;
 }

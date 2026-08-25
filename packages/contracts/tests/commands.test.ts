@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { commandDefinitions, validateCommand, type CommandContext } from "../src/index";
+import { commandDefinitions, isAllowedJobStageTransition, jobWorkflowStages, validateCommand, type CommandContext } from "../src/index";
 const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1" };
 describe("command contracts", () => {
+  it("defines adjacent forward and backward transitions for every job family", () => {
+    for (const [family, stages] of Object.entries(jobWorkflowStages)) {
+      const typedFamily = family as keyof typeof jobWorkflowStages;
+      assert.equal(isAllowedJobStageTransition(typedFamily, stages[0]!, stages[1]!), true);
+      assert.equal(isAllowedJobStageTransition(typedFamily, stages[1]!, stages[0]!), true);
+      assert.equal(isAllowedJobStageTransition(typedFamily, stages[0]!, stages[2]!), false);
+    }
+  });
   it("validates client and job creation before transport", () => {
     assert.equal(validateCommand("client.create", { name: "", status: "active", sector: "Services", location: "London", owner: "A" }, context).some((issue) => issue.field === "name"), true);
     assert.equal(validateCommand("job.create", { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "A", startDate: "2026-12-31", dueDate: "2026-01-01" }, context).some((issue) => issue.code === "INVALID_RANGE"), true);

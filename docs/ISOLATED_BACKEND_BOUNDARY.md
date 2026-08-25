@@ -39,15 +39,21 @@ It is an explicit provisioning action and is never invoked by an application req
 
 ## Write-path gate
 
-The Postgres command executor supports typed client/job creation inside one tenant-scoped transaction.
+The Postgres command executor supports typed client/job creation and explicit job-stage transitions inside
+one tenant-scoped transaction.
 It serialises each organisation/idempotency key, rejects reuse with a different request hash, allocates the
 official job number in the caller transaction, and records the entity, audit event, outbox event, and stored
 outcome atomically. A real Supabase rollback test proves `J000717` remains available after forced rollback.
 
+Stage transitions use the same boundary. The command locks the current job, checks its optimistic row
+version and current stage, permits only an adjacent stage in the canonical family workflow, inserts an
+immutable `job_stage_history` event, increments the job version, and writes the audit/outbox/idempotency
+records in the same transaction. Lifecycle status remains separate from workflow stage.
+
 The client/job command routes are deny-by-default. They require the explicit write feature flag, exact
 same-origin POST, a valid signed and expiring `nzi_console_session` cookie, an active tenant membership,
 and the named command permission for its role. Tenant and actor headers are never trusted as identity.
-The Clients and Jobs screens now submit through these routes with browser-generated idempotency and
+The Clients, Jobs, and individual Job workspace screens submit through these routes with browser-generated idempotency and
 correlation IDs. Tenant, actor and permission identity still come only from the server session. The
 feature flag remains independently controlled, so database and UI readiness never enable mutations.
 

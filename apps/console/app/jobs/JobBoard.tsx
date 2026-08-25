@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
-import { type Job, type ScopeRow, type RowStatus, statusClass, statusLabel } from "@nzi/mock-data";
+import { type FamilyJob, type Job, type ScopeRow, type RowStatus, statusClass, statusLabel } from "@nzi/mock-data";
 import { NAV, USER } from "../lib/nav";
 import { CrpWorkspacePanel, type CrpStage } from "./CrpWorkspacePanels";
+import { WorkflowStageControl } from "./WorkflowStageControl";
 
 type Filter = "all" | RowStatus;
 
@@ -100,7 +101,7 @@ function DrawerBody({ row }: { row: ScopeRow }) {
   );
 }
 
-export function JobBoard({ job }: { job: Job }) {
+export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJob }) {
   const [selectedId, setSelectedId] = useState<string>("fgas");
   const [filter, setFilter] = useState<Filter>("all");
   const [stage, setStage] = useState<CrpStage>("data");
@@ -175,6 +176,8 @@ export function JobBoard({ job }: { job: Job }) {
           </span>
         </div>
       </div>
+
+      <WorkflowStageControl job={workflowJob} />
 
       <div className="nz-stepper">{stages.map((item, index) => {
         const activeIndex = stages.findIndex((candidate) => candidate.id === stage);

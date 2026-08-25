@@ -9,6 +9,7 @@ export type ClientScreenReadModel = {
 };
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";
+export type JobStageEvent = { id: string; fromStage: string; toStage: string; actorId: string; note?: string; occurredAt: string };
 export type JobDetail =
   | { kind: "crp"; reportingPeriod: string; includedScopes: string[]; reviewedRows: number; totalRows: number }
   | { kind: "consultancy"; scope: string; deliverables: string[]; plannedDays: number; usedDays: number }
@@ -17,11 +18,12 @@ export type JobDetail =
   | { kind: "training"; course: string; sessions: number; bookings: number; attendancePct: number };
 export type JobScreenReadModel = {
   header: {
-    id: string; sequence: number; number: string; family: JobFamily; clientId: string; client: string;
+    id: string; version: number; sequence: number; number: string; family: JobFamily; clientId: string; client: string;
     title: string; reportingYear?: number; status: "draft" | "open" | "on-hold" | "complete" | "cancelled";
     workflowStage: string; owner: string; startDate: string; dueDate: string; quoteId?: string; progressPct: number;
   };
   detail: JobDetail;
+  stageHistory: JobStageEvent[];
 };
 
 type ClientRow = {
@@ -31,10 +33,10 @@ type ClientRow = {
   contact_email: string; open_jobs: string; jobs: Array<{ number: string; year: number; status: string }> | null;
 };
 type JobRow = {
-  job_id: string; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
+  job_id: string; version: number; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
   title: string; reporting_year: number | null; status: JobScreenReadModel["header"]["status"]; workflow_stage: string;
   owner_name: string; start_date: Date | string; due_date: Date | string; quote_id: string | null;
-  progress_percent: number; detail_json: unknown;
+  progress_percent: number; detail_json: unknown; stage_history: JobStageEvent[] | null;
 };
 const dateOnly = (value: Date | string) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 const footprint = (value: string | null) => value === null ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
@@ -63,16 +65,20 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
 }
 
 export async function listJobs(db: Queryable): Promise<JobScreenReadModel[]> {
-  const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.client_id, c.name AS client_name, j.sequence, j.job_number,
+  const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.version, j.client_id, c.name AS client_name, j.sequence, j.job_number,
       j.job_family, j.title, j.reporting_year, j.status, j.workflow_stage, j.owner_name, j.start_date, j.due_date,
-      j.quote_id, j.progress_percent, j.detail_json
+      j.quote_id, j.progress_percent, j.detail_json,
+      coalesce((SELECT jsonb_agg(jsonb_build_object('id', h.stage_event_id, 'fromStage', h.from_stage,
+        'toStage', h.to_stage, 'actorId', h.actor_id, 'note', h.note, 'occurredAt', h.occurred_at)
+        ORDER BY h.occurred_at DESC) FROM nzi_console.job_stage_history h
+        WHERE (h.organisation_id, h.job_id) = (j.organisation_id, j.job_id)), '[]'::jsonb) AS stage_history
     FROM nzi_console.jobs j
     JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
     ORDER BY j.sequence DESC`);
-  return rows.map((row) => ({ header: { id: row.job_id, sequence: row.sequence, number: row.job_number,
+  return rows.map((row) => ({ header: { id: row.job_id, version: row.version, sequence: row.sequence, number: row.job_number,
     family: row.job_family, clientId: row.client_id, client: row.client_name, title: row.title,
     ...(row.reporting_year === null ? {} : { reportingYear: row.reporting_year }), status: row.status,
     workflowStage: row.workflow_stage, owner: row.owner_name, startDate: dateOnly(row.start_date), dueDate: dateOnly(row.due_date),
     ...(row.quote_id === null ? {} : { quoteId: row.quote_id }), progressPct: row.progress_percent },
-    detail: asDetail(row.job_family, row.detail_json) }));
+    detail: asDetail(row.job_family, row.detail_json), stageHistory: row.stage_history ?? [] }));
 }

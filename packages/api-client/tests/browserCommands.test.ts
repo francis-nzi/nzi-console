@@ -23,6 +23,11 @@ describe("authenticated browser commands", () => {
     if (result.state === "validation_failed") assert.equal(result.issues[0]?.field, "dueDate");
   });
 
+  it("preserves optimistic version conflicts as a distinct outcome", async () => {
+    const result = await postBrowserCommand("/commands/jobs/stage", {}, "idem-conflict", async () => Response.json({ message: "Refresh first." }, { status: 409 }));
+    assert.deepEqual(result, { state: "conflict", message: "Refresh first." });
+  });
+
   it("marks server and network failures retryable without inventing success", async () => {
     const server = await postBrowserCommand("/commands/jobs", {}, "idem-c", async () => Response.json({ message: "Unavailable" }, { status: 503 }));
     assert.deepEqual(server, { state: "failed", message: "Unavailable", retryable: true });

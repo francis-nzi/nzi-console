@@ -2,14 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CommandInputMap } from "@nzi/contracts";
+import { jobWorkflowStages, type CommandInputMap } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type Client, type FamilyJob, type JobFamily } from "@nzi/mock-data";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 
 type Filter = "all" | JobFamily;
-const initialStage: Record<JobFamily, string> = { crp: "Setup", consultancy: "Discovery", lca: "Goal and scope", pcf: "Goal and scope", training: "Planning" };
+const initialStage: Record<JobFamily, string> = { crp: jobWorkflowStages.crp[0], consultancy: jobWorkflowStages.consultancy[0], lca: jobWorkflowStages.lca[0], pcf: jobWorkflowStages.pcf[0], training: jobWorkflowStages.training[0] };
 
 export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Client[] }) {
   const router = useRouter();
@@ -31,7 +31,7 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
     if (result.state === "success") {
       submissionKey.current = null; setCreating(false); setNotice({ kind: "ok", text: `${result.data.jobNumber} was created and assigned atomically.` }); router.refresh(); return;
     }
-    if (result.state === "validation_failed" || !result.retryable) submissionKey.current = null;
+    if (result.state !== "failed" || !result.retryable) submissionKey.current = null;
     setNotice({ kind: "warn", text: result.state === "validation_failed" ? result.issues[0]?.message ?? result.message : result.message });
   }
 

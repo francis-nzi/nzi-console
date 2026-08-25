@@ -8,6 +8,20 @@ export type CommandKey =
   | "portal.access.grant"
   | "sales.opportunity.convert";
 
+export const jobWorkflowStages = {
+  crp: ["Setup", "Data entry", "Factor mapping", "Review & QA", "Report & publish"],
+  consultancy: ["Scope", "Plan", "Delivery", "Client review", "Complete"],
+  lca: ["Goal & scope", "Inventory", "Impact assessment", "Interpretation", "Report"],
+  pcf: ["Product boundary", "BOM", "Factor mapping", "Review", "Report"],
+  training: ["Course setup", "Bookings", "Delivery", "Attendance", "Certificates"],
+} as const;
+export type WorkflowJobFamily = keyof typeof jobWorkflowStages;
+export function isAllowedJobStageTransition(family: WorkflowJobFamily, from: string, to: string): boolean {
+  const stages: readonly string[] = jobWorkflowStages[family];
+  const fromIndex = stages.indexOf(from); const toIndex = stages.indexOf(to);
+  return fromIndex >= 0 && toIndex >= 0 && Math.abs(toIndex - fromIndex) === 1;
+}
+
 export type CommandContext = {
   organisationId: string;
   actorId: string;

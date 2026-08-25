@@ -98,7 +98,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
       setDraft({ name: "", status: "onboarding", sector: "", location: "", owner: "" });
       setNotice({ kind: "ok", text: `${result.data.name} was created successfully.` }); router.refresh(); return;
     }
-    if (result.state === "validation_failed" || !result.retryable) submissionKey.current = null;
+    if (result.state !== "failed" || !result.retryable) submissionKey.current = null;
     setNotice({ kind: "warn", text: result.state === "validation_failed" ? result.issues[0]?.message ?? result.message : result.message });
   }
 
