@@ -1,13 +1,15 @@
 import type { CommandContext, CommandKey, CommandOutcome } from "@nzi/contracts";
+import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
+export * from "./errors";
+export * from "./postgres";
+export * from "./readModels";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };
 export type OutboxRecord = { id: string; organisationId: string; topic: string; payload: Record<string, unknown>; correlationId: string; state: "pending" | "sent" };
 type StoreState = { records: Map<string, TenantRecord>; audits: AuditRecord[]; outbox: OutboxRecord[]; idempotency: Map<string, CommandOutcome> };
 
-export class TenantContextError extends Error { constructor(message = "Tenant context is required.") { super(message); this.name = "TenantContextError"; } }
-export class VersionConflictError extends Error { constructor() { super("Record version conflict."); this.name = "VersionConflictError"; } }
 const tenantKey = (organisationId: string, id: string) => `${organisationId}:${id}`;
 const cloneState = (state: StoreState): StoreState => structuredClone(state);
 

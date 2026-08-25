@@ -13,6 +13,7 @@
     "@nzi/api-client": "*",
     "@nzi/charts": "*",
     "@nzi/contracts": "*",
+    "@nzi/isolated-backend": "*",
     "@nzi/mock-data": "*",
     "@nzi/ui": "*",
     "next": "^15.1.6",
