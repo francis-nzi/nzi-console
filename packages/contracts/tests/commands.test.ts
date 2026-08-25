@@ -26,4 +26,5 @@ describe("command contracts", () => {
   it("requires a reason for manual dataset overrides", () => assert.ok(validateCommand("dataset.override.add", { jobId: "712", scope: "3", datasetId: "d1", reportingFrom: "2024-01-01", reportingTo: "2024-12-31" }, context).some((issue) => issue.field === "reason")));
   it("requires optimistic versioning for scope-row calculation", () => assert.ok(validateCommand("scope.row.calculate", { jobId: "712", rowId: "row-a", expectedVersion: 0 }, context).some((issue) => issue.field === "expectedVersion")));
   it("requires a reviewer note for rejection",()=>assert.ok(validateCommand("scope.review.reject",{jobId:"712",rowIds:["row-a"],expectedReviewVersion:2,reviewerNote:""},context).some(issue=>issue.field==="reviewerNote")));
+  it("requires the expected job version before snapshotting",()=>assert.ok(validateCommand("report.snapshot.create",{jobId:"712",expectedJobVersion:0},context).some(issue=>issue.field==="expectedJobVersion")));
 });
