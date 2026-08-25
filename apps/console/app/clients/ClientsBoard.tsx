@@ -146,16 +146,17 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
       />
 
       <div className="nz-head">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div className="nz-job-titleline">
           <div>
-            <h1>Clients</h1>
-            <div className="sub">{clients.length} organisations · {activeJobs} open jobs</div>
+            <div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>
+            <div className="sub">Relationships, delivery health and reporting readiness across {clients.length} organisations</div>
           </div>
-          <button className="nz-btn pri" style={{ marginLeft: "auto" }} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close" : "Add client"}</button>
+          <button className="nz-btn pri" onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ Add client"}</button>
         </div>
       </div>
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
+        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{clients.some(client=>client.status==="at-risk")?`${clients.filter(client=>client.status==="at-risk").length} relationship${clients.filter(client=>client.status==="at-risk").length===1?"":"s"} need focused attention.`:"The client portfolio is healthy."}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>✓</i> Named ownership</span><span><i>✓</i> Delivery visible</span><span><i>✓</i> Portal controlled</span></div></section>
         {notice && <div className={`nz-banner ${notice.kind}`}><div>{notice.text}</div></div>}
         {creating && <form className="nz-panel" style={{ padding: 18, marginBottom: 16 }} onSubmit={createClient}>
           <div><b>Add client</b><div className="sub" style={{ marginTop: 4 }}>Creates one tenant-scoped client record with an audit event. Contact details can be added in the client workspace later.</div></div>

@@ -22,6 +22,9 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
   const [draft, setDraft] = useState<CommandInputMap["job.create"]>({ clientId: firstClient, family: "crp", title: "", workflowStage: initialStage.crp, owner: "", startDate: "", dueDate: "", reportingYear: new Date().getUTCFullYear() });
   const rows = useMemo(() => filter === "all" ? jobs : jobs.filter((job) => job.header.family === filter), [filter, jobs]);
   const filters: Filter[] = ["all", "crp", "consultancy", "lca", "pcf", "training"];
+  const averageProgress = jobs.length ? Math.round(jobs.reduce((sum, job) => sum + job.header.progressPct, 0) / jobs.length) : 0;
+  const activeCrp = jobs.filter((job) => job.header.family === "crp").length;
+  const dueSoon = jobs.filter((job) => { const due = Date.parse(job.header.dueDate); return Number.isFinite(due) && due >= Date.now() && due - Date.now() < 30 * 86400000; }).length;
 
   async function createJob(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setNotice(null); submissionKey.current ??= crypto.randomUUID();
@@ -37,8 +40,10 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
     <TopBar searchPlaceholder="Search jobs, clients…" crumbs={<><b>Jobs</b> <span className="muted">/</span> All families</>} />
-    <div className="nz-head"><div style={{ display: "flex", alignItems: "flex-start" }}><div><h1>Jobs</h1><div className="sub">One shared job spine · family-aware workflows · official J000000 numbering</div></div><button className="nz-btn pri" style={{ marginLeft: "auto" }} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close" : "New job"}</button></div></div>
+    <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Delivery portfolio</div><h1>Engagements</h1><div className="sub">Every client engagement, workflow and deadline in one governed portfolio</div></div><button className="nz-btn pri" onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ New engagement"}</button></div></div>
     <div className="nz-body" style={{ paddingTop: 16 }}>
+      <section className="nz-ops-hero"><div><span className="nz-eyebrow light">NZI delivery command</span><h2>{dueSoon?`${dueSoon} engagement${dueSoon===1?"":"s"} approaching a delivery milestone.`:"The active portfolio is on track."}</h2><p>Official job numbering, family-specific workflows and accountable ownership create one dependable operational view.</p></div><div className="nz-ops-trust"><span><i>✓</i> Official numbering</span><span><i>✓</i> Named ownership</span><span><i>✓</i> Audited workflow</span></div></section>
+      <div className="nz-metrics"><Metric label="Active engagements" value={String(jobs.length)} note="Across all service families"/><Metric label="Carbon reporting" value={String(activeCrp)} note="CRP engagements"/><Metric label="Average progress" value={`${averageProgress}%`} note="Portfolio completion"/><Metric label="Due within 30 days" value={String(dueSoon)} note={dueSoon?"Requires delivery focus":"No immediate deadlines"}/></div>
       {notice && <div className={`nz-banner ${notice.kind}`}><div>{notice.text}</div></div>}
       {creating && <form className="nz-panel" style={{ padding: 18, marginBottom: 16 }} onSubmit={createJob}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}><div><b>Create job</b><div className="sub" style={{ marginTop: 4 }}>The official number is assigned only when creation commits.</div></div><span className="nz-st est">Number pending</span></div>
@@ -59,3 +64,5 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
     </div>
   </AppShell>;
 }
+
+function Metric({label,value,note}:{label:string;value:string;note:string}){return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div><div className="sub" style={{fontSize:10.5,marginTop:3}}>{note}</div></div>}
