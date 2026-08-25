@@ -14,7 +14,8 @@ tests against that adapter. Production NZI Pro credentials and data are prohibit
 
 ## Provisioning gate
 
-Migrations `0001` and `0002` define the prepared schema and RLS boundary but are not executed by the web
+Migrations `0001`, `0002`, and `0003` define the prepared schema, RLS boundary, and pooler-to-runtime-role
+membership but are not executed by the web
 service. A future migration job must receive only `NZI_ISOLATED_DATABASE_URL`, with
 `NZI_DATABASE_BOUNDARY=isolated-non-production` and a non-production application environment. The guard
 rejects missing confirmation and every production environment. Schema owners run migrations; the runtime
