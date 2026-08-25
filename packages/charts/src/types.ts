@@ -1,6 +1,6 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "intensity_pathway";
+export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway";
 export type DataQuality = "Measured" | "Estimated" | "Spend-based" | "Survey";
 
 export type Provenance = {
@@ -42,4 +42,8 @@ export type ScopeYearGroup = { year: number; values: ScopeYearValue[] };
 export type ScopeYearOnYearData = ChartEnvelope & { years: ScopeYearGroup[] };
 export type ActivityBar = { id: string; label: string; scope: "1" | "2" | "3"; value: number };
 export type EmissionsByActivityData = ChartEnvelope & { activities: ActivityBar[] };
-export type AnyChartData = ScopeDonutData | ReductionPathwayData | ScopeYearOnYearData | EmissionsByActivityData;
+export type SiteSegment = { id: string; label: string; value: number };
+export type SiteDonutData = ChartEnvelope & { sites: SiteSegment[]; total?: number };
+export type IntensityPathwayData = ReductionPathwayData & { metric: "turnover" | "employee" | "floor-area" };
+export type PurchasedGoodsBreakdownData = EmissionsByActivityData & { basis: "category" | "supplier" };
+export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData;

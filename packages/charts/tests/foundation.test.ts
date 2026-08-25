@@ -3,10 +3,10 @@ import test from "node:test";
 import { resolveCrpCharts, crpProfessionalManifest, type ReviewedCrpSnapshot } from "../src/crp";
 import { chartAssetKey } from "../src/identity";
 import { validateManifest } from "../src/manifest";
-import { emissionsByActivitySample, reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample, scopeYearOnYearSample } from "../src/sample";
+import { crpChartSamples, reviewedCrpSnapshotSample } from "../src/sample";
 
 test("one reviewed CRP snapshot resolves a publishable chart set", () => {
-  const charts = [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample];
+  const charts = crpChartSamples;
   const result = validateManifest(crpProfessionalManifest, charts, reviewedCrpSnapshotSample.id);
   assert.equal(result.valid, true);
   assert.equal(charts[0].provenance.dataHash, charts[1].provenance.dataHash);
@@ -39,4 +39,10 @@ test("render targets have distinct content-addressed derivative keys", () => {
   const [chart] = resolveCrpCharts(reviewedCrpSnapshotSample);
   assert.notEqual(chartAssetKey(chart, "screen"), chartAssetKey(chart, "print"));
   assert.match(chartAssetKey(chart, "portal"), /tokens-1:renderer-1:portal$/);
+});
+
+test("the professional CRP manifest requires every catalogue chart", () => {
+  const required = crpProfessionalManifest.charts.filter((chart) => chart.required).map((chart) => chart.id);
+  assert.deepEqual(required, crpChartSamples.map((chart) => chart.spec.id));
+  assert.equal(validateManifest(crpProfessionalManifest, crpChartSamples, reviewedCrpSnapshotSample.id).valid, true);
 });

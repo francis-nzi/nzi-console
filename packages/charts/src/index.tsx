@@ -6,9 +6,12 @@ export { ReductionPathway } from "./ReductionPathway";
 export { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 export { EmissionsByActivity } from "./EmissionsByActivity";
 export { ManifestChartSet } from "./ManifestChartSet";
+export { EmissionsSiteDonut } from "./EmissionsSiteDonut";
+export { IntensityPathway } from "./IntensityPathway";
+export { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
 
 export * from "./types";
-export { tokens, TOKENS_VERSION, scopeColor, readableInkOn } from "./tokens";
+export { tokens, TOKENS_VERSION, scopeColor, siteColor, readableInkOn } from "./tokens";
 export { RENDERER_VERSION, chartAssetKey } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";
@@ -21,4 +24,8 @@ export {
   reductionPathwaySample,
   scopeYearOnYearSample,
   emissionsByActivitySample,
+  emissionsSiteDonutSample,
+  intensityPathwaySample,
+  purchasedGoodsBreakdownSample,
+  crpChartSamples,
 } from "./sample";

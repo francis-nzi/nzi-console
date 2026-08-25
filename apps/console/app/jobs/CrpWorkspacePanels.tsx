@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { addManualDataset, datasets, recommendDatasets, type DatasetSelection, type Job } from "@nzi/mock-data";
-import { ManifestChartSet, crpProfessionalManifest, emissionsByActivitySample, reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample, scopeYearOnYearSample, validateManifest, type AnyChartData } from "@nzi/charts";
+import { ManifestChartSet, crpChartSamples, crpProfessionalManifest, reviewedCrpSnapshotSample, validateManifest } from "@nzi/charts";
 
 export type CrpStage = "scope" | "data" | "mapping" | "review" | "report";
 const context = { reportingFrom: "2024-01-01", reportingTo: "2024-12-31", country: "GB" };
@@ -40,7 +40,7 @@ function ReviewQueue({ job }: { job: Job }) { const review = job.rows.filter((ro
 
 function ReportPublish() {
   const [published, setPublished] = useState(false);
-  const charts: AnyChartData[] = [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample];
+  const charts = crpChartSamples;
   const validation = validateManifest(crpProfessionalManifest, charts, reviewedCrpSnapshotSample.id);
   return <Panel title="Report, validation and portal release" subtitle="The manifest assembles canonical graphics and the same validator gates report, PDF and portal publication."><div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 18 }}><span className={`nz-st ${validation.valid ? "done" : "nof"}`}>{validation.valid ? "Manifest valid" : "Publication blocked"}</span><span className="sub">CRP professional manifest v{validation.manifestVersion} · reviewed snapshot {validation.reviewedSnapshotId}</span></div><ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={reviewedCrpSnapshotSample.id} /><div className={`nz-banner ${published ? "ok" : "warn"}`} style={{ marginTop: 18 }}><div><b>{published ? "Published to client portal." : "Ready to publish."}</b><div style={{ marginTop: 3 }}>{published ? "Immutable report version CRP-J000712-v1 created from the reviewed snapshot." : "Publication creates an immutable version and releases that exact version to authorised portal users."}</div></div></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><a className="nz-btn" href="/report-preview">Preview report</a><a className="nz-btn" href="/portal-preview">Preview portal</a><button className="nz-btn pri" disabled={!validation.valid || published} onClick={() => setPublished(true)}>{published ? "Published" : "Publish and send to portal"}</button></div></Panel>;
 }

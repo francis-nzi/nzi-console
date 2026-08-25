@@ -1,5 +1,5 @@
 import { resolveCrpCharts, type ReviewedCrpSnapshot } from "./crp";
-import type { EmissionsByActivityData, ScopeYearOnYearData } from "./types";
+import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, PurchasedGoodsBreakdownData, ScopeYearOnYearData, SiteDonutData } from "./types";
 
 export const reviewedCrpSnapshotSample: ReviewedCrpSnapshot = {
   id: "reviewed-crp-J000712-v1",
@@ -51,3 +51,42 @@ export const emissionsByActivitySample: EmissionsByActivityData = {
     { id: "natural-gas", label: "Natural gas", scope: "1", value: 17.6 },
   ],
 };
+
+export const emissionsSiteDonutSample: SiteDonutData = {
+  spec: { id: "emissions_site_donut", type: "emissions_site_donut", title: "Emissions by operating site", subtitle: "Bushy Tails Ltd · J000712", family: "crp", specVersion: 1 },
+  unit: "tCO₂e", state: "success", provenance: sharedProvenance,
+  sites: [
+    { id: "manchester-hq", label: "Manchester HQ", value: 620 },
+    { id: "leeds-warehouse", label: "Leeds warehouse", value: 344 },
+    { id: "bristol-site", label: "Bristol site", value: 210 },
+    { id: "london-office", label: "London office", value: 144 },
+    { id: "dublin-office", label: "Dublin office", value: 100 },
+  ],
+};
+
+export const intensityPathwaySample: IntensityPathwayData = {
+  spec: { id: "intensity_pathway", type: "intensity_pathway", title: "Turnover intensity pathway", subtitle: "tCO₂e per £m turnover · J000712", family: "crp", specVersion: 1 },
+  unit: "tCO₂e / £m", state: "success", provenance: sharedProvenance, metric: "turnover",
+  actual: [{ year: 2022, value: 61.1 }, { year: 2023, value: 54.3 }, { year: 2024, value: 47.8 }],
+  target: [{ year: 2022, value: 61.1 }, { year: 2035, value: 30.6 }, { year: 2045, value: 0 }],
+  milestones: [{ year: 2022, value: 61.1, label: "Baseline", kind: "baseline" }, { year: 2035, value: 30.6, label: "Interim −50%", kind: "interim" }, { year: 2045, value: 0, label: "Net zero", kind: "netzero" }],
+};
+
+export const purchasedGoodsBreakdownSample: PurchasedGoodsBreakdownData = {
+  spec: { id: "purchased_goods_breakdown", type: "purchased_goods_breakdown", title: "Purchased Goods & Services emissions breakdown", subtitle: "Scope 3.1 · category view · J000712", family: "crp", specVersion: 1 },
+  unit: "tCO₂e", state: "success", provenance: { ...sharedProvenance, quality: "Spend-based" }, basis: "category",
+  activities: [
+    { id: "raw-materials", label: "Raw materials", scope: "3", value: 238.4 },
+    { id: "packaging", label: "Packaging", scope: "3", value: 151.7 },
+    { id: "contract-services", label: "Contract services", scope: "3", value: 112.6 },
+    { id: "it-telecoms", label: "IT and telecoms", scope: "3", value: 78.9 },
+    { id: "professional-services", label: "Professional services", scope: "3", value: 61.2 },
+    { id: "other-goods", label: "Other purchased goods", scope: "3", value: 43.5 },
+  ],
+};
+
+/** Canonical complete CRP chart set used by every demonstrator surface. */
+export const crpChartSamples: AnyChartData[] = [
+  scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample,
+  emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample,
+];

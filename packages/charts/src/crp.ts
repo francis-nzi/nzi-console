@@ -22,10 +22,15 @@ export const crpProfessionalManifest: ReportManifest = {
     { id: "reduction_pathway", type: "reduction_pathway", specVersion: 1, required: true },
     { id: "scope_year_on_year_bar", type: "scope_year_on_year_bar", specVersion: 1, required: true },
     { id: "emissions_by_activity", type: "emissions_by_activity", specVersion: 1, required: true },
+    { id: "emissions_site_donut", type: "emissions_site_donut", specVersion: 1, required: true },
+    { id: "intensity_pathway", type: "intensity_pathway", specVersion: 1, required: true },
+    { id: "purchased_goods_breakdown", type: "purchased_goods_breakdown", specVersion: 1, required: true },
   ],
   sections: [
     { id: "footprint", title: "Carbon footprint", description: "Current footprint and route to net zero.", layout: "two-column", chartIds: ["emissions_scope_donut", "reduction_pathway"] },
     { id: "performance", title: "Emissions performance", description: "Annual scope comparison and material activities.", layout: "two-column", chartIds: ["scope_year_on_year_bar", "emissions_by_activity"] },
+    { id: "sites-intensity", title: "Operational performance", description: "Site contribution and turnover-intensity targets.", layout: "two-column", chartIds: ["emissions_site_donut", "intensity_pathway"] },
+    { id: "purchased-goods", title: "Purchased Goods & Services", description: "Scope 3.1 emissions contribution by purchasing category.", layout: "full-width", chartIds: ["purchased_goods_breakdown"] },
   ],
 };
 

@@ -3,9 +3,12 @@ import { EmissionsByActivity } from "./EmissionsByActivity";
 import { EmissionsScopeDonut } from "./EmissionsScopeDonut";
 import { ReductionPathway } from "./ReductionPathway";
 import { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
+import { EmissionsSiteDonut } from "./EmissionsSiteDonut";
+import { IntensityPathway } from "./IntensityPathway";
+import { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
 import { validateManifest, type ReportManifest } from "./manifest";
 import { tokens } from "./tokens";
-import type { AnyChartData, EmissionsByActivityData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData } from "./types";
+import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData } from "./types";
 
 type Props = {
   manifest: ReportManifest;
@@ -32,6 +35,9 @@ function ChartFromManifest({ chart }: { chart: AnyChartData }): ReactNode {
   if (chart.spec.type === "reduction_pathway") return <ReductionPathway data={chart as ReductionPathwayData} />;
   if (chart.spec.type === "scope_year_on_year_bar") return <ScopeYearOnYearBar data={chart as ScopeYearOnYearData} />;
   if (chart.spec.type === "emissions_by_activity") return <EmissionsByActivity data={chart as EmissionsByActivityData} />;
+  if (chart.spec.type === "emissions_site_donut") return <EmissionsSiteDonut data={chart as SiteDonutData} />;
+  if (chart.spec.type === "intensity_pathway") return <IntensityPathway data={chart as IntensityPathwayData} />;
+  if (chart.spec.type === "purchased_goods_breakdown") return <PurchasedGoodsBreakdown data={chart as PurchasedGoodsBreakdownData} />;
   return <div role="alert" style={blocked}>Unsupported chart type: {chart.spec.type}</div>;
 }
 

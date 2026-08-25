@@ -31,6 +31,7 @@ export const tokens = {
     "2": "#FFC24B", // Scope 2 — amber
     "3": "#0BA75E", // Scope 3 — emerald
   } as Record<string, string>,
+  site: ["#0BA75E", "#2F7E8D", "#6B6FB3", "#D28B36", "#8A5A7B", "#51605A"],
   font:
     "var(--font-inter, Inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
 } as const;
@@ -51,6 +52,13 @@ export const TOKENS_VERSION = 1;
 export function scopeColor(scope: string): string {
   const key = String(scope).trim().charAt(0);
   return tokens.scope[key] ?? tokens.brand.pine;
+}
+
+/** Stable site colour: the same site id always resolves to the same palette slot. */
+export function siteColor(siteId: string): string {
+  let hash = 0;
+  for (const char of siteId.trim().toLowerCase()) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  return tokens.site[Math.abs(hash) % tokens.site.length] ?? tokens.brand.pine;
 }
 
 /** White or ink for a label sitting inside a coloured fill, by luminance. */

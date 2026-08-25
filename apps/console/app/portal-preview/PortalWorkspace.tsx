@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { ManifestChartSet, crpProfessionalManifest, emissionsByActivitySample, reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample, scopeYearOnYearSample, validateManifest, type AnyChartData } from "@nzi/charts";
+import { ManifestChartSet, crpChartSamples, crpProfessionalManifest, reviewedCrpSnapshotSample, validateManifest } from "@nzi/charts";
 import { canEnterPortalData, portalAccessSample, portalBucketsSample, publishedReportSample } from "@nzi/mock-data";
 
 type Tab = "results" | "data" | "documents" | "messages";
@@ -17,7 +17,7 @@ export function PortalWorkspace() {
 }
 
 function Results() {
-  const charts: AnyChartData[] = [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample];
+  const charts = crpChartSamples;
   const validation = validateManifest(crpProfessionalManifest, charts, reviewedCrpSnapshotSample.id);
   return <><div style={notice}><div><b>Verified report version</b><div style={small}>This view is fixed to {publishedReportSample.id}; later consultant edits cannot silently change it.</div></div><span style={{ marginLeft: "auto", fontSize: 12 }}>{validation.valid ? "Evidence matched" : "Unavailable"}</span></div><ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={reviewedCrpSnapshotSample.id} /></>;
 }

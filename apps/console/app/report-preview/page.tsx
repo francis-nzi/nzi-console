@@ -1,5 +1,5 @@
 import { ChartProof } from "../charts/ChartProof";
-import { EmissionsByActivity, EmissionsScopeDonut, ReductionPathway, ScopeYearOnYearBar, emissionsByActivitySample, reductionPathwaySample, scopeDonutSample, scopeYearOnYearSample } from "@nzi/charts";
+import { EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway, ScopeYearOnYearBar, emissionsByActivitySample, emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample, reductionPathwaySample, scopeDonutSample, scopeYearOnYearSample } from "@nzi/charts";
 
 export default function ReportPreviewPage() {
   return (
@@ -19,6 +19,9 @@ export default function ReportPreviewPage() {
             <div style={{ width: "100%" }}><ReductionPathway data={reductionPathwaySample} /></div>
             <div style={{ width: "100%" }}><ScopeYearOnYearBar data={scopeYearOnYearSample} /></div>
             <div style={{ width: "100%" }}><EmissionsByActivity data={emissionsByActivitySample} /></div>
+            <div style={{ width: "100%" }}><EmissionsSiteDonut data={emissionsSiteDonutSample} /></div>
+            <div style={{ width: "100%" }}><IntensityPathway data={intensityPathwaySample} /></div>
+            <div style={{ width: "100%" }}><PurchasedGoodsBreakdown data={purchasedGoodsBreakdownSample} /></div>
           </div>
         </div>
       </section>

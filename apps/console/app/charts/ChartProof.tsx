@@ -1,12 +1,10 @@
 import {
-  ManifestChartSet, chartAssetKey, crpProfessionalManifest, emissionsByActivitySample,
-  reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample,
-  scopeYearOnYearSample, validateManifest,
-  type AnyChartData, type RenderTarget,
+  ManifestChartSet, chartAssetKey, crpChartSamples, crpProfessionalManifest,
+  reviewedCrpSnapshotSample, validateManifest, type RenderTarget,
 } from "@nzi/charts";
 
 export function ChartProof({ target, label }: { target: RenderTarget; label: string }) {
-  const charts: AnyChartData[] = [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample];
+  const charts = crpChartSamples;
   const validation = validateManifest(crpProfessionalManifest, charts, reviewedCrpSnapshotSample.id);
   return (
     <>
