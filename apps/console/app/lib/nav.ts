@@ -10,7 +10,7 @@ export const NAV: NavSection[] = [
       { id: "emissions", label: "Emissions", icon: "chart", href: "/charts" },
       { id: "datasets", label: "Datasets & factors", icon: "database", href: "/datasets" },
       { id: "reports", label: "Reports", icon: "file", href: "/reports" },
-      { id: "lca", label: "LCA / PCF / CBAM", icon: "layers", href: "#" },
+      { id: "lca", label: "LCA / PCF / CBAM", icon: "layers", href: "/lca" },
     ],
   },
   {

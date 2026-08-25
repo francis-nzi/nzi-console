@@ -5,6 +5,7 @@ export * from "./jobs";
 export * from "./datasets";
 export * from "./portal";
 export * from "./reports";
+export * from "./lca";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 
