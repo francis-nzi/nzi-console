@@ -6,7 +6,7 @@ export type BrowserCommandResult<T> =
 
 export type BrowserCommandTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-async function sendBrowserCommand<T>(method: "POST" | "PATCH", path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport, reason?: string): Promise<BrowserCommandResult<T>> {
+async function sendBrowserCommand<T>(method: "POST" | "PATCH" | "PUT", path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport, reason?: string): Promise<BrowserCommandResult<T>> {
   try {
     const response = await transport(path, {
       method,
@@ -32,3 +32,4 @@ async function sendBrowserCommand<T>(method: "POST" | "PATCH", path: string, inp
 export function postBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("POST", path, input, idempotencyKey, transport); }
 export function postBrowserCommandWithReason<T>(path: string, input: unknown, idempotencyKey: string, reason: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("POST", path, input, idempotencyKey, transport, reason); }
 export function patchBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("PATCH", path, input, idempotencyKey, transport); }
+export function putBrowserCommand<T>(path: string, input: unknown, idempotencyKey: string, transport: BrowserCommandTransport = fetch) { return sendBrowserCommand<T>("PUT", path, input, idempotencyKey, transport); }
