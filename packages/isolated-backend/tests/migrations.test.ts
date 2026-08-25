@@ -26,6 +26,7 @@ const purchasedGoodsMigration=readFileSync(resolve(here,"../migrations/0015_purc
 const reportIntegrityMigration=readFileSync(resolve(here,"../migrations/0016_report_snapshot_integrity.sql"),"utf8");
 const reportPublicationMigration=readFileSync(resolve(here,"../migrations/0017_one_published_report_per_job.sql"),"utf8");
 const portalIdentityMigration=readFileSync(resolve(here,"../migrations/0018_portal_identity.sql"),"utf8");
+const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
   it("uses composite tenant foreign keys for client, job, scope and report links", () => { assert.match(schema, /FOREIGN KEY \(organisation_id, client_id\)/); assert.match(schema, /FOREIGN KEY \(organisation_id, job_id\)/); });
@@ -58,5 +59,6 @@ describe("isolated Postgres migrations", () => {
   it("binds validated report versions to one reviewed snapshot and manifest",()=>{assert.match(reportIntegrityMigration,/report_version_snapshot_fk/);assert.match(reportIntegrityMigration,/report_version_validated_snapshot_unique/);assert.match(reportIntegrityMigration,/WHERE status IN \('validated','published'\)/);});
   it("allows only one current portal publication per job",()=>{assert.match(reportPublicationMigration,/report_version_one_published_per_job/);assert.match(reportPublicationMigration,/WHERE status='published'/);});
   it("separates portal identity and binds every job grant to that user's client",()=>{assert.match(portalIdentityMigration,/portal_users/);assert.match(portalIdentityMigration,/portal_credentials/);assert.match(portalIdentityMigration,/portal_sessions/);assert.match(portalIdentityMigration,/portal_access_grant_user_client_fk/);assert.match(portalIdentityMigration,/auth_portal_user_lookup/);});
+  it("completes the synthetic portal demonstrator without presenting incomplete rows as zero",()=>{assert.match(portalReportSeed,/'711','bushy-tails',711/);assert.match(portalReportSeed,/enabled=false/);assert.match(portalReportSeed,/demo-reviewer/);assert.match(portalReportSeed,/job_emissions_targets/);assert.match(portalReportSeed,/job_intensity_targets/);});
   it("refuses missing, production, or unconfirmed database targets", () => { assert.throws(() => validateDatabaseBoundary({ appEnv: "staging" })); assert.throws(() => validateDatabaseBoundary({ appEnv: "production", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" })); const url = validateDatabaseBoundary({ appEnv: "staging", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" }); assert.equal(url.searchParams.get("application_name"), "nzi-console-isolated"); });
 });
