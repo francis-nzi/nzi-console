@@ -109,6 +109,25 @@ export function CrpScopeWorkspace({
       text: string;
     } | null>(qaNotice);
   const selected = rows.find((r) => r.id === selectedId) ?? rows[0];
+  const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
+  const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
+  const readinessChecks = [
+    { label: "Reporting datasets", complete: datasets.some((dataset) => dataset.selected), detail: `${datasets.filter((dataset) => dataset.selected).length} selected` },
+    { label: "Emission calculations", complete: qa.enabled > 0 && qa.calculationMissing === 0, detail: qa.calculationMissing ? `${qa.calculationMissing} outstanding` : "Complete" },
+    { label: "Independent QA", complete: qa.enabled > 0 && qa.independentReviewPending === 0, detail: qa.independentReviewPending ? `${qa.independentReviewPending} awaiting review` : "Approved" },
+    { label: "Reduction pathway", complete: target !== null, detail: target ? `Version ${target.version}` : "Required" },
+    { label: "Intensity metric", complete: intensityTarget !== null, detail: intensityTarget ? `Version ${intensityTarget.version}` : "Optional" },
+  ];
+  const requiredChecks = readinessChecks.slice(0, 4);
+  const completedRequired = requiredChecks.filter((check) => check.complete).length;
+  const readinessPercent = Math.round((completedRequired / requiredChecks.length) * 100);
+  const nextAction = qa.calculationMissing > 0
+    ? `Calculate ${qa.calculationMissing} outstanding emissions source${qa.calculationMissing === 1 ? "" : "s"}`
+    : qa.independentReviewPending > 0
+      ? `Complete independent review for ${qa.independentReviewPending} row${qa.independentReviewPending === 1 ? "" : "s"}`
+      : !target
+        ? "Configure the reduction pathway"
+        : "Create the reviewed reporting snapshot";
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -176,18 +195,50 @@ export function CrpScopeWorkspace({
         }
       />
       <div className="nz-head">
-        <h1>
-          {job.header.number} — {job.header.title}
-        </h1>
-        <div className="sub">
-          {job.header.client} · owner: {job.header.owner}
+        <div className="nz-job-titleline">
+          <div>
+            <div className="nz-eyebrow">Carbon Reduction Plan · {reportingYear}</div>
+            <h1>{job.header.number} — {job.header.title}</h1>
+            <div className="sub">{job.header.client} · Lead consultant: {job.header.owner}</div>
+          </div>
+          <div className="nz-head-actions">
+            <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
+            <button className="nz-btn pri" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
+          </div>
         </div>
-        <button className="nz-btn pri" onClick={() => setCreating(!creating)}>
-          {creating ? "Close" : "Add source"}
-        </button>
       </div>
       <WorkflowStageControl job={job} />
       <div className="nz-body">
+        <section className="nz-command-hero">
+          <div className="nz-command-summary">
+            <div className="nz-eyebrow light">Engagement command centre</div>
+            <h2>{qa.readyForReporting ? "Evidence complete. Ready to create the reporting snapshot." : "One clear route from evidence to an assured report."}</h2>
+            <p>Live reporting controls, calculation provenance and independent review are joined in one governed workspace.</p>
+            <div className="nz-command-next"><span>Recommended next action</span><strong>{nextAction}</strong></div>
+          </div>
+          <div className="nz-command-score">
+            <div className="nz-score-ring" style={{ "--score": `${readinessPercent * 3.6}deg` } as React.CSSProperties}><div><strong>{readinessPercent}%</strong><span>readiness</span></div></div>
+            <div><b>{completedRequired} of {requiredChecks.length}</b><span>reporting gates passed</span></div>
+          </div>
+        </section>
+        <div className="nz-command-metrics">
+          <div><span>Reported emissions</span><strong>{totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })}</strong><small>tCO₂e across enabled rows</small></div>
+          <div><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></div>
+          <div><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></div>
+          <div><span>Reporting period</span><strong>{reportingYear}</strong><small>Annual disclosure cycle</small></div>
+        </div>
+        <section className="nz-work-grid">
+          <div className="nz-panel nz-readiness-card">
+            <div className="nz-card-heading"><div><span className="nz-eyebrow">Assurance pathway</span><h3>Report readiness</h3></div><span className={`nz-st ${qa.readyForReporting ? "done" : "need"}`}>{qa.readyForReporting ? "All gates passed" : `${requiredChecks.length - completedRequired} actions remain`}</span></div>
+            <div className="nz-gate-list">{readinessChecks.map((check, index) => <div className={`nz-gate ${check.complete ? "complete" : "pending"}`} key={check.label}><span className="nz-gate-icon">{check.complete ? "✓" : index + 1}</span><div><b>{check.label}</b><small>{check.detail}</small></div></div>)}</div>
+          </div>
+          <div className="nz-panel nz-focus-card">
+            <span className="nz-eyebrow">Management focus</span><h3>{qa.readyForReporting ? "Release with confidence" : "Resolve the highest-value exceptions first"}</h3>
+            <p>{qa.readyForReporting ? "All enabled evidence has been calculated and independently approved. Freeze the evidence before publication." : "The workspace keeps missing calculations, incomplete quality evidence and pending reviews visible—never silently treated as zero."}</p>
+            <div className="nz-focus-stats"><span><b>{qa.calculationMissing}</b> calculations</span><span><b>{qa.qualityMissing}</b> quality gaps</span><span><b>{qa.independentReviewPending}</b> QA decisions</span></div>
+            <a className="nz-btn" href="#emissions-register">Open emissions register</a>
+          </div>
+        </section>
         {notice && (
           <div className={`nz-banner ${notice.kind}`}>{notice.text}</div>
         )}
@@ -222,7 +273,11 @@ export function CrpScopeWorkspace({
             No scope rows yet. Empty is not treated as zero.
           </div>
         ) : (
-          <div className="nz-panel">
+          <div className="nz-panel" id="emissions-register">
+            <div className="nz-register-head">
+              <div><span className="nz-eyebrow">Canonical evidence register</span><h3>Emissions sources</h3><p>Every result retains factor provenance, calculation lineage and an independent decision.</p></div>
+              <span className="nz-st done">{qa.enabled} enabled rows</span>
+            </div>
             <table className="nz-tbl">
               <thead>
                 <tr>
