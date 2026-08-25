@@ -7,6 +7,7 @@ export * from "./portal";
 export * from "./reports";
 export * from "./lca";
 export * from "./sales";
+export * from "./platform";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 

@@ -17,7 +17,7 @@ export const NAV: NavSection[] = [
     heading: "Growth & admin",
     items: [
       { id: "bd", label: "Sales", icon: "trend", href: "/sales", count: 9 },
-      { id: "platform", label: "Platform & audit", icon: "settings", href: "#" },
+      { id: "platform", label: "Platform & audit", icon: "settings", href: "/platform" },
     ],
   },
 ];
