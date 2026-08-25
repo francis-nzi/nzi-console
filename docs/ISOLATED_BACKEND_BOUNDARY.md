@@ -1,10 +1,10 @@
 # Isolated backend boundary
 
 Phase 3 now includes a guarded Postgres read adapter and server-only `/api/isolated/clients` and
-`/api/isolated/jobs` routes. The deployed Console remains in `NZI_DATA_MODE=fixture`, reports
-`isolation=no-database`, and holds no database credentials until a separate environment switch is approved.
+`/api/isolated/jobs` routes. The deployed staging Console now runs those two read paths in
+`NZI_DATA_MODE=isolated-api` and reports `isolation=non-production-only`; other screens remain fixtures.
 
-The future `isolated-api` mode requires an explicit non-production URL and is refused when the application
+The `isolated-api` mode requires an explicit non-production URL and is refused when the application
 environment is `production`. Repository access always requires an organisation ID and keys every record by
 `organisation_id + id`. Commands run in one transaction with optimistic versions, organisation-scoped
 idempotency, an audit record and a transactional outbox event. Any thrown error rolls all four back.

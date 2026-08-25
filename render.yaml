@@ -16,9 +16,13 @@ services:
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
       - key: NZI_DATA_MODE
-        value: fixture
-      # Non-production Supabase only — never production values.
-      # - key: NEXT_PUBLIC_SUPABASE_URL
-      #   sync: false
-      # - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-      #   sync: false
+        value: isolated-api
+      - key: NZI_DATABASE_BOUNDARY
+        value: isolated-non-production
+      - key: NZI_DEMO_ORGANISATION_ID
+        value: demo-nzi-console
+      - key: NZI_ISOLATED_API_URL
+        value: https://nzi-pro-api-prod.onrender.com
+      # Non-production Supabase only — never commit this value.
+      - key: NZI_ISOLATED_DATABASE_URL
+        sync: false
