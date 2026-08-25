@@ -21,6 +21,7 @@ const reviewMigration = readFileSync(resolve(here, "../migrations/0010_scope_row
 const snapshotMigration = readFileSync(resolve(here,"../migrations/0011_reviewed_crp_snapshots.sql"),"utf8");
 const targetMigration = readFileSync(resolve(here,"../migrations/0012_emissions_targets.sql"),"utf8");
 const siteMigration = readFileSync(resolve(here,"../migrations/0013_client_sites.sql"),"utf8");
+const intensityMigration=readFileSync(resolve(here,"../migrations/0014_intensity_targets.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
   it("uses composite tenant foreign keys for client, job, scope and report links", () => { assert.match(schema, /FOREIGN KEY \(organisation_id, client_id\)/); assert.match(schema, /FOREIGN KEY \(organisation_id, job_id\)/); });
@@ -48,5 +49,6 @@ describe("isolated Postgres migrations", () => {
   it("stores reviewed snapshots immutably with content identity",()=>{assert.match(snapshotMigration,/reviewed_crp_snapshots/);assert.match(snapshotMigration,/data_hash.*sha256/);assert.match(snapshotMigration,/UNIQUE \(organisation_id,job_id,data_hash\)/);assert.match(snapshotMigration,/REVOKE UPDATE,DELETE/);});
   it("keeps versioned emissions targets tenant isolated and chronologically constrained",()=>{assert.match(targetMigration,/job_emissions_targets/);assert.match(targetMigration,/baseline_year < interim_year AND interim_year < net_zero_year/);assert.match(targetMigration,/FORCE ROW LEVEL SECURITY/);assert.match(targetMigration,/PRIMARY KEY \(organisation_id,job_id\)/);});
   it("owns the client site dimension and tenant-safe scope-row link",()=>{assert.match(siteMigration,/client_sites/);assert.match(siteMigration,/scope_row_site_fk/);assert.match(siteMigration,/FOREIGN KEY \(organisation_id,site_id\)/);assert.match(siteMigration,/FORCE ROW LEVEL SECURITY/);});
+  it("stores constrained tenant-isolated intensity targets",()=>{assert.match(intensityMigration,/job_intensity_targets/);assert.match(intensityMigration,/reporting_denominator>0/);assert.match(intensityMigration,/baseline_year<interim_year AND interim_year<net_zero_year/);assert.match(intensityMigration,/FORCE ROW LEVEL SECURITY/);});
   it("refuses missing, production, or unconfirmed database targets", () => { assert.throws(() => validateDatabaseBoundary({ appEnv: "staging" })); assert.throws(() => validateDatabaseBoundary({ appEnv: "production", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" })); const url = validateDatabaseBoundary({ appEnv: "staging", boundaryToken: "isolated-non-production", isolatedDatabaseUrl: "postgresql://db/test" }); assert.equal(url.searchParams.get("application_name"), "nzi-console-isolated"); });
 });

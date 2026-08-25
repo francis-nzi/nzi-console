@@ -20,7 +20,7 @@ import {
 } from "@nzi/charts";
 import { loadFixtureScreen } from "@nzi/api-client";
 import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
-import type { EmissionsByActivityData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
+import type { EmissionsByActivityData,IntensityPathwayData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 
@@ -163,6 +163,7 @@ function LiveSnapshotPreview({
     generatedAt: snapshot.createdAt,
     dataHash: snapshot.dataHash,
     target: snapshot.target,
+    intensityTarget:snapshot.intensityTarget,
     annualComparison:snapshot.annualComparison,
     measurements: snapshot.measurements.map((row) => ({
       rowId: row.rowId,
@@ -179,6 +180,7 @@ function LiveSnapshotPreview({
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;
   const annual=charts.find(chart=>chart.spec.type==="scope_year_on_year_bar") as ScopeYearOnYearData|undefined;
   const sites=charts.find(chart=>chart.spec.type==="emissions_site_donut") as SiteDonutData|undefined;
+  const intensity=charts.find(chart=>chart.spec.type==="intensity_pathway") as IntensityPathwayData|undefined;
   return (
     <main
       style={{
@@ -235,6 +237,7 @@ function LiveSnapshotPreview({
           {annual&&<ScopeYearOnYearBar data={annual}/>}
           <EmissionsByActivity data={activities} />
           {sites&&<EmissionsSiteDonut data={sites}/>}
+          {intensity&&<IntensityPathway data={intensity}/>}
         </div>
         <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>
         <ManifestChartSet

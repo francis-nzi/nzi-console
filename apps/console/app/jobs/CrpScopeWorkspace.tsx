@@ -11,6 +11,7 @@ import type {
   DatasetOption,
   EmissionsTargetReadModel,
   FactorOption,
+  IntensityTargetReadModel,
   SiteOption,
   ScopeQaReadiness,
   ScopeQualityTier,
@@ -70,6 +71,7 @@ export function CrpScopeWorkspace({
   factors,
   datasets,
   target,
+  intensityTarget,
   sites,
 }: {
   job: FamilyJob;
@@ -78,6 +80,7 @@ export function CrpScopeWorkspace({
   factors: FactorOption[];
   datasets: DatasetOption[];
   target: EmissionsTargetReadModel | null;
+  intensityTarget:IntensityTargetReadModel|null;
   sites:SiteOption[];
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.readyForReporting
@@ -181,6 +184,7 @@ export function CrpScopeWorkspace({
           <div className={`nz-banner ${notice.kind}`}>{notice.text}</div>
         )}
         <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+        <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
@@ -262,6 +266,8 @@ function TargetPanel({jobId,reportingYear,target,notice}:{jobId:string;reporting
 }
 
 function SitePanel({jobId,sites,notice}:{jobId:string;sites:SiteOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){setPending(true);const result=await postBrowserCommand<{siteId:string;name:string}>(`/api/isolated/jobs/${jobId}/sites`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Site ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Client sites</b><div className="sub">Assign emissions rows to a controlled site list. Unassigned emissions remain visible as Unallocated.</div><div style={{display:"flex",gap:10,marginTop:12}}><input className="nz-inp" value={name} onChange={e=>setName(e.target.value)} placeholder="New site name"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>Add site</button><span className="nz-st done">{sites.length} sites</span></div></div>}
+
+function IntensityPanel({jobId,reportingYear,target,notice}:{jobId:string;reportingYear:number;target:IntensityTargetReadModel|null;notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[value,setValue]=useState({metric:target?.metric??"turnover" as "turnover"|"employee"|"floor-area",denominatorUnit:target?.denominatorUnit??"£m revenue",reportingDenominator:target?.reportingDenominator??0,baselineYear:target?.baselineYear??reportingYear,baselineIntensity:target?.baselineIntensity??0,interimYear:target?.interimYear??2030,interimReductionPercent:target?.interimReductionPercent??50,netZeroYear:target?.netZeroYear??2050}),[pending,setPending]=useState(false);async function save(){setPending(true);const result=await putBrowserCommand<{version:number}>(`/api/isolated/jobs/${jobId}/intensity-target`,{...value,expectedVersion:target?.version??0},crypto.randomUUID());setPending(false);if(result.state==="success"){notice({kind:"ok",text:`Intensity target v${result.data.version} saved for the next reviewed snapshot.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Intensity metric target</b><div className="sub">Current intensity is reviewed tCO₂e divided by the reporting denominator.</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(130px,1fr))",gap:10,marginTop:12}}><label className="nz-fl">Metric<select className="nz-sel" value={value.metric} onChange={e=>setValue({...value,metric:e.target.value as typeof value.metric})}><option value="turnover">Turnover</option><option value="employee">Employees</option><option value="floor-area">Floor area</option></select></label><label className="nz-fl">Denominator unit<input className="nz-inp" value={value.denominatorUnit} onChange={e=>setValue({...value,denominatorUnit:e.target.value})}/></label><label className="nz-fl">Reporting denominator<input className="nz-inp" type="number" step="any" value={value.reportingDenominator} onChange={e=>setValue({...value,reportingDenominator:Number(e.target.value)})}/></label><label className="nz-fl">Baseline year<input className="nz-inp" type="number" value={value.baselineYear} onChange={e=>setValue({...value,baselineYear:Number(e.target.value)})}/></label><label className="nz-fl">Baseline intensity<input className="nz-inp" type="number" step="any" value={value.baselineIntensity} onChange={e=>setValue({...value,baselineIntensity:Number(e.target.value)})}/></label><label className="nz-fl">Interim year<input className="nz-inp" type="number" value={value.interimYear} onChange={e=>setValue({...value,interimYear:Number(e.target.value)})}/></label><label className="nz-fl">Interim reduction %<input className="nz-inp" type="number" step="any" value={value.interimReductionPercent} onChange={e=>setValue({...value,interimReductionPercent:Number(e.target.value)})}/></label><label className="nz-fl">Net-zero year<input className="nz-inp" type="number" value={value.netZeroYear} onChange={e=>setValue({...value,netZeroYear:Number(e.target.value)})}/></label></div><div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}><button className="nz-btn pri" disabled={pending} onClick={save}>{pending?"Saving…":"Save intensity target"}</button></div></div>}
 
 function DatasetPanel({
   jobId,
