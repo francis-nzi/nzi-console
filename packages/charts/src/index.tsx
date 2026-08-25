@@ -5,13 +5,14 @@ export { EmissionsScopeDonut, formatDate } from "./EmissionsScopeDonut";
 export { ReductionPathway } from "./ReductionPathway";
 export { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 export { EmissionsByActivity } from "./EmissionsByActivity";
+export { ManifestChartSet } from "./ManifestChartSet";
 
 export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, readableInkOn } from "./tokens";
 export { RENDERER_VERSION, chartAssetKey } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";
-export type { ReportManifest, ManifestValidation, ManifestIssue } from "./manifest";
+export type { ReportManifest, ReportManifestSection, ManifestValidation, ManifestIssue } from "./manifest";
 export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts } from "./crp";
 export type { ReviewedCrpSnapshot, ReviewedScopeMeasurement } from "./crp";
 export {

@@ -1,7 +1,20 @@
 import type { AnyChartData, ChartType, JobFamily } from "./types";
 
 export type ReportManifestChart = { id: string; type: ChartType; specVersion: number; required: boolean };
-export type ReportManifest = { id: string; family: JobFamily; version: number; charts: ReportManifestChart[] };
+export type ReportManifestSection = {
+  id: string;
+  title: string;
+  description?: string;
+  layout: "two-column" | "full-width";
+  chartIds: string[];
+};
+export type ReportManifest = {
+  id: string;
+  family: JobFamily;
+  version: number;
+  charts: ReportManifestChart[];
+  sections: ReportManifestSection[];
+};
 export type ManifestIssue = {
   code: "missing_required_chart" | "chart_failed" | "chart_not_successful" | "wrong_chart_type" |
     "wrong_spec_version" | "wrong_family" | "snapshot_mismatch" | "missing_provenance";

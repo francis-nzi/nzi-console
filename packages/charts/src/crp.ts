@@ -20,6 +20,12 @@ export const crpProfessionalManifest: ReportManifest = {
   charts: [
     { id: "emissions_scope_donut", type: "emissions_scope_donut", specVersion: 2, required: true },
     { id: "reduction_pathway", type: "reduction_pathway", specVersion: 1, required: true },
+    { id: "scope_year_on_year_bar", type: "scope_year_on_year_bar", specVersion: 1, required: true },
+    { id: "emissions_by_activity", type: "emissions_by_activity", specVersion: 1, required: true },
+  ],
+  sections: [
+    { id: "footprint", title: "Carbon footprint", description: "Current footprint and route to net zero.", layout: "two-column", chartIds: ["emissions_scope_donut", "reduction_pathway"] },
+    { id: "performance", title: "Emissions performance", description: "Annual scope comparison and material activities.", layout: "two-column", chartIds: ["scope_year_on_year_bar", "emissions_by_activity"] },
   ],
 };
 

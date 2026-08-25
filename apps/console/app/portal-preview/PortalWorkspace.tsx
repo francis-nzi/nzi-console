@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { EmissionsByActivity, EmissionsScopeDonut, ReductionPathway, ScopeYearOnYearBar, crpProfessionalManifest, emissionsByActivitySample, reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample, scopeYearOnYearSample, validateManifest } from "@nzi/charts";
+import { ManifestChartSet, crpProfessionalManifest, emissionsByActivitySample, reductionPathwaySample, reviewedCrpSnapshotSample, scopeDonutSample, scopeYearOnYearSample, validateManifest, type AnyChartData } from "@nzi/charts";
 import { canEnterPortalData, portalAccessSample, portalBucketsSample, publishedReportSample } from "@nzi/mock-data";
 
 type Tab = "results" | "data" | "documents" | "messages";
@@ -17,8 +17,9 @@ export function PortalWorkspace() {
 }
 
 function Results() {
-  const validation = validateManifest(crpProfessionalManifest, [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample], reviewedCrpSnapshotSample.id);
-  return <><div style={notice}><div><b>Verified report version</b><div style={small}>This view is fixed to {publishedReportSample.id}; later consultant edits cannot silently change it.</div></div><span style={{ marginLeft: "auto", fontSize: 12 }}>{validation.valid ? "Evidence matched" : "Unavailable"}</span></div><div style={grid}><EmissionsScopeDonut data={scopeDonutSample} /><ReductionPathway data={reductionPathwaySample} /><ScopeYearOnYearBar data={scopeYearOnYearSample} /><EmissionsByActivity data={emissionsByActivitySample} /></div></>;
+  const charts: AnyChartData[] = [scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample];
+  const validation = validateManifest(crpProfessionalManifest, charts, reviewedCrpSnapshotSample.id);
+  return <><div style={notice}><div><b>Verified report version</b><div style={small}>This view is fixed to {publishedReportSample.id}; later consultant edits cannot silently change it.</div></div><span style={{ marginLeft: "auto", fontSize: 12 }}>{validation.valid ? "Evidence matched" : "Unavailable"}</span></div><ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={reviewedCrpSnapshotSample.id} /></>;
 }
 
 function DataEntry() {
@@ -29,7 +30,6 @@ function DataEntry() {
 function Documents() { return <div style={card}>{[["CRP-J000712-v1.pdf", "Published report · 2.4 MB"], ["Emissions certificate.pdf", "Certificate · 340 KB"], ["Methodology statement.pdf", "Reference · 520 KB"]].map(([name, detail]) => <div key={name} style={{ display: "flex", padding: "16px 4px", borderBottom: "1px solid #EDF1EF", alignItems: "center" }}><div><b>{name}</b><div style={small}>{detail}</div></div><button className="nz-btn" style={{ marginLeft: "auto" }}>Download</button></div>)}</div>; }
 function Messages() { return <div style={card}><div style={{ padding: 14, borderRadius: 8, background: "#F6F8F7" }}><b>A. Shaw · NZI reviewer</b><p style={{ margin: "6px 0 0", color: "#51605A", fontSize: 13 }}>The 2024 report is published. Please use this thread for questions about the results or supporting evidence.</p></div><textarea className="nz-notes" style={{ marginTop: 16, width: "100%" }} placeholder="Reply to the NZI review team…" /><div style={{ textAlign: "right", marginTop: 10 }}><button className="nz-btn pri">Send message</button></div></div>; }
 
-const grid = { display: "grid", gridTemplateColumns: "repeat(2, minmax(420px, 1fr))", gap: 18 };
 const card = { background: "white", border: "1px solid #E4EAE7", borderRadius: 12, padding: 18 };
 const notice = { display: "flex", alignItems: "center", background: "#DFF5E9", color: "#0B7A4B", border: "1px solid #BCE8D0", borderRadius: 10, padding: "13px 16px", marginBottom: 18 };
 const small = { fontSize: 12, color: "#68766F", marginTop: 3 };
