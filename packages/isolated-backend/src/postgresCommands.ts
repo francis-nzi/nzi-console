@@ -1011,11 +1011,12 @@ export async function createReviewedCrpSnapshot(
         version: number;
         job_family: string;
         job_number: string;
+        client_id: string;
         reporting_year: number | null;
         start_date: Date | string;
         client_name: string;
       }>(
-        `SELECT j.version,j.job_family,j.job_number,j.reporting_year,j.start_date,c.name AS client_name FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 FOR UPDATE`,
+        `SELECT j.version,j.job_family,j.job_number,j.client_id,j.reporting_year,j.start_date,c.name AS client_name FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 FOR UPDATE`,
         [context.organisationId, input.jobId],
       );
       const job = jobResult.rows[0];
@@ -1087,6 +1088,10 @@ export async function createReviewedCrpSnapshot(
             : String(job.start_date)
           ).slice(0, 4),
         );
+      const historicalResult=await db.query<{snapshot_id:string;data_hash:string;reporting_year:number;measurements:Array<{scope:string;tco2e:number}>}>(`SELECT DISTINCT ON ((s.payload_json->>'reportingYear')::integer) s.snapshot_id,s.data_hash,(s.payload_json->>'reportingYear')::integer AS reporting_year,s.payload_json->'measurements' AS measurements FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs previous_job ON (previous_job.organisation_id,previous_job.job_id)=(s.organisation_id,s.job_id) WHERE s.organisation_id=$1 AND previous_job.client_id=$2 AND previous_job.job_family='crp' AND (s.payload_json->>'reportingYear')::integer<$3 ORDER BY (s.payload_json->>'reportingYear')::integer,s.snapshot_version DESC`,[context.organisationId,job.client_id,reportingYear]);
+      const scopeValues=(measurements:Array<{scope:string;tco2e:number}>)=>(["1","2","3"] as const).map(scope=>({scope,value:measurements.filter(row=>row.scope===scope).reduce((sum,row)=>sum+Number(row.tco2e),0)}));
+      const currentMeasurements=enabled.map(row=>({scope:row.scope.split(".")[0]!,tco2e:Number(row.override_tco2e??row.calculated_tco2e)}));
+      const annualComparison=[...historicalResult.rows.map(row=>({year:row.reporting_year,sourceSnapshotId:row.snapshot_id,sourceDataHash:row.data_hash,values:scopeValues(row.measurements)})),{year:reportingYear,sourceSnapshotId:"current",sourceDataHash:"current",values:scopeValues(currentMeasurements)}];
       const payload = {
         jobId: input.jobId,
         jobNumber: job.job_number,
@@ -1094,6 +1099,7 @@ export async function createReviewedCrpSnapshot(
         reportingYear,
         jobVersion: job.version,
         target,
+        annualComparison,
         measurements: enabled.map((row) => ({
           rowId: row.scope_row_id,
           rowVersion: row.version,

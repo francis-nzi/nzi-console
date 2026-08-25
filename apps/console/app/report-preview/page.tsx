@@ -20,7 +20,7 @@ import {
 } from "@nzi/charts";
 import { loadFixtureScreen } from "@nzi/api-client";
 import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
-import type { EmissionsByActivityData,ReductionPathwayData,ScopeDonutData } from "@nzi/charts";
+import type { EmissionsByActivityData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 
@@ -163,6 +163,7 @@ function LiveSnapshotPreview({
     generatedAt: snapshot.createdAt,
     dataHash: snapshot.dataHash,
     target: snapshot.target,
+    annualComparison:snapshot.annualComparison,
     measurements: snapshot.measurements.map((row) => ({
       rowId: row.rowId,
       scope: row.scope,
@@ -174,6 +175,7 @@ function LiveSnapshotPreview({
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
   const activities=charts.find(chart=>chart.spec.type==="emissions_by_activity") as EmissionsByActivityData;
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;
+  const annual=charts.find(chart=>chart.spec.type==="scope_year_on_year_bar") as ScopeYearOnYearData|undefined;
   return (
     <main
       style={{
@@ -213,8 +215,7 @@ function LiveSnapshotPreview({
             <b>Preview only—publication remains blocked.</b>
             <div style={{ marginTop: 4 }}>
               These graphics resolve from canonical reviewed rows. The
-              professional manifest still requires annual comparison, site,
-              intensity and purchased-goods category inputs{pathway?".":"; configure a reduction target to add the pathway."}
+              The remaining blockers are shown below. Annual comparison appears automatically once this client has reviewed snapshots for at least two reporting years.
             </div>
           </div>
         </div>
@@ -228,6 +229,7 @@ function LiveSnapshotPreview({
         >
           <EmissionsScopeDonut data={scope} />
           {pathway&&<ReductionPathway data={pathway}/>}
+          {annual&&<ScopeYearOnYearBar data={annual}/>}
           <EmissionsByActivity data={activities} />
         </div>
         <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>

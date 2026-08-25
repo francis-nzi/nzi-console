@@ -45,6 +45,7 @@ export type ReviewedCrpSnapshotCore = {
   generatedAt: string;
   dataHash: string;
   target?: {baselineYear:number;baselineTco2e:number;interimYear:number;interimReductionPercent:number;netZeroYear:number}|null;
+  annualComparison?:Array<{year:number;values:Array<{scope:"1"|"2"|"3";value:number}>}>;
   measurements: Array<{
     rowId: string;
     scope: "1" | "2" | "3";
@@ -304,5 +305,6 @@ export function resolveCrpCoreCharts(
     },
   ];
   if(snapshot.target){const t=snapshot.target,interim=t.baselineTco2e*(1-t.interimReductionPercent/100),actualTotal=snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0);charts.splice(1,0,{spec:{id:"reduction_pathway",type:"reduction_pathway",title:"Emissions reduction pathway to net zero",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,actual:[{year:t.baselineYear,value:t.baselineTco2e},...(snapshot.reportingYear===t.baselineYear?[]:[{year:snapshot.reportingYear,value:actualTotal}])],target:[{year:t.baselineYear,value:t.baselineTco2e},{year:t.interimYear,value:interim},{year:t.netZeroYear,value:0}],milestones:[{year:t.baselineYear,value:t.baselineTco2e,label:"Baseline",kind:"baseline"},{year:t.interimYear,value:interim,label:`Interim -${t.interimReductionPercent}%`,kind:"interim"},{year:t.netZeroYear,value:0,label:"Net zero",kind:"netzero"}],provenance});}
+  if((snapshot.annualComparison?.length??0)>1){charts.splice(charts.length-1,0,{spec:{id:"scope_year_on_year_bar",type:"scope_year_on_year_bar",title:"Annual emissions comparison by scope",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,years:snapshot.annualComparison!,provenance});}
   return charts;
 }
