@@ -1,0 +1,7 @@
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  .print-controls{display:none!important}
+  .published-print{padding:0!important;background:#fff!important}
+  .published-print-sheet{box-shadow:none!important;max-width:none!important;margin:0!important;padding:0!important}
+  .published-print [data-chart]{break-inside:avoid;page-break-inside:avoid}
+}
