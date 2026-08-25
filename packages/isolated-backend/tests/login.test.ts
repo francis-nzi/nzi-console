@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { completeStaffMfa, encryptTotpSecret, hashPassword, InvalidLoginError, startStaffLogin, totpCode } from "../src/index";
+import { completePortalMfa,completeStaffMfa, encryptTotpSecret, hashPassword, InvalidLoginError, startPortalLogin,startStaffLogin, totpCode } from "../src/index";
 
 const encryptionKey = Buffer.alloc(32, 9).toString("base64");
 const secret = "JBSWY3DPEHPK3PXP";
@@ -44,3 +44,5 @@ describe("staff login service", () => {
     assert.equal(test.state().challenge, undefined);
   });
 });
+
+describe("client portal login service",()=>{it("creates an MFA-backed session scoped to one client",async()=>{const password=await hashPassword("correct horse battery staple"),encrypted=encryptTotpSecret(secret,encryptionKey),credential={organisation_id:"demo-nzi-console",portal_user_id:"portal-a",client_id:"client-a",display_name:"Synthetic User",password_salt:password.salt,password_hash:password.hash,totp_ciphertext:encrypted.ciphertext,totp_iv:encrypted.iv,totp_tag:encrypted.tag,enabled:true,failed_attempts:0,locked_until:null};let challenge:{challenge_id:string;token_hash:string;attempts:number;expires_at:string;consumed_at:null}|undefined;const client={async query(sql:string,values?:readonly unknown[]){if(sql.includes("FROM nzi_console.portal_credentials c")&&sql.includes("FOR UPDATE OF c"))return{rows:[credential]};if(sql.includes("INSERT INTO nzi_console.portal_login_challenges")){challenge={challenge_id:String(values?.[1]),token_hash:String(values?.[3]),attempts:0,expires_at:new Date(now.getTime()+300_000).toISOString(),consumed_at:null};return{rows:[]}}if(sql.includes("FROM nzi_console.portal_login_challenges ch"))return{rows:challenge?[{...credential,...challenge}]:[]};return{rows:[]}},release(){}};const pool={connect:async()=>client} as never,started=await startPortalLogin(pool,{organisationId:"demo-nzi-console",email:"portal@example.invalid",password:"correct horse battery staple"},now),session=await completePortalMfa(pool,{organisationId:"demo-nzi-console",challengeToken:started.challengeToken,code:totpCode(secret,now.getTime())},encryptionKey,now);assert.equal(session.principal,"portal");assert.equal(session.clientId,"client-a");assert.equal(session.userId,"portal-a");});});

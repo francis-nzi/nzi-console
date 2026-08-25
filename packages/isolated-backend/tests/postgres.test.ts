@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getCurrentPublishedCrpReport,listClients, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import { getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listClients, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -29,6 +29,7 @@ describe("isolated Postgres adapter", () => {
   });
 
   it("loads the current published report from its matching frozen snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",manifest_version:1,report_data_hash:"sha256:abc",published_at:"2026-08-25T18:00:00Z",snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable;const report=await getCurrentPublishedCrpReport(db,"job-a");assert.equal(report?.snapshot.jobNumber,"J000612");assert.equal(report?.reportVersionId,"report-a");});
+  it("returns no portal report unless the user, client and job grant all match",async()=>{const db={query:async(sql:string)=>({rows:sql.includes("portal_access_grants")?[]:[{report_version_id:"should-not-load"}]})} as Queryable;assert.equal(await getGrantedPublishedCrpReport(db,{portalUserId:"user-a",clientId:"client-a",jobId:"job-a"}),null);});
 
   it("rolls back and releases the connection when a read fails", async () => {
     const calls: string[] = [];

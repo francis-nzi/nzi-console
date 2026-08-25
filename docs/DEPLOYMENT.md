@@ -29,6 +29,8 @@ FuelCap services.
 | `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` |
 | `NZI_ISOLATED_API_URL` | `https://nzi-pro-api-prod.onrender.com` |
 | `NZI_ISOLATED_DATABASE_URL` | Secret non-production Supabase session-pooler URL; Render only |
+| `NZI_PORTAL_AUTH_ENABLED` | Set to `true` when independent client portal sign-in is enabled |
+| `NZI_PORTAL_SESSION_SECRET` | Dedicated random secret of at least 32 bytes; never reuse the staff session secret |
 | `NZI_AUTH_ENABLED` | `true` |
 | `NZI_AUTH_REQUIRED` | `true` |
 | `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |
