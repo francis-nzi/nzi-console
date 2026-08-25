@@ -5,6 +5,7 @@ import { platformSummary, tenantIsolationPass, type AuditEvent, type PlatformSer
 import { commandDefinitions } from "@nzi/contracts";
 import { NAV, USER } from "../lib/nav";
 import {PortalAccessAdmin} from "./PortalAccessAdmin";
+import {PortalInviteAdmin} from "./PortalInviteAdmin";
 
 type View = "overview" | "audit" | "access" | "commands" | "workers";
 export function PlatformBoard({ services, events, roles }: { services: PlatformService[]; events: AuditEvent[]; roles: StaffRole[] }) {
@@ -21,7 +22,7 @@ export function PlatformBoard({ services, events, roles }: { services: PlatformS
       <div className="nz-toolbar" style={{ padding: "18px 0 12px" }}><div className="nz-filters">{(["overview", "audit", "access", "commands", "workers"] as View[]).map((id) => <button key={id} className={view === id ? "on" : undefined} onClick={() => setView(id)}>{id}</button>)}</div>{view === "audit" ? <div className="nz-filters" style={{ marginLeft: "auto" }}>{(["all", "allowed", "denied", "failed"] as const).map((id) => <button key={id} className={result === id ? "on" : undefined} onClick={() => setResult(id)}>{id}</button>)}</div> : null}</div>
       {view === "overview" && <Overview services={services} events={events} select={setSelectedId} />}
       {view === "audit" && <AuditLog events={visibleEvents} selectedId={selectedId} select={setSelectedId} />}
-      {view === "access" && <><Access roles={roles} /><div style={{marginTop:20}}><PortalAccessAdmin /></div></>}
+      {view === "access" && <><Access roles={roles} /><div style={{marginTop:20}}><PortalInviteAdmin/><PortalAccessAdmin /></div></>}
       {view === "commands" && <Commands />}
       {view === "workers" && <Services services={services.filter((service) => service.area === "Background" || service.area === "Integration")} />}
     </div>
