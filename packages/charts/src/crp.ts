@@ -50,11 +50,14 @@ export type ReviewedCrpSnapshotCore = {
   measurements: Array<{
     rowId: string;
     scope: "1" | "2" | "3";
+    scopeCode?:string;
     sourceLabel: string;
     tco2e: number;
     factorSet: string;
     siteId?:string|null;
     siteLabel?:string|null;
+    purchasedGoodsCategoryId?:string|null;
+    purchasedGoodsCategoryLabel?:string|null;
   }>;
 };
 
@@ -311,5 +314,6 @@ export function resolveCrpCoreCharts(
   if((snapshot.annualComparison?.length??0)>1){charts.splice(charts.length-1,0,{spec:{id:"scope_year_on_year_bar",type:"scope_year_on_year_bar",title:"Annual emissions comparison by scope",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,years:snapshot.annualComparison!,provenance});}
   if(snapshot.intensityTarget){const t=snapshot.intensityTarget,current=snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0)/t.reportingDenominator,interim=t.baselineIntensity*(1-t.interimReductionPercent/100);charts.push({spec:{id:"intensity_pathway",type:"intensity_pathway",title:"Intensity reduction pathway",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:`tCO₂e / ${t.denominatorUnit}`,state,metric:t.metric,actual:[{year:t.baselineYear,value:t.baselineIntensity},...(snapshot.reportingYear===t.baselineYear?[]:[{year:snapshot.reportingYear,value:current}])],target:[{year:t.baselineYear,value:t.baselineIntensity},{year:t.interimYear,value:interim},{year:t.netZeroYear,value:0}],milestones:[{year:t.baselineYear,value:t.baselineIntensity,label:"Baseline",kind:"baseline"},{year:t.interimYear,value:interim,label:`Interim -${t.interimReductionPercent}%`,kind:"interim"},{year:t.netZeroYear,value:0,label:"Net zero",kind:"netzero"}],provenance});}
   if(snapshot.measurements.length){const siteTotals=new Map<string,{id:string;label:string;value:number}>();for(const row of snapshot.measurements){const id=row.siteId??"unallocated",label=row.siteLabel?.trim()||"Unallocated";const current=siteTotals.get(id)??{id,label,value:0};current.value+=row.tco2e;siteTotals.set(id,current);}charts.push({spec:{id:"emissions_site_donut",type:"emissions_site_donut",title:`${snapshot.reportingYear} emissions by site`,subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,sites:[...siteTotals.values()].sort((a,b)=>b.value-a.value),provenance});}
+  const purchased=snapshot.measurements.filter(row=>row.scopeCode==="3.1");if(purchased.length){const totals=new Map<string,{id:string;label:string;scope:"3";value:number}>();for(const row of purchased){const id=row.purchasedGoodsCategoryId??"uncategorised",label=row.purchasedGoodsCategoryLabel?.trim()||"Uncategorised";const current=totals.get(id)??{id,label,scope:"3" as const,value:0};current.value+=row.tco2e;totals.set(id,current);}charts.push({spec:{id:"purchased_goods_breakdown",type:"purchased_goods_breakdown",title:"Purchased Goods & Services emissions breakdown",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,basis:"category",activities:[...totals.values()].sort((a,b)=>b.value-a.value),provenance});}
   return charts;
 }

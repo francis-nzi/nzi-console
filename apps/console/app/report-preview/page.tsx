@@ -20,7 +20,7 @@ import {
 } from "@nzi/charts";
 import { loadFixtureScreen } from "@nzi/api-client";
 import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
-import type { EmissionsByActivityData,IntensityPathwayData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
+import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 
@@ -173,6 +173,9 @@ function LiveSnapshotPreview({
       factorSet: row.factorSet,
       siteId:row.siteId,
       siteLabel:row.siteLabel,
+      scopeCode:row.scopeCode,
+      purchasedGoodsCategoryId:row.purchasedGoodsCategoryId,
+      purchasedGoodsCategoryLabel:row.purchasedGoodsCategoryLabel,
     })),
   });
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
@@ -181,6 +184,7 @@ function LiveSnapshotPreview({
   const annual=charts.find(chart=>chart.spec.type==="scope_year_on_year_bar") as ScopeYearOnYearData|undefined;
   const sites=charts.find(chart=>chart.spec.type==="emissions_site_donut") as SiteDonutData|undefined;
   const intensity=charts.find(chart=>chart.spec.type==="intensity_pathway") as IntensityPathwayData|undefined;
+  const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
   return (
     <main
       style={{
@@ -238,6 +242,7 @@ function LiveSnapshotPreview({
           <EmissionsByActivity data={activities} />
           {sites&&<EmissionsSiteDonut data={sites}/>}
           {intensity&&<IntensityPathway data={intensity}/>}
+          {purchasedGoods&&<PurchasedGoodsBreakdown data={purchasedGoods}/>}
         </div>
         <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>
         <ManifestChartSet

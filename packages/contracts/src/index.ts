@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "portal" | "sales" | "platform";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "portal" | "sales" | "platform";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -22,6 +22,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   emissionsTarget: { key:"emissionsTarget",validate:(value)=>record(value)&&("target" in value),isEmpty:()=>false },
   intensityTarget:{key:"intensityTarget",validate:(value)=>record(value)&&("target" in value),isEmpty:()=>false},
   sites:{key:"sites",validate:(value)=>rows(value,"sites"),isEmpty:()=>false},
+  purchasedGoodsCategories:{key:"purchasedGoodsCategories",validate:(value)=>rows(value,"categories"),isEmpty:()=>false},
   reviewedSnapshots:{key:"reviewedSnapshots",validate:(value)=>rows(value,"snapshots"),isEmpty:(value)=>record(value)&&(value.snapshots as unknown[]).length===0},
   charts: { key: "charts", validate: record, isEmpty: () => false },
   datasets: { key: "datasets", validate: (value) => rows(value, "datasets") && rows(value, "issues"), isEmpty: (value) => record(value) && (value.datasets as unknown[]).length === 0 },

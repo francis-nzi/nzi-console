@@ -12,6 +12,7 @@ import type {
   EmissionsTargetReadModel,
   FactorOption,
   IntensityTargetReadModel,
+  PurchasedGoodsCategoryOption,
   SiteOption,
   ScopeQaReadiness,
   ScopeQualityTier,
@@ -28,6 +29,8 @@ const blank = (): ScopeRowWriteFields => ({
   sourceLabel: "",
   siteId:null,
   siteLabel:null,
+  purchasedGoodsCategoryId:null,
+  purchasedGoodsCategoryLabel:null,
   quantity: null,
   unit: null,
   datasetId: null,
@@ -47,6 +50,8 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   sourceLabel: r.sourceLabel,
   siteId:r.siteId,
   siteLabel:r.siteLabel,
+  purchasedGoodsCategoryId:r.purchasedGoodsCategoryId,
+  purchasedGoodsCategoryLabel:r.purchasedGoodsCategoryLabel,
   quantity: r.quantity,
   unit: r.unit,
   datasetId: r.datasetId,
@@ -73,6 +78,7 @@ export function CrpScopeWorkspace({
   target,
   intensityTarget,
   sites,
+  purchasedGoodsCategories,
 }: {
   job: FamilyJob;
   rows: ScopeRowReadModel[];
@@ -82,6 +88,7 @@ export function CrpScopeWorkspace({
   target: EmissionsTargetReadModel | null;
   intensityTarget:IntensityTargetReadModel|null;
   sites:SiteOption[];
+  purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.readyForReporting
     ? {
@@ -130,6 +137,7 @@ export function CrpScopeWorkspace({
         row={selected}
         factors={factors}
         sites={sites}
+        purchasedGoodsCategories={purchasedGoodsCategories}
         notice={setNotice}
       />
       <div className="nz-sect">Calculation lineage</div>
@@ -186,6 +194,7 @@ export function CrpScopeWorkspace({
         <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
         <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
+        <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
           datasets={datasets}
@@ -202,7 +211,7 @@ export function CrpScopeWorkspace({
               Factors are limited to datasets selected for this reporting
               period.
             </p>
-            <Fields value={draft} change={setDraft} factors={factors} sites={sites}/>
+            <Fields value={draft} change={setDraft} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
             <button className="nz-btn pri" disabled={pending}>
               {pending ? "Creating…" : "Create scope row"}
             </button>
@@ -268,6 +277,8 @@ function TargetPanel({jobId,reportingYear,target,notice}:{jobId:string;reporting
 function SitePanel({jobId,sites,notice}:{jobId:string;sites:SiteOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){setPending(true);const result=await postBrowserCommand<{siteId:string;name:string}>(`/api/isolated/jobs/${jobId}/sites`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Site ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Client sites</b><div className="sub">Assign emissions rows to a controlled site list. Unassigned emissions remain visible as Unallocated.</div><div style={{display:"flex",gap:10,marginTop:12}}><input className="nz-inp" value={name} onChange={e=>setName(e.target.value)} placeholder="New site name"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>Add site</button><span className="nz-st done">{sites.length} sites</span></div></div>}
 
 function IntensityPanel({jobId,reportingYear,target,notice}:{jobId:string;reportingYear:number;target:IntensityTargetReadModel|null;notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[value,setValue]=useState({metric:target?.metric??"turnover" as "turnover"|"employee"|"floor-area",denominatorUnit:target?.denominatorUnit??"£m revenue",reportingDenominator:target?.reportingDenominator??0,baselineYear:target?.baselineYear??reportingYear,baselineIntensity:target?.baselineIntensity??0,interimYear:target?.interimYear??2030,interimReductionPercent:target?.interimReductionPercent??50,netZeroYear:target?.netZeroYear??2050}),[pending,setPending]=useState(false);async function save(){setPending(true);const result=await putBrowserCommand<{version:number}>(`/api/isolated/jobs/${jobId}/intensity-target`,{...value,expectedVersion:target?.version??0},crypto.randomUUID());setPending(false);if(result.state==="success"){notice({kind:"ok",text:`Intensity target v${result.data.version} saved for the next reviewed snapshot.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Intensity metric target</b><div className="sub">Current intensity is reviewed tCO₂e divided by the reporting denominator.</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(130px,1fr))",gap:10,marginTop:12}}><label className="nz-fl">Metric<select className="nz-sel" value={value.metric} onChange={e=>setValue({...value,metric:e.target.value as typeof value.metric})}><option value="turnover">Turnover</option><option value="employee">Employees</option><option value="floor-area">Floor area</option></select></label><label className="nz-fl">Denominator unit<input className="nz-inp" value={value.denominatorUnit} onChange={e=>setValue({...value,denominatorUnit:e.target.value})}/></label><label className="nz-fl">Reporting denominator<input className="nz-inp" type="number" step="any" value={value.reportingDenominator} onChange={e=>setValue({...value,reportingDenominator:Number(e.target.value)})}/></label><label className="nz-fl">Baseline year<input className="nz-inp" type="number" value={value.baselineYear} onChange={e=>setValue({...value,baselineYear:Number(e.target.value)})}/></label><label className="nz-fl">Baseline intensity<input className="nz-inp" type="number" step="any" value={value.baselineIntensity} onChange={e=>setValue({...value,baselineIntensity:Number(e.target.value)})}/></label><label className="nz-fl">Interim year<input className="nz-inp" type="number" value={value.interimYear} onChange={e=>setValue({...value,interimYear:Number(e.target.value)})}/></label><label className="nz-fl">Interim reduction %<input className="nz-inp" type="number" step="any" value={value.interimReductionPercent} onChange={e=>setValue({...value,interimReductionPercent:Number(e.target.value)})}/></label><label className="nz-fl">Net-zero year<input className="nz-inp" type="number" value={value.netZeroYear} onChange={e=>setValue({...value,netZeroYear:Number(e.target.value)})}/></label></div><div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}><button className="nz-btn pri" disabled={pending} onClick={save}>{pending?"Saving…":"Save intensity target"}</button></div></div>}
+
+function PurchasedGoodsPanel({jobId,categories,notice}:{jobId:string;categories:PurchasedGoodsCategoryOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){setPending(true);const result=await postBrowserCommand<{categoryId:string;name:string}>(`/api/isolated/jobs/${jobId}/purchased-goods-categories`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Purchased-goods category ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <div className="nz-panel" style={{padding:16,marginBottom:16}}><b>Purchased Goods &amp; Services categories</b><div className="sub">Controlled client categories are available on Scope 3.1 rows and drive the report breakdown.</div><div style={{display:"flex",gap:10,marginTop:12}}><input className="nz-inp" value={name} onChange={e=>setName(e.target.value)} placeholder="New purchasing category"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>Add category</button><span className="nz-st done">{categories.length} categories</span></div></div>}
 
 function DatasetPanel({
   jobId,
@@ -376,11 +387,13 @@ function Fields({
   change,
   factors,
   sites,
+  purchasedGoodsCategories,
 }: {
   value: ScopeRowWriteFields;
   change: (v: ScopeRowWriteFields) => void;
   factors: FactorOption[];
   sites:SiteOption[];
+  purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
 }) {
   const available = factors.filter((f) =>
       f.scopes.includes(value.scope.split(".")[0]!),
@@ -437,6 +450,7 @@ function Fields({
         </select>
       </label>
       <label className="nz-fl">Site<select className="nz-sel" value={value.siteId??""} onChange={e=>{const site=sites.find(item=>item.id===e.target.value);change({...value,siteId:site?.id??null,siteLabel:site?.name??null});}}><option value="">Unallocated</option>{sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+      {value.scope==="3.1"&&<label className="nz-fl">Purchased-goods category<select className="nz-sel" value={value.purchasedGoodsCategoryId??""} onChange={e=>{const category=purchasedGoodsCategories.find(item=>item.id===e.target.value);change({...value,purchasedGoodsCategoryId:category?.id??null,purchasedGoodsCategoryLabel:category?.name??null});}}><option value="">Uncategorised</option>{purchasedGoodsCategories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
       <label className="nz-fl">
         Quantity
         <input
@@ -501,12 +515,14 @@ function Editor({
   row,
   factors,
   sites,
+  purchasedGoodsCategories,
   notice,
 }: {
   jobId: string;
   row: ScopeRowReadModel;
   factors: FactorOption[];
   sites:SiteOption[];
+  purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
 }) {
   const router = useRouter(),
@@ -593,7 +609,7 @@ function Editor({
           ? "Save changes, then calculate."
           : "Calculated evidence is available."}
       </div>
-      <Fields value={value} change={setValue} factors={factors} sites={sites}/>
+      <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
       <label>
         <input
           type="checkbox"
