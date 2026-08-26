@@ -6,9 +6,11 @@ import { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 import { EmissionsSiteDonut } from "./EmissionsSiteDonut";
 import { IntensityPathway } from "./IntensityPathway";
 import { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
+import { LcaStageBar } from "./LcaStageBar";
+import { TrainingAttendance } from "./TrainingAttendance";
 import { validateManifest, type ReportManifest } from "./manifest";
 import { tokens } from "./tokens";
-import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData } from "./types";
+import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, LcaStageBarData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData, TrainingAttendanceData } from "./types";
 
 type Props = {
   manifest: ReportManifest;
@@ -31,14 +33,21 @@ export function ManifestChartSet({ manifest, charts, reviewedSnapshotId, showSec
 }
 
 function ChartFromManifest({ chart }: { chart: AnyChartData }): ReactNode {
-  if (chart.spec.type === "emissions_scope_donut") return <EmissionsScopeDonut data={chart as ScopeDonutData} />;
-  if (chart.spec.type === "reduction_pathway") return <ReductionPathway data={chart as ReductionPathwayData} />;
-  if (chart.spec.type === "scope_year_on_year_bar") return <ScopeYearOnYearBar data={chart as ScopeYearOnYearData} />;
-  if (chart.spec.type === "emissions_by_activity") return <EmissionsByActivity data={chart as EmissionsByActivityData} />;
-  if (chart.spec.type === "emissions_site_donut") return <EmissionsSiteDonut data={chart as SiteDonutData} />;
-  if (chart.spec.type === "intensity_pathway") return <IntensityPathway data={chart as IntensityPathwayData} />;
-  if (chart.spec.type === "purchased_goods_breakdown") return <PurchasedGoodsBreakdown data={chart as PurchasedGoodsBreakdownData} />;
-  return <div role="alert" style={blocked}>Unsupported chart type: {chart.spec.type}</div>;
+  let graphic:ReactNode;
+  if (chart.spec.type === "emissions_scope_donut") graphic=<EmissionsScopeDonut data={chart as ScopeDonutData} />;
+  else if (chart.spec.type === "reduction_pathway") graphic=<ReductionPathway data={chart as ReductionPathwayData} />;
+  else if (chart.spec.type === "scope_year_on_year_bar") graphic=<ScopeYearOnYearBar data={chart as ScopeYearOnYearData} />;
+  else if (chart.spec.type === "emissions_by_activity") graphic=<EmissionsByActivity data={chart as EmissionsByActivityData} />;
+  else if (chart.spec.type === "emissions_site_donut") graphic=<EmissionsSiteDonut data={chart as SiteDonutData} />;
+  else if (chart.spec.type === "intensity_pathway") graphic=<IntensityPathway data={chart as IntensityPathwayData} />;
+  else if (chart.spec.type === "purchased_goods_breakdown") graphic=<PurchasedGoodsBreakdown data={chart as PurchasedGoodsBreakdownData} />;
+  else if (chart.spec.type === "lca_stage_bar") graphic=<LcaStageBar data={chart as LcaStageBarData}/>;
+  else if (chart.spec.type === "training_attendance") graphic=<TrainingAttendance data={chart as TrainingAttendanceData}/>;
+  else return <div role="alert" style={blocked}>Unsupported chart type: {(chart as AnyChartData).spec.type}</div>;
+  return <div>{graphic}<details style={evidence}><summary style={evidenceSummary}>View chart evidence</summary><div style={evidenceGrid}><span>Reviewed snapshot<b>{chart.provenance.reviewedSnapshotId}</b></span><span>Data identity<b>{chart.provenance.dataHash}</b></span><span>Factor sources<b>{chart.provenance.factorSets.join(" · ")}</b></span><span>Specification<b>v{chart.spec.specVersion} · resolver v{chart.provenance.resolverVersion}</b></span></div></details></div>;
 }
 
 const blocked: CSSProperties = { border: `1px solid ${tokens.brand.coral}`, background: "#FFF1EF", color: tokens.ink.primary, borderRadius: 10, padding: 16, fontSize: 12.5 };
+const evidence:CSSProperties={marginTop:-1,border:`1px solid ${tokens.line}`,borderRadius:"0 0 10px 10px",background:tokens.paper,fontSize:11,color:tokens.ink.secondary};
+const evidenceSummary:CSSProperties={padding:"9px 12px",cursor:"pointer",fontWeight:650,color:tokens.brand.pine};
+const evidenceGrid:CSSProperties={display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,padding:"0 12px 12px"};

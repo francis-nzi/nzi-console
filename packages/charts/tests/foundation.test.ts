@@ -6,7 +6,7 @@ import { validateManifest } from "../src/manifest";
 import { crpChartSamples, reviewedCrpSnapshotSample } from "../src/sample";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { LcaStageBar, TrainingAttendance, RENDERER_VERSION, TOKENS_VERSION, type LcaStageBarData, type TrainingAttendanceData } from "../src/index";
+import { LcaStageBar, ManifestChartSet, TrainingAttendance, RENDERER_VERSION, TOKENS_VERSION, type LcaStageBarData, type TrainingAttendanceData } from "../src/index";
 
 test("one reviewed CRP snapshot resolves a publishable chart set", () => {
   const charts = crpChartSamples;
@@ -58,3 +58,4 @@ test("only Scope 3.1 rows feed the purchased-goods category breakdown",()=>{cons
 
 const provenance={jobId:"demo",dataHash:"sha256:demo",factorSets:["Synthetic evidence v1"],generatedAt:"2026-08-26T00:00:00Z",reviewedSnapshotId:"snapshot-demo",resolverVersion:1,tokensVersion:TOKENS_VERSION,rendererVersion:RENDERER_VERSION};
 test("LCA and Training families render through the shared deterministic SVG engine",()=>{const lca:LcaStageBarData={spec:{id:"lca_stage_bar",type:"lca_stage_bar",title:"Impact by module",family:"lca",specVersion:1},unit:"kgCO₂e",functionalUnit:"one product",provenance,state:"success",stages:[{id:"a1",label:"A1-A3",value:120,status:"modelled"}]};const training:TrainingAttendanceData={spec:{id:"training_attendance",type:"training_attendance",title:"Attendance",family:"training",specVersion:1},unit:"people",provenance,state:"success",cohorts:[{id:"q1",label:"Q1",invited:20,attended:18,completed:16}]};const lcaSvg=renderToStaticMarkup(createElement(LcaStageBar,{data:lca,showChrome:false})),trainingSvg=renderToStaticMarkup(createElement(TrainingAttendance,{data:training,showChrome:false}));assert.match(lcaSvg,/role="img"/);assert.match(lcaSvg,/A1-A3/);assert.match(trainingSvg,/Completed/);});
+test("manifest rendering exposes chart evidence from the same reviewed identity",()=>{const html=renderToStaticMarkup(createElement(ManifestChartSet,{manifest:crpProfessionalManifest,charts:crpChartSamples,reviewedSnapshotId:reviewedCrpSnapshotSample.id}));assert.match(html,/View chart evidence/);assert.match(html,new RegExp(reviewedCrpSnapshotSample.id));assert.match(html,/Data identity/);});
