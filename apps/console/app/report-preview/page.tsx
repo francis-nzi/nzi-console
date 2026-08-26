@@ -226,7 +226,7 @@ function LiveSnapshotPreview({
           <div>
             <b>Preview only—publication remains blocked.</b>
             <div style={{ marginTop: 4 }}>
-              These graphics resolve from canonical reviewed rows. The
+              These graphics resolve from canonical reviewed rows.
               The remaining blockers are shown below. Annual comparison appears automatically once this client has reviewed snapshots for at least two reporting years.
             </div>
           </div>

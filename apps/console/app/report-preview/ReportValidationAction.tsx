@@ -34,9 +34,9 @@ export function ReportValidationAction({snapshotId,manifestVersion,ready}:{snaps
     else setMessage(result.message||"Publication failed.");
   }
 
-  return <div className={`nz-banner ${ready?"ok":"warn"}`} style={{margin:"18px 0"}}>
-    <div><b>{published?"Published to client portal":validated?"Validated and ready to publish":ready?"Ready to validate":"Publication blocked"}</b><div style={{marginTop:4}}>{message}</div></div>
-    <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+  return <div className={`nz-validation-gate ${ready?"ready":"blocked"}`}>
+    <div className="nz-validation-copy"><div className="nz-validation-steps"><span className="complete"><i>1</i>Evidence frozen</span><b>→</b><span className={validated?"complete":ready?"active":""}><i>2</i>Manifest validated</span><b>→</b><span className={published?"complete":validated?"active":""}><i>3</i>Client publication</span></div><h3>{published?"Published to client portal":validated?"Validated and ready to publish":ready?"Ready to validate":"Publication blocked"}</h3><p>{message}</p></div>
+    <div className="nz-validation-actions">
       {!validated&&<button className="nz-btn pri" disabled={!ready||pending!==null} onClick={validate}>{pending==="validate"?"Validating...":"Create validated report version"}</button>}
       {validated&&!published&&<button className="nz-btn pri" disabled={pending!==null} onClick={publish}>{pending==="publish"?"Publishing...":"Publish to client portal"}</button>}
       {published&&<span className="nz-st done">Published</span>}
