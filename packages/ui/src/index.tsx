@@ -32,8 +32,9 @@ export type NavSection = { heading: string; items: NavItem[] };
 export function AppShell({ rail, drawer, children }: { rail: ReactNode; drawer?: ReactNode; children: ReactNode }) {
   return (
     <div className={drawer ? "nz-app" : "nz-app no-drawer"}>
+      <a className="nz-skip-link" href="#nzi-main-content">Skip to main content</a>
       {rail}
-      <section className="nz-main">{children}</section>
+      <main className="nz-main" id="nzi-main-content" tabIndex={-1}>{children}</main>
       {drawer}
     </div>
   );
@@ -88,7 +89,7 @@ export function EvidenceDrawer({
   kicker, title, subtitle, children, actions,
 }: { kicker: string; title: string; subtitle: string; children: ReactNode; actions?: ReactNode }) {
   return (
-    <aside className="nz-drawer">
+    <aside className="nz-drawer" aria-label={`${kicker}: ${title}`}>
       <div className="nz-dh">
         <div className="kick">{kicker}</div>
         <h3>{title}</h3>

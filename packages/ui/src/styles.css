@@ -12,6 +12,7 @@ a{color:inherit}
 
 .nz-app{display:grid;grid-template-columns:236px 1fr 360px;min-height:100vh}
 .nz-app.no-drawer{grid-template-columns:236px 1fr}
+.nz-skip-link{position:fixed;z-index:1000;top:10px;left:10px;padding:9px 13px;border-radius:8px;background:#fff;color:var(--midnight);font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 6px 20px rgba(11,27,43,.2);transform:translateY(-160%)}.nz-skip-link:focus{transform:translateY(0)}
 
 /* rail */
 .nz-rail{background:var(--rail);color:var(--railtx);display:flex;flex-direction:column}
@@ -237,7 +238,8 @@ table.nz-tbl{width:100%;border-collapse:collapse}
   .nz-app,.nz-app.no-drawer{display:grid;grid-template-columns:minmax(0,1fr)}
   .nz-rail{position:sticky;top:0;z-index:20;min-width:0;display:flex;flex-direction:row;align-items:center;overflow-x:auto;border-bottom:1px solid var(--rail2)}
   .nz-brand{padding:10px 14px;border-bottom:0;flex:none}
-  .nz-brand .wm small,.nz-navsec,.nz-railfoot{display:none}
+  .nz-brand .wm small,.nz-navsec{display:none}
+  .nz-railfoot{display:flex;margin-left:auto;padding:7px;border-top:0}.nz-railfoot .av,.nz-railfoot .who{display:none}
   .nz-rail>div:not(.nz-brand):not(.nz-railfoot){display:contents}
   .nz-nav{padding:7px 3px;display:flex;flex-direction:row;flex:none}
   .nz-nav a{white-space:nowrap;padding:8px 9px}
@@ -254,6 +256,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
   .nz-ops-hero{align-items:flex-start;flex-direction:column}.nz-ops-trust{justify-content:flex-start}
   .nz-portal-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-portal-summary>div:nth-child(2){border-right:0}.nz-portal-summary>div:nth-child(-n+2){border-bottom:1px solid var(--line2)}
 }
+@media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
   .nz-screen-state{min-height:70vh;padding:18px}.nz-screen-state>section{padding:22px}.nz-degraded-state{margin:12px}
