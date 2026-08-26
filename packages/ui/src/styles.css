@@ -208,6 +208,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* published client report navigation */
 .nz-portal-context{display:flex;align-items:center;justify-content:space-between;max-width:1220px;margin:auto;padding:10px 24px;color:var(--t2);font-size:10.5px}.nz-portal-context>div{display:flex;align-items:center;gap:10px}.nz-portal-context>div span{padding-left:10px;border-left:1px solid var(--line);color:var(--t3)}.nz-portal-context a{color:var(--pine);font-weight:650;text-decoration:none}.nz-portal-context a:hover{text-decoration:underline}.nz-portal-tabs{border-top:1px solid var(--line2);border-bottom:1px solid var(--line);background:#fff;box-shadow:0 5px 18px rgba(11,27,43,.025)}.nz-portal-tabs>div{display:flex;max-width:1220px;margin:auto;padding:0 24px}.nz-portal-tabs button{padding:15px 18px;border:0;border-bottom:3px solid transparent;background:transparent;color:#68766F;font:500 12px inherit;cursor:pointer}.nz-portal-tabs button:hover{color:var(--t1)}.nz-portal-tabs button.active{border-bottom-color:var(--emerald);color:var(--t1);font-weight:650}
 
+/* internal immutable report controls */
+.report-sheet{border:1px solid var(--line);border-radius:4px}.report-toolbar{min-height:48px;padding:6px 10px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.88);box-shadow:0 8px 24px rgba(11,27,43,.055);backdrop-filter:blur(8px)}.report-print-action{height:auto;min-height:39px;padding:6px 12px}.report-print-action>span:last-child{display:flex;flex-direction:column;align-items:flex-start;gap:1px}.report-print-action b{font-size:11px}.report-print-action small{font-size:8.5px;font-weight:500;opacity:.78}.report-print-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.16);font-size:13px}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -242,6 +245,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:680px){
+  .report-toolbar>span{display:none}.report-toolbar{padding:6px 8px}.report-sheet{padding:22px!important}.report-print-action small{display:none}
   .nz-portal-context{padding:9px 16px}.nz-portal-context>div span{display:none}.nz-portal-tabs{overflow-x:auto}.nz-portal-tabs>div{width:max-content;min-width:100%;padding:0 8px}.nz-portal-tabs button{padding:13px 12px;white-space:nowrap}
   .nz-invite-secure{display:none}.nz-invite-layout{width:calc(100% - 32px);padding:24px 0 38px}.nz-invite-story{padding:23px}.nz-invite-story h1{font-size:27px}.nz-invite-story ol{display:none}.nz-invite-card{padding:28px 24px}
   .nz-account-header{height:auto;min-height:68px;padding:10px 16px}.nz-account-layout{width:calc(100% - 32px);padding:25px 0 38px}.nz-account-brief{padding:23px}.nz-account-brief h1{font-size:27px}.nz-account-trust{grid-template-columns:1fr}.nz-account-card{padding:28px 24px}

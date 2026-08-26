@@ -1,2 +1,5 @@
 "use client";
-export function PrintButton() { return <button onClick={() => window.print()} style={{ border: 0, borderRadius: 7, background: "#0BA75E", color: "white", padding: "9px 14px", fontWeight: 600, cursor: "pointer" }}>Print / save PDF</button>; }
+
+export function PrintButton() {
+  return <button className="nz-btn pri report-print-action" onClick={() => window.print()} aria-label="Print immutable report version or save it as a PDF"><span className="report-print-icon">↓</span><span><b>Print or save PDF</b><small>Current immutable version</small></span></button>;
+}
