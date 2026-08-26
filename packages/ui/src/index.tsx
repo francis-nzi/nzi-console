@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CommandSearch } from "./CommandSearch";
 
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"
@@ -76,11 +77,7 @@ export function TopBar({ crumbs, searchPlaceholder = "Search…" }: { crumbs: Re
   return (
     <div className="nz-topbar">
       <div className="nz-crumbs">{crumbs}</div>
-      <div className="nz-search">
-        <Icon name="search" />
-        <input placeholder={searchPlaceholder} aria-label="Search" />
-        <span className="k">⌘K</span>
-      </div>
+      <CommandSearch placeholder={searchPlaceholder} icon={<Icon name="search" />} />
     </div>
   );
 }

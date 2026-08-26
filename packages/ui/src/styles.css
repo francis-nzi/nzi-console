@@ -4,6 +4,7 @@
   --rail:#0B1B2B;--rail2:#132738;--railtx:#AFC0BC;--radius:9px;
 }
 *{box-sizing:border-box}
+.nz-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 html,body{margin:0;background:var(--paper);color:var(--t1);
   font-family:var(--font-inter,Inter),system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit}
