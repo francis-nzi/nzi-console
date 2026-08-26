@@ -29,8 +29,9 @@ a{color:inherit}
 .nz-nav a .count{margin-left:auto;font-size:11px;font-weight:600;color:#7D93A2;background:rgba(255,255,255,.05);padding:1px 7px;border-radius:20px}
 .nz-railfoot{margin-top:auto;padding:12px;border-top:1px solid var(--rail2);display:flex;align-items:center;gap:10px}
 .nz-railfoot .av{width:30px;height:30px;border-radius:50%;background:var(--pine);color:#DFF5E9;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
-.nz-railfoot .who{font-size:12.5px;color:#E7EEEB;font-weight:500}
+.nz-railfoot .who{min-width:0;font-size:12.5px;color:#E7EEEB;font-weight:500}
 .nz-railfoot .who small{display:block;color:#6C8394;font-size:11px;font-weight:400}
+.nz-railfoot form{margin-left:auto}.nz-signout{display:grid;place-items:center;width:30px;height:30px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#7F958F;cursor:pointer}.nz-signout:hover{border-color:rgba(255,255,255,.16);background:var(--rail2);color:#fff}.nz-signout:focus-visible{outline:3px solid rgba(11,167,94,.38);outline-offset:2px}.nz-signout svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9}
 
 /* main + topbar */
 .nz-main{display:flex;flex-direction:column;min-width:0}

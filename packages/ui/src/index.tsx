@@ -51,9 +51,9 @@ export function WorkspaceRail({
       {sections.map((s) => (
         <div key={s.heading}>
           <div className="nz-navsec">{s.heading}</div>
-          <nav className="nz-nav">
+          <nav className="nz-nav" aria-label={s.heading}>
             {s.items.map((it) => (
-              <a key={it.id} href={it.href} className={it.id === activeId ? "active" : undefined}>
+              <a key={it.id} href={it.href} className={it.id === activeId ? "active" : undefined} aria-current={it.id === activeId ? "page" : undefined}>
                 <Icon name={it.icon} />
                 {it.label}
                 {typeof it.count === "number" && <span className="count">{it.count}</span>}
@@ -65,6 +65,7 @@ export function WorkspaceRail({
       <div className="nz-railfoot">
         <div className="av">{user.initials}</div>
         <div className="who">{user.name}<small>{user.role}</small></div>
+        <form action="/api/auth/logout" method="post"><button type="submit" className="nz-signout" aria-label={`Sign out ${user.name}`} title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button></form>
       </div>
     </aside>
   );
