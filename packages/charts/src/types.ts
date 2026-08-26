@@ -1,6 +1,6 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway";
+export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "lca_stage_bar" | "training_attendance";
 export type DataQuality = "Measured" | "Estimated" | "Spend-based" | "Survey";
 
 export type Provenance = {
@@ -46,4 +46,8 @@ export type SiteSegment = { id: string; label: string; value: number };
 export type SiteDonutData = ChartEnvelope & { sites: SiteSegment[]; total?: number };
 export type IntensityPathwayData = ReductionPathwayData & { metric: "turnover" | "employee" | "floor-area" };
 export type PurchasedGoodsBreakdownData = EmissionsByActivityData & { basis: "category" | "supplier" };
-export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData;
+export type LcaStageValue = { id: string; label: string; value: number; status?: "modelled" | "provisional" };
+export type LcaStageBarData = ChartEnvelope & { stages: LcaStageValue[]; functionalUnit: string };
+export type TrainingAttendanceValue = { id: string; label: string; invited: number; attended: number; completed: number };
+export type TrainingAttendanceData = ChartEnvelope & { cohorts: TrainingAttendanceValue[] };
+export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | TrainingAttendanceData;

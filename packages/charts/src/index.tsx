@@ -9,6 +9,8 @@ export { ManifestChartSet } from "./ManifestChartSet";
 export { EmissionsSiteDonut } from "./EmissionsSiteDonut";
 export { IntensityPathway } from "./IntensityPathway";
 export { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
+export { LcaStageBar } from "./LcaStageBar";
+export { TrainingAttendance } from "./TrainingAttendance";
 
 export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, siteColor, readableInkOn } from "./tokens";
