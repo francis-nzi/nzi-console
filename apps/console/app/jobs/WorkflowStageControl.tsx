@@ -26,15 +26,15 @@ export function WorkflowStageControl({ job }: { job: FamilyJob }) {
   }
 
   return <div className="nz-body" style={{ paddingTop: 16, paddingBottom: 0 }}>
-    <div className="nz-panel" style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+    <div className="nz-panel nz-workflow-control">
+      <div className="nz-workflow-heading">
         <div style={{ flex: 1 }}><b>Workflow stage</b><div className="sub" style={{ marginTop: 4 }}>Version {job.header.version} · adjacent transitions only · every move is audited.</div></div>
         <span className="nz-st done">{job.header.workflowStage}</span>
       </div>
       <div className="nz-stepper" style={{ padding: "16px 0 4px" }}>{stages.map((stage, index) => <div key={stage} className={`nz-step ${index === activeIndex ? "active" : index < activeIndex ? "done" : "todo"}`}><span className="n">{index < activeIndex ? "✓" : index + 1}</span><span className="lb">{stage}</span>{index < stages.length - 1 && <span className="bar" />}</div>)}</div>
       {notice && <div className={`nz-banner ${notice.kind}`} style={{ marginTop: 12 }}><div>{notice.text}</div></div>}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) auto", gap: 10, marginTop: 12 }}>
-        <input className="nz-inp" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Transition note (recommended)" />
+      <div className="nz-workflow-actions">
+        <label><span className="nz-sr-only">Transition note</span><input className="nz-inp" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Transition note (recommended)" /></label>
         <div style={{ display: "flex", gap: 8 }}>{targets.map((target) => <button key={target} className={`nz-btn ${stages.indexOf(target) > activeIndex ? "pri" : ""}`} disabled={pending !== null} onClick={() => move(target)}>{pending === target ? "Moving…" : `${stages.indexOf(target) < activeIndex ? "Back to" : "Move to"} ${target}`}</button>)}</div>
       </div>
       <div className="nz-sect">Stage history</div>
