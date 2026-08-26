@@ -227,6 +227,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* audited workflow transitions */
 .nz-workflow-control{padding:18px 20px}.nz-workflow-heading{display:flex;align-items:flex-start;gap:16px}.nz-workflow-actions{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line2)}.nz-workflow-actions>label{display:block}.nz-workflow-actions>div{display:flex;gap:8px}.nz-workflow-control>.nz-sect{margin-top:20px}
 
+/* governed job creation */
+.nz-job-create{padding:20px;margin-bottom:18px;border-color:#CFE2D8;box-shadow:0 10px 26px rgba(11,27,43,.045)}.nz-job-create-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:15px;border-bottom:1px solid var(--line2)}.nz-job-create-head .nz-eyebrow{margin-bottom:5px}.nz-job-create-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:15px;margin-top:17px}.nz-job-create .nz-inp[readonly]{background:var(--paper);color:var(--t2);cursor:not-allowed}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -235,6 +238,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:900px){
+  .nz-job-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-job-create-grid label[style*="span 2"]{grid-column:span 2!important}
   .nz-workflow-control .nz-stepper{overflow-x:auto}.nz-workflow-control .nz-step{min-width:145px}.nz-workflow-actions{grid-template-columns:1fr}.nz-workflow-actions>div{justify-content:flex-end}
   .nz-access-brief{align-items:flex-start;flex-direction:column}.nz-access-control-list{justify-content:flex-start}
   .nz-invite-layout{grid-template-columns:1fr;gap:18px;max-width:650px;padding:40px 0}.nz-invite-story{padding:28px}.nz-invite-story ol{grid-template-columns:repeat(3,1fr)}.nz-invite-story li{align-items:flex-start}.nz-invite-card{max-width:none}
@@ -266,6 +270,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-job-create{padding:16px}.nz-job-create-head{align-items:flex-start;flex-direction:column}.nz-job-create-grid{grid-template-columns:1fr}.nz-job-create-grid label{grid-column:auto!important}
   .nz-workflow-control{padding:16px}.nz-workflow-heading{align-items:flex-start;flex-direction:column}.nz-workflow-actions>div{display:grid;grid-template-columns:1fr}.nz-workflow-actions .nz-btn{width:100%}
   .nz-screen-state{min-height:70vh;padding:18px}.nz-screen-state>section{padding:22px}.nz-degraded-state{margin:12px}
   .nz-access-brief{padding:22px}.nz-access-control-list{display:grid;width:100%;grid-template-columns:1fr}.nz-access-control-list span{white-space:normal}
