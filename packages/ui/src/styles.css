@@ -260,6 +260,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* honest client portal states */
 .nz-portal-state{display:flex;align-items:flex-start;gap:13px;padding:22px;border:1px solid var(--line);border-radius:12px;background:#fff}.nz-portal-state>i{display:grid;width:30px;height:30px;flex:none;place-items:center;border-radius:9px;background:var(--mint);color:var(--pine);font-style:normal;font-weight:750}.nz-portal-state>div{display:grid;gap:5px}.nz-portal-state b{font-size:14px}.nz-portal-state span{color:var(--t2);font-size:12px;line-height:1.5}.nz-portal-state .nz-btn{justify-self:start;margin-top:6px}.nz-portal-state.failed{border-color:#F1D89B;background:#FFF9EC}.nz-portal-state.failed>i{background:#FFF0C9;color:#8A6410}.nz-portal-state.loading>i{animation:nz-state-spin 1.4s linear infinite}
 
+/* published portal report states */
+.nz-portal-report-state{display:grid;min-height:100vh;place-items:center;padding:24px;background:#F3F7F5}.nz-portal-report-state>section{display:flex;align-items:flex-start;gap:16px;width:min(600px,100%);padding:25px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 16px 40px rgba(11,27,43,.07)}.nz-portal-report-state>section.failed{border-color:#F1D89B;background:#FFF9EC}.nz-portal-report-state i{display:grid;width:36px;height:36px;flex:none;place-items:center;border-radius:10px;background:var(--mint);color:var(--pine);font-style:normal;font-weight:750}.nz-portal-report-state .failed i{background:#FFF0C9;color:#8A6410}.nz-portal-report-state h1{margin:6px 0;font-size:21px;letter-spacing:-.03em}.nz-portal-report-state p{margin:0;color:var(--t2);font-size:12.5px;line-height:1.55}.nz-portal-report-state section>div>div{display:flex;gap:8px;margin-top:16px}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
