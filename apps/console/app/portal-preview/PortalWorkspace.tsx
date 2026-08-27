@@ -24,7 +24,7 @@ export function PortalWorkspace({report,approval=null,clientMode=false}:{report?
   </div>;
 }
 
-type ClientEntryBucket={bucketGrantId:string;scopeRowId:string;scope:string;sourceLabel:string;factors:Array<{id:string;label:string;unit:string}>;sites:Array<{id:string;name:string}>;units:string[]};
+type ClientEntryBucket={bucketGrantId:string;scopeRowId:string;scope:string;sourceLabel:string;entryKind:"manual_activity"|"spend"|"commuting"|"vehicle";factors:Array<{id:string;label:string;unit:string}>;sites:Array<{id:string;name:string}>;units:string[]};
 type ClientEntryAccess={jobId:string;startsAt:string;expiresAt:string;state:"scheduled"|"open";buckets:ClientEntryBucket[]};
 function PortalDataEntryGate({jobId}:{jobId:string}){
   const [access,setAccess]=useState<ClientEntryAccess|null|undefined>(undefined),[error,setError]=useState("");

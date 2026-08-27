@@ -50,7 +50,7 @@
 - [x] Render only canonical scope-row buckets with job-selected factors, client-owned sites, and factor-derived units authorised by staff.
 - [x] Support client create/edit/soft-delete/submit with optimistic concurrency, stale-version recovery, and portal audit evidence.
 - [x] Route submitted data into the staff review queue; never treat client entry as reviewed emissions.
-- [ ] Cover manual activity, spend, commuting, and vehicle entry according to the canonical scope-row model.
+- [x] Cover manual activity, spend, commuting, and vehicle entry according to the canonical scope-row model.
 
 #### P4. Deliverables and document records
 
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** by covering manual activity, spend, commuting, and vehicle entry against the canonical scope-row model.
+Begin **P4: deliverables and document records** by exposing version-bound report PDF, certificate, and methodology deliverables.
