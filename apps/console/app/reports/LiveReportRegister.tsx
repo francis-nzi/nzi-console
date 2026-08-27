@@ -1,6 +1,40 @@
 "use client";
-import {useEffect,useState} from "react";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import type {ReportVersionRegisterItem} from "@nzi/isolated-backend";
-export function LiveReportRegister(){const [reports,setReports]=useState<ReportVersionRegisterItem[]|null>(null),[error,setError]=useState("");useEffect(()=>{fetch("/api/isolated/report-versions",{cache:"no-store"}).then(response=>response.json().then(body=>({response,body}))).then(({response,body})=>{if(!response.ok)throw new Error(body.message??"Report register is unavailable.");setReports(body.reports)}).catch(cause=>{setError(cause instanceof Error?cause.message:"Report register is unavailable.");setReports([])})},[]);if(reports===null)return <div className="nz-panel" role="status" style={{padding:18}}>Loading immutable report register…</div>;const published=reports.filter(report=>report.status==="published").length,validated=reports.filter(report=>report.status==="validated").length,awaiting=reports.filter(report=>report.status==="published"&&report.approvalCount===0).length;return <>{error?<div className="nz-banner warn" role="alert">{error}</div>:null}<div className="nz-metrics"><Metric label="Report versions" value={String(reports.length)} note="Immutable records"/><Metric label="Ready to publish" value={String(validated)} note="Validation passed"/><Metric label="Published" value={String(published)} note={`${awaiting} awaiting approval`}/><Metric label="Client approvals" value={String(reports.reduce((sum,report)=>sum+report.approvalCount,0))} note="Version-bound evidence"/></div><div className="nz-panel"><table className="nz-tbl"><thead><tr><th>Report version</th><th>Job / client</th><th>Manifest</th><th>Status</th><th>Client review</th><th>Created</th><th></th></tr></thead><tbody>{reports.map(report=><tr key={report.reportVersionId}><td><b>{report.reportVersionId}</b><div className="muted num" style={{fontSize:10,marginTop:3}}>{report.dataHash.slice(0,22)}…</div></td><td><Link href={`/jobs/${report.jobId}`} style={{fontWeight:600,textDecoration:"none"}}>{report.jobNumber}</Link><div className="muted" style={{fontSize:11}}>{report.client}{report.reportingYear?` · ${report.reportingYear}`:""}</div></td><td>CRP · v{report.manifestVersion}</td><td><span className={`nz-st ${report.status==="published"?"done":report.status==="validated"?"est":"need"}`}>{report.status}</span></td><td>{report.status==="published"?<><b>{report.approvalCount}</b> approvals · {report.commentCount} messages</>:<span className="muted">Not released</span>}</td><td>{new Date(report.createdAt).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</td><td><Link className="nz-btn" href={`/jobs/${report.jobId}`}>Open job</Link></td></tr>)}</tbody></table>{reports.length===0?<div className="nz-table-empty">No report versions have been created yet.</div>:null}</div></>}
-function Metric({label,value,note}:{label:string;value:string;note:string}){return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div><div className="sub" style={{fontSize:11,marginTop:3}}>{note}</div></div>}
+import type { ReportVersionRegisterItem } from "@nzi/isolated-backend";
+
+export function LiveReportRegister() {
+  const [reports, setReports] = useState<ReportVersionRegisterItem[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/isolated/report-versions", { cache: "no-store" })
+      .then((response) => response.json().then((body) => ({ response, body })))
+      .then(({ response, body }) => {
+        if (!response.ok) throw new Error(body.message ?? "Report register is unavailable.");
+        setReports(body.reports);
+      })
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : "Report register is unavailable.");
+        setReports([]);
+      });
+  }, []);
+
+  if (reports === null) return <div className="nz-register-loading" role="status"><i aria-hidden="true" /> <span><b>Loading publication register</b><small>Retrieving immutable report versions…</small></span></div>;
+
+  const published = reports.filter((report) => report.status === "published").length;
+  const validated = reports.filter((report) => report.status === "validated").length;
+  const awaiting = reports.filter((report) => report.status === "published" && report.approvalCount === 0).length;
+
+  return <section className="nz-report-register" aria-label="Immutable report register">
+    {error ? <div className="nz-banner warn" role="alert"><div><b>Live register unavailable</b><div>{error} No report-version claims are shown.</div></div></div> : null}
+    <div className="nz-metrics"><Metric label="Report versions" value={String(reports.length)} note="Immutable records" /><Metric label="Ready to publish" value={String(validated)} note="Validation passed" /><Metric label="Published" value={String(published)} note={`${awaiting} awaiting approval`} /><Metric label="Client approvals" value={String(reports.reduce((sum, report) => sum + report.approvalCount, 0))} note="Version-bound evidence" /></div>
+    {reports.length === 0 ? <div className="nz-register-empty"><i>0</i><div><b>No immutable report versions</b><span>Validate a reviewed snapshot to create the first controlled version.</span></div><Link className="nz-btn pri" href="/report-preview">Prepare report version</Link></div> : <>
+      <div className="nz-panel nz-report-table"><table className="nz-tbl"><thead><tr><th>Report version</th><th>Job / client</th><th>Manifest</th><th>Status</th><th>Client review</th><th>Created</th><th><span className="nz-sr-only">Actions</span></th></tr></thead><tbody>{reports.map((report) => <tr key={report.reportVersionId}><td><b>{report.reportVersionId}</b><code>{report.dataHash.slice(0, 22)}…</code></td><td><Link className="nz-register-job" href={`/jobs/${report.jobId}`}>{report.jobNumber}</Link><div className="muted">{report.client}{report.reportingYear ? ` · ${report.reportingYear}` : ""}</div></td><td>CRP · v{report.manifestVersion}</td><td><span className={`nz-st ${report.status === "published" ? "done" : report.status === "validated" ? "est" : "need"}`}>{report.status}</span></td><td>{report.status === "published" ? <><b>{report.approvalCount}</b> approvals · {report.commentCount} messages</> : <span className="muted">Not released</span>}</td><td>{new Date(report.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td><td><Link className="nz-btn" href={`/jobs/${report.jobId}`}>Open job</Link></td></tr>)}</tbody></table></div>
+      <div className="nz-report-cards">{reports.map((report) => <article key={report.reportVersionId}><div><span className={`nz-st ${report.status === "published" ? "done" : report.status === "validated" ? "est" : "need"}`}>{report.status}</span><b>{report.reportVersionId}</b><code>{report.dataHash.slice(0, 22)}…</code></div><dl><div><dt>Job / client</dt><dd>{report.jobNumber} · {report.client}</dd></div><div><dt>Client review</dt><dd>{report.status === "published" ? `${report.approvalCount} approvals · ${report.commentCount} messages` : "Not released"}</dd></div><div><dt>Created</dt><dd>{new Date(report.createdAt).toLocaleDateString("en-GB")}</dd></div></dl><Link className="nz-btn" href={`/jobs/${report.jobId}`}>Open governed job</Link></article>)}</div>
+    </>}
+  </section>;
+}
+
+function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div><div className="sub">{note}</div></div>; }
