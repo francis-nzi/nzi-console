@@ -42,7 +42,7 @@ export default async function ReportPreviewPage({
     );
     return (
       <ScreenState result={result}>
-        {(data) => <LiveSnapshotPreview snapshot={data.snapshots[0]!} />}
+        {(data) => data.snapshots[0] ? <LiveSnapshotPreview snapshot={data.snapshots[0]} /> : <PreviewEmpty jobId={jobId} />}
       </ScreenState>
     );
   }
@@ -55,95 +55,11 @@ export default async function ReportPreviewPage({
   return (
     <ScreenState result={result}>
       {() => (
-        <main
-          style={{
-            background: "#eef2f0",
-            minHeight: "100vh",
-            padding: 32,
-            fontFamily: "var(--font-inter), Inter, sans-serif",
-          }}
-        >
-          <section
-            style={{
-              background: "white",
-              maxWidth: 1180,
-              margin: "0 auto",
-              padding: 28,
-              boxShadow: "0 4px 24px rgba(11,27,43,.08)",
-            }}
-          >
-            <div
-              style={{
-                color: "#0BA75E",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: ".12em",
-                textTransform: "uppercase",
-              }}
-            >
-              NZI Professional Report · J000712
-            </div>
-            <h1 style={{ color: "#0B1B2B", margin: "8px 0 4px" }}>
-              Carbon performance
-            </h1>
-            <p style={{ color: "#51605A", margin: "0 0 22px" }}>
-              Print/PDF preview · same reviewed chart objects
-            </p>
+        <main className="nz-preview-canvas">
+          <section className="nz-preview-sheet">
+            <header className="nz-preview-head"><span className="nz-eyebrow">NZI Professional Report · J000712</span><h1>Carbon performance</h1><p>Print/PDF preview · same reviewed chart objects</p><span className="nz-st est">Fixture preview</span></header>
             <ChartProof target="print" label="Print and PDF" />
-
-            <div
-              style={{
-                marginTop: 42,
-                paddingTop: 28,
-                borderTop: "1px solid #E4EAE7",
-              }}
-            >
-              <div
-                style={{
-                  color: "#0BA75E",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: ".12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Large-format chart review
-              </div>
-              <h2
-                style={{ color: "#0B1B2B", margin: "8px 0 4px", fontSize: 24 }}
-              >
-                Full-width report graphics
-              </h2>
-              <p style={{ color: "#51605A", margin: "0 0 22px" }}>
-                The same chart components and reviewed data, each shown in its
-                own larger container.
-              </p>
-              <div style={{ display: "grid", gap: 26 }}>
-                <div style={{ width: "100%" }}>
-                  <EmissionsScopeDonut data={scopeDonutSample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <ReductionPathway data={reductionPathwaySample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <ScopeYearOnYearBar data={scopeYearOnYearSample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <EmissionsByActivity data={emissionsByActivitySample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <EmissionsSiteDonut data={emissionsSiteDonutSample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <IntensityPathway data={intensityPathwaySample} />
-                </div>
-                <div style={{ width: "100%" }}>
-                  <PurchasedGoodsBreakdown
-                    data={purchasedGoodsBreakdownSample}
-                  />
-                </div>
-              </div>
-            </div>
+            <section className="nz-preview-review"><div className="nz-section-intro"><div><span className="nz-eyebrow">Large-format chart review</span><h2>Full-width report graphics</h2><p>The same chart components and reviewed data, each shown in its own larger container.</p></div></div><div className="nz-preview-stack"><EmissionsScopeDonut data={scopeDonutSample}/><ReductionPathway data={reductionPathwaySample}/><ScopeYearOnYearBar data={scopeYearOnYearSample}/><EmissionsByActivity data={emissionsByActivitySample}/><EmissionsSiteDonut data={emissionsSiteDonutSample}/><IntensityPathway data={intensityPathwaySample}/><PurchasedGoodsBreakdown data={purchasedGoodsBreakdownSample}/></div></section>
           </section>
         </main>
       )}
@@ -189,56 +105,19 @@ function LiveSnapshotPreview({
   const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
   const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id);
   return (
-    <main
-      style={{
-        background: "#eef2f0",
-        minHeight: "100vh",
-        padding: 32,
-        fontFamily: "var(--font-inter), Inter, sans-serif",
-      }}
-    >
-      <section
-        style={{
-          background: "white",
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: 28,
-        }}
-      >
-        <div
-          style={{
-            color: "#0BA75E",
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: ".12em",
-          }}
-        >
-          DATABASE-BACKED REVIEWED SNAPSHOT · {snapshot.jobNumber}
-        </div>
-        <h1 style={{ color: "#0B1B2B" }}>
-          {snapshot.reportingYear} Carbon performance
-        </h1>
-        <p style={{ color: "#51605A" }}>
-          Snapshot v{snapshot.version} · {snapshot.dataHash} · created{" "}
-          {snapshot.createdAt}
-        </p>
+    <main className="nz-preview-canvas">
+      <section className="nz-preview-sheet">
+        <header className="nz-preview-head"><span className="nz-eyebrow">Database-backed reviewed snapshot · {snapshot.jobNumber}</span><h1>{snapshot.reportingYear} Carbon performance</h1><p>Snapshot v{snapshot.version} · created {snapshot.createdAt}</p><span className={`nz-st ${validation.valid?"done":"nof"}`}>{validation.valid?"Manifest ready":"Validation blocked"}</span><div className="nz-preview-hash"><span>Evidence hash</span><b className="num">{snapshot.dataHash}</b></div></header>
         <div className="nz-banner warn">
           <div>
-            <b>Preview only—publication remains blocked.</b>
-            <div style={{ marginTop: 4 }}>
+            <b>Preview only — publication remains controlled.</b>
+            <div>
               These graphics resolve from canonical reviewed rows.
               The remaining blockers are shown below. Annual comparison appears automatically once this client has reviewed snapshots for at least two reporting years.
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2,minmax(360px,1fr))",
-            gap: 18,
-            margin: "22px 0",
-          }}
-        >
+        <div className="nz-preview-grid">
           <EmissionsScopeDonut data={scope} />
           {pathway&&<ReductionPathway data={pathway}/>}
           {annual&&<ScopeYearOnYearBar data={annual}/>}
@@ -247,7 +126,7 @@ function LiveSnapshotPreview({
           {intensity&&<IntensityPathway data={intensity}/>}
           {purchasedGoods&&<PurchasedGoodsBreakdown data={purchasedGoods}/>}
         </div>
-        <h2 style={{ color: "#0B1B2B" }}>Professional manifest validation</h2>
+        <div className="nz-section-intro"><div><span className="nz-eyebrow">Controlled release</span><h2>Professional manifest validation</h2><p>The validator creates an immutable version before any client publication can occur.</p></div></div>
         <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} ready={validation.valid}/>
         <ManifestChartSet
           manifest={crpProfessionalManifest}
@@ -258,3 +137,5 @@ function LiveSnapshotPreview({
     </main>
   );
 }
+
+function PreviewEmpty({jobId}:{jobId:string}){return <main className="nz-preview-canvas"><section className="nz-preview-empty"><span className="nz-state-icon">!</span><div><span className="nz-eyebrow">Report preparation</span><h1>No reviewed snapshot available</h1><p>Job {jobId} cannot be previewed or published until its emissions rows have passed review and a governed snapshot has been created.</p><a className="nz-btn pri" href={`/jobs/${jobId}`}>Return to job review</a></div></section></main>}
