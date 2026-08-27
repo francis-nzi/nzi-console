@@ -266,6 +266,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* governed authentication steps */
 .nz-auth-step{display:flex;align-items:center;justify-content:space-between;gap:12px}.nz-auth-step>span:last-child{color:var(--t3);font-size:9.5px;font-weight:650;text-transform:uppercase;letter-spacing:.06em}.nz-auth-progress{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:15px 0 19px}.nz-auth-progress i{height:4px;border-radius:4px;background:#E1E8E4}.nz-auth-progress i.done{background:var(--emerald)}.nz-auth-secondary{display:block;margin:12px auto 0;padding:0;border:0;background:none;color:var(--pine);font:inherit;font-size:11.5px;font-weight:650;cursor:pointer}.nz-auth-secondary:disabled{opacity:.5;cursor:not-allowed}.nz-auth-support{display:grid;gap:3px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line2);text-align:left}.nz-auth-support b{font-size:11px}.nz-auth-support span{color:var(--t3);font-size:10.5px;line-height:1.45}
 
+/* password change assurance */
+.nz-password-meter{display:grid;grid-template-columns:72px 1fr;gap:9px;align-items:center;margin:-7px 0 12px}.nz-password-meter>span{height:4px;border-radius:4px;background:#E1E8E4;overflow:hidden}.nz-password-meter i{display:block;height:100%;background:var(--amber);transition:width .18s ease}.nz-password-meter.ready i{background:var(--emerald)}.nz-password-meter small{color:var(--t3);font-size:9.5px}.nz-password-meter.ready small{color:var(--pine)}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
