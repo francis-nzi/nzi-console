@@ -34,8 +34,8 @@
 
 - [x] Add executable tests for portal identity, portfolio, publication, approval, comment, and read-receipt contracts.
 - [x] Cover valid, malformed, cross-job/cross-version, duplicate, and contradictory evidence.
-- [ ] Add authentication, invitation, approval, messaging, and password-change integration journeys.
-- [ ] Make the portal test suite part of the standard verification command.
+- [x] Add authentication, invitation, approval, messaging, and password-change integration journeys.
+- [x] Make the portal test suite part of the standard verification command (`npm run test:portal`).
 
 #### P2. Recovery and session experience
 
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P1: automated portal contract and journey tests** with authentication, invitation, approval, messaging, and password-change integration journeys.
+Begin **P2: recovery and session experience** by recording the governed recovery decision and replacing the sign-in dead end with a complete, explicit support path.
