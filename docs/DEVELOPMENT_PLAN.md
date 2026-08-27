@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** with audited create/edit/delete/submit commands and optimistic concurrency.
+Continue **P3: constrained client data entry** by connecting the audited draft lifecycle to client controls and exposing submitted records in the staff review queue.
