@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** by defining and rendering only the authorised buckets, factors, sites, and units for an open window.
+Continue **P3: constrained client data entry** by connecting the new canonical scope-row bucket grants to staff selection controls and client rendering.
