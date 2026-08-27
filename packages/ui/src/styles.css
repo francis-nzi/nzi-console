@@ -236,6 +236,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* dataset governance */
 .nz-tbl tr.row:focus-visible{outline:2px solid var(--emerald);outline-offset:-2px}.nz-table-empty{padding:28px;text-align:center;color:var(--t3);font-size:13px}.nz-audit-section{margin-top:24px}.nz-audit-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:11px}.nz-audit-heading h2{font-size:18px;margin:4px 0 0}.nz-audit-count{display:flex;align-items:baseline;gap:7px;padding:7px 11px;border:1px solid;border-radius:9px;font-size:11px}.nz-audit-count strong{font-size:18px}.nz-audit-count.warn{background:#FFF4DC;border-color:#F1D89B;color:#7A5808}.nz-audit-count.ok{background:var(--mint);border-color:#BEE7D3;color:var(--pine)}
 
+/* sales conversion governance */
+.nz-sales-gate{display:grid;grid-template-columns:minmax(250px,.85fr) minmax(480px,1.4fr);gap:28px;align-items:center;margin-top:20px;padding:22px 24px;border:1px solid #CFE2D8;border-radius:13px;background:linear-gradient(135deg,#F7FBF9,#EFF8F3)}.nz-sales-gate h2{margin:5px 0 6px;font-size:18px;letter-spacing:-.025em}.nz-sales-gate p{margin:0;color:var(--t2);font-size:11.5px;line-height:1.55}.nz-sales-gate ol{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0;padding:0;list-style:none}.nz-sales-gate li{display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--line);border-radius:9px;background:#fff}.nz-sales-gate li i{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:50%;background:var(--mint);color:var(--pine);font-size:10px;font-style:normal;font-weight:750}.nz-sales-gate li span{display:grid;gap:2px}.nz-sales-gate li b{font-size:11px}.nz-sales-gate li small{color:var(--t3);font-size:9px;line-height:1.35}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -244,6 +247,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:900px){
+  .nz-sales-gate{grid-template-columns:1fr}.nz-sales-gate ol{grid-template-columns:repeat(3,1fr)}
   .nz-client-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-client-create-grid label[style*="span 2"]{grid-column:span 2!important}
   .nz-job-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-job-create-grid label[style*="span 2"]{grid-column:span 2!important}
   .nz-workflow-control .nz-stepper{overflow-x:auto}.nz-workflow-control .nz-step{min-width:145px}.nz-workflow-actions{grid-template-columns:1fr}.nz-workflow-actions>div{justify-content:flex-end}
@@ -277,6 +281,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-sales-gate{padding:18px}.nz-sales-gate ol{grid-template-columns:1fr}
   .nz-audit-heading{align-items:flex-start;flex-direction:column}.nz-audit-count{align-self:stretch;justify-content:center}
   .nz-client-create{padding:16px}.nz-client-create-head{align-items:flex-start;flex-direction:column}.nz-client-create-grid{grid-template-columns:1fr}.nz-client-create-grid label{grid-column:auto!important}
   .nz-job-create{padding:16px}.nz-job-create-head{align-items:flex-start;flex-direction:column}.nz-job-create-grid{grid-template-columns:1fr}.nz-job-create-grid label{grid-column:auto!important}
