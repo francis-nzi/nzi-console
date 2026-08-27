@@ -56,7 +56,7 @@
 
 - [x] Expose version-bound report PDF, certificate, and methodology deliverables.
 - [x] Verify file identity, content type, version, access grant, and download failure states.
-- [ ] Keep screen, print, and downloadable evidence aligned to the same publication.
+- [x] Keep screen, print, and downloadable evidence aligned to the same publication.
 
 #### P5. Portal acceptance gate
 
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Complete **P4: deliverables and document records** by keeping screen, print, and downloadable evidence aligned to the same publication.
+Begin **P5: portal acceptance gate** with keyboard, focus, screen-reader, contrast, and reduced-motion review.
