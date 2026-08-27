@@ -54,7 +54,7 @@
 
 #### P4. Deliverables and document records
 
-- [ ] Expose version-bound report PDF, certificate, and methodology deliverables.
+- [x] Expose version-bound report PDF, certificate, and methodology deliverables.
 - [ ] Verify file identity, content type, version, access grant, and download failure states.
 - [ ] Keep screen, print, and downloadable evidence aligned to the same publication.
 
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Begin **P4: deliverables and document records** by exposing version-bound report PDF, certificate, and methodology deliverables.
+Continue **P4: deliverables and document records** by verifying file identity, content type, version, access grant, and download failure states.
