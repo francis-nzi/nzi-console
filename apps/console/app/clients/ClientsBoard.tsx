@@ -13,11 +13,11 @@ type Filter = "all" | ClientStatus;
 function Completeness({ pct }: { pct: number }) {
   const color = pct >= 85 ? "var(--emerald)" : pct >= 50 ? "var(--amber)" : "var(--coral)";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-      <span style={{ width: 74, height: 6, background: "#E7ECE9", borderRadius: 6, overflow: "hidden" }}>
+    <span className="nz-client-completeness">
+      <span role="progressbar" aria-label="Client data completeness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
         <span style={{ display: "block", height: "100%", width: `${pct}%`, background: color }} />
       </span>
-      <span className="num" style={{ color: "var(--t2)", fontSize: 12 }}>{pct}%</span>
+      <span className="num">{pct}%</span>
     </span>
   );
 }
@@ -80,7 +80,7 @@ function ClientDrawer({ c }: { c: Client }) {
 
 export function ClientsBoard({ clients }: { clients: Client[] }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string>(clients[0]!.id);
+  const [selectedId, setSelectedId] = useState<string>(clients[0]?.id ?? "");
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -106,6 +106,9 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
     () => (filter === "all" ? clients : clients.filter((c) => c.status === filter)),
     [clients, filter],
   );
+
+  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={<><b>Clients</b> <span className="muted">/</span> All organisations</>} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><button type="button" className="nz-btn pri" aria-expanded={creating} onClick={()=>setCreating(true)}>Add first client</button></div></section>{creating&&<form className="nz-panel nz-client-create nz-first-client" onSubmit={createClient}><div className="nz-client-create-head"><div><span className="nz-eyebrow">First governed relationship</span><b>Create client</b><div className="sub">Creates one tenant-scoped client and its initial audit event.</div></div><span className="nz-st est">Account pending</span></div><div className="nz-client-create-grid"><label className="nz-fl">Client name<input className="nz-inp" required value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label><label className="nz-fl">Account owner<input className="nz-inp" required value={draft.owner} onChange={e=>setDraft({...draft,owner:e.target.value})}/></label><label className="nz-fl">Sector<input className="nz-inp" required value={draft.sector} onChange={e=>setDraft({...draft,sector:e.target.value})}/></label><label className="nz-fl">Location<input className="nz-inp" required value={draft.location} onChange={e=>setDraft({...draft,location:e.target.value})}/></label></div><div className="nz-config-actions"><button type="button" className="nz-btn" disabled={saving} onClick={()=>setCreating(false)}>Cancel</button><button className="nz-btn pri" disabled={saving}>{saving?"Creating…":"Create first client"}</button></div></form>}</div></AppShell>;
+
   const selected = clients.find((c) => c.id === selectedId) ?? clients[0]!;
 
   const activeJobs = clients.reduce((n, c) => n + c.openJobs, 0);
@@ -129,8 +132,8 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
       subtitle={`${selected.sector} · ${selected.location}`}
       actions={
         <>
-          <button className="nz-btn" onClick={() => router.push(`/jobs?client=${selected.id}`)}>New job</button>
-          <button className="nz-btn pri" onClick={() => router.push(`/clients/${selected.id}`)}>Open client</button>
+          <button type="button" className="nz-btn" onClick={() => router.push(`/jobs?client=${selected.id}`)}>New job</button>
+          <button type="button" className="nz-btn pri" onClick={() => router.push(`/clients/${selected.id}`)}>Open client</button>
         </>
       }
     >
@@ -151,7 +154,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
             <div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>
             <div className="sub">Relationships, delivery health and reporting readiness across {clients.length} organisations</div>
           </div>
-          <button className="nz-btn pri" onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ Add client"}</button>
+          <button type="button" className="nz-btn pri" aria-expanded={creating} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ Add client"}</button>
         </div>
       </div>
 
@@ -179,7 +182,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
         <div className="nz-toolbar" style={{ padding: "0 0 12px" }}>
           <div className="nz-filters">
             {filters.map((f) => (
-              <button key={f.id} className={filter === f.id ? "on" : undefined} onClick={() => setFilter(f.id)}>
+              <button type="button" key={f.id} aria-pressed={filter===f.id} className={filter === f.id ? "on" : undefined} onClick={() => setFilter(f.id)}>
                 {f.label}
               </button>
             ))}
@@ -203,6 +206,9 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
                     className={`row${c.id === selectedId ? " sel" : ""}`}
                     onClick={() => setSelectedId(c.id)}
                     onDoubleClick={() => router.push(`/clients/${c.id}`)}
+                    onKeyDown={(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setSelectedId(c.id)}}}
+                    tabIndex={0}
+                    aria-selected={c.id===selectedId}
                   >
                     <td style={{ fontWeight: 500 }}>{c.name}</td>
                     <td>{c.sector}</td>
