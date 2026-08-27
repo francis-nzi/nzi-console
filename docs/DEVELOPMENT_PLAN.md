@@ -30,7 +30,7 @@
 
 ### Remaining acceptance batches
 
-#### P1. Automated portal contract and journey tests — next
+#### P1. Automated portal contract and journey tests
 
 - [x] Add executable tests for portal identity, portfolio, publication, approval, comment, and read-receipt contracts.
 - [x] Cover valid, malformed, cross-job/cross-version, duplicate, and contradictory evidence.
@@ -42,7 +42,7 @@
 - [x] Keep recovery staff-governed until a verified outbound-email/reset-token service exists; document the client-safe recovery route.
 - [x] Provide a complete governed recovery path from sign-in guidance through staff-issued, single-use re-enrolment; immediately revoke sessions and suspend old credentials.
 - [x] Handle expired/revoked sessions consistently across pages and mutations, clearing stale cookies before sign-in to prevent redirect loops.
-- [ ] Verify logout, session rotation, lockout, retry, and MFA recovery behaviour.
+- [x] Verify logout, session rotation, 15-minute password lockout, post-lockout retry, exhausted/expired MFA challenges, and governed MFA recovery behaviour.
 
 #### P3. Constrained client data entry
 
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P2: recovery and session experience** by verifying logout, session rotation, lockout, retry, and MFA recovery behaviour.
+Begin **P3: constrained client data entry** with tenant- and job-bound data-entry grants and explicit expiry windows.
