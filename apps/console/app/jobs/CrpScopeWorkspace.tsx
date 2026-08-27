@@ -130,6 +130,7 @@ export function CrpScopeWorkspace({
         : "Create the reviewed reporting snapshot";
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
     setPending(true);
     const r = await postBrowserCommand<{ rowId: string }>(
       `/api/isolated/jobs/${job.header.id}/scope-rows`,
@@ -203,7 +204,7 @@ export function CrpScopeWorkspace({
           </div>
           <div className="nz-head-actions">
             <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
-            <button className="nz-btn pri" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
+            <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
           </div>
         </div>
       </div>
@@ -240,7 +241,7 @@ export function CrpScopeWorkspace({
           </div>
         </section>
         {notice && (
-          <div className={`nz-banner ${notice.kind}`}>{notice.text}</div>
+          <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div>
         )}
         <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
         <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
@@ -253,15 +254,11 @@ export function CrpScopeWorkspace({
         />
         {creating && (
           <form
-            className="nz-panel"
-            style={{ padding: 16, marginBottom: 16 }}
+            className="nz-panel nz-scope-create"
+            id="scope-row-editor"
             onSubmit={create}
           >
-            <b>Add emissions source</b>
-            <p className="sub">
-              Factors are limited to datasets selected for this reporting
-              period.
-            </p>
+            <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>
             <Fields value={draft} change={setDraft} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
             <button className="nz-btn pri" disabled={pending}>
               {pending ? "Creating…" : "Create scope row"}
@@ -269,9 +266,7 @@ export function CrpScopeWorkspace({
           </form>
         )}
         {rows.length === 0 ? (
-          <div className="nz-panel" style={{ padding: 28 }}>
-            No scope rows yet. Empty is not treated as zero.
-          </div>
+          <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
         ) : (
           <div className="nz-panel" id="emissions-register">
             <div className="nz-register-head">
@@ -296,8 +291,11 @@ export function CrpScopeWorkspace({
                 {rows.map((r) => (
                   <tr
                     key={r.id}
+                    tabIndex={0}
+                    aria-selected={r.id === selected?.id}
                     className={`row${r.id === selected?.id ? " sel" : ""}`}
                     onClick={() => setSelectedId(r.id)}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}
                   >
                     <td>{r.sourceLabel}</td>
                     <td>{r.scope}</td>
@@ -310,7 +308,7 @@ export function CrpScopeWorkspace({
                         ?.label ?? "—"}
                     </td>
                     <td>{r.overrideTco2e ?? r.calculatedTco2e ?? "—"}</td>
-                    <td>{r.reviewStatus}</td>
+                    <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -458,14 +456,7 @@ function Fields({
         ? `${value.datasetId}|${value.factorId}`
         : "";
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(3,minmax(150px,1fr))",
-        gap: 12,
-        marginBottom: 14,
-      }}
-    >
+    <div className="nz-scope-fields">
       <label className="nz-fl">
         Source
         <input

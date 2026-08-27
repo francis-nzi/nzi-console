@@ -269,6 +269,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* password change assurance */
 .nz-password-meter{display:grid;grid-template-columns:72px 1fr;gap:9px;align-items:center;margin:-7px 0 12px}.nz-password-meter>span{height:4px;border-radius:4px;background:#E1E8E4;overflow:hidden}.nz-password-meter i{display:block;height:100%;background:var(--amber);transition:width .18s ease}.nz-password-meter.ready i{background:var(--emerald)}.nz-password-meter small{color:var(--t3);font-size:9.5px}.nz-password-meter.ready small{color:var(--pine)}
 
+/* canonical scope-row creation */
+.nz-scope-create{padding:18px 20px;margin-bottom:17px;border-color:#CFE2D8}.nz-scope-create-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;margin-bottom:15px;border-bottom:1px solid var(--line2)}.nz-scope-create-head .nz-eyebrow{margin-bottom:5px}.nz-scope-create-head p{margin:4px 0 0}.nz-scope-fields{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:12px;margin-bottom:14px}.nz-register-empty{display:grid;gap:5px;padding:27px;text-align:center}.nz-register-empty b{font-size:14px}.nz-register-empty span{color:var(--t3);font-size:12px}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -277,6 +280,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:900px){
+  .nz-scope-fields{grid-template-columns:repeat(2,minmax(150px,1fr))}
   .nz-client-grid{grid-template-columns:1fr}.nz-client-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-client-experience{grid-column:1/-1}
   .nz-portal-invite-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-portal-invite-form .nz-btn{align-self:end}.nz-invite-result{grid-template-columns:1fr auto}.nz-invite-result>div{grid-column:1/-1}
   .nz-control-grid{grid-template-columns:1fr}.nz-control-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-control-aside>section:first-child{grid-row:span 2}
@@ -314,6 +318,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-scope-create{padding:16px}.nz-scope-create-head{flex-direction:column}.nz-scope-fields{grid-template-columns:1fr}
   .nz-client-head{flex-wrap:wrap}.nz-client-identity{min-width:0;flex:1}.nz-client-identity>div{align-items:flex-start;flex-direction:column}.nz-client-head>.nz-head-actions{display:grid;width:100%;grid-template-columns:1fr 1fr;margin-left:0}.nz-client-aside,.nz-client-signals{grid-template-columns:1fr}.nz-client-experience{grid-column:auto}.nz-client-experience>div:last-child{display:grid;grid-template-columns:1fr 1fr}
   .nz-portal-invite-head{flex-direction:column}.nz-portal-invite-form{grid-template-columns:1fr}.nz-portal-invite-form .nz-btn{width:100%}.nz-invite-result{grid-template-columns:1fr}.nz-invite-result .nz-btn{width:100%}
   .nz-control-head{flex-direction:column}.nz-control-head .nz-head-actions{width:100%}.nz-control-head .nz-btn{flex:1}.nz-control-aside{grid-template-columns:1fr}.nz-control-aside>section:first-child{grid-row:auto}.nz-recent-jobs{grid-template-columns:1fr}.nz-recent-jobs>a{border-right:0;border-bottom:1px solid var(--line2)}.nz-stage-row{grid-template-columns:110px minmax(50px,1fr) 24px}.nz-priority-title{align-items:flex-start;flex-wrap:wrap}
