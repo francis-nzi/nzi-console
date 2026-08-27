@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Begin **P3: constrained client data entry** with tenant- and job-bound data-entry grants and explicit expiry windows.
+Continue **P3: constrained client data entry** by connecting the new tenant/client/job-bound window command and portal read model to the staff and client interfaces.
