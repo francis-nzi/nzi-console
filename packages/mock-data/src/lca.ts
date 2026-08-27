@@ -75,7 +75,7 @@ export const lcaAssessments: LcaAssessment[] = [
 export function assessmentReadiness(assessment: LcaAssessment) {
   const mappedLines = assessment.lines.filter((line) => line.mappingState === "mapped").length;
   const reviewLines = assessment.lines.filter((line) => line.mappingState === "review").length;
-  const inventoryPct = Math.round(((mappedLines + reviewLines) / assessment.lines.length) * 100);
-  const transportPct = Math.round((assessment.mappedTransportLegs / assessment.transportLegs) * 100);
+  const inventoryPct = assessment.lines.length ? Math.round(((mappedLines + reviewLines) / assessment.lines.length) * 100) : 0;
+  const transportPct = assessment.transportLegs ? Math.round((assessment.mappedTransportLegs / assessment.transportLegs) * 100) : 0;
   return { mappedLines, reviewLines, unmappedLines: assessment.lines.length - mappedLines - reviewLines, inventoryPct, transportPct };
 }
