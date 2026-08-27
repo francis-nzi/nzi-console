@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import {redirectIfPortalSessionEnded} from "../portalSessionClient";
 
 export function PortalAccount() {
   const [notice, setNotice] = useState<{ message: string; ok: boolean } | null>(null);
@@ -12,6 +13,7 @@ export function PortalAccount() {
     const formElement = event.currentTarget, form = new FormData(formElement), newPassword = String(form.get("newPassword") ?? ""), confirmation = String(form.get("confirmation") ?? "");
     if (newPassword !== confirmation) { setPending(false); setNotice({ message: "New password confirmation does not match.", ok: false }); return; }
     try { const response = await fetch("/api/portal/auth/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: form.get("currentPassword"), newPassword }) });
+      if(await redirectIfPortalSessionEnded(response))return;
       const body = await response.json();
       if (!response.ok) throw new Error(body.message ?? "Password change failed.");
       if (body.changed !== true) throw new Error("The password service returned an invalid confirmation. Your password state could not be verified.");

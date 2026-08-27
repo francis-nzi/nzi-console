@@ -41,7 +41,7 @@
 
 - [x] Keep recovery staff-governed until a verified outbound-email/reset-token service exists; document the client-safe recovery route.
 - [x] Provide a complete governed recovery path from sign-in guidance through staff-issued, single-use re-enrolment; immediately revoke sessions and suspend old credentials.
-- [ ] Handle expired/revoked sessions consistently across pages and mutations.
+- [x] Handle expired/revoked sessions consistently across pages and mutations, clearing stale cookies before sign-in to prevent redirect loops.
 - [ ] Verify logout, session rotation, lockout, retry, and MFA recovery behaviour.
 
 #### P3. Constrained client data entry
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P2: recovery and session experience** by making expired and revoked sessions behave consistently across portal pages and mutations.
+Continue **P2: recovery and session experience** by verifying logout, session rotation, lockout, retry, and MFA recovery behaviour.

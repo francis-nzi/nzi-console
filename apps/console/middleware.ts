@@ -17,7 +17,7 @@ async function validPortalSession(token:string|undefined,secret:string|undefined
 
 export async function middleware(request: NextRequest) {
   if (process.env.NZI_AUTH_REQUIRED !== "true") return NextResponse.next();
-  const path=request.nextUrl.pathname,portalAuthPath=path==="/portal/login"||path==="/portal/invite"||path.startsWith("/api/portal/auth/")||path.startsWith("/api/portal/invitations/"),portalPath=path==="/portal"||path.startsWith("/portal/")||path.startsWith("/api/portal/");
+  const path=request.nextUrl.pathname,portalAuthPath=path==="/portal/login"||path==="/portal/invite"||path==="/portal/session-ended"||path.startsWith("/api/portal/auth/")||path.startsWith("/api/portal/invitations/"),portalPath=path==="/portal"||path.startsWith("/portal/")||path.startsWith("/api/portal/");
   if(portalPath){const authenticated=await validPortalSession(request.cookies.get("nzi_portal_session")?.value,process.env.NZI_PORTAL_SESSION_SECRET);if(path==="/portal/login"&&authenticated)return NextResponse.redirect(new URL("/portal",request.url));if(portalAuthPath)return NextResponse.next();if(authenticated)return NextResponse.next();if(path.startsWith("/api/"))return Response.json({code:"AUTHENTICATION_REQUIRED",message:"Client portal authentication is required."},{status:401});const login=new URL("/portal/login",request.url);login.searchParams.set("next",path);return NextResponse.redirect(login);}
   const authenticated = await validSession(request.cookies.get("nzi_console_session")?.value, process.env.NZI_CONSOLE_SESSION_SECRET);
   if (request.nextUrl.pathname === "/login" && authenticated) return NextResponse.redirect(new URL("/", request.url));
