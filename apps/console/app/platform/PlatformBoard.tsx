@@ -6,7 +6,7 @@ import { commandDefinitions } from "@nzi/contracts";
 import { NAV, USER } from "../lib/nav";
 import {PortalAccessAdmin} from "./PortalAccessAdmin";
 import {PortalInviteAdmin} from "./PortalInviteAdmin";
-import {PortalBucketAdmin} from "./PortalBucketAdmin";
+import {PortalDataEntryAdministration as PortalBucketAdmin} from "./PortalDataEntryReviewQueue";
 
 type View = "overview" | "audit" | "access" | "commands" | "workers";
 const unavailable = "This workflow is not connected in the isolated staging environment.";

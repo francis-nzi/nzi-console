@@ -49,7 +49,7 @@
 - [x] Implement tenant/client/job-bound data-entry grants and ordered expiry windows, with audited staff scheduling and authoritative client states.
 - [x] Render only canonical scope-row buckets with job-selected factors, client-owned sites, and factor-derived units authorised by staff.
 - [x] Support client create/edit/soft-delete/submit with optimistic concurrency, stale-version recovery, and portal audit evidence.
-- [ ] Route submitted data into the staff review queue; never treat client entry as reviewed emissions.
+- [x] Route submitted data into the staff review queue; never treat client entry as reviewed emissions.
 - [ ] Cover manual activity, spend, commuting, and vehicle entry according to the canonical scope-row model.
 
 #### P4. Deliverables and document records
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** by rendering the submitted-record queue for staff and defining explicit accept/reject promotion into the canonical review workflow.
+Continue **P3: constrained client data entry** by covering manual activity, spend, commuting, and vehicle entry against the canonical scope-row model.
