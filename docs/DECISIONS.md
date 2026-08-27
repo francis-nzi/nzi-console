@@ -50,10 +50,14 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-028 | Manifest-driven report assembly with validation as a hard publish gate | Confirmed (24 Aug 2026) |
 | NZC-029 | One chart asset across screen/PDF/portal, with provenance; no runtime browser provisioning | Confirmed (24 Aug 2026) |
 | NZC-030 | Dataset selection automated from reporting period, with audited manual additions | Confirmed (24 Aug 2026) |
+| NZC-031 | Portal recovery remains staff-governed until verified outbound recovery infrastructure exists | Confirmed (27 Aug 2026) |
 
 ---
 
 ## Decisions
+
+### NZC-031 — Governed portal recovery [Confirmed 27 Aug 2026]
+Client portal password and MFA recovery remains a staff-governed workflow in the isolated staging environment. The platform has no verified outbound-email and reset-token delivery service, so it must not present a self-service flow that cannot securely deliver or complete recovery. The public recovery route never confirms account existence and directs the client to their established NZI adviser relationship. An authorised administrator verifies the client outside the portal, revokes existing access, and issues a new single-use enrolment link. Self-service recovery may replace this only after email ownership, token expiry/consumption, rate limiting, audit, and account-enumeration controls are implemented and verified.
 
 ### NZC-001 — Additive, isolated environment [Confirmed]
 NZI Console is a separate repo (`francis-nzi/nzi-console`) and Render service (`srv-d6o8snvgi27c73frfta0`),

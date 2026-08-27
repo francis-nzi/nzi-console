@@ -39,7 +39,7 @@
 
 #### P2. Recovery and session experience
 
-- [ ] Decide and document whether password recovery remains staff-governed or gains a time-limited self-service email flow.
+- [x] Keep recovery staff-governed until a verified outbound-email/reset-token service exists; document the client-safe recovery route.
 - [ ] Provide a complete recovery path from the sign-in screen; no dead-end “forgotten password” state.
 - [ ] Handle expired/revoked sessions consistently across pages and mutations.
 - [ ] Verify logout, session rotation, lockout, retry, and MFA recovery behaviour.
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Begin **P2: recovery and session experience** by recording the governed recovery decision and replacing the sign-in dead end with a complete, explicit support path.
+Continue **P2: recovery and session experience** with the staff-side recovery invitation command, session revocation, and expiry handling.
