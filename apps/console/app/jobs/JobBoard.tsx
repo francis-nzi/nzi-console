@@ -122,13 +122,13 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
       actions={
         selected.status === "complete" ? (
           <>
-            <button className="nz-btn">Reopen</button>
-            <button className="nz-btn pri">Mark reviewed</button>
+            <button type="button" className="nz-btn">Reopen</button>
+            <button type="button" className="nz-btn pri">Mark reviewed</button>
           </>
         ) : (
           <>
-            <button className="nz-btn">Flag</button>
-            <button className="nz-btn pri">Save &amp; validate</button>
+            <button type="button" className="nz-btn">Flag</button>
+            <button type="button" className="nz-btn pri">Save &amp; validate</button>
           </>
         )
       }
@@ -165,13 +165,14 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
         }
       />
 
-      <div className="nz-head">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+      <div className="nz-head nz-job-head">
+        <div className="nz-job-heading">
           <div>
+            <div className="nz-eyebrow">Carbon Reduction Plan</div>
             <h1>Job {job.number} — {job.year} carbon footprint</h1>
             <div className="sub">{job.client} · reporting year {job.year} · GHG Protocol · owner: {job.owner}</div>
           </div>
-          <span className="nz-status" style={{ marginLeft: "auto" }}>
+          <span className="nz-status">
             <span className="d" />{job.statusLabel}
           </span>
         </div>
@@ -179,10 +180,10 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
 
       <WorkflowStageControl job={workflowJob} />
 
-      <div className="nz-stepper">{stages.map((item, index) => {
+      <nav className="nz-stepper nz-job-stepper" aria-label="CRP workflow stages">{stages.map((item, index) => {
         const activeIndex = stages.findIndex((candidate) => candidate.id === stage);
-        return <button key={item.id} type="button" className={`nz-step ${item.id === stage ? "active" : index < activeIndex ? "done" : "todo"}`} onClick={() => setStage(item.id)} style={{ border: 0, background: "transparent", textAlign: "left", cursor: "pointer" }}><span className="n">{index < activeIndex ? "✓" : index + 1}</span><span className="lb">{item.label}</span>{index < stages.length - 1 && <span className="bar" />}</button>;
-      })}</div>
+        return <button key={item.id} type="button" aria-current={item.id === stage ? "step" : undefined} className={`nz-step ${item.id === stage ? "active" : index < activeIndex ? "done" : "todo"}`} onClick={() => setStage(item.id)}><span className="n">{index < activeIndex ? "✓" : index + 1}</span><span className="lb">{item.label}</span>{index < stages.length - 1 && <span className="bar" />}</button>;
+      })}</nav>
 
       {stage === "data" && <div className="nz-toolbar">
         <div className="nz-filters">
@@ -194,14 +195,14 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
         </div>
         <div className="nz-prog">
           <span>{job.progressLabel} · <b style={{ color: "var(--t1)" }}>{job.progressPct}%</b></span>
-          <div className="track"><div className="fill" style={{ width: `${job.progressPct}%` }} /></div>
-          <button className="nz-btn">Import data</button>
-          <button className="nz-btn pri">Run QA checks</button>
+          <div className="track" role="progressbar" aria-label="Data completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={job.progressPct}><div className="fill" style={{ width: `${job.progressPct}%` }} /></div>
+          <button type="button" className="nz-btn">Import data</button>
+          <button type="button" className="nz-btn pri">Run QA checks</button>
         </div>
       </div>}
 
       {stage === "data" && <div className="nz-body">
-        <div className="nz-panel">
+        <div className="nz-panel nz-table-wrap">
           <table className="nz-tbl">
             <thead>
               <tr>
@@ -215,6 +216,9 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
                   key={r.id}
                   className={`row${r.id === selectedId ? " sel" : ""}`}
                   onClick={() => setSelectedId(r.id)}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}
+                  tabIndex={0}
+                  aria-selected={r.id === selectedId}
                 >
                   <td>{r.source}</td>
                   <td>
