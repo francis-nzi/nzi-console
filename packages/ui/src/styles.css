@@ -254,6 +254,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* portal invitation administration */
 .nz-portal-invite-admin{padding:20px;margin-bottom:18px}.nz-portal-invite-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:15px;border-bottom:1px solid var(--line2)}.nz-portal-invite-head h2{margin:5px 0 4px;font-size:17px}.nz-portal-invite-head p{margin:0}.nz-portal-invite-form{display:grid;grid-template-columns:1.2fr 1fr 1.2fr auto;gap:11px;align-items:end;margin-top:16px}.nz-portal-invite-form .nz-fl{margin:0}.nz-invite-result{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(260px,1.4fr) auto;gap:14px;align-items:center;margin-top:15px;padding:15px;border:1px solid #BEE7D3;border-radius:10px;background:var(--mint)}.nz-invite-result>div{display:grid;gap:4px}.nz-invite-result b{font-size:12px}.nz-invite-result p{margin:0;color:var(--t2);font-size:10.5px;line-height:1.45}.nz-invite-result output{overflow-wrap:anywhere;color:var(--pine);font-size:10.5px}
 
+/* client account workspace */
+.nz-client-head{display:flex;align-items:flex-start;gap:14px}.nz-client-monogram{display:grid;width:44px;height:44px;flex:none;place-items:center;border-radius:12px;background:var(--mint);color:var(--pine);font-size:17px;font-weight:700}.nz-client-identity>div{display:flex;align-items:center;gap:8px}.nz-client-identity h1{margin:0}.nz-client-identity p{margin:5px 0 0}.nz-client-head>.nz-head-actions{margin-left:auto}.nz-client-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(290px,.75fr);gap:16px;align-items:start}.nz-client-main,.nz-client-aside{display:grid;gap:16px}.nz-client-signals{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px}.nz-client-contact{padding:16px}.nz-client-contact .sub{margin-top:4px}.nz-client-contact a{display:block;margin-top:14px;color:var(--pine);font-size:13px}.nz-client-experience{padding:16px;background:linear-gradient(145deg,#0B1B2B,#123D35);color:#fff}.nz-client-experience .eyebrow{color:#7CE1AE}.nz-client-experience h2{margin:8px 0;font-size:18px}.nz-client-experience p{color:#C8D8D2;font-size:13px;line-height:1.5}.nz-client-experience>div:last-child{display:flex;gap:8px}.nz-client-progress{display:inline-flex;align-items:center;gap:8px}.nz-client-progress>span:first-child{width:68px;height:6px;border-radius:6px;background:#E7ECE9;overflow:hidden}.nz-client-progress>span:first-child>span{display:block;height:100%;background:var(--emerald)}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -262,6 +265,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:900px){
+  .nz-client-grid{grid-template-columns:1fr}.nz-client-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-client-experience{grid-column:1/-1}
   .nz-portal-invite-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-portal-invite-form .nz-btn{align-self:end}.nz-invite-result{grid-template-columns:1fr auto}.nz-invite-result>div{grid-column:1/-1}
   .nz-control-grid{grid-template-columns:1fr}.nz-control-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-control-aside>section:first-child{grid-row:span 2}
   .nz-sales-gate{grid-template-columns:1fr}.nz-sales-gate ol{grid-template-columns:repeat(3,1fr)}
@@ -298,6 +302,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-client-head{flex-wrap:wrap}.nz-client-identity{min-width:0;flex:1}.nz-client-identity>div{align-items:flex-start;flex-direction:column}.nz-client-head>.nz-head-actions{display:grid;width:100%;grid-template-columns:1fr 1fr;margin-left:0}.nz-client-aside,.nz-client-signals{grid-template-columns:1fr}.nz-client-experience{grid-column:auto}.nz-client-experience>div:last-child{display:grid;grid-template-columns:1fr 1fr}
   .nz-portal-invite-head{flex-direction:column}.nz-portal-invite-form{grid-template-columns:1fr}.nz-portal-invite-form .nz-btn{width:100%}.nz-invite-result{grid-template-columns:1fr}.nz-invite-result .nz-btn{width:100%}
   .nz-control-head{flex-direction:column}.nz-control-head .nz-head-actions{width:100%}.nz-control-head .nz-btn{flex:1}.nz-control-aside{grid-template-columns:1fr}.nz-control-aside>section:first-child{grid-row:auto}.nz-recent-jobs{grid-template-columns:1fr}.nz-recent-jobs>a{border-right:0;border-bottom:1px solid var(--line2)}.nz-stage-row{grid-template-columns:110px minmax(50px,1fr) 24px}.nz-priority-title{align-items:flex-start;flex-wrap:wrap}
   .nz-portal-access-head{flex-direction:column}.nz-access-user-head{align-items:flex-start;flex-wrap:wrap}.nz-access-user-head>div{width:100%}.nz-access-user-head .nz-btn{margin-left:auto}
