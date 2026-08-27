@@ -1,5 +1,7 @@
 # NZI Console
 
+Delivery is tracked in [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md). The active milestone is completion and formal verification of the client portal.
+
 Redesigned NZI Pro front-end — a **separate, isolated environment**. It does not modify the live
 `nzi_pro_v7-POSTGRES` platform, its production database, or the FuelCap environments. Additive only.
 

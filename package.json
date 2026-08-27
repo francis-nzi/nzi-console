@@ -15,6 +15,7 @@
     "start": "npm run start -w @nzi/console",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:portal": "node --import tsx --test apps/console/tests/portalValidation.test.ts",
     "console:dev": "npm run dev -w @nzi/console",
     "console:build": "npm run build -w @nzi/console"
   },
