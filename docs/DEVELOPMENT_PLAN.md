@@ -46,7 +46,7 @@
 
 #### P3. Constrained client data entry
 
-- [ ] Implement job-level data-entry grants and expiry windows.
+- [x] Implement tenant/client/job-bound data-entry grants and ordered expiry windows, with audited staff scheduling and authoritative client states.
 - [ ] Render only authorised buckets, factors, sites, and units.
 - [ ] Support create/edit/delete/submit with optimistic concurrency and audit evidence.
 - [ ] Route submitted data into the staff review queue; never treat client entry as reviewed emissions.
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** by connecting the new tenant/client/job-bound window command and portal read model to the staff and client interfaces.
+Continue **P3: constrained client data entry** by defining and rendering only the authorised buckets, factors, sites, and units for an open window.
