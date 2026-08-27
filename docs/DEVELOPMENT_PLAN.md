@@ -47,7 +47,7 @@
 #### P3. Constrained client data entry
 
 - [x] Implement tenant/client/job-bound data-entry grants and ordered expiry windows, with audited staff scheduling and authoritative client states.
-- [ ] Render only authorised buckets, factors, sites, and units.
+- [x] Render only canonical scope-row buckets with job-selected factors, client-owned sites, and factor-derived units authorised by staff.
 - [ ] Support create/edit/delete/submit with optimistic concurrency and audit evidence.
 - [ ] Route submitted data into the staff review queue; never treat client entry as reviewed emissions.
 - [ ] Cover manual activity, spend, commuting, and vehicle entry according to the canonical scope-row model.
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P3: constrained client data entry** by connecting the new canonical scope-row bucket grants to staff selection controls and client rendering.
+Continue **P3: constrained client data entry** with audited create/edit/delete/submit commands and optimistic concurrency.
