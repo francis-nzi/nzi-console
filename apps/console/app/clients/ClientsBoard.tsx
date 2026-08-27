@@ -31,7 +31,7 @@ function ClientDrawer({ c }: { c: Client }) {
       ? { kind: "warn" as const, text: "Prospect — proposal sent, not yet onboarded. No live engagement." }
       : c.status === "onboarding"
       ? { kind: "warn" as const, text: "Onboarding — baseline in progress; data still being collected." }
-      : { kind: "ok" as const, text: "Active client — engagement on track." };
+      : { kind: "ok" as const, text: "Active client — no relationship risk flag is recorded." };
 
   return (
     <>
@@ -114,6 +114,11 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
   const activeJobs = clients.reduce((n, c) => n + c.openJobs, 0);
   const avgCompleteness = Math.round(clients.reduce((n, c) => n + c.completeness, 0) / clients.length);
   const dueSoon = clients.filter((c) => /202|Overdue/.test(c.nextReportDue)).length;
+  const atRisk = clients.filter((client) => client.status === "at-risk").length;
+  const deliveryClients = clients.filter((client) => client.status !== "prospect");
+  const ownershipComplete = clients.every((client) => client.owner.trim() && client.owner !== "Unassigned");
+  const deliveryLinked = deliveryClients.length > 0 && deliveryClients.every((client) => client.jobs.length > 0);
+  const footprintsRecorded = clients.filter((client) => client.status === "active").every((client) => Boolean(client.latestFootprint));
 
   const filters: { id: Filter; label: string }[] = [
     { id: "all", label: `All ${clients.length}` },
@@ -159,7 +164,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
       </div>
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
-        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{clients.some(client=>client.status==="at-risk")?`${clients.filter(client=>client.status==="at-risk").length} relationship${clients.filter(client=>client.status==="at-risk").length===1?"":"s"} need focused attention.`:"The client portfolio is healthy."}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>✓</i> Named ownership</span><span><i>✓</i> Delivery visible</span><span><i>✓</i> Portal controlled</span></div></section>
+        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{atRisk?`${atRisk} relationship${atRisk===1?"":"s"} need focused attention.`:"No relationships are currently marked at risk."}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
         {notice && <div className={`nz-banner ${notice.kind}`} role="status"><div>{notice.text}</div></div>}
         {creating && <form className="nz-panel nz-client-create" onSubmit={createClient}>
           <div className="nz-client-create-head"><div><span className="nz-eyebrow">New governed relationship</span><b>Add client</b><div className="sub" style={{ marginTop: 4 }}>Creates one tenant-scoped client record and a traceable audit event. Contacts and reporting settings follow in the client workspace.</div></div><span className="nz-st est">Account pending</span></div>
@@ -189,7 +194,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
           </div>
         </div>
 
-        <div className="nz-panel">
+        <div className="nz-panel nz-client-table">
           <table className="nz-tbl">
             <thead>
               <tr>
@@ -223,6 +228,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
               })}
             </tbody>
           </table>
+          {rows.length===0?<div className="nz-engagement-empty"><b>No clients match this relationship stage</b><span>Choose another filter to return to the recorded portfolio.</span></div>:null}
         </div>
       </div>
     </AppShell>
