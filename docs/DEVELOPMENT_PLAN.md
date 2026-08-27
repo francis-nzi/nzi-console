@@ -55,7 +55,7 @@
 #### P4. Deliverables and document records
 
 - [x] Expose version-bound report PDF, certificate, and methodology deliverables.
-- [ ] Verify file identity, content type, version, access grant, and download failure states.
+- [x] Verify file identity, content type, version, access grant, and download failure states.
 - [ ] Keep screen, print, and downloadable evidence aligned to the same publication.
 
 #### P5. Portal acceptance gate
@@ -76,4 +76,4 @@
 
 ## Immediate next action
 
-Continue **P4: deliverables and document records** by verifying file identity, content type, version, access grant, and download failure states.
+Complete **P4: deliverables and document records** by keeping screen, print, and downloadable evidence aligned to the same publication.
