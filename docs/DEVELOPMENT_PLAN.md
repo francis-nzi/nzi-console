@@ -61,6 +61,8 @@
 #### P5. Portal acceptance gate
 
 - [ ] Keyboard, focus, screen-reader, contrast, and reduced-motion review.
+  - Automated foundation complete: shared skip navigation, visible focus, ARIA tab semantics and keyboard movement, contrast-safe primary controls, reduced-motion enforcement, and executable source contracts.
+  - Remaining acceptance evidence: rendered keyboard and screen-reader review in a connected browser session.
 - [ ] Responsive verification at phone, tablet, laptop, and wide desktop widths.
 - [ ] Browser journey tests for enrolment through report approval and data submission.
 - [ ] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
@@ -76,4 +78,4 @@
 
 ## Immediate next action
 
-Begin **P5: portal acceptance gate** with keyboard, focus, screen-reader, contrast, and reduced-motion review.
+Finish the **P5 accessibility review** with rendered keyboard and screen-reader verification, then proceed to responsive acceptance.
