@@ -18,9 +18,10 @@ export function PortalInviteSetup({ token }: { token: string }) {
     try { const response = await fetch(setup ? "/api/portal/invitations/confirm" : "/api/portal/invitations/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(setup ? { token, code: form.get("code") } : { token, password: form.get("password") }) });
       const body = await response.json();
       if (!response.ok) { setError(body.message ?? "Account setup could not be completed."); return; }
-      if (setup) { setComplete(true); return; }
+      if (setup) { if(body.activated!==true)throw new Error();setComplete(true); return; }
+      if(typeof body.setup?.email!=="string"||typeof body.setup?.displayName!=="string"||typeof body.setup?.totpSecret!=="string")throw new Error();
       setSetup(body.setup);
-    } catch { setError("The secure enrolment service could not be reached. Your invitation has not been consumed; please try again."); }
+    } catch { setError("The secure enrolment service could not verify the outcome. Retry this step before attempting to sign in."); }
     finally { setPending(false); }
   }
   async function copySecret(){if(!setup)return;try{await navigator.clipboard.writeText(setup.totpSecret);setCopied(true)}catch{setError("The setup key could not be copied automatically. Select and copy it manually.")}}
