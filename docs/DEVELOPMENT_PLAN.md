@@ -64,6 +64,8 @@
   - Automated foundation complete: shared skip navigation, visible focus, ARIA tab semantics and keyboard movement, contrast-safe primary controls, reduced-motion enforcement, and executable source contracts.
   - Remaining acceptance evidence: rendered keyboard and screen-reader review in a connected browser session.
 - [ ] Responsive verification at phone, tablet, laptop, and wide desktop widths.
+  - Automated layout foundation complete for wide, laptop, tablet, phone, and narrow-phone breakpoints across portal home, authentication, reports, data-entry forms, documents, and account security.
+  - Remaining acceptance evidence: rendered viewport review in a connected browser session.
 - [ ] Browser journey tests for enrolment through report approval and data submission.
 - [ ] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
 - [ ] Staging acceptance record with known limitations and rollback check.
@@ -78,4 +80,4 @@
 
 ## Immediate next action
 
-Finish the **P5 accessibility review** with rendered keyboard and screen-reader verification, then proceed to responsive acceptance.
+Finish rendered **P5 accessibility and responsive verification** in a connected browser session, then execute the end-to-end portal journeys.
