@@ -239,6 +239,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* sales conversion governance */
 .nz-sales-gate{display:grid;grid-template-columns:minmax(250px,.85fr) minmax(480px,1.4fr);gap:28px;align-items:center;margin-top:20px;padding:22px 24px;border:1px solid #CFE2D8;border-radius:13px;background:linear-gradient(135deg,#F7FBF9,#EFF8F3)}.nz-sales-gate h2{margin:5px 0 6px;font-size:18px;letter-spacing:-.025em}.nz-sales-gate p{margin:0;color:var(--t2);font-size:11.5px;line-height:1.55}.nz-sales-gate ol{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0;padding:0;list-style:none}.nz-sales-gate li{display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--line);border-radius:9px;background:#fff}.nz-sales-gate li i{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:50%;background:var(--mint);color:var(--pine);font-size:10px;font-style:normal;font-weight:750}.nz-sales-gate li span{display:grid;gap:2px}.nz-sales-gate li b{font-size:11px}.nz-sales-gate li small{color:var(--t3);font-size:9px;line-height:1.35}
 
+/* LCA assurance readiness */
+.nz-lca-readiness{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:20px;padding:20px 22px;border:1px solid;border-radius:13px}.nz-lca-readiness.warn{background:#FFF9EC;border-color:#F1D89B}.nz-lca-readiness.ok{background:var(--mint);border-color:#BEE7D3}.nz-lca-readiness h2{margin:5px 0 5px;font-size:18px;letter-spacing:-.025em}.nz-lca-readiness p{max-width:720px;margin:0;color:var(--t2);font-size:11.5px;line-height:1.55}.nz-lca-readiness-score{display:grid;min-width:112px;padding-left:20px;border-left:1px solid rgba(11,27,43,.12);text-align:right}.nz-lca-readiness-score strong{font-size:27px;letter-spacing:-.04em}.nz-lca-readiness-score span{color:var(--t2);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -281,6 +284,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-lca-readiness{align-items:flex-start;flex-direction:column}.nz-lca-readiness-score{width:100%;padding:14px 0 0;border-top:1px solid rgba(11,27,43,.12);border-left:0;text-align:left}
   .nz-sales-gate{padding:18px}.nz-sales-gate ol{grid-template-columns:1fr}
   .nz-audit-heading{align-items:flex-start;flex-direction:column}.nz-audit-count{align-self:stretch;justify-content:center}
   .nz-client-create{padding:16px}.nz-client-create-head{align-items:flex-start;flex-direction:column}.nz-client-create-grid{grid-template-columns:1fr}.nz-client-create-grid label{grid-column:auto!important}
