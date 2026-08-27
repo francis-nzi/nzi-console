@@ -67,7 +67,9 @@
   - Automated layout foundation complete for wide, laptop, tablet, phone, and narrow-phone breakpoints across portal home, authentication, reports, data-entry forms, documents, and account security.
   - Remaining acceptance evidence: rendered viewport review in a connected browser session.
 - [ ] Browser journey tests for enrolment through report approval and data submission.
-- [ ] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
+- [x] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
+  - Acceptance coverage inventories every portal mutation route and requires the shared same-origin guard.
+  - Tenant-bound session resolution, durable password/MFA throttling, and non-cacheable stale-session expiry are regression protected alongside the functional backend tests.
 - [ ] Staging acceptance record with known limitations and rollback check.
 
 ## Delivery rules
