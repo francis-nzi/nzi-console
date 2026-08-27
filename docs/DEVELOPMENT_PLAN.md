@@ -70,7 +70,8 @@
 - [x] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
   - Acceptance coverage inventories every portal mutation route and requires the shared same-origin guard.
   - Tenant-bound session resolution, durable password/MFA throttling, and non-cacheable stale-session expiry are regression protected alongside the functional backend tests.
-- [ ] Staging acceptance record with known limitations and rollback check.
+- [x] Staging acceptance record with known limitations and rollback check.
+  - Evidence, open browser-only checks, and the verified rollback path are recorded in `docs/STAGING_ACCEPTANCE_M1.md`.
 
 ## Delivery rules
 
@@ -82,4 +83,4 @@
 
 ## Immediate next action
 
-Finish rendered **P5 accessibility and responsive verification** in a connected browser session, then execute the end-to-end portal journeys.
+Connect an interactive browser session, finish rendered **P5 accessibility and responsive verification**, then execute the end-to-end portal journeys.

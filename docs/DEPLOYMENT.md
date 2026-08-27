@@ -16,7 +16,7 @@ FuelCap services.
 - **Health check path:** `/api/health`
 - **Auto-Deploy:** on commit to `main`
 - **Public URL:** `https://nzi-pro-api-prod.onrender.com`
-- **Verified authentication commit:** `54340dd` — "Allow credential-scoped membership authentication"
+- **Latest accepted staging commit:** `628f427` — "Lock portal security acceptance boundary"
 
 ## Environment variables
 
@@ -39,15 +39,16 @@ FuelCap services.
 
 Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
 authenticated client/job creation plus versioned job-stage transitions through the transactional command
-boundary. CRP jobs read and edit canonical `job_scope_rows`; `J000712` uses an explicit fictional evidence
-seed and newly created CRP jobs begin in a truthful empty state. Other workspaces remain on synthetic
-`@nzi/mock-data` fixtures. The service retains unrelated legacy environment variables from its earlier
+boundary. The independent client portal also uses the isolated boundary for enrolment, sessions, grants,
+published reports, collaboration, deliverables, and constrained data entry. CRP jobs read and edit canonical
+`job_scope_rows`; `J000712` uses an explicit fictional evidence seed and newly created CRP jobs begin in a
+truthful empty state. Other staff workspaces remain on synthetic `@nzi/mock-data` fixtures. The service retains unrelated legacy environment variables from its earlier
 use; the Console boundary ignores generic `DATABASE_URL` and accepts only `NZI_ISOLATED_DATABASE_URL`.
 
 ## ⚠️ Notes / follow-ups
 
-- **Public URL is misleadingly named** `nzi-pro-api-prod.onrender.com` — this is a **staging redesign UI on
-  mock data**, not a production API. Before anyone bookmarks or references it: confirm this service was not
+- **Public URL is misleadingly named** `nzi-pro-api-prod.onrender.com` — this is a **staging redesign UI with
+  an isolated non-production data boundary**, not a production API. Before anyone bookmarks or references it: confirm this service was not
   previously serving a real NZI Pro API, and that nothing else points at that URL. The `.onrender.com`
   subdomain is fixed at service creation and can't be changed by renaming; for a clean name, create a fresh
   service (`nzi-console.onrender.com`) or attach a custom domain (`console.netzero.international`).
