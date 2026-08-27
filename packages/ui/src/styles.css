@@ -233,6 +233,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* governed client creation */
 .nz-client-create{padding:20px;margin-bottom:18px;border-color:#CFE2D8;box-shadow:0 10px 26px rgba(11,27,43,.045)}.nz-client-create-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:15px;border-bottom:1px solid var(--line2)}.nz-client-create-head .nz-eyebrow{margin-bottom:5px}.nz-client-create-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:15px;margin-top:17px}
 
+/* dataset governance */
+.nz-tbl tr.row:focus-visible{outline:2px solid var(--emerald);outline-offset:-2px}.nz-table-empty{padding:28px;text-align:center;color:var(--t3);font-size:13px}.nz-audit-section{margin-top:24px}.nz-audit-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:11px}.nz-audit-heading h2{font-size:18px;margin:4px 0 0}.nz-audit-count{display:flex;align-items:baseline;gap:7px;padding:7px 11px;border:1px solid;border-radius:9px;font-size:11px}.nz-audit-count strong{font-size:18px}.nz-audit-count.warn{background:#FFF4DC;border-color:#F1D89B;color:#7A5808}.nz-audit-count.ok{background:var(--mint);border-color:#BEE7D3;color:var(--pine)}
+
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
   .nz-app.no-drawer{grid-template-columns:210px minmax(0,1fr)}
@@ -274,6 +277,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
+  .nz-audit-heading{align-items:flex-start;flex-direction:column}.nz-audit-count{align-self:stretch;justify-content:center}
   .nz-client-create{padding:16px}.nz-client-create-head{align-items:flex-start;flex-direction:column}.nz-client-create-grid{grid-template-columns:1fr}.nz-client-create-grid label{grid-column:auto!important}
   .nz-job-create{padding:16px}.nz-job-create-head{align-items:flex-start;flex-direction:column}.nz-job-create-grid{grid-template-columns:1fr}.nz-job-create-grid label{grid-column:auto!important}
   .nz-workflow-control{padding:16px}.nz-workflow-heading{align-items:flex-start;flex-direction:column}.nz-workflow-actions>div{display:grid;grid-template-columns:1fr}.nz-workflow-actions .nz-btn{width:100%}
