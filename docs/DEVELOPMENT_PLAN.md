@@ -109,7 +109,7 @@
 
 - [x] Live tenant-bound publication register with immutable version and client-review state.
 - [x] Live immutable report detail resolved from its exact reviewed snapshot, data hash, and manifest.
-- [ ] Replace remaining fixture template and preview surfaces with governed live records.
+- [x] Replace fixture template and preview surfaces with the code-governed manifest and tenant-bound reviewed snapshots.
 
 ### S2. Clients and Jobs workspaces
 

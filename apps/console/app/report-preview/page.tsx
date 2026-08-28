@@ -1,4 +1,3 @@
-import { ChartProof } from "../charts/ChartProof";
 import {
   EmissionsByActivity,
   EmissionsScopeDonut,
@@ -9,17 +8,10 @@ import {
   ReductionPathway,
   ScopeYearOnYearBar,
   crpProfessionalManifest,
-  emissionsByActivitySample,
-  emissionsSiteDonutSample,
-  intensityPathwaySample,
-  purchasedGoodsBreakdownSample,
-  reductionPathwaySample,
   resolveCrpCoreCharts,
-  scopeDonutSample,
-  scopeYearOnYearSample,
 } from "@nzi/charts";
-import { loadFixtureScreen } from "@nzi/api-client";
 import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
+import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
@@ -46,26 +38,15 @@ export default async function ReportPreviewPage({
       </ScreenState>
     );
   }
-  const result = loadFixtureScreen("report", {
-    report: {
-      id: "CRP-J000712-preview",
-      reviewedSnapshotId: "reviewed-crp-J000712-v1",
-    },
-  });
+  const result = await loadScreen<{jobs:JobScreenReadModel[]}>("jobs",{jobs:[]},"jobs");
   return (
     <ScreenState result={result}>
-      {() => (
-        <main className="nz-preview-canvas">
-          <section className="nz-preview-sheet">
-            <header className="nz-preview-head"><span className="nz-eyebrow">NZI Professional Report · J000712</span><h1>Carbon performance</h1><p>Print/PDF preview · same reviewed chart objects</p><span className="nz-st est">Fixture preview</span></header>
-            <ChartProof target="print" label="Print and PDF" />
-            <section className="nz-preview-review"><div className="nz-section-intro"><div><span className="nz-eyebrow">Large-format chart review</span><h2>Full-width report graphics</h2><p>The same chart components and reviewed data, each shown in its own larger container.</p></div></div><div className="nz-preview-stack"><EmissionsScopeDonut data={scopeDonutSample}/><ReductionPathway data={reductionPathwaySample}/><ScopeYearOnYearBar data={scopeYearOnYearSample}/><EmissionsByActivity data={emissionsByActivitySample}/><EmissionsSiteDonut data={emissionsSiteDonutSample}/><IntensityPathway data={intensityPathwaySample}/><PurchasedGoodsBreakdown data={purchasedGoodsBreakdownSample}/></div></section>
-          </section>
-        </main>
-      )}
+      {(data) => <PreviewJobSelection jobs={data.jobs.filter((job)=>job.header.family==="crp")} />}
     </ScreenState>
   );
 }
+
+function PreviewJobSelection({jobs}:{jobs:JobScreenReadModel[]}){return <main className="nz-preview-canvas"><section className="nz-preview-empty"><span className="nz-state-icon">CRP</span><div><span className="nz-eyebrow">Governed report preparation</span><h1>Select a live CRP job</h1><p>A preview can only be assembled from a tenant-bound reviewed snapshot. Choose a CRP job to load its latest frozen evidence.</p>{jobs.length?<div className="nz-preview-stack">{jobs.map(job=><a className="nz-template-row" href={`/report-preview?jobId=${job.header.id}`} key={job.header.id}><div className="nz-template-mark">{job.header.reportingYear??"CRP"}</div><div><b>{job.header.number} · {job.header.client}</b><span>{job.header.title} · {job.header.workflowStage}</span></div><span className="nz-btn">Open evidence</span></a>)}</div>:<div className="nz-banner warn"><div><b>No live CRP jobs are available.</b><div>Create a CRP job and complete its evidence review before preparing a report.</div></div></div>}<a className="nz-btn" href="/reports">Return to publication studio</a></div></section></main>}
 
 function LiveSnapshotPreview({
   snapshot,
