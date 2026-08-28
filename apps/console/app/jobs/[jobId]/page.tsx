@@ -1,4 +1,4 @@
-import { jobs, type FamilyJob } from "@nzi/mock-data";
+import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { DatasetOption,EmissionsTargetReadModel,FactorOption,IntensityTargetReadModel,PurchasedGoodsCategoryOption,SiteOption,ScopeQaReadiness,ScopeRowReadModel } from "@nzi/contracts";
 import { notFound } from "next/navigation";
 import { loadScreen } from "../../lib/loadScreen";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
   const [result, scopeRows, factors,target,intensity,sites,categories] = await Promise.all([
-    loadScreen<{ jobs: FamilyJob[] }>("jobs", { jobs }),
+    loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
     loadScreen<{ rows: ScopeRowReadModel[];qa:ScopeQaReadiness }>("scopeRows", { rows: [],qa:{total:0,enabled:0,approved:0,pending:0,rejected:0,calculationMissing:0,qualityMissing:0,independentReviewPending:0,readyForReporting:false} }, `jobs/${jobId}/scope-rows`),
     loadScreen<{ factors: FactorOption[];datasets:DatasetOption[] }>("factorOptions", { factors: [],datasets:[] }, `jobs/${jobId}/factors`),
     loadScreen<{target:EmissionsTargetReadModel|null}>("emissionsTarget",{target:null},`jobs/${jobId}/emissions-target`),

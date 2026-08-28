@@ -113,8 +113,8 @@
 
 ### S2. Clients and Jobs workspaces
 
-- [ ] Complete canonical client detail, contacts, sites, and relationship history.
-- [ ] Complete cross-family job index and operational stage controls without fixture fallbacks.
+- [x] Complete canonical client detail, primary contact, tenant-owned sites, and workflow relationship history.
+- [x] Complete cross-family job index and operational stage controls without fixture fallbacks.
 
 ### S3. Datasets and Platform workspaces
 
@@ -136,4 +136,4 @@
 
 ## Immediate next action
 
-Continue **M3 S1 Reports workspace** while the combined M1/M2 rendered acceptance pass awaits a connected browser.
+Continue **M3 S3 Datasets and Platform workspaces** while the combined M1/M2 rendered acceptance pass awaits a connected browser.

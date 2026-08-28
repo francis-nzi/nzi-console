@@ -9,6 +9,7 @@ export type ClientScreenReadModel = {
   memberSince: string; latestFootprint: string | null; yoy: string | null; completeness: number;
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   jobs: Array<{ number: string; year: number; status: string }>;
+  sites: Array<{ id: string; name: string }>;
 };
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";
@@ -34,6 +35,7 @@ type ClientRow = {
   member_since: number; latest_footprint_tco2e: string | null; yoy_percent: string | null;
   completeness_percent: number; next_report_due_label: string; contact_name: string; contact_role: string;
   contact_email: string; open_jobs: string; jobs: Array<{ number: string; year: number; status: string }> | null;
+  sites: Array<{ id: string; name: string }> | null;
 };
 type JobRow = {
   job_id: string; version: number; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
@@ -56,6 +58,8 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
       count(j.job_id) FILTER (WHERE j.status IN ('draft','open','on-hold'))::text AS open_jobs,
       coalesce(jsonb_agg(jsonb_build_object('number', j.job_number, 'year', coalesce(j.reporting_year, extract(year from j.start_date)::int), 'status', j.workflow_stage)
         ORDER BY j.sequence DESC) FILTER (WHERE j.job_id IS NOT NULL), '[]'::jsonb) AS jobs
+      ,coalesce((SELECT jsonb_agg(jsonb_build_object('id', s.site_id, 'name', s.name) ORDER BY lower(s.name), s.site_id)
+        FROM nzi_console.client_sites s WHERE (s.organisation_id,s.client_id)=(c.organisation_id,c.client_id)), '[]'::jsonb) AS sites
     FROM nzi_console.clients c
     LEFT JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
     GROUP BY c.organisation_id, c.client_id
@@ -64,7 +68,7 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
     status: row.status, owner: row.owner_name, memberSince: String(row.member_since),
     latestFootprint: footprint(row.latest_footprint_tco2e), yoy: percentage(row.yoy_percent),
     completeness: row.completeness_percent, openJobs: Number(row.open_jobs), nextReportDue: row.next_report_due_label,
-    contact: { name: row.contact_name, role: row.contact_role, email: row.contact_email }, jobs: row.jobs ?? [] }));
+    contact: { name: row.contact_name, role: row.contact_role, email: row.contact_email }, jobs: row.jobs ?? [], sites: row.sites ?? [] }));
 }
 
 export async function listAuditEvents(db:Queryable,limit=100):Promise<AuditEventReadModel[]>{const safeLimit=Math.min(Math.max(Math.trunc(limit),1),250),{rows}=await db.query<{audit_event_id:string;occurred_at:Date|string;actor_id:string;principal_type:AuditEventReadModel["principal"];organisation_id:string;action:string;entity_type:string;entity_id:string;correlation_id:string;reason:string|null;before_json:unknown;after_json:unknown}>(`SELECT audit_event_id,occurred_at,actor_id,principal_type,organisation_id,action,entity_type,entity_id,correlation_id,reason,before_json,after_json FROM nzi_console.audit_events ORDER BY occurred_at DESC,audit_event_id DESC LIMIT $1`,[safeLimit]);const display=(value:unknown)=>value==null?undefined:typeof value==="string"?value:JSON.stringify(value);return rows.map(row=>({id:row.audit_event_id,at:row.occurred_at instanceof Date?row.occurred_at.toISOString():String(row.occurred_at),actor:row.actor_id,principal:row.principal_type,organisation:row.organisation_id,action:row.action,entity:row.entity_type,entityId:row.entity_id,result:"allowed",severity:row.reason?"warning":"info",correlationId:row.correlation_id,...(display(row.before_json)?{before:display(row.before_json)}:{}),...(display(row.after_json)?{after:display(row.after_json)}:{}),...(row.reason?{reason:row.reason}:{})}));}
