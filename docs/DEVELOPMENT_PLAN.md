@@ -98,8 +98,8 @@
 
 - [x] Executable assured-release journey from complete reviewed evidence through immutable portal publication, including audit and outbox evidence.
 - [x] Negative release journeys for incomplete QA, mismatched snapshot evidence, and repeat publication.
-- [ ] One executable journey covering job configuration through immutable publication.
-- [ ] Remaining upstream negative journeys for stale configuration and scope-row versions.
+- [x] One executable journey covering job configuration through immutable publication.
+- [x] Upstream negative journeys for stale job and scope-row versions.
 - [ ] Staging acceptance record for the complete staff CRP workflow.
 
 ## Delivery rules
