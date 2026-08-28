@@ -23,6 +23,7 @@ import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
+import {CrpReleaseControl} from "./CrpReleaseControl";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -252,6 +253,7 @@ export function CrpScopeWorkspace({
           datasets={datasets}
           notice={setNotice}
         />
+        <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
         {creating && (
           <form
             className="nz-panel nz-scope-create"
