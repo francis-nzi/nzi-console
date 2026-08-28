@@ -15,7 +15,7 @@
     "start": "npm run start -w @nzi/console",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test:portal": "node --import tsx --test apps/console/tests/crpReleaseControl.test.ts apps/console/tests/portalAccessibility.test.ts apps/console/tests/portalSecurityAcceptance.test.ts apps/console/tests/portalValidation.test.ts packages/isolated-backend/tests/auth.test.ts packages/isolated-backend/tests/login.test.ts packages/isolated-backend/tests/portalAccess.test.ts packages/isolated-backend/tests/portalDataEntry.test.ts packages/isolated-backend/tests/portalDeliverables.test.ts packages/isolated-backend/tests/portalInvitations.test.ts packages/isolated-backend/tests/portalReview.test.ts",
+    "test:portal": "node --import tsx --test apps/console/tests/crpReleaseControl.test.ts apps/console/tests/portalAccessibility.test.ts apps/console/tests/portalSecurityAcceptance.test.ts apps/console/tests/portalValidation.test.ts packages/isolated-backend/tests/auth.test.ts packages/isolated-backend/tests/crpLifecycle.test.ts packages/isolated-backend/tests/login.test.ts packages/isolated-backend/tests/portalAccess.test.ts packages/isolated-backend/tests/portalDataEntry.test.ts packages/isolated-backend/tests/portalDeliverables.test.ts packages/isolated-backend/tests/portalInvitations.test.ts packages/isolated-backend/tests/portalReview.test.ts",
     "console:dev": "npm run dev -w @nzi/console",
     "console:build": "npm run build -w @nzi/console"
   },

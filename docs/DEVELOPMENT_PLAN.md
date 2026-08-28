@@ -96,8 +96,10 @@
 
 ### C4. CRP lifecycle acceptance
 
+- [x] Executable assured-release journey from complete reviewed evidence through immutable portal publication, including audit and outbox evidence.
+- [x] Negative release journeys for incomplete QA, mismatched snapshot evidence, and repeat publication.
 - [ ] One executable journey covering job configuration through immutable publication.
-- [ ] Negative journeys for stale rows, incomplete QA, mismatched evidence, and repeat publication.
+- [ ] Remaining upstream negative journeys for stale configuration and scope-row versions.
 - [ ] Staging acceptance record for the complete staff CRP workflow.
 
 ## Delivery rules
