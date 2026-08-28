@@ -66,7 +66,7 @@ export function WorkspaceRail({
       ))}
       <div className="nz-railfoot">
         <div className="av">{user.initials}</div>
-        <div className="who">{user.name}<small>{user.role}</small></div>
+        <a className="who" href="/account" title="Account security">{user.name}<small>{user.role}</small></a>
         <form action="/api/auth/logout" method="post"><button type="submit" className="nz-signout" aria-label={`Sign out ${user.name}`} title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button></form>
       </div>
     </aside>

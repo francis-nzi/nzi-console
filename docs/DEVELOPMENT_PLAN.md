@@ -27,6 +27,7 @@
 - [x] Authenticated password change with other-session revocation.
 - [x] Server and browser validation share the same portal evidence contracts.
 - [x] Automatic staging deployment and authenticated health verification after each accepted batch.
+- [x] Authenticated staff password change with current-password verification, preserved MFA, and other-session revocation.
 
 ### Remaining acceptance batches
 
