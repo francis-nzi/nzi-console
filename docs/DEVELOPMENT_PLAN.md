@@ -7,7 +7,7 @@
 | Milestone | Status | Definition of done |
 |---|---|---|
 | M1. Client portal | In progress | A client can enrol, authenticate, see only granted work, review immutable publications, collaborate, manage security, provide authorised data, obtain deliverables, and complete all critical journeys accessibly on desktop and mobile. |
-| M2. Core CRP workflow | In progress | Staff can configure a CRP job, collect activity data, resolve factors, inspect lineage, complete QA, freeze a snapshot, validate and publish it with a complete audit trail. |
+| M2. Core CRP workflow | Implemented; browser acceptance pending | Staff can configure a CRP job, collect activity data, resolve factors, inspect lineage, complete QA, freeze a snapshot, validate and publish it with a complete audit trail. |
 | M3. Staff workspaces | Planned | Clients, Jobs, Datasets, Reports, and Platform workspaces support their canonical operational workflows with explicit states and permissions. |
 | M4. Additional services | Planned | LCA/PCF, Consultancy, Training, and Sales V2 use the shared job spine while preserving their distinct domain models. |
 | M5. Production readiness | Planned | Security, tenancy, accessibility, performance, observability, backup, rollback, and controlled release gates are independently verified. |
@@ -100,7 +100,8 @@
 - [x] Negative release journeys for incomplete QA, mismatched snapshot evidence, and repeat publication.
 - [x] One executable journey covering job configuration through immutable publication.
 - [x] Upstream negative journeys for stale job and scope-row versions.
-- [ ] Staging acceptance record for the complete staff CRP workflow.
+- [x] Staging acceptance record for the complete staff CRP workflow.
+  - Automated evidence, browser-observation limitations, and rollback are recorded in `docs/STAGING_ACCEPTANCE_M2.md`.
 
 ## Delivery rules
 
@@ -112,4 +113,4 @@
 
 ## Immediate next action
 
-Complete the executable **M2 C4 CRP lifecycle acceptance** while M1's rendered browser evidence awaits a connected interactive browser.
+Connect an interactive browser and execute the combined **M1 portal and M2 CRP rendered acceptance pass**.

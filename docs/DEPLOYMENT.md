@@ -16,7 +16,7 @@ FuelCap services.
 - **Health check path:** `/api/health`
 - **Auto-Deploy:** on commit to `main`
 - **Public URL:** `https://nzi-pro-api-prod.onrender.com`
-- **Latest accepted staging commit:** `628f427` — "Lock portal security acceptance boundary"
+- **Latest accepted implementation commit:** `d49eb7d` — "Prove complete CRP workflow lifecycle"
 
 ## Environment variables
 
