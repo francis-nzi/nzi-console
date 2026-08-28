@@ -118,8 +118,8 @@
 
 ### S3. Datasets and Platform workspaces
 
-- [ ] Replace fixture dataset administration with version, provenance, licence, and geographic controls.
-- [ ] Complete live audit, permissions, operational health, and governance views.
+- [x] Replace fixture dataset administration with tenant-bound version, provenance, licence, geography, usage, and exception controls.
+- [x] Complete live audit, enforced permission matrix, membership counts, authenticated application health, and tenant-database governance views.
 
 ### S4. Staff workspace acceptance
 
@@ -136,4 +136,4 @@
 
 ## Immediate next action
 
-Continue **M3 S3 Datasets and Platform workspaces** while the combined M1/M2 rendered acceptance pass awaits a connected browser.
+Execute **M3 S4 staff workspace acceptance**, including role, tenant, failure-state, responsive, and keyboard evidence.

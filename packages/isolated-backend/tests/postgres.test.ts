@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listGrantedPortalJobs,listReportVersionRegister, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -28,6 +28,10 @@ describe("isolated Postgres adapter", () => {
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.quantity, 1250.5); assert.equal(row.calculatedTco2e, null); assert.equal(row.qualityTier, "spend-based"); assert.equal(row.version, 3);
   });
+
+  it("maps governed datasets, provenance usage and explicit selection warnings",async()=>{let call=0;const db={query:async()=>({rows:call++===0?[{dataset_id:"dataset-a",name:"Published factors",version:"2026",valid_from:"2026-01-01",valid_to:"2026-12-31",country_code:"GB",status:"active",source_name:"Publisher",licence:"OGL",synthetic:false,factor_count:"2",job_count:"1",scopes:["1","2"],spend_count:"0",activity_count:"2"}]:[{dataset_id:"dataset-a",job_number:"J000612",warning:"Manual geography exception."}]})} as Queryable,result=await listDatasetRegistry(db);assert.equal(result.datasets[0]?.factorCount,2);assert.deepEqual(result.datasets[0]?.scopes,["1","2"]);assert.equal(result.issues[0]?.jobNumber,"J000612");});
+
+  it("derives staff governance from live membership counts and enforced permissions",async()=>{const db={query:async()=>({rows:[{role_id:"reviewer",members:"3"}]})} as Queryable,roles=await listStaffRoleGovernance(db),reviewer=roles.find(role=>role.id==="reviewer");assert.equal(reviewer?.members,3);assert.ok(reviewer?.permissions.includes("reports.publish"));assert.ok(reviewer?.restricted.includes("finance.manage"));});
 
   it("loads the current published report from its matching frozen snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",manifest_version:1,report_data_hash:"sha256:abc",published_at:"2026-08-25T18:00:00Z",snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable;const report=await getCurrentPublishedCrpReport(db,"job-a");assert.equal(report?.snapshot.jobNumber,"J000612");assert.equal(report?.reportVersionId,"report-a");});
   it("loads one immutable staff report version from its exact matching snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",status:"validated",manifest_version:1,report_data_hash:"sha256:abc",published_at:null,snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable,report=await getCrpReportVersion(db,"report-a");assert.equal(report?.status,"validated");assert.equal(report?.publishedAt,null);assert.equal(report?.snapshot.id,"snapshot-a");});

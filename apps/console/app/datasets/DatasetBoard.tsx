@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
-import { datasetApplies, type Dataset, type DatasetAuditIssue } from "@nzi/mock-data";
+import type {DatasetRegistryItem as Dataset,DatasetRegistryIssue as DatasetAuditIssue} from "@nzi/isolated-backend";
 import { NAV, USER } from "../lib/nav";
 
 type Filter = "all" | Dataset["status"];
@@ -25,7 +25,7 @@ export function DatasetBoard({ datasets, issues }: { datasets: Dataset[]; issues
 }
 
 function DatasetEvidence({ dataset, issues }: { dataset: Dataset; issues: DatasetAuditIssue[] }) {
-  const applies = datasetApplies(dataset, { reportingFrom: "2024-01-01", reportingTo: "2024-12-31", country: "GB" });
+  const applies = dataset.validFrom <= "2024-01-01" && dataset.validTo >= "2024-12-31" && (dataset.country === "GB" || dataset.country === "GLOBAL");
   return <><div className={`nz-banner ${applies ? "ok" : "warn"}`}><div><b>{applies ? "Applicable to a 2024 GB reporting period." : "Not automatically applicable to a 2024 GB reporting period."}</b></div></div><div className="nz-kv"><span className="k">Source</span><span className="v">{dataset.source}</span></div><div className="nz-kv"><span className="k">Analysis type</span><span className="v">{dataset.analysisType}</span></div><div className="nz-kv"><span className="k">Valid period</span><span className="v">{dataset.validFrom} → {dataset.validTo}</span></div><div className="nz-kv"><span className="k">Country</span><span className="v">{dataset.country}</span></div><div className="nz-kv"><span className="k">Licence</span><span className="v">{dataset.licence}</span></div><div className="nz-kv"><span className="k">Factors</span><span className="v num">{dataset.factorCount.toLocaleString("en-GB")}</span></div><div className="nz-kv"><span className="k">Jobs using version</span><span className="v num">{dataset.usedByJobs}</span></div><div className="nz-sect">Selection rule</div><p style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.5 }}>Automatically selected only when reporting period, geography, scope and factor method match. Manual use requires a reason and retains audit warnings.</p><div className="nz-sect">Audit history</div>{issues.length ? issues.map((issue) => <div key={issue.id} className={`nz-banner ${issue.state === "resolved" ? "ok" : "warn"}`}><div>{issue.message}</div></div>) : <p style={{ fontSize: 12, color: "var(--t3)" }}>No audit issues for this dataset.</p>}</>;
 }
 function Metric({ label, value }: { label: string; value: string }) { return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div></div>; }
