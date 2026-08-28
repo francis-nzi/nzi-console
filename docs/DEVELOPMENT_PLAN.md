@@ -103,6 +103,29 @@
 - [x] Staging acceptance record for the complete staff CRP workflow.
   - Automated evidence, browser-observation limitations, and rollback are recorded in `docs/STAGING_ACCEPTANCE_M2.md`.
 
+## M3. Staff workspaces
+
+### S1. Reports workspace
+
+- [x] Live tenant-bound publication register with immutable version and client-review state.
+- [x] Live immutable report detail resolved from its exact reviewed snapshot, data hash, and manifest.
+- [ ] Replace remaining fixture template and preview surfaces with governed live records.
+
+### S2. Clients and Jobs workspaces
+
+- [ ] Complete canonical client detail, contacts, sites, and relationship history.
+- [ ] Complete cross-family job index and operational stage controls without fixture fallbacks.
+
+### S3. Datasets and Platform workspaces
+
+- [ ] Replace fixture dataset administration with version, provenance, licence, and geographic controls.
+- [ ] Complete live audit, permissions, operational health, and governance views.
+
+### S4. Staff workspace acceptance
+
+- [ ] Role and tenant isolation journeys across every staff workspace.
+- [ ] Responsive, keyboard, failure-state, and staging acceptance evidence.
+
 ## Delivery rules
 
 1. Work the active milestone from top to bottom unless a discovered security or data-integrity defect requires immediate containment.
@@ -113,4 +136,4 @@
 
 ## Immediate next action
 
-Connect an interactive browser and execute the combined **M1 portal and M2 CRP rendered acceptance pass**.
+Continue **M3 S1 Reports workspace** while the combined M1/M2 rendered acceptance pass awaits a connected browser.
