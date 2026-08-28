@@ -39,6 +39,8 @@ const blank = (): ScopeRowWriteFields => ({
   factorVersion: null,
   factorLabel: null,
   qualityTier: null,
+  overrideTco2e: null,
+  overrideReason: null,
 });
 const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
   { value: "measured", label: "Measured" },
@@ -60,6 +62,8 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   factorVersion: r.factorVersion,
   factorLabel: r.factorLabel,
   qualityTier: r.qualityTier,
+  overrideTco2e: r.overrideTco2e,
+  overrideReason: r.overrideReason,
 });
 const errorText = (r: {
   state: string;
@@ -154,6 +158,7 @@ export function CrpScopeWorkspace({
       subtitle={`Scope ${selected.scope}`}
     >
       <Editor
+        key={selected.id}
         jobId={job.header.id}
         row={selected}
         factors={factors}
@@ -651,6 +656,18 @@ function Editor({
           : "Calculated evidence is available."}
       </div>
       <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
+      <div className="nz-sect">Reasoned override</div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Leave blank to use the calculated result. An override is recorded in the row lineage and always requires a reason.
+      </p>
+      <label className="nz-fl">
+        Override tCO₂e
+        <input className="nz-inp" type="number" min="0" step="any" value={value.overrideTco2e ?? ""} onChange={(e) => setValue({ ...value, overrideTco2e: e.target.value === "" ? null : Number(e.target.value) })} />
+      </label>
+      <label className="nz-fl">
+        Override reason
+        <textarea className="nz-notes" value={value.overrideReason ?? ""} onChange={(e) => setValue({ ...value, overrideReason: e.target.value || null })} placeholder="Required when an override value is entered" />
+      </label>
       <label>
         <input
           type="checkbox"
@@ -705,7 +722,7 @@ function Editor({
         </button>
         <button
           className="nz-btn pri"
-          disabled={pending || row.calculatedTco2e === null || !row.qualityTier}
+          disabled={pending || (row.calculatedTco2e === null && row.overrideTco2e === null) || !row.qualityTier}
           onClick={() => review("approved")}
         >
           Approve row

@@ -411,6 +411,8 @@ const scopeEvidence = (
     factorId: input.factorId,
     factorVersion: input.factorVersion,
     qualityTier: input.qualityTier,
+    overrideTco2e: input.overrideTco2e,
+    overrideReason: input.overrideReason,
   },
   lineage: [
     ...(input.quantity === null
@@ -429,6 +431,9 @@ const scopeEvidence = (
           },
         ]
       : []),
+    ...(input.overrideTco2e == null
+      ? []
+      : [{ title: "Calculated result overridden", detail: `${input.overrideTco2e} tCO₂e · ${input.overrideReason}` }]),
   ],
 });
 async function requireCrpJob(
@@ -483,8 +488,8 @@ export async function createScopeRow(
       const evidence = scopeEvidence(input, context);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,provenance_json,lineage_json)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb)`,
         [
           context.organisationId,
           rowId,
@@ -500,6 +505,8 @@ export async function createScopeRow(
           input.factorVersion,
           input.factorLabel,
           input.qualityTier,
+          input.overrideTco2e ?? null,
+          input.overrideReason?.trim() || null,
           JSON.stringify(evidence.provenance),
           JSON.stringify(evidence.lineage),
         ],
@@ -536,9 +543,9 @@ export async function updateScopeRow(
       const evidence = scopeEvidence(input, context);
       const updated = await db.query<{ version: number }>(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
-      quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,
-      provenance_json=$15::jsonb,lineage_json=$16::jsonb,enabled=$17,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$18 RETURNING version`,
+      quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
+      provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
+      version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -554,6 +561,8 @@ export async function updateScopeRow(
           input.factorVersion,
           input.factorLabel,
           input.qualityTier,
+          input.overrideTco2e ?? null,
+          input.overrideReason?.trim() || null,
           JSON.stringify(evidence.provenance),
           JSON.stringify(evidence.lineage),
           input.enabled,
@@ -600,8 +609,10 @@ export async function calculateScopeRow(
         scope: string;
         dataset_id: string | null;
         factor_id: string | null;
+        override_tco2e: string | null;
+        override_reason: string | null;
       }>(
-        `SELECT version,quantity,unit,scope,dataset_id,factor_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+        `SELECT version,quantity,unit,scope,dataset_id,factor_id,override_tco2e,override_reason FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
         [context.organisationId, input.jobId, input.rowId],
       );
       const row = found.rows[0];
@@ -682,6 +693,9 @@ export async function calculateScopeRow(
           title: "Emissions calculated",
           detail: "quantity × kgCO₂e per unit ÷ 1,000",
         },
+        ...(row.override_tco2e === null
+          ? []
+          : [{ title: "Calculated result overridden", detail: `${row.override_tco2e} tCO₂e · ${row.override_reason}` }]),
       ];
       const provenance = {
         calculatedBy: context.actorId,
