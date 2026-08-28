@@ -27,7 +27,7 @@ export function ManifestChartSet({ manifest, charts, reviewedSnapshotId, showSec
   return <div data-report-manifest={manifest.id} data-manifest-version={manifest.version} data-reviewed-snapshot={reviewedSnapshotId}>
     {manifest.sections.map((section) => <section key={section.id} style={{ marginBottom: 24 }}>
       {showSectionHeadings && <header style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 18, color: tokens.ink.primary }}>{section.title}</h3>{section.description && <p style={{ margin: "4px 0 0", fontSize: 12.5, color: tokens.ink.secondary }}>{section.description}</p>}</header>}
-      <div style={{ display: "grid", gridTemplateColumns: section.layout === "two-column" ? "repeat(2, minmax(360px, 1fr))" : "1fr", gap: 18 }}>{section.chartIds.map((id) => <ChartFromManifest key={id} chart={byId.get(id)!} />)}</div>
+      <div className={`nz-chart-manifest-grid${section.layout === "two-column" ? " two-column" : ""}`}>{section.chartIds.map((id) => <ChartFromManifest key={id} chart={byId.get(id)!} />)}</div>
     </section>)}
   </div>;
 }
