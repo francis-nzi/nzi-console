@@ -8,7 +8,7 @@
 |---|---|---|
 | M1. Client portal | In progress | A client can enrol, authenticate, see only granted work, review immutable publications, collaborate, manage security, provide authorised data, obtain deliverables, and complete all critical journeys accessibly on desktop and mobile. |
 | M2. Core CRP workflow | Implemented; browser acceptance pending | Staff can configure a CRP job, collect activity data, resolve factors, inspect lineage, complete QA, freeze a snapshot, validate and publish it with a complete audit trail. |
-| M3. Staff workspaces | Planned | Clients, Jobs, Datasets, Reports, and Platform workspaces support their canonical operational workflows with explicit states and permissions. |
+| M3. Staff workspaces | Implemented; browser acceptance pending | Clients, Jobs, Datasets, Reports, and Platform workspaces support their canonical operational workflows with explicit states and permissions. |
 | M4. Additional services | Planned | LCA/PCF, Consultancy, Training, and Sales V2 use the shared job spine while preserving their distinct domain models. |
 | M5. Production readiness | Planned | Security, tenancy, accessibility, performance, observability, backup, rollback, and controlled release gates are independently verified. |
 
@@ -123,8 +123,9 @@
 
 ### S4. Staff workspace acceptance
 
-- [ ] Role and tenant isolation journeys across every staff workspace.
+- [x] Automated role, tenant, live-boundary, failure-state, keyboard-foundation, and responsive-contract journeys across every staff workspace.
 - [ ] Responsive, keyboard, failure-state, and staging acceptance evidence.
+  - Automated and staging evidence is recorded in `docs/STAGING_ACCEPTANCE_M3.md`; rendered observation awaits a connected browser.
 
 ## Delivery rules
 
@@ -136,4 +137,4 @@
 
 ## Immediate next action
 
-Execute **M3 S4 staff workspace acceptance**, including role, tenant, failure-state, responsive, and keyboard evidence.
+Connect a controllable browser and execute the combined **M1, M2, and M3 rendered acceptance pass**.
