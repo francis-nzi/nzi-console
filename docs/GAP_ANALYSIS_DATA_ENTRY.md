@@ -554,3 +554,94 @@ mock `packages/mock-data/src/portal.ts`; queue stub `apps/console/app/platform/P
 
 *Prepared 28 Aug 2026. This is Part 1 (data entry). Suggested follow-ups: reporting/graphics pipeline
 parity, commercial/CRM, and the LCA/Training family data models.*
+
+---
+
+## 10. Addendum — live re-sync 29 Aug 2026 (data entry)
+
+The reference copy (`nzi-live-fix/`) was re-synced from the live `nzi_pro_v7-POSTGRES` at
+**`origin/main` @ `1c74d908` (28 Aug 2026)**. Delta since the 28-Aug baseline: **14 commits (25–28 Aug),
+20 files — 16 data-input (8 CRM + 8 portal)** plus 4 quotes/invoicing files. This section records what
+changed and how it moves the findings above; the register (§6) and decisions (§7) still stand.
+
+### 10.1 New since the analysis — one canonical field to add
+
+- **`job_scope_rows.asset_identifier` — "ID / Reference"** (commits `4cae8e8e`, `3e5d9301`). A
+  **bucket-agnostic, free-text identifier** now on all five generic Data Entry buckets (Energy/Fuels/Other
+  had none; Vehicles/Business Travel previously only got one via DVLA lookup). Threaded through
+  create/read/update/**copy-forward**, and **editable post-submit** in the portal. It is deliberately
+  **separate from the DVLA `vehicle_registration` key** (placeholder: "e.g. a vehicle reg, employee name,
+  or meter ID"). **This field is not in §2.1's canonical-row table.** *Action:* add an optional
+  `assetIdentifier` to the Console's `ScopeRowWriteFields`/`ScopeRowReadModel`, surface it in the evidence
+  drawer and the portal record, and carry it through rollforward. Distinct from the structured scope
+  selector and from `reportLabel`. **Canonical row + reviewed snapshot closed by migration 0033
+  (`b057283`); portal record and rollforward remain.**
+- Confirms `report_label` + `original_id` are already first-class on the live row and shown in the portal
+  grid — reinforces NZC-033 (no change to the decision).
+
+### 10.2 Live is actively closing gaps the analysis flagged (parity is a moving target)
+
+- **Typed-adapter boundary now *enforced* — validates NZC-035.** `0bc9be68` rejects Employee Commuting
+  rows via the generic scope-data endpoint ("use the Employee Commuting tab instead"); commuting must go
+  through the dedicated adapter (`job_emission_sources` + `sync_commuting_scope_rows`). Live has adopted
+  exactly the Console's confirmed "one kind, one adapter" direction. *Carry into the Console:* enforce the
+  same boundary in the ingestion adapters, not just in the UI.
+- **Portal commuting surfaced & reconciled — moves P0 #7/#8.** `3ed5810e` surfaces 144 legacy commuting
+  jobs (51 clients) held as manual aggregate `job_scope_rows`, read-only, computed through
+  `load_combined_reporting_rows` / `JobMonthlyEmissionsResolver` — **never the frozen `calc_tco2e`
+  column** — matching the Console's "derived, never captured" + "reuse canonical services" principles.
+- **Portal vehicle-reg is now a real two-step lookup — moves P1 #19.** `daf57b42`: Look Up → confirm
+  vehicle → enter mileage → save, matching Company Vehicles, over `/portal/vehicle-lookup`. The Console's
+  shared factor/lookup component should mirror the two-step confirm rather than resolve-and-save atomically.
+- **Previous-Years correctness — informs P0 #6 / NZC-030.** The active job is now excluded from history
+  (so copy-forward can't offer to copy the current year onto itself), and individual entries are shown, not
+  consolidated totals.
+- **Spend bulk approve/reject fixed — P0 #4 intact.** `3927b2f1` (route-ordering) and `5c0e85e7` (PG&S
+  category search) keep the spend workflow the Console must mirror working end-to-end.
+- **Distinct empty-vs-failed states** added to `PortalCategoryHistoryTable` (`0bc9be68`: "Couldn't load…"
+  vs "No previous years' data…") — matches the Console's five-state rule.
+
+### 10.3 Monthly model — a concrete implementation note for NZC-032
+
+`daf57b42` shows live's actual monthly approach: **storage is calendar-fixed** (`month_1…month_12`,
+index 0 = January) and **only the display order rotates** to the job's `reporting_period_start`
+(e.g. May–Apr). NZC-032 ("month slots follow the reporting period") should be built the same way —
+**store a fixed calendar-indexed 12-vector, rotate for display** — so figures stay stable if a period
+definition changes and remain comparable across years. Recommend annotating NZC-032 with this
+storage-vs-display split.
+
+### 10.4 Architecture divergence to hold the line on
+
+Live adds `asset_identifier` via an **idempotent runtime `ALTER`** (`_ensure_job_scope_rows_schema`,
+"self-heal the schema on first call"). That is exactly the **request-time DDL** the Console forbids
+(migration-owned schema; see CLAUDE.md principles). When the Console mirrors this field it must land via an
+isolated-backend **migration**, never runtime DDL.
+
+### 10.5 Files re-synced (reference copy now at live `1c74d908`)
+
+**CRM data entry (8):** `api/job_scope_data_routes.py`, `api/spend_data_routes.py`,
+`services/vehicle_categorization.py`, `services/emissions_reporting.py`,
+`frontend/src/components/EmployeeCommutingData.tsx`,
+`frontend/src/components/job-workspace/JobScopeCard.tsx`,
+`frontend/src/app/jobs/new/NewJobPageClient.tsx`, `frontend/src/app/jobs/page.tsx`
+
+**Client portal data entry (8):** `services/portal_data_entry.py`, `api/portal_data_entry_routes.py`,
+`api/portal_commuting_routes.py`, `api/portal_spend_routes.py`,
+`portal/src/components/PortalDataEntry.tsx`, `portal/src/components/PortalCommutingTab.tsx`,
+`portal/src/components/PortalSpendTab.tsx`, `portal/src/components/PortalCategoryHistoryTable.tsx`
+
+**Quotes/invoicing (4, not data-input, carried for completeness):** `api/quotes_routes.py`,
+`api/job_line_items_routes.py`, `frontend/src/app/clients/[clientId]/quotes/new/page.tsx`,
+`frontend/src/app/clients/quotes/page.tsx`
+
+*Sync note:* these 20 working-tree files were materialised at `1c74d908` and verified by blob hash. The
+clone's HEAD ref stays at the prior commit because the mounted filesystem blocks git's lockfile finalize —
+a git-metadata cosmetic only; the files this analysis reads are current live.
+
+### 10.6 Cross-cutting standards now in force (NZC-039, NZC-040)
+
+Two site-wide standards confirmed 29 Aug 2026 apply to every screen built from this analysis:
+**"carbon emissions", not "carbon footprint"** (the latter reserved for the PCF module) — NZC-039; and
+**dd/mm/yyyy dates everywhere** — NZC-040. See `DECISIONS.md`.
+
+*Addendum prepared 29 Aug 2026 against live `origin/main` @ `1c74d908`.*

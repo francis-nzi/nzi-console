@@ -58,6 +58,8 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-036 | Bulk-upload standard: Excel + paste grid + CSV mapper; one canonical download identity | Confirmed (28 Aug 2026) |
 | NZC-037 | Company Vehicles replaces the Asset Register; non-vehicle assets via Data Entry | Confirmed (28 Aug 2026) |
 | NZC-038 | Workspace design language: stage-as-section, named/numbered/colour-matched, collapsible, completed sinks | Confirmed (28 Aug 2026) |
+| NZC-039 | Terminology: "carbon emissions" across all screens; "carbon footprint" reserved for the PCF (Product Carbon Footprint) module | Confirmed (29 Aug 2026) |
+| NZC-040 | Date format: dd/mm/yyyy everywhere (UK), one shared formatter | Confirmed (29 Aug 2026) |
 
 ---
 
@@ -353,6 +355,19 @@ Reference prototypes (28 Aug 2026): the consultant CRP workspace and the client 
 
 There are currently **no Open decisions** in this register. Add new questions here as the detailed
 workspace designs expose choices requiring Francis's approval.
+
+
+### NZC-039 — Terminology: “carbon emissions”, not “carbon footprint” [Confirmed 29 Aug 2026]
+All user-facing copy across every workspace and the client portal uses **“carbon emissions”** (or simply
+“emissions”). The phrase **“carbon footprint” is reserved exclusively for the PCF (Product Carbon Footprint)
+module**, where it is the correct term of art. Applies to labels, headings, buttons, chart titles, tooltips,
+empty/help text, generated report and PDF copy, and email/notification text. Confirmed by Francis, 29 Aug 2026.
+
+### NZC-040 — Date format: dd/mm/yyyy [Confirmed 29 Aug 2026]
+All dates render as **dd/mm/yyyy** across every screen, the client portal, and generated documents/PDFs (UK
+convention), from a single shared date formatter as the one source — no locale-default or ISO date rendering
+in the UI. Reporting-period month labelling (NZC-032) is unaffected: month labels follow the reporting-period
+start and remain calendar-indexed in storage. Confirmed by Francis, 29 Aug 2026.
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
