@@ -28,8 +28,8 @@ export const jobWorkflowStages = {
 export type WorkflowJobFamily = keyof typeof jobWorkflowStages;
 export type ScopeQualityTier = "measured" | "estimated" | "spend-based" | "survey";
 export const crpScopeOptions = [
-  { value: "1", label: "Scope 1 · Direct emissions" },
-  { value: "2", label: "Scope 2 · Purchased energy" },
+  { value: "1", label: "Scope 1 · Direct emissions", category: "Direct emissions" },
+  { value: "2", label: "Scope 2 · Purchased energy", category: "Purchased energy" },
   { value: "3.1", label: "Scope 3.1 · Purchased goods and services" },
   { value: "3.2", label: "Scope 3.2 · Capital goods" },
   { value: "3.3", label: "Scope 3.3 · Fuel- and energy-related activities" },
@@ -47,15 +47,24 @@ export const crpScopeOptions = [
   { value: "3.15", label: "Scope 3.15 · Investments" },
 ] as const;
 export type CrpScopeCode = (typeof crpScopeOptions)[number]["value"];
-export type ScopeRowWriteFields = { scope: string; sourceLabel: string; siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;quantity: number | null; unit: string | null; datasetId: string | null; factorId: string | null; factorVersion: string | null; factorLabel: string | null; qualityTier: ScopeQualityTier | null; overrideTco2e?: number | null; overrideReason?: string | null };
+const crpScopeCategories: Record<CrpScopeCode, string> = {
+  "1":"Direct emissions","2":"Purchased energy","3.1":"Purchased goods and services","3.2":"Capital goods","3.3":"Fuel- and energy-related activities","3.4":"Upstream transportation and distribution","3.5":"Waste generated in operations","3.6":"Business travel","3.7":"Employee commuting","3.8":"Upstream leased assets","3.9":"Downstream transportation and distribution","3.10":"Processing of sold products","3.11":"Use of sold products","3.12":"End-of-life treatment of sold products","3.13":"Downstream leased assets","3.14":"Franchises","3.15":"Investments",
+};
+export function crpScopeCategoryPath(scope: string): string[] {
+  const option = crpScopeOptions.find((item) => item.value === scope);
+  if (!option) return [];
+  const category = crpScopeCategories[option.value];
+  return scope.startsWith("3.") ? ["Scope 3", category] : [`Scope ${scope}`, category];
+}
+export type ScopeRowWriteFields = { scope: string; sourceLabel: string; reportLabel?:string|null; siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;quantity: number | null; unit: string | null; datasetId: string | null; factorId: string | null; factorVersion: string | null; factorLabel: string | null; qualityTier: ScopeQualityTier | null; overrideTco2e?: number | null; overrideReason?: string | null };
 export type SiteOption={id:string;name:string};
 export type PurchasedGoodsCategoryOption={id:string;name:string};
-export type ScopeRowReadModel = ScopeRowWriteFields & { id: string; jobId: string; calculatedTco2e: number | null; overrideTco2e: number | null; overrideReason: string | null; reviewStatus: "pending" | "approved" | "rejected"; reviewedRowVersion:number|null;reviewedBy:string|null;reviewedAt:string|null;reviewerNote:string|null; version: number; enabled: boolean; provenance: Record<string, unknown>; lineage: Array<{ title: string; detail: string }> };
+export type ScopeRowReadModel = ScopeRowWriteFields & { id: string; jobId: string; reportLabel:string; categoryPath:string[]; calculatedTco2e: number | null; overrideTco2e: number | null; overrideReason: string | null; reviewStatus: "pending" | "approved" | "rejected"; reviewedRowVersion:number|null;reviewedBy:string|null;reviewedAt:string|null;reviewerNote:string|null; version: number; enabled: boolean; provenance: Record<string, unknown>; lineage: Array<{ title: string; detail: string }> };
 export type ScopeQaReadiness={total:number;enabled:number;approved:number;pending:number;rejected:number;calculationMissing:number;qualityMissing:number;independentReviewPending:number;readyForReporting:boolean};
 export type EmissionsTargetReadModel={jobId:string;baselineYear:number;baselineTco2e:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;version:number;updatedAt:string;updatedBy:string};
 export type IntensityTargetReadModel={jobId:string;metric:"turnover"|"employee"|"floor-area";denominatorUnit:string;reportingDenominator:number;baselineYear:number;baselineIntensity:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;version:number;updatedAt:string;updatedBy:string};
 export type AnnualScopeComparison={year:number;sourceSnapshotId:string;sourceDataHash:string;values:Array<{scope:"1"|"2"|"3";value:number}>};
-export type ReviewedCrpSnapshotReadModel={id:string;jobId:string;jobNumber:string;client:string;reportingYear:number;version:number;jobVersion:number;createdAt:string;createdBy:string;dataHash:string;target:EmissionsTargetReadModel|null;intensityTarget:IntensityTargetReadModel|null;annualComparison:AnnualScopeComparison[];measurements:Array<{rowId:string;rowVersion:number;scope:"1"|"2"|"3";scopeCode?:string;sourceLabel:string;siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;tco2e:number;factorSet:string;qualityTier:ScopeQualityTier;reviewedBy:string}>};
+export type ReviewedCrpSnapshotReadModel={id:string;jobId:string;jobNumber:string;client:string;reportingYear:number;version:number;jobVersion:number;createdAt:string;createdBy:string;dataHash:string;target:EmissionsTargetReadModel|null;intensityTarget:IntensityTargetReadModel|null;annualComparison:AnnualScopeComparison[];measurements:Array<{rowId:string;rowVersion:number;scope:"1"|"2"|"3";scopeCode?:string;sourceLabel:string;reportLabel?:string;categoryPath?:string[];siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;tco2e:number;factorSet:string;qualityTier:ScopeQualityTier;reviewedBy:string}>};
 export type PublishedCrpReportReadModel={reportVersionId:string;manifestVersion:number;publishedAt:string;dataHash:string;snapshot:ReviewedCrpSnapshotReadModel};
 export type CrpReportVersionReadModel={reportVersionId:string;status:"validated"|"published"|"superseded";manifestVersion:number;publishedAt:string|null;dataHash:string;snapshot:ReviewedCrpSnapshotReadModel};
 export type FactorOption = { datasetId: string; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; selectionSource: "automatic" | "manual"; synthetic: boolean; warnings: string[] };

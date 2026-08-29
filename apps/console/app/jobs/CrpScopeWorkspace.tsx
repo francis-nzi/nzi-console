@@ -19,7 +19,7 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
-import { crpScopeOptions } from "@nzi/contracts";
+import { crpScopeCategoryPath, crpScopeOptions } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
@@ -29,6 +29,7 @@ import {CrpReleaseControl} from "./CrpReleaseControl";
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
+  reportLabel: null,
   siteId:null,
   siteLabel:null,
   purchasedGoodsCategoryId:null,
@@ -52,6 +53,7 @@ const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
 const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
+  reportLabel: r.reportLabel,
   siteId:r.siteId,
   siteLabel:r.siteLabel,
   purchasedGoodsCategoryId:r.purchasedGoodsCategoryId,
@@ -468,6 +470,10 @@ function Fields({
         />
       </label>
       <label className="nz-fl">
+        Report label
+        <input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => change({ ...value, reportLabel: e.target.value || null })} />
+      </label>
+      <label className="nz-fl">
         Scope
         <select
           className="nz-sel"
@@ -477,6 +483,7 @@ function Fields({
         >
           {crpScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
+        <small className="muted">{crpScopeCategoryPath(value.scope).join(" › ")}</small>
       </label>
       <label className="nz-fl">
         Quality
