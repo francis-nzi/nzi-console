@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect,useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   patchBrowserCommand,
@@ -610,7 +610,10 @@ function Editor({
     [value, setValue] = useState(inputOf(row)),
     [enabled, setEnabled] = useState(row.enabled),
     [pending, setPending] = useState(false),
-    [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? "");
+    [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? ""),
+    [history,setHistory]=useState<Array<{id:string;at:string;actor:string;action:string;correlationId:string}>>([]),
+    [historyState,setHistoryState]=useState<"loading"|"ready"|"failed">("loading");
+  useEffect(()=>{const controller=new AbortController();fetch(`/api/isolated/jobs/${jobId}/scope-rows/${row.id}/history`,{cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(!Array.isArray(body.events))throw new Error();setHistory(body.events.filter((event:unknown)=>event&&typeof event==="object"&&"id" in event&&"at" in event&&"actor" in event&&"action" in event&&"correlationId" in event));setHistoryState("ready")}).catch(error=>{if(error?.name!=="AbortError")setHistoryState("failed")});return()=>controller.abort();},[jobId,row.id]);
   async function save() {
     setPending(true);
     const r = await patchBrowserCommand<{ version: number }>(
@@ -766,6 +769,8 @@ function Editor({
           Approve row
         </button>
       </div>
+      <div className="nz-sect">Activity history</div>
+      {historyState==="loading"?<p className="muted" role="status">Loading immutable row history…</p>:historyState==="failed"?<div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div>:history.length===0?<p className="muted">No row events are recorded yet.</p>:<div>{history.map(event=><div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_"," ")}</b><small>{new Date(event.at).toLocaleString("en-GB")} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
       <div className="nz-sect">Reporting snapshot</div>
       <p className="muted" style={{ fontSize: 12 }}>
         Creates an immutable, content-addressed snapshot only when every enabled
