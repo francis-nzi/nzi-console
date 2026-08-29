@@ -25,6 +25,7 @@ import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
+import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -112,15 +113,19 @@ export function CrpScopeWorkspace({
         text: `QA pending: ${qa.calculationMissing} calculations missing · ${qa.qualityMissing} quality tiers missing · ${qa.independentReviewPending} rows awaiting independent approval.`,
       };
   const router = useRouter(),
-    [selectedId, setSelectedId] = useState(rows[0]?.id ?? ""),
+    [selectedId, setSelectedId] = useState(rows.find(scopeRowNeedsAttention)?.id??rows[0]?.id ?? ""),
     [creating, setCreating] = useState(rows.length === 0),
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
+    [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
     } | null>(qaNotice);
-  const selected = rows.find((r) => r.id === selectedId) ?? rows[0];
+  const visibleRows=filterScopeRows(rows,registerFilter),attentionCount=rows.filter(scopeRowNeedsAttention).length;
+  const selected = visibleRows.find((r) => r.id === selectedId)??visibleRows[0]??rows.find((r)=>r.id===selectedId)??rows[0];
+  const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
+  const openRegister=(filter:ScopeRegisterFilter)=>{setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));};
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
   const readinessChecks = [
@@ -239,8 +244,8 @@ export function CrpScopeWorkspace({
         </section>
         <div className="nz-command-metrics">
           <div><span>Reported emissions</span><strong>{totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })}</strong><small>tCO₂e across enabled rows</small></div>
-          <div><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></div>
-          <div><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></div>
+          <button type="button" onClick={()=>openRegister("calculation")}><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></button>
+          <button type="button" onClick={()=>openRegister("review")}><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></button>
           <div><span>Reporting period</span><strong>{reportingYear}</strong><small>Annual disclosure cycle</small></div>
         </div>
         <section className="nz-work-grid">
@@ -251,8 +256,8 @@ export function CrpScopeWorkspace({
           <div className="nz-panel nz-focus-card">
             <span className="nz-eyebrow">Management focus</span><h3>{qa.readyForReporting ? "Release with confidence" : "Resolve the highest-value exceptions first"}</h3>
             <p>{qa.readyForReporting ? "All enabled evidence has been calculated and independently approved. Freeze the evidence before publication." : "The workspace keeps missing calculations, incomplete quality evidence and pending reviews visible—never silently treated as zero."}</p>
-            <div className="nz-focus-stats"><span><b>{qa.calculationMissing}</b> calculations</span><span><b>{qa.qualityMissing}</b> quality gaps</span><span><b>{qa.independentReviewPending}</b> QA decisions</span></div>
-            <a className="nz-btn" href="#emissions-register">Open emissions register</a>
+            <div className="nz-focus-stats"><button type="button" onClick={()=>openRegister("calculation")}><b>{qa.calculationMissing}</b> calculations</button><button type="button" onClick={()=>openRegister("quality")}><b>{qa.qualityMissing}</b> quality gaps</button><button type="button" onClick={()=>openRegister("review")}><b>{qa.independentReviewPending}</b> QA decisions</button></div>
+            <a className="nz-btn" href="#emissions-register" onClick={()=>setRegisterFilter("attention")}>Open {attentionCount} exception{attentionCount===1?"":"s"}</a>
           </div>
         </section>
         {notice && (
@@ -287,7 +292,7 @@ export function CrpScopeWorkspace({
           <div className="nz-panel" id="emissions-register">
             <div className="nz-register-head">
               <div><span className="nz-eyebrow">Canonical evidence register</span><h3>Emissions sources</h3><p>Every result retains factor provenance, calculation lineage and an independent decision.</p></div>
-              <span className="nz-st done">{qa.enabled} enabled rows</span>
+              <div className="nz-register-filters" aria-label="Filter emissions sources">{registerFilters.map(filter=><button type="button" key={filter.id} aria-pressed={registerFilter===filter.id} onClick={()=>setRegisterFilter(filter.id)}>{filter.label}<b>{filter.count}</b></button>)}</div>
             </div>
             <table className="nz-tbl">
               <thead>
@@ -304,7 +309,7 @@ export function CrpScopeWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {visibleRows.map((r) => (
                   <tr
                     key={r.id}
                     tabIndex={0}
@@ -329,6 +334,7 @@ export function CrpScopeWorkspace({
                 ))}
               </tbody>
             </table>
+            {visibleRows.length===0?<div className="nz-table-empty">No rows match this filter. The full evidence register still contains {rows.length} row{rows.length===1?"":"s"}.</div>:null}
           </div>
         )}
       </div>
