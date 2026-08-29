@@ -30,6 +30,7 @@ const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
   reportLabel: null,
+  notes:null,
   monthlyActivity: [],
   siteId:null,
   siteLabel:null,
@@ -55,6 +56,7 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
   reportLabel: r.reportLabel,
+  notes:r.notes,
   monthlyActivity: r.monthlyActivity,
   siteId:r.siteId,
   siteLabel:r.siteLabel,
@@ -684,6 +686,8 @@ function Editor({
       </div>
       <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
       <MonthlyActivityEditor value={value} change={setValue} reportingFrom={reportingFrom} reportingTo={reportingTo}/>
+      <div className="nz-sect">Evidence notes</div>
+      <textarea className="nz-notes" style={{width:"100%"}} value={value.notes??""} onChange={event=>setValue({...value,notes:event.target.value||null})} placeholder="Method, source context, assumptions or follow-up notes"/>
       <div className="nz-sect">Reasoned override</div>
       <p className="muted" style={{ fontSize: 12 }}>
         Leave blank to use the calculated result. An override is recorded in the row lineage and always requires a reason.

@@ -497,8 +497,8 @@ export async function createScopeRow(
       const categoryPath = crpScopeCategoryPath(input.scope);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23)`,
         [
           context.organisationId,
           rowId,
@@ -522,6 +522,7 @@ export async function createScopeRow(
           categoryPath[0],
           categoryPath[1],
           JSON.stringify(activity.slots),
+          input.notes?.trim()||null,
         ],
       );
       return {
@@ -560,7 +561,7 @@ export async function updateScopeRow(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
       provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
+      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -586,6 +587,7 @@ export async function updateScopeRow(
           categoryPath[0],
           categoryPath[1],
           JSON.stringify(activity.slots),
+          input.notes?.trim()||null,
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
@@ -1108,6 +1110,7 @@ export async function createReviewedCrpSnapshot(
         level_3:string|null;
         level_4:string|null;
         monthly_activity_json:Array<{month:string;quantity:number|null}>;
+        notes:string|null;
         site_id:string|null;
         site_label:string|null;
         purchased_goods_category_id:string|null;
@@ -1121,7 +1124,7 @@ export async function createReviewedCrpSnapshot(
         reviewed_by: string | null;
         enabled: boolean;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       const enabled = rowResult.rows.filter((row) => row.enabled);
@@ -1178,6 +1181,7 @@ export async function createReviewedCrpSnapshot(
           reportLabel:row.report_label,
           categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),
           monthlyActivity:row.monthly_activity_json??[],
+          notes:row.notes??null,
           siteId:row.site_id,
           siteLabel:row.site_label,
           purchasedGoodsCategoryId:row.purchased_goods_category_id,

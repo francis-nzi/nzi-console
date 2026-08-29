@@ -84,12 +84,13 @@ describe("Postgres command boundary", () => {
     const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
     const client = { async query(sql: string, values?: readonly unknown[]) { calls.push({ sql, values }); if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] }; if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] }; if (sql.includes("UPDATE nzi_console.job_scope_rows")) return { rows: [{ version: 2 }] }; return { rows: [] }; }, release() {} };
     const pool = { connect: async () => client } as never;
-    const fields = { scope: "3.1", sourceLabel: "Synthetic purchased goods", quantity: 1200, unit: "GBP", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "2026 v1", factorLabel: "Synthetic factor", qualityTier: "spend-based" as const };
+    const fields = { scope: "3.1", sourceLabel: "Synthetic purchased goods", notes:"Invoice batch checked", quantity: 1200, unit: "GBP", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "2026 v1", factorLabel: "Synthetic factor", qualityTier: "spend-based" as const };
     const created = await createScopeRow(pool, { jobId: "job-a", ...fields }, { ...context, idempotencyKey: "scope-create" });
     const updated = await updateScopeRow(pool, { jobId: "job-a", rowId: created.data.rowId, expectedVersion: 1, enabled: true, ...fields, quantity: 1400 }, { ...context, idempotencyKey: "scope-update" });
     assert.equal(updated.data.version, 2);
     const updateSql = calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.sql ?? "";
     assert.match(updateSql, /calculated_tco2e=NULL/); assert.match(updateSql, /review_status='pending'/);assert.match(updateSql,/reviewed_by=NULL/);
+    assert.ok(calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.values?.includes("Invoice batch checked"));
     assert.ok(calls.filter((call) => call.sql.includes("INSERT INTO nzi_console.audit_events")).length >= 2);
   });
 
