@@ -19,6 +19,7 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
+import { crpScopeOptions } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
@@ -468,12 +469,14 @@ function Fields({
       </label>
       <label className="nz-fl">
         Scope
-        <input
-          className="nz-inp"
+        <select
+          className="nz-sel"
           required
           value={value.scope}
           onChange={(e) => change({ ...value, scope: e.target.value })}
-        />
+        >
+          {crpScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </label>
       <label className="nz-fl">
         Quality

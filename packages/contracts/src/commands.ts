@@ -27,6 +27,26 @@ export const jobWorkflowStages = {
 } as const;
 export type WorkflowJobFamily = keyof typeof jobWorkflowStages;
 export type ScopeQualityTier = "measured" | "estimated" | "spend-based" | "survey";
+export const crpScopeOptions = [
+  { value: "1", label: "Scope 1 · Direct emissions" },
+  { value: "2", label: "Scope 2 · Purchased energy" },
+  { value: "3.1", label: "Scope 3.1 · Purchased goods and services" },
+  { value: "3.2", label: "Scope 3.2 · Capital goods" },
+  { value: "3.3", label: "Scope 3.3 · Fuel- and energy-related activities" },
+  { value: "3.4", label: "Scope 3.4 · Upstream transportation and distribution" },
+  { value: "3.5", label: "Scope 3.5 · Waste generated in operations" },
+  { value: "3.6", label: "Scope 3.6 · Business travel" },
+  { value: "3.7", label: "Scope 3.7 · Employee commuting" },
+  { value: "3.8", label: "Scope 3.8 · Upstream leased assets" },
+  { value: "3.9", label: "Scope 3.9 · Downstream transportation and distribution" },
+  { value: "3.10", label: "Scope 3.10 · Processing of sold products" },
+  { value: "3.11", label: "Scope 3.11 · Use of sold products" },
+  { value: "3.12", label: "Scope 3.12 · End-of-life treatment of sold products" },
+  { value: "3.13", label: "Scope 3.13 · Downstream leased assets" },
+  { value: "3.14", label: "Scope 3.14 · Franchises" },
+  { value: "3.15", label: "Scope 3.15 · Investments" },
+] as const;
+export type CrpScopeCode = (typeof crpScopeOptions)[number]["value"];
 export type ScopeRowWriteFields = { scope: string; sourceLabel: string; siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;quantity: number | null; unit: string | null; datasetId: string | null; factorId: string | null; factorVersion: string | null; factorLabel: string | null; qualityTier: ScopeQualityTier | null; overrideTco2e?: number | null; overrideReason?: string | null };
 export type SiteOption={id:string;name:string};
 export type PurchasedGoodsCategoryOption={id:string;name:string};
@@ -101,7 +121,7 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
   return issues;
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
-const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = []; required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (typeof input.scope === "string" && !/^(1|2|3(?:\.\d+)?)$/.test(input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Use Scope 1, 2, or a Scope 3 category such as 3.1." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId) issues.push({ field: "datasetId", code: "REQUIRED", message: "A factor must identify its dataset." }); return issues; };
+const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = []; required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (typeof input.scope === "string" && !crpScopeOptions.some((option) => option.value === input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Select a controlled Scope 1, Scope 2, or Scope 3 category." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId) issues.push({ field: "datasetId", code: "REQUIRED", message: "A factor must identify its dataset." }); return issues; };
 
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.create": { key: "client.create", label: "Create client", permission: "clients.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "name", input.name); required(issues, "sector", input.sector); required(issues, "location", input.location); required(issues, "owner", input.owner); if (!oneOf(input.status, ["active", "onboarding", "at-risk", "prospect"] as const)) issues.push({ field: "status", code: "INVALID", message: "Client status is invalid." }); return issues; } },

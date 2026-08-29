@@ -20,6 +20,8 @@ describe("command contracts", () => {
     assert.equal(validateCommand("scope.row.create", base, context).length, 0);
     assert.ok(validateCommand("scope.row.create", { ...base, scope: "4", quantity: -1, datasetId: null }, context).some((issue) => issue.field === "scope"));
     assert.ok(validateCommand("scope.row.create", { ...base, datasetId: null }, context).some((issue) => issue.field === "datasetId"));
+    assert.equal(validateCommand("scope.row.create", { ...base, scope: "3.15" }, context).length, 0);
+    assert.ok(validateCommand("scope.row.create", { ...base, scope: "3.16" }, context).some((issue) => issue.field === "scope"));
   });
   it("registers each material mutation with permission, transaction and audit action", () => { for (const definition of Object.values(commandDefinitions)) { assert.ok(definition.permission); assert.ok(definition.transaction); assert.ok(definition.auditAction); } });
   it("blocks report publication without the validated precondition", () => assert.ok(validateCommand("report.publish", { reportVersionId: "r1", expectedStatus: "draft" as "validated", manifestVersion: 1, reviewedSnapshotId: "s1" }, context).some((issue) => issue.code === "PRECONDITION")));
