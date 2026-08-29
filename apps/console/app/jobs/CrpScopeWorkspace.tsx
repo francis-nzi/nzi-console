@@ -30,6 +30,7 @@ const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
   reportLabel: null,
+  monthlyActivity: [],
   siteId:null,
   siteLabel:null,
   purchasedGoodsCategoryId:null,
@@ -54,6 +55,7 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
   reportLabel: r.reportLabel,
+  monthlyActivity: r.monthlyActivity,
   siteId:r.siteId,
   siteLabel:r.siteLabel,
   purchasedGoodsCategoryId:r.purchasedGoodsCategoryId,
@@ -167,6 +169,8 @@ export function CrpScopeWorkspace({
         factors={factors}
         sites={sites}
         purchasedGoodsCategories={purchasedGoodsCategories}
+        reportingFrom={datasets[0]?.reportingFrom??`${reportingYear}-01-01`}
+        reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
         notice={setNotice}
       />
       <div className="nz-sect">Calculation lineage</div>
@@ -515,6 +519,7 @@ function Fields({
           min="0"
           step="any"
           value={value.quantity ?? ""}
+          disabled={(value.monthlyActivity?.length??0)>0}
           onChange={(e) =>
             change({
               ...value,
@@ -566,12 +571,22 @@ function Fields({
   );
 }
 
+function reportingMonthKeys(from:string,to:string){const result:string[]=[];const cursor=new Date(`${from.slice(0,7)}-01T00:00:00Z`),end=to.slice(0,7);while(cursor.toISOString().slice(0,7)<=end){result.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return result;}
+function MonthlyActivityEditor({value,change,reportingFrom,reportingTo}:{value:ScopeRowWriteFields;change:(value:ScopeRowWriteFields)=>void;reportingFrom:string;reportingTo:string}){
+  const slots=value.monthlyActivity??[],months=reportingMonthKeys(reportingFrom,reportingTo),populated=slots.filter(slot=>slot.quantity!==null).length;
+  const update=(next:typeof slots)=>change({...value,monthlyActivity:next,quantity:next.some(slot=>slot.quantity!==null)?next.reduce((sum,slot)=>sum+(slot.quantity??0),0):null});
+  if(!slots.length)return <div><div className="nz-sect">Monthly activity</div><p className="muted" style={{fontSize:12}}>Optional monthly capture follows the reporting period. The annual quantity is derived from populated months.</p><button type="button" className="nz-btn" onClick={()=>update(months.map(month=>({month,quantity:null})))}>Enter monthly activity</button></div>;
+  return <div><div className="nz-sect">Monthly activity <span className="muted">{populated}/{slots.length} populated</span></div><div style={{display:"flex",gap:8,marginBottom:10}}><button type="button" className="nz-btn" disabled={slots[0]?.quantity===null} onClick={()=>update(slots.map(slot=>({...slot,quantity:slots[0]?.quantity??null})))}>Copy first month to all</button><button type="button" className="nz-btn" onClick={()=>update(slots.map(slot=>({...slot,quantity:null})))}>Clear months</button><button type="button" className="nz-btn" onClick={()=>change({...value,monthlyActivity:[]})}>Use annual entry</button></div><div className="nz-scope-fields">{slots.map((slot,index)=><label className="nz-fl" key={slot.month}>{new Date(`${slot.month}-01T00:00:00Z`).toLocaleDateString("en-GB",{month:"short",year:"numeric",timeZone:"UTC"})}<input className="nz-inp" type="number" min="0" step="any" value={slot.quantity??""} onChange={event=>{const next=[...slots];next[index]={...slot,quantity:event.target.value===""?null:Number(event.target.value)};update(next);}}/></label>)}</div></div>;
+}
+
 function Editor({
   jobId,
   row,
   factors,
   sites,
   purchasedGoodsCategories,
+  reportingFrom,
+  reportingTo,
   notice,
 }: {
   jobId: string;
@@ -579,6 +594,8 @@ function Editor({
   factors: FactorOption[];
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
+  reportingFrom:string;
+  reportingTo:string;
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
 }) {
   const router = useRouter(),
@@ -666,6 +683,7 @@ function Editor({
           : "Calculated evidence is available."}
       </div>
       <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
+      <MonthlyActivityEditor value={value} change={setValue} reportingFrom={reportingFrom} reportingTo={reportingTo}/>
       <div className="nz-sect">Reasoned override</div>
       <p className="muted" style={{ fontSize: 12 }}>
         Leave blank to use the calculated result. An override is recorded in the row lineage and always requires a reason.

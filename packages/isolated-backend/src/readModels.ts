@@ -107,20 +107,21 @@ type ScopeRow = {
   provenance_json: Record<string, unknown>; lineage_json: ScopeRowReadModel["lineage"];
   site_id:string|null;site_label:string|null;purchased_goods_category_id:string|null;purchased_goods_category_label:string|null;
   report_label:string;level_1:string;level_2:string;level_3:string|null;level_4:string|null;
+  monthly_activity_json:ScopeRowReadModel["monthlyActivity"];
 };
 
 export async function listScopeRows(db: Queryable, jobId: string): Promise<ScopeRowReadModel[]> {
   const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
       r.unit, r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
       r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status,r.reviewed_row_version,r.reviewed_by,r.reviewed_at,r.reviewer_note, r.version, r.enabled,
-      r.provenance_json, r.lineage_json,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4
+      r.provenance_json, r.lineage_json,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json
     FROM nzi_console.job_scope_rows r
     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
     LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
     LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id)
     WHERE r.job_id=$1 AND j.job_family='crp'
     ORDER BY r.enabled DESC, split_part(r.scope,'.',1)::int, nullif(split_part(r.scope,'.',2),'')::int NULLS FIRST, lower(r.source_label), r.scope_row_id`, [jobId]);
-  return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,reportLabel:row.report_label??row.source_label,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
+  return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,reportLabel:row.report_label??row.source_label,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),monthlyActivity:row.monthly_activity_json??[],siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
     quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
     factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
     calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e),

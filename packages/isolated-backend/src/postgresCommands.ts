@@ -416,6 +416,7 @@ const scopeEvidence = (
     overrideReason: input.overrideReason,
     reportLabel: input.reportLabel?.trim() || input.sourceLabel.trim(),
     categoryPath: crpScopeCategoryPath(input.scope),
+    monthlyActivity: input.monthlyActivity ?? [],
   },
   lineage: [
     ...(input.quantity === null
@@ -426,6 +427,7 @@ const scopeEvidence = (
             detail: `${input.quantity}${input.unit ? ` ${input.unit}` : ""}`,
           },
         ]),
+    ...((input.monthlyActivity?.length??0)>0?[{title:"Monthly activity captured",detail:`${input.monthlyActivity!.filter(slot=>slot.quantity!==null).length}/${input.monthlyActivity!.length} months populated · annual roll-up ${input.quantity??0}${input.unit?` ${input.unit}`:""}`}]:[]),
     ...(input.factorId
       ? [
           {
@@ -461,6 +463,8 @@ async function requireCrpJob(
       },
     ]);
 }
+function reportingMonths(from:string,to:string):string[]{const months:string[]=[];const cursor=new Date(`${from.slice(0,7)}-01T00:00:00Z`),end=to.slice(0,7);while(cursor.toISOString().slice(0,7)<=end){months.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return months;}
+async function resolveMonthlyActivity(db:Queryable,organisationId:string,jobId:string,input:ScopeRowWriteFields){const slots=input.monthlyActivity??[];if(!slots.length)return{slots:[],quantity:input.quantity};const config=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,[organisationId,jobId]);const row=config.rows[0];if(!row)throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISSING",message:"Configure the CRP reporting period before entering monthly activity."}]);const dateOnly=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10),expected=reportingMonths(dateOnly(row.reporting_from),dateOnly(row.reporting_to)),actual=slots.map(slot=>slot.month);if(expected.length!==actual.length||expected.some((month,index)=>month!==actual[index]))throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISMATCH",message:"Monthly activity must contain each reporting-period month once, in order."}]);const populated=slots.filter(slot=>slot.quantity!==null);return{slots,quantity:populated.length?populated.reduce((sum,slot)=>sum+(slot.quantity??0),0):null};}
 async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);}
 
 export async function createClientSite(pool:PoolLike,input:CommandInputMap["site.create"],context:CommandContext):Promise<StoredOutcome<{siteId:string;name:string}>>{return runPostgresCommand(pool,"site.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),siteId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by) VALUES ($1,$2,$3,$4,$5)`,[context.organisationId,siteId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That client site already exists."}]);throw error;}return{data:{siteId,name},entityType:"client_site",entityId:siteId,topic:"client.site.created"};});}
@@ -488,12 +492,13 @@ export async function createScopeRow(
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
       const rowId = randomUUID();
-      const evidence = scopeEvidence(input, context);
+      const activity=await resolveMonthlyActivity(db,context.organisationId,input.jobId,input);
+      const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb)`,
         [
           context.organisationId,
           rowId,
@@ -502,7 +507,7 @@ export async function createScopeRow(
           input.sourceLabel.trim(),
           input.siteId??null,
           input.purchasedGoodsCategoryId??null,
-          input.quantity,
+          activity.quantity,
           input.unit?.trim() || null,
           input.datasetId,
           input.factorId,
@@ -516,6 +521,7 @@ export async function createScopeRow(
           input.reportLabel?.trim() || input.sourceLabel.trim(),
           categoryPath[0],
           categoryPath[1],
+          JSON.stringify(activity.slots),
         ],
       );
       return {
@@ -547,13 +553,14 @@ export async function updateScopeRow(
       await requireCrpJob(db, context.organisationId, input.jobId);
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
-      const evidence = scopeEvidence(input, context);
+      const activity=await resolveMonthlyActivity(db,context.organisationId,input.jobId,input);
+      const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       const updated = await db.query<{ version: number }>(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
       provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
+      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -562,7 +569,7 @@ export async function updateScopeRow(
           input.sourceLabel.trim(),
           input.siteId??null,
           input.purchasedGoodsCategoryId??null,
-          input.quantity,
+          activity.quantity,
           input.unit?.trim() || null,
           input.datasetId,
           input.factorId,
@@ -578,6 +585,7 @@ export async function updateScopeRow(
           input.reportLabel?.trim() || input.sourceLabel.trim(),
           categoryPath[0],
           categoryPath[1],
+          JSON.stringify(activity.slots),
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
@@ -622,8 +630,9 @@ export async function calculateScopeRow(
         factor_id: string | null;
         override_tco2e: string | null;
         override_reason: string | null;
+        monthly_activity_json:Array<{month:string;quantity:number|null}>;
       }>(
-        `SELECT version,quantity,unit,scope,dataset_id,factor_id,override_tco2e,override_reason FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+        `SELECT version,quantity,unit,scope,dataset_id,factor_id,override_tco2e,override_reason,monthly_activity_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
         [context.organisationId, input.jobId, input.rowId],
       );
       const row = found.rows[0];
@@ -704,6 +713,7 @@ export async function calculateScopeRow(
           title: "Emissions calculated",
           detail: "quantity × kgCO₂e per unit ÷ 1,000",
         },
+        ...((row.monthly_activity_json?.length??0)>0?[{title:"Monthly activity retained",detail:`${row.monthly_activity_json.filter(slot=>slot.quantity!==null).length}/${row.monthly_activity_json.length} months populated`}]:[]),
         ...(row.override_tco2e === null
           ? []
           : [{ title: "Calculated result overridden", detail: `${row.override_tco2e} tCO₂e · ${row.override_reason}` }]),
@@ -716,6 +726,7 @@ export async function calculateScopeRow(
         factorVersion: matched.version,
         kgCo2ePerUnit: matched.kgco2e_per_unit,
         synthetic: matched.synthetic,
+        monthlyActivity:row.monthly_activity_json??[],
       };
       const updated = await db.query<{
         version: number;
@@ -1096,6 +1107,7 @@ export async function createReviewedCrpSnapshot(
         level_2:string;
         level_3:string|null;
         level_4:string|null;
+        monthly_activity_json:Array<{month:string;quantity:number|null}>;
         site_id:string|null;
         site_label:string|null;
         purchased_goods_category_id:string|null;
@@ -1109,7 +1121,7 @@ export async function createReviewedCrpSnapshot(
         reviewed_by: string | null;
         enabled: boolean;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       const enabled = rowResult.rows.filter((row) => row.enabled);
@@ -1165,6 +1177,7 @@ export async function createReviewedCrpSnapshot(
           sourceLabel: row.source_label,
           reportLabel:row.report_label,
           categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),
+          monthlyActivity:row.monthly_activity_json??[],
           siteId:row.site_id,
           siteLabel:row.site_label,
           purchasedGoodsCategoryId:row.purchased_goods_category_id,
