@@ -26,6 +26,7 @@ import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
+import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -286,6 +287,7 @@ export function CrpScopeWorkspace({
             </button>
           </form>
         )}
+        <PortalDataEntryReviewQueue jobId={job.header.id}/>
         {rows.length === 0 ? (
           <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
         ) : (

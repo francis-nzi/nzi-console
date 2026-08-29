@@ -4,9 +4,9 @@ import type {PortalDataEntryReviewItem} from "@nzi/isolated-backend";
 import {PortalBucketAdmin} from "./PortalBucketAdmin";
 
 export function PortalDataEntryAdministration(){return <><PortalBucketAdmin/><PortalDataEntryReviewQueue/></>}
-function PortalDataEntryReviewQueue(){
+export function PortalDataEntryReviewQueue({jobId}:{jobId?:string}){
   const [items,setItems]=useState<PortalDataEntryReviewItem[]>([]),[state,setState]=useState<"loading"|"ready"|"error">("loading"),[pending,setPending]=useState(""),[error,setError]=useState("");
-  const load=useCallback(async()=>{setState("loading");try{const response=await fetch("/api/isolated/portal-data-entry-review",{cache:"no-store"}),body=await response.json();if(!response.ok)throw new Error(body.message);setItems(Array.isArray(body.items)?body.items:[]);setState("ready")}catch{setState("error")}},[]);
+  const load=useCallback(async()=>{setState("loading");try{const query=jobId?`?jobId=${encodeURIComponent(jobId)}`:"",response=await fetch(`/api/isolated/portal-data-entry-review${query}`,{cache:"no-store"}),body=await response.json();if(!response.ok)throw new Error(body.message);setItems(Array.isArray(body.items)?body.items:[]);setState("ready")}catch{setState("error")}},[jobId]);
   useEffect(()=>{void load()},[load]);
   async function decide(item:PortalDataEntryReviewItem,decision:"accept"|"reject"){
     const note=decision==="reject"?window.prompt("Give the client a reason for rejecting this submission:")?.trim():"";
