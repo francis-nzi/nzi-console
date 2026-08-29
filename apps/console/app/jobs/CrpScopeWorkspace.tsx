@@ -31,6 +31,7 @@ import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
+  assetIdentifier:null,
   reportLabel: null,
   notes:null,
   monthlyActivity: [],
@@ -57,6 +58,7 @@ const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
 const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
+  assetIdentifier:r.assetIdentifier,
   reportLabel: r.reportLabel,
   notes:r.notes,
   monthlyActivity: r.monthlyActivity,
@@ -320,7 +322,7 @@ export function CrpScopeWorkspace({
                     onClick={() => setSelectedId(r.id)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}
                   >
-                    <td>{r.sourceLabel}</td>
+                    <td>{r.sourceLabel}{r.assetIdentifier?<div className="muted">ID / Ref: {r.assetIdentifier}</div>:null}</td>
                     <td>{r.scope}</td>
                     <td>{r.siteLabel??"Unallocated"}</td>
                     <td>{r.quantity ?? "—"}</td>
@@ -486,6 +488,10 @@ function Fields({
       <label className="nz-fl">
         Report label
         <input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => change({ ...value, reportLabel: e.target.value || null })} />
+      </label>
+      <label className="nz-fl">
+        ID / Reference
+        <input className="nz-inp" maxLength={240} value={value.assetIdentifier ?? ""} placeholder="Vehicle reg, employee name, meter ID…" onChange={(e) => change({ ...value, assetIdentifier: e.target.value || null })} />
       </label>
       <label className="nz-fl">
         Scope
