@@ -165,7 +165,7 @@ export async function listGrantedPortalJobs(db:Queryable,input:{portalUserId:str
 type FactorRow = { dataset_id: string|null; dataset_name: string; dataset_version: string; factor_id: string; label: string; activity_unit: string; kgco2e_per_unit: string; scopes: string[]; selection_source: FactorOption["selectionSource"];factor_source:FactorOption["factorSource"];client_factor_id:string|null;evidence_hash:string|null; synthetic: boolean; warnings_json: string[] };
 export async function listJobFactorOptions(db: Queryable, jobId: string): Promise<FactorOption[]> {
   const { rows } = await db.query<FactorRow>(`SELECT * FROM (SELECT d.dataset_id,d.name AS dataset_name,d.version AS dataset_version,
-      f.factor_id,f.label,f.activity_unit,f.kgco2e_per_unit,f.scopes,s.selection_source,'dataset'::text AS factor_source,NULL::text AS client_factor_id,NULL::text AS evidence_hash,d.synthetic,s.warnings_json
+      f.factor_id,f.label,f.activity_unit,f.kgco2e_per_unit::text,f.scopes,s.selection_source,'dataset'::text AS factor_source,NULL::text AS client_factor_id,NULL::text AS evidence_hash,d.synthetic,s.warnings_json
     FROM nzi_console.job_dataset_selections s
     JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(s.organisation_id,s.dataset_id)
     JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(d.organisation_id,d.dataset_id)
