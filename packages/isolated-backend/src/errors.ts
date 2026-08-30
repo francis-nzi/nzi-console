@@ -3,5 +3,5 @@ export class TenantContextError extends Error {
 }
 
 export class VersionConflictError extends Error {
-  constructor() { super("Record version conflict."); this.name = "VersionConflictError"; }
+  constructor(expected?:number,actual?:number) { super(expected===undefined||actual===undefined?"Record version conflict.":`Record version conflict: expected v${expected}, found v${actual}.`); this.name = "VersionConflictError"; }
 }

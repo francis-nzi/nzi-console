@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect,useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   patchBrowserCommand,
@@ -19,15 +19,32 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
+import { crpScopeCategoryPath, crpScopeOptions } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
+import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
+import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
+import {ClientFactorPanel} from "./ClientFactorPanel";
+import {EmissionSourceRegister} from "./EmissionSourceRegister";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
+  assetIdentifier:null,
+  factorSource:"dataset",
+  clientFactorId:null,
+  isCustomEntry:false,
+  applyPct:100,
+  dataConfidence:null,
+  sourceQuantity:null,
+  sourceUnit:null,
+  columnText:null,
+  reportLabel: null,
+  notes:null,
+  monthlyActivity: [],
   siteId:null,
   siteLabel:null,
   purchasedGoodsCategoryId:null,
@@ -39,6 +56,8 @@ const blank = (): ScopeRowWriteFields => ({
   factorVersion: null,
   factorLabel: null,
   qualityTier: null,
+  overrideTco2e: null,
+  overrideReason: null,
 });
 const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
   { value: "measured", label: "Measured" },
@@ -49,6 +68,18 @@ const qualities: Array<{ value: ScopeQualityTier; label: string }> = [
 const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
+  assetIdentifier:r.assetIdentifier,
+  factorSource:r.factorSource??"dataset",
+  clientFactorId:r.clientFactorId??null,
+  isCustomEntry:r.isCustomEntry??false,
+  applyPct:r.applyPct??100,
+  dataConfidence:r.dataConfidence??null,
+  sourceQuantity:r.sourceQuantity??null,
+  sourceUnit:r.sourceUnit??null,
+  columnText:r.columnText??null,
+  reportLabel: r.reportLabel,
+  notes:r.notes,
+  monthlyActivity: r.monthlyActivity,
   siteId:r.siteId,
   siteLabel:r.siteLabel,
   purchasedGoodsCategoryId:r.purchasedGoodsCategoryId,
@@ -60,6 +91,8 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   factorVersion: r.factorVersion,
   factorLabel: r.factorLabel,
   qualityTier: r.qualityTier,
+  overrideTco2e: r.overrideTco2e,
+  overrideReason: r.overrideReason,
 });
 const errorText = (r: {
   state: string;
@@ -101,15 +134,19 @@ export function CrpScopeWorkspace({
         text: `QA pending: ${qa.calculationMissing} calculations missing · ${qa.qualityMissing} quality tiers missing · ${qa.independentReviewPending} rows awaiting independent approval.`,
       };
   const router = useRouter(),
-    [selectedId, setSelectedId] = useState(rows[0]?.id ?? ""),
+    [selectedId, setSelectedId] = useState(rows.find(scopeRowNeedsAttention)?.id??rows[0]?.id ?? ""),
     [creating, setCreating] = useState(rows.length === 0),
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
+    [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
     } | null>(qaNotice);
-  const selected = rows.find((r) => r.id === selectedId) ?? rows[0];
+  const visibleRows=filterScopeRows(rows,registerFilter),attentionCount=rows.filter(scopeRowNeedsAttention).length;
+  const selected = visibleRows.find((r) => r.id === selectedId)??visibleRows[0]??rows.find((r)=>r.id===selectedId)??rows[0];
+  const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
+  const openRegister=(filter:ScopeRegisterFilter)=>{setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));};
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
   const readinessChecks = [
@@ -154,11 +191,14 @@ export function CrpScopeWorkspace({
       subtitle={`Scope ${selected.scope}`}
     >
       <Editor
+        key={selected.id}
         jobId={job.header.id}
         row={selected}
         factors={factors}
         sites={sites}
         purchasedGoodsCategories={purchasedGoodsCategories}
+        reportingFrom={datasets[0]?.reportingFrom??`${reportingYear}-01-01`}
+        reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
         notice={setNotice}
       />
       <div className="nz-sect">Calculation lineage</div>
@@ -225,8 +265,8 @@ export function CrpScopeWorkspace({
         </section>
         <div className="nz-command-metrics">
           <div><span>Reported emissions</span><strong>{totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })}</strong><small>tCO₂e across enabled rows</small></div>
-          <div><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></div>
-          <div><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></div>
+          <button type="button" onClick={()=>openRegister("calculation")}><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></button>
+          <button type="button" onClick={()=>openRegister("review")}><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></button>
           <div><span>Reporting period</span><strong>{reportingYear}</strong><small>Annual disclosure cycle</small></div>
         </div>
         <section className="nz-work-grid">
@@ -237,8 +277,8 @@ export function CrpScopeWorkspace({
           <div className="nz-panel nz-focus-card">
             <span className="nz-eyebrow">Management focus</span><h3>{qa.readyForReporting ? "Release with confidence" : "Resolve the highest-value exceptions first"}</h3>
             <p>{qa.readyForReporting ? "All enabled evidence has been calculated and independently approved. Freeze the evidence before publication." : "The workspace keeps missing calculations, incomplete quality evidence and pending reviews visible—never silently treated as zero."}</p>
-            <div className="nz-focus-stats"><span><b>{qa.calculationMissing}</b> calculations</span><span><b>{qa.qualityMissing}</b> quality gaps</span><span><b>{qa.independentReviewPending}</b> QA decisions</span></div>
-            <a className="nz-btn" href="#emissions-register">Open emissions register</a>
+            <div className="nz-focus-stats"><button type="button" onClick={()=>openRegister("calculation")}><b>{qa.calculationMissing}</b> calculations</button><button type="button" onClick={()=>openRegister("quality")}><b>{qa.qualityMissing}</b> quality gaps</button><button type="button" onClick={()=>openRegister("review")}><b>{qa.independentReviewPending}</b> QA decisions</button></div>
+            <a className="nz-btn" href="#emissions-register" onClick={()=>setRegisterFilter("attention")}>Open {attentionCount} exception{attentionCount===1?"":"s"}</a>
           </div>
         </section>
         {notice && (
@@ -248,6 +288,8 @@ export function CrpScopeWorkspace({
         <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
+        <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
+        <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
           datasets={datasets}
@@ -267,13 +309,14 @@ export function CrpScopeWorkspace({
             </button>
           </form>
         )}
+        <PortalDataEntryReviewQueue jobId={job.header.id}/>
         {rows.length === 0 ? (
           <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
         ) : (
           <div className="nz-panel" id="emissions-register">
             <div className="nz-register-head">
               <div><span className="nz-eyebrow">Canonical evidence register</span><h3>Emissions sources</h3><p>Every result retains factor provenance, calculation lineage and an independent decision.</p></div>
-              <span className="nz-st done">{qa.enabled} enabled rows</span>
+              <div className="nz-register-filters" aria-label="Filter emissions sources">{registerFilters.map(filter=><button type="button" key={filter.id} aria-pressed={registerFilter===filter.id} onClick={()=>setRegisterFilter(filter.id)}>{filter.label}<b>{filter.count}</b></button>)}</div>
             </div>
             <table className="nz-tbl">
               <thead>
@@ -290,7 +333,7 @@ export function CrpScopeWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {visibleRows.map((r) => (
                   <tr
                     key={r.id}
                     tabIndex={0}
@@ -299,7 +342,7 @@ export function CrpScopeWorkspace({
                     onClick={() => setSelectedId(r.id)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}
                   >
-                    <td>{r.sourceLabel}</td>
+                    <td>{r.sourceLabel}{r.assetIdentifier?<div className="muted">ID / Ref: {r.assetIdentifier}</div>:null}</td>
                     <td>{r.scope}</td>
                     <td>{r.siteLabel??"Unallocated"}</td>
                     <td>{r.quantity ?? "—"}</td>
@@ -315,6 +358,7 @@ export function CrpScopeWorkspace({
                 ))}
               </tbody>
             </table>
+            {visibleRows.length===0?<div className="nz-table-empty">No rows match this filter. The full evidence register still contains {rows.length} row{rows.length===1?"":"s"}.</div>:null}
           </div>
         )}
       </div>
@@ -443,13 +487,9 @@ function Fields({
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
 }) {
-  const available = factors.filter((f) =>
-      f.scopes.includes(value.scope.split(".")[0]!),
-    ),
-    selected =
-      value.datasetId && value.factorId
-        ? `${value.datasetId}|${value.factorId}`
-        : "";
+  const available = factors.filter((f) => f.scopes.includes(f.factorSource==="client"?value.scope:value.scope.split(".")[0]!)),
+    factorKey=(f:FactorOption)=>`${f.factorSource}:${f.clientFactorId??f.datasetId}|${f.factorId}`,
+    selected = value.factorId ? `${value.factorSource??"dataset"}:${value.clientFactorId??value.datasetId}|${value.factorId}` : "";
   return (
     <div className="nz-scope-fields">
       <label className="nz-fl">
@@ -462,13 +502,25 @@ function Fields({
         />
       </label>
       <label className="nz-fl">
+        Report label
+        <input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => change({ ...value, reportLabel: e.target.value || null })} />
+      </label>
+      <label className="nz-fl">
+        ID / Reference
+        <input className="nz-inp" maxLength={240} value={value.assetIdentifier ?? ""} placeholder="Vehicle reg, employee name, meter ID…" onChange={(e) => change({ ...value, assetIdentifier: e.target.value || null })} />
+      </label>
+      <label className="nz-fl">Report column heading<input className="nz-inp" value={value.columnText??""} placeholder="Optional column heading" onChange={e=>change({...value,columnText:e.target.value||null})}/></label>
+      <label className="nz-fl">
         Scope
-        <input
-          className="nz-inp"
+        <select
+          className="nz-sel"
           required
           value={value.scope}
           onChange={(e) => change({ ...value, scope: e.target.value })}
-        />
+        >
+          {crpScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        <small className="muted">{crpScopeCategoryPath(value.scope).join(" › ")}</small>
       </label>
       <label className="nz-fl">
         Quality
@@ -490,6 +542,8 @@ function Fields({
           ))}
         </select>
       </label>
+      <label className="nz-fl">Data confidence<select className="nz-sel" value={value.dataConfidence??""} onChange={e=>change({...value,dataConfidence:(e.target.value as "H"|"M"|"L")||null})}><option value="">Not set</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select></label>
+      <label className="nz-fl">Apportionment %<input className="nz-inp" type="number" min="0" max="100" step="any" value={value.applyPct??100} onChange={e=>change({...value,applyPct:e.target.value===""?null:Number(e.target.value)})}/></label>
       <label className="nz-fl">Site<select className="nz-sel" value={value.siteId??""} onChange={e=>{const site=sites.find(item=>item.id===e.target.value);change({...value,siteId:site?.id??null,siteLabel:site?.name??null});}}><option value="">Unallocated</option>{sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
       {value.scope==="3.1"&&<label className="nz-fl">Purchased-goods category<select className="nz-sel" value={value.purchasedGoodsCategoryId??""} onChange={e=>{const category=purchasedGoodsCategories.find(item=>item.id===e.target.value);change({...value,purchasedGoodsCategoryId:category?.id??null,purchasedGoodsCategoryLabel:category?.name??null});}}><option value="">Uncategorised</option>{purchasedGoodsCategories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
       <label className="nz-fl">
@@ -500,6 +554,7 @@ function Fields({
           min="0"
           step="any"
           value={value.quantity ?? ""}
+          disabled={(value.monthlyActivity?.length??0)>0}
           onChange={(e) =>
             change({
               ...value,
@@ -523,7 +578,7 @@ function Fields({
           value={selected}
           onChange={(e) => {
             const f = available.find(
-              (x) => `${x.datasetId}|${x.factorId}` === e.target.value,
+              (x) => factorKey(x) === e.target.value,
             );
             change({
               ...value,
@@ -532,14 +587,17 @@ function Fields({
               factorLabel: f?.label ?? null,
               factorVersion: f?.datasetVersion ?? null,
               unit: f?.activityUnit ?? value.unit,
+              factorSource:f?.factorSource??"dataset",
+              clientFactorId:f?.clientFactorId??null,
+              isCustomEntry:f?.factorSource==="client",
             });
           }}
         >
           <option value="">No factor</option>
           {available.map((f) => (
             <option
-              key={`${f.datasetId}|${f.factorId}`}
-              value={`${f.datasetId}|${f.factorId}`}
+              key={factorKey(f)}
+              value={factorKey(f)}
             >
               {f.label} · {f.activityUnit}
               {f.synthetic ? " · DEMO" : ""}
@@ -547,8 +605,18 @@ function Fields({
           ))}
         </select>
       </label>
+      <label className="nz-fl">As-entered quantity<input className="nz-inp" type="number" min="0" step="any" value={value.sourceQuantity??""} onChange={e=>change({...value,sourceQuantity:e.target.value===""?null:Number(e.target.value)})}/></label>
+      <label className="nz-fl">As-entered unit<input className="nz-inp" value={value.sourceUnit??""} onChange={e=>change({...value,sourceUnit:e.target.value||null})}/></label>
     </div>
   );
+}
+
+function reportingMonthKeys(from:string,to:string){const result:string[]=[];const cursor=new Date(`${from.slice(0,7)}-01T00:00:00Z`),end=to.slice(0,7);while(cursor.toISOString().slice(0,7)<=end){result.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return result;}
+function MonthlyActivityEditor({value,change,reportingFrom,reportingTo}:{value:ScopeRowWriteFields;change:(value:ScopeRowWriteFields)=>void;reportingFrom:string;reportingTo:string}){
+  const slots=value.monthlyActivity??[],months=reportingMonthKeys(reportingFrom,reportingTo),populated=slots.filter(slot=>slot.quantity!==null).length;
+  const update=(next:typeof slots)=>change({...value,monthlyActivity:next,quantity:next.some(slot=>slot.quantity!==null)?next.reduce((sum,slot)=>sum+(slot.quantity??0),0):null});
+  if(!slots.length)return <div><div className="nz-sect">Monthly activity</div><p className="muted" style={{fontSize:12}}>Optional monthly capture follows the reporting period. The annual quantity is derived from populated months.</p><button type="button" className="nz-btn" onClick={()=>update(months.map(month=>({month,quantity:null})))}>Enter monthly activity</button></div>;
+  return <div><div className="nz-sect">Monthly activity <span className="muted">{populated}/{slots.length} populated</span></div><div style={{display:"flex",gap:8,marginBottom:10}}><button type="button" className="nz-btn" disabled={slots[0]?.quantity===null} onClick={()=>update(slots.map(slot=>({...slot,quantity:slots[0]?.quantity??null})))}>Copy first month to all</button><button type="button" className="nz-btn" onClick={()=>update(slots.map(slot=>({...slot,quantity:null})))}>Clear months</button><button type="button" className="nz-btn" onClick={()=>change({...value,monthlyActivity:[]})}>Use annual entry</button></div><div className="nz-scope-fields">{slots.map((slot,index)=><label className="nz-fl" key={slot.month}>{new Date(`${slot.month}-01T00:00:00Z`).toLocaleDateString("en-GB",{month:"short",year:"numeric",timeZone:"UTC"})}<input className="nz-inp" type="number" min="0" step="any" value={slot.quantity??""} onChange={event=>{const next=[...slots];next[index]={...slot,quantity:event.target.value===""?null:Number(event.target.value)};update(next);}}/></label>)}</div></div>;
 }
 
 function Editor({
@@ -557,6 +625,8 @@ function Editor({
   factors,
   sites,
   purchasedGoodsCategories,
+  reportingFrom,
+  reportingTo,
   notice,
 }: {
   jobId: string;
@@ -564,13 +634,18 @@ function Editor({
   factors: FactorOption[];
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
+  reportingFrom:string;
+  reportingTo:string;
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
 }) {
   const router = useRouter(),
     [value, setValue] = useState(inputOf(row)),
     [enabled, setEnabled] = useState(row.enabled),
     [pending, setPending] = useState(false),
-    [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? "");
+    [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? ""),
+    [history,setHistory]=useState<Array<{id:string;at:string;actor:string;action:string;correlationId:string}>>([]),
+    [historyState,setHistoryState]=useState<"loading"|"ready"|"failed">("loading");
+  useEffect(()=>{const controller=new AbortController();fetch(`/api/isolated/jobs/${jobId}/scope-rows/${row.id}/history`,{cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(!Array.isArray(body.events))throw new Error();setHistory(body.events.filter((event:unknown)=>event&&typeof event==="object"&&"id" in event&&"at" in event&&"actor" in event&&"action" in event&&"correlationId" in event));setHistoryState("ready")}).catch(error=>{if(error?.name!=="AbortError")setHistoryState("failed")});return()=>controller.abort();},[jobId,row.id]);
   async function save() {
     setPending(true);
     const r = await patchBrowserCommand<{ version: number }>(
@@ -651,6 +726,21 @@ function Editor({
           : "Calculated evidence is available."}
       </div>
       <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
+      <MonthlyActivityEditor value={value} change={setValue} reportingFrom={reportingFrom} reportingTo={reportingTo}/>
+      <div className="nz-sect">Evidence notes</div>
+      <textarea className="nz-notes" style={{width:"100%"}} value={value.notes??""} onChange={event=>setValue({...value,notes:event.target.value||null})} placeholder="Method, source context, assumptions or follow-up notes"/>
+      <div className="nz-sect">Reasoned override</div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Leave blank to use the calculated result. An override is recorded in the row lineage and always requires a reason.
+      </p>
+      <label className="nz-fl">
+        Override tCO₂e
+        <input className="nz-inp" type="number" min="0" step="any" value={value.overrideTco2e ?? ""} onChange={(e) => setValue({ ...value, overrideTco2e: e.target.value === "" ? null : Number(e.target.value) })} />
+      </label>
+      <label className="nz-fl">
+        Override reason
+        <textarea className="nz-notes" value={value.overrideReason ?? ""} onChange={(e) => setValue({ ...value, overrideReason: e.target.value || null })} placeholder="Required when an override value is entered" />
+      </label>
       <label>
         <input
           type="checkbox"
@@ -705,12 +795,14 @@ function Editor({
         </button>
         <button
           className="nz-btn pri"
-          disabled={pending || row.calculatedTco2e === null || !row.qualityTier}
+          disabled={pending || (row.calculatedTco2e === null && row.overrideTco2e === null) || !row.qualityTier}
           onClick={() => review("approved")}
         >
           Approve row
         </button>
       </div>
+      <div className="nz-sect">Activity history</div>
+      {historyState==="loading"?<p className="muted" role="status">Loading immutable row history…</p>:historyState==="failed"?<div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div>:history.length===0?<p className="muted">No row events are recorded yet.</p>:<div>{history.map(event=><div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_"," ")}</b><small>{new Date(event.at).toLocaleString("en-GB")} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
       <div className="nz-sect">Reporting snapshot</div>
       <p className="muted" style={{ fontSize: 12 }}>
         Creates an immutable, content-addressed snapshot only when every enabled

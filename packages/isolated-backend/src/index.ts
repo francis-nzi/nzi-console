@@ -8,6 +8,7 @@ export * from "./login";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";
+export * from "./scopeRowHistory";
 export * from "./portalReview";
 export * from "./portalAccess";
 export * from "./portalInvitations";

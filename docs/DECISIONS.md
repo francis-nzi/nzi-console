@@ -51,6 +51,20 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-029 | One chart asset across screen/PDF/portal, with provenance; no runtime browser provisioning | Confirmed (24 Aug 2026) |
 | NZC-030 | Dataset selection automated from reporting period, with audited manual additions | Confirmed (24 Aug 2026) |
 | NZC-031 | Portal recovery remains staff-governed until verified outbound recovery infrastructure exists | Confirmed (27 Aug 2026) |
+| NZC-032 | Monthly activity granularity aligned to the reporting period (with copy-to-all) | Confirmed (28 Aug 2026) |
+| NZC-033 | Scope-row reporting hierarchy (level_1..4) + explicit report label | Confirmed (28 Aug 2026) |
+| NZC-034 | Override tCO₂e + mandatory reason exposed in the write path | Confirmed (28 Aug 2026) |
+| NZC-035 | One data-entry framework for portal and CRP; typed capture adapters | Confirmed (28 Aug 2026) |
+| NZC-036 | Bulk-upload standard: Excel + paste grid + CSV mapper; one canonical download identity | Confirmed (28 Aug 2026) |
+| NZC-037 | Company Vehicles replaces the Asset Register; non-vehicle assets via Data Entry | Confirmed (28 Aug 2026) |
+| NZC-038 | Workspace design language: stage-as-section, named/numbered/colour-matched, collapsible, completed sinks | Confirmed (28 Aug 2026) |
+| NZC-039 | Terminology: "carbon emissions" across all screens; "carbon footprint" reserved for the PCF (Product Carbon Footprint) module | Confirmed (29 Aug 2026) |
+| NZC-040 | Date format: dd/mm/yyyy everywhere (UK), one shared formatter | Confirmed (29 Aug 2026) |
+| NZC-041 | Client factors are first-class: reusable client/job-scoped `client_factors` with EPD evidence; rows carry factor source + is_custom_entry | Confirmed (29 Aug 2026) |
+| NZC-042 | Sites are places, not labels: location + lifecycle (active/vacated) on client_sites; apply_pct apportionment on the row | Confirmed (29 Aug 2026) |
+| NZC-043 | Per-entity source register + roll-up groups is the home for typed adapters, auto-generated into the canonical row | Confirmed (29 Aug 2026) |
+| NZC-044 | Canonical row gains data_confidence, source_qty/uom conversion memory, column_text, and link fields | Confirmed (29 Aug 2026) |
+| NZC-045 | The reporting taxonomy (level_1..4) is stored and controlled, not derived from the scope string | Confirmed (29 Aug 2026) |
 
 ---
 
@@ -171,6 +185,8 @@ AI assists categorisation (spend), drafting (report narrative), and prioritisati
 It is never the source of truth for factors, emissions, or prospect facts; prospect/company identity comes
 from authoritative sources (e.g. Companies House) with stored, verifiable evidence. *Source: BD brief §14;
 `WORKFLOWS.md` §14.*
+
+**Confirmed application (28 Aug 2026, Francis).** AI **spend categorisation on data entry** is **task/row-specific, grounded and advisory only** — it suggests a category/factor from real dataset factors and the client’s own prior mappings, with visible confidence and evidence; a human confirms before any value changes, and the written row/mapping carries its provenance and quality tier. AI is never a second write path or a factor of record.
 
 ### NZC-019 — LCA/PCF is a distinct family with its own inner model [Proposed]
 LCA/PCF shares the job spine and factor engine but has its own model: assessment → BOM line item →
@@ -294,12 +310,103 @@ provenance and audit history. Period or geography mismatches generate visible wa
 reviewer approval. Existing calculated rows remain tied to their selected dataset/version until an
 explicit recalculation. *Confirmed by Francis, 24 Aug 2026.*
 
+**Addendum — previous-year rollforward (28 Aug 2026, Francis).** Carried-forward rows **re-pin the prior year’s factor versions** so year-on-year reporting stays consistent and comparable; moving a rolled-forward row onto a newer factor version is an explicit, audited recalculation (per the base decision above), never automatic.
+
+### NZC-032 — Monthly activity granularity aligned to the reporting period [Confirmed 28 Aug 2026]
+The canonical scope row (and portal entry) stores an **optional 12-slot monthly activity vector** with an annual roll-up derived from it. The month slots **follow the job’s reporting period** (`crp_job_details` reporting-from/to) — a non-January start or a short/long first year shows exactly those months, not a fixed calendar year. Preserve the live convenience that a value entered for the first month can be **copied across all months** (and quick fill/clear), so annual-shaped data stays fast to enter. Monthly distribution feeds seasonality charts, mid-period site open/close and portal monthly capture. *Parity-critical; schema-level. Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-033 — Scope-row reporting hierarchy & label [Confirmed 28 Aug 2026]
+Adopt a controlled **category path (`level_1..4`)** plus an explicit **`report_label`** on the canonical scope row, replacing the free-text `scope` string. The label defaults from the matched factor and is overridable; the category path is the deterministic source for the report’s scope/category breakdown and chart grouping. A structured **scope selector** replaces hand-typed scope entry. *Parity-critical; schema-level. Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-034 — Override capture in the write path [Confirmed 28 Aug 2026]
+The evidence-drawer editor exposes an **override tCO₂e with a mandatory reason** (the fields already exist on the read model and in lineage). Overrides are first-class and reasoned — recorded with actor/time, shown in lineage — reusing the reason-carrying command pattern already used for manual dataset additions. *Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-035 — One data-entry framework for portal and CRP; typed capture adapters [Confirmed 28 Aug 2026]
+There must **not be two disparate data-input systems**. Client-portal and consultant CRP data entry operate under **one framework, one canonical scope-row model, and the same validation, provenance and review workflow**. Entry *kind* (manual activity / spend / commuting / vehicle / import) is handled by **typed capture adapters** that present kind-specific fields (VAT/GL for spend; vehicle registration / mode / WFH for commuting; the monthly vector for all) and kind-specific advisory automations — all writing the same canonical rows into the same review queue. The portal is a constrained mirror of the internal surface (NZC-016), never a fork. *Parity-critical. Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-036 — Bulk data upload: one standard, one download identity [Confirmed 28 Aug 2026]
+Bulk activity upload is standardised across the three template-driven activity domains — **Employee Commuting, Company Vehicles, and Business Travel** — plus **Purchased Goods & Services via the spend pathway**, on **both the CRP and the portal**, all with **monthly input where available** (reporting-period-aligned per NZC-032) writing canonical scope rows through the shared review workflow (NZC-035). **PG&S is spend-based**, not a quantity template — it is captured through the **spend adapter** (ledger/invoice upload → AI-assisted categorisation → factor mapping → sync to **Scope 3.1** rows tagged with the controlled PG&S category, NZC-033), itself a bulk upload supporting monthly.
+
+**Three input methods over one validation/preflight engine and one canonical schema:**
+1. **Excel template round-trip** (baseline / offline) — download → fill → preflight → commit.
+2. **In-browser paste-and-validate grid** (fast path) — paste rows from any spreadsheet; validate live (units, factor match, months, duplicates) with inline errors; commit. No file round-trip.
+3. **Remembered CSV column-mapper** (client-native) — accept the client’s own export, map their columns to the canonical fields once, and **remember the mapping per client** so later years are one click.
+
+Pull-data **connectors** (accounting for spend/PG&S, telematics/fuel-card for vehicles, HR/payroll for commuting headcount) are a later automation — noted, not scheduled.
+
+**Canonical download identity — one shared service, no per-flow drift.** Every downloadable template/export (CRP and portal) is produced by a **single** filename+identity builder, replacing today’s divergent ones (`services/download_filenames.py`, the single-sheet generator’s own `f"{job_no} {client} {site} {year}.xlsx"`, and the hardcoded `portal_spend` `spend-data-template.xlsx`).
+- **Filename (human label):** `{JobNumber}_{ClientName}_{JobName}_{ReportingYear}_{Descriptor}.xlsx`, underscore-separated, each identifier sanitised of `<>:"/\|?*` and collapsed whitespace — e.g. `J000712_BushyTailsLtd_AnnualCRP_2024_Commuting.xlsx`.
+- **Embedded identity block (machine-readable, the source of truth):** every template carries a locked header block — immutable **JobId**, JobNumber, ClientName, JobName, ReportingYear, ReportingPeriodStart/End, Domain, **TemplateVersion**, and an integrity hash. **Upload preflight validates against the embedded JobId / period / version, never by parsing the filename** (retiring the live year-in-filename regex in `job_setup_routes.py`). A wrong-job or wrong-period file is a hard, clearly-explained block; an out-of-date template version is detected and handled.
+- **Consistent headers across the activity domains:** identical identifier block and identical reporting-period month columns, with shared columns (Scope · Category/Report Label · ID · UOM · [reporting-period months] · Qty · Data Source · Notes) plus domain-specific columns (Company Vehicles: registration/type; Commuting: mode/distance-unit/WFH). The **spend template is the fourth canonical download** and adopts the same identity block — it is today’s worst offender (hardcoded `spend-data-template.xlsx`).
+*Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-037 — Company Vehicles replaces the Asset Register [Confirmed 28 Aug 2026]
+The live **Asset Register** (individual Scope-1 vehicles/equipment grouped for roll-up) becomes a focused **Company Vehicles** bulk-upload domain (registration-aware, monthly). **Non-vehicle Scope-1 assets** (equipment and other sources) are captured through general **Data Entry** rather than a separate register, keeping one canonical row model; grouping/roll-up for reporting is retained via the scope-row category path (NZC-033). *Confirmed by Francis, 28 Aug 2026.*
+
+### NZC-038 — Workspace design language: the stage drives the screen [Confirmed 28 Aug 2026]
+Every workspace across NZI Console — the CRP job, all other job families, the admin workspaces, and the **client portal** — uses one shared design language, so the platform reads as a single product and the work always leads. The rules:
+
+- **The workflow stage drives the screen.** Each stage is its own section; the **progress bar and the page correlate exactly**. Clicking a stage in the bar opens and scrolls to its section.
+- **Sections are named in user terms**, matching the progress-bar labels (e.g. *Data Entry*, never “Canonical evidence register”). Each section header carries its **stage number, a tick when complete, and the stage’s colour** (a restrained sequential ramp), mirroring its node in the bar.
+- **Every section expands/collapses** to control noise; a collapsed section shows a one-line status summary. **Completed sections sink to a “Completed — for occasional reference” zone at the bottom** — job setup/configuration especially, since it is referred to infrequently once done.
+- **One slim status strip** replaces the hero/ring/metric-card stack; **detail opens in the evidence drawer on selection** (the register uses full width otherwise); working tables default **exception-first**. Once-per-job configuration is not shown with the same weight as the daily working surface.
+- **The client portal is a constrained mirror** of the same language (NZC-016, NZC-035), not a separate visual system.
+
+Reference prototypes (28 Aug 2026): the consultant CRP workspace and the client portal, both built in this language on J000712 data. *Confirmed by Francis, 28 Aug 2026 — supersedes the ad-hoc always-open-card layout seen in the live platform.*
+
 ---
 
 ## Decisions needing Francis first
 
 There are currently **no Open decisions** in this register. Add new questions here as the detailed
 workspace designs expose choices requiring Francis's approval.
+
+
+### NZC-039 — Terminology: “carbon emissions”, not “carbon footprint” [Confirmed 29 Aug 2026]
+All user-facing copy across every workspace and the client portal uses **“carbon emissions”** (or simply
+“emissions”). The phrase **“carbon footprint” is reserved exclusively for the PCF (Product Carbon Footprint)
+module**, where it is the correct term of art. Applies to labels, headings, buttons, chart titles, tooltips,
+empty/help text, generated report and PDF copy, and email/notification text. Confirmed by Francis, 29 Aug 2026.
+
+### NZC-040 — Date format: dd/mm/yyyy [Confirmed 29 Aug 2026]
+All dates render as **dd/mm/yyyy** across every screen, the client portal, and generated documents/PDFs (UK
+convention), from a single shared date formatter as the one source — no locale-default or ISO date rendering
+in the UI. Reporting-period month labelling (NZC-032) is unaffected: month labels follow the reporting-period
+start and remain calendar-indexed in storage. Confirmed by Francis, 29 Aug 2026.
+
+
+### NZC-041 — Client factors are first-class [Confirmed 29 Aug 2026]
+A reusable `client_factors` entity (organisation + client scoped, optionally pinned to a job), versioned and
+geography-aware, carrying a supporting **evidence file (e.g. an EPD)** whose integrity **hash travels in the
+row's provenance**. The canonical row gains `factor_source` (`dataset` | `client`), `client_factor_id`, and
+`is_custom_entry`. Migration-owned (`0034_client_factors.sql`); never runtime DDL. Confirmed 29 Aug 2026.
+
+### NZC-042 — Sites are places, not labels [Confirmed 29 Aug 2026]
+`client_sites` gains address, `latitude`/`longitude`/geocode, and a lifecycle (`active_from`, `vacated_date`,
+`archived`), so a mid-year opening/closure is a fact, not an inference. The canonical row gains `apply_pct`
+to **apportion one source across sites** (`0035`). **Sub-question resolved 30 Aug 2026 — factors are not
+site-scoped in the schema:** the canonical row already carries `site_id` and `factor_id` independently, so a
+site on its own tariff (e.g. a renewable REGO contract) is captured as a per-site row with its own factor.
+Auto-applying a site's preferred factor to its rows is a later UI convenience, not a model gap; revisit only
+if consultants find themselves re-picking the same site factor repeatedly. Confirmed 29 Aug 2026; sub-question
+closed 30 Aug 2026.
+
+### NZC-043 — Per-entity source register + roll-up groups [Confirmed 29 Aug 2026]
+Individual assets, vehicles and employees live in `job_emission_sources` (+ `job_emission_groups` for
+roll-up), with a typed kind-specific `detail_json` (commuting / vehicle / spend / asset). This is the data
+home for the typed capture adapters (NZC-035). Each roll-up lands in the canonical row as an
+**auto-generated** entry (`source_id`, `linked_row_id`, `is_auto_generated`, `auto_pair_kind`) — `0036`.
+Confirmed 29 Aug 2026.
+
+### NZC-044 — Remaining canonical-row fields [Confirmed 29 Aug 2026]
+The row gains `data_confidence` (H/M/L, a distinct axis from the quality tier), `source_quantity`/
+`source_unit` (as-entered conversion memory), and `column_text` (report column heading, distinct from
+`report_label`) — `0035`. Confirmed 29 Aug 2026.
+
+### NZC-045 — Stored, controlled reporting taxonomy [Confirmed 29 Aug 2026]
+The reporting hierarchy (`level_1..4`) is persisted and controlled per scope (already begun in `0030`),
+rather than deriving `categoryPath` from the free-text scope string — the report breakdown/charts need a
+deterministic category source (tightens NZC-033). Confirmed 29 Aug 2026.
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
@@ -308,7 +415,7 @@ in the isolated platform. NZC-022 resolved 24 Aug 2026: explicit roles and named
 detailed matrix refined per workspace. NZC-025 resolved 24 Aug 2026: official zero-padded `J` numbers over
 one shared counter, with family stored separately; guaranteed gapless via assign-on-commit. NZC-026–029
 confirmed 24 Aug 2026: one derived, provenance-bearing SVG chart system across console, PDF and portal,
-with content identity and manifest validation as a hard publication gate.)*
+with content identity and manifest validation as a hard publication gate. NZC-032–035 confirmed 28 Aug 2026: reporting-period-aligned monthly granularity with copy-to-all; scope-row hierarchy + report label; override-with-reason in the write path; and one shared data-entry framework across the portal and CRP. NZC-018 (spend categorisation) and the NZC-030 rollforward re-pin were confirmed the same day. NZC-036–037 confirmed 28 Aug 2026: a single bulk-upload standard (hardened Excel + in-browser paste grid + remembered CSV mapper) over one canonical download identity, and Company Vehicles replacing the Asset Register. NZC-038 confirmed 28 Aug 2026: a single stage-as-section workspace design language — named, numbered, colour-matched, collapsible sections with completed ones sinking to the bottom — applied site-wide including the client portal.)*
 
 The **Proposed** items (NZC-006, 007, 009, 011–019, 023, **024, 026–029**) are recommendations ready to be
 confirmed as a batch once reviewed — including the job-family module separation and the whole graphics
