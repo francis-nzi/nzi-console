@@ -37,3 +37,24 @@ Rollback procedure:
 3. Run `npm run test:portal`, `npm run typecheck`, and `npm run build` against the resulting revision.
 
 For database containment independent of application rollback, set `NZI_DATA_MODE=fixture` on the Render service and deploy. This disconnects the application from the isolated database without deleting data. No rollback was executed during acceptance because the deployed revision was healthy.
+
+## Rendered acceptance harness (30 August 2026)
+
+A Playwright suite (`apps/console/tests/e2e/`) now renders the portal against **deployed
+isolated staging** and is the standing rendered-acceptance gate. See
+`docs/RENDERED_ACCEPTANCE_CHECKLIST.md` for how to run it.
+
+- `portal.spec.ts` — real portal sign-in (password + TOTP) → portfolio → a granted job's
+  published-report workspace (or an explicit state) → account security.
+- `accessibility.spec.ts` — axe-core WCAG 2.1 A/AA on the portal sign-in and (authenticated)
+  portal screens; fails on any serious/critical not in `axe-baseline.json`.
+- `responsive.spec.ts` — full-page captures + no-horizontal-overflow at 390/768/1280/1920.
+
+**Public smoke run recorded 30 Aug 2026** (against `8d1ec64`, no credentials): 7 passed,
+31 auth-gated specs skipped, 0 failed. Two markup a11y defects found and fixed in the same
+change (`.nz-auth-progress` `aria-label` on a bare `<div>`; `CommandSearch` input missing
+`role="combobox"`); contrast findings catalogued in `axe-baseline.json` for a NZC-003
+design-token pass.
+
+**Still open:** the full authenticated run (needs `npm run acceptance:provision` against
+isolated staging) and the manual assistive-technology narration pass (checklist §2).

@@ -14,3 +14,9 @@ coverage
 # Local-only reference copy of the live platform and scratch space — never committed
 nzi-live-fix/
 _to_delete/
+
+# Playwright rendered-acceptance artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

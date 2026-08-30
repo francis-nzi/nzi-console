@@ -1,0 +1,21 @@
+{
+  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here. 'fixed-pending-deploy' entries are corrected in this branch and must be removed (and re-verified green) once deployed; a 'critical' is accepted only with that status. 'catalogued-contrast' entries await a deliberate design-token pass (NZC-003 palette — needs Francis). See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
+  "login": [
+    { "id": "aria-prohibited-attr", "target": ".nz-auth-progress", "status": "fixed-pending-deploy", "note": "aria-label on a bare div; changed to aria-hidden in LoginForm.tsx" },
+    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "catalogued-contrast", "note": "--t3 #8A968F on #fff = 3.07:1" },
+    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "catalogued-contrast", "note": "--t3 #8A968F on #fff = 3.07:1" }
+  ],
+  "portal-login": [
+    { "id": "aria-prohibited-attr", "target": ".nz-auth-progress", "status": "fixed-pending-deploy", "note": "changed to aria-hidden in PortalLoginForm.tsx" },
+    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1" },
+    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1" }
+  ],
+  "charts": [
+    { "id": "aria-allowed-attr", "target": "input", "status": "fixed-pending-deploy", "note": "combobox input missing role=combobox; added in CommandSearch.tsx" },
+    { "id": "color-contrast", "target": ".nz-navsec", "status": "catalogued-contrast", "note": "#5E7385 on Midnight #0B1B2B = 3.53:1; rail section headings" },
+    { "id": "color-contrast", "target": ".who > small", "status": "catalogued-contrast", "note": "#6C8394 on Midnight = 4.4:1; rail user role" },
+    { "id": "color-contrast", "target": ".nz-crumbs", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1; breadcrumbs" },
+    { "id": "color-contrast", "target": ".k", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1; Ctrl-K hint" },
+    { "id": "color-contrast", "target": ".nz-chart-flow", "status": "catalogued-contrast", "note": "#fff on Emerald #0BA75E = 3.13:1; small bold label on brand fill" }
+  ]
+}

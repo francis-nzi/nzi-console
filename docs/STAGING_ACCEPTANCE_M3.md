@@ -35,3 +35,16 @@ Source contracts and production compilation support these behaviours, but they a
 ## Rollback
 
 Revision `3342217` is the previous green deployment and remains the rollback target for the Datasets and Platform release. Roll back through a new revert commit, deploy it through `main`, then rerun `npm run test:staff`, typecheck, build, and the staging health check. No rollback was required.
+
+## Rendered acceptance harness (30 August 2026)
+
+`apps/console/tests/e2e/staff-workspaces.spec.ts` renders every staff workspace (Control
+Room, Clients + detail, Jobs, Datasets, Reports + detail, Platform, Charts, LCA, Sales)
+against **deployed isolated staging** as a real administrator principal, asserting real
+content with the five explicit states and no console/5xx errors; `accessibility.spec.ts`
+and `responsive.spec.ts` add the axe WCAG scan and 390/768/1280/1920 viewport captures.
+Run per `docs/RENDERED_ACCEPTANCE_CHECKLIST.md`.
+
+This supersedes "no controllable browser was connected" for the automated portion. **Still
+open:** executing the authenticated run (`npm run acceptance:provision`) and the manual
+assistive-technology narration pass (checklist §2).
