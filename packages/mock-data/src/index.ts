@@ -8,6 +8,7 @@ export * from "./reports";
 export * from "./lca";
 export * from "./sales";
 export * from "./platform";
+export * from "./fidelity";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 

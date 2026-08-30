@@ -60,6 +60,11 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-038 | Workspace design language: stage-as-section, named/numbered/colour-matched, collapsible, completed sinks | Confirmed (28 Aug 2026) |
 | NZC-039 | Terminology: "carbon emissions" across all screens; "carbon footprint" reserved for the PCF (Product Carbon Footprint) module | Confirmed (29 Aug 2026) |
 | NZC-040 | Date format: dd/mm/yyyy everywhere (UK), one shared formatter | Confirmed (29 Aug 2026) |
+| NZC-041 | Client factors are first-class: reusable client/job-scoped `client_factors` with EPD evidence; rows carry factor source + is_custom_entry | Confirmed (29 Aug 2026) |
+| NZC-042 | Sites are places, not labels: location + lifecycle (active/vacated) on client_sites; apply_pct apportionment on the row | Confirmed (29 Aug 2026) |
+| NZC-043 | Per-entity source register + roll-up groups is the home for typed adapters, auto-generated into the canonical row | Confirmed (29 Aug 2026) |
+| NZC-044 | Canonical row gains data_confidence, source_qty/uom conversion memory, column_text, and link fields | Confirmed (29 Aug 2026) |
+| NZC-045 | The reporting taxonomy (level_1..4) is stored and controlled, not derived from the scope string | Confirmed (29 Aug 2026) |
 
 ---
 
@@ -368,6 +373,36 @@ All dates render as **dd/mm/yyyy** across every screen, the client portal, and g
 convention), from a single shared date formatter as the one source — no locale-default or ISO date rendering
 in the UI. Reporting-period month labelling (NZC-032) is unaffected: month labels follow the reporting-period
 start and remain calendar-indexed in storage. Confirmed by Francis, 29 Aug 2026.
+
+
+### NZC-041 — Client factors are first-class [Confirmed 29 Aug 2026]
+A reusable `client_factors` entity (organisation + client scoped, optionally pinned to a job), versioned and
+geography-aware, carrying a supporting **evidence file (e.g. an EPD)** whose integrity **hash travels in the
+row's provenance**. The canonical row gains `factor_source` (`dataset` | `client`), `client_factor_id`, and
+`is_custom_entry`. Migration-owned (`0034_client_factors.sql`); never runtime DDL. Confirmed 29 Aug 2026.
+
+### NZC-042 — Sites are places, not labels [Confirmed 29 Aug 2026]
+`client_sites` gains address, `latitude`/`longitude`/geocode, and a lifecycle (`active_from`, `vacated_date`,
+`archived`), so a mid-year opening/closure is a fact, not an inference. The canonical row gains `apply_pct`
+to **apportion one source across sites** (`0035`). **Open sub-question:** whether factors may be *site-scoped*
+(a site overriding the job factor) — to be decided before the sites UI is built. Confirmed 29 Aug 2026.
+
+### NZC-043 — Per-entity source register + roll-up groups [Confirmed 29 Aug 2026]
+Individual assets, vehicles and employees live in `job_emission_sources` (+ `job_emission_groups` for
+roll-up), with a typed kind-specific `detail_json` (commuting / vehicle / spend / asset). This is the data
+home for the typed capture adapters (NZC-035). Each roll-up lands in the canonical row as an
+**auto-generated** entry (`source_id`, `linked_row_id`, `is_auto_generated`, `auto_pair_kind`) — `0036`.
+Confirmed 29 Aug 2026.
+
+### NZC-044 — Remaining canonical-row fields [Confirmed 29 Aug 2026]
+The row gains `data_confidence` (H/M/L, a distinct axis from the quality tier), `source_quantity`/
+`source_unit` (as-entered conversion memory), and `column_text` (report column heading, distinct from
+`report_label`) — `0035`. Confirmed 29 Aug 2026.
+
+### NZC-045 — Stored, controlled reporting taxonomy [Confirmed 29 Aug 2026]
+The reporting hierarchy (`level_1..4`) is persisted and controlled per scope (already begun in `0030`),
+rather than deriving `categoryPath` from the free-text scope string — the report breakdown/charts need a
+deterministic category source (tightens NZC-033). Confirmed 29 Aug 2026.
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
