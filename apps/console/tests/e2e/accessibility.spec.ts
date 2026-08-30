@@ -8,16 +8,23 @@ import { discoverCrpJob } from "./lib/discover";
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const BLOCKING = new Set(["serious", "critical"]);
 const OUT = "test-results/axe";
-type BaselineEntry = { id: string; target: string; status: "fixed-pending-deploy" | "catalogued-contrast"; note: string };
+// An entry matches a violation by rule id and EITHER a target selector (substring
+// either way) OR a foreground colour (`fg`, matched against the axe node's
+// reported foreground — used for a systemic colour like emerald-as-text that
+// appears under many selectors).
+type BaselineEntry = { id: string; target?: string; fg?: string; status: "fixed-pending-deploy" | "catalogued-contrast"; note: string };
 const KNOWN = JSON.parse(readFileSync(join(__dirname, "axe-baseline.json"), "utf8")) as Record<string, BaselineEntry[]>;
 
-// A violation is accepted if its rule + one of its target selectors is listed
-// for this page or under "_shell" (app-shell chrome, present on every
-// authenticated screen). A 'critical' is accepted only when the entry is
-// 'fixed-pending-deploy' (corrected in-branch, awaiting deploy).
-function match(page: string, id: string, targets: string[]): BaselineEntry | undefined {
+function match(page: string, violation: { id: string; nodes: Array<{ target: unknown[]; any?: Array<{ data?: { fgColor?: string } }> }> }): BaselineEntry | undefined {
   const candidates = [...(KNOWN._shell ?? []), ...(KNOWN[page] ?? [])];
-  return candidates.find((entry) => entry.id === id && targets.some((t) => t.includes(entry.target) || entry.target.includes(t)));
+  const targets = violation.nodes.flatMap((n) => n.target.map(String));
+  const fgColors = new Set(violation.nodes.flatMap((n) => (n.any ?? []).map((check) => check.data?.fgColor?.toLowerCase()).filter(Boolean)));
+  return candidates.find(
+    (entry) =>
+      entry.id === violation.id &&
+      ((entry.target !== undefined && targets.some((t) => t.includes(entry.target!) || entry.target!.includes(t))) ||
+        (entry.fg !== undefined && fgColors.has(entry.fg.toLowerCase()))),
+  );
 }
 
 async function scan(page: Page, name: string): Promise<void> {
@@ -27,11 +34,10 @@ async function scan(page: Page, name: string): Promise<void> {
 
   const blocking = results.violations.filter((v) => BLOCKING.has(v.impact ?? ""));
   const uncatalogued = blocking.filter((v) => {
-    const targets = v.nodes.flatMap((n) => n.target.map(String));
-    const entry = match(name, v.id, targets);
+    const entry = match(name, v);
     if (!entry) return true;
     if (v.impact === "critical" && entry.status !== "fixed-pending-deploy") return true;
-    test.info().annotations.push({ type: `axe-${entry.status}`, description: `${name} · ${v.id} @ ${entry.target} — ${entry.note}` });
+    test.info().annotations.push({ type: `axe-${entry.status}`, description: `${name} · ${v.id} @ ${entry.target ?? entry.fg} — ${entry.note}` });
     return false;
   });
 

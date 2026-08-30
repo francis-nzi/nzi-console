@@ -65,15 +65,26 @@ Artifacts land in `apps/console/test-results/` (axe JSON per page, `screens/*.pn
 
 `apps/console/tests/e2e/axe-baseline.json` lists the currently-accepted violations:
 
-- **`fixed-pending-deploy`** — corrected in a branch not yet deployed; remove the entry
-  once the fix is live and re-verify the scan is green. Currently covers every item below
-  the WCAG-AA contrast fixes (NZC-003 amendment 30 Aug 2026: `--t3` → `#6B7671`, rail
-  muted → `#7E93A6`, chart step-badge → Midnight-on-Emerald), the two
-  `scrollable-region-focusable` containers (→ `tabIndex`), and the manual-exception
-  `<select>` with no accessible name (`select-name`, critical → `aria-label`).
+Entries match a violation by rule id and either a `target` selector or an `fg`
+foreground colour.
 
-Any **new** serious/critical violation fails the scan. Once all `fixed-pending-deploy`
-entries are deployed and cleared, the baseline should be empty.
+- **`fixed-pending-deploy`** — corrected in a branch not yet deployed; remove the entry
+  once live and re-verify green. **Deployed and cleared:** rail muted (`#5E7385`/`#6C8394`
+  → `#7E93A6`), `--t3` first pass (`#8A968F` → `#6B7671`), chart step-badge, the two
+  `scrollable-region-focusable` containers, the `select-name` critical. **Currently
+  pending:** `--t3` `#6B7671` → **`#616B65`** (the `#6B7671` from #9 still failed on
+  `--paper`/tinted backgrounds like `.nz-gate small`), and `@nzi/charts` `tokens.muted`
+  → `#616B65` (chart source footer).
+- **`catalogued-contrast`** — needs a **design-system colour decision from Francis**, not a
+  mechanical darken. The remaining one is **emerald `#0BA75E` used as *text*** — links
+  (`.nz-table-link`), evidence-drawer kickers (`.nz-dh .kick`), key-values (`.nz-kv .v`),
+  factor-box links, and `@nzi/charts` chart subtitles — all ≈ 3.1:1 on white. Options:
+  Deep Pine `#0B7A4B` (passes AA) or a dedicated darker emerald text token. Emerald as a
+  fill / icon / border is fine and unaffected. Note the charts print tokens
+  (`packages/charts/src/tokens.ts`) also feed the PDF and portal (NZC-026/029), so this is
+  one decision across screen and print.
+
+Any **new** serious/critical violation fails the scan.
 
 ### Known client errors
 

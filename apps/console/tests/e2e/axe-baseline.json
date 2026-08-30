@@ -1,27 +1,10 @@
 {
-  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. 'fixed-pending-deploy' = corrected in a branch not yet deployed; remove the entry once the fix is live and re-verify the scan is green. See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
+  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. Entries match by 'target' (selector substring) OR 'fg' (foreground colour). 'fixed-pending-deploy' = corrected in a branch not yet deployed; remove once live and re-verify green. 'catalogued-contrast' = a design-system colour decision for Francis (NZC-003 / NZC-026), not a mechanical darken. See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
   "_shell": [
-    { "id": "color-contrast", "target": ".nz-navsec", "status": "fixed-pending-deploy", "note": "rail section headings; #5E7385 -> #7E93A6 (5.5:1 on Midnight) in @nzi/ui styles.css" },
-    { "id": "color-contrast", "target": ".who > small", "status": "fixed-pending-deploy", "note": "rail user role; #6C8394 -> #7E93A6 (5.5:1 on Midnight)" },
-    { "id": "color-contrast", "target": ".nz-crumbs", "status": "fixed-pending-deploy", "note": "breadcrumbs; --t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
-    { "id": "color-contrast", "target": ".k", "status": "fixed-pending-deploy", "note": "Ctrl-K hint; --t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
-    { "id": "scrollable-region-focusable", "target": ".nz-dbody", "status": "fixed-pending-deploy", "note": "evidence drawer body; tabIndex={0} added in @nzi/ui index.tsx" }
-  ],
-  "login": [
-    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
-    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" }
-  ],
-  "portal-login": [
-    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
-    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" }
+    { "id": "color-contrast", "target": ".nz-gate", "status": "fixed-pending-deploy", "note": "gate labels (.nz-gate small); --t3 #6B7671 -> #616B65 (5.2:1 on --paper) — #9's #6B7671 missed tinted backgrounds" },
+    { "id": "color-contrast", "fg": "#0ba75e", "status": "catalogued-contrast", "note": "Emerald #0BA75E used as TEXT (links .nz-table-link, drawer kickers .nz-dh .kick, key-values .nz-kv .v, factor-box links, @nzi/charts subtitles) = 3.1:1 on white. Systemic. Needs a brand-colour decision from Francis: Deep Pine #0B7A4B passes AA; a darker emerald text token is the alternative. Emerald as a FILL/icon/border is fine and unaffected. Charts print tokens (packages/charts/src/tokens.ts) feed the PDF/portal too (NZC-026/029)." }
   ],
   "charts": [
-    { "id": "color-contrast", "target": ".nz-chart-flow", "status": "fixed-pending-deploy", "note": "step badge; white -> --t1 Midnight text on Emerald (5.6:1) in @nzi/ui styles.css" }
-  ],
-  "staff-datasets": [
-    { "id": "scrollable-region-focusable", "target": ".nz-dataset-audit", "status": "fixed-pending-deploy", "note": "audit table container; tabIndex/role/aria-label added in DatasetBoard.tsx" }
-  ],
-  "crp-job-workspace": [
-    { "id": "select-name", "target": ".nz-dataset-add > select", "status": "fixed-pending-deploy", "note": "manual-exception dataset select; aria-label added in CrpScopeWorkspace.tsx" }
+    { "id": "color-contrast", "target": "figure > p", "status": "fixed-pending-deploy", "note": "chart source footer; @nzi/charts tokens.muted #8A968F -> #616B65" }
   ]
 }
