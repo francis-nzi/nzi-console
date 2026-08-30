@@ -14,7 +14,7 @@ export const tokens = {
   ink: {
     primary: "#0B1B2B", // --t1
     secondary: "#51605A", // --t2
-    muted: "#8A968F", // --t3
+    muted: "#616B65", // --t3
   },
   brand: {
     emerald: "#0BA75E",

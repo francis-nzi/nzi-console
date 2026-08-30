@@ -1,6 +1,6 @@
 :root{
   --emerald:#0BA75E;--pine:#0B7A4B;--midnight:#0B1B2B;--amber:#FFC24B;--coral:#FF5C48;--mint:#DFF5E9;
-  --paper:#F6F8F7;--card:#FFFFFF;--line:#E4EAE7;--line2:#EDF1EF;--t1:#0B1B2B;--t2:#51605A;--t3:#6B7671;
+  --paper:#F6F8F7;--card:#FFFFFF;--line:#E4EAE7;--line2:#EDF1EF;--t1:#0B1B2B;--t2:#51605A;--t3:#616B65;
   --rail:#0B1B2B;--rail2:#132738;--railtx:#AFC0BC;--radius:9px;
 }
 *{box-sizing:border-box}

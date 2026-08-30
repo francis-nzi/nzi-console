@@ -90,9 +90,17 @@ Midnight `#0B1B2B`, Signal Amber `#FFC24B`, Drop Coral `#FF5C48`, Mint Tint `#DF
 `packages/ui`.
 
 **Amendment 30 Aug 2026 (WCAG 2.1 AA).** The rendered axe scan found the muted-text tokens below
-WCAG-AA contrast. Brand colours are unchanged; only muted greys were darkened to pass 4.5:1:
-`--t3` `#8A968F` → `#6B7671` (4.7:1 on white); rail muted `#5E7385`/`#6C8394` → `#7E93A6` (5.5:1 on
-Midnight); the `.nz-chart-flow` step badge uses Midnight text on Emerald (5.6:1) rather than white.
+WCAG-AA contrast. Brand colours (Emerald/Pine/Midnight/Amber/Coral/Mint) are unchanged; only muted greys
+were darkened to pass 4.5:1: `--t3` `#8A968F` → **`#616B65`** (5.5:1 on white, 5.2:1 on `--paper`; an
+initial `#6B7671` still failed on tinted backgrounds); `@nzi/charts` `tokens.muted` matched to `#616B65`;
+rail muted `#5E7385`/`#6C8394` → `#7E93A6` (5.5:1 on Midnight); the `.nz-chart-flow` step badge uses
+Midnight text on Emerald (5.6:1) rather than white.
+
+**Open — emerald as text colour.** Emerald `#0BA75E` is also used as *text* (links, drawer kickers,
+key-values, `@nzi/charts` subtitles) at ≈3.1:1 on white — fails AA. This is a brand decision, not a
+mechanical fix: Deep Pine `#0B7A4B` passes, or introduce a darker emerald text token. It spans screen and
+print (the charts token feeds the PDF/portal, NZC-026/029). Catalogued in `axe-baseline.json` (`fg`
+`#0ba75e`) pending Francis. Emerald as fill/icon/border is unaffected.
 
 ### NZC-004 — App shell [Confirmed]
 Left **Workspace Rail** · top **command/search bar** (⌘K) · main data area · right **Evidence Drawer**.
