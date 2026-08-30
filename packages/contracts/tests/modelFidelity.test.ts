@@ -87,7 +87,7 @@ it("C. per-employee commuting rolling up into an auto-generated scope row", () =
   };
   const source: EmissionSource = {
     id: "src-emp-42", jobId: "J000712", groupId: group.id, scope: "3", sourceType: "commuting",
-    sourceSubtype: "car", siteId: "site-hq", sourceName: "J. Smith", assetIdentifier: "AB12 CDE",
+    sourceSubtype: "car", siteId: "site-hq", sourceName: "J. Smith", assetIdentifier: "AB12 CDE", purchasedGoodsCategoryId: null,
     datasetId: group.datasetId, factorId: group.factorId, factorSource: "dataset", clientFactorId: null,
     quantity: 3000, unit: "km", applyPct: 100, dataSource: "Employee survey", dataConfidence: "M",
     monthlyActivity: months([250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250]),

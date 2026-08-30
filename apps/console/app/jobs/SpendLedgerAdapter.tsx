@@ -6,19 +6,22 @@ import { formatDate } from "../lib/formatDate";
 import { parseSpendLedger, suggestCategory, type SpendLedgerLine } from "./spendLedger";
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
-type Row = SpendLedgerLine & { key: string; currency: string; category: string; factorId: string; state: "" | "importing" | "done" | "failed"; detail: string };
+type Row = SpendLedgerLine & { key: string; currency: string; categoryId: string; factorId: string; state: "" | "importing" | "done" | "failed"; detail: string };
 
 const SAMPLE = "Description\tNet\tVAT %\tGL code\tDate\nOffice paper and stationery\t1240.00\t20\t7504\t14/03/2025\nCourier and postage\t880.50\t20\t7501\t02/04/2025";
 
-const toRow = (line: SpendLedgerLine, categories: PurchasedGoodsCategoryOption[]): Row => ({
-  ...line,
-  key: crypto.randomUUID(),
-  currency: "GBP",
-  category: suggestCategory(line.description, categories) ?? "",
-  factorId: "",
-  state: "",
-  detail: "",
-});
+const toRow = (line: SpendLedgerLine, categories: PurchasedGoodsCategoryOption[]): Row => {
+  const suggestedName = suggestCategory(line.description, categories);
+  return {
+    ...line,
+    key: crypto.randomUUID(),
+    currency: "GBP",
+    categoryId: categories.find((category) => category.name === suggestedName)?.id ?? "",
+    factorId: "",
+    state: "",
+    detail: "",
+  };
+};
 
 export function SpendLedgerAdapter({
   jobId,
@@ -44,7 +47,7 @@ export function SpendLedgerAdapter({
     notice(parsed.length ? { kind: "ok", text: `${parsed.length} ledger line${parsed.length === 1 ? "" : "s"} parsed. Confirm each category and factor, then import.` } : { kind: "warn", text: "No ledger lines were recognised. Expected description, net value, VAT %, GL code, date." });
   }
 
-  const ready = rows.filter((row) => row.state !== "done" && row.description.trim() && row.netValue !== null && row.factorId);
+  const ready = rows.filter((row) => row.state !== "done" && row.description.trim() && row.netValue !== null && row.factorId && row.categoryId);
 
   async function importReady() {
     if (busy || ready.length === 0) return;
@@ -63,6 +66,7 @@ export function SpendLedgerAdapter({
           siteId: null,
           sourceName: row.description.trim(),
           assetIdentifier: row.invoiceDate,
+          purchasedGoodsCategoryId: row.categoryId || null,
           datasetId: selected?.factorSource === "dataset" ? selected.datasetId : null,
           factorId: selected?.factorSource === "dataset" ? selected.factorId : null,
           factorSource: selected?.factorSource ?? "dataset",
@@ -73,7 +77,7 @@ export function SpendLedgerAdapter({
           dataSource: "Spend ledger",
           dataConfidence: null,
           monthlyActivity: [],
-          detail: { kind: "spend", netValue: row.netValue ?? 0, vatPercent: row.vatPercent, glCode: row.glCode, category: row.category.trim() || "Uncategorised" },
+          detail: { kind: "spend", netValue: row.netValue ?? 0, vatPercent: row.vatPercent, glCode: row.glCode, category: categories.find((category) => category.id === row.categoryId)?.name ?? "Uncategorised" },
           notes: null,
         },
         crypto.randomUUID(),
@@ -151,12 +155,22 @@ export function SpendLedgerAdapter({
                       <span className="muted">{formatDate(row.invoiceDate) || "—"}</span>
                     </td>
                     <td>
-                      <input className="nz-inp" list="spend-pgs-categories" value={row.category} onChange={(event) => update(row.key, { category: event.target.value })} />
-                      {suggestCategory(row.description, categories) && suggestCategory(row.description, categories) !== row.category ? (
-                        <button type="button" className="nz-btn" style={{ marginTop: 3 }} onClick={() => update(row.key, { category: suggestCategory(row.description, categories) ?? "" })}>
-                          Suggest: {suggestCategory(row.description, categories)}
-                        </button>
-                      ) : null}
+                      <select className="nz-sel" aria-label={`Purchased-goods category for ${row.description || "line"}`} value={row.categoryId} onChange={(event) => update(row.key, { categoryId: event.target.value })}>
+                        <option value="">Select a category</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const suggested = categories.find((category) => category.name === suggestCategory(row.description, categories));
+                        return suggested && suggested.id !== row.categoryId ? (
+                          <button type="button" className="nz-btn" style={{ marginTop: 3 }} onClick={() => update(row.key, { categoryId: suggested.id })}>
+                            Suggest: {suggested.name}
+                          </button>
+                        ) : null;
+                      })()}
                     </td>
                     <td>
                       <select className="nz-sel" aria-label={`Factor for ${row.description || "line"}`} value={row.factorId} onChange={(event) => update(row.key, { factorId: event.target.value })}>
@@ -176,12 +190,8 @@ export function SpendLedgerAdapter({
                 ))}
               </tbody>
             </table>
-            <datalist id="spend-pgs-categories">
-              {categories.map((category) => (
-                <option key={category.id} value={category.name} />
-              ))}
-            </datalist>
           </div>
+          {categories.length === 0 ? <div className="nz-banner warn" role="alert">No purchased-goods categories are configured for this client. Add them in the Purchased Goods &amp; Services panel before importing spend.</div> : null}
           <div className="nz-config-actions" style={{ marginTop: 12 }}>
             <button type="button" className="nz-btn" disabled={busy} onClick={() => { setRows([]); setRaw(""); }}>
               Clear

@@ -30,7 +30,7 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 | # | Gate item | State |
 |---|---|---|
 | 1 | Sync to Scope 3.1 · **Spend-based tier** | ✅ |
-| 1 | Controlled **PG&S category** on the synced row (NZC-033) | ⛔ category captured as `detail.category` string only; `job_scope_rows.purchased_goods_category_id` stays NULL — needs an additive column on `job_emission_sources` + carry-through |
+| 1 | Controlled **PG&S category** on the synced row (NZC-033) | ✅ **Increment 2** — migration `0038` adds `job_emission_sources.purchased_goods_category_id` (FK to `purchased_goods_categories`, same as the manual scope-row path); `emission.source.create` requires it for `sourceType='spend'` and validates it against the job's client; `syncEmissionSourceToScope` carries it into `job_scope_rows.purchased_goods_category_id`. The adapter's category is now a `<select>` of the job's controlled categories, not free text |
 | 1 | Provenance (ledger source + mapping + factor set/version + **data hash + as-at date**) + lineage | ◐ provenance carries sourceId/dataSource/detail/factor source; **no data hash / as-at date** yet |
 | 1 | **Monthly** where the ledger carries it (NZC-032) | ⛔ not in this increment (ledger has an invoice date only; monthly split TBD) |
 | 1 | Re-sync idempotent, stable row identity, versioned mappings | ✅ (existing `0037` unique index + source-locked upsert) |
@@ -40,7 +40,7 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 | 2 | Duplicate-key + anomaly (YoY, unit sanity) advisory flags | ⛔ not yet |
 | 3 | AI guardrails (grounded, confidence shown, human confirms, never a 2nd write path) | ◐ deterministic keyword suggestion grounded in the client's own PG&S categories; advisory; human confirms. No confidence score; not "AI" |
 | 4 | Governance spine unchanged (review bound to version, five states, optimistic concurrency, never auto-reviewed) | ✅ reuses `emission.source.create` + `emission.source.sync`; adapter renders empty/parsed/importing/failed/done |
-| 5 | Isolation — staging only, migration-owned, no request-time DDL | ✅ (no new schema in this increment) |
+| 5 | Isolation — staging only, migration-owned, no request-time DDL | ✅ Increment 2 adds migration `0038` (additive, nullable column + FK) — apply to isolated staging via the runbook below; no request-time DDL |
 | 6 | Flag OFF by default, server = client, instant off-restore | ✅ (e2e 39/39 flag-off) |
 | 7 | Tests: sync-to-scope ✅ · mapping ⛔ · rollforward re-pin ⛔ · idempotency ◐ · integration journey + negatives ⛔ | ◐ |
 | 7 | typecheck · test:portal · test:staff · build | ✅ (+ contracts 21, mock-data 20, isolated-backend 143, console 6) |
@@ -48,10 +48,22 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 | 9 | "carbon emissions" / dd/mm/yyyy | ✅ `formatDate` used; copy compliant |
 | 10 | Sites / NZC-042 | ✅ **N/A** — spend sources are created site-less; no site field; no site-scoped factor logic. NZC-042 not implicated |
 
+## Increment 2 — controlled PG&S category (30 Aug 2026)
+
+Migration `0038_emission_source_purchased_goods_category.sql` (additive, nullable + FK).
+**Apply to isolated staging only**, like 0034–0037:
+
+```
+psql "$NZI_ISOLATED_DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/isolated-backend/migrations/0038_emission_source_purchased_goods_category.sql
+```
+
+`emission.source.create` gains `purchasedGoodsCategoryId` (required for spend, validated against
+the job's client); `syncEmissionSourceToScope` carries it into the canonical row's existing
+`purchased_goods_category_id` FK; the spend adapter picks from the job's controlled categories.
+
 ## Remaining before the flag flips
 
-1. Additive `purchased_goods_category_id` on `job_emission_sources` + carry it into the synced row (gate 1).
-2. Monthly split for spend where present (gate 1).
+1. Monthly split for spend where present (gate 1).
 3. Provenance data-hash + as-at date (gate 1).
 4. Bulk category suggestion; duplicate-key + YoY/unit-sanity advisory flags (gate 2).
 5. Previous-year rollforward with factor-version re-pin — coordinate with B3 (gate 2).
