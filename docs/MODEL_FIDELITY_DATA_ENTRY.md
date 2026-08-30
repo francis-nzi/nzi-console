@@ -230,8 +230,9 @@ The proven model is now expressed as migration-owned schema, typed sample data, 
     + row roll-up linkage (`source_id`, `linked_row_id`, `is_auto_generated`, `auto_pair_kind`).
   - Covered by new assertions in `packages/isolated-backend/tests/migrations.test.ts`.
 - **Typed sample data:** `packages/mock-data/src/fidelity.ts` — the three worst-case fixtures as exports.
-- **Decisions:** NZC-041–045 in `DECISIONS.md` (NZC-042 leaves *site-scoped factor overrides* as an explicit
-  open sub-question).
+- **Decisions:** NZC-041–045 in `DECISIONS.md`. NZC-042's *site-scoped factor overrides* sub-question was
+  closed 30 Aug 2026: factors are **not** site-scoped — a site on its own tariff is a per-site row with its
+  own factor (`site_id` and `factor_id` are already independent on the canonical row).
 
 **Verification:** `tsc` accepts the extended contract and the mock-data fixtures under `strict` +
 `noUncheckedIndexedAccess`; the round-trip test is **3/3**; all three migrations **parse as valid

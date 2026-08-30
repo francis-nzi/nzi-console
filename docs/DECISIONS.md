@@ -384,8 +384,12 @@ row's provenance**. The canonical row gains `factor_source` (`dataset` | `client
 ### NZC-042 — Sites are places, not labels [Confirmed 29 Aug 2026]
 `client_sites` gains address, `latitude`/`longitude`/geocode, and a lifecycle (`active_from`, `vacated_date`,
 `archived`), so a mid-year opening/closure is a fact, not an inference. The canonical row gains `apply_pct`
-to **apportion one source across sites** (`0035`). **Open sub-question:** whether factors may be *site-scoped*
-(a site overriding the job factor) — to be decided before the sites UI is built. Confirmed 29 Aug 2026.
+to **apportion one source across sites** (`0035`). **Sub-question resolved 30 Aug 2026 — factors are not
+site-scoped in the schema:** the canonical row already carries `site_id` and `factor_id` independently, so a
+site on its own tariff (e.g. a renewable REGO contract) is captured as a per-site row with its own factor.
+Auto-applying a site's preferred factor to its rows is a later UI convenience, not a model gap; revisit only
+if consultants find themselves re-picking the same site factor repeatedly. Confirmed 29 Aug 2026; sub-question
+closed 30 Aug 2026.
 
 ### NZC-043 — Per-entity source register + roll-up groups [Confirmed 29 Aug 2026]
 Individual assets, vehicles and employees live in `job_emission_sources` (+ `job_emission_groups` for
