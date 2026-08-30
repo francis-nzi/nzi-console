@@ -32,9 +32,9 @@ test.describe("Responsive — no horizontal overflow at phone/tablet/laptop/wide
   test.describe("authenticated staff screens", () => {
     test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set");
 
-    for (const route of ["/", "/clients", "/jobs", "/datasets", "/reports", "/platform"]) {
+    for (const route of ["/", "/clients", "/jobs", "/datasets", "/reports", "/platform", "/charts"]) {
       test(`${route} across viewports`, async ({ page }) => {
-        await checkAt(page, route, `staff${route === "/" ? "-control-room" : route.replace(/\//g, "-")}`);
+        await checkAt(page, route, route === "/" ? "staff-control-room" : `staff${route.replace(/\//g, "-")}`);
         await expectHealthyScreen(page);
       });
     }
