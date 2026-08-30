@@ -36,6 +36,7 @@ FuelCap services.
 | `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |
 | `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | Dedicated Render-only secret |
 | `NZI_WRITE_API_ENABLED` | Explicit independent gate for authenticated command routes |
+| `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` | Comma-separated list of enabled data-entry adapters (`spend`, …). Unset = every adapter OFF, generic path is default. Per-adapter rollout gate — see `docs/REDESIGN_ROLLOUT.md`. Do not enable an adapter until it has passed its own rendered acceptance. |
 
 Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
 authenticated client/job creation plus versioned job-stage transitions through the transactional command

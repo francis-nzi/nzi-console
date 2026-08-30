@@ -29,6 +29,8 @@ import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from ".
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 import {ClientFactorPanel} from "./ClientFactorPanel";
 import {EmissionSourceRegister} from "./EmissionSourceRegister";
+import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
+import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -289,6 +291,7 @@ export function CrpScopeWorkspace({
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
         <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
+        {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} notice={setNotice}/>}
         <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}

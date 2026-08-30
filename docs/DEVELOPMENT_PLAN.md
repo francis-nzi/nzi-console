@@ -132,6 +132,20 @@
   - Automated and staging evidence is recorded in `docs/STAGING_ACCEPTANCE_M3.md`.
   - Rendered evidence now automated via the Playwright suite (`apps/console/tests/e2e/` — staff-workspace render, axe scan, viewport captures against deployed staging); remaining is the manual assistive-technology pass (`docs/RENDERED_ACCEPTANCE_CHECKLIST.md`).
 
+## Data-entry redesign — typed capture adapters (NZC-035)
+
+Sequenced by `docs/REDESIGN_ROLLOUT.md`. Each adapter ships behind
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` (OFF by default), generic path untouched, and does not flip on until it
+passes its own rendered acceptance.
+
+- [x] **Phase 0** — additive model/schema (NZC-041–045; migrations 0034–0037) merged; applied to staging.
+- [x] **B1** — kind-specific capture fields (commuting / vehicle / spend) in the emission-source register.
+- [ ] **B2 — spend ledger adapter (Phase 2 vertical slice).** CRP-side, flagged. Paste ledger → advisory PG&S
+  category + factor per line → Scope 3.1 sources synced with the Spend-based quality tier through the
+  unchanged spine. No sites (NZC-042 not touched). *Behind the flag; its own acceptance pending before flip.*
+- [ ] B3 previous-year rollforward · B4 Excel/CSV preflight import (NZC-036) · B5 constrained portal mirror.
+- [ ] Phase 3 — remaining adapters + stage-as-section (NZC-038); Phase 4 — retire the generic path.
+
 ## Delivery rules
 
 1. Work the active milestone from top to bottom unless a discovered security or data-integrity defect requires immediate containment.

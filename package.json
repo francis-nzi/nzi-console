@@ -18,6 +18,7 @@
     "test:portal": "node --import tsx --test apps/console/tests/crpReleaseControl.test.ts apps/console/tests/portalAccessibility.test.ts apps/console/tests/portalSecurityAcceptance.test.ts apps/console/tests/portalValidation.test.ts packages/isolated-backend/tests/auth.test.ts packages/isolated-backend/tests/crpLifecycle.test.ts packages/isolated-backend/tests/login.test.ts packages/isolated-backend/tests/portalAccess.test.ts packages/isolated-backend/tests/portalDataEntry.test.ts packages/isolated-backend/tests/portalDeliverables.test.ts packages/isolated-backend/tests/portalInvitations.test.ts packages/isolated-backend/tests/portalReview.test.ts",
     "test:staff": "node --import tsx --test apps/console/tests/staffWorkspaceAcceptance.test.ts packages/isolated-backend/tests/auth.test.ts packages/isolated-backend/tests/isolation.test.ts packages/isolated-backend/tests/postgres.test.ts",
     "test:e2e": "npm run test:e2e -w @nzi/console",
+    "test:console": "npm run test -w @nzi/console",
     "acceptance:provision": "npm run acceptance:provision -w @nzi/isolated-backend",
     "console:dev": "npm run dev -w @nzi/console",
     "console:build": "npm run build -w @nzi/console"
