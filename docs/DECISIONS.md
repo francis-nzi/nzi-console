@@ -89,6 +89,11 @@ Type: **Inter** throughout (no Space Grotesk). Palette: Emerald `#0BA75E` primar
 Midnight `#0B1B2B`, Signal Amber `#FFC24B`, Drop Coral `#FF5C48`, Mint Tint `#DFF5E9`. Locked in
 `packages/ui`.
 
+**Amendment 30 Aug 2026 (WCAG 2.1 AA).** The rendered axe scan found the muted-text tokens below
+WCAG-AA contrast. Brand colours are unchanged; only muted greys were darkened to pass 4.5:1:
+`--t3` `#8A968F` → `#6B7671` (4.7:1 on white); rail muted `#5E7385`/`#6C8394` → `#7E93A6` (5.5:1 on
+Midnight); the `.nz-chart-flow` step badge uses Midnight text on Emerald (5.6:1) rather than white.
+
 ### NZC-004 — App shell [Confirmed]
 Left **Workspace Rail** · top **command/search bar** (⌘K) · main data area · right **Evidence Drawer**.
 Implemented as `AppShell` / `WorkspaceRail` / `TopBar` / `EvidenceDrawer` in `@nzi/ui`. Nav declares the

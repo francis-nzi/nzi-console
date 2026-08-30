@@ -1,22 +1,22 @@
 {
-  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. 'fixed-pending-deploy' = corrected in this branch; remove once deployed and re-verify green. 'catalogued-contrast' = awaiting a deliberate NZC-003 design-token pass (needs Francis). See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
+  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. 'fixed-pending-deploy' = corrected in a branch not yet deployed; remove the entry once the fix is live and re-verify the scan is green. See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
   "_shell": [
-    { "id": "color-contrast", "target": ".nz-navsec", "status": "catalogued-contrast", "note": "#5E7385 on Midnight #0B1B2B = 3.53:1; rail section headings" },
-    { "id": "color-contrast", "target": ".who > small", "status": "catalogued-contrast", "note": "#6C8394 on Midnight = 4.4:1; rail user role" },
-    { "id": "color-contrast", "target": ".nz-crumbs", "status": "catalogued-contrast", "note": "--t3 #8A968F on #fff = 3.07:1; breadcrumbs" },
-    { "id": "color-contrast", "target": ".k", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1; Ctrl-K hint" },
+    { "id": "color-contrast", "target": ".nz-navsec", "status": "fixed-pending-deploy", "note": "rail section headings; #5E7385 -> #7E93A6 (5.5:1 on Midnight) in @nzi/ui styles.css" },
+    { "id": "color-contrast", "target": ".who > small", "status": "fixed-pending-deploy", "note": "rail user role; #6C8394 -> #7E93A6 (5.5:1 on Midnight)" },
+    { "id": "color-contrast", "target": ".nz-crumbs", "status": "fixed-pending-deploy", "note": "breadcrumbs; --t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
+    { "id": "color-contrast", "target": ".k", "status": "fixed-pending-deploy", "note": "Ctrl-K hint; --t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
     { "id": "scrollable-region-focusable", "target": ".nz-dbody", "status": "fixed-pending-deploy", "note": "evidence drawer body; tabIndex={0} added in @nzi/ui index.tsx" }
   ],
   "login": [
-    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "catalogued-contrast", "note": "--t3 #8A968F on #fff = 3.07:1" },
-    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "catalogued-contrast", "note": "--t3 #8A968F on #fff = 3.07:1" }
+    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
+    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" }
   ],
   "portal-login": [
-    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1" },
-    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "catalogued-contrast", "note": "--t3 on #fff = 3.07:1" }
+    { "id": "color-contrast", "target": ".nz-auth-step > span:nth-child(2)", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" },
+    { "id": "color-contrast", "target": ".nz-auth-support > span", "status": "fixed-pending-deploy", "note": "--t3 #8A968F -> #6B7671 (4.7:1 on #fff)" }
   ],
   "charts": [
-    { "id": "color-contrast", "target": ".nz-chart-flow", "status": "catalogued-contrast", "note": "#fff on Emerald #0BA75E = 3.13:1; small bold label on brand fill" }
+    { "id": "color-contrast", "target": ".nz-chart-flow", "status": "fixed-pending-deploy", "note": "step badge; white -> --t1 Midnight text on Emerald (5.6:1) in @nzi/ui styles.css" }
   ],
   "staff-datasets": [
     { "id": "scrollable-region-focusable", "target": ".nz-dataset-audit", "status": "fixed-pending-deploy", "note": "audit table container; tabIndex/role/aria-label added in DatasetBoard.tsx" }
