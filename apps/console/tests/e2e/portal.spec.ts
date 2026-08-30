@@ -22,8 +22,8 @@ test.describe("M1 — client portal renders for a granted user", () => {
     expect(errors, errors.join("\n")).toEqual([]);
   });
 
-  test("a granted job opens its published-report workspace or an explicit state", async ({ page, request }) => {
-    const job = await discoverPortalJob(request);
+  test("a granted job opens its published-report workspace or an explicit state", async ({ page }) => {
+    const job = await discoverPortalJob(page.request);
     test.skip(!job, "portal user has no granted jobs on target");
 
     const errors = collectPageErrors(page);

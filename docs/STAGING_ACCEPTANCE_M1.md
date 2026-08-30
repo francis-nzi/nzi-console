@@ -58,3 +58,13 @@ design-token pass.
 
 **Still open:** the full authenticated run (needs `npm run acceptance:provision` against
 isolated staging) and the manual assistive-technology narration pass (checklist §2).
+
+### Authenticated run recorded 30 August 2026
+
+`npm run acceptance:provision` + `npm run test:e2e` against `nzi-pro-api-prod.onrender.com`
+(commit `385f6a5`): **39 / 39 passed**, 0 skipped. Portal login (real password + TOTP),
+portfolio, account security, and the granted-job report workspace all render with the five
+explicit states. Findings: the portal-home time-of-day greeting rendered server-side and
+mismatched on hydration (React #418) — **fixed** (`PortalHome.tsx`, greeting now set
+post-mount). `axe-baseline.json` carries the outstanding contrast items for the NZC-003
+pass. Manual assistive-technology narration pass (checklist §2) still open.

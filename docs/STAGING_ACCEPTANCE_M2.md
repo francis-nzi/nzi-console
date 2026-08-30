@@ -56,3 +56,14 @@ workspace is in `accessibility.spec.ts` / `responsive.spec.ts`. Run per
 
 **Still open:** executing the run with a provisioned staff account, and the rendered
 configure→publish write journey.
+
+### Authenticated run recorded 30 August 2026
+
+Full Playwright suite against `nzi-pro-api-prod.onrender.com` (`385f6a5`): **39 / 39
+passed**. The CRP job workspace renders end to end (command centre, per-entity register,
+client-factor panel) and `/api/isolated/jobs/{id}/factors` returns 200. Findings fixed in
+the same change: a `<select>` with no accessible name in the manual-dataset-exception
+panel (`select-name`, critical) → `aria-label` added; the evidence drawer body was not
+keyboard-scrollable (`scrollable-region-focusable`) → `tabIndex`. Known/open: a pre-existing
+SSR/CSR hydration text mismatch (React #418) on the CRP workspace — catalogued in
+`tests/e2e/lib/screen.ts`, to be located and fixed.

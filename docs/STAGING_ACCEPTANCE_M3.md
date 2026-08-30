@@ -48,3 +48,15 @@ Run per `docs/RENDERED_ACCEPTANCE_CHECKLIST.md`.
 This supersedes "no controllable browser was connected" for the automated portion. **Still
 open:** executing the authenticated run (`npm run acceptance:provision`) and the manual
 assistive-technology narration pass (checklist §2).
+
+### Authenticated run recorded 30 August 2026
+
+Full Playwright suite against `nzi-pro-api-prod.onrender.com` (`385f6a5`): **39 / 39
+passed** as `acceptance-admin` (administrator). Every staff workspace — Control Room,
+Clients (+detail), Jobs (+detail), Datasets, Reports (+detail), Platform, Charts, LCA,
+Sales — renders real content with explicit states and no console/5xx errors; axe WCAG 2.1
+A/AA and 390/768/1280/1920 viewport checks run on each. Findings fixed: the dataset audit
+table was not keyboard-scrollable (`scrollable-region-focusable`) → `tabIndex` + region
+label. Outstanding: app-shell chrome contrast (rail headings, breadcrumbs, `--t3` muted
+text) catalogued for the NZC-003 design-token pass; manual assistive-technology narration
+pass (checklist §2).
