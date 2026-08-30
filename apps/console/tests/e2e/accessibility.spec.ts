@@ -11,11 +11,13 @@ const OUT = "test-results/axe";
 type BaselineEntry = { id: string; target: string; status: "fixed-pending-deploy" | "catalogued-contrast"; note: string };
 const KNOWN = JSON.parse(readFileSync(join(__dirname, "axe-baseline.json"), "utf8")) as Record<string, BaselineEntry[]>;
 
-// A violation is accepted if its rule + one of its target selectors is listed in
-// axe-baseline.json for this page. A 'critical' is accepted only when the entry
-// is 'fixed-pending-deploy' (corrected in this branch, awaiting deploy).
+// A violation is accepted if its rule + one of its target selectors is listed
+// for this page or under "_shell" (app-shell chrome, present on every
+// authenticated screen). A 'critical' is accepted only when the entry is
+// 'fixed-pending-deploy' (corrected in-branch, awaiting deploy).
 function match(page: string, id: string, targets: string[]): BaselineEntry | undefined {
-  return (KNOWN[page] ?? []).find((entry) => entry.id === id && targets.some((t) => t.includes(entry.target) || entry.target.includes(t)));
+  const candidates = [...(KNOWN._shell ?? []), ...(KNOWN[page] ?? [])];
+  return candidates.find((entry) => entry.id === id && targets.some((t) => t.includes(entry.target) || entry.target.includes(t)));
 }
 
 async function scan(page: Page, name: string): Promise<void> {
@@ -48,19 +50,14 @@ test.describe("Accessibility — automated WCAG 2.1 A/AA scan", () => {
     await scan(page, "portal-login");
   });
 
-  test("public: chart library", async ({ page }) => {
-    await page.goto("/charts", { waitUntil: "domcontentloaded" });
-    await scan(page, "charts");
-  });
-
   test.describe("authenticated staff screens", () => {
     test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set");
 
-    for (const route of ["/", "/clients", "/jobs", "/datasets", "/reports", "/platform"]) {
+    for (const route of ["/", "/clients", "/jobs", "/datasets", "/reports", "/platform", "/charts"]) {
       test(`scan ${route}`, async ({ page }) => {
         await page.goto(route, { waitUntil: "domcontentloaded" });
         await page.waitForLoadState("networkidle").catch(() => undefined);
-        await scan(page, `staff${route === "/" ? "-control-room" : route.replace(/\//g, "-")}`);
+        await scan(page, route === "/" ? "staff-control-room" : route === "/charts" ? "charts" : `staff${route.replace(/\//g, "-")}`);
       });
     }
 

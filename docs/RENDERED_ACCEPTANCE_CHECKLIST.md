@@ -46,7 +46,7 @@ npm run test:e2e:report                # opens the HTML report
 ```
 
 Without the `ACCEPTANCE_*` variables the auth-gated specs **skip** and only the
-public-page coverage (sign-in screens, chart library) runs — useful as a smoke check.
+public-page coverage (the staff and portal sign-in screens) runs — useful as a smoke check.
 
 ### What it covers
 
