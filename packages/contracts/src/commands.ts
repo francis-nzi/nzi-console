@@ -210,4 +210,5 @@ export type EmissionSource = {
   monthlyActivity: MonthlyActivitySlot[]; detail: EmissionSourceDetail;
   notes: string | null; calculatedTco2e: number | null; enabled: boolean;
   submittedByPortal: boolean; reviewStatus: "pending" | "approved" | "rejected" | null; version: number;
+  scopeRowId: string | null; scopeRowVersion: number | null; scopeRowReviewStatus: "pending" | "approved" | "rejected" | null;
 };

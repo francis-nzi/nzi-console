@@ -80,6 +80,7 @@ export const commutingSource: EmissionSource = {
   monthlyActivity: months([250,250,250,250,250,250,250,250,250,250,250,250]),
   detail: { kind: "commuting", vehicleRegistration: "AB12 CDE", commuteMode: "car - petrol", distanceUnit: "km", wfhDaysPerYear: 104, wfhHoursPerDay: 7.5, employeeName: "J. Smith" },
   notes: null, calculatedTco2e: 0.51, enabled: true, submittedByPortal: true, reviewStatus: "approved", version: 1,
+  scopeRowId: "row-commute-auto", scopeRowVersion: 1, scopeRowReviewStatus: "approved",
 };
 export const commutingAutoRow: ScopeRowReadModel = baseRow({
   id: "row-commute-auto", scope: "3", sourceLabel: "Employee commuting", reportLabel: "Employee commuting",
