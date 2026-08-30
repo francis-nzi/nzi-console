@@ -65,18 +65,15 @@ Artifacts land in `apps/console/test-results/` (axe JSON per page, `screens/*.pn
 
 `apps/console/tests/e2e/axe-baseline.json` lists the currently-accepted violations:
 
-- **`fixed-pending-deploy`** — corrected in the branch that added the entry; remove and
-  re-verify green once deployed. Current: the evidence-drawer body, the dataset-audit
-  table container (both not keyboard-scrollable → `tabIndex`), and the manual-exception
+- **`fixed-pending-deploy`** — corrected in a branch not yet deployed; remove the entry
+  once the fix is live and re-verify the scan is green. Currently covers every item below
+  the WCAG-AA contrast fixes (NZC-003 amendment 30 Aug 2026: `--t3` → `#6B7671`, rail
+  muted → `#7E93A6`, chart step-badge → Midnight-on-Emerald), the two
+  `scrollable-region-focusable` containers (→ `tabIndex`), and the manual-exception
   `<select>` with no accessible name (`select-name`, critical → `aria-label`).
-- **`catalogued-contrast`** — `--t3` (`#8A968F`) muted text at 3.07:1 on white, the
-  rail section headings (`#5E7385` on Midnight, 3.53:1), and small bold white on
-  Emerald (3.13:1). These need a deliberate design-token contrast pass — a
-  **NZC-003 palette decision for Francis**, not a rushed edit. Proposed minimal
-  change: darken `--t3` to ≈ `#6B7671` (4.5:1 on white) and the rail muted token
-  to ≈ `#8DA2B4` (4.5:1 on Midnight); review the visual hierarchy after.
 
-Any **new** serious/critical violation fails the scan.
+Any **new** serious/critical violation fails the scan. Once all `fixed-pending-deploy`
+entries are deployed and cleared, the baseline should be empty.
 
 ### Known client errors
 
