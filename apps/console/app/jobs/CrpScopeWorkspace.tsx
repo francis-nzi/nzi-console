@@ -292,7 +292,7 @@ export function CrpScopeWorkspace({
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
         <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
         {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} notice={setNotice}/>}
-        <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} notice={setNotice}/>
+        <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
           datasets={datasets}
