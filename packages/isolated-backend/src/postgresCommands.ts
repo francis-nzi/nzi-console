@@ -656,11 +656,13 @@ export async function calculateScopeRow(
         scope: string;
         dataset_id: string | null;
         factor_id: string | null;
+        factor_source:"dataset"|"client";
+        client_factor_id:string|null;
         override_tco2e: string | null;
         override_reason: string | null;
         monthly_activity_json:Array<{month:string;quantity:number|null}>;
       }>(
-        `SELECT version,quantity,unit,scope,dataset_id,factor_id,override_tco2e,override_reason,monthly_activity_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+        `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
         [context.organisationId, input.jobId, input.rowId],
       );
       const row = found.rows[0];
@@ -677,8 +679,9 @@ export async function calculateScopeRow(
       if (
         row.quantity === null ||
         !row.unit ||
-        !row.dataset_id ||
-        !row.factor_id
+        !row.factor_id ||
+        (row.factor_source==="dataset"&&!row.dataset_id) ||
+        (row.factor_source==="client"&&!row.client_factor_id)
       )
         throw new CommandValidationError([
           {
@@ -688,14 +691,22 @@ export async function calculateScopeRow(
               "Quantity, unit and a selected factor are required before calculation.",
           },
         ]);
-      const factor = await db.query<{
+      const factor = row.factor_source==="client"?await db.query<{
         label: string;
         activity_unit: string;
         kgco2e_per_unit: string;
         version: string;
         synthetic: boolean;
+        evidence_hash:string|null;
+      }>(`SELECT cf.report_label AS label,cf.unit AS activity_unit,cf.kgco2e_per_unit::text,cf.version::text,false AS synthetic,cf.evidence_hash FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND cf.scope=$4 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,row.client_factor_id,row.scope]):await db.query<{
+        label: string;
+        activity_unit: string;
+        kgco2e_per_unit: string;
+        version: string;
+        synthetic: boolean;
+        evidence_hash:string|null;
       }>(
-        `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic FROM nzi_console.emission_factors f
+        `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic,NULL::text AS evidence_hash FROM nzi_console.emission_factors f
       JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
       JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
       WHERE f.organisation_id=$1 AND f.dataset_id=$3 AND f.factor_id=$4 AND f.active=true AND (split_part($5,'.',1)=ANY(f.scopes))`,
@@ -734,7 +745,7 @@ export async function calculateScopeRow(
           detail: `${row.quantity} ${row.unit}`,
         },
         {
-          title: "Factor resolved",
+          title: row.factor_source==="client"?"Client factor resolved":"Factor resolved",
           detail: `${matched.label} · ${matched.version}`,
         },
         {
@@ -751,6 +762,9 @@ export async function calculateScopeRow(
         calculatedAt: new Date().toISOString(),
         datasetId: row.dataset_id,
         factorId: row.factor_id,
+        factorSource:row.factor_source,
+        clientFactorId:row.client_factor_id,
+        evidenceHash:matched.evidence_hash,
         factorVersion: matched.version,
         kgCo2ePerUnit: matched.kgco2e_per_unit,
         synthetic: matched.synthetic,

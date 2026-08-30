@@ -483,13 +483,9 @@ function Fields({
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
 }) {
-  const available = factors.filter((f) =>
-      f.scopes.includes(value.scope.split(".")[0]!),
-    ),
-    selected =
-      value.datasetId && value.factorId
-        ? `${value.datasetId}|${value.factorId}`
-        : "";
+  const available = factors.filter((f) => f.scopes.includes(f.factorSource==="client"?value.scope:value.scope.split(".")[0]!)),
+    factorKey=(f:FactorOption)=>`${f.factorSource}:${f.clientFactorId??f.datasetId}|${f.factorId}`,
+    selected = value.factorId ? `${value.factorSource??"dataset"}:${value.clientFactorId??value.datasetId}|${value.factorId}` : "";
   return (
     <div className="nz-scope-fields">
       <label className="nz-fl">
@@ -578,7 +574,7 @@ function Fields({
           value={selected}
           onChange={(e) => {
             const f = available.find(
-              (x) => `${x.datasetId}|${x.factorId}` === e.target.value,
+              (x) => factorKey(x) === e.target.value,
             );
             change({
               ...value,
@@ -587,17 +583,17 @@ function Fields({
               factorLabel: f?.label ?? null,
               factorVersion: f?.datasetVersion ?? null,
               unit: f?.activityUnit ?? value.unit,
-              factorSource:"dataset",
-              clientFactorId:null,
-              isCustomEntry:false,
+              factorSource:f?.factorSource??"dataset",
+              clientFactorId:f?.clientFactorId??null,
+              isCustomEntry:f?.factorSource==="client",
             });
           }}
         >
           <option value="">No factor</option>
           {available.map((f) => (
             <option
-              key={`${f.datasetId}|${f.factorId}`}
-              value={`${f.datasetId}|${f.factorId}`}
+              key={factorKey(f)}
+              value={factorKey(f)}
             >
               {f.label} · {f.activityUnit}
               {f.synthetic ? " · DEMO" : ""}

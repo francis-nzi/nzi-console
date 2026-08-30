@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listJobFactorOptions,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -30,6 +30,8 @@ describe("isolated Postgres adapter", () => {
   });
 
   it("maps governed datasets, provenance usage and explicit selection warnings",async()=>{let call=0;const db={query:async()=>({rows:call++===0?[{dataset_id:"dataset-a",name:"Published factors",version:"2026",valid_from:"2026-01-01",valid_to:"2026-12-31",country_code:"GB",status:"active",source_name:"Publisher",licence:"OGL",synthetic:false,factor_count:"2",job_count:"1",scopes:["1","2"],spend_count:"0",activity_count:"2"}]:[{dataset_id:"dataset-a",job_number:"J000612",warning:"Manual geography exception."}]})} as Queryable,result=await listDatasetRegistry(db);assert.equal(result.datasets[0]?.factorCount,2);assert.deepEqual(result.datasets[0]?.scopes,["1","2"]);assert.equal(result.issues[0]?.jobNumber,"J000612");});
+
+  it("lists eligible client factors alongside selected dataset factors",async()=>{let sql="";const db={query:async(statement:string)=>{sql=statement;return{rows:[{dataset_id:null,dataset_name:"Client factors",dataset_version:"v2",factor_id:"cf-a",label:"Supplier EPD",activity_unit:"unit",kgco2e_per_unit:"12.4",scopes:["3.1"],selection_source:"client",factor_source:"client",client_factor_id:"cf-a",evidence_hash:"sha256:epd",synthetic:false,warnings_json:[]}]}}} as Queryable;const factors=await listJobFactorOptions(db,"job-a");assert.equal(factors[0]?.factorSource,"client");assert.deepEqual(factors[0]?.scopes,["3.1"]);assert.equal(factors[0]?.clientFactorId,"cf-a");assert.equal(factors[0]?.evidenceHash,"sha256:epd");assert.ok(sql.includes("cf.job_id IS NULL OR cf.job_id=j.job_id"));});
 
   it("derives staff governance from live membership counts and enforced permissions",async()=>{const db={query:async()=>({rows:[{role_id:"reviewer",members:"3"}]})} as Queryable,roles=await listStaffRoleGovernance(db),reviewer=roles.find(role=>role.id==="reviewer");assert.equal(reviewer?.members,3);assert.ok(reviewer?.permissions.includes("reports.publish"));assert.ok(reviewer?.restricted.includes("finance.manage"));});
 
