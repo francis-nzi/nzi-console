@@ -63,11 +63,15 @@
 
 - [ ] Keyboard, focus, screen-reader, contrast, and reduced-motion review.
   - Automated foundation complete: shared skip navigation, visible focus, ARIA tab semantics and keyboard movement, contrast-safe primary controls, reduced-motion enforcement, and executable source contracts.
-  - Remaining acceptance evidence: rendered keyboard and screen-reader review in a connected browser session.
+  - Rendered axe-core WCAG 2.1 A/AA scan now runs against deployed staging on every route (`apps/console/tests/e2e/accessibility.spec.ts`); two markup defects fixed, contrast findings catalogued for a design-token pass (`axe-baseline.json`).
+  - Remaining acceptance evidence: the manual assistive-technology narration pass in `docs/RENDERED_ACCEPTANCE_CHECKLIST.md` §2.
 - [ ] Responsive verification at phone, tablet, laptop, and wide desktop widths.
   - Automated layout foundation complete for wide, laptop, tablet, phone, and narrow-phone breakpoints across portal home, authentication, reports, data-entry forms, documents, and account security.
-  - Remaining acceptance evidence: rendered viewport review in a connected browser session.
+  - Rendered viewport captures + no-horizontal-overflow assertions at 390/768/1280/1920 now run against deployed staging (`apps/console/tests/e2e/responsive.spec.ts`).
+  - Remaining acceptance evidence: visual review of the captured screenshots at each breakpoint.
 - [ ] Browser journey tests for enrolment through report approval and data submission.
+  - Playwright suite delivered (`apps/console/tests/e2e/`): real staff + portal login (password + TOTP), staff-workspace render, CRP workspace render, portal portfolio → published report. Run with `npm run test:e2e` after `npm run acceptance:provision` against isolated staging.
+  - Remaining: execute the run with provisioned accounts and attach the report to the acceptance record; add the write-path journeys (submit → approve, configure → publish).
 - [x] Permission, cross-client isolation, CSRF/origin, rate-limit, and stale-session tests.
   - Acceptance coverage inventories every portal mutation route and requires the shared same-origin guard.
   - Tenant-bound session resolution, durable password/MFA throttling, and non-cacheable stale-session expiry are regression protected alongside the functional backend tests.
@@ -125,7 +129,8 @@
 
 - [x] Automated role, tenant, live-boundary, failure-state, keyboard-foundation, and responsive-contract journeys across every staff workspace.
 - [ ] Responsive, keyboard, failure-state, and staging acceptance evidence.
-  - Automated and staging evidence is recorded in `docs/STAGING_ACCEPTANCE_M3.md`; rendered observation awaits a connected browser.
+  - Automated and staging evidence is recorded in `docs/STAGING_ACCEPTANCE_M3.md`.
+  - Rendered evidence now automated via the Playwright suite (`apps/console/tests/e2e/` — staff-workspace render, axe scan, viewport captures against deployed staging); remaining is the manual assistive-technology pass (`docs/RENDERED_ACCEPTANCE_CHECKLIST.md`).
 
 ## Delivery rules
 
@@ -137,4 +142,7 @@
 
 ## Immediate next action
 
-Connect a controllable browser and execute the combined **M1, M2, and M3 rendered acceptance pass**.
+Execute the combined **M1, M2, and M3 rendered acceptance pass**. The automated half is
+delivered (`docs/RENDERED_ACCEPTANCE_CHECKLIST.md`, `apps/console/tests/e2e/`). Remaining:
+run `npm run acceptance:provision` + `npm run test:e2e` against isolated staging and attach
+the report; then work the manual assistive-technology narration pass.

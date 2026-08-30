@@ -42,3 +42,17 @@ Rollback procedure:
 3. Run `npm run test:portal`, `npm run typecheck`, and `npm run build` against the resulting revision.
 
 For immediate database containment, set `NZI_DATA_MODE=fixture` and deploy. This disconnects the application from the isolated database without deleting data. No rollback was executed because the accepted implementation remained healthy.
+
+## Rendered acceptance harness (30 August 2026)
+
+`apps/console/tests/e2e/crp-workspace.spec.ts` renders the CRP job workspace end to end
+against **deployed isolated staging** — command centre, stage sections, the per-entity
+emission-source register, and the client-factor panel — asserting no failed/degraded state
+and no console errors, plus a direct guard that `/api/isolated/jobs/{id}/factors` returns
+200 (the numeric/text UNION regression fixed in PR #2). axe + viewport coverage for the
+workspace is in `accessibility.spec.ts` / `responsive.spec.ts`. Run per
+`docs/RENDERED_ACCEPTANCE_CHECKLIST.md` (`npm run acceptance:provision` then
+`npm run test:e2e`).
+
+**Still open:** executing the run with a provisioned staff account, and the rendered
+configure→publish write journey.
