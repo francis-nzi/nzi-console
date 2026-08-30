@@ -10,3 +10,7 @@ coverage
 .env.*
 !.env.example
 .DS_Store
+
+# Local-only reference copy of the live platform and scratch space — never committed
+nzi-live-fix/
+_to_delete/

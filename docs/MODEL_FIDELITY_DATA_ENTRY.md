@@ -239,3 +239,13 @@ PostgreSQL** (libpg_query) and their test assertions match. The migrations are *
 database**; deployment remains a separate controlled step.
 
 *Wiring recorded 29 Aug 2026.*
+
+## 10. Follow-up — monthly activity on the source register (30 Aug 2026)
+
+`emission.source.activity.update` now carries the same **reporting-period monthly vector** as the canonical
+row (NZC-032): the isolated backend validates the slots span the job's reporting period in order and derives
+the annual roll-up from them, `listJobReportingMonths` feeds the register's editor the period months, and the
+CRP source-register editor offers an optional per-month breakdown with copy-first-month-to-all. Covered by
+`packages/isolated-backend/tests/postgresCommands.test.ts` (derivation + period-mismatch rejection).
+
+*Recorded 30 Aug 2026.*
