@@ -440,6 +440,7 @@ function DatasetPanel({
         <div className="nz-dataset-add">
           <select
             className="nz-sel"
+            aria-label="Dataset for the manual exception"
             value={datasetId}
             onChange={(e) => setDatasetId(e.target.value)}
           >
@@ -451,6 +452,7 @@ function DatasetPanel({
           </select>
           <input
             className="nz-inp"
+            aria-label="Required justification for the manual dataset addition"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Required justification for manual addition"

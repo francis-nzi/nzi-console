@@ -6,8 +6,8 @@ import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
 test.describe("M2 — CRP job workspace renders end to end", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set");
 
-  test("the CRP workspace, per-entity register and client-factor panel all render", async ({ page, request }) => {
-    const job = await discoverCrpJob(request);
+  test("the CRP workspace, per-entity register and client-factor panel all render", async ({ page }) => {
+    const job = await discoverCrpJob(page.request);
     test.skip(!job, "no CRP job on target");
 
     const errors = collectPageErrors(page);
@@ -28,10 +28,11 @@ test.describe("M2 — CRP job workspace renders end to end", () => {
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
 
-  test("the factor options endpoint returns dataset and client branches without error", async ({ request }) => {
-    const job = await discoverCrpJob(request);
+  test("the factor options endpoint returns dataset and client branches without error", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const job = await discoverCrpJob(page.request);
     test.skip(!job, "no CRP job on target");
-    const response = await request.get(`/api/isolated/jobs/${job!.id}/factors`);
+    const response = await page.request.get(`/api/isolated/jobs/${job!.id}/factors`);
     expect(response.status(), "factors endpoint must not 503 (numeric/text UNION regression)").toBe(200);
     const body = (await response.json()) as { factors?: unknown[]; datasets?: unknown[] };
     expect(Array.isArray(body.factors)).toBe(true);

@@ -12,18 +12,29 @@ function writeEmpty(path: string): void {
   writeFileSync(path, EMPTY_STATE);
 }
 
-async function signIn(page: Page, account: Account, loginPath: string, landingPath: string): Promise<void> {
-  await page.goto(loginPath);
-  await page.fill('input[name="email"]', account.email);
-  await page.fill('input[name="password"]', account.password);
-  await page.getByRole("button", { name: /continue securely/i }).click();
+async function signIn(page: Page, account: Account, kind: "staff" | "portal"): Promise<void> {
+  const prefix = kind === "staff" ? "/api/auth" : "/api/portal/auth";
+  const landing = kind === "staff" ? "/" : "/portal";
+  const headers = { origin: new URL(process.env.STAGING_BASE_URL ?? "https://nzi-pro-api-prod.onrender.com").origin };
 
-  const code = page.locator('input[name="code"]');
-  await expect(code, "MFA step should appear after a valid password").toBeVisible({ timeout: 15_000 });
-  await code.fill(totpCode(account.totp));
-  await page.getByRole("button", { name: /verify and continue/i }).click();
+  // Prime the origin so page.request shares the browser cookie jar.
+  await page.goto(kind === "staff" ? "/login" : "/portal/login", { waitUntil: "domcontentloaded" });
 
-  await page.waitForURL((url) => url.pathname === landingPath || url.pathname.startsWith(landingPath), { timeout: 20_000 });
+  const login = await page.request.post(`${prefix}/login`, { data: { email: account.email, password: account.password }, headers });
+  const loginBody = (await login.json()) as { mfaRequired?: boolean; challengeToken?: string; message?: string };
+  if (!login.ok() || loginBody.mfaRequired !== true || !loginBody.challengeToken) {
+    throw new Error(`${kind} login failed (${login.status()}): ${loginBody.message ?? JSON.stringify(loginBody)}`);
+  }
+
+  const mfa = await page.request.post(`${prefix}/mfa`, { data: { challengeToken: loginBody.challengeToken, code: totpCode(account.totp) }, headers });
+  const mfaBody = (await mfa.json()) as { authenticated?: boolean; message?: string };
+  if (!mfa.ok() || mfaBody.authenticated !== true) {
+    throw new Error(`${kind} MFA failed (${mfa.status()}): ${mfaBody.message ?? JSON.stringify(mfaBody)}`);
+  }
+
+  // Confirm the session actually works against a gated screen.
+  await page.goto(landing, { waitUntil: "domcontentloaded" });
+  await expect(page, `${kind} session should not bounce back to sign-in`).not.toHaveURL(/\/login/);
   await expect(page.locator("main")).toBeVisible();
 }
 
@@ -34,7 +45,7 @@ setup("authenticate staff", async ({ page }) => {
     writeEmpty(STAFF_STATE);
     return;
   }
-  await signIn(page, account, "/login", "/");
+  await signIn(page, account, "staff");
   await page.context().storageState({ path: STAFF_STATE });
 });
 
@@ -45,6 +56,6 @@ setup("authenticate portal", async ({ page }) => {
     writeEmpty(PORTAL_STATE);
     return;
   }
-  await signIn(page, account, "/portal/login", "/portal");
+  await signIn(page, account, "portal");
   await page.context().storageState({ path: PORTAL_STATE });
 });

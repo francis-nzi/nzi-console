@@ -17,8 +17,8 @@ test.describe("M3 — staff workspaces render", () => {
     });
   }
 
-  test("renders a client detail page", async ({ page, request }) => {
-    const client = await discoverClient(request);
+  test("renders a client detail page", async ({ page }) => {
+    const client = await discoverClient(page.request);
     test.skip(!client, "no clients on target");
     const errors = collectPageErrors(page);
     await page.goto(`/clients/${client!.id}`, { waitUntil: "domcontentloaded" });
@@ -26,8 +26,8 @@ test.describe("M3 — staff workspaces render", () => {
     expect(errors, errors.join("\n")).toEqual([]);
   });
 
-  test("renders a report detail page", async ({ page, request }) => {
-    const report = await discoverReportVersion(request);
+  test("renders a report detail page", async ({ page }) => {
+    const report = await discoverReportVersion(page.request);
     test.skip(!report, "no report versions on target");
     const errors = collectPageErrors(page);
     await page.goto(`/reports/${report!.id}`, { waitUntil: "domcontentloaded" });
@@ -35,8 +35,8 @@ test.describe("M3 — staff workspaces render", () => {
     expect(errors, errors.join("\n")).toEqual([]);
   });
 
-  test("Jobs index lists at least one job and links into its workspace", async ({ page, request }) => {
-    const job = await discoverCrpJob(request);
+  test("Jobs index lists at least one job and links into its workspace", async ({ page }) => {
+    const job = await discoverCrpJob(page.request);
     test.skip(!job, "no jobs on target");
     await page.goto("/jobs", { waitUntil: "domcontentloaded" });
     await expectHealthyScreen(page);

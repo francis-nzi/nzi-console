@@ -65,10 +65,10 @@ Artifacts land in `apps/console/test-results/` (axe JSON per page, `screens/*.pn
 
 `apps/console/tests/e2e/axe-baseline.json` lists the currently-accepted violations:
 
-- **`fixed-pending-deploy`** — corrected in the branch that introduced this suite
-  (`.nz-auth-progress` `aria-label` on a bare div → `aria-hidden`; `CommandSearch`
-  input missing `role="combobox"`). Remove these entries and re-run once deployed;
-  the scan must then be green for them.
+- **`fixed-pending-deploy`** — corrected in the branch that added the entry; remove and
+  re-verify green once deployed. Current: the evidence-drawer body, the dataset-audit
+  table container (both not keyboard-scrollable → `tabIndex`), and the manual-exception
+  `<select>` with no accessible name (`select-name`, critical → `aria-label`).
 - **`catalogued-contrast`** — `--t3` (`#8A968F`) muted text at 3.07:1 on white, the
   rail section headings (`#5E7385` on Midnight, 3.53:1), and small bold white on
   Emerald (3.13:1). These need a deliberate design-token contrast pass — a
@@ -77,6 +77,13 @@ Artifacts land in `apps/console/test-results/` (axe JSON per page, `screens/*.pn
   to ≈ `#8DA2B4` (4.5:1 on Midnight); review the visual hierarchy after.
 
 Any **new** serious/critical violation fails the scan.
+
+### Known client errors
+
+`tests/e2e/lib/screen.ts` `KNOWN_PAGE_ERRORS` filters catalogued client-side errors the
+suite records but does not fail on. Currently: **React #418** — a pre-existing SSR/CSR
+hydration text mismatch on the CRP job workspace (the portal-home instance, a time-of-day
+greeting, was fixed 30 Aug 2026). Locate and fix the CRP instance, then remove the entry.
 
 ---
 

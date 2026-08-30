@@ -56,16 +56,16 @@ test.describe("Accessibility — automated WCAG 2.1 A/AA scan", () => {
     for (const route of ["/", "/clients", "/jobs", "/datasets", "/reports", "/platform", "/charts"]) {
       test(`scan ${route}`, async ({ page }) => {
         await page.goto(route, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => undefined);
+        await page.waitForLoadState("load").catch(() => undefined);
         await scan(page, route === "/" ? "staff-control-room" : route === "/charts" ? "charts" : `staff${route.replace(/\//g, "-")}`);
       });
     }
 
-    test("scan the CRP job workspace", async ({ page, request }) => {
-      const job = await discoverCrpJob(request);
+    test("scan the CRP job workspace", async ({ page }) => {
+      const job = await discoverCrpJob(page.request);
       test.skip(!job, "no CRP job on target");
       await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle").catch(() => undefined);
+      await page.waitForLoadState("load").catch(() => undefined);
       await scan(page, "crp-job-workspace");
     });
   });

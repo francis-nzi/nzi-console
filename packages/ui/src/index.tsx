@@ -92,7 +92,7 @@ export function EvidenceDrawer({
         <h3>{title}</h3>
         <div className="m">{subtitle}</div>
       </div>
-      <div className="nz-dbody">{children}</div>
+      <div className="nz-dbody" tabIndex={0}>{children}</div>
       {actions && <div className="nz-dact">{actions}</div>}
     </aside>
   );

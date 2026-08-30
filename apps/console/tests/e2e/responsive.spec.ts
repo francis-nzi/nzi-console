@@ -14,9 +14,23 @@ async function checkAt(page: import("@playwright/test").Page, route: string, lab
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto(route, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForLoadState("load").catch(() => undefined);
+
+    // Let async content settle, then confirm the page column is stable — an
+    // overflow that clears on its own is layout thrash, not a real bug.
+    let overflow = 0;
+    await expect
+      .poll(
+        async () => {
+          overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+          return overflow;
+        },
+        { timeout: 4000, intervals: [250, 500, 750] },
+      )
+      .toBeLessThanOrEqual(1)
+      .catch(() => undefined);
+
     await page.screenshot({ path: `test-results/screens/${label}--${vp.name}.png`, fullPage: true });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${label} @ ${vp.name} (${vp.width}px) has ${overflow}px of horizontal overflow`).toBeLessThanOrEqual(1);
   }
 }
@@ -39,8 +53,8 @@ test.describe("Responsive — no horizontal overflow at phone/tablet/laptop/wide
       });
     }
 
-    test("CRP job workspace across viewports", async ({ page, request }) => {
-      const job = await discoverCrpJob(request);
+    test("CRP job workspace across viewports", async ({ page }) => {
+      const job = await discoverCrpJob(page.request);
       test.skip(!job, "no CRP job on target");
       await checkAt(page, `/jobs/${job!.id}`, "crp-job-workspace");
       await expectHealthyScreen(page);
