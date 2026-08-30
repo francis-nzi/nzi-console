@@ -32,6 +32,14 @@ const blank = (): ScopeRowWriteFields => ({
   scope: "1",
   sourceLabel: "",
   assetIdentifier:null,
+  factorSource:"dataset",
+  clientFactorId:null,
+  isCustomEntry:false,
+  applyPct:100,
+  dataConfidence:null,
+  sourceQuantity:null,
+  sourceUnit:null,
+  columnText:null,
   reportLabel: null,
   notes:null,
   monthlyActivity: [],
@@ -59,6 +67,14 @@ const inputOf = (r: ScopeRowReadModel): ScopeRowWriteFields => ({
   scope: r.scope,
   sourceLabel: r.sourceLabel,
   assetIdentifier:r.assetIdentifier,
+  factorSource:r.factorSource??"dataset",
+  clientFactorId:r.clientFactorId??null,
+  isCustomEntry:r.isCustomEntry??false,
+  applyPct:r.applyPct??100,
+  dataConfidence:r.dataConfidence??null,
+  sourceQuantity:r.sourceQuantity??null,
+  sourceUnit:r.sourceUnit??null,
+  columnText:r.columnText??null,
   reportLabel: r.reportLabel,
   notes:r.notes,
   monthlyActivity: r.monthlyActivity,
@@ -493,6 +509,7 @@ function Fields({
         ID / Reference
         <input className="nz-inp" maxLength={240} value={value.assetIdentifier ?? ""} placeholder="Vehicle reg, employee name, meter ID…" onChange={(e) => change({ ...value, assetIdentifier: e.target.value || null })} />
       </label>
+      <label className="nz-fl">Report column heading<input className="nz-inp" value={value.columnText??""} placeholder="Optional column heading" onChange={e=>change({...value,columnText:e.target.value||null})}/></label>
       <label className="nz-fl">
         Scope
         <select
@@ -525,6 +542,8 @@ function Fields({
           ))}
         </select>
       </label>
+      <label className="nz-fl">Data confidence<select className="nz-sel" value={value.dataConfidence??""} onChange={e=>change({...value,dataConfidence:(e.target.value as "H"|"M"|"L")||null})}><option value="">Not set</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select></label>
+      <label className="nz-fl">Apportionment %<input className="nz-inp" type="number" min="0" max="100" step="any" value={value.applyPct??100} onChange={e=>change({...value,applyPct:e.target.value===""?null:Number(e.target.value)})}/></label>
       <label className="nz-fl">Site<select className="nz-sel" value={value.siteId??""} onChange={e=>{const site=sites.find(item=>item.id===e.target.value);change({...value,siteId:site?.id??null,siteLabel:site?.name??null});}}><option value="">Unallocated</option>{sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
       {value.scope==="3.1"&&<label className="nz-fl">Purchased-goods category<select className="nz-sel" value={value.purchasedGoodsCategoryId??""} onChange={e=>{const category=purchasedGoodsCategories.find(item=>item.id===e.target.value);change({...value,purchasedGoodsCategoryId:category?.id??null,purchasedGoodsCategoryLabel:category?.name??null});}}><option value="">Uncategorised</option>{purchasedGoodsCategories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
       <label className="nz-fl">
@@ -568,6 +587,9 @@ function Fields({
               factorLabel: f?.label ?? null,
               factorVersion: f?.datasetVersion ?? null,
               unit: f?.activityUnit ?? value.unit,
+              factorSource:"dataset",
+              clientFactorId:null,
+              isCustomEntry:false,
             });
           }}
         >
@@ -583,6 +605,8 @@ function Fields({
           ))}
         </select>
       </label>
+      <label className="nz-fl">As-entered quantity<input className="nz-inp" type="number" min="0" step="any" value={value.sourceQuantity??""} onChange={e=>change({...value,sourceQuantity:e.target.value===""?null:Number(e.target.value)})}/></label>
+      <label className="nz-fl">As-entered unit<input className="nz-inp" value={value.sourceUnit??""} onChange={e=>change({...value,sourceUnit:e.target.value||null})}/></label>
     </div>
   );
 }
