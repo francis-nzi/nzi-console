@@ -135,7 +135,7 @@ export function SpendLedgerAdapter({
             <textarea className="nz-notes" rows={6} value={raw} placeholder={SAMPLE} onChange={(event) => setRaw(event.target.value)} />
           </label>
           <div className="nz-config-actions">
-            <button type="button" className="nz-btn" disabled={!raw.trim()} onClick={() => setRaw(SAMPLE)}>
+            <button type="button" className="nz-btn" onClick={() => setRaw(SAMPLE)}>
               Use sample
             </button>
             <button type="button" className="nz-btn pri" disabled={!raw.trim()} onClick={parse}>
@@ -163,16 +163,16 @@ export function SpendLedgerAdapter({
                 {rows.map((row) => (
                   <tr key={row.key}>
                     <td>
-                      <input className="nz-inp" value={row.description} onChange={(event) => update(row.key, { description: event.target.value })} />
+                      <input className="nz-inp" aria-label={`Description for ${row.description || "line"}`} value={row.description} onChange={(event) => update(row.key, { description: event.target.value })} />
                     </td>
                     <td className="num">
-                      <input className="nz-inp" type="number" min="0" step="any" value={row.netValue ?? ""} onChange={(event) => update(row.key, { netValue: event.target.value === "" ? null : Number(event.target.value) })} />
+                      <input className="nz-inp" type="number" min="0" step="any" aria-label={`Net value for ${row.description || "line"}`} value={row.netValue ?? ""} onChange={(event) => update(row.key, { netValue: event.target.value === "" ? null : Number(event.target.value) })} />
                     </td>
                     <td className="num">
-                      <input className="nz-inp" type="number" min="0" max="100" step="any" value={row.vatPercent ?? ""} onChange={(event) => update(row.key, { vatPercent: event.target.value === "" ? null : Number(event.target.value) })} />
+                      <input className="nz-inp" type="number" min="0" max="100" step="any" aria-label={`VAT percent for ${row.description || "line"}`} value={row.vatPercent ?? ""} onChange={(event) => update(row.key, { vatPercent: event.target.value === "" ? null : Number(event.target.value) })} />
                     </td>
                     <td>
-                      <input className="nz-inp" value={row.glCode ?? ""} onChange={(event) => update(row.key, { glCode: event.target.value || null })} />
+                      <input className="nz-inp" aria-label={`GL code for ${row.description || "line"}`} value={row.glCode ?? ""} onChange={(event) => update(row.key, { glCode: event.target.value || null })} />
                     </td>
                     <td>
                       <span className="muted">{formatDate(row.invoiceDate) || "—"}</span>
