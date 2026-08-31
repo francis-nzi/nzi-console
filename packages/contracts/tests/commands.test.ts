@@ -43,6 +43,15 @@ describe("command contracts", () => {
   it("validates target chronology and reduction bounds",()=>{assert.equal(validateCommand("emissions.target.upsert",{jobId:"712",baselineYear:2024,baselineTco2e:1418,interimYear:2030,interimReductionPercent:50,netZeroYear:2045,expectedVersion:0},context).length,0);assert.ok(validateCommand("emissions.target.upsert",{jobId:"712",baselineYear:2030,baselineTco2e:0,interimYear:2028,interimReductionPercent:100,netZeroYear:2045,expectedVersion:0},context).length>=3);});
   it("validates intensity targets and denominators",()=>{assert.equal(validateCommand("emissions.intensity.upsert",{jobId:"712",metric:"turnover",denominatorUnit:"£m revenue",reportingDenominator:12,baselineYear:2024,baselineIntensity:100,interimYear:2030,interimReductionPercent:50,netZeroYear:2045,expectedVersion:0},context).length,0);assert.ok(validateCommand("emissions.intensity.upsert",{jobId:"712",metric:"turnover",denominatorUnit:"",reportingDenominator:0,baselineYear:2030,baselineIntensity:0,interimYear:2028,interimReductionPercent:100,netZeroYear:2045,expectedVersion:0},context).length>=5);});
   it("requires a name for purchased-goods categories",()=>assert.ok(validateCommand("purchased.goods.category.create",{jobId:"712",name:""},context).some(issue=>issue.field==="name")));
+  it("validates the spend-import commit and void commands",()=>{
+    const row={rowNumber:1,description:"Paper",netValue:10,vatPercent:20,glCode:"7504",invoiceDate:"2024-03-01",purchasedGoodsCategoryId:"pg-1",factorSource:"dataset" as const,factorId:"f-1",datasetId:"d-1",clientFactorId:null,monthly:[]};
+    assert.equal(validateCommand("emission.source.import.commit",{jobId:"job-a",token:"tok",rows:[row]},context).length,0);
+    assert.ok(validateCommand("emission.source.import.commit",{jobId:"job-a",token:"",rows:[row]},context).some(issue=>issue.field==="token"));
+    assert.ok(validateCommand("emission.source.import.commit",{jobId:"job-a",token:"tok",rows:[]},context).some(issue=>issue.field==="rows"&&issue.code==="REQUIRED"));
+    assert.ok(validateCommand("emission.source.import.commit",{jobId:"job-a",token:"tok",rows:Array.from({length:10001},()=>row)},context).some(issue=>issue.code==="TOO_MANY"));
+    assert.equal(validateCommand("emission.source.import.void",{jobId:"job-a",batchId:"batch-1"},context).length,0);
+    assert.ok(validateCommand("emission.source.import.void",{jobId:"job-a",batchId:""},context).some(issue=>issue.field==="batchId"));
+  });
   it("validates the previous-year spend rollforward command",()=>{
     assert.equal(validateCommand("emission.source.rollforward",{jobId:"job-a",fromJobId:null},context).length,0);
     assert.equal(validateCommand("emission.source.rollforward",{jobId:"job-a",fromJobId:"job-prev"},context).length,0);
