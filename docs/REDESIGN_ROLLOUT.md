@@ -133,8 +133,8 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 
 | # | Slice | Introduces (NZC) | Flag value | Acceptance gate | Depends on | Status |
 |---|-------|------------------|-----------|-----------------|-----------|--------|
-| B4 | Excel / CSV bulk import | NZC-036 | `spend` (+import) | new gate | B2 | ⏳ |
-| B5 | Portal spend mirror | NZC-035 | portal spend | portal parity gate | B2, portal | ⏳ |
+| B4 | CSV bulk import (CSV-first; `.xlsx` deferred) | NZC-036 | `spend-import` | `ACCEPTANCE_B4_IMPORT.md` | B2 | 🟢 built (#29–#32 merged + deployed); flip pending gate 9 + screen-reader |
+| B5 | Portal spend mirror | NZC-016/035/036 | `portal-spend` (proposed) | `ACCEPTANCE_B5_PORTAL_SPEND.md` (draft) | B2, portal framework | 🟡 gate drafted for Francis |
 | S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |
 | S2 | Client factors UI (+ EPD) | NZC-041 | `clientFactors` | new gate | migration 0034 | ⏳ |
 | S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
@@ -153,4 +153,4 @@ M4 (additional services) rides on it. Parked until the data-entry framework is f
 **Rough shape:** ~3 spend/bulk slices (B3–B5, lower risk) + ~3 model-surfacing slices (S1–S3, S1 the
 heaviest) + 1 cross-cutting layout pass (S5) + legacy retirement — plus the two human gates and one decision.
 
-*Burndown added 31 Aug 2026.*
+*Burndown added 31 Aug 2026; updated 31 Aug 2026 after B4 (#32) merged + deployed — B5 gate drafted next.*
