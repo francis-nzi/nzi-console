@@ -95,6 +95,7 @@ it("C. per-employee commuting rolling up into an auto-generated scope row", () =
     notes: null, calculatedTco2e: 0.51, enabled: true, submittedByPortal: true, reviewStatus: "approved", version: 1,
     scopeRowId: "row-commute-auto", scopeRowVersion: 1, scopeRowReviewStatus: "approved",
     rolledForwardFromSourceId: null, factorVersionMoved: false,
+    yoyPriorQuantity: null, yoyPriorUnit: null,
   };
   const annual = source.monthlyActivity.reduce((sum, slot) => sum + (slot.quantity ?? 0), 0);
   const autoRow = baseRow({
