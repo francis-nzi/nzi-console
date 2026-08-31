@@ -1,9 +1,9 @@
 # S2 — Client factors UI: acceptance & flag gate
 
-> **STATUS: draft for Francis.** Written before the build so "done" is defined up front, in the pattern of
-> `ACCEPTANCE_B2_SPEND_ADAPTER.md` / `ACCEPTANCE_B4_IMPORT.md` / `ACCEPTANCE_B5_PORTAL_SPEND.md`. Companion
-> to `REDESIGN_ROLLOUT.md` (burndown row **S2**), `DECISIONS.md` **NZC-041**, and
-> `MODEL_FIDELITY_DATA_ENTRY.md` §2.
+> **STATUS: directions confirmed by Francis 31 Aug 2026** (D-S2-1..4 below — all four recommendations
+> taken). Ready to build. In the pattern of `ACCEPTANCE_B2_SPEND_ADAPTER.md` / `ACCEPTANCE_B4_IMPORT.md` /
+> `ACCEPTANCE_B5_PORTAL_SPEND.md`. Companion to `REDESIGN_ROLLOUT.md` (burndown row **S2**), `DECISIONS.md`
+> **NZC-041**, and `MODEL_FIDELITY_DATA_ENTRY.md` §2.
 
 **Purpose.** The exit criteria S2 must satisfy. **Scope: the client-factor management surface** — turning
 the already-modelled `client_factors` entity (NZC-041, migration `0034`) from *create-only, always-on, no
@@ -11,7 +11,7 @@ management* into a **flagged, governed, full-lifecycle** surface: list · view l
 archive · reuse on a scope row, with EPD evidence carried into provenance.
 
 **Not in S2:** a real uploaded-file blob store for EPDs (evidence stays a reference + integrity hash — see
-Q-S2-1); the per-entity source register / commuting / vehicle adapters (that is S1); any change to the
+D-S2-1); the per-entity source register / commuting / vehicle adapters (that is S1); any change to the
 dataset-factor path.
 
 ## What already exists (do not rebuild)
@@ -49,31 +49,24 @@ dataset-factor path.
    value is already in provenance; S2 makes the drawer render it as a distinct lineage step).
 6. **Standards** — "carbon emissions" copy; dd/mm/yyyy for the vintage/as-at display.
 
-## Open questions for Francis (decide before build)
+## Decided directions (Francis, 31 Aug 2026 — all four recommendations taken)
 
-- **Q-S2-1 — EPD evidence: reference or upload?** The schema already carries
-  `evidence_file_name` / `evidence_storage_provider` (`local` | `sharepoint`) / `evidence_url` /
-  `evidence_external_item_id` / `evidence_hash`, with the CHECK that a filename requires a hash. The repo
-  has **no blob store** and the isolation rule forbids one casually. **Recommendation for S2: evidence is
-  a reference + integrity hash** — the consultant records where the EPD lives (SharePoint item / URL) and
-  its SHA-256; the hash travels in provenance so lineage is verifiable. A real in-app upload store is a
-  later slice if wanted.
-- **Q-S2-2 — versioning model.** **Recommendation: mutate-and-bump** — one `client_factors` row per
-  factor; a value edit increments `version`; scope rows keep the `factor_version` string they recorded
-  and get a "moved" advisory (identical to B3's dataset-version-moved handling, NZC-030). The alternative
-  (immutable rows, edit = supersede with a new id) is cleaner in theory but forces a re-point of every
-  row and a second identity to reason about. Confirm mutate-and-bump.
-- **Q-S2-3 — where the management surface lives.** NZC-041 says client factors are **client-scoped**
-  (reusable across the client's jobs), optionally job-pinned. **Recommendation: the primary manage view
-  is client-level** (Clients → a client → "Emission factors"), and the CRP job keeps a **compact
-  job-scoped panel** (this job's usable factors + quick-add a job-pinned one) that links out. Confirm, or
-  keep everything in the job workspace for S2 and add the client-level view later.
-- **Q-S2-4 — flag value + the already-live create form.** The create form ships **unflagged** today.
-  Options: **(a)** introduce `client-factors` and gate the *new management surface* behind it, leaving
-  today's create form live until the flag flips (then the surface replaces it); **(b)** retro-gate the
-  whole thing now. **Recommendation: (a)** — flag value **`client-factors`** (kebab, matching
-  `spend-import` / `portal-spend`), gating the management surface; the bare create form stays as the
-  fallback until the flip.
+- **D-S2-1 — EPD evidence is a reference + integrity hash.** The schema's `evidence_file_name` /
+  `evidence_storage_provider` (`local` | `sharepoint`) / `evidence_url` / `evidence_external_item_id` /
+  `evidence_hash` are used as-is: the consultant records where the EPD lives and its SHA-256; the hash
+  travels in provenance so lineage is verifiable. The CHECK (filename ⇒ hash) stands. A real in-app
+  upload store is a later slice, not S2.
+- **D-S2-2 — versioning is mutate-and-bump.** One `client_factors` row per factor. A change to a
+  **value-bearing field** (`unit`, `kgco2e_per_unit`, `geography`, `vintage_year`) increments `version`;
+  a label / description / source edit does not. Scope rows keep the `factor_version` string they recorded
+  and are surfaced with a **`factorVersionMoved`** advisory — identical to B3's dataset-version-moved
+  handling (NZC-030). No supersede-with-new-id.
+- **D-S2-3 — the primary manage view is client-level** (Clients → a client → "Emission factors"). The
+  CRP job keeps a **compact job-scoped panel** — this job's usable factors + quick-add a job-pinned one —
+  that links out to the client view.
+- **D-S2-4 — flag value `client-factors`** (kebab, matching `spend-import` / `portal-spend`), gating the
+  **new management surface**. Today's bare create form stays live and unflagged as the fallback until the
+  flip; then the surface replaces it.
 
 ---
 
@@ -135,7 +128,7 @@ dataset-factor path.
   pre-check), it is additive, RLS + migration-owned, applied to isolated staging before merge.
 - [ ] `NEXT_PUBLIC_APP_ENV=staging`; synthetic data only.
 
-### 7. Flag behaviour (Q-S2-4)
+### 7. Flag behaviour (D-S2-4)
 
 - [ ] `client-factors` value in `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2`, OFF by default, resolves identically
   server/client, gates **only** the management surface. With it off, today's create form still works and
@@ -173,7 +166,7 @@ flag flip is its **own reviewed change** after a rendered acceptance pass.
 1. **Docs** — this gate, reviewed and merged (this PR).
 2. **Backend** — `listClientFactors` read model; `client.factor.update` + `client.factor.archive`
    commands + routes; backend tests.
-3. **Surface** — the flagged management list/edit/archive (client-level view per Q-S2-3, plus the compact
+3. **Surface** — the flagged management list/edit/archive (client-level view per D-S2-3, plus the compact
    job panel); the drawer evidence lineage step; e2e + `STAGING_ACCEPTANCE_S2.md`.
 4. Separate PR: flip `client-factors` in `render.yaml`.
 
