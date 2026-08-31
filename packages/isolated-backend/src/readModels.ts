@@ -193,6 +193,22 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
     scopes:row.scopes,selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
 }
 
+// S2 — client factor lifecycle (NZC-041). The client's reusable factors + (when a
+// job is given) that job's pinned ones, each with a usage count of the enabled
+// canonical rows that reference it, so the surface can guard archive.
+export type ClientFactorRecord = { clientFactorId:string; clientId:string; jobId:string|null; scope:string; categoryPath:string[]; reportLabel:string; description:string; unit:string; ghgUnit:string; kgco2ePerUnit:number; geography:string; vintageYear:number; version:number; source:string; evidenceFileName:string|null; evidenceStorageProvider:"local"|"sharepoint"|null; evidenceUrl:string|null; evidenceExternalItemId:string|null; evidenceHash:string|null; archived:boolean; usageCount:number; createdBy:string; createdAt:string; updatedBy:string|null; updatedAt:string|null };
+export async function listClientFactors(db:Queryable,organisationId:string,clientId:string,options?:{jobId?:string|null}):Promise<ClientFactorRecord[]>{
+  const jobId=options?.jobId?.trim()||null;
+  const {rows}=await db.query<{client_factor_id:string;client_id:string;job_id:string|null;scope:string;category_path_json:string[];report_label:string;description:string;unit:string;ghg_unit:string;kgco2e_per_unit:string;geography:string;vintage_year:number;version:number;source:string;evidence_file_name:string|null;evidence_storage_provider:"local"|"sharepoint"|null;evidence_url:string|null;evidence_external_item_id:string|null;evidence_hash:string|null;archived:boolean;usage_count:number;created_by:string;created_at:Date|string;updated_by:string|null;updated_at:Date|string|null}>(
+    `SELECT cf.client_factor_id,cf.client_id,cf.job_id,cf.scope,cf.category_path_json,cf.report_label,cf.description,cf.unit,cf.ghg_unit,cf.kgco2e_per_unit::text,cf.geography,cf.vintage_year,cf.version,cf.source,cf.evidence_file_name,cf.evidence_storage_provider,cf.evidence_url,cf.evidence_external_item_id,cf.evidence_hash,cf.archived,cf.created_by,cf.created_at,cf.updated_by,cf.updated_at,(SELECT count(*) FROM nzi_console.job_scope_rows r WHERE r.organisation_id=cf.organisation_id AND r.client_factor_id=cf.client_factor_id AND r.enabled=true)::int AS usage_count
+     FROM nzi_console.client_factors cf
+     WHERE cf.organisation_id=$1 AND cf.client_id=$2 AND ($3::text IS NULL OR cf.job_id IS NULL OR cf.job_id=$3)
+     ORDER BY cf.archived,lower(cf.report_label),cf.client_factor_id`,
+    [organisationId,clientId,jobId],
+  );
+  return rows.map((row)=>({clientFactorId:row.client_factor_id,clientId:row.client_id,jobId:row.job_id,scope:row.scope,categoryPath:Array.isArray(row.category_path_json)?row.category_path_json:[],reportLabel:row.report_label,description:row.description,unit:row.unit,ghgUnit:row.ghg_unit,kgco2ePerUnit:Number(row.kgco2e_per_unit),geography:row.geography,vintageYear:row.vintage_year,version:row.version,source:row.source,evidenceFileName:row.evidence_file_name,evidenceStorageProvider:row.evidence_storage_provider,evidenceUrl:row.evidence_url,evidenceExternalItemId:row.evidence_external_item_id,evidenceHash:row.evidence_hash,archived:row.archived,usageCount:Number(row.usage_count),createdBy:row.created_by,createdAt:new Date(row.created_at).toISOString(),updatedBy:row.updated_by,updatedAt:row.updated_at?new Date(row.updated_at).toISOString():null}));
+}
+
 type DatasetRow = { dataset_id:string;name:string;version:string;valid_from:Date|string;valid_to:Date|string;country_code:string;status:DatasetOption["status"];synthetic:boolean;selection_source:"automatic"|"manual"|null;reporting_from:Date|string;reporting_to:Date|string;job_country_code:string };
 export async function listJobDatasetOptions(db:Queryable,jobId:string):Promise<DatasetOption[]> {
   const {rows}=await db.query<DatasetRow>(`SELECT d.dataset_id,d.name,d.version,d.valid_from,d.valid_to,d.country_code,d.status,d.synthetic,
