@@ -41,6 +41,15 @@ export function SpendLedgerAdapter({
 
   const update = (key: string, patch: Partial<Row>) => setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
 
+  // Advisory only (NZC-018) — never blocks import.
+  const flagsFor = (row: Row): string[] => {
+    const notes: string[] = [];
+    const signature = `${row.description.trim().toLowerCase()}|${row.netValue ?? ""}|${(row.glCode ?? "").toLowerCase()}`;
+    if (rows.filter((other) => `${other.description.trim().toLowerCase()}|${other.netValue ?? ""}|${(other.glCode ?? "").toLowerCase()}` === signature).length > 1) notes.push("possible duplicate line");
+    if (row.netValue !== null && row.netValue <= 0) notes.push("net value is zero or negative");
+    return notes;
+  };
+
   function parse() {
     const parsed = parseSpendLedger(raw).map((line) => toRow(line, categories));
     setRows(parsed);
@@ -185,6 +194,9 @@ export function SpendLedgerAdapter({
                     <td>
                       <span className={`nz-st ${row.state === "done" ? "done" : row.state === "failed" ? "nof" : "need"}`}>{row.state === "importing" ? "Importing…" : row.state === "done" ? "Imported" : row.state === "failed" ? "Failed" : "Ready"}</span>
                       {row.detail ? <div className="muted">{row.detail}</div> : null}
+                      {flagsFor(row).map((flag) => (
+                        <div key={flag} className="nz-hint" style={{ color: "#8A6410" }} role="note">⚠ {flag}</div>
+                      ))}
                     </td>
                   </tr>
                 ))}

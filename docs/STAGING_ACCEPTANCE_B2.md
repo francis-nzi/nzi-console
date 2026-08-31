@@ -31,13 +31,13 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 |---|---|---|
 | 1 | Sync to Scope 3.1 · **Spend-based tier** | ✅ |
 | 1 | Controlled **PG&S category** on the synced row (NZC-033) | ✅ **Increment 2** — migration `0038` adds `job_emission_sources.purchased_goods_category_id` (FK to `purchased_goods_categories`, same as the manual scope-row path); `emission.source.create` requires it for `sourceType='spend'` and validates it against the job's client; `syncEmissionSourceToScope` carries it into `job_scope_rows.purchased_goods_category_id`. The adapter's category is now a `<select>` of the job's controlled categories, not free text |
-| 1 | Provenance (ledger source + mapping + factor set/version + **data hash + as-at date**) + lineage | ◐ provenance carries sourceId/dataSource/detail/factor source; **no data hash / as-at date** yet |
+| 1 | Provenance (ledger source + mapping + factor set/version + **data hash + as-at date**) + lineage | ✅ **Increment 3** — `syncEmissionSourceToScope` provenance now carries `factorSet`, `factorVersion`, `asAt`, and a `dataHash` (`sha256:` of the source's identifying content: id, scope, qty, unit, factor, version, PG&S category, apply %, detail, monthly). Lineage gains an "Evidence identity" line. Re-syncing unchanged data yields the same hash |
 | 1 | **Monthly** where the ledger carries it (NZC-032) | ⛔ not in this increment (ledger has an invoice date only; monthly split TBD) |
 | 1 | Re-sync idempotent, stable row identity, versioned mappings | ✅ (existing `0037` unique index + source-locked upsert) |
 | 2 | **Upload** ledger → preview → commit | ◐ **paste** + preview + commit; file upload is NZC-036 / Phase 3 |
 | 2 | Category suggestion **single + bulk** | ◐ single only |
 | 2 | Previous-year rollforward re-pins prior factor versions (NZC-030) | ⛔ B3 |
-| 2 | Duplicate-key + anomaly (YoY, unit sanity) advisory flags | ⛔ not yet |
+| 2 | Duplicate-key + anomaly (YoY, unit sanity) advisory flags | ◐ **Increment 3** — the adapter flags within-paste duplicate lines (description + net + GL) and non-positive net values as **advisory** notes (never blocks import, NZC-018). YoY variance needs prior-year data (B3) |
 | 3 | AI guardrails (grounded, confidence shown, human confirms, never a 2nd write path) | ◐ deterministic keyword suggestion grounded in the client's own PG&S categories; advisory; human confirms. No confidence score; not "AI" |
 | 4 | Governance spine unchanged (review bound to version, five states, optimistic concurrency, never auto-reviewed) | ✅ reuses `emission.source.create` + `emission.source.sync`; adapter renders empty/parsed/importing/failed/done |
 | 5 | Isolation — staging only, migration-owned, no request-time DDL | ✅ Increment 2 adds migration `0038` (additive, nullable column + FK) — apply to isolated staging via the runbook below; no request-time DDL |
