@@ -446,6 +446,17 @@ geography-aware, carrying a supporting **evidence file (e.g. an EPD)** whose int
 row's provenance**. The canonical row gains `factor_source` (`dataset` | `client`), `client_factor_id`, and
 `is_custom_entry`. Migration-owned (`0034_client_factors.sql`); never runtime DDL. Confirmed 29 Aug 2026.
 
+**S2 amendment — lifecycle surface [Confirmed 31 Aug 2026].** The `client_factors` entity gains a full
+lifecycle behind the flag **`client-factors`** (`ACCEPTANCE_S2_CLIENT_FACTORS.md`, D-S2-1..4):
+**D-S2-1** EPD evidence is a **reference + integrity hash** (SharePoint item / URL + SHA-256), not an
+uploaded blob — the hash travels in provenance. **D-S2-2** versioning is **mutate-and-bump**: a change to
+a value-bearing field (`unit` / `kgco2e_per_unit` / `geography` / `vintage_year`) increments `version`, a
+label/description/source edit does not; scope rows keep the `factor_version` they recorded and show a
+non-blocking `clientFactorVersionMoved` advisory (NZC-030 re-pin discipline). **D-S2-3** the primary
+manage view is **client-level** (Clients → a client → Emission factors), with a compact quick-add panel in
+the CRP job. **D-S2-4** archive is blocked while an enabled non-rejected scope row references the factor.
+`client.factor.create` is unchanged and job-contextual; a `clientId`-based create is a later convenience.
+
 ### NZC-042 — Sites are places, not labels [Confirmed 29 Aug 2026]
 `client_sites` gains address, `latitude`/`longitude`/geocode, and a lifecycle (`active_from`, `vacated_date`,
 `archived`), so a mid-year opening/closure is a fact, not an inference. The canonical row gains `apply_pct`
