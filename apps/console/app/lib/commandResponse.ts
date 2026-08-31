@@ -25,5 +25,9 @@ export function commandFailure(error: unknown) {
   if (error instanceof CommandValidationError) return Response.json({ code: "VALIDATION_FAILED", message: "Command validation failed.", issues: error.issues }, { status: 422 });
   if (error instanceof VersionConflictError) return Response.json({ code: "VERSION_CONFLICT", message: "The job changed; refresh before moving its stage." }, { status: 409 });
   if (error instanceof IdempotencyConflictError) return Response.json({ code: "IDEMPOTENCY_CONFLICT", message: error.message }, { status: 409 });
-  return Response.json({ code: "COMMAND_FAILED", message: "The command could not be completed." }, { status: 500 });
+  // Unclassified failure: keep the client response generic, but log the cause so
+  // it is diagnosable without a database probe.
+  const correlationId = crypto.randomUUID();
+  console.error(`[isolated-command] ${correlationId}`, error);
+  return Response.json({ code: "COMMAND_FAILED", message: "The command could not be completed.", correlationId }, { status: 500, headers: { "x-correlation-id": correlationId } });
 }

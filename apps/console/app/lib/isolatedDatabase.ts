@@ -23,6 +23,9 @@ export function isolatedPool() {
 
 export function apiFailure(error: unknown) {
   const correlationId = crypto.randomUUID();
-  void error;
+  // The client response stays deliberately generic, but the cause must reach the
+  // server log — a swallowed error here means an outage (e.g. a schema change
+  // deployed ahead of its migration) is invisible until someone probes the DB.
+  console.error(`[isolated-api] ${correlationId}`, error);
   return Response.json({ type: "about:blank", title: "Isolated API unavailable", status: 503, detail: "The isolated data service is unavailable.", correlationId }, { status: 503, headers: { "x-correlation-id": correlationId } });
 }
