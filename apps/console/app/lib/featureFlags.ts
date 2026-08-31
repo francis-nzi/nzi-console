@@ -10,7 +10,7 @@
 // Flags gate UI only — the additive schema (Phase 0) is always present and inert
 // until read.
 
-export type DataEntryAdapter = "spend" | "spend-import" | "commuting" | "vehicle" | "manual" | "import";
+export type DataEntryAdapter = "spend" | "spend-import" | "portal-spend" | "commuting" | "vehicle" | "manual" | "import";
 
 const enabledAdapters = (): Set<string> =>
   new Set(
