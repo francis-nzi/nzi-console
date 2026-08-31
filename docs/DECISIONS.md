@@ -385,6 +385,26 @@ Elaborates the bulk-upload standard for the spend-import slice (B4); all under N
 
 Confirmed by Francis, 31 Aug 2026.
 
+#### NZC-036 / NZC-016 amendment — B5 portal spend mirror design [Confirmed 31 Aug 2026]
+The client-portal spend capture is the constrained mirror of the B2 consultant spend adapter, built over
+the existing portal data-entry framework (`entry_kind='spend'` already bound to scope 3.1). Directions:
+
+- **Flag `portal-spend`** — its own acceptance gate and its own flip. Because the surface is client-facing,
+  the **flip** additionally clears the portal acceptance suite (cross-client isolation, CSRF/same-origin,
+  rate-limiting, stale-session, rendered a11y), not just functional tests.
+- **B5 = paste + manual only.** Client **file upload (CSV) is B5.1**, its own hardening slice — untrusted
+  external input gets type/size/row limits + preflight, **reusing B4's RFC-4180 parser**, not a re-write.
+- **Monthly mirrors B2** (same component + validation, NZC-032-aligned) but **progressive**: annual by
+  default, a collapsible monthly expander.
+- **Allowed PG&S categories on the bucket grant** — `allowed_pgs_category_ids text[]` alongside
+  `allowed_factor_ids` / `allowed_site_ids` (migration-owned); the client picks only from that set. Factor
+  mapping and sync-to-scope stay **staff-side**; submitted spend routes to independent review and never
+  counts as reviewed; any AI category suggestion is bounded to the allowed set and advisory (NZC-018).
+- **Pre-flip check:** if the portal has gone client-live, green the portal P-track and pilot one client
+  before a full flip. Portal is not client-live in staging as of 31 Aug 2026.
+
+See `docs/ACCEPTANCE_B5_PORTAL_SPEND.md`. Confirmed by Francis, 31 Aug 2026.
+
 ### NZC-037 — Company Vehicles replaces the Asset Register [Confirmed 28 Aug 2026]
 The live **Asset Register** (individual Scope-1 vehicles/equipment grouped for roll-up) becomes a focused **Company Vehicles** bulk-upload domain (registration-aware, monthly). **Non-vehicle Scope-1 assets** (equipment and other sources) are captured through general **Data Entry** rather than a separate register, keeping one canonical row model; grouping/roll-up for reporting is retained via the scope-row category path (NZC-033). *Confirmed by Francis, 28 Aug 2026.*
 

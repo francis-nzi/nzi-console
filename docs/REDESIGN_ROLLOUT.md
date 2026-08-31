@@ -134,7 +134,8 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 | # | Slice | Introduces (NZC) | Flag value | Acceptance gate | Depends on | Status |
 |---|-------|------------------|-----------|-----------------|-----------|--------|
 | B4 | CSV bulk import (CSV-first; `.xlsx` deferred) | NZC-036 | `spend-import` | `ACCEPTANCE_B4_IMPORT.md` | B2 | 🟢 built (#29–#32 merged + deployed); flip pending gate 9 + screen-reader |
-| B5 | Portal spend mirror | NZC-016/035/036 | `portal-spend` (proposed) | `ACCEPTANCE_B5_PORTAL_SPEND.md` (draft) | B2, portal framework | 🟡 gate drafted for Francis |
+| B5 | Portal spend mirror (paste + manual; CSV upload → B5.1) | NZC-016/035/036 | `portal-spend` | `ACCEPTANCE_B5_PORTAL_SPEND.md` | B2, portal framework | 🟡 gate confirmed 31 Aug 2026 — build next |
+| B5.1 | Portal CSV upload (hardening slice) | NZC-036 | `portal-spend` | in `ACCEPTANCE_B5_PORTAL_SPEND.md` | B5, B4 parser | ⏳ |
 | S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |
 | S2 | Client factors UI (+ EPD) | NZC-041 | `clientFactors` | new gate | migration 0034 | ⏳ |
 | S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
