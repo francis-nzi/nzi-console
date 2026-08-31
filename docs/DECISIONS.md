@@ -356,10 +356,14 @@ Pull-data **connectors** (accounting for spend/PG&S, telematics/fuel-card for ve
 #### NZC-036 amendment — B4 Excel/CSV import design [Confirmed 31 Aug 2026]
 Elaborates the bulk-upload standard for the spend-import slice (B4); all under NZC-036.
 
-- **Parsing:** in-browser, via a maintained spreadsheet library (**exceljs**, or **SheetJS pulled from its
-  official pinned patched release** — not the stale npm `xlsx@0.18.5`), dynamically imported behind the flag.
-  Flow: browser parses -> preview + column mapping -> **normalised rows (+ identity token) posted to the
-  isolated backend**, which preflights and writes. The raw file never reaches the server (isolation).
+- **Parsing:** in-browser, so the raw client ledger never reaches the server (isolation). **Revised
+  31 Aug 2026 → CSV-first:** on install `exceljs` pulled ~98 transitive packages + a transitive moderate
+  `uuid` CVE (not reachable in our use) and had not been released in ~a year, against a console with zero
+  non-workspace deps. B4 ships CSV-first with **no new dependency** — a real in-browser CSV reader
+  (RFC-4180 quoting, delimiter/BOM detection, formula-injection neutralisation) + a plain `.csv` template.
+  The **`.xlsx` round-trip is a later slice** where the library choice (a maintained SheetJS release, or a
+  lighter option) gets its own review. Flow unchanged: browser parses -> preview + column mapping ->
+  **normalised rows posted to the isolated backend**, which issues a context token, preflights and writes.
 - **Flag:** B4 gets its own value **`spend-import`** with its own acceptance gate and flip; B2/B3 stay live
   on `=spend`.
 - **Undo:** every import is tagged `import_batch_id`; undo is an **audited soft-void** limited to rows still
@@ -372,11 +376,12 @@ Elaborates the bulk-upload standard for the spend-import slice (B4); all under N
   **`@nzi/contracts`** (shared by the in-browser parser and the server validator, so they cannot drift);
   **issuing** the token and **verifying** it against the job's current version live in
   **`@nzi/isolated-backend`**.
-- **Round-trip vs import-only:** **`.xlsx` is the round-trip format** and carries identity in workbook custom
-  properties / a hidden locked sheet; **CSV and paste-grid are import-only**, taking job identity from the
-  app context with preflight validating **content** (period coverage, units, factors). Reserved CSV
-  `# nzi:` comment rows are **explicitly rejected** as brittle (no CSV comment standard; Excel renders them
-  as data and users break them on save).
+- **Round-trip vs import-only:** **CSV and paste-grid are import-only**, taking job identity from the app
+  context (you are on the job); the route issues a fresh server-signed context token and preflight
+  validates **content** (period coverage, units, factors). This is the whole of CSV-first B4. A future
+  `.xlsx` round-trip would carry identity in workbook custom properties / a hidden locked sheet. Reserved
+  CSV `# nzi:` comment rows are **explicitly rejected** as brittle (no CSV comment standard; Excel renders
+  them as data and users break them on save).
 
 Confirmed by Francis, 31 Aug 2026.
 
