@@ -89,4 +89,28 @@ test.describe("B2 — spend ledger grid rendered acceptance (gate 8)", () => {
     }
     await expectHealthyScreen(page);
   });
+
+  test("the previous-year rollforward panel has no serious/critical axe violations (B3.9)", async ({ page }) => {
+    const job = await discoverCrpJob(page.request);
+    test.skip(!job, "no CRP job on target");
+    const errors = collectPageErrors(page);
+    await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load").catch(() => undefined);
+
+    const panel = page.locator("#spend-rollforward");
+    test.skip((await panel.count()) === 0, "spend adapter not enabled on target");
+    // Let the prior-year lookup settle out of its loading state.
+    await expect(panel.getByText(/Looking for a prior reporting year/)).toHaveCount(0, { timeout: 10_000 }).catch(() => undefined);
+
+    const results = await new AxeBuilder({ page }).include("#spend-rollforward").withTags(WCAG).analyze();
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(`${OUT}/spend-rollforward.json`, JSON.stringify(results.violations, null, 2));
+
+    const blocking = results.violations.filter((v) => BLOCKING.has(v.impact ?? ""));
+    const summary = blocking
+      .map((v) => `  ${v.impact} ${v.id}: ${v.help}\n    ${v.nodes.map((n) => n.target.join(" ")).join("\n    ")}`)
+      .join("\n");
+    expect(blocking, `serious/critical axe violations on the rollforward panel:\n${summary}`).toEqual([]);
+    expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
+  });
 });

@@ -94,6 +94,7 @@ it("C. per-employee commuting rolling up into an auto-generated scope row", () =
     detail: { kind: "commuting", vehicleRegistration: "AB12 CDE", commuteMode: "car - petrol", distanceUnit: "km", wfhDaysPerYear: 104, wfhHoursPerDay: 7.5, employeeName: "J. Smith" },
     notes: null, calculatedTco2e: 0.51, enabled: true, submittedByPortal: true, reviewStatus: "approved", version: 1,
     scopeRowId: "row-commute-auto", scopeRowVersion: 1, scopeRowReviewStatus: "approved",
+    rolledForwardFromSourceId: null, factorVersionMoved: false,
   };
   const annual = source.monthlyActivity.reduce((sum, slot) => sum + (slot.quantity ?? 0), 0);
   const autoRow = baseRow({

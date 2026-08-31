@@ -20,6 +20,7 @@ export type CommandKey =
   | "emission.source.sync"
   | "emission.source.activity.update"
   | "emission.source.status.update"
+  | "emission.source.rollforward"
   | "dataset.override.add"
   | "portal.access.grant"
   | "sales.opportunity.convert";
@@ -118,6 +119,7 @@ export type CommandInputMap = {
   "emission.source.group.create":{jobId:string;name:string};
   "emission.source.create":{jobId:string;groupId:string|null;scope:string;sourceType:EmissionSourceKind;sourceSubtype:string|null;siteId:string|null;sourceName:string;assetIdentifier:string|null;purchasedGoodsCategoryId:string|null;datasetId?:string|null;factorId:string|null;factorSource:FactorSource;clientFactorId:string|null;quantity:number|null;unit:string|null;applyPct:number;dataSource:string;dataConfidence:DataConfidence|null;monthlyActivity:MonthlyActivitySlot[];detail:EmissionSourceDetail;notes:string|null};
   "emission.source.sync":{jobId:string;sourceId:string};
+  "emission.source.rollforward":{jobId:string;fromJobId:string|null};
   "emission.source.activity.update":{jobId:string;sourceId:string;expectedVersion:number;quantity:number|null;unit:string|null;applyPct:number;dataConfidence:DataConfidence|null;monthlyActivity:MonthlyActivitySlot[];notes:string|null};
   "emission.source.status.update":{jobId:string;sourceId:string;expectedVersion:number;enabled:boolean};
   "dataset.override.add": { jobId: string; scope: string; datasetId: string; reportingFrom: string; reportingTo: string };
@@ -168,6 +170,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "emission.source.sync":{key:"emission.source.sync",label:"Sync emission source to scope",permission:"emissions.data.edit",reasonRequired:false,transaction:"source-locked canonical row upsert + audit + outbox + idempotency",auditAction:"emission_source_synced",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sourceId",input.sourceId);return issues;}},
   "emission.source.activity.update":{key:"emission.source.activity.update",label:"Update emission-source activity",permission:"emissions.data.edit",reasonRequired:false,transaction:"versioned source activity + audit + outbox + idempotency",auditAction:"emission_source_activity_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sourceId",input.sourceId);if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<1)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected source version must be one or greater."});if(input.quantity!==null&&(!Number.isFinite(input.quantity)||input.quantity<0))issues.push({field:"quantity",code:"INVALID",message:"Quantity must be zero or greater."});if(!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100 percent."});if(input.quantity!==null&&!input.unit?.trim())issues.push({field:"unit",code:"REQUIRED",message:"Activity unit is required when quantity is present."});issues.push(...monthlyActivityIssues(input.monthlyActivity));return issues;}},
   "emission.source.status.update":{key:"emission.source.status.update",label:"Change emission-source status",permission:"emissions.data.edit",reasonRequired:false,transaction:"versioned source status + linked canonical row + audit + outbox + idempotency",auditAction:"emission_source_status_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sourceId",input.sourceId);if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<1)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected source version must be one or greater."});if(typeof input.enabled!=="boolean")issues.push({field:"enabled",code:"INVALID",message:"Source status must be enabled or archived."});return issues;}},
+  "emission.source.rollforward":{key:"emission.source.rollforward",label:"Roll forward previous-year spend mappings",permission:"emissions.data.edit",reasonRequired:false,transaction:"prior-year mapping copy + re-pinned datasets + audit + outbox + idempotency",auditAction:"emission_sources_rolled_forward",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);if(input.fromJobId!=null&&(typeof input.fromJobId!=="string"||input.fromJobId.trim()===""))issues.push({field:"fromJobId",code:"INVALID",message:"Source job is invalid."});return issues;}},
   "dataset.override.add": { key: "dataset.override.add", label: "Add manual dataset", permission: "datasets.override", reasonRequired: true, transaction: "resolution + warning + audit", auditAction: "dataset_override_added", validate: (input, context) => { const issues = baseIssues(context, true); required(issues, "jobId", input.jobId); required(issues, "scope", input.scope); required(issues, "datasetId", input.datasetId); required(issues, "reportingFrom", input.reportingFrom); required(issues, "reportingTo", input.reportingTo); return issues; } },
   "portal.access.grant": { key: "portal.access.grant", label: "Grant portal access", permission: "portal.access.manage", reasonRequired: false, transaction: "access grant + job grants + invitation outbox", auditAction: "portal_access_granted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "userId", input.userId); if (!input.jobIds.length) issues.push({ field: "jobIds", code: "REQUIRED", message: "Grant at least one job." }); return issues; } },
   "sales.opportunity.convert": { key: "sales.opportunity.convert", label: "Convert won opportunity", permission: "sales.convert", reasonRequired: false, transaction: "client + quote + optional job + outbox", auditAction: "opportunity_converted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "opportunityId", input.opportunityId); required(issues, "quoteId", input.quoteId); if (input.expectedStatus !== "WON") issues.push({ field: "expectedStatus", code: "PRECONDITION", message: "Opportunity must be WON." }); return issues; } },
@@ -218,4 +221,18 @@ export type EmissionSource = {
   notes: string | null; calculatedTco2e: number | null; enabled: boolean;
   submittedByPortal: boolean; reviewStatus: "pending" | "approved" | "rejected" | null; version: number;
   scopeRowId: string | null; scopeRowVersion: number | null; scopeRowReviewStatus: "pending" | "approved" | "rejected" | null;
+  rolledForwardFromSourceId: string | null; factorVersionMoved: boolean;
+};
+
+// Previous-year rollforward (NZC-030) — preview of the prior job's spend mappings.
+export type SpendRollforwardLine = {
+  priorSourceId: string; description: string; glCode: string | null;
+  purchasedGoodsCategoryId: string | null; purchasedGoodsCategoryLabel: string | null;
+  factorSource: FactorSource; factorLabel: string | null;
+  pinnedFactorVersion: string | null; currentFactorVersion: string | null; factorVersionMoved: boolean;
+  datasetInJobSelection: boolean; alreadyRolledForward: boolean;
+};
+export type SpendRollforwardPreview = {
+  priorJob: { id: string; number: string; reportingYear: number } | null;
+  lines: SpendRollforwardLine[];
 };

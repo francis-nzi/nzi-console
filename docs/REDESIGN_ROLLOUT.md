@@ -109,3 +109,47 @@ new UI out behind flags. Companion to `DEVELOPMENT_PLAN.md`, `MODEL_FIDELITY_DAT
 - **UI (Phases 2–3):** flip the adapter's flag off to fall back to the current path instantly.
 
 *Prepared 30 Aug 2026. Sequencing rationale in the session discussion; entry/exit criteria are the gates.*
+
+## Burndown — remaining slices (as of 31 Aug 2026)
+
+**How the redesign is introduced:** the model schema is additive and already merged (inert until read); each
+UI construct is then introduced as its own slice — build → its acceptance gate → flag flip. Progress is
+counted in slices, not calendar time.
+
+**Flag convention (as implemented):** a single env var `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` whose value
+enumerates the enabled adapters (e.g. `spend`, later `spend,commuting`). Off/empty = the current generic
+path. The committed value lives in `render.yaml` (source of truth), not the dashboard.
+
+**Done**
+- Model schema — migrations 0034–0036 + `@nzi/contracts` types (NZC-041–045). *Confirm 0034 & 0036 are on
+  `main`; later slices depend on them.*
+- B1 typed capture fields (#5).
+- B2 spend adapter (CRM) — live, flag on (`=spend`, #17); `docs/ACCEPTANCE_B2_SPEND_ADAPTER.md`,
+  `docs/STAGING_ACCEPTANCE_B2.md`.
+
+**Remaining**
+
+| # | Slice | Introduces (NZC) | Flag value | Acceptance gate | Depends on | Status |
+|---|-------|------------------|-----------|-----------------|-----------|--------|
+| B3 | Previous-year rollforward | NZC-030 re-pin | `spend` | B2 gate B3 section + `STAGING_ACCEPTANCE_B3.md` | B2 | 🔨 in review — build to gate, flagged, migration 0039 on staging; YoY flag (#19) is the remaining B3-milestone follow-up |
+| B4 | Excel / CSV bulk import | NZC-036 | `spend` (+import) | new gate | B2 | ⏳ |
+| B5 | Portal spend mirror | NZC-035 | portal spend | portal parity gate | B2, portal | ⏳ |
+| S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |
+| S2 | Client factors UI (+ EPD) | NZC-041 | `clientFactors` | new gate | migration 0034 | ⏳ |
+| S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
+| S4 | Row/drawer breadth (data_confidence, conversion memory, notes, column text) | NZC-044 | (folds into S1–S3) | within host slice | 0034–0036 | ⏳ partial |
+| S5 | Stage-as-section layout rollout (CRP + portal) | NZC-038 | layout | design acceptance | adapters landed | ⏳ cross-cutting |
+| — | Standards (carbon emissions; dd/mm/yyyy) | NZC-039/040 | n/a | ride-along per slice | — | ⏳ per slice |
+| P4 | Retire legacy generic path + remove flags | — | remove | — | all adapters accepted | ⏳ Phase 4 |
+
+**Human-only gates (not Claude Code):** A3 (screen-reader narration) and A4 (contrast eyeball) bank Phase 1;
+the **NZC-042 decision** unblocks S3. Any rendered accessibility review of a new adapter screen is human-only,
+like A3.
+
+**Separate downstream track:** C — job-family modularization (NZC-024/025) — sits *after* all of the above;
+M4 (additional services) rides on it. Parked until the data-entry framework is fully introduced.
+
+**Rough shape:** ~3 spend/bulk slices (B3–B5, lower risk) + ~3 model-surfacing slices (S1–S3, S1 the
+heaviest) + 1 cross-cutting layout pass (S5) + legacy retirement — plus the two human gates and one decision.
+
+*Burndown added 31 Aug 2026.*
