@@ -11,7 +11,7 @@ and this record is complete. The flip is its own reviewed change.
 | 1 | `@nzi/contracts` — identity shape + encode/decode + five preflight states + row-review types | #29 |
 | 2 | `@nzi/isolated-backend` — issue/verify token (HMAC, key domain-separated from the session secret); `0040` `import_batch_id` + soft-void columns; `commitSpendImport` / `voidSpendImportBatch` | #30 |
 | 3a | Console pure — `csvReader.ts` (RFC-4180, delimiter/BOM detection, formula-injection neutralisation), `spendImportMapping.ts` (auto-map + apply + resolve + named map), `spendImportTemplate.ts` (CSV template) | #31 |
-| 3b | `0041` `client_import_mappings` (RLS, tenant-isolated); `saveClientImportMapping` command + `getClientImportMapping`; GET template (client-side) / POST preflight / POST commit / POST void / GET+PUT mapping routes; `SpendImportPanel` behind `spend-import`; e2e | this PR |
+| 3b | `0041` `client_import_mappings` (RLS, tenant-isolated); `saveClientImportMapping` command + `getClientImportMapping`; GET template (client-side) / POST preflight / POST commit / POST void / GET+PUT mapping routes; `SpendImportPanel` behind `spend-import`; e2e | #32 ✅ merged + deployed 31 Aug 2026 |
 
 ## Decision — CSV-first (Francis, 31 Aug 2026)
 
@@ -38,10 +38,14 @@ See `DECISIONS.md` NZC-036 B4 amendment.
 
 ## Remaining before the flip
 
-1. Deploy this PR → set `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend,spend-import` on Render staging
-   (dashboard) → the automated `#spend-import` axe + responsive scan (gate 9) runs.
-2. Human screen-reader pass of the panel.
+PR #32 merged + deployed to Render staging on 31 Aug 2026. Still open:
+
+1. Set `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend,spend-import` on Render staging (dashboard) → the
+   automated `#spend-import` axe + responsive scan (gate 9) runs. **Not yet done** — the value in
+   `render.yaml` is still `spend`; the dashboard override is Francis's step.
+2. Human screen-reader pass of the panel (#22 / A3 / #25 session).
 3. Rollback check (flag off → panel gone; `0040`/`0041` inert).
+4. Then the flip PR — `spend-import` into `render.yaml`.
 
 ## Rollback
 
