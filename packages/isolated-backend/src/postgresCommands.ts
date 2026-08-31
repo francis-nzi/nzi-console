@@ -13,6 +13,8 @@ import {
   type ScopeRowWriteFields,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
+import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
+import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantWrite } from "./postgres";
@@ -547,6 +549,41 @@ export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMa
     }
   }
   return{data:{rolledForward,skipped,priorJobId,priorJobNumber},entityType:"job",entityId:input.jobId,topic:"emission.sources.rolled_forward"};
+});}
+
+export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emission.source.import.commit"],context:CommandContext,secret:string|undefined):Promise<StoredOutcome<{batchId:string;created:number;blocked:number;advisory:number}>>{return runPostgresCommand(pool,"emission.source.import.commit",input,context,async db=>{
+  await requireCrpJob(db,context.organisationId,input.jobId);
+  const verified=verifySpendImportToken(input.token,secret);
+  if(!verified.ok)throw new CommandValidationError([{field:"token",code:verified.reason.toUpperCase().replace(/-/g,"_"),message:"The import template's identity could not be verified. Download a fresh template."}]);
+  if(verified.identity.jobId!==input.jobId)throw new CommandValidationError([{field:"token",code:"WRONG_JOB",message:"This template was issued for a different job."}]);
+  const jobContext=await loadSpendImportContext(db,context.organisationId,input.jobId);
+  if(!jobContext)throw new CommandValidationError([{field:"jobId",code:"NOT_CONFIGURED",message:"Configure the CRP reporting period before importing spend."}]);
+  if(verified.identity.templateVersion!==SPEND_IMPORT_TEMPLATE_VERSION)throw new CommandValidationError([{field:"token",code:"STALE_TEMPLATE",message:`This template is version ${verified.identity.templateVersion}; the current version is ${SPEND_IMPORT_TEMPLATE_VERSION}.`}]);
+  if(verified.identity.reportingFrom!==jobContext.reportingFrom||verified.identity.reportingTo!==jobContext.reportingTo)throw new CommandValidationError([{field:"token",code:"WRONG_PERIOD",message:"The template's reporting period no longer matches the job."}]);
+  const reviews=reviewSpendImportRows(input.rows,jobContext);
+  const batchId=randomUUID();
+  let created=0,blocked=0,advisory=0;
+  for(let index=0;index<input.rows.length;index+=1){
+    const review=reviews[index]!,row=input.rows[index]!;
+    if(review.status==="blocked"){blocked+=1;continue;}
+    if(review.status==="advisory")advisory+=1;
+    const detail={kind:"spend",netValue:row.netValue??0,vatPercent:row.vatPercent,glCode:row.glCode,category:"Imported"};
+    await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,import_batch_id) VALUES($1,$2,$3,NULL,'3.1','spend',$4,NULL,$5,$6,$7,$8,$9,$10,$11,$12,'GBP',100,'Spend import',NULL,$13::jsonb,$14::jsonb,NULL,$15)`,[context.organisationId,randomUUID(),input.jobId,row.glCode,row.description.trim(),row.invoiceDate,row.purchasedGoodsCategoryId,row.datasetId,row.factorSource==="dataset"?row.factorId:null,row.factorSource,row.factorSource==="client"?row.clientFactorId:null,row.netValue,JSON.stringify(row.monthly??[]),JSON.stringify(detail),batchId]);
+    created+=1;
+  }
+  return{data:{batchId,created,blocked,advisory},entityType:"job",entityId:input.jobId,topic:"spend.import.committed"};
+});}
+
+export async function voidSpendImportBatch(pool:PoolLike,input:CommandInputMap["emission.source.import.void"],context:CommandContext):Promise<StoredOutcome<{voided:number;skipped:number}>>{return runPostgresCommand(pool,"emission.source.import.void",input,context,async db=>{
+  await requireCrpJob(db,context.organisationId,input.jobId);
+  const batch=await db.query<{source_id:string;review_status:string|null;scope_row_id:string|null}>(`SELECT s.source_id,s.review_status,r.scope_row_id FROM nzi_console.job_emission_sources s LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id,r.source_id)=(s.organisation_id,s.source_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.import_batch_id=$3 AND s.voided_at IS NULL`,[context.organisationId,input.jobId,input.batchId]);
+  if(!batch.rows.length)throw new CommandValidationError([{field:"batchId",code:"NOT_FOUND",message:"No live rows were found for that import batch."}]);
+  const voidable=batch.rows.filter(row=>row.scope_row_id===null&&(row.review_status===null||row.review_status==="pending")).map(row=>row.source_id);
+  const skipped=batch.rows.length-voidable.length;
+  if(voidable.length){
+    await db.query(`UPDATE nzi_console.job_emission_sources SET voided_at=now(),voided_by=$4,enabled=false,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=ANY($3::text[])`,[context.organisationId,input.jobId,voidable,context.actorId]);
+  }
+  return{data:{voided:voidable.length,skipped},entityType:"job",entityId:input.jobId,topic:"spend.import.voided"};
 });}
 
 export type CreateScopeRowResult = {
