@@ -15,6 +15,12 @@ services:
         value: 20.18.0
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
+      # Data-entry redesign, Phase 2 — spend ledger adapter (NZC-035). Gated
+      # rollout: this makes the flip a reviewed, source-controlled change.
+      # Acceptance: docs/STAGING_ACCEPTANCE_B2.md (every in-scope gate ✅;
+      # file upload → Phase 3, rollforward re-pin + YoY variance → B3).
+      - key: NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2
+        value: spend
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
