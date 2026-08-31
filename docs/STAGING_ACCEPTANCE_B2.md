@@ -82,12 +82,24 @@ flags) that a stacked-PR merge order left off `main`.
 
 ## Increment 5 — gate 8 rendered acceptance (31 Aug 2026)
 
-Migration `0038` applied to isolated staging; `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend`
-set on the Render staging service (dashboard env, not `render.yaml` — the committed
-flip stays separate). New `spend-adapter.spec.ts` drives the parsed grid and scans it.
-Responsive ✅ at all four viewports. Two axe defects found and fixed here (grid input
-`aria-label`s; "Use sample" always enabled). **The gate-8 re-scan is the last open item
-— it clears once this PR deploys.**
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` set on the Render staging service (dashboard
+env, not `render.yaml` — the committed flip stays separate). New `spend-adapter.spec.ts`
+drives the parsed grid and scans it. Responsive ✅ at all four viewports. Two axe defects
+found and fixed here (grid input `aria-label`s; "Use sample" always enabled). **The
+gate-8 re-scan is the last open item — it clears once this PR deploys.**
+
+### Incident — register 503 (31 Aug 2026)
+
+Migration `0038` (from increment 2, PR #11) had **not** actually reached the isolated
+staging database, but the read model that selects `s.purchased_goods_category_id`
+(also #11) was merged and deployed. Result: `GET /jobs/{id}/emission-sources` returned
+503 for **every job family**, not just CRP — "The source register is unavailable" on
+the workspace. `0038` has now been applied to isolated staging (additive: nullable
+column + FK to `purchased_goods_categories`); all job registers return 200 again.
+Two process fixes in this PR: `apiFailure`/`commandFailure` now log the underlying
+cause server-side (it was being discarded, so the outage was invisible without a DB
+probe). Standing rule reaffirmed: a schema-dependent read/write must not merge ahead
+of its migration being confirmed on staging.
 
 ## Remaining before the flag flips
 
