@@ -11,9 +11,25 @@ separately.
 |---|-----------|----|
 | 1 | **Group roll-up model + backend** — `0043`; `emission.source.group.create` factor; `emission.source.group.sync`; guards; member-change re-aggregation; read-model `rollups[]` | #40 ✅ merged + deployed |
 | 2 | **Flagged register UI** — `EmissionSourceRegister`: group factor picker on create; a roll-up group table (member counts, summed total, review status, stale advisory) + "Roll up" button; grouped members show "rolled up via …" and lose the individual Sync button; add path restricted to **Company Vehicle / Employee Commuting** behind `vehicle` / `commuting` (no `asset` add path, NZC-037); with neither flag the register is read-only; `#emission-source-register` e2e | #41 ✅ merged + deployed |
-| 1.1 | **Employee Commuting bulk paste** — `commutingBulk.ts` (pure parser + mode matcher + `.csv` template); `CommutingBulkPanel` behind `commuting`: paste → per-row mode + factor → optional roll-up group → import as Scope 3.7 sources sharing one `import_batch_id`; **audited soft-undo** (`emission.source.import.void`, reused); `emission.source.create` gains `importBatchId`; e2e | this PR |
-| 1.2 | Company Vehicles bulk paste grid + `.csv` template | ⏳ deferred |
+| 1.1 | **Employee Commuting bulk paste** — `commutingBulk.ts` (pure parser + mode matcher + `.csv` template); `CommutingBulkPanel` behind `commuting`: paste → per-row mode + factor → optional roll-up group → import as Scope 3.7 sources sharing one `import_batch_id`; **audited soft-undo** (`emission.source.import.void`, reused); `emission.source.create` gains `importBatchId`; e2e | #42 ✅ merged + deployed |
+| 1.2 | **Company Vehicles bulk paste** — `vehicleBulk.ts` (pure parser + fuel matcher + plate normalisation + `.csv` template); `VehicleBulkPanel` behind `vehicle`: paste → per-row fuel + Scope 1/3.6 + factor → optional roll-up group → import as `vehicle` sources sharing one `import_batch_id`; same audited soft-undo; e2e | this PR |
 | flips | `commuting`, then `vehicle`, into `render.yaml` | ⏳ |
+
+## S1.2 gate — Company Vehicles bulk paste
+
+Same shape as S1.1 (below), for the `vehicle` domain:
+
+| Item | State |
+|---|---|
+| Pure parser (`parseVehicleLedger`) — tab / comma / wide-space; header detection; **registration normalised** (upper-case, spaces stripped); free-text fuel → controlled `VEHICLE_FUELS` (`matchFuel`); unit inferred from a `"4200 litres"`-style cell when there's no unit column | ✅ |
+| Paste grid — one editable row per line; registration, make/model, controlled fuel select, activity + unit (`litres`/`km`/`mi`/`kWh`/`kg`), **Scope 1 (owned) / Scope 3.6 (grey fleet)** selector, factor from that scope's job factors | ✅ |
+| Commit — one `vehicle` `job_emission_sources` per ready row through the unchanged create + sync / roll-up path; ungrouped → per-source sync, grouped → group roll-up (NZC-043); shared `import_batch_id` | ✅ |
+| Audited soft-undo — "Undo last import" (`emission.source.import.void`, reused); only pending + unsynced rows, skips synced/reviewed with a count | ✅ |
+| `.csv` template download (client-side; no identity block) | ✅ |
+| Flag `vehicle` OFF by default; panel absent with it off; register + every other path unchanged | ✅ `dataEntryAdapterEnabled("vehicle")` |
+| Tests — `vehicleBulk.test.ts` (parser + fuel matcher + plate normalisation + template); shared backend `importBatchId` + void | ✅ console 42 · isolated-backend 188 · contracts 37 · test:portal 89 · test:staff 31 · `next build` |
+| a11y & responsive — automated axe + no-overflow of `#vehicle-bulk` in `vehicle-bulk.spec.ts` (skips until the flag is on staging); human screen-reader pass | ◐ |
+| Monthly per line | ⏳ deferred (annual activity only, matches S1.1) |
 
 ## S1.1 gate — Employee Commuting bulk paste
 
