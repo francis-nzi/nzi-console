@@ -229,10 +229,69 @@ bundled with the build.
 
 ## B5.1 — portal CSV upload (follow-up, D-B5-2)
 
-Client file upload is untrusted external input and gets its own hardening slice: a portal-authed preflight
-route, MIME/type + size + row caps, CSV-injection neutralisation, `client_import_mappings` keyed for the
-portal principal — **reusing B4's `csvReader.ts` / `spendImportMapping.ts`**, not re-implementing. Its own
-gate section, appended here when B5 lands.
+> **STATUS: gate drafted for Francis (31 Aug 2026).** Appended now that B5 (#34, #35) has landed.
+> One open question (Q-B5.1-1). Rides the **`portal-spend` flag** — no new flag; it widens the same
+> surface, so it flips with the same client-facing gate 5a.
+
+**Purpose.** Add **CSV file upload** to the portal spend surface (`PortalSpendEntry`), so a client can
+upload their own accounting export instead of pasting. Client file upload is **untrusted external input**;
+this slice is the hardening. **Nothing reaches the server but normalised JSON rows** — the raw file is
+read and mapped entirely in the browser (D-B5-2, isolation).
+
+### What it adds to `PortalSpendEntry`
+
+1. A `.csv` **file input** (with a keyboard-operable label) alongside the existing paste box.
+2. Client-side read with B4's **`parseDelimited` + `neutraliseCell`** (`apps/console/app/jobs/csvReader.ts`)
+   — RFC-4180 quoting, delimiter + BOM detection, **formula-injection neutralisation** on every cell.
+3. A **column mapper** — map the client's CSV headers onto the spend fields (description · net value ·
+   VAT % · GL code · invoice date), mirroring B4's `autoMapColumns` / `applyMapping` mechanics. The
+   mapped rows flow into the **same** `PortalSpendEntry` draft grid and the **unchanged** submit → staff
+   review path.
+4. **Caps enforced in the browser** — `IMPORT_MAX_BYTES` (5 MB) and `IMPORT_MAX_ROWS` (10,000) from
+   `@nzi/contracts`, with a clear message, never a hang.
+5. The PG&S category + factor are still picked per row from the **authorised sets** (B5, D-B5-4) — the CSV
+   only carries the raw ledger fields, not the mapping to controlled values.
+
+### Open question
+
+- **Q-B5.1-1 — remembered mapping.** The consultant CSV mapper (B4) persists the column map in
+  `client_import_mappings` (`import_kind='spend'`, staff-authed via `client.import.mapping.save`).
+  **Options:** (a) remember the portal client's mapping **in `localStorage` per portal user** — no new
+  portal write capability, no cross-client risk, lost if they clear site data; (b) a **portal-authed**
+  read/write of `client_import_mappings` for `(org, client, 'spend')` — shared with the consultant view,
+  survives devices, but is a new portal write path to a tenant table. **Recommendation: (a) for B5.1**;
+  promote to (b) only if clients ask, with its own two-principal isolation test.
+
+### The gate — all must pass before the surface widens (rides the `portal-spend` flip / gate 5a)
+
+- [ ] The `.csv` input is read **entirely in the browser**; only normalised `SpendImportRow`-shaped JSON
+  (+ the row's authorised category/factor picks) is ever POSTed. No file, no `FormData`, to any route.
+- [ ] `parseDelimited` + `neutraliseCell` are reused unchanged; a cell beginning `= + - @`, tab or CR is
+  prefixed with `'`; quoted fields with embedded newlines/commas/quotes parse correctly; BOM + `,` `;`
+  `\t` detected.
+- [ ] Size cap (5 MB) and row cap (10,000) enforced **before** parse, with a clear message.
+- [ ] Column mapper: auto-map by header text; the client can re-map; unmapped required fields block only
+  those rows (nothing silently dropped — every input row shows as mapped-draft or flagged).
+- [ ] Remembered mapping per Q-B5.1-1 (localStorage keyed by portal user + client, wrapped in try/catch,
+  renders correctly with no stored value).
+- [ ] The mapped rows enter the existing `PortalSpendEntry` draft grid; **submit → independent staff
+  review → canonical row** is byte-for-byte the B5 path (spend-based tier, controlled PG&S category,
+  `SpendDetail` provenance).
+- [ ] Governed spine, tenant predicates, CSRF/same-origin, rate-limit, stale-session — all as B5 (gate 5).
+- [ ] No new migration; no new runtime dependency; no new flag.
+- [ ] Tests: the caps + neutralisation + auto-map on portal-shaped headers; the file→draft→submit journey
+  incl. negatives (over-cap file, injection payload, unmappable header, wrong delimiter). typecheck ·
+  `test:portal` · `test:staff` · contracts · `build` — green.
+- [ ] a11y & responsive of the file input + mapper (automated axe + no-overflow; skips until
+  `portal-spend` is on staging); **human screen-reader pass** — folds into the same session as B5.
+- [ ] "carbon emissions" / dd/mm/yyyy.
+
+### Build order
+
+1. Docs — this section, reviewed + merged (this PR).
+2. `PortalSpendEntry` — the file input + browser read + caps + column mapper + localStorage remembered
+   map; e2e; `STAGING_ACCEPTANCE_B5.md` B5.1 row.
+3. No flip PR of its own — it ships live when `portal-spend` flips (B5 gate 5a).
 
 *Prepared 31 Aug 2026; directions confirmed by Francis the same day. Extends the B2/B3/B4 gate line.
 Portal is client-not-live in staging (confirmed 31 Aug 2026), so flag flips can be batched — but each
