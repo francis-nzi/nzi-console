@@ -353,6 +353,33 @@ Pull-data **connectors** (accounting for spend/PG&S, telematics/fuel-card for ve
 - **Consistent headers across the activity domains:** identical identifier block and identical reporting-period month columns, with shared columns (Scope · Category/Report Label · ID · UOM · [reporting-period months] · Qty · Data Source · Notes) plus domain-specific columns (Company Vehicles: registration/type; Commuting: mode/distance-unit/WFH). The **spend template is the fourth canonical download** and adopts the same identity block — it is today’s worst offender (hardcoded `spend-data-template.xlsx`).
 *Confirmed by Francis, 28 Aug 2026.*
 
+#### NZC-036 amendment — B4 Excel/CSV import design [Confirmed 31 Aug 2026]
+Elaborates the bulk-upload standard for the spend-import slice (B4); all under NZC-036.
+
+- **Parsing:** in-browser, via a maintained spreadsheet library (**exceljs**, or **SheetJS pulled from its
+  official pinned patched release** — not the stale npm `xlsx@0.18.5`), dynamically imported behind the flag.
+  Flow: browser parses -> preview + column mapping -> **normalised rows (+ identity token) posted to the
+  isolated backend**, which preflights and writes. The raw file never reaches the server (isolation).
+- **Flag:** B4 gets its own value **`spend-import`** with its own acceptance gate and flip; B2/B3 stay live
+  on `=spend`.
+- **Undo:** every import is tagged `import_batch_id`; undo is an **audited soft-void** limited to rows still
+  **pending / unsynced / unreviewed** (reviewed, synced, or snapshotted rows are excluded). Re-import is
+  **idempotent** against batch/identity.
+- **Remembered mapping:** a tenant-isolated **`client_import_mappings`** table (RLS, migration-owned — no
+  runtime DDL), keyed `(organisation_id, client_id, import_kind)`, column->field map as jsonb, versioned and
+  audited.
+- **Download identity:** the identity **shape + encode/decode + the five preflight states** live in
+  **`@nzi/contracts`** (shared by the in-browser parser and the server validator, so they cannot drift);
+  **issuing** the token and **verifying** it against the job's current version live in
+  **`@nzi/isolated-backend`**.
+- **Round-trip vs import-only:** **`.xlsx` is the round-trip format** and carries identity in workbook custom
+  properties / a hidden locked sheet; **CSV and paste-grid are import-only**, taking job identity from the
+  app context with preflight validating **content** (period coverage, units, factors). Reserved CSV
+  `# nzi:` comment rows are **explicitly rejected** as brittle (no CSV comment standard; Excel renders them
+  as data and users break them on save).
+
+Confirmed by Francis, 31 Aug 2026.
+
 ### NZC-037 — Company Vehicles replaces the Asset Register [Confirmed 28 Aug 2026]
 The live **Asset Register** (individual Scope-1 vehicles/equipment grouped for roll-up) becomes a focused **Company Vehicles** bulk-upload domain (registration-aware, monthly). **Non-vehicle Scope-1 assets** (equipment and other sources) are captured through general **Data Entry** rather than a separate register, keeping one canonical row model; grouping/roll-up for reporting is retained via the scope-row category path (NZC-033). *Confirmed by Francis, 28 Aug 2026.*
 
