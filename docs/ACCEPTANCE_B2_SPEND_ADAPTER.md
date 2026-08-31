@@ -74,3 +74,68 @@ and the build in one step; the flip is its own reviewed change.
 
 *Prepared 30 Aug 2026. Companion to `REDESIGN_ROLLOUT.md` (Phase 2) and `GAP_ANALYSIS_DATA_ENTRY.md` §2.2 /
 §5 (spend).*
+
+---
+
+# B3 — Previous-year rollforward (NZC-030)
+
+**Purpose.** Turn the deferred item **2.2** above into a delivered slice. Same flag (`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` — no new value), same governance spine, CRM/consultant side only (portal mirror stays B5). Written before the build so "done" is defined up front; this is the B3 exit gate in `REDESIGN_ROLLOUT.md`'s burndown.
+
+**What it does.** From a new reporting year's CRP job, copy last year's **spend mappings** — description → controlled PG&S category → emission factor — forward as fresh, unreviewed spend sources, **re-pinning the exact factor version the prior report used**, and flagging any line whose pinned version has since moved so the consultant re-reviews it before it counts.
+
+**What it deliberately does *not* carry.** Last year's spend *amounts*. Rollforward carries the mapping, not the data; each rolled-forward source lands with **no quantity** and `review_status='pending'` — the consultant enters this year's figures and the row goes through calculate → independent review unchanged.
+
+## Entry (before build)
+
+- B2 flag flipped (`=spend`) and its acceptance record complete.
+- Prior-year CRP jobs for the same client exist with `source_type='spend'` sources (the resolver has data to find).
+
+## The gate — all must pass before this slice is "done"
+
+**B3.1 Prior-year resolution**
+- [ ] From the target job, resolve the **most recent prior CRP job for the same client** with a lower `reporting_year` that has spend sources. Deterministic; ignores draft/未-published state (mappings, not the published report). No prior job → an explicit **empty state**, never an error or a silent no-op.
+- [ ] Optional explicit `fromJobId` override; rejected if it is not a CRP job for the same client with a lower reporting year.
+
+**B3.2 Mapping copy**
+- [ ] Each prior spend source copies forward: `source_name`, GL code (`source_subtype`), **controlled PG&S category** (by `category_id` — same client, same controlled list; if the category no longer exists, copy null and flag the line), `SpendDetail` (`vatPercent`, `glCode`, `category` label; `netValue` reset to 0), `scope='3.1'`, `apply_pct`.
+- [ ] **Quantity is null**; `data_source` records the origin (`"Rolled forward from J0006xx · FY2025"`); `review_status='pending'`.
+- [ ] Provenance/lineage on the eventual synced row names the origin job + reporting year and the re-pinned factor version.
+
+**B3.3 Factor-version re-pin (NZC-030)**
+- [ ] The rolled-forward source carries the prior source's **exact** `factor_source` + `dataset_id` + `factor_id` + `client_factor_id` — the same immutable dataset-version row, not the target job's currently-selected version.
+- [ ] If that dataset version is not in the target job's `job_dataset_selections`, rollforward adds it as a **`manual`** selection with an audited reason citing the origin job and NZC-030 — so `emission.source.create`/sync validation passes without weakening it.
+- [ ] Client factors (`factor_source='client'`) re-pin by `client_factor_id` + the factor's version at that time.
+
+**B3.4 Moved-version flag → re-review**
+- [ ] A rolled-forward source whose pinned dataset version is **superseded**, or where the target job selects a different version of the same dataset `name`, is surfaced with a **`factorVersionMoved`** advisory (was `v{old}`, now `v{new}`) in the register and the rollforward preview.
+- [ ] The advisory **never blocks** (NZC-018). The re-review is enforced by the unchanged spine: the source is `pending`, its scope row is `pending`, and independent approval is required — the flag just tells the reviewer where to look.
+
+**B3.5 Idempotency & safety**
+- [ ] Re-running rollforward **skips** prior sources already rolled forward into this job (matched on `rolled_forward_from_source_id`); no duplicates. Enforced by a partial unique index, not just application logic.
+- [ ] Atomic: a failed rollforward leaves no partial sources and no orphan dataset selections.
+- [ ] Target-job guard: CRP family only; tenant-scoped; `expectedVersion` not required (append-only, each source independently versioned thereafter).
+
+**B3.6 Governance spine unchanged**
+- [ ] Rolled-forward sources are never auto-reviewed or auto-synced. Five explicit states in the preview (empty / loaded / rolling / failed / done). Optimistic concurrency and independent review are exactly B2's.
+
+**B3.7 Isolation & schema**
+- [ ] One additive migration only — `0039_emission_source_rollforward_origin.sql`: nullable `rolled_forward_from_source_id` + self-FK + partial unique index. No request-time DDL. Applied to isolated staging before merge.
+
+**B3.8 Tests & build**
+- [ ] Contract: `emission.source.rollforward` validation.
+- [ ] Backend: copies with pinned `dataset_id`/`factor_id`; adds a superseded dataset to selections with the audited reason; idempotent re-run; non-CRP target rejected; no-prior-job → empty; moved-version flag computed.
+- [ ] Read model: rollforward preview (prior job, per-line moved flag, already-rolled-forward), register exposes `rolledForwardFromSourceId` + `factorVersionMoved`.
+- [ ] `npm run typecheck`, `test:portal`, `test:staff`, contracts + mock-data, `build -w @nzi/console` — green. e2e unaffected with the grid state unchanged.
+
+**B3.9 Accessibility & responsive**
+- [ ] The rollforward preview panel: keyboard-operable, labelled controls, status announced, visible focus, contrast-safe, no horizontal overflow at 390/768/1280/1920. Automated axe + responsive in the e2e spec.
+- [ ] **Rendered screen-reader pass — human-only**, folded into the same session as #22 / A3.
+
+**B3.10 Standards**
+- [ ] "carbon emissions" (NZC-039); dates dd/mm/yyyy (NZC-040).
+
+## Exit
+
+All boxes ticked + `docs/STAGING_ACCEPTANCE_B3.md` (evidence + known limitations + rollback). No flag change — B3 rides the flag that is already on. PR reviewed and merged separately from any further build.
+
+*B3 section prepared 31 Aug 2026. Extends item 2.2. Burndown row B3 in `REDESIGN_ROLLOUT.md`.*
