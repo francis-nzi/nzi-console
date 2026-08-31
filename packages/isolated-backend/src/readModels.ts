@@ -108,14 +108,15 @@ type ScopeRow = {
   site_id:string|null;site_label:string|null;purchased_goods_category_id:string|null;purchased_goods_category_label:string|null;
   report_label:string;level_1:string;level_2:string;level_3:string|null;level_4:string|null;
   monthly_activity_json:ScopeRowReadModel["monthlyActivity"];
-  notes:string|null;asset_identifier:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;data_confidence:"H"|"M"|"L"|null;source_quantity:string|null;source_unit:string|null;column_text:string|null;
+  notes:string|null;asset_identifier:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;data_confidence:"H"|"M"|"L"|null;source_quantity:string|null;source_unit:string|null;column_text:string|null;client_factor_version_moved:boolean;
 };
 
 export async function listScopeRows(db: Queryable, jobId: string): Promise<ScopeRowReadModel[]> {
   const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
       r.unit, r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
       r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status,r.reviewed_row_version,r.reviewed_by,r.reviewed_at,r.reviewer_note, r.version, r.enabled,
-      r.provenance_json, r.lineage_json,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text
+      r.provenance_json, r.lineage_json,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,
+      (r.factor_source='client' AND r.client_factor_id IS NOT NULL AND EXISTS(SELECT 1 FROM nzi_console.client_factors cf WHERE cf.organisation_id=r.organisation_id AND cf.client_factor_id=r.client_factor_id AND 'v'||cf.version::text <> coalesce(r.factor_version,''))) AS client_factor_version_moved
     FROM nzi_console.job_scope_rows r
     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
     LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
@@ -125,7 +126,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
   return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,assetIdentifier:row.asset_identifier??null,factorSource:row.factor_source??"dataset",clientFactorId:row.client_factor_id??null,isCustomEntry:row.is_custom_entry??false,applyPct:Number(row.apply_pct??100),dataConfidence:row.data_confidence??null,sourceQuantity:row.source_quantity==null?null:Number(row.source_quantity),sourceUnit:row.source_unit??null,columnText:row.column_text??null,reportLabel:row.report_label??row.source_label,notes:row.notes??null,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),monthlyActivity:row.monthly_activity_json??[],siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
     quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
     factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
-    calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e),
+    calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e), clientFactorVersionMoved: row.client_factor_version_moved === true,
     overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
     reviewStatus: row.review_status,reviewedRowVersion:row.reviewed_row_version??null,reviewedBy:row.reviewed_by??null,reviewedAt:row.reviewed_at==null?null:row.reviewed_at instanceof Date?row.reviewed_at.toISOString():String(row.reviewed_at),reviewerNote:row.reviewer_note??null, version: row.version, enabled: row.enabled,
     provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));

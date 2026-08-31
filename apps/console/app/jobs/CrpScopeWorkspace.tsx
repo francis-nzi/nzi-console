@@ -206,6 +206,14 @@ export function CrpScopeWorkspace({
         reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
         notice={setNotice}
       />
+      {selected.factorSource === "client" && selected.clientFactorVersionMoved ? (
+        <div className="nz-banner warn" role="note">
+          <div>
+            <b>Client factor version moved</b>
+            <div>This row is pinned to <b>{selected.factorVersion}</b>; the client factor has since been updated. Re-calculate to move it, and re-review — the pinned value still stands until you do (NZC-030).</div>
+          </div>
+        </div>
+      ) : null}
       <div className="nz-sect">Calculation lineage</div>
       {selected.lineage.length ? (
         selected.lineage.map((x, i) => (
@@ -293,7 +301,7 @@ export function CrpScopeWorkspace({
         <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
-        <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
+        <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
         {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
         {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
         {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
