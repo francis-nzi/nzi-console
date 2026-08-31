@@ -101,3 +101,11 @@ export async function previewSpendImport(
 }
 
 export type { SpendImportPreflightState };
+
+export async function getClientImportMapping(db: Queryable, organisationId: string, clientId: string, importKind: "spend"): Promise<{ columns: Record<string, string>; version: number } | null> {
+  const { rows } = await db.query<{ mapping_json: Record<string, string>; version: number }>(
+    `SELECT mapping_json,version FROM nzi_console.client_import_mappings WHERE organisation_id=$1 AND client_id=$2 AND import_kind=$3`,
+    [organisationId, clientId, importKind],
+  );
+  return rows[0] ? { columns: rows[0].mapping_json ?? {}, version: rows[0].version } : null;
+}

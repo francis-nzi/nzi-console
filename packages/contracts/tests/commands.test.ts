@@ -51,6 +51,9 @@ describe("command contracts", () => {
     assert.ok(validateCommand("emission.source.import.commit",{jobId:"job-a",token:"tok",rows:Array.from({length:10001},()=>row)},context).some(issue=>issue.code==="TOO_MANY"));
     assert.equal(validateCommand("emission.source.import.void",{jobId:"job-a",batchId:"batch-1"},context).length,0);
     assert.ok(validateCommand("emission.source.import.void",{jobId:"job-a",batchId:""},context).some(issue=>issue.field==="batchId"));
+    assert.equal(validateCommand("client.import.mapping.save",{clientId:"c-1",importKind:"spend",columns:{description:"Detail"}},context).length,0);
+    assert.ok(validateCommand("client.import.mapping.save",{clientId:"",importKind:"spend",columns:{}},context).some(issue=>issue.field==="clientId"));
+    assert.ok(validateCommand("client.import.mapping.save",{clientId:"c-1",importKind:"commuting" as "spend",columns:{}},context).some(issue=>issue.field==="importKind"));
   });
   it("validates the previous-year spend rollforward command",()=>{
     assert.equal(validateCommand("emission.source.rollforward",{jobId:"job-a",fromJobId:null},context).length,0);

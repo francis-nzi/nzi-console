@@ -12,6 +12,16 @@ export const SPEND_IMPORT_TOKEN_PREFIX = "nzi-spend-import.v1";
 export const IMPORT_MAX_ROWS = 10_000;
 export const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 
+// The canonical spend-import fields a client's columns map onto (NZC-036 D4).
+export const SPEND_IMPORT_FIELDS = ["description", "netValue", "vatPercent", "glCode", "invoiceDate", "category", "factor"] as const;
+export type SpendImportField = (typeof SPEND_IMPORT_FIELDS)[number];
+export const SPEND_IMPORT_FIELD_LABELS: Record<SpendImportField, string> = {
+  description: "Description", netValue: "Net value", vatPercent: "VAT %", glCode: "GL code",
+  invoiceDate: "Invoice date", category: "PG&S category", factor: "Emission factor",
+};
+/** The remembered per-client column map: canonical field -> the client's header text. */
+export type SpendImportColumnMap = Partial<Record<SpendImportField, string>>;
+
 // ---- Identity token (D5, D6) --------------------------------------------------
 
 export type SpendImportIdentity = {

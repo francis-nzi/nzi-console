@@ -574,6 +574,13 @@ export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emi
   return{data:{batchId,created,blocked,advisory},entityType:"job",entityId:input.jobId,topic:"spend.import.committed"};
 });}
 
+export async function saveClientImportMapping(pool:PoolLike,input:CommandInputMap["client.import.mapping.save"],context:CommandContext):Promise<StoredOutcome<{clientId:string;version:number}>>{return runPostgresCommand(pool,"client.import.mapping.save",input,context,async db=>{
+  const client=await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,[context.organisationId,input.clientId]);
+  if(!client.rows[0])throw new CommandValidationError([{field:"clientId",code:"NOT_FOUND",message:"Client was not found."}]);
+  const saved=await db.query<{version:number}>(`INSERT INTO nzi_console.client_import_mappings(organisation_id,client_id,import_kind,mapping_json,updated_by) VALUES($1,$2,$3,$4::jsonb,$5) ON CONFLICT (organisation_id,client_id,import_kind) DO UPDATE SET mapping_json=EXCLUDED.mapping_json,version=client_import_mappings.version+1,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING version`,[context.organisationId,input.clientId,input.importKind,JSON.stringify(input.columns),context.actorId]);
+  return{data:{clientId:input.clientId,version:saved.rows[0]!.version},entityType:"client_import_mapping",entityId:input.clientId,topic:"client.import.mapping.saved"};
+});}
+
 export async function voidSpendImportBatch(pool:PoolLike,input:CommandInputMap["emission.source.import.void"],context:CommandContext):Promise<StoredOutcome<{voided:number;skipped:number}>>{return runPostgresCommand(pool,"emission.source.import.void",input,context,async db=>{
   await requireCrpJob(db,context.organisationId,input.jobId);
   const batch=await db.query<{source_id:string;review_status:string|null;scope_row_id:string|null}>(`SELECT s.source_id,s.review_status,r.scope_row_id FROM nzi_console.job_emission_sources s LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id,r.source_id)=(s.organisation_id,s.source_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.import_batch_id=$3 AND s.voided_at IS NULL`,[context.organisationId,input.jobId,input.batchId]);

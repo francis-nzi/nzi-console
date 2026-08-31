@@ -2,18 +2,18 @@
 // client (NZC-036). Pure and unit-tested; the browser owns parsing + mapping and
 // only sends normalised SpendImportRow[] to the server.
 
-import type { FactorOption, SpendImportRow } from "@nzi/contracts";
+import {
+  SPEND_IMPORT_FIELDS,
+  type FactorOption,
+  type SpendImportColumnMap,
+  type SpendImportField,
+  type SpendImportRow,
+} from "@nzi/contracts";
 
-export const SPEND_IMPORT_FIELDS = ["description", "netValue", "vatPercent", "glCode", "invoiceDate", "category", "factor"] as const;
-export type SpendImportField = (typeof SPEND_IMPORT_FIELDS)[number];
+export { SPEND_IMPORT_FIELDS, SPEND_IMPORT_FIELD_LABELS, type SpendImportField } from "@nzi/contracts";
 
 /** field -> 0-based column index in the uploaded file. */
 export type ColumnMapping = Partial<Record<SpendImportField, number>>;
-
-export const SPEND_IMPORT_FIELD_LABELS: Record<SpendImportField, string> = {
-  description: "Description", netValue: "Net value", vatPercent: "VAT %", glCode: "GL code",
-  invoiceDate: "Invoice date", category: "PG&S category", factor: "Emission factor",
-};
 
 const HEADER_HINTS: Record<SpendImportField, RegExp> = {
   description: /desc|narrat|detail|supplier|item|line/i,
@@ -34,6 +34,30 @@ export function autoMapColumns(headers: string[]): ColumnMapping {
       mapping[field] = index;
       used.add(index);
     }
+  }
+  return mapping;
+}
+
+/** For persistence: an index map -> the header text at each index (survives column reordering next year). */
+export function toNamedColumnMap(mapping: ColumnMapping, headers: string[]): SpendImportColumnMap {
+  const named: SpendImportColumnMap = {};
+  for (const field of SPEND_IMPORT_FIELDS) {
+    const index = mapping[field];
+    if (index != null && headers[index] != null) named[field] = headers[index];
+  }
+  return named;
+}
+
+/** Apply a remembered per-client map to a fresh file's headers; unmatched fields fall through to autoMapColumns. */
+export function fromNamedColumnMap(named: SpendImportColumnMap | null | undefined, headers: string[]): ColumnMapping {
+  const lower = headers.map((header) => header.trim().toLowerCase());
+  const mapping = autoMapColumns(headers);
+  if (!named) return mapping;
+  for (const field of SPEND_IMPORT_FIELDS) {
+    const wanted = named[field]?.trim().toLowerCase();
+    if (!wanted) continue;
+    const index = lower.indexOf(wanted);
+    if (index >= 0) mapping[field] = index;
   }
   return mapping;
 }

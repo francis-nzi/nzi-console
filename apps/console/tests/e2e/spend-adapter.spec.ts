@@ -113,4 +113,33 @@ test.describe("B2 — spend ledger grid rendered acceptance (gate 8)", () => {
     expect(blocking, `serious/critical axe violations on the rollforward panel:\n${summary}`).toEqual([]);
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
+
+  test("the spend import panel has no serious/critical axe violations and holds the column (B4.9)", async ({ page }) => {
+    const job = await discoverCrpJob(page.request);
+    test.skip(!job, "no CRP job on target");
+    const errors = collectPageErrors(page);
+    await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load").catch(() => undefined);
+
+    const panel = page.locator("#spend-import");
+    test.skip((await panel.count()) === 0, "spend-import not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'spend-import')");
+    // Paste a couple of rows to reach the column-mapper state.
+    await panel.getByLabel("…or paste the rows").fill("Description,Net value,VAT %,GL code,Invoice date,PG&S category,Emission factor\nOffice paper,1240,20,7504,14/03/2025,Paper,Paper factor");
+    await panel.getByRole("button", { name: "Parse pasted rows" }).click();
+    await expect(panel.getByText("Map columns", { exact: false })).toBeVisible();
+
+    const results = await new AxeBuilder({ page }).include("#spend-import").withTags(WCAG).analyze();
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(`${OUT}/spend-import.json`, JSON.stringify(results.violations, null, 2));
+    const blocking = results.violations.filter((v) => BLOCKING.has(v.impact ?? ""));
+    const summary = blocking.map((v) => `  ${v.impact} ${v.id}: ${v.help}\n    ${v.nodes.map((n) => n.target.join(" ")).join("\n    ")}`).join("\n");
+    expect(blocking, `serious/critical axe violations on the spend import panel:\n${summary}`).toEqual([]);
+
+    for (const width of [390, 768, 1280, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `spend import @ ${width}px has ${overflow}px overflow`).toBeLessThanOrEqual(1);
+    }
+    expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
+  });
 });
