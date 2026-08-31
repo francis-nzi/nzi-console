@@ -10,9 +10,24 @@ separately.
 | # | Increment | PR |
 |---|-----------|----|
 | 1 | **Group roll-up model + backend** — `0043`; `emission.source.group.create` factor; `emission.source.group.sync`; guards; member-change re-aggregation; read-model `rollups[]` | #40 ✅ merged + deployed |
-| 2 | **Flagged register UI** — `EmissionSourceRegister`: group factor picker on create; a roll-up group table (member counts, summed total, review status, stale advisory) + "Roll up" button; grouped members show "rolled up via …" and lose the individual Sync button; add path restricted to **Company Vehicle / Employee Commuting** behind `vehicle` / `commuting` (no `asset` add path, NZC-037); with neither flag the register is read-only; `#emission-source-register` e2e | this PR |
-| 1.1 / 1.2 | Employee Commuting / Company Vehicles **bulk paste** grids + `.csv` templates (reuse B4 parser) | ⏳ deferred |
+| 2 | **Flagged register UI** — `EmissionSourceRegister`: group factor picker on create; a roll-up group table (member counts, summed total, review status, stale advisory) + "Roll up" button; grouped members show "rolled up via …" and lose the individual Sync button; add path restricted to **Company Vehicle / Employee Commuting** behind `vehicle` / `commuting` (no `asset` add path, NZC-037); with neither flag the register is read-only; `#emission-source-register` e2e | #41 ✅ merged + deployed |
+| 1.1 | **Employee Commuting bulk paste** — `commutingBulk.ts` (pure parser + mode matcher + `.csv` template); `CommutingBulkPanel` behind `commuting`: paste → per-row mode + factor → optional roll-up group → import as Scope 3.7 sources sharing one `import_batch_id`; **audited soft-undo** (`emission.source.import.void`, reused); `emission.source.create` gains `importBatchId`; e2e | this PR |
+| 1.2 | Company Vehicles bulk paste grid + `.csv` template | ⏳ deferred |
 | flips | `commuting`, then `vehicle`, into `render.yaml` | ⏳ |
+
+## S1.1 gate — Employee Commuting bulk paste
+
+| Item | State |
+|---|---|
+| Pure parser (`parseCommutingLedger`) — tab / comma / wide-space; header detection; free-text mode → controlled `COMMUTE_MODES` (`matchCommuteMode`); miles/km detection; drops blank lines | ✅ |
+| Paste grid — one editable row per line; per-row mode select (controlled), distance + unit, WFH days/hours, factor from the job's Scope 3 factors; advisory "Incomplete/Ready" status; nothing dropped | ✅ |
+| Commit — one `job_emission_sources` per ready row through the **unchanged** `emission.source.create` + sync/roll-up path (Scope 3.7, `commuting` detail); ungrouped rows sync individually, grouped rows roll the group up (NZC-043) | ✅ |
+| Batch id + undo — every row of one import shares an `import_batch_id`; **"Undo last import"** soft-voids (`voided_at`/`voided_by`, `enabled=false`) only rows still pending + unsynced, skipping any already synced/reviewed, with a count — audited, no hard delete | ✅ (reuses the B4 `emission.source.import.void` command) |
+| `.csv` template download (client-side; no identity block — CSV is import-only, D6) | ✅ |
+| Flag `commuting` OFF by default; panel absent with it off; the register + every other path unchanged | ✅ `dataEntryAdapterEnabled("commuting")` |
+| Tests — `commutingBulk.test.ts` (parser + mode matcher + template); backend `importBatchId` on create; contract | ✅ console 35 · isolated-backend 188 · contracts 37 · test:portal 89 · test:staff 31 · `next build` |
+| a11y & responsive — automated axe + no-overflow of `#commuting-bulk` in `commuting-bulk.spec.ts` (skips until the flag is on staging); human screen-reader pass with the S1 domains | ◐ |
+| Monthly per line | ⏳ deferred — the import path carries the annual distance only (matches B4 spend) |
 
 ## Directions — Francis, 31 Aug 2026 (all five confirmed)
 

@@ -128,7 +128,7 @@ export type CommandInputMap = {
   "client.factor.archive":{clientFactorId:string;archived:boolean};
   "emission.source.group.create":{jobId:string;name:string;datasetId?:string|null;factorId?:string|null;factorLabel?:string|null;unit?:string|null};
   "emission.source.group.sync":{jobId:string;groupId:string};
-  "emission.source.create":{jobId:string;groupId:string|null;scope:string;sourceType:EmissionSourceKind;sourceSubtype:string|null;siteId:string|null;sourceName:string;assetIdentifier:string|null;purchasedGoodsCategoryId:string|null;datasetId?:string|null;factorId:string|null;factorSource:FactorSource;clientFactorId:string|null;quantity:number|null;unit:string|null;applyPct:number;dataSource:string;dataConfidence:DataConfidence|null;monthlyActivity:MonthlyActivitySlot[];detail:EmissionSourceDetail;notes:string|null};
+  "emission.source.create":{jobId:string;groupId:string|null;scope:string;sourceType:EmissionSourceKind;sourceSubtype:string|null;siteId:string|null;sourceName:string;assetIdentifier:string|null;purchasedGoodsCategoryId:string|null;datasetId?:string|null;factorId:string|null;factorSource:FactorSource;clientFactorId:string|null;quantity:number|null;unit:string|null;applyPct:number;dataSource:string;dataConfidence:DataConfidence|null;monthlyActivity:MonthlyActivitySlot[];detail:EmissionSourceDetail;notes:string|null;importBatchId?:string|null};
   "emission.source.sync":{jobId:string;sourceId:string};
   "emission.source.rollforward":{jobId:string;fromJobId:string|null};
   "emission.source.import.commit":{jobId:string;token:string;rows:SpendImportRow[]};
