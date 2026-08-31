@@ -1,9 +1,8 @@
 # B4 — Spend Excel/CSV preflight import: acceptance & flag gate
 
-> **STATUS: DRAFT for Francis.** Written before the build so "done" is defined up front, like
-> `ACCEPTANCE_B2_SPEND_ADAPTER.md` and its B3 section. **The "Design questions" section below needs your
-> answers before implementation starts.** Companion to `REDESIGN_ROLLOUT.md` (burndown row B4),
-> `DECISIONS.md` NZC-036, and `GAP_ANALYSIS_DATA_ENTRY.md` §2.5 / §5.
+> **STATUS: directions confirmed by Francis 31 Aug 2026** (answers to Q1–Q6 below, now
+> "Decided directions"). Ready to build. Companion to `REDESIGN_ROLLOUT.md` (burndown row B4),
+> `DECISIONS.md` NZC-036 (Q3–Q6 to be recorded as sub-notes), and `GAP_ANALYSIS_DATA_ENTRY.md` §2.5 / §5.
 
 **Purpose.** The exit criteria B4 must satisfy. **Scope: the spend template only** — the fourth canonical
 download (NZC-036). It adds two of NZC-036's three input methods to the CRM spend adapter: the **Excel
@@ -27,142 +26,159 @@ they cannot diverge.
 ## Entry (before build)
 
 - B2 + B3 merged, deployed, flag on (`=spend`).
-- The "Design questions" section below is answered.
-- No new external dependency is added without sign-off (see Q1).
+- Directions Q1–Q6 confirmed (below).
 
 ---
 
-## Design questions — decide before build
+## Decided directions (Francis, 31 Aug 2026 — NZC-036 sub-notes)
 
-**Q1 — `.xlsx` parsing.** The console has **zero parsing dependencies** today. CSV is trivial (extend the
-B2 parser with a proper quoted-field reader). `.xlsx` is a zipped XML workbook and needs a library
-(`xlsx` / SheetJS, or `exceljs`). Options:
-  - **(a) CSV-only for B4**, `.xlsx` deferred to S1 — no new dependency, ships faster, but the client
-    downloads an `.xlsx` template and can't upload it back as `.xlsx` (they'd "Save As CSV").
-  - **(b) Add `xlsx` (SheetJS)** — full round-trip, ~1 dependency, parse in the browser (no server
-    memory), well-audited. **Recommended** given NZC-036 says "hardened Excel round-trip … as the offline
-    baseline".
-  - (c) Server-side parse with `exceljs` — streaming, but adds a server dependency and a memory/timeout
-    surface.
+**D1 — parsing library & flow.** Parse **in the browser** — the raw client ledger never reaches the
+backend (isolation), and preview/mapping are instant. Not a bare `npm i xlsx` (the npm SheetJS build,
+0.18.5, is stale with known CVEs). Use **`exceljs`** (MIT, on npm, reads **and** writes — D5 needs a
+writer; pairs with D6's hidden locked sheet). Load it **dynamically, behind the flag**, so it stays out
+of the main bundle. **Flow:** browser parses the file → preview + column mapping → sends **normalised
+rows + the identity token** to the server → the server preflights (against the job's current version) and
+writes. **The raw file never touches the backend.**
 
-**Q2 — flag value.** B2/B3 ride `=spend`, already flipped — so anything merged under `spend` is live
-immediately. B4 adds a **file-upload attack surface**. Options:
-  - **(a) New value `spend-import`** (`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend,spend-import`) — B4 gets
-    its own rendered-acceptance-gated flip, consistent with the strangler pattern. **Recommended.**
-  - (b) Fold into `spend` — no separate flip; B4 goes live on merge. Faster, less ceremony, but couples
-    the security review to a normal PR merge.
+**D2 — flag.** New value **`spend-import`** (`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend,spend-import`). Its
+own acceptance gate, its own flip. B2/B3 stay live on `spend`; B4 bakes independently.
 
-**Q3 — import batch / undo.** A 200-row import that's wrong is painful to unpick one source at a time.
-  - **(a) Add `import_batch_id` (nullable) to `job_emission_sources`** (migration, additive) + an
-    `emission.source.import.undo` command that archives a whole batch **only while every row in it is
-    still `pending` and unsynced** (never touches reviewed evidence). **Recommended** — cheap, matches
-    the live system's spend workflow.
-  - (b) No batch concept — rely on per-source archive.
+**D3 — import batch & undo.** Additive `import_batch_id` on `job_emission_sources`. Undo is an **audited
+soft void** — mark rows `void` + write an audit event, **never a hard delete** (audit history stays
+immutable). Undo applies **only** to rows still pending / unsynced / unreviewed — anything reviewed,
+synced, or in a frozen snapshot is excluded. Re-import is **idempotent**: the same batch / identity must
+not double-insert.
 
-**Q4 — remembered CSV mapping storage.** NZC-036 says "remember the mapping **per client**". That needs
-server-side persistence.
-  - **(a) New table `client_import_mappings`** `(organisation_id, client_id, domain, mapping_json,
-    updated_by, updated_at)` (migration) — one remembered column map per client per domain. **Recommended.**
-  - (b) Job-scoped only (no cross-year memory) — simpler, loses the NZC-036 "one click next year" benefit.
+**D4 — remembered mapping.** New **tenant-isolated `client_import_mappings`** table — RLS + migration-owned
+(no runtime DDL, same pattern as `client_sites` / `client_factors`). Key `(organisation_id, client_id,
+import_kind)` so spend vs commuting maps don't collide; column→field map as `jsonb`; **versioned +
+audited**.
 
-**Q5 — download-identity service home.** The shared builder (filename + identity block) is used by B4 now
-and S1 later. Build it as `@nzi/isolated-backend` (`downloadIdentity.ts`) producing the identity block +
-sanitised filename, with the workbook assembly in the console? Confirm the package boundary.
+**D5 — where identity lives.** **Split.** `@nzi/contracts` owns the identity **shape + encode/decode + the
+five preflight states** — one definition shared by the in-browser parser and the server validator, so they
+cannot drift. `@nzi/isolated-backend` owns the **server-authoritative** parts: **issuing** the token and
+**verifying** it against the job's current version. Contracts *defines*; the backend is the *authority*.
 
-**Q6 — template format for the identity block.** In a CSV there is no "locked header block". Proposal:
-CSV uploads carry identity as the **first N commented/reserved rows** (`# nzi:jobId=…`) that preflight
-reads and strips; `.xlsx` uses a hidden/locked sheet. Confirm acceptable, or require `.xlsx` for the
-round-trip and treat CSV strictly as the client-native mapper path (identity supplied by the UI, not the
-file).
+**D6 — how identity travels.** Decide by path, not by comment rows (CSV has no comment standard; Excel
+renders `#` rows as data; users break them on save):
+  - **`.xlsx` is the round-trip format** — identity in **workbook custom properties or a hidden, locked
+    sheet** (final choice made with `exceljs`: a `veryHidden`, protected sheet).
+  - **CSV and the paste grid are import-only** — job identity comes from **app context** (you are already
+    on the job); preflight validates the **content** (period coverage, units, factors), not a file token.
 
 ---
 
-## The gate — all must pass before B4's flag flips (or before merge, if Q2 = fold-in)
+## The gate — all must pass before B4's `spend-import` flag flips
 
-### 1. Canonical download identity (NZC-036)
+### 1. Canonical download identity (NZC-036, D5/D6)
 
-- [ ] **One shared builder** produces every spend template/export — filename
-  `{JobNumber}_{ClientName}_{JobName}_{ReportingYear}_{Descriptor}` with each identifier sanitised of
+- [ ] **`@nzi/contracts`** owns the identity **shape**, its **encode/decode**, and the **five preflight
+  states** — one definition used by both the browser parser and the server validator.
+- [ ] **One shared builder** produces the spend template — filename
+  `{JobNumber}_{ClientName}_{JobName}_{ReportingYear}_{Descriptor}.xlsx` with each identifier sanitised of
   `<>:"/\|?*` and collapsed whitespace.
-- [ ] A **machine-readable identity block** carries immutable `JobId`, `JobNumber`, `ClientName`,
-  `JobName`, `ReportingYear`, `ReportingPeriodStart/End`, `Domain='spend'`, `TemplateVersion`, and an
-  integrity hash.
+- [ ] The `.xlsx` carries the identity token in a **`veryHidden`, protected worksheet** (via `exceljs`):
+  immutable `JobId`, `JobNumber`, `ClientName`, `JobName`, `ReportingYear`, `ReportingPeriodStart/End`,
+  `Domain='spend'`, `TemplateVersion`, and an integrity hash. The token is **issued by
+  `@nzi/isolated-backend`** against the job's current version.
 - [ ] The template's activity columns are the **reporting-period month columns** (NZC-032) plus the
   shared set (Scope · Category/Report Label · ID · UOM · [months] · Qty · Data Source · Notes) and the
   spend-specific columns (PG&S category, net value, VAT %, GL code, invoice date).
-- [ ] The builder is structured so S1's commuting/vehicle/travel templates reuse it unchanged.
+- [ ] The builder + identity shape are structured so S1's commuting/vehicle/travel templates reuse them
+  unchanged.
 
-### 2. Preflight & validation engine (one engine, five states)
+### 2. Preflight & validation engine (one engine, five states, D6)
 
-- [ ] Preflight validates the upload against the **embedded identity** — wrong job, wrong reporting
-  period, or a stale `TemplateVersion` is a **hard block** with a clear, specific message. **Never**
-  validates by parsing the filename.
+- [ ] **`.xlsx` upload**: the server **verifies the embedded token against the job's current version** —
+  wrong job, wrong reporting period, or a stale `TemplateVersion` is a **hard block** with a clear,
+  specific message. **Never** validates by parsing the filename.
+- [ ] **CSV / paste-grid**: import-only; job identity comes from **app context** (already on the job);
+  preflight validates the **content** — period coverage, units, factors — not a file token.
 - [ ] Row validation: description present, net value numeric ≥ 0, VAT % in range, invoice date parseable
   (dd/mm/yyyy, NZC-040) and within the reporting period (else advisory), PG&S category resolvable to the
   client's controlled list, factor resolvable in the job's selected datasets.
-- [ ] **Five explicit states**: empty · parsing · preview (valid + advisories) · blocked (identity or
-  schema failure) · committed. Never a partial/degraded state shown as success.
+- [ ] **Five explicit states** (defined in `@nzi/contracts`): empty · parsing · preview (valid +
+  advisories) · blocked (identity or schema failure) · committed. Never a partial/degraded state shown
+  as success.
 - [ ] **Nothing is silently dropped** — every input row appears in the preview as accepted, advisory, or
   blocked, with its row number and reason. Blocked rows do not import; the rest can.
 - [ ] Advisories (NZC-018, never block): within-file duplicates (description + net + GL), non-positive
   net, invoice date outside the period, YoY variance vs a rolled-forward prior source (B3), unit sanity.
 
-### 3. Ingestion workflow (governed parity with B2)
+### 3. Ingestion workflow (governed parity with B2, D1/D4)
 
+- [ ] **In-browser parse** (`exceljs`, loaded dynamically behind the flag): the file is read in the
+  browser → preview + column mapping → **only normalised rows + the identity token** are sent to the
+  server. **The raw file never reaches the backend.**
 - [ ] **Excel round-trip**: download template → fill → upload → preflight → commit.
-- [ ] **CSV column-mapper**: accept the client's own CSV; map their headers to the canonical fields;
-  **the mapping is remembered per client** and pre-applied next time; the consultant can re-map.
+- [ ] **CSV column-mapper**: accept the client's own CSV; map their headers to the canonical fields; the
+  mapping is **remembered per `(client, import_kind)`** in `client_import_mappings` and pre-applied next
+  time; the consultant can re-map; the stored map is versioned + audited.
 - [ ] Commit creates one `job_emission_sources` spend source per valid row via the **same
   `emission.source.create` + `emission.source.sync`** path as B2 — Scope 3.1, Spend-based tier,
   controlled PG&S category, provenance (ledger source + mapping + factor set/version + data hash +
-  as-at), monthly where the template carries it.
-- [ ] Re-uploading the same file does not double-import (Q3 batch, or the B2 within-file duplicate
-  advisory plus a clear "N of these already exist" preview note).
+  as-at), monthly where the template carries it. Every row of a commit shares one `import_batch_id`.
 
-### 4. Governance spine unchanged
+### 4. Governance spine unchanged (D3)
 
 - [ ] Independent review bound to the exact row version; submitted spend **never counts as reviewed
   emissions** until independently reviewed; optimistic concurrency + stale-version recovery; import is
   **never a second write path** and never auto-reviews or auto-syncs.
-- [ ] If Q3 = batch undo: undo only archives rows that are still `pending` and unsynced; it never touches
-  a calculated or reviewed row, and it is audited.
+- [ ] **Undo a batch** is an **audited soft void** — rows are marked `void` and an audit event is
+  written; **never a hard delete** (audit history stays immutable). It applies **only** to rows still
+  `pending` / unsynced / unreviewed — anything reviewed, synced, or in a frozen snapshot is **excluded**
+  from the void with a clear message.
+- [ ] **Idempotent re-import**: committing the same batch / identity again does not double-insert
+  (matched on `import_batch_id` and/or a content hash surfaced as a "N of these already exist" preview
+  note).
 
-### 5. Security & robustness (file upload)
+### 5. Security & robustness (file upload, D1)
 
-- [ ] **Size cap** and **row cap** (proposed: 5 MB / 10,000 rows) enforced with a clear message, not a
-  hang or a crash.
+- [ ] **Size cap** and **row cap** (proposed: 5 MB / 10,000 rows) enforced in the browser with a clear
+  message, not a hang or a crash.
 - [ ] **CSV injection**: any cell beginning `=`, `+`, `-`, `@`, tab or CR is treated as text on import
   and prefixed/quoted on export — no formula is ever evaluated or round-tripped as live.
-- [ ] **`.xlsx`**: macros are never executed; external links/DDE are ignored; a zip bomb / malformed
-  archive is rejected, not expanded unbounded.
+- [ ] **`.xlsx`**: macros are never executed; external links / DDE are ignored; a zip bomb / malformed
+  archive fails cleanly in the browser parser, not expanded unbounded.
 - [ ] File **type is validated by content**, not extension. Encoding (BOM, UTF-8, Latin-1) and delimiter
   (`,` `;` `\t`) are detected; quoted fields with embedded newlines/commas parse correctly (a real CSV
   reader, not `split`).
-- [ ] Upload endpoint enforces the same-origin guard, staff auth, and tenant scope; the file is parsed
-  in memory and discarded — **not persisted** (unless Q3 batch keeps a hash for dedup).
+- [ ] The server endpoint accepts **only the normalised JSON rows + token** (never a file), behind the
+  same-origin guard, staff auth, and tenant scope.
 
 ### 6. Isolation & schema
 
-- [ ] Migrations are additive and applied to **isolated staging only** before merge; no request-time
-  DDL. (Expected: `import_batch_id` column and/or `client_import_mappings` table, per Q3/Q4.)
+- [ ] Migrations additive, RLS + migration-owned (pattern of `client_sites` / `client_factors`), applied
+  to **isolated staging only** before merge; no request-time DDL. Expected:
+  - `job_emission_sources.import_batch_id text` (nullable) + a `void` row status (or `voided_at` +
+    `voided_by`), additive;
+  - `client_import_mappings (organisation_id, client_id, import_kind, mapping_json jsonb, version,
+    updated_by, updated_at)` with `FORCE ROW LEVEL SECURITY` and tenant policy.
 - [ ] `NEXT_PUBLIC_APP_ENV=staging`; no production credentials or data.
 
-### 7. Flag behaviour
+### 7. Flag behaviour (D2)
 
-- [ ] Per Q2. If a new value: OFF by default, resolves identically server/client, generic path and the
-  B2 paste path unchanged, flag-off instantly hides the upload UI.
+- [ ] `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value **`spend-import`**, OFF by default, resolves identically
+  server/client. The generic path, the B2 paste path and the B3 rollforward panel are unchanged; removing
+  `spend-import` instantly hides the upload UI (the `exceljs` chunk is not even loaded).
 
 ### 8. Tests & build
 
-- [ ] Pure: the CSV reader (quoting, delimiters, encoding, injection cells); the identity-block
-  builder/parser; the column-mapper resolution; row validation.
-- [ ] Backend: preflight rejects a wrong-job / wrong-period / stale-version file; commit creates N
-  sources through the unchanged path; batch undo (if Q3) only archives pending rows; mapping is
-  persisted and reloaded per client.
-- [ ] Integration journey: download → upload → preflight → commit, including **negatives** (identity
-  mismatch, malformed workbook, injection payload, over-cap file, duplicate re-upload).
+- [ ] Pure (`@nzi/contracts` + console): the CSV reader (quoting, delimiters, encoding, injection cells);
+  the identity token encode/decode + hash; the column-mapper resolution; row validation; the five-state
+  machine.
+- [ ] Backend: token **issue** binds the job's current version; token **verify** rejects wrong-job /
+  wrong-period / stale-version; commit creates N sources sharing one `import_batch_id` through the
+  unchanged path; **batch soft-void** marks only pending/unsynced/unreviewed rows `void` + audits, and
+  refuses (with a clear message) when the batch contains reviewed/synced/snapshot rows; a repeat commit
+  of the same batch is a no-op; `client_import_mappings` persists + reloads per `(client, import_kind)`
+  and is versioned.
+- [ ] Integration journey: issue token → (browser parse) → normalised rows + token → preflight → commit
+  → soft-void, including **negatives** (identity mismatch, stale template version, injection payload,
+  over-cap file, duplicate re-commit, void of a partially-reviewed batch).
 - [ ] `npm run typecheck`, `test:portal`, `test:staff`, contracts + mock-data, `build -w @nzi/console`
-  — all green. e2e unaffected with the upload UI hidden.
+  — all green. The `exceljs` chunk is dynamically imported (not in the shared bundle). e2e unaffected
+  with `spend-import` off.
 
 ### 9. Accessibility & responsive
 
@@ -179,8 +195,19 @@ file).
 
 ## Exit
 
-All boxes ticked + `docs/STAGING_ACCEPTANCE_B4.md` (evidence + known limitations + rollback). If Q2 = new
-flag value: the flip is its own reviewed change after a rendered acceptance pass, never bundled with the
-build. If Q2 = fold-in: the security review (§5) is called out explicitly in the build PR.
+All boxes ticked + `docs/STAGING_ACCEPTANCE_B4.md` (evidence + known limitations + rollback). The
+`spend-import` flip is its **own reviewed change** after a rendered acceptance pass — never bundled with
+the build.
 
-*Draft prepared 31 Aug 2026 for Francis's review. Extends the B2/B3 gate line.*
+## Build order (proposed)
+
+1. `@nzi/contracts` — identity shape + encode/decode + hash + five-state machine + row-validation types
+   (pure, fully unit-tested). No behaviour change to anything shipped.
+2. `@nzi/isolated-backend` — issue/verify the token; `import_batch_id` migration; `client_import_mappings`
+   migration + read/write; `emission.source.import.commit` and `emission.source.import.void` commands.
+3. Console — the `exceljs` dependency (dynamic import); the browser parser + real CSV reader; the
+   template builder (download); the upload → preview → mapping → commit UI behind `spend-import`.
+4. e2e spec (axe + responsive of the import panel); `STAGING_ACCEPTANCE_B4.md`.
+5. Separate PR: flip `spend-import` in `render.yaml`.
+
+*Prepared 31 Aug 2026; directions confirmed by Francis the same day. Extends the B2/B3 gate line.*
