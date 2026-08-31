@@ -42,9 +42,9 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 | 4 | Governance spine unchanged (review bound to version, five states, optimistic concurrency, never auto-reviewed) | ✅ reuses `emission.source.create` + `emission.source.sync`; adapter renders empty/parsed/importing/failed/done |
 | 5 | Isolation — staging only, migration-owned, no request-time DDL | ✅ Increment 2 adds migration `0038` (additive, nullable column + FK) — apply to isolated staging via the runbook below; no request-time DDL |
 | 6 | Flag OFF by default, server = client, instant off-restore | ✅ (e2e 39/39 flag-off) |
-| 7 | Tests: sync-to-scope ✅ · mapping ✅ · monthly-on-create ✅ · rollforward re-pin ⛔ (B3) · idempotency ◐ · negative journeys ✅ (spend without a category → `REQUIRED`; category not on the job's client → `NOT_FOUND`; malformed monthly slots → `REPORTING_PERIOD_MISMATCH`; junk ledger → dropped) | ◐ |
-| 7 | typecheck · console/portal/staff node tests · build | ✅ (+ contracts 22, mock-data 20, isolated-backend 147, console 11, staff/portal 32) |
-| 8 | Rendered a11y + responsive review of the spend grid | ◐ **scanned 31 Aug 2026** on flagged staging (`apps/console/tests/e2e/spend-adapter.spec.ts` — drives the parsed grid, axe WCAG 2.1 A/AA + no-overflow at 390/768/1280/1920). Responsive ✅. Axe found two real defects, **fixed in this PR**: (a) every editable grid cell input (description, net, VAT %, GL code) had no accessible name (WCAG 4.1.2) → per-row `aria-label`; (b) "Use sample" was `disabled` until the textarea was non-empty, so it could never seed the empty state → always enabled. Re-scan goes green once this PR deploys |
+| 7 | Tests: sync-to-scope ✅ · mapping ✅ · monthly-on-create ✅ · idempotency ✅ (re-sync of an unchanged source → same row, stable `sha256:` evidence hash) · negative journeys ✅ (spend without a category → `REQUIRED`; category not on the job's client → `NOT_FOUND`; malformed monthly slots → `REPORTING_PERIOD_MISMATCH`; junk ledger → dropped) · rollforward re-pin ⛔ (B3) | ✅ for B2 scope |
+| 7 | typecheck · console/portal/staff node tests · build | ✅ (+ contracts 22, mock-data 20, isolated-backend 148, console 11, staff/portal 32) |
+| 8 | Rendered a11y + responsive review of the spend grid | ✅ **scanned + re-scanned 31 Aug 2026** on flagged staging (`apps/console/tests/e2e/spend-adapter.spec.ts` — drives the parsed grid, axe WCAG 2.1 A/AA + no-overflow at 390/768/1280/1920). First pass found two real defects (grid cell inputs had no accessible name, WCAG 4.1.2; "Use sample" disabled until the textarea was non-empty); both fixed in PR #14, deployed, **re-scan clean — 0 violations, responsive ✅**. Full suite **41/41 green on staging with the flag ON** |
 | 9 | "carbon emissions" / dd/mm/yyyy | ✅ `formatDate` used; copy compliant |
 | 10 | Sites / NZC-042 | ✅ **N/A** — spend sources are created site-less; no site field; no site-scoped factor logic. NZC-042 not implicated |
 
@@ -85,8 +85,8 @@ flags) that a stacked-PR merge order left off `main`.
 `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` set on the Render staging service (dashboard
 env, not `render.yaml` — the committed flip stays separate). New `spend-adapter.spec.ts`
 drives the parsed grid and scans it. Responsive ✅ at all four viewports. Two axe defects
-found and fixed here (grid input `aria-label`s; "Use sample" always enabled). **The
-gate-8 re-scan is the last open item — it clears once this PR deploys.**
+found and fixed in PR #14 (grid input `aria-label`s; "Use sample" always enabled),
+deployed, re-scanned clean — see Increment 6.
 
 ### Incident — register 503 (31 Aug 2026)
 
@@ -101,17 +101,32 @@ cause server-side (it was being discarded, so the outage was invisible without a
 probe). Standing rule reaffirmed: a schema-dependent read/write must not merge ahead
 of its migration being confirmed on staging.
 
-## Remaining before the flag flips
+## Increment 6 — gate closure (31 Aug 2026)
 
-1. **This PR deploys → re-run `spend-adapter.spec.ts` → gate 8 goes ✅** (green locally
-   against the fix; currently red vs staging only on the two defects this PR fixes).
-2. Previous-year rollforward with factor-version re-pin — coordinate with B3 (gate 2).
-3. YoY variance advisory flag — needs prior-year data (B3, gate 2).
-4. Rollback check (flag OFF → generic path returns; nothing else to undo).
+Gate 8 re-scan clean after PR #14 deployed; full e2e **41/41 on staging with the flag
+ON**. Added the re-sync idempotency test (gate 7). Every gate item is now ✅ **within
+B2's scope**.
 
-Once gate 8 is ✅ and this record is complete, the flag flip is its own reviewed PR
-(add `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` to `render.yaml`) — never bundled with a
-build.
+## Go / no-go for the flip
+
+**Every in-scope gate item is ✅.** The items not ticked are, by the acceptance doc's
+own scoping, **out of B2**:
+
+| Item | Gate | Where it lands |
+|---|---|---|
+| File **upload** (paste is done) | 2 | NZC-036 / Phase 3 |
+| Previous-year rollforward + factor-version re-pin | 2 | B3 |
+| YoY variance advisory flag (needs prior-year data) | 2 | B3 |
+| "Confidence shown" on the suggestion | 3 | N/A — deterministic keyword match, not AI; human confirms |
+
+**Rollback:** flag is per-adapter; unsetting `spend` from
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` and redeploying restores the generic path with no
+data migration. The `quality_tier='spend-based'` sync branch only touches
+`source_type='spend'` rows, which do not exist until the adapter is used.
+
+**Decision (Francis):** flip now, accepting the four deferrals above as documented
+Phase-3/B3 scope — or hold the flip until B3. If flip: its own PR, adding
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` to `render.yaml`, never bundled with a build.
 
 ## Rollback
 
