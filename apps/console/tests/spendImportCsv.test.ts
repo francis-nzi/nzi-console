@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { neutraliseCell, parseDelimited } from "../app/jobs/csvReader";
-import { applyMapping, autoMapColumns, resolveDraftRows } from "../app/jobs/spendImportMapping";
+import { applyMapping, autoMapColumns, fromNamedColumnMap, resolveDraftRows, toNamedColumnMap } from "../app/jobs/spendImportMapping";
 import { buildSpendImportTemplateCsv, spendImportTemplateFilename } from "../app/jobs/spendImportTemplate";
 
 describe("parseDelimited", () => {
@@ -64,6 +64,15 @@ describe("column mapping", () => {
     );
     assert.equal(rows[0]!.purchasedGoodsCategoryId, null);
     assert.equal(rows[0]!.factorId, null);
+  });
+
+  it("remembers a mapping by header text and re-applies it after the columns move", () => {
+    const named = toNamedColumnMap({ description: 0, netValue: 2 }, ["Detail", "Ref", "Amount (£)"]);
+    assert.deepEqual(named, { description: "Detail", netValue: "Amount (£)" });
+    // next year the client's export has the columns in a different order
+    const reapplied = fromNamedColumnMap(named, ["Ref", "Amount (£)", "Detail", "VAT"]);
+    assert.equal(reapplied.description, 2);
+    assert.equal(reapplied.netValue, 1);
   });
 });
 

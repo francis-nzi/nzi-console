@@ -31,6 +31,7 @@ import {ClientFactorPanel} from "./ClientFactorPanel";
 import {EmissionSourceRegister} from "./EmissionSourceRegister";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
+import {SpendImportPanel} from "./SpendImportPanel";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 
 const blank = (): ScopeRowWriteFields => ({
@@ -295,6 +296,7 @@ export function CrpScopeWorkspace({
         <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
         {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
         {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
+        {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
         <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
