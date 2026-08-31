@@ -44,11 +44,12 @@ was smoke-tested against the live schema — no error.
 | B3.1 | Prior-year resolution (most-recent prior CRP job w/ spend; explicit empty state; `fromJobId` override validated) | ✅ |
 | B3.2 | Mapping copy (name, GL, category, `SpendDetail` w/ `netValue`=0, scope, apply %; **no quantity**; origin in `data_source`) | ✅ |
 | B3.3 | Factor-version re-pin (exact `dataset_id`/`factor_id`/`client_factor_id`; superseded dataset added to selections with an audited NZC-030 reason) | ✅ |
-| B3.4 | Moved-version flag → re-review (advisory `factorVersionMoved` in register + preview; never blocks; pending state + independent review enforce the re-review) | ✅ |
+| B3.4 | Moved-version flag → re-review (advisory `factorVersionMoved` in register **+ preview**; never blocks; pending state + independent review enforce the re-review) | ✅ |
+| B3.4 | **YoY variance advisory** (#19) — a rolled-forward source carries the prior year's quantity (`yoyPriorQuantity`/`yoyPriorUnit` via the `rolled_forward_from_source_id` join); `apps/console/app/jobs/yoyVariance.ts` flags a swing outside 50–200% in the register, advisory only (NZC-018), unit-tested | ✅ |
 | B3.5 | Idempotency & safety (partial unique index + pre-filter; atomic command; CRP + tenant guard) | ✅ |
 | B3.6 | Governance spine unchanged (no auto-review/sync; five states in the panel; concurrency + review = B2) | ✅ |
 | B3.7 | Isolation & schema (one additive migration `0039`; no request-time DDL; applied to staging) | ✅ |
-| B3.8 | Tests & build (contract validate; backend copy/re-pin/no-prior-year/idempotent; migration; read-model SQL smoke; typecheck · test:portal 80 · test:staff 29 · contracts 23 · mock-data 20 · console 11 · isolated-backend 151 · `next build`) | ✅ |
+| B3.8 | Tests & build (contract validate; backend copy/re-pin/no-prior-year/idempotent; read-model rolled-forward + YoY mapping; `yoyVariance` pure helper; migration; SQL smoke; typecheck · test:portal 80 · test:staff 30 · contracts 23 · mock-data 20 · console 16 · isolated-backend 152 · `next build`) | ✅ |
 | B3.9 | Accessibility & responsive (automated axe of `#spend-rollforward` + no-overflow in `apps/console/tests/e2e/spend-adapter.spec.ts`; runs once deployed) | ◐ automated pending deploy |
 | B3.9 | **Rendered screen-reader pass — human-only** | ⛔ folded into the #22 / A3 session — new issue |
 | B3.10 | Standards ("carbon emissions"; dd/mm/yyyy) | ✅ copy compliant; no dates rendered in this panel |
@@ -59,8 +60,9 @@ was smoke-tested against the live schema — no error.
   only). The re-pin itself works for client factors (`client_factor_id` copied verbatim).
 - Amounts are deliberately not carried; a consultant re-enters this year's figures. This is by
   design (rollforward carries the mapping, not the data).
-- YoY variance advisory flag (issue #19) still needs this prior-year data wired to it — a
-  follow-up within B3's milestone.
+- YoY variance advisory (#19) covers **rolled-forward** sources (explicit
+  `rolled_forward_from_source_id` link). Matching a freshly *pasted* ledger line to a
+  prior-year source by description/category is a later refinement.
 
 ## Rollback
 

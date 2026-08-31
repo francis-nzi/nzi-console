@@ -131,7 +131,7 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 
 | # | Slice | Introduces (NZC) | Flag value | Acceptance gate | Depends on | Status |
 |---|-------|------------------|-----------|-----------------|-----------|--------|
-| B3 | Previous-year rollforward | NZC-030 re-pin | `spend` | B2 gate B3 section + `STAGING_ACCEPTANCE_B3.md` | B2 | 🔨 in review — build to gate, flagged, migration 0039 on staging; YoY flag (#19) is the remaining B3-milestone follow-up |
+| B3 | Previous-year rollforward + YoY variance flag | NZC-030 re-pin; #19 | `spend` | B2 gate B3 section + `STAGING_ACCEPTANCE_B3.md` | B2 | 🔨 in review — flagged; migration 0039 on staging; rollforward (#24) + YoY advisory (#19, PR on top) done; #25 SR pass is human-only |
 | B4 | Excel / CSV bulk import | NZC-036 | `spend` (+import) | new gate | B2 | ⏳ |
 | B5 | Portal spend mirror | NZC-035 | portal spend | portal parity gate | B2, portal | ⏳ |
 | S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |

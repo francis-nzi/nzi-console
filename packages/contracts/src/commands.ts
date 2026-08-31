@@ -222,6 +222,7 @@ export type EmissionSource = {
   submittedByPortal: boolean; reviewStatus: "pending" | "approved" | "rejected" | null; version: number;
   scopeRowId: string | null; scopeRowVersion: number | null; scopeRowReviewStatus: "pending" | "approved" | "rejected" | null;
   rolledForwardFromSourceId: string | null; factorVersionMoved: boolean;
+  yoyPriorQuantity: number | null; yoyPriorUnit: string | null;
 };
 
 // Previous-year rollforward (NZC-030) — preview of the prior job's spend mappings.

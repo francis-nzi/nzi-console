@@ -82,6 +82,7 @@ export const commutingSource: EmissionSource = {
   notes: null, calculatedTco2e: 0.51, enabled: true, submittedByPortal: true, reviewStatus: "approved", version: 1,
   scopeRowId: "row-commute-auto", scopeRowVersion: 1, scopeRowReviewStatus: "approved",
   rolledForwardFromSourceId: null, factorVersionMoved: false,
+  yoyPriorQuantity: null, yoyPriorUnit: null,
 };
 export const commutingAutoRow: ScopeRowReadModel = baseRow({
   id: "row-commute-auto", scope: "3", sourceLabel: "Employee commuting", reportLabel: "Employee commuting",
