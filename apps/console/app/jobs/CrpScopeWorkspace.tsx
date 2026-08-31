@@ -150,6 +150,7 @@ export function CrpScopeWorkspace({
   const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
   const openRegister=(filter:ScopeRegisterFilter)=>{setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));};
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
+  const spendReportingMonths = reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`);
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
   const readinessChecks = [
     { label: "Reporting datasets", complete: datasets.some((dataset) => dataset.selected), detail: `${datasets.filter((dataset) => dataset.selected).length} selected` },
@@ -291,7 +292,7 @@ export function CrpScopeWorkspace({
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
         <ClientFactorPanel jobId={job.header.id} factors={factors} notice={setNotice}/>
-        {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} notice={setNotice}/>}
+        {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
         <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}

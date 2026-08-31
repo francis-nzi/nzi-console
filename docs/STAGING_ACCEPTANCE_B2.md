@@ -32,18 +32,18 @@ Built behind the flag, OFF by default. Current generic data-entry path unchanged
 | 1 | Sync to Scope 3.1 · **Spend-based tier** | ✅ |
 | 1 | Controlled **PG&S category** on the synced row (NZC-033) | ✅ **Increment 2** — migration `0038` adds `job_emission_sources.purchased_goods_category_id` (FK to `purchased_goods_categories`, same as the manual scope-row path); `emission.source.create` requires it for `sourceType='spend'` and validates it against the job's client; `syncEmissionSourceToScope` carries it into `job_scope_rows.purchased_goods_category_id`. The adapter's category is now a `<select>` of the job's controlled categories, not free text |
 | 1 | Provenance (ledger source + mapping + factor set/version + **data hash + as-at date**) + lineage | ✅ **Increment 3** — `syncEmissionSourceToScope` provenance now carries `factorSet`, `factorVersion`, `asAt`, and a `dataHash` (`sha256:` of the source's identifying content: id, scope, qty, unit, factor, version, PG&S category, apply %, detail, monthly). Lineage gains an "Evidence identity" line. Re-syncing unchanged data yields the same hash |
-| 1 | **Monthly** where the ledger carries it (NZC-032) | ⛔ not in this increment (ledger has an invoice date only; monthly split TBD) |
+| 1 | **Monthly** where the ledger carries it (NZC-032) | ✅ **Increment 4** — a spend line carries one invoice date, so its whole net value lands in that calendar month. When the job has a reporting period, the adapter offers "split each line into its invoice month" (on by default); the import sends the period-spanning slot vector and `emission.source.create` now resolves + validates it (period match, in order) and derives the annual quantity — the same `resolveSourceMonthlyActivity` path as the manual register. An invoice date outside the period is flagged advisory and imported as an annual value |
 | 1 | Re-sync idempotent, stable row identity, versioned mappings | ✅ (existing `0037` unique index + source-locked upsert) |
 | 2 | **Upload** ledger → preview → commit | ◐ **paste** + preview + commit; file upload is NZC-036 / Phase 3 |
-| 2 | Category suggestion **single + bulk** | ◐ single only |
+| 2 | Category suggestion **single + bulk** | ✅ **Increment 4** — per-row "Suggest: …" plus a "Suggest all categories" action that fills every empty row from the grounded keyword match; still advisory, never auto-applied on parse |
 | 2 | Previous-year rollforward re-pins prior factor versions (NZC-030) | ⛔ B3 |
 | 2 | Duplicate-key + anomaly (YoY, unit sanity) advisory flags | ◐ **Increment 3** — the adapter flags within-paste duplicate lines (description + net + GL) and non-positive net values as **advisory** notes (never blocks import, NZC-018). YoY variance needs prior-year data (B3) |
 | 3 | AI guardrails (grounded, confidence shown, human confirms, never a 2nd write path) | ◐ deterministic keyword suggestion grounded in the client's own PG&S categories; advisory; human confirms. No confidence score; not "AI" |
 | 4 | Governance spine unchanged (review bound to version, five states, optimistic concurrency, never auto-reviewed) | ✅ reuses `emission.source.create` + `emission.source.sync`; adapter renders empty/parsed/importing/failed/done |
 | 5 | Isolation — staging only, migration-owned, no request-time DDL | ✅ Increment 2 adds migration `0038` (additive, nullable column + FK) — apply to isolated staging via the runbook below; no request-time DDL |
 | 6 | Flag OFF by default, server = client, instant off-restore | ✅ (e2e 39/39 flag-off) |
-| 7 | Tests: sync-to-scope ✅ · mapping ⛔ · rollforward re-pin ⛔ · idempotency ◐ · integration journey + negatives ⛔ | ◐ |
-| 7 | typecheck · test:portal · test:staff · build | ✅ (+ contracts 21, mock-data 20, isolated-backend 143, console 6) |
+| 7 | Tests: sync-to-scope ✅ · mapping ✅ · monthly-on-create ✅ · rollforward re-pin ⛔ (B3) · idempotency ◐ · negative journeys ✅ (spend without a category → `REQUIRED`; category not on the job's client → `NOT_FOUND`; malformed monthly slots → `REPORTING_PERIOD_MISMATCH`; junk ledger → dropped) | ◐ |
+| 7 | typecheck · console/portal/staff node tests · build | ✅ (+ contracts 22, mock-data 20, isolated-backend 147, console 11, staff/portal 32) |
 | 8 | Rendered a11y + responsive review of the spend grid | ⛔ not yet (needs a flagged staging deploy + a scan) |
 | 9 | "carbon emissions" / dd/mm/yyyy | ✅ `formatDate` used; copy compliant |
 | 10 | Sites / NZC-042 | ✅ **N/A** — spend sources are created site-less; no site field; no site-scoped factor logic. NZC-042 not implicated |
@@ -61,15 +61,36 @@ psql "$NZI_ISOLATED_DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/isolated-backen
 the job's client); `syncEmissionSourceToScope` carries it into the canonical row's existing
 `purchased_goods_category_id` FK; the spend adapter picks from the job's controlled categories.
 
+## Increment 4 — monthly split, bulk suggestion, negative journeys (31 Aug 2026)
+
+- `emission.source.create` now runs the same monthly-activity resolution as the
+  register edit path (`resolveSourceMonthlyActivity`): slots must span the reporting
+  period once, in order; the annual quantity is derived from the populated months.
+  `monthlyActivityIssues` also runs in the contract `validate()`.
+- `spendLedger.ts` gains the pure `monthlySlotsForLine(invoiceDate, netValue,
+  reportingMonths)` helper; the adapter uses it behind a default-on "split by invoice
+  month" toggle and a "Suggest all categories" bulk action.
+- `CrpScopeWorkspace` passes the job's reporting months (from the selected dataset
+  period) to the adapter.
+- New tests: contract `emission.source.create` (spend category `REQUIRED`, monthly
+  slot identity, detail-kind match); `postgresCommands` create-with-monthly derives
+  the annual quantity and rejects a non-spanning period; `spendLedger` junk-ledger
+  and `monthlySlotsForLine` cases.
+
+This increment also carries the Increment 3 content (evidence identity + advisory
+flags) that a stacked-PR merge order left off `main`.
+
 ## Remaining before the flag flips
 
-1. Monthly split for spend where present (gate 1).
-3. Provenance data-hash + as-at date (gate 1).
-4. Bulk category suggestion; duplicate-key + YoY/unit-sanity advisory flags (gate 2).
-5. Previous-year rollforward with factor-version re-pin — coordinate with B3 (gate 2).
-6. Mapping / idempotency / negative-journey tests (gate 7).
-7. Flagged staging deploy → rendered a11y + responsive review of the spend grid → this record (gate 8).
-8. Rollback check.
+1. Previous-year rollforward with factor-version re-pin — coordinate with B3 (gate 2).
+2. YoY variance advisory flag — needs prior-year data (B3, gate 2).
+3. Flagged staging deploy → rendered a11y + responsive review of the spend grid → this record (gate 8).
+4. Rollback check.
+
+**Francis, after this PR merges:** apply migration `0038` to isolated staging (runbook
+above), then set `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` on the Render staging
+service so the rendered a11y + responsive scan of the spend grid (gate 8) can run.
+The flag flip itself stays a separate, reviewed change once gate 8 is recorded.
 
 ## Rollback
 

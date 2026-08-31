@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseSpendLedger, suggestCategory } from "../app/jobs/spendLedger";
+import { monthlySlotsForLine, parseSpendLedger, suggestCategory } from "../app/jobs/spendLedger";
 
 describe("parseSpendLedger", () => {
   it("parses a tab-separated ledger with a header row", () => {
@@ -27,6 +27,29 @@ describe("parseSpendLedger", () => {
 
   it("returns nothing for blank input", () => {
     assert.deepEqual(parseSpendLedger("   \n  "), []);
+  });
+
+  it("drops rows of pure junk that carry no description", () => {
+    assert.deepEqual(parseSpendLedger("\t\t\t\n,,,\n   "), []);
+  });
+});
+
+describe("monthlySlotsForLine", () => {
+  const months = ["2025-01", "2025-02", "2025-03"];
+
+  it("places the whole net value on the invoice month and null elsewhere", () => {
+    assert.deepEqual(monthlySlotsForLine("2025-02-14", 1240, months), [
+      { month: "2025-01", quantity: null },
+      { month: "2025-02", quantity: 1240 },
+      { month: "2025-03", quantity: null },
+    ]);
+  });
+
+  it("returns null when the line cannot be split", () => {
+    assert.equal(monthlySlotsForLine(null, 1240, months), null);
+    assert.equal(monthlySlotsForLine("2025-02-14", null, months), null);
+    assert.equal(monthlySlotsForLine("2025-02-14", 1240, []), null);
+    assert.equal(monthlySlotsForLine("2024-12-31", 1240, months), null);
   });
 });
 
