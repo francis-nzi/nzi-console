@@ -3,6 +3,12 @@
 Running record against the **B3 section of `docs/ACCEPTANCE_B2_SPEND_ADAPTER.md`**. B3 rides the
 flag that is already on (`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend`) — **no flag change**.
 
+> **STATUS: MERGED + DEPLOYED 31 Aug 2026** (PRs #24 rollforward, #26 YoY advisory).
+> `/api/health` ok; `GET /jobs/{id}/spend-rollforward` and the register (new `prior` join +
+> YoY columns) return 200; the rollforward panel renders flag-on at `/jobs/[id]`. Full e2e
+> **42/42 on staging** including the B3.9 axe scan of `#spend-rollforward` — 0 violations.
+> Remaining: #25 (rollforward-panel screen-reader pass — human-only).
+
 ## What shipped
 
 A **"Roll forward last year's spend"** panel in the CRP workspace's spend area (behind the
@@ -50,7 +56,7 @@ was smoke-tested against the live schema — no error.
 | B3.6 | Governance spine unchanged (no auto-review/sync; five states in the panel; concurrency + review = B2) | ✅ |
 | B3.7 | Isolation & schema (one additive migration `0039`; no request-time DDL; applied to staging) | ✅ |
 | B3.8 | Tests & build (contract validate; backend copy/re-pin/no-prior-year/idempotent; read-model rolled-forward + YoY mapping; `yoyVariance` pure helper; migration; SQL smoke; typecheck · test:portal 80 · test:staff 30 · contracts 23 · mock-data 20 · console 16 · isolated-backend 152 · `next build`) | ✅ |
-| B3.9 | Accessibility & responsive (automated axe of `#spend-rollforward` + no-overflow in `apps/console/tests/e2e/spend-adapter.spec.ts`; runs once deployed) | ◐ automated pending deploy |
+| B3.9 | Accessibility & responsive (automated axe of `#spend-rollforward` + no-overflow in `apps/console/tests/e2e/spend-adapter.spec.ts`) | ✅ automated — deployed, e2e 42/42, 0 axe violations on the panel |
 | B3.9 | **Rendered screen-reader pass — human-only** | ⛔ folded into the #22 / A3 session — new issue |
 | B3.10 | Standards ("carbon emissions"; dd/mm/yyyy) | ✅ copy compliant; no dates rendered in this panel |
 

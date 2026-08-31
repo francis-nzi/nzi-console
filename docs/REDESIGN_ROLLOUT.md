@@ -121,17 +121,18 @@ enumerates the enabled adapters (e.g. `spend`, later `spend,commuting`). Off/emp
 path. The committed value lives in `render.yaml` (source of truth), not the dashboard.
 
 **Done**
-- Model schema — migrations 0034–0036 + `@nzi/contracts` types (NZC-041–045). *Confirm 0034 & 0036 are on
-  `main`; later slices depend on them.*
+- Model schema — migrations 0034–0039 + `@nzi/contracts` types (NZC-041–045). 0034 & 0036 confirmed on
+  `main` (commit `db30d84`); all applied to staging.
 - B1 typed capture fields (#5).
 - B2 spend adapter (CRM) — live, flag on (`=spend`, #17); `docs/ACCEPTANCE_B2_SPEND_ADAPTER.md`,
   `docs/STAGING_ACCEPTANCE_B2.md`.
+- **B3 previous-year rollforward + YoY variance advisory** (NZC-030; #19) — merged + deployed (#24, #26);
+  migration 0039; e2e 42/42; `docs/STAGING_ACCEPTANCE_B3.md`. Only #25 (screen-reader pass, human-only) open.
 
 **Remaining**
 
 | # | Slice | Introduces (NZC) | Flag value | Acceptance gate | Depends on | Status |
 |---|-------|------------------|-----------|-----------------|-----------|--------|
-| B3 | Previous-year rollforward + YoY variance flag | NZC-030 re-pin; #19 | `spend` | B2 gate B3 section + `STAGING_ACCEPTANCE_B3.md` | B2 | 🔨 in review — flagged; migration 0039 on staging; rollforward (#24) + YoY advisory (#19, PR on top) done; #25 SR pass is human-only |
 | B4 | Excel / CSV bulk import | NZC-036 | `spend` (+import) | new gate | B2 | ⏳ |
 | B5 | Portal spend mirror | NZC-035 | portal spend | portal parity gate | B2, portal | ⏳ |
 | S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |
