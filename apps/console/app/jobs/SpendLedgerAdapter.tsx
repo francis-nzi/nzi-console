@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import type { FactorOption, PurchasedGoodsCategoryOption } from "@nzi/contracts";
 import { formatDate } from "../lib/formatDate";
-import { parseSpendLedger, suggestCategory, type SpendLedgerLine } from "./spendLedger";
+import { monthlySlotsForLine, parseSpendLedger, suggestCategory, type SpendLedgerLine } from "./spendLedger";
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 type Row = SpendLedgerLine & { key: string; currency: string; categoryId: string; factorId: string; state: "" | "importing" | "done" | "failed"; detail: string };
@@ -27,19 +27,41 @@ export function SpendLedgerAdapter({
   jobId,
   factors,
   categories,
+  reportingMonths,
   notice,
 }: {
   jobId: string;
   factors: FactorOption[];
   categories: PurchasedGoodsCategoryOption[];
+  reportingMonths: string[];
   notice: Notice;
 }) {
   const [raw, setRaw] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
+  const [splitByMonth, setSplitByMonth] = useState(reportingMonths.length > 0);
   const scope3Factors = useMemo(() => factors.filter((factor) => factor.scopes.some((code) => code === "3.1" || code.startsWith("3"))), [factors]);
 
   const update = (key: string, patch: Partial<Row>) => setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+
+  // Advisory only (NZC-018) — never blocks import.
+  const flagsFor = (row: Row): string[] => {
+    const notes: string[] = [];
+    const signature = `${row.description.trim().toLowerCase()}|${row.netValue ?? ""}|${(row.glCode ?? "").toLowerCase()}`;
+    if (rows.filter((other) => `${other.description.trim().toLowerCase()}|${other.netValue ?? ""}|${(other.glCode ?? "").toLowerCase()}` === signature).length > 1) notes.push("possible duplicate line");
+    if (row.netValue !== null && row.netValue <= 0) notes.push("net value is zero or negative");
+    if (splitByMonth && reportingMonths.length > 0 && row.netValue !== null && row.invoiceDate && !monthlySlotsForLine(row.invoiceDate, row.netValue, reportingMonths)) notes.push("invoice date falls outside the reporting period — imported as an annual value");
+    return notes;
+  };
+
+  const suggestAll = () =>
+    setRows((current) =>
+      current.map((row) => {
+        if (row.categoryId || row.state === "done") return row;
+        const suggested = categories.find((category) => category.name === suggestCategory(row.description, categories));
+        return suggested ? { ...row, categoryId: suggested.id } : row;
+      }),
+    );
 
   function parse() {
     const parsed = parseSpendLedger(raw).map((line) => toRow(line, categories));
@@ -56,6 +78,7 @@ export function SpendLedgerAdapter({
     for (const row of ready) {
       update(row.key, { state: "importing", detail: "" });
       const selected = scope3Factors.find((factor) => factor.factorId === row.factorId);
+      const monthly = splitByMonth ? monthlySlotsForLine(row.invoiceDate, row.netValue, reportingMonths) : null;
       const created = await postBrowserCommand<{ sourceId: string }>(
         `/api/isolated/jobs/${jobId}/emission-sources`,
         {
@@ -76,7 +99,7 @@ export function SpendLedgerAdapter({
           applyPct: 100,
           dataSource: "Spend ledger",
           dataConfidence: null,
-          monthlyActivity: [],
+          monthlyActivity: monthly ?? [],
           detail: { kind: "spend", netValue: row.netValue ?? 0, vatPercent: row.vatPercent, glCode: row.glCode, category: categories.find((category) => category.id === row.categoryId)?.name ?? "Uncategorised" },
           notes: null,
         },
@@ -185,6 +208,9 @@ export function SpendLedgerAdapter({
                     <td>
                       <span className={`nz-st ${row.state === "done" ? "done" : row.state === "failed" ? "nof" : "need"}`}>{row.state === "importing" ? "Importing…" : row.state === "done" ? "Imported" : row.state === "failed" ? "Failed" : "Ready"}</span>
                       {row.detail ? <div className="muted">{row.detail}</div> : null}
+                      {flagsFor(row).map((flag) => (
+                        <div key={flag} className="nz-hint" style={{ color: "#8A6410" }} role="note">⚠ {flag}</div>
+                      ))}
                     </td>
                   </tr>
                 ))}
@@ -192,9 +218,18 @@ export function SpendLedgerAdapter({
             </table>
           </div>
           {categories.length === 0 ? <div className="nz-banner warn" role="alert">No purchased-goods categories are configured for this client. Add them in the Purchased Goods &amp; Services panel before importing spend.</div> : null}
+          {reportingMonths.length > 0 ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, fontSize: 13 }}>
+              <input type="checkbox" checked={splitByMonth} onChange={(event) => setSplitByMonth(event.target.checked)} />
+              Split each line into its invoice month across the {reportingMonths.length}-month reporting period
+            </label>
+          ) : null}
           <div className="nz-config-actions" style={{ marginTop: 12 }}>
             <button type="button" className="nz-btn" disabled={busy} onClick={() => { setRows([]); setRaw(""); }}>
               Clear
+            </button>
+            <button type="button" className="nz-btn" disabled={busy || categories.length === 0 || rows.every((row) => row.categoryId || row.state === "done")} onClick={suggestAll}>
+              Suggest all categories
             </button>
             <button type="button" className="nz-btn pri" disabled={busy || ready.length === 0} onClick={() => void importReady()}>
               {busy ? "Importing…" : `Import ${ready.length} line${ready.length === 1 ? "" : "s"}`}

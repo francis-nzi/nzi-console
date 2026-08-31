@@ -82,6 +82,24 @@ export function parseSpendLedger(text: string): SpendLedgerLine[] {
     .filter((line) => line.description !== "");
 }
 
+export type LedgerMonthlySlot = { month: string; quantity: number | null };
+
+/**
+ * Monthly split "where the ledger carries it" (NZC-032): a spend line carries one
+ * invoice date, so its whole net value lands in that calendar month. Returns a
+ * slot vector spanning the job's reporting months (each month once, in order) with
+ * the value on the invoice month and `null` elsewhere — the shape the
+ * `emission.source.create` command validates and sums into the annual quantity.
+ * Returns `null` when the line cannot be split: no invoice date, no reporting
+ * months, or an invoice date that falls outside the reporting period.
+ */
+export function monthlySlotsForLine(invoiceDate: string | null, netValue: number | null, reportingMonths: string[]): LedgerMonthlySlot[] | null {
+  if (!invoiceDate || netValue === null || reportingMonths.length === 0) return null;
+  const invoiceMonth = invoiceDate.slice(0, 7);
+  if (!reportingMonths.includes(invoiceMonth)) return null;
+  return reportingMonths.map((month) => ({ month, quantity: month === invoiceMonth ? netValue : null }));
+}
+
 /**
  * Advisory, grounded category suggestion (NZC-018): a deterministic word-overlap
  * match of the line description against the job's own controlled PG&S category
