@@ -1,9 +1,13 @@
 # B2 — spend ledger adapter · acceptance record
 
-Running record against `docs/ACCEPTANCE_B2_SPEND_ADAPTER.md`. **The flag
-(`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend`) does not flip until every box is ticked**
-and this record is complete (evidence + known limitations + rollback), per the gate's
-Exit clause. The flip is its own reviewed change, separate from the build PRs.
+Running record against `docs/ACCEPTANCE_B2_SPEND_ADAPTER.md`.
+
+> **STATUS: FLIPPED 31 Aug 2026 (PR #17).** Every in-scope gate item is ✅; the five
+> deferrals are tracked as issues #18–#22 (B3 / B4 / human-only). See "FLIPPED" below.
+
+The flag was flipped only after every box was ticked and this record was complete
+(evidence + known limitations + rollback), per the gate's Exit clause. The flip was its
+own reviewed change (PR #17, `render.yaml` only), separate from the build PRs.
 
 ## Increment 1 — flagged adapter skeleton (30 Aug 2026)
 
@@ -107,29 +111,35 @@ Gate 8 re-scan clean after PR #14 deployed; full e2e **41/41 on staging with the
 ON**. Added the re-sync idempotency test (gate 7). Every gate item is now ✅ **within
 B2's scope**.
 
-## Go / no-go for the flip
+## FLIPPED — 31 Aug 2026 (PR #17)
 
-**Every in-scope gate item is ✅.** The items not ticked are, by the acceptance doc's
-own scoping, **out of B2**:
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` committed to `render.yaml`; deployed;
+`/api/health` ok; the spend adapter renders flag-on at `/jobs/[id]` (`spend-adapter.spec.ts`
+green against the deployed build). Staff/CRM only — the adapter is rendered solely in
+`CrpScopeWorkspace`; the portal is untouched (portal mirror is B5).
 
-| Item | Gate | Where it lands |
+**Every in-scope gate item is ✅.** The deferrals — all classified **BREADTH** (later
+scope; the adapter is correct without them) — are tracked:
+
+| Deferral | Gate | Issue |
 |---|---|---|
-| File **upload** (paste is done) | 2 | NZC-036 / Phase 3 |
-| Previous-year rollforward + factor-version re-pin | 2 | B3 |
-| YoY variance advisory flag (needs prior-year data) | 2 | B3 |
-| "Confidence shown" on the suggestion | 3 | N/A — deterministic keyword match, not AI; human confirms |
+| Spend ledger **file upload** → preview → commit (NZC-036) | 2 | #20 (B4) |
+| Category-suggestion match-strength / "confidence shown" | 3 | #21 (B4) — likely `wontfix`; deterministic matcher |
+| Previous-year **rollforward** + factor-version re-pin (NZC-030) | 2 | #18 (B3) |
+| **YoY variance** advisory flag (needs prior-year data) | 2 | #19 (B3) |
+| Manual assistive-technology narration pass — spend grid | 8 | #22 (**human-only**, like A3) |
 
-**Rollback:** flag is per-adapter; unsetting `spend` from
-`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` and redeploying restores the generic path with no
-data migration. The `quality_tier='spend-based'` sync branch only touches
-`source_type='spend'` rows, which do not exist until the adapter is used.
-
-**Decision (Francis):** flip now, accepting the four deferrals above as documented
-Phase-3/B3 scope — or hold the flip until B3. If flip: its own PR, adding
-`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2=spend` to `render.yaml`, never bundled with a build.
+**Rollback:** flag is per-adapter; remove `spend` from `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2`
+and redeploy — the generic path (unconditional) returns immediately, no data migration.
+The `quality_tier='spend-based'` sync branch only touches `source_type='spend'` rows.
+Verified: full e2e 39/39 flag-off vs 41/41 flag-on, the 39 shared tests identical.
 
 ## Rollback
 
-Flag is OFF; nothing to roll back. When enabled, unset `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2`
-and redeploy — the generic path returns instantly. The `quality_tier='spend-based'` sync
-change affects only `source_type='spend'` rows, of which there are none until the flag is on.
+Flag is ON (`spend`) as of PR #17. To roll back: remove `spend` from
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in `render.yaml` (and the Render dashboard) and
+redeploy — `CrpScopeWorkspace` stops rendering the adapter and the generic
+`EmissionSourceRegister` path (never gated) is the only data-entry surface again. No
+data migration: any `source_type='spend'` rows already imported remain valid canonical
+rows, visible in the generic register and scope-row list; only the dedicated capture UI
+disappears.

@@ -140,10 +140,14 @@ passes its own rendered acceptance.
 
 - [x] **Phase 0** — additive model/schema (NZC-041–045; migrations 0034–0037) merged; applied to staging.
 - [x] **B1** — kind-specific capture fields (commuting / vehicle / spend) in the emission-source register.
-- [ ] **B2 — spend ledger adapter (Phase 2 vertical slice).** CRP-side, flagged. Paste ledger → advisory PG&S
-  category + factor per line → Scope 3.1 sources synced with the Spend-based quality tier through the
-  unchanged spine. No sites (NZC-042 not touched). *Behind the flag; its own acceptance pending before flip.*
-- [ ] B3 previous-year rollforward · B4 Excel/CSV preflight import (NZC-036) · B5 constrained portal mirror.
+- [x] **B2 — spend ledger adapter (Phase 2 vertical slice).** CRP-side, flagged. Paste ledger → advisory PG&S
+  category + factor per line → Scope 3.1 sources synced with the Spend-based quality tier (+ controlled PG&S
+  category, monthly split by invoice month, stable evidence hash) through the unchanged spine. No sites
+  (NZC-042 not touched). Acceptance in `docs/STAGING_ACCEPTANCE_B2.md`; **flag flipped 31 Aug 2026 (PR #17)**.
+  Deferrals tracked: #18/#19 (B3), #20/#21 (B4), #22 (human-only AT pass).
+- [ ] **B3 — previous-year rollforward** (next). Re-pins prior factor versions (NZC-030); brings the
+  prior-year data the YoY variance flag needs (#18, #19). Behind the same flag, its own acceptance gate.
+- [ ] B4 Excel/CSV preflight import (NZC-036; #20, #21) · B5 constrained portal mirror.
 - [ ] Phase 3 — remaining adapters + stage-as-section (NZC-038); Phase 4 — retire the generic path.
 
 ## Delivery rules
