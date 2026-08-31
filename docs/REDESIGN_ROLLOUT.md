@@ -136,7 +136,7 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 | B4 | CSV bulk import (CSV-first; `.xlsx` deferred) | NZC-036 | `spend-import` | `ACCEPTANCE_B4_IMPORT.md` | B2 | 🟢 built (#29–#32 merged + deployed); flip pending gate 9 + screen-reader |
 | B5 | Portal spend mirror (paste + manual; CSV upload → B5.1) | NZC-016/035/036 | `portal-spend` | `ACCEPTANCE_B5_PORTAL_SPEND.md` · `STAGING_ACCEPTANCE_B5.md` | B2, portal framework | 🟢 built (increments 1–2); flip pending gate 5a (staging flag + portal security + screen-reader) |
 | B5.1 | Portal CSV upload (hardening slice) | NZC-036 | `portal-spend` | in `ACCEPTANCE_B5_PORTAL_SPEND.md` | B5, B4 parser | ⏳ |
-| S1 | Per-entity register + commuting/vehicle adapters | NZC-043 | `commuting`,`vehicle` | new gate | migration 0036 | ⏳ **largest** |
+| S1 | Source register group roll-up + commuting/vehicle framing (register itself already built) | NZC-043/037/036 | `commuting`,`vehicle` | `ACCEPTANCE_S1_SOURCE_REGISTER.md` · `STAGING_ACCEPTANCE_S1.md` | migrations 0036/0037/0043 | 🟡 increment 1 (group roll-up model + backend) built; register UI + bulk (S1.1/S1.2) + flips pending — **largest** |
 | S2 | Client factors UI — lifecycle (list · versioned edit · archive · reuse) + EPD lineage | NZC-041 | `client-factors` | `ACCEPTANCE_S2_CLIENT_FACTORS.md` · `STAGING_ACCEPTANCE_S2.md` | migration 0034 (on `main`) | 🟢 built (increments 1–2); flip pending staging flag + screen-reader (gate 9) |
 | S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
 | S4 | Row/drawer breadth (data_confidence, conversion memory, notes, column text) | NZC-044 | (folds into S1–S3) | within host slice | 0034–0036 | ⏳ partial |

@@ -474,6 +474,20 @@ home for the typed capture adapters (NZC-035). Each roll-up lands in the canonic
 **auto-generated** entry (`source_id`, `linked_row_id`, `is_auto_generated`, `auto_pair_kind`) — `0036`.
 Confirmed 29 Aug 2026.
 
+**S1 amendment — group roll-up [Confirmed 31 Aug 2026].** A `job_emission_groups` group aggregates its
+enabled members into **exactly one** auto-generated canonical row (linked by a new
+`job_scope_rows.group_id`, `0043`), behind the per-domain flags `commuting` / `vehicle`
+(`ACCEPTANCE_S1_SOURCE_REGISTER.md`, Q-S1-1..5):
+**Q-S1-1** the roll-up row recomputes **deterministically from enabled members only**, **excludes those
+members from the scope total** (no double count — cf. `3ed5810e`), carries provenance/lineage back to its
+members, and is **not independently editable** (edits happen on members; a member change returns the row
+to `pending`). **Q-S1-2** bulk paste for Employee Commuting / Company Vehicles is deferred to S1.1 / S1.2
+(reuses the B4 parser). **Q-S1-3** per NZC-037, the register's add UI offers **vehicle + commuting only**
+now — `source_type='asset'` stays a valid schema enum for legacy/roll-up rows but has no manual add path.
+**Q-S1-4** `commuting` and `vehicle` flip **independently**. **Q-S1-5** the model/register is additive and
+inert until a flagged surface reads it. **NZC-042 does not gate S1** — `site_id` is a plain assignment
+reference here; site-scoped factors are S3.
+
 ### NZC-044 — Remaining canonical-row fields [Confirmed 29 Aug 2026]
 The row gains `data_confidence` (H/M/L, a distinct axis from the quality tier), `source_quantity`/
 `source_unit` (as-entered conversion memory), and `column_text` (report column heading, distinct from
