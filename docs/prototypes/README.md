@@ -21,3 +21,20 @@ record). Where a detail is not visible in the HTML, `DATA_ENTRY_UX.md` governs.
 Published Artifact equivalents (same content):
 - CRP: https://claude.ai/code/artifact/f5fda985-b9eb-428c-ae8a-1c59d062cc43
 - Client Portal: https://claude.ai/code/artifact/513f921c-c169-4b9c-89a4-34899892e789
+
+---
+
+## Report Studio prototype (v3) — `report_v3.html`
+
+Build reference for the **Report → Report Printing** redesign. Read alongside
+`docs/REPORT_PRINTING_UX.md`. Demonstrates the four fixes:
+
+- **Print-safe charts** — donut + activity bars as deterministic inline SVG (no chart library).
+- **Editable sections** — hover any narrative block to Edit / Regenerate (AI) / Reset; status pill +
+  outline dot show default / AI-drafted / client-edited.
+- **Data-bound figure tokens** — green locked chips inside prose; the surrounding wording is editable,
+  the figures are not, so the data-integrity banner stays green after editing.
+- **Paged output** — Continuous ↔ Page view (A4) toggle; page-break markers; Appendix table repeats its
+  header across the page boundary.
+
+Published Artifact: https://claude.ai/code/artifact/df37490d-ce57-4625-910b-36d1a513f103

@@ -61,7 +61,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-039 | Terminology: "carbon emissions" across all screens; "carbon footprint" reserved for the PCF (Product Carbon Footprint) module | Confirmed (29 Aug 2026) |
 | NZC-040 | Date format: dd/mm/yyyy everywhere (UK), one shared formatter | Confirmed (29 Aug 2026) |
 | NZC-041 | Client factors are first-class: reusable client/job-scoped `client_factors` with EPD evidence; rows carry factor source + is_custom_entry | Confirmed (29 Aug 2026) |
-| NZC-042 | Sites are places, not labels: location + lifecycle (active/vacated) on client_sites; apply_pct apportionment on the row | Confirmed (29 Aug 2026) |
+| NZC-042 | Sites are places, not labels: location + lifecycle (active/vacated) on client_sites; apply_pct apportionment on the row. Site-scoped factors closed — factors live on the row, not the site; S3 unblocked | Confirmed (29 Aug 2026; fully closed 01 Sep 2026) |
 | NZC-043 | Per-entity source register + roll-up groups is the home for typed adapters, auto-generated into the canonical row | Confirmed (29 Aug 2026) |
 | NZC-044 | Canonical row gains data_confidence, source_qty/uom conversion memory, column_text, and link fields | Confirmed (29 Aug 2026) |
 | NZC-045 | The reporting taxonomy (level_1..4) is stored and controlled, not derived from the scope string | Confirmed (29 Aug 2026) |
@@ -465,9 +465,15 @@ the CRP job. **D-S2-4** archive is blocked while an enabled non-rejected scope r
 to **apportion one source across sites** (`0035`). **Sub-question resolved 30 Aug 2026 — factors are not
 site-scoped in the schema:** the canonical row already carries `site_id` and `factor_id` independently, so a
 site on its own tariff (e.g. a renewable REGO contract) is captured as a per-site row with its own factor.
-Auto-applying a site's preferred factor to its rows is a later UI convenience, not a model gap; revisit only
-if consultants find themselves re-picking the same site factor repeatedly. Confirmed 29 Aug 2026; sub-question
-closed 30 Aug 2026.
+Auto-applying a site's preferred factor to its rows is a **data-entry pre-fill only**, not a model
+relationship: any such default is stamped onto the row's own `factor_id` at entry, stays fully editable,
+and is recorded in lineage exactly like a hand-picked factor. There is **no resolve-time or compute-time
+site→factor indirection** — a factor is never looked up through the site when a total or a derived
+roll-up row is recomputed, so reviewed snapshots and S1/S3 group totals can never silently drift when a
+site's default changes. The pre-fill itself is a deferred convenience (not built now); revisit only if
+consultants find themselves re-picking the same site factor repeatedly. **S3 (sites-as-places) inherits
+this settled model and is no longer gated by any NZC-042 decision.** Confirmed 29 Aug 2026; sub-question
+closed 30 Aug 2026; fully closed 01 Sep 2026.
 
 ### NZC-043 — Per-entity source register + roll-up groups [Confirmed 29 Aug 2026]
 Individual assets, vehicles and employees live in `job_emission_sources` (+ `job_emission_groups` for
