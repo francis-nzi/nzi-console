@@ -31,7 +31,7 @@ screen-reader / viewport pass happens **once**, on the accordion.
 | §1 CRM completeness view — all 15 Scope 3 when Scope 3 is included; empties `noData`, never mandatory, excluded from reports | ✅ read model (report exclusion already holds — empty categories have no rows) |
 | §1 portal — authorised categories only (bucket grants), not the full 15 | ✅ `audience:"portal"` filters to active bucket-grant category codes |
 | §7 tests | ✅ contracts 38 (taxonomy shape) · isolated-backend 191 (CRM completeness + portal authorised + migration invariant) · console 42 · typecheck · `next build` |
-| §6 flag — no flag referenced yet; read model + `0044` inert until the accordion reads them | ✅ — **apply `0044` to isolated staging before merge** |
+| §6 flag — no flag referenced yet; read model + `0044` inert until the accordion reads them | ✅ applied to isolated staging 01 Sep 2026 (see incident note below) |
 | §2–§5, §8 (shared component, accordion, site-context, progressive disclosure, a11y) | ⏳ increments a-ui / b / c / d |
 
 ## Rollback
@@ -39,3 +39,25 @@ screen-reader / viewport pass happens **once**, on the accordion.
 `0044` is additive: `category_code` is nullable, only written by the accordion's entry form; the read model
 falls back to `scope` for grouping. With no `data-entry-accordion` flag and no surface reading the taxonomy,
 everything is inert and today's flat register + panels are unchanged.
+
+## Incident — 01 Sep 2026: CRP job workspace 503 (`0044` not applied to isolated staging)
+
+`listScopeRows` was widened in UX1b (increment `b`, this record) to select `r.category_code` — but that
+select runs for **every** CRP job page, not only the accordion, so "inert until a flagged surface reads it"
+(as claimed above and at the `a-backend` gate) was wrong for this specific column read. `0044` had not
+actually been applied to the isolated staging database, so every CRP job workspace (`/jobs/[jobId]`) 503'd
+with `column "category_code" does not exist` inside `apiFailure`'s generic "Isolated API unavailable"
+response — surfaced in the UI as "Workspace unavailable".
+
+**Fix:** applied `0044` to isolated staging directly (`node packages/isolated-backend/scripts/apply-migration.mjs
+packages/isolated-backend/migrations/0044_scope_row_category_code.sql`, using the boundary-guarded,
+non-production-only connection already in `.env.local`). Verified: `category_code` present on both
+`job_scope_rows` and `job_emission_sources`; `SELECT r.scope_row_id, r.category_code FROM
+nzi_console.job_scope_rows r` succeeds; the job from the report (`J000717`) is live in the isolated `jobs`
+table. No data loss — the migration only adds a nullable column.
+
+**Process gap:** a read-model change that adds a column to an *unconditional* query (used outside the new
+flag) needs the migration applied **before that PR's deploy**, not "before the flag flips." `a-backend`'s
+own gate said this; `b`'s description didn't re-flag it because the column looked accordion-only. Future
+migrations that any always-on read model depends on go in the PR checklist as a pre-deploy step, not a
+pre-flip one.
