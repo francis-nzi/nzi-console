@@ -2,7 +2,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
 :root{
   --bg:#F5F8F6; --surface:#FFFFFF; --surface-2:#F1F5F2; --surface-3:#E7EEE9;
@@ -13,9 +13,9 @@
   --amber:#FFC24B; --amber-bg:#FFF4DC; --amber-ink:#7A5600; --amber-line:#F3D89A;
   --coral:#FF5C48; --coral-bg:#FEE9E5; --coral-ink:#8A2318; --coral-line:#F6C4BB;
   --sky:#2E86C1; --sky-bg:#E7F1FA; --sky-ink:#1A5580; --sky-line:#BBD8EE;
-  --s1:#0B7A4B; --s2:#5FB39A; --s3:#7FC8EC;
+  /* canonical NZI scope palette (matches @nzi/charts) */
+  --s1:#FF5C48; --s2:#FFC24B; --s3:#0BA75E;
   --paper:#FFFFFF; --paper-edge:#D9E2DC; --paper-ground:#E9EFEB;
-  --serif:"Newsreader",Georgia,"Times New Roman",serif;
   --shadow:0 1px 2px rgba(11,27,43,.05),0 8px 24px rgba(11,27,43,.06);
   --shadow-lg:0 12px 40px rgba(11,27,43,.16);
   --focus:0 0 0 3px rgba(11,167,94,.35);
@@ -29,7 +29,7 @@
   --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
   --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
   --sky:#5FB0E6; --sky-bg:#13293A; --sky-ink:#AFD7F2; --sky-line:#244A63;
-  --s1:#22C57E; --s2:#5FB39A; --s3:#7FC8EC;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
   --paper:#0F2231; --paper-edge:#22394B; --paper-ground:#08121A;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
   --shadow-lg:0 16px 48px rgba(0,0,0,.5);
@@ -42,7 +42,7 @@
   --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
   --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
   --sky:#5FB0E6; --sky-bg:#13293A; --sky-ink:#AFD7F2; --sky-line:#244A63;
-  --s1:#22C57E; --s2:#5FB39A; --s3:#7FC8EC;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
   --paper:#0F2231; --paper-edge:#22394B; --paper-ground:#08121A;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
   --shadow-lg:0 16px 48px rgba(0,0,0,.5);
@@ -55,7 +55,6 @@ button{font-family:inherit; cursor:pointer}
 .tnum{font-variant-numeric:tabular-nums}
 .hidden{display:none !important}
 
-/* ---- concept + status bars ---- */
 .concept{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 18px; background:var(--ink); color:#EAF2ED; font-size:12.5px}
 .concept b{color:#fff}
 .concept .tag{background:var(--brand); color:#04180E; font-weight:700; padding:2px 8px; border-radius:999px; font-size:11px; letter-spacing:.02em}
@@ -87,7 +86,6 @@ button{font-family:inherit; cursor:pointer}
 .topbar{display:flex; align-items:center; gap:14px; padding:11px 22px; border-bottom:1px solid var(--line); background:var(--surface); position:sticky; top:0; z-index:20}
 .crumbs{font-size:13px; color:var(--muted)} .crumbs b{color:var(--ink)}
 
-/* ---- report toolbar ---- */
 .rtoolbar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:10px 22px; border-bottom:1px solid var(--line); background:var(--surface-2)}
 .seg{display:inline-flex; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px}
 .seg button{border:0; background:transparent; color:var(--ink-2); font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:7px; display:inline-flex; align-items:center; gap:7px}
@@ -104,7 +102,6 @@ button{font-family:inherit; cursor:pointer}
 .integrity svg{width:15px; height:15px}
 .integrity b{font-weight:800}
 
-/* ---- body: outline + canvas ---- */
 .work{display:grid; grid-template-columns:236px 1fr; min-height:0; flex:1}
 .outline{border-right:1px solid var(--line); background:var(--surface); padding:16px 12px; position:sticky; top:0; align-self:start; height:calc(100vh - 39px); overflow:auto}
 .outline h4{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:2px 8px 10px}
@@ -123,7 +120,6 @@ button{font-family:inherit; cursor:pointer}
 .stage{background:var(--paper-ground); padding:26px; overflow:auto; height:calc(100vh - 39px)}
 .pageflow{display:flex; flex-direction:column; align-items:center; gap:0}
 
-/* ---- the paper ---- */
 .page{background:var(--paper); color:var(--ink); width:794px; max-width:100%; position:relative}
 .stage.mode-page .page{min-height:1123px; box-shadow:var(--shadow-lg); border:1px solid var(--paper-edge); margin-bottom:26px; padding:64px 66px 74px}
 .stage.mode-flow .page{box-shadow:none; border:0; border-top:1px dashed var(--paper-edge); margin-bottom:0; padding:30px 66px 40px; min-height:0}
@@ -132,33 +128,29 @@ button{font-family:inherit; cursor:pointer}
 .stage.mode-flow .pnum{display:none}
 .runhead{position:absolute; top:26px; left:66px; right:66px; display:flex; justify-content:space-between; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line-2); padding-bottom:8px}
 .stage.mode-flow .runhead{display:none}
-/* page break marker (flow view) */
 .pbreak{display:none}
-.stage.mode-flow .pbreak{display:flex; align-items:center; gap:12px; color:var(--sky-ink); font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin:0 0 0}
+.stage.mode-flow .pbreak{display:flex; align-items:center; gap:12px; color:var(--sky-ink); font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin:0}
 .stage.mode-flow .pbreak::before,.stage.mode-flow .pbreak::after{content:""; height:0; border-top:2px dashed var(--sky-line); flex:1}
 .stage.mode-flow .pbreak .pb-num{background:var(--sky-bg); border:1px solid var(--sky-line); padding:2px 10px; border-radius:999px; color:var(--sky-ink); white-space:nowrap}
 
-/* ---- report typography ---- */
 .rt-kicker{font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--brand-deep); font-weight:700; margin:0 0 8px}
-.rt-h2{font-family:var(--serif); font-size:23px; font-weight:600; letter-spacing:-.01em; margin:0 0 14px; color:var(--ink); text-wrap:balance}
-.rt-h3{font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2); font-weight:700; margin:22px 0 10px}
-.prose{font-family:var(--serif); font-size:15px; line-height:1.62; color:var(--ink-2); max-width:62ch}
-.prose p{margin:0 0 13px}
-.prose p:last-child{margin-bottom:0}
+.rt-h2{font-size:22px; font-weight:700; letter-spacing:-.015em; margin:0 0 14px; color:var(--ink); text-wrap:balance}
+.rt-h3{font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2); font-weight:700; margin:24px 0 10px}
+.prose{font-size:14px; line-height:1.66; color:var(--ink-2); max-width:64ch}
+.prose p{margin:0 0 12px} .prose p:last-child{margin-bottom:0}
+.rt-note{font-size:12.5px; line-height:1.6; color:var(--muted); max-width:66ch; margin:14px 0 0}
+.commit-list{margin:10px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px}
+.commit-list li{display:flex; gap:10px; font-size:13.5px; color:var(--ink-2)}
+.commit-list li::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--brand); margin-top:7px; flex:0 0 auto}
 
-/* data-bound token */
-.tok{font-family:var(--font); font-weight:700; font-variant-numeric:tabular-nums; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); border-radius:5px; padding:0 5px; white-space:nowrap; cursor:default; position:relative; font-size:.92em}
-.tok::before{content:""; display:inline-block; width:8px; height:8px; margin-right:3px; vertical-align:-1px;
-  background:currentColor; -webkit-mask:var(--lockico) center/contain no-repeat; mask:var(--lockico) center/contain no-repeat; opacity:.75}
+.tok{font-family:var(--font); font-weight:700; font-variant-numeric:tabular-nums; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); border-radius:5px; padding:0 5px; white-space:nowrap; cursor:default; position:relative; font-size:.94em}
+.tok::before{content:""; display:inline-block; width:8px; height:8px; margin-right:3px; vertical-align:-1px; background:currentColor; -webkit-mask:var(--lockico) center/contain no-repeat; mask:var(--lockico) center/contain no-repeat; opacity:.75}
 :root{--lockico:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='11' width='16' height='9' rx='2'/><path d='M8 11V7a4 4 0 0 1 8 0v4'/></svg>")}
-.tok:hover{filter:brightness(.97)}
 .tok .tip{visibility:hidden; opacity:0; position:absolute; bottom:135%; left:50%; transform:translateX(-50%); background:var(--ink); color:#EAF2ED; font-family:var(--font); font-weight:500; font-size:11px; line-height:1.35; letter-spacing:0; padding:7px 10px; border-radius:8px; width:210px; text-align:left; box-shadow:var(--shadow-lg); z-index:5; transition:opacity .13s; pointer-events:none; text-transform:none}
 .tok .tip b{color:#fff}
 .tok:hover .tip{visibility:visible; opacity:1}
 
-/* section wrapper + hover controls */
 .sec{position:relative; padding:14px 16px; margin:0 -16px; border-radius:12px; border:1px solid transparent; transition:background .12s,border-color .12s}
-.stage.mode-page .sec{margin:0 -16px}
 .sec:hover{background:var(--surface-2); border-color:var(--line)}
 .sec.editing{background:var(--surface); border-color:var(--brand); box-shadow:var(--focus)}
 .sec.editing .prose[contenteditable]{outline:none; background:color-mix(in srgb,var(--mint) 30%,transparent); border-radius:8px; padding:6px 8px; margin:-6px -8px}
@@ -176,41 +168,41 @@ button{font-family:inherit; cursor:pointer}
 .spill.ai{background:var(--sky-bg); color:var(--sky-ink); border:1px solid var(--sky-line)}
 .sec:hover .prose,.sec.editing .prose{padding-top:16px}
 
-/* cover */
 .cover{display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:40px}
-.wordmark{display:flex; align-items:center; gap:11px; margin-bottom:36px}
-.wordmark .leaf{width:44px; height:44px; border-radius:11px; background:radial-gradient(circle at 30% 25%,#7FC8EC,transparent 55%),linear-gradient(150deg,var(--brand),var(--brand-deep)); position:relative}
+.wordmark{display:flex; align-items:center; gap:11px; margin-bottom:30px}
+.wordmark .leaf{width:44px; height:44px; border-radius:11px; background:radial-gradient(circle at 30% 25%,#7FC8EC,transparent 55%),linear-gradient(150deg,var(--brand),var(--brand-deep))}
 .wordmark .wt{text-align:left; line-height:1}
-.wordmark .wt b{font-family:var(--serif); font-size:23px; color:var(--ink); display:block; font-weight:600}
+.wordmark .wt b{font-size:22px; color:var(--ink); display:block; font-weight:800; letter-spacing:-.01em}
 .wordmark .wt span{font-size:10px; letter-spacing:.34em; text-transform:uppercase; color:var(--brand-deep); font-weight:700}
-.cover .badge{width:74px; height:74px; border-radius:50%; background:var(--sky); color:#fff; display:grid; place-items:center; font-weight:800; font-size:12px; line-height:1.1; letter-spacing:.04em; margin:28px 0}
-.cover h1{font-family:var(--serif); font-size:34px; font-weight:600; letter-spacing:-.015em; margin:8px 0 0; max-width:16ch; text-wrap:balance}
-.metacard{margin-top:44px; width:420px; max-width:100%; border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.cover .badge{width:74px; height:74px; border-radius:50%; background:var(--sky); color:#fff; display:grid; place-items:center; font-weight:800; font-size:12px; line-height:1.1; letter-spacing:.04em; margin:26px 0}
+.cover h1{font-size:33px; font-weight:800; letter-spacing:-.02em; margin:6px 0 0; max-width:15ch; text-wrap:balance; line-height:1.15}
+.metacard{margin-top:40px; width:430px; max-width:100%; border:1px solid var(--line); border-radius:12px; overflow:hidden}
 .metacard .row{display:flex; justify-content:space-between; padding:12px 18px; font-size:13px; border-top:1px solid var(--line-2)}
 .metacard .row:first-child{border-top:0}
 .metacard .row span{color:var(--muted)} .metacard .row b{color:var(--ink); font-weight:600}
-.cover .conf{margin-top:38px; font-size:11px; color:var(--muted); letter-spacing:.02em}
+.cover .conf{margin-top:36px; font-size:11px; color:var(--muted); letter-spacing:.02em}
 
-/* stat + charts */
-.statbig{border:1px solid var(--line); border-radius:14px; padding:22px; text-align:center; max-width:340px; margin:0 auto}
+.statbig{border:1px solid var(--line); border-radius:14px; padding:22px; text-align:center; max-width:340px}
 .statbig .lbl{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:700}
-.statbig .big{font-family:var(--serif); font-size:52px; font-weight:600; letter-spacing:-.02em; line-height:1; margin:8px 0 2px}
+.statbig .big{font-size:48px; font-weight:800; letter-spacing:-.03em; line-height:1; margin:8px 0 2px}
 .statbig .u{color:var(--muted); font-size:13px}
 .chartcard{border:1px solid var(--line); border-radius:14px; padding:20px 22px; margin-top:6px}
-.chartcard .chead{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px}
+.chartcard .chead{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px}
 .chartcard .chead b{font-size:13.5px}
-.svgtag{display:inline-flex; align-items:center; gap:6px; font-size:9.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); padding:3px 8px; border-radius:6px}
+.svgtag{display:inline-flex; align-items:center; gap:6px; font-size:9.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); padding:3px 8px; border-radius:6px; white-space:nowrap}
 .svgtag svg{width:11px; height:11px}
-.donutwrap{display:flex; align-items:center; gap:26px; flex-wrap:wrap}
+.evidence{display:inline-flex; align-items:center; gap:7px; margin-top:14px; font-size:11.5px; font-weight:600; color:var(--brand-deep)}
+.evidence svg{width:13px; height:13px}
+.srcline{font-size:10.5px; color:var(--muted); margin-top:12px}
+.donutwrap{display:flex; align-items:center; gap:30px; flex-wrap:wrap}
 .donutwrap svg{flex:0 0 auto}
-.leg{flex:1; min-width:200px; display:flex; flex-direction:column; gap:2px}
-.leg .lr{display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--line-2); font-size:13px}
+.leg{flex:1; min-width:210px; display:flex; flex-direction:column; gap:2px}
+.leg .lr{display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line-2); font-size:13px}
 .leg .lr:first-child{border-top:0}
-.leg .sw{width:11px; height:11px; border-radius:3px; flex:0 0 auto}
-.leg .nm{flex:1} .leg .vv{font-weight:700; font-variant-numeric:tabular-nums} .leg .pc{color:var(--muted); width:52px; text-align:right; font-variant-numeric:tabular-nums}
+.leg .sw{width:12px; height:12px; border-radius:3px; flex:0 0 auto}
+.leg .nm{flex:1} .leg .vv{font-weight:700; font-variant-numeric:tabular-nums} .leg .pc{color:var(--muted); width:54px; text-align:right; font-variant-numeric:tabular-nums}
 .leg .lr.tot{border-top:1.5px solid var(--line); font-weight:700; margin-top:3px}
 
-/* tables */
 table.rt{width:100%; border-collapse:collapse; font-size:12.5px}
 table.rt thead th{background:var(--ink); color:#EAF2ED; text-align:left; font-weight:600; font-size:11px; letter-spacing:.03em; padding:9px 12px}
 table.rt thead th.num{text-align:right}
@@ -222,12 +214,23 @@ table.rt tr.total td{font-weight:800; color:var(--ink); border-top:2px solid var
 .contd{font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:700; margin:8px 2px 0}
 .thead-note{display:inline-flex; align-items:center; gap:6px; font-size:9.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--sky-ink); background:var(--sky-bg); border:1px solid var(--sky-line); padding:2px 8px; border-radius:6px; margin-left:8px; vertical-align:middle}
 
-/* activity bars (svg) */
-.barrow{display:grid; grid-template-columns:150px 1fr 52px; align-items:center; gap:12px; padding:6px 0; font-size:12.5px}
-.barrow .bn{color:var(--ink-2); text-align:right}
-.bartrack{background:var(--surface-2); border-radius:6px; height:20px; position:relative; overflow:hidden}
+.barrow{display:grid; grid-template-columns:158px 1fr 48px; align-items:center; gap:12px; padding:6px 0; font-size:12.5px}
+.barrow .bn{color:var(--ink-2); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.bartrack{background:var(--surface-2); border-radius:6px; height:20px; overflow:hidden}
 .barfill{height:100%; border-radius:6px}
 .barrow .bv{font-weight:700; font-variant-numeric:tabular-nums; text-align:right}
+
+.kv{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+.kvbox{border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.kvbox .kr{display:flex; justify-content:space-between; padding:10px 14px; font-size:12.5px; border-top:1px solid var(--line-2)}
+.kvbox .kr:first-child{border-top:0}
+.kvbox .kr span{color:var(--muted)} .kvbox .kr b{color:var(--ink); font-weight:600}
+.signgrid{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:8px}
+.signbox .sl{font-size:11px; color:var(--muted); margin-bottom:26px; border-bottom:1px solid var(--line); padding-bottom:4px}
+.verify{border:1px solid var(--coral-line); background:var(--coral-bg); border-radius:12px; padding:18px 20px}
+.verify h4{margin:0 0 10px; color:var(--coral-ink); font-size:13px}
+.verify p{margin:0 0 8px; font-size:12.5px; color:var(--ink-2); line-height:1.55}
+.sig{font-weight:700; font-size:18px; color:var(--ink); font-style:italic; margin-top:14px}
 
 .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:11px 18px; border-radius:10px; font-size:13px; box-shadow:var(--shadow-lg); opacity:0; transition:all .22s; z-index:60; display:flex; align-items:center; gap:10px}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
@@ -262,17 +265,14 @@ table.rt tr.total td{font-weight:800; color:var(--ink); border-top:2px solid var
   </aside>
 
   <div class="main">
-    <div class="topbar">
-      <div class="crumbs">Jobs · First Event (556) · Report · <b>Report Printing</b></div>
-    </div>
-
+    <div class="topbar"><div class="crumbs">Jobs · First Event (556) · Report · <b>Report Printing</b></div></div>
     <div class="rtoolbar">
       <span class="tlabel">View</span>
       <div class="seg" id="viewSeg">
         <button data-mode="flow" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Continuous</button>
         <button data-mode="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="8" rx="1"/><rect x="5" y="13" width="14" height="8" rx="1"/></svg>Page view · A4</button>
       </div>
-      <span class="integrity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>Data integrity passed · <b id="tokCount">11</b> figures data-bound to Outputs</span>
+      <span class="integrity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>Data integrity passed · <b id="tokCount">0</b> figures data-bound to Outputs</span>
       <span class="spacer"></span>
       <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0 4-4m-4 4-4-4M5 21h14"/></svg>Preview PDF</button>
       <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z"/></svg>Generate PDF</button>
@@ -281,7 +281,6 @@ table.rt tr.total td{font-weight:800; color:var(--ink); border-top:2px solid var
     <div class="work">
       <nav class="outline" id="outline">
         <h4>Report sections</h4>
-        <!-- outline links injected -->
         <div class="olegend">
           <div><span class="dot default"></span>Default template text</div>
           <div><span class="dot edited"></span>Edited by client</div>
@@ -289,10 +288,7 @@ table.rt tr.total td{font-weight:800; color:var(--ink); border-top:2px solid var
           <div><span class="dot locked"></span>Figures locked to data</div>
         </div>
       </nav>
-
-      <div class="stage mode-flow" id="stage">
-        <div class="pageflow" id="pageflow"><!-- pages injected --></div>
-      </div>
+      <div class="stage mode-flow" id="stage"><div class="pageflow" id="pageflow"></div></div>
     </div>
   </div>
 </div>
@@ -300,28 +296,12 @@ table.rt tr.total td{font-weight:800; color:var(--ink); border-top:2px solid var
 <div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg><span id="toastMsg"></span></div>
 
 <script>
-/* ---------- canonical report data (single source of truth) ---------- */
-const D = {
-  client:"First Event", title:"First Event Carbon Reduction Plan 2025–2026",
-  period:"1 Feb 2025 – 31 Jan 2026", generated:"01 September 2026",
+const D={ client:"First Event", period:"1 Feb 2025 – 31 Jan 2026", generated:"01/09/2026",
   total:108.15, s1:3.34, s2:0.55, s3:104.26,
-  scopes:[
-    {k:"Scope 1", v:3.34, pc:3.1, c:"var(--s1)"},
-    {k:"Scope 2", v:0.55, pc:0.5, c:"var(--s2)"},
-    {k:"Scope 3", v:104.26, pc:96.4, c:"var(--s3)"}
-  ],
-  activity:[
-    {n:"Employee Commuting", v:41.8, c:"var(--s3)"},
-    {n:"Travel", v:36.4, c:"var(--brand)"},
-    {n:"Business Travel", v:25.1, c:"var(--amber)"},
-    {n:"Company Vehicles", v:3.8, c:"var(--s1)"},
-    {n:"Fuels & Energy Related", v:0.8, c:"var(--brand-deep)"},
-    {n:"Waste in Operations", v:0.1, c:"var(--coral)"},
-    {n:"Purchased Goods & Services", v:0.0, c:"var(--sky)"}
-  ]
+  scopes:[{k:"Scope 1",v:3.34,pc:3.1,c:"var(--s1)"},{k:"Scope 2",v:0.55,pc:0.5,c:"var(--s2)"},{k:"Scope 3",v:104.26,pc:96.4,c:"var(--s3)"}],
+  activity:[{n:"Employee Commuting",v:41.8,c:"var(--s3)"},{n:"Travel",v:36.4,c:"var(--brand-deep)"},{n:"Business Travel",v:25.1,c:"var(--amber)"},{n:"Company Vehicles",v:3.8,c:"var(--s1)"},{n:"Fuels & Energy Related",v:0.8,c:"var(--brand)"},{n:"Waste in Operations",v:0.1,c:"var(--coral)"},{n:"Purchased Goods & Services",v:0.0,c:"var(--sky)"}]
 };
-/* audit rows for Appendix 1 (spans two pages -> demonstrates repeating header) */
-const AUDIT = [
+const AUDIT=[
   ["Registered Office","Scope 1","Company Vehicles","Passenger Vehicles: Average Car Diesel","12,000.0","miles","3.3"],
   ["Registered Office","Scope 2","Company Vehicles","UK Electricity for EVs: Average Car Battery Electric Vehicle","9,324.0","miles","0.5"],
   ["Registered Office","Scope 2","Energy","UK Renewable Electricity: Generated Renewable Electricity: Grid","40,222.8","kWh","0.0"],
@@ -348,233 +328,126 @@ const AUDIT = [
   ["Registered Office","Scope 3","Purchased Goods & Services","Water Supply","160.0","cubic metres","0.0"]
 ];
 
-/* ---------- data-bound token helper ---------- */
-function tok(val, note){
-  return `<span class="tok">${val}<span class="tip"><b>Data-bound figure.</b> ${note} Updates automatically from Outputs — cannot be mistyped.</span></span>`;
-}
+function tok(val,note){return `<span class="tok">${val}<span class="tip"><b>Data-bound figure.</b> ${note} Updates automatically from Outputs — cannot be mistyped.</span></span>`;}
 
-/* ---------- section content (default template text with locked tokens) ---------- */
-const SECTIONS = {
-  exec:{
-    title:"Executive Summary",
-    def:`<p>First Event recorded total greenhouse gas emissions of ${tok("108.15 tCO₂e","Canonical total for the reporting year.")} for the 2025–2026 reporting year, comprising ${tok("3.34 tCO₂e","Scope 1 subtotal.")} from Scope 1, ${tok("0.55 tCO₂e","Scope 2 subtotal.")} from Scope 2, and ${tok("104.26 tCO₂e","Scope 3 subtotal.")} from Scope 3. As this is the organisation's first measured footprint, no prior-year comparison is available; this baseline establishes the reference point against which all future reductions are tracked.</p>
-    <p>Scope 3 accounts for ${tok("96.4%","Scope 3 share of total.")} of the total footprint, with travel-related activities the single largest driver at ${tok("36.4 tCO₂e","Travel category total.")}, followed by business travel and employee commuting. Ten reduction actions have been identified to address these hotspots — eight short-term and two medium-term — concentrated on travel, commuting and supply-chain data quality.</p>`,
-    ai:`<p>In its first year of carbon measurement, First Event's operational footprint totalled ${tok("108.15 tCO₂e","Canonical total for the reporting year.")}, of which Scope 3 value-chain emissions represent ${tok("96.4%","Scope 3 share of total.")}. Direct emissions were modest — ${tok("3.34 tCO₂e","Scope 1 subtotal.")} (Scope 1) and ${tok("0.55 tCO₂e","Scope 2 subtotal.")} (Scope 2) — reflecting a low-asset, people-centred events business.</p>
-    <p>The dominant sources are travel and commuting. This report sets out ten prioritised actions and a pathway to net zero by 2050, with the current year serving as the immutable baseline for future reduction tracking.</p>`
-  },
-  cat:{
-    title:"Emissions by Scope & Category",
-    def:`<p>For the 2025–2026 reporting year, First Event's total measured carbon emissions stand at ${tok("108.15 tCO₂e","Canonical total.")}. Scope 3 dominates the profile at ${tok("104.26 tCO₂e","Scope 3 subtotal.")} (${tok("96.4%","Scope 3 share.")}), followed by Scope 1 at ${tok("3.34 tCO₂e","Scope 1 subtotal.")} and Scope 2 at ${tok("0.55 tCO₂e","Scope 2 subtotal.")}. As this is the first carbon report, no prior-year benchmark is available.</p>
-    <p>Travel-related activity is the clear hotspot. Together, travel and commuting categories account for approximately three-quarters of the total footprint. Addressing this concentration through the planned Travel &amp; Commuting action, alongside the Fleet Strategy, will be critical to meaningful reductions in future periods.</p>`,
-    ai:`<p>The category profile is heavily weighted toward mobility. Employee Commuting (${tok("41.8 tCO₂e","Employee Commuting category total.")}) and Travel (${tok("36.4 tCO₂e","Travel category total.")}) are the two largest lines, together with Business Travel (${tok("25.1 tCO₂e","Business Travel category total.")}). Scope 1 and 2 combined contribute under 4 tCO₂e.</p>
-    <p>This distribution is typical of a services organisation with limited owned assets, and points clearly to travel policy and commuting support as the highest-leverage interventions.</p>`
-  },
-  action:{
-    title:"Carbon Reduction Actions",
-    def:`<p>First Event has identified ten key areas for emissions reduction. Eight are classified as short-term — targeting immediate gains through employee engagement, staff training, supply-chain data, governance, fleet strategy and home-working efficiency. Two medium-term actions address external stakeholder engagement and a structured travel and commuting programme.</p>
-    <p>No long-term actions have yet been defined; developing these will be an important next step to ensure sustained decarbonisation beyond the initial programme horizon.</p>`,
-    ai:`<p>The action plan comprises ten measures designed to address the ${tok("108.15 tCO₂e","Canonical total.")} footprint. With Scope 3 accounting for ${tok("96.4%","Scope 3 share.")} of the total — driven primarily by travel and commuting — the plan rightly concentrates effort on these areas through a mix of behavioural, policy and data-quality initiatives.</p>
-    <p>Eight short-term actions build the behavioural and data foundations; two medium-term actions extend the work to suppliers and travel policy. Long-term measures remain to be defined.</p>`
-  }
-};
-const sectionState = {}; // id -> {mode:'default'|'edited'|'ai'}
-
-/* ---------- SVG chart builders (deterministic, print-safe) ---------- */
-function donut(scopes){
-  const R=70, r=44, cx=90, cy=90, C=2*Math.PI;
-  let a=-Math.PI/2, paths="";
-  const tot=scopes.reduce((s,x)=>s+x.v,0);
-  scopes.forEach(s=>{
-    const frac=s.v/tot; const a2=a+frac*C;
-    // build donut segment as filled path between outer and inner arc
-    const x1=cx+R*Math.cos(a), y1=cy+R*Math.sin(a), x2=cx+R*Math.cos(a2), y2=cy+R*Math.sin(a2);
-    const x3=cx+r*Math.cos(a2), y3=cy+r*Math.sin(a2), x4=cx+r*Math.cos(a), y4=cy+r*Math.sin(a);
-    const large=frac>0.5?1:0;
-    paths+=`<path d="M${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L${x3.toFixed(2)} ${y3.toFixed(2)} A${r} ${r} 0 ${large} 0 ${x4.toFixed(2)} ${y4.toFixed(2)} Z" fill="${s.c}"/>`;
-    a=a2;
-  });
-  return `<svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Emissions by scope donut">
+/* ---------- SVG charts (deterministic, print-safe, canonical palette) ---------- */
+function donut(scopes,size){
+  size=size||210; const cx=size/2, cy=size/2, R=size/2-14, r=R-30, C=2*Math.PI;
+  let a=-Math.PI/2, paths=""; const tot=scopes.reduce((s,x)=>s+x.v,0);
+  scopes.forEach(s=>{ const frac=s.v/tot, a2=a+frac*C;
+    const x1=cx+R*Math.cos(a),y1=cy+R*Math.sin(a),x2=cx+R*Math.cos(a2),y2=cy+R*Math.sin(a2);
+    const x3=cx+r*Math.cos(a2),y3=cy+r*Math.sin(a2),x4=cx+r*Math.cos(a),y4=cy+r*Math.sin(a);
+    const lg=frac>0.5?1:0;
+    paths+=`<path d="M${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${lg} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L${x3.toFixed(2)} ${y3.toFixed(2)} A${r} ${r} 0 ${lg} 0 ${x4.toFixed(2)} ${y4.toFixed(2)} Z" fill="${s.c}" stroke="var(--paper)" stroke-width="2.5"/>`;
+    a=a2; });
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="Emissions by scope">
     ${paths}
-    <text x="90" y="84" text-anchor="middle" font-family="Newsreader,serif" font-size="30" font-weight="600" fill="var(--ink)">108.2</text>
-    <text x="90" y="104" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="var(--muted)">tCO₂e total</text>
+    <text x="${cx}" y="${cy-2}" text-anchor="middle" font-family="Inter,sans-serif" font-size="${size*0.19}" font-weight="800" fill="var(--ink)" letter-spacing="-1">108.2</text>
+    <text x="${cx}" y="${cy+18}" text-anchor="middle" font-family="Inter,sans-serif" font-size="10.5" font-weight="600" fill="var(--muted)" letter-spacing="1">tCO₂e TOTAL</text>
   </svg>`;
 }
-function donutLegend(scopes){
-  let h="";
-  scopes.forEach(s=>{ h+=`<div class="lr"><span class="sw" style="background:${s.c}"></span><span class="nm">${s.k}</span><span class="vv tnum">${s.v.toFixed(2)}</span><span class="pc">${s.pc}%</span></div>`; });
-  h+=`<div class="lr tot"><span class="sw" style="background:transparent"></span><span class="nm">Total</span><span class="vv tnum">108.15</span><span class="pc">100%</span></div>`;
+function donutLegend(scopes,total){
+  let h=scopes.map(s=>`<div class="lr"><span class="sw" style="background:${s.c}"></span><span class="nm">${s.k}</span><span class="vv tnum">${s.v.toFixed(2)}</span><span class="pc">${s.pc}%</span></div>`).join("");
+  h+=`<div class="lr tot"><span class="sw" style="background:transparent"></span><span class="nm">Total</span><span class="vv tnum">${total.toFixed(2)}</span><span class="pc">100%</span></div>`;
   return h;
 }
-function bars(act){
-  const max=Math.max(...act.map(a=>a.v));
-  return act.map(a=>`<div class="barrow"><span class="bn">${a.n}</span><div class="bartrack"><div class="barfill" style="width:${Math.max(1.5,a.v/max*100)}%;background:${a.c}"></div></div><span class="bv tnum">${a.v.toFixed(1)}</span></div>`).join("");
+function bars(act){ const max=Math.max(...act.map(a=>a.v));
+  return act.map(a=>`<div class="barrow"><span class="bn">${a.n}</span><div class="bartrack"><div class="barfill" style="width:${Math.max(1.5,a.v/max*100)}%;background:${a.c}"></div></div><span class="bv tnum">${a.v.toFixed(1)}</span></div>`).join(""); }
+function vbars(data,maxY){ // [{label,v,c}]
+  const W=660,H=230,pl=42,pb=28,pt=12,pr=8; const cw=(W-pl-pr)/data.length; const max=maxY||Math.max(...data.map(d=>d.v))*1.1;
+  let g="",bars="",lbl="";
+  for(let i=0;i<=4;i++){const y=pt+(H-pt-pb)*(i/4);const val=(max*(1-i/4));g+=`<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W-pr}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-family="Inter" font-size="9.5" fill="var(--muted)">${val.toFixed(0)}</text>`;}
+  data.forEach((d,i)=>{const bh=(H-pt-pb)*(d.v/max);const x=pl+cw*i+cw*0.24;const bw=cw*0.52;const y=H-pb-bh;
+    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}" rx="3" fill="${d.c||'var(--brand-deep)'}"/><text x="${(x+bw/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="10" font-weight="700" fill="var(--ink)">${d.v.toFixed(1)}</text>`;
+    lbl+=`<text x="${(pl+cw*i+cw/2).toFixed(1)}" y="${H-9}" text-anchor="middle" font-family="Inter" font-size="10" fill="var(--ink-2)">${d.label}</text>`;});
+  return `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="bar chart">${g}${bars}${lbl}</svg>`;
 }
+function pathway(){ // reduction pathway to net zero
+  const W=680,H=250,pl=44,pb=30,pt=14,pr=12; const x0=2026,x1=2050,max=120;
+  const X=y=>pl+(W-pl-pr)*((y-x0)/(x1-x0)); const Y=v=>pt+(H-pt-pb)*(1-v/max);
+  const pts=[{x:2026,v:108.15,l:"Baseline"},{x:2035,v:54.1,l:"Interim −50%"},{x:2050,v:10.8,l:"Net zero −90%"}];
+  let grid="";for(let i=0;i<=4;i++){const y=pt+(H-pt-pb)*(i/4);grid+=`<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W-pr}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-family="Inter" font-size="9.5" fill="var(--muted)">${(max*(1-i/4)).toFixed(0)}</text>`;}
+  let xl="";[2026,2035,2050].forEach(y=>{xl+=`<text x="${X(y).toFixed(1)}" y="${H-9}" text-anchor="middle" font-family="Inter" font-size="9.5" fill="var(--muted)">${y}</text>`;});
+  const line=pts.map((p,i)=>`${i?'L':'M'}${X(p.x).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(" ");
+  let mk="";pts.forEach(p=>{mk+=`<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="4" fill="var(--brand-deep)"/><text x="${X(p.x).toFixed(1)}" y="${(Y(p.v)-10).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="9.5" font-weight="700" fill="var(--ink)">${p.l}</text>`;});
+  return `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="reduction pathway">${grid}${xl}<path d="${line}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-dasharray="6 5"/>${mk}</svg>`;
+}
+function intensityChart(){
+  const W=680,H=230,pl=42,pb=28,pt=14,pr=12,x0=2026,x1=2050,max=1.8;
+  const X=y=>pl+(W-pl-pr)*((y-x0)/(x1-x0)); const Y=v=>pt+(H-pt-pb)*(1-v/max);
+  const emp=[[2026,1.7],[2035,0.85],[2050,0.30]], turn=[[2026,0.7],[2035,0.4],[2050,0.13]];
+  let grid="";for(let i=0;i<=3;i++){const y=pt+(H-pt-pb)*(i/3);grid+=`<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W-pr}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-family="Inter" font-size="9.5" fill="var(--muted)">${(max*(1-i/3)).toFixed(2)}</text>`;}
+  const mkline=(d,c)=>`<path d="${d.map((p,i)=>`${i?'L':'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="2.5" stroke-dasharray="5 4"/>`+d.map(p=>`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="3.4" fill="${c}"/>`).join("");
+  let xl="";[2026,2035,2050].forEach(y=>{xl+=`<text x="${X(y).toFixed(1)}" y="${H-9}" text-anchor="middle" font-family="Inter" font-size="9.5" fill="var(--muted)">${y}</text>`;});
+  return `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="intensity to 2050">${grid}${xl}${mkline(emp,'var(--brand-deep)')}${mkline(turn,'var(--sky)')}</svg>`;
+}
+function chartLegend(items){ return `<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--ink-2)">`+items.map(i=>`<span style="display:inline-flex;align-items:center;gap:7px"><span style="width:14px;height:3px;border-radius:2px;background:${i.c};display:inline-block"></span>${i.n}</span>`).join("")+`</div>`; }
+const svgtag=`<span class="svgtag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 14l4-4 4 4 4-6 4 4"/></svg>SVG · print-safe</span>`;
+const evidence=`<a class="evidence" href="#" onclick="return false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>View chart evidence</a>`;
+const src=`<div class="srcline">Source CEDA 2025 v1.0 · DEFRA 2024 v1.2 · DESNZ 2024 v1.0 — as at 24/08/2026</div>`;
 
-/* ---------- category table ---------- */
-const CAT=[
-  ["Scope 1","Company Vehicles","3.3"],["Scope 1","Sub-total","3.3","sub"],
-  ["Scope 2","Company Vehicles","0.5"],["Scope 2","Energy","0.0"],["Scope 2","Sub-total","0.5","sub"],
-  ["Scope 3","Business Travel","25.1"],["Scope 3","Employee Commuting","41.8"],["Scope 3","Fuels & Energy Related Activities","0.8"],
-  ["Scope 3","Purchased Goods and Services","0.0"],["Scope 3","Travel","36.4"],["Scope 3","Waste Generated in Operations","0.1"],
-  ["Scope 3","Sub-total","104.2","sub"],["","TOTAL EMISSIONS","108.1","total"]
-];
-function catTable(){
-  let rows=CAT.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td></tr>`).join("");
-  return `<table class="rt"><thead><tr><th>Scope</th><th>Category</th><th class="num">2025–2026 tCO₂e</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
+const CAT=[["Scope 1","Company Vehicles","3.3"],["Scope 1","Sub-total","3.3","sub"],["Scope 2","Company Vehicles","0.5"],["Scope 2","Energy","0.0"],["Scope 2","Sub-total","0.5","sub"],["Scope 3","Business Travel","25.1"],["Scope 3","Employee Commuting","41.8"],["Scope 3","Fuels & Energy Related Activities","0.8"],["Scope 3","Purchased Goods and Services","0.0"],["Scope 3","Travel","36.4"],["Scope 3","Waste Generated in Operations","0.1"],["Scope 3","Sub-total","104.2","sub"],["","TOTAL EMISSIONS","108.1","total"]];
+function catTable(){return `<table class="rt"><thead><tr><th>Scope</th><th>Category</th><th class="num">2025–2026 tCO₂e</th></tr></thead><tbody>${CAT.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td></tr>`).join("")}</tbody></table>`;}
 const AUDIT_HEAD=`<thead><tr><th>Site</th><th>Scope</th><th>Category</th><th>Details</th><th class="num">Qty</th><th>Unit</th><th class="num">tCO₂e</th></tr></thead>`;
-function auditRows(list,total){
-  let rows=list.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td class="num">${r[4]}</td><td>${r[5]}</td><td class="num">${r[6]}</td></tr>`).join("");
-  if(total) rows+=`<tr class="total"><td colspan="6">Total</td><td class="num">108.1</td></tr>`;
-  return `<table class="rt">${AUDIT_HEAD}<tbody>${rows}</tbody></table>`;
-}
+function auditRows(list,total){let rows=list.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td class="num">${r[4]}</td><td>${r[5]}</td><td class="num">${r[6]}</td></tr>`).join("");if(total)rows+=`<tr class="total"><td colspan="6">Total</td><td class="num">108.1</td></tr>`;return `<table class="rt">${AUDIT_HEAD}<tbody>${rows}</tbody></table>`;}
 
-/* ---------- section renderer ---------- */
-function sectionHTML(id){
-  const s=SECTIONS[id]; const st=sectionState[id]?.mode||'default';
-  const body = st==='ai'? s.ai : (st==='edited'? (sectionState[id].html||s.def) : s.def);
-  const pill = st==='ai'?`<span class="spill ai">AI-drafted</span>`: st==='edited'?`<span class="spill edited">Edited by client</span>`:`<span class="spill default">Default template</span>`;
-  return `<section class="sec" id="sec-${id}" data-sec="${id}">
-    ${pill}
-    <div class="sectools">
-      <button class="stbtn pri" data-act="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edit text</button>
-      <button class="stbtn" data-act="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/></svg>Regenerate</button>
-      <button class="stbtn" data-act="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>Reset</button>
-    </div>
-    <div class="prose" data-body>${body}</div>
-  </section>`;
+/* ---------- editable sections ---------- */
+const SECTIONS={
+  exec:{def:`<p>First Event recorded total greenhouse gas emissions of ${tok("108.15 tCO₂e","Canonical total for the reporting year.")} for the 2025–2026 reporting year, comprising ${tok("3.34 tCO₂e","Scope 1 subtotal.")} from Scope 1, ${tok("0.55 tCO₂e","Scope 2 subtotal.")} from Scope 2, and ${tok("104.26 tCO₂e","Scope 3 subtotal.")} from Scope 3. As this is the organisation's first measured footprint, no prior-year comparison is available; this baseline establishes the reference point against which all future reductions are tracked.</p><p>Scope 3 accounts for ${tok("96.4%","Scope 3 share of total.")} of the total footprint, with travel-related activities the single largest driver at ${tok("36.4 tCO₂e","Travel category total.")}, followed by business travel and employee commuting. Ten reduction actions have been identified to address these hotspots — eight short-term and two medium-term — concentrated on travel, commuting and supply-chain data quality.</p>`,
+    ai:`<p>In its first year of carbon measurement, First Event's operational footprint totalled ${tok("108.15 tCO₂e","Canonical total.")}, of which Scope 3 value-chain emissions represent ${tok("96.4%","Scope 3 share.")}. Direct emissions were modest — ${tok("3.34 tCO₂e","Scope 1 subtotal.")} (Scope 1) and ${tok("0.55 tCO₂e","Scope 2 subtotal.")} (Scope 2) — reflecting a low-asset, people-centred events business.</p><p>The dominant sources are travel and commuting. This report sets out ten prioritised actions and a pathway to net zero by 2050, with the current year serving as the immutable baseline for future reduction tracking.</p>`},
+  netzero:{def:`<p>First Event is committed to achieving net zero greenhouse gas emissions by 2050. This commitment demonstrates the organisation's dedication to environmental sustainability and to a credible, evidence-led reduction pathway.</p>`,
+    ai:`<p>First Event has set a clear ambition: net zero across all scopes by 2050, underpinned by an interim ${tok("50%","Interim reduction target.")} reduction by 2035. These targets are anchored to the ${tok("108.15 tCO₂e","Baseline total.")} baseline established this year.</p>`},
+  background:{def:`<p>First Event is a UK-based, full-service event management agency that designs and delivers corporate events — conferences, exhibitions, incentive travel, brand activations and hybrid events — for business clients. With over 25 years of experience, it combines strategic planning, creative design and technical delivery for high-impact events in the UK and globally.</p><p>The company manages the entire event process from concept to delivery, including logistics, supplier management and financial planning. Its footprint is assessed under the operational control approach for the baseline period ${tok("01/02/2025 – 31/01/2026","Reporting period, dd/mm/yyyy.")}.</p>`,
+    ai:`<p>First Event is a Leeds-based events agency (company no. 03813810) delivering corporate events across the UK and internationally. As a services organisation with limited owned assets, its emissions profile is dominated by value-chain activity rather than direct operations — a pattern reflected throughout this report.</p><p>Emissions are reported under the operational control boundary for the period ${tok("01/02/2025 – 31/01/2026","Reporting period, dd/mm/yyyy.")}, following the GHG Protocol Corporate Standard.</p>`},
+  intensity:{def:`<p>Intensity metrics normalise emissions against business activity so that trends can be compared year on year regardless of changes in scale. First Event's initial intensity is ${tok("1.7 tCO₂e","Emissions per employee.")} per employee and ${tok("0.7 tCO₂e","Emissions per £100k turnover.")} per £100,000 turnover, with an average headcount of ${tok("64","Average headcount in the reporting period.")} during the period.</p>`,
+    ai:`<p>Normalised to activity, First Event's baseline sits at ${tok("1.7 tCO₂e","Emissions per employee.")} per employee and ${tok("0.7 tCO₂e","Emissions per £100k turnover.")} per £100,000 of turnover. These per-unit measures will be the fairest way to judge progress as the business grows, and both are projected to fall steeply on the pathway to 2050.</p>`},
+  category:{def:`<p>For the 2025–2026 reporting year, First Event's total measured carbon emissions stand at ${tok("108.15 tCO₂e","Canonical total.")}. Scope 3 dominates the profile at ${tok("104.26 tCO₂e","Scope 3 subtotal.")} (${tok("96.4%","Scope 3 share.")}), followed by Scope 1 at ${tok("3.34 tCO₂e","Scope 1 subtotal.")} and Scope 2 at ${tok("0.55 tCO₂e","Scope 2 subtotal.")}. As this is the first carbon report, no prior-year benchmark is available.</p><p>Travel-related activity is the clear hotspot. Together, travel and commuting categories account for approximately three-quarters of the total footprint. Addressing this concentration through the planned Travel &amp; Commuting action, alongside the Fleet Strategy, will be critical to meaningful reductions in future periods.</p>`,
+    ai:`<p>The category profile is heavily weighted toward mobility. Employee Commuting (${tok("41.8 tCO₂e","Employee Commuting category total.")}) and Travel (${tok("36.4 tCO₂e","Travel category total.")}) are the two largest lines, together with Business Travel (${tok("25.1 tCO₂e","Business Travel category total.")}). Scope 1 and 2 combined contribute under 4 tCO₂e.</p><p>This distribution is typical of a services organisation with limited owned assets, and points clearly to travel policy and commuting support as the highest-leverage interventions.</p>`},
+  action:{def:`<p>First Event has identified ten key areas for emissions reduction. Eight are classified as short-term — targeting immediate gains through employee engagement, staff training, supply-chain data, governance, fleet strategy and home-working efficiency. Two medium-term actions address external stakeholder engagement and a structured travel and commuting programme.</p><p>No long-term actions have yet been defined; developing these will be an important next step to ensure sustained decarbonisation beyond the initial programme horizon.</p>`,
+    ai:`<p>The action plan comprises ten measures designed to address the ${tok("108.15 tCO₂e","Canonical total.")} footprint. With Scope 3 accounting for ${tok("96.4%","Scope 3 share.")} of the total — driven primarily by travel and commuting — the plan rightly concentrates effort on these areas through a mix of behavioural, policy and data-quality initiatives.</p><p>Eight short-term actions build the behavioural and data foundations; two medium-term actions extend the work to suppliers and travel policy. Long-term measures remain to be defined.</p>`}
+};
+const sectionState={};
+function sectionHTML(id){const s=SECTIONS[id];const st=sectionState[id]?.mode||'default';
+  const body=st==='ai'?s.ai:(st==='edited'?(sectionState[id].html||s.def):s.def);
+  const pill=st==='ai'?`<span class="spill ai">AI-drafted</span>`:st==='edited'?`<span class="spill edited">Edited by client</span>`:`<span class="spill default">Default template</span>`;
+  return `<section class="sec" id="sec-${id}" data-sec="${id}">${pill}<div class="sectools"><button class="stbtn pri" data-act="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edit text</button><button class="stbtn" data-act="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/></svg>Regenerate</button><button class="stbtn" data-act="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>Reset</button></div><div class="prose" data-body>${body}</div></section>`;
 }
 
 /* ---------- pages ---------- */
-const PAGES = [
-  // page 1 — cover
-  ()=>`<div class="cover">
-      <div class="wordmark"><div class="leaf"></div><div class="wt"><b>net zero.</b><span>international</span></div></div>
-      <div class="badge">FIRST<br>EVENT</div>
-      <div class="rt-kicker">Carbon Reduction Plan</div>
-      <h1>First Event Carbon Reduction Plan 2025–2026</h1>
-      <div class="metacard">
-        <div class="row"><span>Client</span><b>First Event</b></div>
-        <div class="row"><span>Reporting Period</span><b>1 Feb 2025 – 31 Jan 2026</b></div>
-        <div class="row"><span>Report Generated</span><b>01/09/2026</b></div>
-        <div class="row"><span>Framework</span><b>GHG Protocol Corporate Standard</b></div>
-      </div>
-      <div class="conf">Prepared by Net Zero International — Confidential. For authorised recipients only.</div>
-    </div>`,
-  // page 2 — exec summary + donut
-  ()=>`<div class="rt-kicker">01 · Overview</div><h2 class="rt-h2">Executive Summary</h2>
-      ${sectionHTML('exec')}
-      <div class="chartcard">
-        <div class="chead"><b>Emissions Summary by Scope</b><span class="svgtag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 14l4-4 4 4 4-6 4 4"/></svg>SVG · print-safe</span></div>
-        <div class="donutwrap">${donut(D.scopes)}<div class="leg">${donutLegend(D.scopes)}</div></div>
-      </div>`,
-  // page 3 — activity + category
-  ()=>`<div class="rt-kicker">02 · Analysis</div><h2 class="rt-h2">Emissions by Activity</h2>
-      <div class="chartcard">
-        <div class="chead"><b>First Event Emissions by Activity</b><span class="svgtag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 14l4-4 4 4 4-6 4 4"/></svg>SVG · print-safe</span></div>
-        ${bars(D.activity)}
-      </div>
-      <h3 class="rt-h3">Emissions by Scope &amp; Category</h3>
-      ${catTable()}
-      ${sectionHTML('cat')}`,
-  // page 4 — appendix 1 part 1 (header + first rows) -> demonstrates page break + continuation
-  ()=>`<div class="rt-kicker">Appendix 1</div><h2 class="rt-h2">Full Emissions Audit <span class="thead-note">header repeats each page</span></h2>
-      ${auditRows(AUDIT.slice(0,15),false)}
-      <div class="contd">Table continues on next page →</div>`,
-  // page 5 — appendix 1 part 2 (repeated header + remaining rows + total)
-  ()=>`<div class="rt-kicker">Appendix 1 · continued</div><h2 class="rt-h2">Full Emissions Audit <span class="thead-note">header repeated</span></h2>
-      ${auditRows(AUDIT.slice(15),true)}
-      <h3 class="rt-h3">Carbon Reduction Actions</h3>
-      ${sectionHTML('action')}`
+const ACTIONS=[["S","Engagement of our people","Employee Engagement"],["S","Training of Staff","Training"],["M","External Engagement","External Engagement"],["S","Supply Chain Review and Data","Supply Chain"],["M","Travel and Commuting","Travel"],["S","Governance","Sustainability"],["S","Fleet Strategy","Fleet"],["S","Energy Efficiency of Home Working","Home Working"],["S","Energy Efficiency of our Office","Energy"],["S","Waste","Waste Disposal"]];
+function actionTable(){return `<table class="rt"><thead><tr><th>Term</th><th>Action</th><th>Category</th></tr></thead><tbody>${ACTIONS.map(a=>`<tr><td>${a[0]==='S'?'Short':'Medium'}</td><td>${a[1]}</td><td>${a[2]}</td></tr>`).join("")}</tbody></table>`;}
+const GLOSS=[["Baseline Year","The historical reference year against which emissions reductions are measured."],["Carbon Reduction Plan","Plan to reduce CO₂e emissions over a period of time, updated annually."],["Emission Factor","A coefficient that converts activity data into GHG emissions."],["GHG Protocol","The globally recognised framework for measuring and managing greenhouse gas emissions."],["Intensity Metric","Emissions normalised by business activity (e.g. per employee, per £ revenue)."],["Net Zero","Achieving a balance between greenhouse gas emissions produced and removed from the atmosphere."],["Scope 1","Direct GHG emissions from sources owned or controlled by the organisation."],["Scope 2","Indirect GHG emissions from purchased electricity, steam, heating and cooling."],["Scope 3","All other indirect emissions in the value chain."],["tCO₂e","Tonnes of carbon dioxide equivalent — the standard unit for measuring carbon emissions."]];
+
+const PAGES=[
+ ()=>`<div class="cover"><div class="wordmark"><div class="leaf"></div><div class="wt"><b>net zero.</b><span>international</span></div></div><div class="badge">FIRST<br>EVENT</div><div class="rt-kicker">Carbon Reduction Plan</div><h1>First Event Carbon Reduction Plan 2025–2026</h1><div class="metacard"><div class="row"><span>Client</span><b>First Event</b></div><div class="row"><span>Reporting Period</span><b>01/02/2025 – 31/01/2026</b></div><div class="row"><span>Report Generated</span><b>01/09/2026</b></div><div class="row"><span>Framework</span><b>GHG Protocol Corporate Standard</b></div></div><div class="conf">Prepared by Net Zero International — Confidential. For authorised recipients only.</div></div>`,
+ ()=>`<div class="rt-kicker">01 · Overview</div><h2 class="rt-h2">Executive Summary</h2>${sectionHTML('exec')}<div class="chartcard"><div class="chead"><b>Emissions Summary by Scope</b>${svgtag}</div><div class="donutwrap">${donut(D.scopes,210)}<div class="leg">${donutLegend(D.scopes,D.total)}</div></div>${evidence}${src}</div>`,
+ ()=>`<div class="rt-kicker">02 · Commitment</div><h2 class="rt-h2">Net Zero Commitment</h2>${sectionHTML('netzero')}<ul class="commit-list"><li>Achieve target reductions in greenhouse gas emissions, as set out below.</li><li>Set realistic short- and long-term targets designed to meet our net zero commitment.</li><li>Report total greenhouse gas emissions of our business, at a minimum, on an annual basis.</li></ul><h3 class="rt-h3">Reduction Targets</h3><table class="rt"><thead><tr><th>Target Type</th><th class="num">Year</th><th class="num">Reduction</th><th>Scope</th></tr></thead><tbody><tr><td>Interim Target</td><td class="num">2035</td><td class="num">50%</td><td>Scope 1</td></tr><tr><td>Interim Target</td><td class="num">2035</td><td class="num">50%</td><td>Scope 2</td></tr><tr><td>Interim Target</td><td class="num">2035</td><td class="num">50%</td><td>Scope 3</td></tr><tr class="sub"><td>Net Zero Target</td><td class="num">2050</td><td class="num">90%</td><td>Scope 1, 2 &amp; 3</td></tr></tbody></table><div class="chartcard"><div class="chead"><b>Emissions Reduction Pathway to Net Zero</b>${svgtag}</div>${pathway()}${chartLegend([{n:'Target pathway',c:'var(--brand)'}])}${evidence}</div>`,
+ ()=>`<div class="rt-kicker">03 · Background</div><h2 class="rt-h2">Background &amp; Organisation</h2>${sectionHTML('background')}<div class="kv" style="margin-top:16px"><div class="kvbox"><div class="kr"><span>Organisation</span><b>First Event</b></div><div class="kr"><span>Industry</span><b>Events Management</b></div><div class="kr"><span>Location</span><b>Leeds, United Kingdom</b></div><div class="kr"><span>Company Number</span><b>03813810</b></div></div><div class="kvbox"><div class="kr"><span>No. of Staff</span><b>64</b></div><div class="kr"><span>Premises Owned / Leased</span><b>N/A</b></div><div class="kr"><span>Vehicles Owned / Leased</span><b>N/A</b></div><div class="kr"><span>Boundary</span><b>Operational Control</b></div></div></div><div class="rt-note">Baseline year: 01/02/2025 – 31/01/2026. Methodology: GHG Protocol Corporate Standard. Organisational boundary approach: Operational Control (Yes); Financial Control (No); Equity Share (No).</div>`,
+ ()=>`<div class="rt-kicker">04 · Overview</div><h2 class="rt-h2">Carbon Emissions Overview</h2><div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start"><div class="statbig"><div class="lbl">Total Carbon Emissions</div><div class="big tnum">108.1</div><div class="u">tCO₂e · 01/02/2025 – 31/01/2026</div></div><div style="flex:1;min-width:260px"><h3 class="rt-h3" style="margin-top:0">Emissions by Site</h3><table class="rt"><thead><tr><th>Site</th><th class="num">tCO₂e</th><th class="num">% of total</th></tr></thead><tbody><tr><td>Registered Office</td><td class="num">108.1</td><td class="num">100.0%</td></tr><tr class="total"><td>Total</td><td class="num">108.1</td><td class="num">100.0%</td></tr></tbody></table></div></div><div class="rt-note">Calculated emissions are based on the most up-to-date emission factors at the time of publication. Factors are updated regularly and applied retrospectively, so values may change when recalculated in future years.</div><h3 class="rt-h3">Intensity Metric Analysis</h3>${sectionHTML('intensity')}<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px"><div class="kvbox" style="flex:1;min-width:240px"><div class="kr"><span>Per employee</span><b class="tnum">1.7 tCO₂e</b></div><div class="kr"><span>Per £100,000 turnover</span><b class="tnum">0.7 tCO₂e</b></div></div></div><div class="chartcard"><div class="chead"><b>Intensity Metrics to 2050</b>${svgtag}</div>${intensityChart()}${chartLegend([{n:'Per employee',c:'var(--brand-deep)'},{n:'Per £100k turnover',c:'var(--sky)'}])}${evidence}</div>`,
+ ()=>`<div class="rt-kicker">05 · Analysis</div><h2 class="rt-h2">Analysis by Scope</h2><div class="chartcard"><div class="chead"><b>Emissions Summary by Scope</b>${svgtag}</div><div class="donutwrap">${donut(D.scopes,200)}<div class="leg">${donutLegend(D.scopes,D.total)}</div></div>${evidence}</div><div class="chartcard"><div class="chead"><b>Year-on-Year Comparison by Scope</b>${svgtag}</div>${vbars([{label:'Scope 1',v:3.3,c:'var(--brand-deep)'},{label:'Scope 2',v:0.5,c:'var(--brand-deep)'},{label:'Scope 3',v:104.2,c:'var(--brand-deep)'},{label:'Total',v:108.1,c:'var(--brand-deep)'}],130)}${chartLegend([{n:'Current Year 2026',c:'var(--brand-deep)'}])}</div><h3 class="rt-h3">Scope Descriptions</h3><table class="rt"><thead><tr><th>Scope</th><th>Description</th><th class="num">tCO₂e</th><th class="num">%</th></tr></thead><tbody><tr><td>1</td><td>Fuels used at company premises and company vehicles.</td><td class="num">3.3</td><td class="num">3.1%</td></tr><tr><td>2</td><td>Electricity used at the company's premises.</td><td class="num">0.5</td><td class="num">0.5%</td></tr><tr><td>3</td><td>Business travel, employee commuting, waste, purchased goods &amp; services and all other value-chain activities.</td><td class="num">104.2</td><td class="num">96.4%</td></tr><tr class="total"><td colspan="2">Total</td><td class="num">108.1</td><td class="num">100%</td></tr></tbody></table>`,
+ ()=>`<div class="rt-kicker">06 · Analysis</div><h2 class="rt-h2">Site Breakdown &amp; Activity</h2><div class="chartcard"><div class="chead"><b>Emissions by Site</b>${svgtag}</div><div class="donutwrap">${donut([{k:"Registered Office",v:108.1,pc:100,c:"var(--brand)"}],190)}<div class="leg"><div class="lr"><span class="sw" style="background:var(--brand)"></span><span class="nm">Registered Office</span><span class="vv tnum">108.1</span><span class="pc">100%</span></div></div></div><table class="rt" style="margin-top:16px"><thead><tr><th>Site</th><th class="num">Scope 1</th><th class="num">Scope 2</th><th class="num">Scope 3</th><th class="num">Total</th></tr></thead><tbody><tr><td>Registered Office</td><td class="num">3.3</td><td class="num">0.5</td><td class="num">104.2</td><td class="num">108.1</td></tr><tr class="total"><td>Total</td><td class="num">3.3</td><td class="num">0.5</td><td class="num">104.2</td><td class="num">108.1</td></tr></tbody></table>${evidence}</div><div class="chartcard"><div class="chead"><b>Emissions by Activity</b>${svgtag}</div>${bars(D.activity)}${evidence}</div>`,
+ ()=>`<div class="rt-kicker">07 · Analysis</div><h2 class="rt-h2">Emissions by Scope &amp; Category</h2>${catTable()}${sectionHTML('category')}`,
+ ()=>`<div class="rt-kicker">08 · Trend & actions</div><h2 class="rt-h2">Historical Emissions Trend</h2><div class="chartcard"><div class="chead"><b>First Event Historical Emissions</b>${svgtag}</div>${vbars([{label:'2026',v:108.1,c:'var(--s3)'}],130)}${chartLegend([{n:'Total (baseline year)',c:'var(--s3)'}])}</div><h3 class="rt-h3">Carbon Reduction Actions</h3>${sectionHTML('action')}${actionTable()}`,
+ ()=>`<div class="rt-kicker">09 · Assurance</div><h2 class="rt-h2">Standards &amp; Methodology</h2><div class="kvbox"><div class="kr"><span>Framework</span><b>GHG Protocol Corporate Standard</b></div><div class="kr"><span>Emission Factors</span><b>UK Activity &amp; Spend 2025 (Feb–Dec 2025); 2026 (Jan 2026)</b></div><div class="kr"><span>Scope Coverage</span><b>Scope 1, 2 and 3 (material categories)</b></div><div class="kr"><span>Prepared by</span><b>Net Zero International Limited</b></div></div><div class="rt-note">Emissions figures are rounded to the nearest 0.1 tCO₂e; small differences in totals may occur due to rounding.</div><h3 class="rt-h3">Declaration &amp; Sign Off</h3><div class="verify"><h4>Independent Verification Statement</h4><p>This greenhouse gas emissions report has been prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. The data and calculations have been independently verified by Net Zero International.</p><p><b>Verification Scope:</b> All Scope 1, 2 and 3 emissions for the reporting period 01/02/2025 – 31/01/2026. <b>Assurance Level:</b> Limited Assurance.</p><div class="sig">David Hawes</div><div style="font-size:11.5px;color:var(--muted)">Chief Executive Officer · Net Zero International · 31/03/2026</div></div><div class="signgrid"><div class="signbox"><div class="sl">Approved by (Name)</div><div class="sl">Position</div></div><div class="signbox"><div class="sl">Signature</div><div class="sl">Date</div></div></div>`,
+ ()=>`<div class="rt-kicker">Reference</div><h2 class="rt-h2">Glossary</h2><table class="rt"><thead><tr><th>Term</th><th>Definition</th></tr></thead><tbody>${GLOSS.map(g=>`<tr><td style="font-weight:600;color:var(--ink)">${g[0]}</td><td>${g[1]}</td></tr>`).join("")}</tbody></table>`,
+ ()=>`<div class="rt-kicker">Appendix 1</div><h2 class="rt-h2">Full Emissions Audit <span class="thead-note">header repeats each page</span></h2>${auditRows(AUDIT.slice(0,15),false)}<div class="contd">Table continues on next page →</div>`,
+ ()=>`<div class="rt-kicker">Appendix 1 · continued</div><h2 class="rt-h2">Full Emissions Audit <span class="thead-note">header repeated</span></h2>${auditRows(AUDIT.slice(15),true)}<h3 class="rt-h3">Appendix 2 — Emissions by Site, Scope &amp; Category</h3><table class="rt"><thead><tr><th>Registered Office</th><th class="num">tCO₂e</th></tr></thead><tbody><tr class="sub"><td>Scope 1</td><td class="num">3.3</td></tr><tr><td>Company Vehicles</td><td class="num">3.3</td></tr><tr class="sub"><td>Scope 2</td><td class="num">0.5</td></tr><tr><td>Company Vehicles</td><td class="num">0.5</td></tr><tr><td>Energy</td><td class="num">0.0</td></tr><tr class="sub"><td>Scope 3</td><td class="num">104.2</td></tr><tr><td>Employee Commuting</td><td class="num">41.8</td></tr><tr><td>Travel</td><td class="num">36.4</td></tr><tr><td>Business Travel</td><td class="num">25.1</td></tr><tr><td>Fuels &amp; Energy Related</td><td class="num">0.8</td></tr><tr><td>Waste in Operations</td><td class="num">0.1</td></tr><tr><td>Purchased Goods &amp; Services</td><td class="num">0.0</td></tr><tr class="total"><td>Total</td><td class="num">108.1</td></tr></tbody></table>`
 ];
+const OUTLINE=[["1","Cover","locked"],["2","Executive Summary","exec"],["3","Net Zero Commitment","netzero"],["4","Background & Organisation","background"],["5","Carbon Emissions Overview","intensity"],["6","Analysis by Scope","locked"],["7","Site Breakdown & Activity","locked"],["8","Emissions by Category","category"],["9","Trend & Reduction Actions","action"],["10","Standards & Sign Off","locked"],["11","Glossary","locked"],["12","Appendix 1 — Audit","locked"],["13","Appendix 1 cont. + 2","locked"]];
 
-/* ---------- build ---------- */
 const pageflow=document.getElementById('pageflow');
-function build(){
-  let html="";
-  PAGES.forEach((p,i)=>{
-    if(i>0) html+=`<div class="pbreak"><span class="pb-num">Page ${i+1} break</span></div>`;
-    html+=`<div class="page"><div class="runhead"><span>First Event · Carbon Reduction Plan 2025–2026</span><span>Net Zero International</span></div>${p()}<div class="pnum">Page ${i+1} of ${PAGES.length}</div></div>`;
-  });
-  pageflow.innerHTML=html;
-  bindSections();
-  buildOutline();
-}
-function buildOutline(){
-  const items=[["1","Cover","locked"],["2","Executive Summary","exec"],["3","Emissions by Activity & Category","cat"],["4","Appendix 1 — Full Audit","locked"],["5","Carbon Reduction Actions","action"]];
-  const ol=document.getElementById('outline');
-  const legend=ol.querySelector('.olegend');
-  [...ol.querySelectorAll('.olink')].forEach(e=>e.remove());
-  items.reverse().forEach(it=>{}); items.reverse();
-  items.forEach((it,idx)=>{
-    let cls='default';
-    if(it[2]==='locked') cls='locked';
-    else { const m=sectionState[it[2]]?.mode; cls = m==='ai'?'ai':m==='edited'?'edited':'default'; }
-    const b=document.createElement('button'); b.className='olink';
-    b.innerHTML=`<span class="n">${it[0]}</span><span class="dot ${cls}"></span><span class="t">${it[1]}</span>`;
-    b.onclick=()=>{ const pg=pageflow.children[ (idx*2) ]; (pg||pageflow.children[0]).scrollIntoView({behavior:'smooth',block:'start'}); };
-    legend.parentNode.insertBefore(b, legend);
-  });
-}
-
-/* ---------- section interactions ---------- */
-function bindSections(){
-  document.querySelectorAll('.sec').forEach(sec=>{
-    const id=sec.dataset.sec;
-    sec.querySelectorAll('.sectools .stbtn').forEach(btn=>{
-      btn.onclick=(e)=>{ e.stopPropagation(); act(id, btn.dataset.act, sec); };
-    });
-  });
-}
-function refresh(id){
-  const sec=document.getElementById('sec-'+id);
-  const wasEditing=sec.classList.contains('editing');
-  sec.outerHTML=sectionHTML(id);
-  bindSections(); buildOutline(); updateTokCount();
-}
-function act(id, a, sec){
-  if(a==='edit'){
-    const editing=sec.classList.toggle('editing');
-    const body=sec.querySelector('[data-body]');
-    const btn=sec.querySelector('[data-act="edit"]');
-    if(editing){
-      body.setAttribute('contenteditable','true'); body.focus();
-      btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M20 6 9 17l-5-5"/></svg>Done`;
-      // lock tokens against editing
-      body.querySelectorAll('.tok').forEach(t=>t.setAttribute('contenteditable','false'));
-    } else {
-      body.removeAttribute('contenteditable');
-      sectionState[id]={mode:'edited', html:body.innerHTML};
-      btn.innerHTML=`Edit text`;
-      refresh(id); toast('Section saved · figures still locked to data');
-    }
-  }
-  if(a==='ai'){ sectionState[id]={mode:'ai'}; refresh(id); toast('AI redraft applied · you can still edit it'); }
-  if(a==='reset'){ sectionState[id]={mode:'default'}; refresh(id); toast('Reset to default template text'); }
-}
-function updateTokCount(){
-  document.getElementById('tokCount').textContent=document.querySelectorAll('.tok').length;
-}
-
-/* ---------- view toggle ---------- */
+function build(){let html="";PAGES.forEach((p,i)=>{if(i>0)html+=`<div class="pbreak"><span class="pb-num">Page ${i+1} break</span></div>`;html+=`<div class="page"><div class="runhead"><span>First Event · Carbon Reduction Plan 2025–2026</span><span>Net Zero International</span></div>${p()}<div class="pnum">Page ${i+1} of ${PAGES.length}</div></div>`;});pageflow.innerHTML=html;bindSections();buildOutline();updateTokCount();}
+function buildOutline(){const ol=document.getElementById('outline');const legend=ol.querySelector('.olegend');[...ol.querySelectorAll('.olink')].forEach(e=>e.remove());OUTLINE.forEach((it,idx)=>{let cls='default';if(it[2]==='locked')cls='locked';else{const m=sectionState[it[2]]?.mode;cls=m==='ai'?'ai':m==='edited'?'edited':'default';}const b=document.createElement('button');b.className='olink';b.innerHTML=`<span class="n">${it[0]}</span><span class="dot ${cls}"></span><span class="t">${it[1]}</span>`;b.onclick=()=>{const pg=pageflow.children[idx*2];(pg||pageflow.children[0]).scrollIntoView({behavior:'smooth',block:'start'});};legend.parentNode.insertBefore(b,legend);});}
+function bindSections(){document.querySelectorAll('.sec').forEach(sec=>{const id=sec.dataset.sec;sec.querySelectorAll('.sectools .stbtn').forEach(btn=>{btn.onclick=(e)=>{e.stopPropagation();act(id,btn.dataset.act,sec);};});});}
+function refresh(id){const sec=document.getElementById('sec-'+id);sec.outerHTML=sectionHTML(id);bindSections();buildOutline();updateTokCount();}
+function act(id,a,sec){if(a==='edit'){const editing=sec.classList.toggle('editing');const body=sec.querySelector('[data-body]');const btn=sec.querySelector('[data-act="edit"]');if(editing){body.setAttribute('contenteditable','true');body.focus();btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M20 6 9 17l-5-5"/></svg>Done`;body.querySelectorAll('.tok').forEach(t=>t.setAttribute('contenteditable','false'));}else{body.removeAttribute('contenteditable');sectionState[id]={mode:'edited',html:body.innerHTML};btn.innerHTML='Edit text';refresh(id);toast('Section saved · figures still locked to data');}}if(a==='ai'){sectionState[id]={mode:'ai'};refresh(id);toast('AI redraft applied · you can still edit it');}if(a==='reset'){sectionState[id]={mode:'default'};refresh(id);toast('Reset to default template text');}}
+function updateTokCount(){document.getElementById('tokCount').textContent=document.querySelectorAll('.tok').length;}
 const stage=document.getElementById('stage');
-document.getElementById('viewSeg').addEventListener('click',e=>{
-  const b=e.target.closest('button'); if(!b) return;
-  document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on');
-  stage.classList.toggle('mode-page', b.dataset.mode==='page');
-  stage.classList.toggle('mode-flow', b.dataset.mode==='flow');
-});
-
-/* ---------- theme ---------- */
+document.getElementById('viewSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');stage.classList.toggle('mode-page',b.dataset.mode==='page');stage.classList.toggle('mode-flow',b.dataset.mode==='flow');});
 const tsw=document.getElementById('themeSwitch');
-function setTheme(dark){ document.documentElement.setAttribute('data-theme',dark?'dark':'light'); tsw.classList.toggle('on',dark); }
-tsw.onclick=()=>setTheme(!tsw.classList.contains('on'));
-tsw.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault(); tsw.click();} };
-if(window.matchMedia && matchMedia('(prefers-color-scheme:dark)').matches) setTheme(true);
-
-/* ---------- toast ---------- */
-let tt; function toast(m){ const el=document.getElementById('toast'); document.getElementById('toastMsg').textContent=m; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),2200); }
-
-build(); updateTokCount();
+function setTheme(dark){document.documentElement.setAttribute('data-theme',dark?'dark':'light');tsw.classList.toggle('on',dark);}
+tsw.onclick=()=>setTheme(!tsw.classList.contains('on'));tsw.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tsw.click();}};
+if(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)setTheme(true);
+let tt;function toast(m){const el=document.getElementById('toast');document.getElementById('toastMsg').textContent=m;el.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('show'),2200);}
+build();
 </script>
