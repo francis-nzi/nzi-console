@@ -52,6 +52,7 @@ const clientImportMappingsMigration=readFileSync(resolve(here,"../migrations/004
 const portalSpendMirrorMigration=readFileSync(resolve(here,"../migrations/0042_portal_spend_mirror.sql"),"utf8");
 const scopeRowGroupRollupMigration=readFileSync(resolve(here,"../migrations/0043_scope_row_group_rollup.sql"),"utf8");
 const scopeRowCategoryCodeMigration=readFileSync(resolve(here,"../migrations/0044_scope_row_category_code.sql"),"utf8");
+const consultancyMigration=readFileSync(resolve(here,"../migrations/0050_consultancy.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -113,4 +114,23 @@ describe("isolated Postgres migrations", () => {
   it("adds the NZC-046 category taxonomy code to the canonical row and register source",()=>{assert.match(scopeRowCategoryCodeMigration,/ALTER TABLE nzi_console\.job_scope_rows ADD COLUMN category_code text/);assert.match(scopeRowCategoryCodeMigration,/ALTER TABLE nzi_console\.job_emission_sources ADD COLUMN category_code text/);});
   it("binds one auto-generated roll-up scope row per emission-source group",()=>{assert.match(scopeRowGroupRollupMigration,/ADD COLUMN group_id text/);assert.match(scopeRowGroupRollupMigration,/scope_row_group_fk/);assert.match(scopeRowGroupRollupMigration,/REFERENCES nzi_console\.job_emission_groups\(organisation_id, group_id\) ON DELETE SET NULL/);assert.match(scopeRowGroupRollupMigration,/CREATE UNIQUE INDEX job_scope_rows_one_rollup_per_group_idx/);assert.match(scopeRowGroupRollupMigration,/WHERE group_id IS NOT NULL/);assert.match(scopeRowGroupRollupMigration,/scope_row_rollup_shape\s+CHECK \(group_id IS NULL OR \(is_auto_generated = true AND source_id IS NULL\)\)/);});
   it("tenant-isolates the per-client remembered column map",()=>{assert.match(clientImportMappingsMigration,/CREATE TABLE nzi_console\.client_import_mappings/);assert.match(clientImportMappingsMigration,/import_kind text NOT NULL CHECK \(import_kind IN \('spend'\)\)/);assert.match(clientImportMappingsMigration,/mapping_json jsonb NOT NULL DEFAULT '\{\}'::jsonb CHECK \(jsonb_typeof\(mapping_json\) = 'object'\)/);assert.match(clientImportMappingsMigration,/PRIMARY KEY \(organisation_id, client_id, import_kind\)/);assert.match(clientImportMappingsMigration,/REFERENCES nzi_console\.clients\(organisation_id, client_id\) ON DELETE CASCADE/);assert.match(clientImportMappingsMigration,/FORCE ROW LEVEL SECURITY/);assert.match(clientImportMappingsMigration,/GRANT SELECT, INSERT, UPDATE ON nzi_console\.client_import_mappings TO nzi_console_app/);});
+
+  it("keeps consultancy light — one versioned detail row plus a deliverable checklist (0050)",()=>{
+    assert.ok(consultancyMigration.includes("CREATE TABLE nzi_console.job_consultancy_details"));
+    assert.ok(consultancyMigration.includes("CREATE TABLE nzi_console.consultancy_deliverables"));
+    // one row per job, versioned, review bound to a reviewed version
+    assert.match(consultancyMigration,/PRIMARY KEY \(organisation_id, job_id\)/);
+    assert.match(consultancyMigration,/job_consultancy_reviewed_shape CHECK \(\(review_status = 'pending'\) = \(reviewed_version IS NULL\)\)/);
+    // hours are a budget/used pair — no time-log table
+    assert.match(consultancyMigration,/hours_budget numeric/);
+    assert.match(consultancyMigration,/hours_used numeric NOT NULL DEFAULT 0/);
+    assert.doesNotMatch(consultancyMigration,/time_log|timesheet|time_entries/i);
+    // deliverable checklist shape constraints
+    assert.match(consultancyMigration,/status text NOT NULL DEFAULT 'planned' CHECK \(status IN \('planned','in_progress','delivered','accepted','rejected'\)\)/);
+    assert.match(consultancyMigration,/consultancy_deliverable_rework_shape CHECK \(\(status = 'rejected'\) = \(rework_note IS NOT NULL\)\)/);
+    assert.match(consultancyMigration,/REFERENCES nzi_console\.report_versions\(organisation_id, report_version_id\) ON DELETE SET NULL/);
+    // tenant safety on both tables
+    assert.equal((consultancyMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
+    assert.equal((consultancyMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
+  });
 });

@@ -9,6 +9,7 @@ export * from "./lca";
 export * from "./sales";
 export * from "./platform";
 export * from "./fidelity";
+export * from "./consultancyFidelity";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 
