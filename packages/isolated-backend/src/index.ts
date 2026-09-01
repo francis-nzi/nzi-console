@@ -17,6 +17,7 @@ export * from "./portalInvitations";
 export * from "./portalDataEntry";
 export * from "./portalDataEntryRecords";
 export * from "./portalDeliverables";
+export * from "./vehicleLookup";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };

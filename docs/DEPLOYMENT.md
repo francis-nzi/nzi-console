@@ -37,6 +37,7 @@ FuelCap services.
 | `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | Dedicated Render-only secret |
 | `NZI_WRITE_API_ENABLED` | Explicit independent gate for authenticated command routes |
 | `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` | Comma-separated list of enabled data-entry adapters (`spend`, …). Unset = every adapter OFF, generic path is default. Per-adapter rollout gate — see `docs/REDESIGN_ROLLOUT.md`. Do not enable an adapter until it has passed its own rendered acceptance. |
+| `DVLA_VES_API_KEY` | Optional. DVLA Vehicle Enquiry Service key for the UX1 registration lookup (`/api/*/jobs/{id}/vehicle-lookup`). **Unset on isolated staging** — with `NEXT_PUBLIC_APP_ENV=staging` the service returns a deterministic stub vehicle so the two-step flow is exercisable without a real key or plate. The registration is transient: never persisted, never logged. |
 
 Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
 authenticated client/job creation plus versioned job-stage transitions through the transactional command
