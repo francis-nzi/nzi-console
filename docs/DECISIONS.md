@@ -65,6 +65,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-043 | Per-entity source register + roll-up groups is the home for typed adapters, auto-generated into the canonical row | Confirmed (29 Aug 2026) |
 | NZC-044 | Canonical row gains data_confidence, source_qty/uom conversion memory, column_text, and link fields | Confirmed (29 Aug 2026) |
 | NZC-045 | The reporting taxonomy (level_1..4) is stored and controlled, not derived from the scope string | Confirmed (29 Aug 2026) |
+| NZC-046 | One data-entry UX: scope→category accordion from the dataset taxonomy (collapsed), site-as-context, identical field order across CRP & portal, progressive disclosure | Confirmed (31 Aug 2026) |
 
 ---
 
@@ -497,6 +498,9 @@ The row gains `data_confidence` (H/M/L, a distinct axis from the quality tier), 
 The reporting hierarchy (`level_1..4`) is persisted and controlled per scope (already begun in `0030`),
 rather than deriving `categoryPath` from the free-text scope string — the report breakdown/charts need a
 deterministic category source (tightens NZC-033). Confirmed 29 Aug 2026.
+
+### NZC-046 — One data-entry UX across CRP and portal [Confirmed 31 Aug 2026]
+Data entry is a **scope→category accordion** using **dataset category names verbatim** (Scope 1/2 categories; the 15 GHG Scope 3 categories), showing only applicable categories, collapsed so the user focuses on one at a time; the CRP keeps an exception-first "Needs attention" lens over the same rows. **Site is context** — chosen up front, auto-allocated to every entry, not a per-row field. Portal and CRP are the **same capture component with the same field order** (Source → Quantity/Unit → Monthly (under Quantity, collapsible) → category-specific detail → factor → note); the portal is a constrained mirror (authorised categories/sites/factors, submit-to-review). **Progressive disclosure:** spend fields (VAT/GL/PG&S) appear only under Purchased Goods and Services; registration lookup + manual appear under Company Vehicles / Business Travel / Employee Commuting. See docs/DATA_ENTRY_UX.md. Confirmed by Francis, 31 Aug 2026.
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
