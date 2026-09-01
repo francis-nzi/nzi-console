@@ -13,30 +13,14 @@ import {
   isRegistrationKind,
   isSpendKind,
   manualEntryHint,
+  type EmissionEntryDraft,
+  type EmissionEntryLineageStep,
   type EntryAudience,
+  type EntryFactorOption,
   type EntryMode,
-} from "./emissionEntryForm";
+} from "./emissionEntryModel";
 
-export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean };
-export type EmissionEntryLineageStep = { label: string; detail: string };
-
-export type EmissionEntryDraft = {
-  activity: string;
-  quantity: string;
-  unit: string;
-  vatPercent: string;
-  glCode: string;
-  spendCategoryId: string;
-  registration: string;
-  manualMode: boolean;
-  manualDetail: string;
-  factorId: string;
-  qualityTier: string;
-  dataConfidence: string;
-  note: string;
-  monthlyOpen: boolean;
-  monthly: Record<string, string>;
-};
+export * from "./emissionEntryModel";
 
 export type EmissionEntryFormProps = {
   category: EmissionCategory;

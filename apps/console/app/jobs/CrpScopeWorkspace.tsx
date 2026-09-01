@@ -148,11 +148,18 @@ export function CrpScopeWorkspace({
     [pending, setPending] = useState(false),
     [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),
     [accordionLens,setAccordionLens]=useState<AccordionLens>("attention"),
+    [siteContextId,setSiteContextId]=useState(""),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
     } | null>(qaNotice);
   const accordionOn=dataEntryAdapterEnabled("data-entry-accordion");
+  const entryFactorRefs=factors.map(f=>({id:`${f.factorSource}:${f.clientFactorId??f.datasetId}|${f.factorId}`,label:`${f.label} · ${f.activityUnit}${f.synthetic?" · DEMO":""}`,unit:f.activityUnit,scope:(f.scopes.find(s=>s==="1"||s==="2"||s==="3")??"3") as "1"|"2"|"3",datasetId:f.datasetId,datasetVersion:f.datasetVersion,factorSource:f.factorSource,clientFactorId:f.clientFactorId}));
+  async function createEntryFromForm(input:ScopeRowWriteFields):Promise<{ok:boolean;message?:string}>{
+    const result=await postBrowserCommand<{rowId:string}>(`/api/isolated/jobs/${job.header.id}/scope-rows`,input,crypto.randomUUID());
+    if(result.state==="success"){setSelectedId(result.data.rowId);setNotice({kind:"ok",text:`Entry added to ${input.categoryCode??input.scope}. Calculate and review it next.`});router.refresh();return{ok:true};}
+    return{ok:false,message:errorText(result)};
+  }
   const visibleRows=filterScopeRows(rows,registerFilter),attentionCount=rows.filter(scopeRowNeedsAttention).length;
   const selected = visibleRows.find((r) => r.id === selectedId)??visibleRows[0]??rows.find((r)=>r.id===selectedId)??rows[0];
   const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
@@ -162,7 +169,6 @@ export function CrpScopeWorkspace({
   };
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
   const spendReportingMonths = reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`);
-  const addEntryFromCategory=(scope:string)=>{setDraft({...blank(),scope});setCreating(true);requestAnimationFrame(()=>document.getElementById("scope-row-editor")?.scrollIntoView({behavior:"smooth",block:"start"}));};
   const categoryExtras=(category:ApplicableCategory)=>{
     if(category.code==="3.1")return <>
       {dataEntryAdapterEnabled("spend")&&<SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
@@ -327,8 +333,14 @@ export function CrpScopeWorkspace({
             jobId={job.header.id}
             rows={rows}
             selectedRowId={selected?.id ?? ""}
-            onSelectRow={setSelectedId}
-            onAddEntry={addEntryFromCategory}
+            onOpenRow={setSelectedId}
+            onCreateEntry={createEntryFromForm}
+            sites={sites.map(site => ({ id: site.id, label: site.name }))}
+            siteId={siteContextId}
+            onSiteChange={setSiteContextId}
+            factors={entryFactorRefs}
+            reportingMonths={spendReportingMonths}
+            purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
             categoryExtras={categoryExtras}
             lens={accordionLens}
             onLensChange={setAccordionLens}

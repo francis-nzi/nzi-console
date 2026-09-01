@@ -7,13 +7,15 @@
 // Reads `listJobApplicableCategories(…, "crm")` for the completeness view — every
 // taxonomy category for an included scope, empties shown neutrally.
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { ApplicableCategory, JobApplicableCategories, ScopeRowReadModel } from "@nzi/contracts";
+import type { ApplicableCategory, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { emissionCategoryTaxonomy } from "@nzi/contracts";
 import {
   accordionAttentionRows,
   accordionTotals,
   buildDataEntryAccordion,
 } from "./dataEntryAccordion";
+import { EmissionEntryForm } from "./EmissionEntryForm";
+import { emissionEntryDraftToScopeRow, isSpendKind, type EntryFactorRef } from "./emissionEntryModel";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -28,13 +30,24 @@ const scopeColour = (scope: string) => (scope === "1" ? "var(--s1)" : scope === 
 const num = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 
 export type AccordionLens = "category" | "attention";
+export type SiteContextOption = { id: string; label: string };
 
 type Props = {
   jobId: string;
   rows: ScopeRowReadModel[];
   selectedRowId: string;
-  onSelectRow: (rowId: string) => void;
-  onAddEntry: (scope: string, categoryCode: string, categoryName: string) => void;
+  /** Open a row in the drawer. `category` is set when the row sits in a category card. */
+  onOpenRow: (rowId: string, category?: ApplicableCategory) => void;
+  /** Persist a new scope row from the shared capture form. */
+  onCreateEntry: (input: ScopeRowWriteFields) => Promise<{ ok: boolean; message?: string }>;
+  /** Controlled site-as-context (§2): "" = all sites, "none" = unallocated, else a site id. */
+  sites: SiteContextOption[];
+  siteId: string;
+  onSiteChange: (siteId: string) => void;
+  /** Scope-tagged factor set (workspace maps FactorOption → EntryFactorRef). */
+  factors: EntryFactorRef[];
+  reportingMonths: string[];
+  purchasedGoodsCategories: { id: string; name: string }[];
   /** Re-homed typed adapter for a category (spend / import / commuting / vehicle). */
   categoryExtras?: (category: ApplicableCategory) => ReactNode;
   /** Optional controlled lens — lets the command-centre exception buttons switch to "attention". */
@@ -42,13 +55,26 @@ type Props = {
   onLensChange?: (lens: AccordionLens) => void;
 };
 
-export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow, onAddEntry, categoryExtras, lens: lensProp, onLensChange }: Props) {
+export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, reportingMonths, purchasedGoodsCategories, categoryExtras, lens: lensProp, onLensChange }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
   const lens = lensProp ?? lensInternal;
   const setLens = (next: AccordionLens) => { setLensInternal(next); onLensChange?.(next); };
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [addingCode, setAddingCode] = useState<string | null>(null);
+  const [entryBusy, setEntryBusy] = useState(false);
+  const [entryError, setEntryError] = useState("");
+
+  const siteContext = { id: siteId === "" || siteId === "none" ? null : siteId, label: sites.find(site => site.id === siteId)?.label ?? null };
+  const submitEntry = (category: ApplicableCategory) => async (draft: Parameters<typeof emissionEntryDraftToScopeRow>[0]) => {
+    if (entryBusy) return;
+    setEntryBusy(true); setEntryError("");
+    const result = await onCreateEntry(emissionEntryDraftToScopeRow(draft, category, siteContext, factors, reportingMonths));
+    setEntryBusy(false);
+    if (result.ok) setAddingCode(null);
+    else setEntryError(result.message ?? "The entry could not be saved.");
+  };
 
   const load = useCallback(async () => {
     setState("loading");
@@ -85,8 +111,14 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow,
   return (
     <section aria-label="Data entry by category" id="data-entry-accordion">
       <div className="nz-acc-tool">
-        <span className="nz-eyebrow" style={{ margin: 0 }}>Data entry</span>
-        <span className="hint">One section at a time. Every applicable category for this job’s scopes is shown; empty categories are excluded from the report.</span>
+        <label className="nz-fl" style={{ margin: 0, minWidth: 210 }}>Site
+          <select className="nz-sel" value={siteId} onChange={event => onSiteChange(event.target.value)} aria-label="Site context for new entries">
+            <option value="">All sites</option>
+            {sites.map(site => <option key={site.id} value={site.id}>{site.label}</option>)}
+            <option value="none">Unallocated</option>
+          </select>
+        </label>
+        <span className="hint">{siteId === "" ? "Showing every site. New entries ask for a site." : siteId === "none" ? "New entries are left unallocated." : `New entries are allocated to ${sites.find(site => site.id === siteId)?.label ?? "this site"}.`}</span>
         <div className="nz-seg" role="tablist" aria-label="Data-entry view">
           <button type="button" role="tab" aria-selected={lens === "category"} className={lens === "category" ? "on" : ""} onClick={() => setLens("category")}>By category</button>
           <button type="button" role="tab" aria-selected={lens === "attention"} className={lens === "attention" ? "on" : ""} onClick={() => setLens("attention")}>
@@ -102,8 +134,8 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow,
             <tbody>
               {attentionRows.map(row => (
                 <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
-                  onClick={() => onSelectRow(row.id)}
-                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectRow(row.id); } }}>
+                  onClick={() => onOpenRow(row.id)}
+                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
                   <td>{row.sourceLabel}</td>
                   <td>{row.scope}</td>
                   <td>{row.siteLabel ?? "Unallocated"}</td>
@@ -146,8 +178,8 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow,
                               <tbody>
                                 {entry.rows.map(row => (
                                   <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
-                                    onClick={() => onSelectRow(row.id)}
-                                    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectRow(row.id); } }}>
+                                    onClick={() => onOpenRow(row.id, entry.category)}
+                                    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id, entry.category); } }}>
                                     <td>{row.sourceLabel}{row.assetIdentifier ? <div className="muted">ID / Ref: {row.assetIdentifier}</div> : null}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
                                     <td>{row.siteLabel ?? "Unallocated"}</td>
                                     <td className="num">{row.quantity ?? "—"}</td>
@@ -164,8 +196,30 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow,
                           <div className="nz-acc-empty">No data yet — shown for completeness. Empty categories are excluded from the report.</div>
                         )}
                         <div className="nz-acc-foot">
-                          <button type="button" className="nz-btn pri" onClick={() => onAddEntry(entry.category.scope, code, entry.category.name)}>+ Add entry</button>
+                          <button type="button" className="nz-btn pri" aria-expanded={addingCode === code}
+                            onClick={() => { setEntryError(""); setAddingCode(addingCode === code ? null : code); }}>
+                            {addingCode === code ? "Close" : "+ Add entry"}
+                          </button>
                         </div>
+                        {addingCode === code ? (
+                          <div className="nz-acc-extra">
+                            <EmissionEntryForm
+                              key={code}
+                              category={entry.category}
+                              audience="crm"
+                              site={{ id: siteContext.id, label: siteContext.label ?? "Unallocated" }}
+                              factors={factors.filter(option => option.scope === entry.category.scope)}
+                              units={[entry.category.scope === "3" && isSpendKind(entry.category) ? "GBP" : "kWh", "litres", "tonnes", "km", "m²", "units"]}
+                              reportingMonths={reportingMonths}
+                              spendCategories={purchasedGoodsCategories}
+                              busy={entryBusy}
+                              error={entryError}
+                              onCancel={() => setAddingCode(null)}
+                              onSubmit={submitEntry(entry.category)}
+                              onSaveDraft={submitEntry(entry.category)}
+                            />
+                          </div>
+                        ) : null}
                         {categoryExtras ? <div className="nz-acc-extra">{categoryExtras(entry.category)}</div> : null}
                       </div>
                     ) : null}
@@ -188,8 +242,8 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onSelectRow,
                           <tbody>
                             {group.unsorted.map(row => (
                               <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
-                                onClick={() => onSelectRow(row.id)}
-                                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectRow(row.id); } }}>
+                                onClick={() => onOpenRow(row.id)}
+                                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
                                 <td>{row.sourceLabel}</td>
                                 <td>{row.scope}</td>
                                 <td>{row.siteLabel ?? "Unallocated"}</td>
