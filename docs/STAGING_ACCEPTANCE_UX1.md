@@ -15,27 +15,57 @@ screen-reader / viewport pass happens **once**, on the accordion.
 
 | # | Increment | PR |
 |---|-----------|----|
-| a-backend | `emissionCategoryTaxonomy` (contracts — 3 Scope 1, 2 Scope 2, 15 Scope 3, verbatim names + `kind`); `0044` `category_code` on `job_scope_rows` + `job_emission_sources` (additive, nullable); `listJobApplicableCategories(db, jobId, audience)` — CRM completeness view (all taxonomy categories for included scopes, `noData` on empties) / portal authorised-only (bucket grants); CRM + portal GET routes | this PR |
-| a-ui | `<EmissionEntryForm>` shared component + `emissionEntryForm.ts` field-order spec (fixed 13-field order, progressive disclosure by `kind` — spend group / registration finder, activity smart-search, collapsible monthly, audience gating: portal never sees factor / quality / confidence / lineage). `.nz-ef-*` + `.nz-plate` + `.nz-months` + `.nz-disc` tokens in `@nzi/ui`. Presentational — endpoint wiring is b/c/d. Tests: console 68 (`emissionEntryForm.test.ts` — canonical order, progressive disclosure per kind, audience gating, action sets) | this PR |
-| b | CRP `CrpDataEntryAccordion` behind `data-entry-accordion` (flag added to `DataEntryAdapter`, OFF). Scope→category cards from `listJobApplicableCategories(…, "crm")` + `dataEntryAccordion.ts` grouping (`category_code`, else the row's own scope string for legacy `3.x` rows, else a per-scope **Unsorted** bucket — no row is ever dropped). By category / Needs attention lens over the same rows (command-centre exception buttons switch it). Adapters re-homed via `categoryExtras`: spend rollforward + ledger + import under `3.1`, commuting bulk under `3.7`, vehicle bulk under `1.company-vehicles`. `ScopeRowReadModel.categoryCode` surfaced by `listScopeRows`. Flag OFF ⇒ today's loose panels + flat register unchanged. Tests: console 65 (`dataEntryAccordion.test.ts`), isolated-backend 191 (`listScopeRows` surfaces `category_code`) | this PR |
-| c-1 | `categoryCode` on the `scope.row.create` / `scope.row.update` write path — taxonomy + scope-consistency validation; auto-derives from a granular Scope 3 scope string. #54 (merged) | ✅ |
-| c-2 | Site-as-context `<select>` in the accordion toolbar (`""`=all / `none`=unallocated / site id); "+ Add entry" opens the shared `EmissionEntryForm` (audience `crm`) inline in the category body → `emissionEntryDraftToScopeRow` maps the draft (stamping `categoryCode` + the site-context `siteId`) → `scope.row.create`. `syncEmissionSourceToScope` now stamps `category_code` too (vehicle→`1.company-vehicles`, commuting→`3.7`, granular Scope 3→its scope). `emissionEntryForm.ts` → `emissionEntryModel.ts` (case-collision with the `.tsx`). Existing-row click still opens the current `Editor` drawer (drawer-side `EmissionEntryForm` = later). Tests: console 72 (`emissionEntryForm.test.ts` — draft↔row mapping, spend/client-factor/monthly), isolated-backend 193 (synced-row `category_code`) | this PR |
-| d-1 | `PortalDataEntryAccordion` behind `data-entry-accordion` — groups the client's **authorised** bucket grants into collapsed scope→category sections (`portalEntryGrouping.ts`: bucket `category_code` — now surfaced by `listPortalDataEntryBuckets` — else scope, in taxonomy order), re-homes `PortalSpendEntry` + `PortalEntryRecords` per section. Flag OFF ⇒ today's flat bucket table + loose surfaces unchanged. `PortalDataEntryBucket.categoryCode` added. Tests: console 76 (`portalEntryGrouping.test.ts`), isolated-backend 205 (bucket `category_code`) | this PR |
-| d-2 | `PortalCategoryEntry` — each portal accordion section's non-spend entry is now the shared `EmissionEntryForm` (audience `portal`). One authorised bucket at a time (selector when >1); authorised-factor selector when the bucket grants >1; site selector from the bucket's sites. `emissionEntryDraftToPortalRecord` maps the draft → `/data-entry-records` POST (spend → net value in `detail`, quantity forced 0; manual → quantity + bucket factor unit). Primary action creates + submits; ghost creates a draft. Portal vehicle-lookup wired to `/api/portal/jobs/[jobId]/vehicle-lookup` (no factor returned). `PortalAccordionSection.category` added. Tests: console 81 (`emissionEntryModel.test.ts` — portal record mapping) | this PR |
-| lookup-backend | `vehicleLookup.ts` in `@nzi/isolated-backend` (port of `services/vehicle_lookup.py` + `vehicle_categorization.py`): `lookupVehicleByRegistration` (live DVLA VES when `DVLA_VES_API_KEY` set, deterministic stub on staging), `resolveVehicleFactor` (best-effort Scope 1 match by fuel + class). CRM + portal POST routes. Registration transient — never persisted / logged / echoed. #57 (merged). Tests: isolated-backend 204 | ✅ |
-| lookup-ui | Two-step `onLookupRegistration` in `EmissionEntryForm` — look up → confirm card (make · fuel · year · class, suggested factor for CRM) → **Use this** pre-fills activity + factor, or **enter manually**. `CrpDataEntryAccordion` wires it to `/api/isolated/jobs/[jobId]/vehicle-lookup` (composite factor key). Portal wiring lands with `d`. | this PR |
-| flip | `data-entry-accordion` into `render.yaml` after the single accordion acceptance | ⏳ |
+| a-backend | `emissionCategoryTaxonomy` (contracts — 3 Scope 1, 2 Scope 2, 15 Scope 3, verbatim names + `kind`); `0044` `category_code` on `job_scope_rows` + `job_emission_sources` (additive, nullable); `listJobApplicableCategories(db, jobId, audience)` — CRM completeness view / portal authorised-only; CRM + portal GET routes | #47 ✅ |
+| a-ui | `<EmissionEntryForm>` + `emissionEntryModel.ts` field-order spec (fixed 13-field order, progressive disclosure by `kind`, audience gating: portal never sees factor / quality / confidence / lineage). `.nz-ef-*` / `.nz-plate` / `.nz-months` / `.nz-disc` tokens in `@nzi/ui` | #49 ✅ |
+| b | CRP `CrpDataEntryAccordion` behind `data-entry-accordion` (flag added to `DataEntryAdapter`, OFF). Scope→category cards from `listJobApplicableCategories(…, "crm")` + `dataEntryAccordion.ts` grouping (`category_code`, else scope, else a per-scope **Unsorted** bucket). By category / Needs attention lens. Adapters re-homed via `categoryExtras`: spend rollforward + ledger + import under `3.1`, commuting bulk under `3.7`, vehicle bulk under `1.company-vehicles`. `ScopeRowReadModel.categoryCode` surfaced by `listScopeRows` | #50 ✅ |
+| c-1 | `categoryCode` on the `scope.row.create` / `scope.row.update` write path — taxonomy + scope-consistency validation; auto-derives from a granular Scope 3 scope string | #54 ✅ |
+| c-2 | Site-as-context `<select>` in the accordion toolbar; "+ Add entry" opens the shared `EmissionEntryForm` (audience `crm`) inline → `emissionEntryDraftToScopeRow` (stamps `categoryCode` + site-context `siteId`) → `scope.row.create`. `syncEmissionSourceToScope` stamps `category_code` too. `emissionEntryForm.ts` → `emissionEntryModel.ts` | #56 ✅ |
+| d-1 | `PortalDataEntryAccordion` behind the flag — groups the client's **authorised** bucket grants into collapsed scope→category sections (`portalEntryGrouping.ts`), re-homes `PortalSpendEntry` + `PortalEntryRecords` per section. `PortalDataEntryBucket.categoryCode` surfaced by `listPortalDataEntryBuckets` | #59 ✅ |
+| d-2 | `PortalCategoryEntry` — each portal section's non-spend entry is the shared `EmissionEntryForm` (audience `portal`); one authorised bucket at a time, authorised-factor + site selectors, `emissionEntryDraftToPortalRecord` → `/data-entry-records`, primary action creates + submits. Portal `/vehicle-lookup` wired (spec only, no factor) | #60 ✅ |
+| lookup-backend | `vehicleLookup.ts` — `lookupVehicleByRegistration` (live DVLA VES when `DVLA_VES_API_KEY` set, deterministic stub on staging), `resolveVehicleFactor` (best-effort Scope 1 match). CRM + portal POST routes. Registration transient — never persisted / logged / echoed | #57 ✅ |
+| lookup-ui | Two-step `onLookupRegistration` in `EmissionEntryForm` — look up → confirm card → **Use this** pre-fills activity + factor, or **enter manually**. `CrpDataEntryAccordion` wires it to `/api/isolated/jobs/[jobId]/vehicle-lookup` | #58 ✅ |
+| drawer-edit | Clicking an existing CRP row in the accordion opens the current full-lifecycle `Editor` in the evidence drawer (update → calculate → independent review → history → snapshot). **Deliberately kept** — `EmissionEntryForm` existing-mode is a *review* surface only; the spec's "one shared capture process" requirement is met by Add-entry on both surfaces. Swapping the drawer to the prototype's collapsed review form is a later visual refinement, only if Francis wants it | — kept as-is |
+| flip | `data-entry-accordion` into `render.yaml` after the single accordion acceptance | ⏳ **ready — see below** |
 
-## Gate status (after a-backend)
+## Automated suite (all on `main`, flag OFF)
+
+`npm run typecheck` clean · contracts 39 · isolated-backend 205 · console 81 · `npm run build -w @nzi/console` green. The merged adapters' e2e journeys are unchanged (they don't touch the accordion).
+
+## Flip readiness — the single acceptance run
+
+Everything is built and green with `data-entry-accordion` **OFF**. To flip, on isolated staging with the flag ON (and `portal-spend` / `spend-import` / `commuting` / `vehicle` / `client-factors` also ON so the re-homed adapters render):
+
+**Per re-homed area — confirm it works in its category section, identical outcome to the pre-accordion path:**
+- **B4** spend-import CSV — under Purchased Goods and Services (`3.1`).
+- **B5** portal-spend — under `3.1` on the portal accordion; submit-to-review still lands in the staff queue.
+- **S1** commuting bulk (`3.7`) + vehicle bulk (`1.company-vehicles`); the roll-up row still recomputes; register-synced rows land in their section, not Unsorted.
+- **S2** client factors — still managed at client level; the compact CRP panel still lists them; a client-EPD factor is selectable in the accordion's Add-entry form.
+- **Add-entry** (CRP) — a new row in each `kind`: manual, fugitive, spend (`3.1`), vehicle (with a stub DVLA lookup), commuting. Site-context stamps `site_id`; `category_code` stamped; row then calculates + reviews unchanged.
+- **Add-entry** (portal) — a draft in an authorised category → Submit for review → staff accept → canonical `pending` row (never `approved`).
+
+**Human-only (not Claude Code), once, on the accordion:**
+- screen-reader narration of the accordion (expand/collapse, lens toggle, the inline `EmissionEntryForm`, the confirm card);
+- contrast eyeball on the scope dots / chips / plate input;
+- no horizontal overflow at 390 / 768 / 1280 / 1920;
+- reduced-motion.
+
+**Then:** add `data-entry-accordion` (and keep the per-adapter flags) to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in `render.yaml`, merge, confirm the deploy, tick the boxes here.
+
+## Gate status
 
 | Gate item | State |
 |---|---|
-| §1 taxonomy — verbatim names, applicable-only, per-category counts (entries · tCO₂e · completeness) | ✅ `emissionCategoryTaxonomy` + `listJobApplicableCategories`; names match the prototypes' `CATS` |
-| §1 CRM completeness view — all 15 Scope 3 when Scope 3 is included; empties `noData`, never mandatory, excluded from reports | ✅ read model (report exclusion already holds — empty categories have no rows) |
-| §1 portal — authorised categories only (bucket grants), not the full 15 | ✅ `audience:"portal"` filters to active bucket-grant category codes |
-| §7 tests | ✅ contracts 38 (taxonomy shape) · isolated-backend 191 (CRM completeness + portal authorised + migration invariant) · console 42 · typecheck · `next build` |
-| §6 flag — no flag referenced yet; read model + `0044` inert until the accordion reads them | ✅ applied to isolated staging 01 Sep 2026 (see incident note below) |
-| §2–§5, §8 (shared component, accordion, site-context, progressive disclosure, a11y) | ⏳ increments a-ui / b / c / d |
+| §1 taxonomy — verbatim names, applicable-only, per-category counts | ✅ |
+| §1 CRM completeness view — all 15 Scope 3 when included; empties `noData`, excluded from reports | ✅ |
+| §1 portal — authorised categories only (bucket grants) | ✅ |
+| §2 site-as-context (CRP selector auto-stamps `site_id`; portal per-bucket site) | ✅ c-2 / d-2 |
+| §3 one field order, both surfaces; portal a constrained mirror | ✅ a-ui, enforced by `emissionEntryModel.test.ts` |
+| §4 progressive disclosure — spend group / registration finder only where they belong | ✅ a-ui |
+| §5 portal multi-row per authorised category | ✅ d-1 / d-2 |
+| §7 automated tests + typecheck + build | ✅ (counts above) |
+| §6 flag — `data-entry-accordion` gates the container; adapters keep per-domain flags; `0044` applied to isolated staging 01 Sep 2026 | ✅ |
+| §8 "No data" neutral / never mandatory | ✅ empty categories render the neutral note, excluded from reports |
+| §2–§8 **rendered** a11y / viewport pass on the accordion | ⏳ human-only, on the flip |
 
 ## Rollback
 
