@@ -195,6 +195,33 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
     scopes:row.scopes,selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
 }
 
+// NZC-046 / UX1a — the scope→category accordion's applicable-category list.
+//  crm    → the completeness view: every taxonomy category for an included scope
+//           (all 15 Scope 3 when Scope 3 is included), empties flagged `noData`.
+//  portal → only the categories the client's bucket grants authorise.
+// Included scopes = the top-level scopes present in the job's active
+// selected-dataset factors, unioned with any scope that already has a row.
+export async function listJobApplicableCategories(db:Queryable,jobId:string,audience:"crm"|"portal"):Promise<import("@nzi/contracts").JobApplicableCategories>{
+  const {emissionCategoryTaxonomy}=await import("@nzi/contracts");
+  const scopeRows=await db.query<{scope:string}>(`SELECT DISTINCT scope FROM (SELECT split_part(unnest(f.scopes),'.',1) AS scope FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.job_id=$1 AND f.active=true UNION ALL SELECT split_part(r.scope,'.',1) FROM nzi_console.job_scope_rows r WHERE r.job_id=$1) x WHERE scope<>''`,[jobId]);
+  const includedScopes=(["1","2","3"] as const).filter(scope=>scopeRows.rows.some(row=>row.scope===scope));
+  const metrics=await db.query<{code:string;entry_count:string;tco2e:string;complete_count:string}>(`SELECT coalesce(nullif(category_code,''),scope) AS code,count(*) FILTER (WHERE enabled)::text AS entry_count,coalesce(sum(coalesce(override_tco2e,calculated_tco2e,0)) FILTER (WHERE enabled),0)::text AS tco2e,count(*) FILTER (WHERE enabled AND review_status='approved' AND (calculated_tco2e IS NOT NULL OR override_tco2e IS NOT NULL) AND quality_tier IS NOT NULL)::text AS complete_count FROM nzi_console.job_scope_rows WHERE job_id=$1 GROUP BY 1`,[jobId]);
+  const byCode=new Map(metrics.rows.map(row=>[row.code,row]));
+  let authorisedCodes:Set<string>|null=null;
+  if(audience==="portal"){
+    const grants=await db.query<{code:string}>(`SELECT DISTINCT coalesce(nullif(r.category_code,''),r.scope) AS code FROM nzi_console.portal_data_entry_bucket_grants b JOIN nzi_console.portal_access_grants g ON (g.organisation_id,g.grant_id)=(b.organisation_id,b.access_grant_id) JOIN nzi_console.job_scope_rows r ON (r.organisation_id,r.scope_row_id)=(b.organisation_id,b.scope_row_id) WHERE g.job_id=$1 AND b.revoked_at IS NULL AND g.revoked_at IS NULL`,[jobId]);
+    authorisedCodes=new Set(grants.rows.map(row=>row.code));
+  }
+  const categories=emissionCategoryTaxonomy
+    .filter(category=>includedScopes.includes(category.scope))
+    .filter(category=>audience==="crm"||authorisedCodes!.has(category.code))
+    .map(category=>{
+      const m=byCode.get(category.code),entryCount=m?Number(m.entry_count):0;
+      return{...category,entryCount,tco2e:m?Number(m.tco2e):0,completeness:entryCount===0?0:Math.round((Number(m!.complete_count)/entryCount)*100),noData:entryCount===0,...(audience==="portal"?{authorised:true}:{})};
+    });
+  return{audience,includedScopes:[...includedScopes],categories};
+}
+
 // S2 — client factor lifecycle (NZC-041). The client's reusable factors + (when a
 // job is given) that job's pinned ones, each with a usage count of the enabled
 // canonical rows that reference it, so the surface can guard archive.

@@ -1,0 +1,368 @@
+<title>Client Portal Redesign</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#F5F8F6; --surface:#FFFFFF; --surface-2:#F1F5F2; --surface-3:#E7EEE9;
+  --ink:#0B1B2B; --ink-2:#3E4C45; --muted:#6B7A72;
+  --line:#E3EAE6; --line-2:#EDF1EF;
+  --brand:#0BA75E; --brand-deep:#0B7A4B; --brand-ink:#075B37;
+  --mint:#DFF5E9; --mint-line:#BCE8D0;
+  --amber:#FFC24B; --amber-bg:#FFF4DC; --amber-ink:#7A5600; --amber-line:#F3D89A;
+  --coral:#FF5C48; --coral-bg:#FEE9E5; --coral-ink:#8A2318; --coral-line:#F6C4BB;
+  --s1:#FF5C48; --s2:#FFC24B; --s3:#0BA75E;
+  --shadow:0 1px 2px rgba(11,27,43,.05),0 8px 24px rgba(11,27,43,.06);
+  --shadow-lg:0 12px 40px rgba(11,27,43,.16);
+  --focus:0 0 0 3px rgba(11,167,94,.35);
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+  --bg:#0A1620; --surface:#0F2231; --surface-2:#132A3C; --surface-3:#1A3145;
+  --ink:#EAF2ED; --ink-2:#B6C6BD; --muted:#82948B; --line:#1E3446; --line-2:#182B3B;
+  --brand:#22C57E; --brand-deep:#0BA75E; --brand-ink:#8FE6BC;
+  --mint:#12362A; --mint-line:#1E5741;
+  --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
+  --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+}}
+:root[data-theme="dark"]{
+  --bg:#0A1620; --surface:#0F2231; --surface-2:#132A3C; --surface-3:#1A3145;
+  --ink:#EAF2ED; --ink-2:#B6C6BD; --muted:#82948B; --line:#1E3446; --line-2:#182B3B;
+  --brand:#22C57E; --brand-deep:#0BA75E; --brand-ink:#8FE6BC;
+  --mint:#12362A; --mint-line:#1E5741;
+  --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
+  --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--font); background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; font-size:14px; line-height:1.45}
+button{font-family:inherit}
+:focus-visible{outline:none; box-shadow:var(--focus); border-radius:8px}
+.tnum{font-variant-numeric:tabular-nums}
+.hidden{display:none !important}
+.dash{color:var(--muted)}
+
+.concept{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 18px; background:var(--ink); color:#EAF2ED; font-size:12.5px}
+.concept b{color:#fff}
+.concept .tag{background:var(--brand); color:#04180E; font-weight:700; padding:2px 8px; border-radius:999px; font-size:11px}
+.concept .spacer{margin-left:auto}
+.concept .switch{display:inline-flex; align-items:center; gap:8px; cursor:pointer; color:#CFE9DB}
+.toggle{width:38px; height:22px; border-radius:999px; background:rgba(255,255,255,.22); position:relative; transition:background .18s; flex:0 0 auto}
+.toggle::after{content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .18s}
+.switch.on .toggle{background:var(--brand)} .switch.on .toggle::after{transform:translateX(16px)}
+
+.statusbar{display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:7px 26px; background:var(--surface-2); border-bottom:1px solid var(--line); font-size:11.5px; color:var(--muted)}
+.statusbar .spacer{margin-left:auto}
+.skey{display:inline-flex; align-items:center; gap:6px; font-weight:600; color:var(--ink-2)}
+.skey i{width:9px; height:9px; border-radius:3px; display:inline-block}
+i.live{background:var(--brand)} i.flag{background:var(--amber)} i.plan{background:var(--surface-3); border:1px solid var(--line)}
+.sx{font-size:9.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; padding:1px 6px; border-radius:5px; margin-left:6px; vertical-align:middle; white-space:nowrap}
+.sx.live{background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line)}
+.sx.flag{background:var(--amber-bg); color:var(--amber-ink); border:1px solid var(--amber-line)}
+.sx.plan{background:var(--surface-2); color:var(--muted); border:1px solid var(--line)}
+
+.phead{display:flex; align-items:center; gap:14px; padding:13px 26px; border-bottom:1px solid var(--line); background:var(--surface); position:sticky; top:0; z-index:20}
+.phead .logo{width:34px; height:34px; border-radius:9px; background:linear-gradient(150deg,var(--brand),var(--brand-deep)); display:grid; place-items:center; color:#04180E; font-weight:800; font-size:17px}
+.phead .bwrap b{font-size:15px; letter-spacing:-.01em; display:block; line-height:1.05}
+.phead .bwrap span{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.phead .right{margin-left:auto; display:flex; align-items:center; gap:14px}
+.phead .who{text-align:right} .phead .who b{font-size:13px; display:block} .phead .who span{font-size:11.5px; color:var(--muted)}
+.phead .av{width:34px; height:34px; border-radius:50%; background:var(--brand-deep); color:#fff; display:grid; place-items:center; font-weight:700; font-size:13px}
+.phead .link{font-size:12.5px; color:var(--ink-2); text-decoration:none; border:1px solid var(--line); padding:7px 11px; border-radius:8px}
+
+.wrap{max-width:1000px; margin:0 auto; padding:0 26px}
+.jhead{padding:22px 0 0}
+.eyebrow{font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--brand-deep); font-weight:700}
+h1{font-size:23px; letter-spacing:-.02em; margin:6px 0 3px; text-wrap:balance}
+.sub{color:var(--muted); font-size:13px}
+.jhead .idline{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap}
+.jhead .acts{margin-left:auto}
+.pill{display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:6px 11px; border-radius:999px; background:var(--amber-bg); color:var(--amber-ink); border:1px solid var(--amber-line)}
+.pill i{width:7px; height:7px; border-radius:50%; background:var(--amber)}
+.btn{display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:13px; padding:9px 14px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer}
+.btn:hover{border-color:var(--brand)}
+.btn.pri{background:var(--brand); border-color:var(--brand); color:#04180E}
+.btn.pri:hover{background:var(--brand-deep); border-color:var(--brand-deep); color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 10px; font-size:12px}
+
+.stages{display:flex; align-items:center; gap:4px; margin:16px 0 0; padding:6px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; overflow-x:auto}
+.stage{display:flex; align-items:center; gap:9px; padding:9px 13px; border-radius:9px; white-space:nowrap; color:var(--ink-2); font-weight:600; font-size:13px; border:1px solid transparent}
+.stage .dot{width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:700; background:var(--surface-3); color:var(--muted); border:1px solid var(--line)}
+.stage[data-st="active"] .dot{background:var(--surface); color:var(--brand); border:2px solid var(--brand)}
+.stage[data-st="active"]{background:var(--surface); box-shadow:var(--shadow); border-color:var(--line); color:var(--ink)}
+.stagesep{flex:1; min-width:12px; height:2px; border-radius:2px; background:var(--line)}
+
+.strip{display:flex; align-items:stretch; margin:16px 0 0; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden; flex-wrap:wrap}
+.strip .cell{padding:11px 16px; border-right:1px solid var(--line-2); flex:1 1 auto}
+.strip .cell .lab{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.strip .cell .val{font-size:18px; font-weight:700; margin-top:2px}
+.strip .cell .val small{font-size:12px; font-weight:600; color:var(--muted)}
+
+.body{padding:16px 0 60px; display:flex; flex-direction:column; gap:12px}
+.note{display:none; margin:2px 0 6px; padding:10px 12px 10px 14px; border-left:3px solid var(--brand); background:var(--mint); color:var(--brand-ink); font-size:12.5px; border-radius:0 9px 9px 0}
+body.notes .note{display:block}
+.note .nnum{display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--brand); color:#04180E; font-weight:800; font-size:11px; margin-right:7px; vertical-align:middle}
+
+.detool{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow)}
+.sitectx{display:flex; align-items:center; gap:9px; padding:6px 8px 6px 12px; border:1px solid var(--brand); border-radius:10px; background:var(--mint)}
+.sitectx .lab{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--brand-ink); font-weight:700}
+.sitectx select{border:1px solid var(--mint-line); background:var(--surface); color:var(--ink); border-radius:8px; padding:7px 9px; font-size:13px; font-weight:600; font-family:inherit}
+.detool .hint{font-size:11.5px; color:var(--muted); max-width:320px}
+.winban{margin-left:auto; display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:9px; background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line); font-size:12px; font-weight:600}
+
+.scopegrp{margin-top:2px}
+.scopehead{display:flex; align-items:center; gap:9px; margin:14px 2px 8px; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; color:var(--ink-2)}
+.scopehead .sdot{width:11px; height:11px; border-radius:3px}
+.scopehead::after{content:""; flex:1; height:1px; background:var(--line)}
+.cat{border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden; margin-bottom:10px}
+.cat.open{box-shadow:var(--shadow),0 0 0 1.5px var(--brand) inset}
+.cat-h{display:flex; align-items:center; gap:13px; padding:13px 15px; cursor:pointer; border-left:4px solid var(--cc,var(--brand))}
+.cat-badge{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:0 0 auto; background:color-mix(in srgb,var(--cc,var(--brand)) 16%,var(--surface)); color:var(--cc,var(--brand))}
+.cat-tt{min-width:0}
+.cat-tt b{font-size:14.5px; letter-spacing:-.01em; display:flex; align-items:center; flex-wrap:wrap}
+.cat-tt .cat-sum{display:block; color:var(--muted); font-size:12px; margin-top:1px}
+.cat-h .rt{margin-left:auto; display:flex; align-items:center; gap:12px}
+.chev{width:24px; height:24px; border-radius:7px; display:grid; place-items:center; color:var(--muted); transition:transform .2s; flex:0 0 auto}
+.cat.open .chev{transform:rotate(180deg)}
+.cat-body{display:none; padding:2px 15px 15px} .cat.open .cat-body{display:block}
+.kindnote{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--line-2); border-radius:8px; padding:8px 10px; margin:6px 0 10px}
+.tblwrap{overflow-x:auto; border:1px solid var(--line-2); border-radius:10px}
+table{width:100%; border-collapse:collapse; font-size:13px}
+thead th{text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:9px 13px; border-bottom:1px solid var(--line); white-space:nowrap; background:var(--surface-2)}
+thead th.num,tbody td.num{text-align:right}
+tbody td{padding:10px 13px; border-bottom:1px solid var(--line-2); vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)} tbody tr.sel{background:var(--mint)}
+.src{font-weight:600}
+.st{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px}
+.st.ok{background:var(--mint); color:var(--brand-ink)}
+.st.pend{background:var(--amber-bg); color:var(--amber-ink); border:1px solid var(--amber-line)}
+.st.need{background:var(--coral-bg); color:var(--coral-ink); border:1px solid var(--coral-line)}
+.catfoot{display:flex; align-items:center; gap:10px; margin-top:10px}
+.emptycat{padding:14px; text-align:center; color:var(--muted); font-size:12.5px; border:1px dashed var(--line); border-radius:10px}
+.foot{font-size:12px; color:var(--muted); margin-top:10px}
+
+.mini{display:flex; align-items:center; gap:13px; padding:13px 15px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow)}
+.mini .b{width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:12px; background:var(--surface-3); color:var(--muted); border:1px solid var(--line); flex:0 0 auto}
+.mini .t b{font-size:14px} .mini .t span{display:block; color:var(--muted); font-size:12px; margin-top:1px}
+.mini .s{margin-left:auto; font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px; background:var(--surface-2); color:var(--muted); border:1px solid var(--line)}
+
+.scrim{position:fixed; inset:0; background:rgba(11,27,43,.28); opacity:0; pointer-events:none; transition:opacity .2s; z-index:40}
+.scrim.show{opacity:1; pointer-events:auto}
+.drawer{position:fixed; top:0; right:0; height:100vh; width:min(440px,94vw); background:var(--surface); border-left:1px solid var(--line); box-shadow:var(--shadow-lg); transform:translateX(100%); transition:transform .22s cubic-bezier(.4,0,.2,1); z-index:50; display:flex; flex-direction:column}
+.drawer.show{transform:none}
+.dh{padding:16px 18px; border-bottom:1px solid var(--line-2); display:flex; align-items:flex-start; gap:10px}
+.dh .x{margin-left:auto; border:1px solid var(--line); background:var(--surface); width:30px; height:30px; border-radius:8px; cursor:pointer; color:var(--ink-2); font-size:16px}
+.db{padding:16px 18px; overflow:auto; display:flex; flex-direction:column; gap:13px}
+.banner{padding:10px 12px; border-radius:9px; font-size:12.5px; background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line)}
+.sect{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-top:2px}
+.dfield{display:flex; flex-direction:column; gap:5px}
+.dfield label{font-size:11.5px; color:var(--muted); font-weight:600}
+.dfield input,.dfield select,.dfield textarea{border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit}
+.dfield input:disabled,.dfield select:disabled{background:var(--surface-2); color:var(--ink-2)}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.newbadge{font-size:9.5px; letter-spacing:.05em; font-weight:800; text-transform:uppercase; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); padding:2px 6px; border-radius:5px; margin-left:7px}
+.disc{border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.disc>summary{list-style:none; cursor:pointer; padding:10px 12px; font-size:12.5px; font-weight:600; color:var(--ink-2); background:var(--surface-2); display:flex; align-items:center; gap:8px}
+.disc>summary::-webkit-details-marker{display:none}
+.disc>summary .cv{margin-left:auto; transition:transform .2s} .disc[open]>summary .cv{transform:rotate(180deg)}
+.disc .dc{padding:12px}
+.mini-months{display:grid; grid-template-columns:repeat(6,1fr); gap:5px}
+.mini-months span{font-size:10.5px; text-align:center; padding:5px 0; border:1px dashed var(--line); border-radius:6px; background:transparent; color:var(--muted)}
+.reg{display:flex; gap:8px; align-items:flex-end}
+.reg .plate{flex:1}
+.reg input.platein{font-weight:800; letter-spacing:.08em; text-transform:uppercase; text-align:center; background:#FFDE00; color:#0B1B2B; border:2px solid #0B1B2B}
+
+@media (max-width:720px){ .strip{flex-direction:column} }
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="concept">
+  <span class="tag">CONCEPT v3</span>
+  <b>Client portal — the same data-entry process as the consultant.</b>
+  <span>Authorised categories only · pick the site once · submit for NZI review.</span>
+  <span class="spacer"></span>
+  <span class="switch" id="notesSwitch" role="button" tabindex="0" aria-pressed="false"><span class="toggle"></span> Design notes</span>
+  <span class="switch" id="themeSwitch" role="button" tabindex="0" aria-pressed="false"><span class="toggle"></span> Dark</span>
+</div>
+
+<div class="statusbar">
+  <span class="skey"><i class="live"></i>Live</span>
+  <span class="skey"><i class="flag"></i>Behind flag</span>
+  <span class="skey"><i class="plan"></i>Planned — model ready</span>
+  <span class="spacer"></span>
+  <span>Data-entry UX v3 · NZC-046 · 01/09/2026</span>
+</div>
+
+<header class="phead">
+  <div class="logo">N</div>
+  <div class="bwrap"><b>NZI Pro</b><span>Client portal</span></div>
+  <div class="right"><a href="#" class="link">Account security</a><div class="who"><b>Priya Nair</b><span>Bushy Tails Ltd</span></div><div class="av">PN</div></div>
+</header>
+
+<div class="wrap">
+  <div class="jhead">
+    <div class="idline">
+      <div><div class="eyebrow">Carbon Reduction Plan · 2024</div><h1>2024 Carbon Reduction Plan</h1>
+      <div class="sub">Bushy Tails Ltd · Prepared and verified by NZI · Published version 1</div></div>
+      <div class="acts"><span class="pill" style="background:var(--surface-2);color:var(--ink-2);border-color:var(--line)"><i style="background:var(--muted)"></i>No data</span></div>
+    </div>
+    <div class="stages" id="stages"></div>
+  </div>
+
+  <div class="strip">
+    <div class="cell"><div class="lab">Reporting year</div><div class="val tnum">2024</div></div>
+    <div class="cell"><div class="lab">Carbon emissions</div><div class="val tnum">1,418 <small>tCO₂e</small></div></div>
+    <div class="cell"><div class="lab">Data window</div><div class="val">Open <small>to 30/09</small></div></div>
+    <div class="cell"><div class="lab">Report</div><div class="val">Published <small>not yet approved</small></div></div>
+  </div>
+
+  <div class="body">
+    <div class="note"><span class="nnum">i</span><b>The same process the consultant uses — a constrained mirror.</b> Only the categories NZI authorised appear, named as in the report. Pick a <b>site</b> once and every entry is allocated to it. Provide activity data; NZI selects factors and calculates. Submitted data goes to review — never counted until verified.</div>
+
+    <div style="display:flex; align-items:center; gap:12px; margin:2px 2px 0">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">1</div>
+      <div><b style="font-size:15px">Provide activity data</b><div class="sub">Choose a category and add data — one at a time</div></div>
+    </div>
+
+    <div class="detool">
+      <div class="sitectx"><span class="lab">Site</span>
+        <select id="siteSel"><option value="mcr" selected>Manchester operations</option><option value="depot">Leeds depot</option><option value="all">All sites</option></select></div>
+      <div class="hint" id="siteHint">Entries are allocated to <b>Manchester operations</b>.</div>
+      <div class="winban">🗓 Window open — until 30/09/2026</div>
+    </div>
+
+    <div id="catView"></div>
+
+    <div style="margin-top:6px"></div>
+    <div class="mini"><div class="b">2</div><div class="t"><b>Carbon emissions</b><span>1,418 tCO₂e · Scope 3 is 83% of emissions</span></div><div class="s">View</div></div>
+    <div class="mini"><div class="b">3</div><div class="t"><b>Approve this report</b><span>Bound to the exact published version</span></div><div class="s">When ready</div></div>
+    <div class="mini"><div class="b">4</div><div class="t"><b>Documents</b><span>Report PDF · certificate · methodology</span></div><div class="s">3 files</div></div>
+    <div class="mini"><div class="b">5</div><div class="t"><b>Messages</b><span>Questions for your NZI team</span></div><div class="s">1</div></div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Provide activity data"><div class="dh">
+  <div><div class="eyebrow" id="dCatName">Provide activity data</div><h1 style="font-size:17px;margin:4px 0 2px" id="dTitle">New entry</h1><div class="sub" id="dScope">Authorised category</div></div>
+  <button class="x" id="dClose" aria-label="Close">✕</button>
+</div><div class="db" id="dBody"></div></aside>
+
+<script>
+const SITES={mcr:"Manchester operations",depot:"Leeds depot",all:"All sites"};
+let site="mcr";
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/* portal = authorised categories only; kinds: manual|spend|travel|commuting */
+const CATS=[
+  {scope:"1",name:"Fuel & heating",kind:"manual",unit:"kWh",status:"live",entries:[
+    {src:"Natural gas",site:"mcr",qty:"96,000",unit:"kWh",r:"approved",mo:12}]},
+  {scope:"1",name:"Company Vehicles",kind:"vehicle",unit:"litres",status:"live",entries:[]},
+  {scope:"2",name:"Purchased Electricity",kind:"manual",unit:"kWh",status:"live",entries:[
+    {src:"Grid electricity",site:"mcr",qty:"312,000",unit:"kWh",r:"submitted",mo:12}]},
+  {scope:"3",name:"Purchased Goods and Services",kind:"spend",unit:"GBP",status:"live",entries:[
+    {src:"General procurement",site:"none",qty:"4,100,000",unit:"GBP",r:"approved",mo:0}]},
+  {scope:"3",name:"Business Travel",kind:"travel",unit:"pax-km",status:"live",entries:[]},
+  {scope:"3",name:"Employee Commuting",kind:"commuting",unit:"km",status:"live",entries:[]},
+];
+const SCOPEMETA={"1":{c:"var(--s1)",label:"Scope 1 · Direct"},"2":{c:"var(--s2)",label:"Scope 2 · Purchased energy"},"3":{c:"var(--s3)",label:"Scope 3 · Value chain"}};
+const KINDNOTE={
+  spend:'Spend — enter net value, VAT &amp; GL code; choose your authorised category. <span class="sx live">live</span>',
+  travel:'Registration finder, air, rail &amp; other travel — or enter manually. <span class="sx live">self-serve</span>',
+  commuting:'Registration finder, mode, or working-from-home days. <span class="sx live">self-serve</span>',
+  vehicle:'Registration finder (DVLA) or manual — make, model, fuel. <span class="sx live">self-serve</span>',
+  manual:'Enter a quantity and unit, with an optional monthly breakdown. <span class="sx live">live</span>'
+};
+const REV={approved:'<span class="st ok">Approved</span>',submitted:'<span class="st pend">Submitted</span>',need:'<span class="st q">No data</span>',pending:'<span class="st pend">In review</span>'};
+const FACTORS={
+ "Fuel & heating":["Natural gas (kWh)","Natural gas (m³)","Heating oil (litres)","LPG (kWh)"],
+ "Company Vehicles":["Diesel — car (average)","Petrol — car (average)","Diesel — LGV","Diesel — HGV rigid"],
+ "Purchased Electricity":["UK grid average","Electricity — T&D losses"],
+ "Purchased Goods and Services":["Packaging","Office supplies","IT equipment","Professional services"],
+ "Business Travel":["Air — short haul","Air — long haul","Rail — national","Hotel night","Taxi"],
+ "Employee Commuting":["Car — petrol","Car — diesel","Bus","Rail","Working from home"]
+};
+function visible(e){return site==="all"||e.site===site||e.site==="none";}
+
+function renderCats(){
+  const host=document.getElementById('catView'); host.innerHTML='';
+  ["1","2","3"].forEach(sc=>{
+    const cats=CATS.filter(c=>c.scope===sc);
+    if(!cats.length)return;
+    const grp=document.createElement('div'); grp.className='scopegrp';
+    grp.innerHTML=`<div class="scopehead"><span class="sdot" style="background:${SCOPEMETA[sc].c}"></span>${SCOPEMETA[sc].label}</div>`;
+    cats.forEach(c=>{
+      const ents=c.entries.filter(visible);
+      const idx=CATS.indexOf(c);
+      const need=ents.filter(e=>e.r==='need').length || (ents.length===0?1:0);
+      const el=document.createElement('div'); el.className='cat'; el.style.setProperty('--cc',SCOPEMETA[sc].c);
+      el.innerHTML=`<div class="cat-h" role="button" tabindex="0" aria-expanded="false">
+        <span class="cat-badge"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+        <div class="cat-tt"><b>${c.name}${c.status==='plan'?'<span class="sx plan">planned</span>':''}${need?'<span class="sx plan">no data</span>':''}</b>
+        <span class="cat-sum">${ents.length} ${ents.length===1?'entry':'entries'} · ${c.status==='live'?'open now':'coming soon'}</span></div>
+        <div class="rt"><span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+        <div class="cat-body"><div class="kindnote">⌁ ${KINDNOTE[c.kind]}</div>
+        ${ents.length?`<div class="tblwrap"><table><thead><tr><th>Entry</th><th>Site</th><th class="num">Amount</th><th>Unit</th><th>Status</th></tr></thead><tbody>
+          ${ents.map(e=>{const gi=c.entries.indexOf(e);return `<tr data-c="${idx}" data-e="${gi}" tabindex="0"><td class="src">${e.src}${e.mo?` <span class="foot" style="margin:0">▤ ${e.mo}/12</span>`:''}</td><td>${e.site==='none'?'<span class="dash">Any</span>':SITES[e.site]}</td><td class="num tnum">${e.qty}</td><td>${e.unit}</td><td>${REV[e.r]||''}</td></tr>`;}).join('')}
+        </tbody></table></div>`:`<div class="emptycat">Nothing entered yet.</div>`}
+        <div class="catfoot"><button class="btn sm ${c.status==='live'?'pri':''} addbtn" data-c="${idx}" ${c.status==='plan'?'disabled':''}>+ Add data</button>
+        ${c.status==='live'?'<span class="foot" style="margin:0">↩ Copy previous year available</span>':'<span class="foot" style="margin:0">Available soon — NZI can enter this for now</span>'}</div></div>`;
+      grp.appendChild(el);
+    });
+    host.appendChild(grp);
+  });
+  host.querySelectorAll('.cat-h').forEach(h=>{const t=()=>{const c=h.parentElement;c.classList.toggle('open');h.setAttribute('aria-expanded',c.classList.contains('open'));};
+    h.addEventListener('click',e=>{if(e.target.closest('.addbtn'))return;t();});h.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();t();}});});
+  host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openEntry(+tr.dataset.c,+tr.dataset.e)));
+  host.querySelectorAll('.addbtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();if(!b.disabled)openEntry(+b.dataset.c,-1);}));
+}
+
+const drawer=document.getElementById('drawer'), scrim=document.getElementById('scrim');
+function monthsHtml(mo){return MON.map((m,k)=>`<span class="${mo>k?'':''}">${m}</span>`).join('');}
+function openEntry(ci,ei){
+  const c=CATS[ci]; const isNew=ei<0; const e=isNew?{src:'',qty:'',unit:c.unit,r:'',mo:0}:c.entries[ei];
+  document.getElementById('dCatName').textContent=c.name;
+  document.getElementById('dScope').textContent=`Scope ${c.scope} · authorised category`;
+  document.getElementById('dTitle').textContent=isNew?'New entry':e.src;
+  const sName=site!=='all'?SITES[site]:'choose per entry';
+  const spend=c.kind==='spend', regKind=(c.kind==='vehicle'||c.kind==='travel'||c.kind==='commuting');
+  document.getElementById('dBody').innerHTML=`
+    <div class="banner">Only the units and factors NZI authorised for this category are available. This entry is allocated to <b>${sName}</b>.</div>
+    ${regKind?`<div><div class="sect">Registration finder <span class="newbadge">DVLA lookup / manual</span></div>
+      <div class="reg" style="margin-top:6px"><div class="dfield plate"><label>Registration</label><input class="platein" placeholder="AB12 CDE"></div><button class="btn sm" style="height:37px">Look up</button></div>
+      <div class="foot" style="margin-top:6px">…or enter ${c.kind==='commuting'?'mode &amp; WFH days':c.kind==='travel'?'air / rail / hotel':'make, model &amp; fuel'} manually.</div></div>`:''}
+    <div class="dfield"><label>${spend?'Supplier / description':'Activity'} <span class="newbadge">smart search</span></label><input list="facs" value="${isNew?'':e.src}" placeholder="${spend?'Search suppliers / categories...':'Search this category\'s activities...'}"><datalist id="facs">${(FACTORS[c.name]||[]).map(f=>`<option value="${f}">`).join('')}</datalist><div class="foot" style="margin-top:2px">Scoped to Scope ${c.scope} · ${c.name} factors only.</div></div>
+    <div class="two"><div class="dfield"><label>${spend?'Net value (£)':'Quantity'}</label><input value="${isNew?'':(e.qty==='—'?'':e.qty)}" placeholder="${spend?'e.g. 4,100':'e.g. 12,400'}"></div>
+    <div class="dfield"><label>${spend?'VAT %':'Unit'}</label>${spend?'<input placeholder="20">':`<select><option>${c.unit}</option></select>`}</div></div>
+    <details class="disc"><summary>Add monthly breakdown · optional <span class="cv">▾</span></summary>
+      <div class="dc"><div class="mini-months">${monthsHtml(0)}</div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn sm ghost">Copy month 1 → all</button><button class="btn sm ghost">Clear</button></div></div></details>
+    ${spend?`<div><div class="sect">Spend details</div><div class="two" style="margin-top:6px"><div class="dfield"><label>GL / nominal code</label><input placeholder="5200"></div><div class="dfield"><label>Category (authorised)</label><select><option>Packaging</option><option>Office supplies</option><option>IT equipment</option></select></div></div></div>`:''}
+    <div class="dfield"><label>Evidence note</label><textarea rows="2" placeholder="Anything that helps the consultant verify this"></textarea></div>
+    <div><div class="sect">Supporting documents</div>
+      <div style="margin-top:6px;border:1px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);font-size:12px">📎 <b>Attach file</b> — invoice, meter reading, EPD<br><span style="font-size:11px">PDF · image · spreadsheet · virus-scanned on upload</span></div></div>
+    <div style="display:flex;gap:8px;margin-top:6px"><button class="btn ghost" style="flex:1">Save draft</button><button class="btn pri" style="flex:1">Submit for review</button></div>
+    <div class="foot" style="margin-top:0">Submitting sends this to NZI. Not counted in emissions until the consultant reviews it.</div>`;
+  drawer.classList.add('show'); scrim.classList.add('show');
+}
+function closeDrawer(){drawer.classList.remove('show');scrim.classList.remove('show');}
+document.getElementById('dClose').addEventListener('click',closeDrawer);
+scrim.addEventListener('click',closeDrawer);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+
+(function(){const bar=document.getElementById('stages');const S=[["Provide activity data","active"],["Carbon emissions","idle"],["Approve this report","idle"]];S.forEach((s,i)=>{const b=document.createElement('div');b.className='stage';b.dataset.st=s[1];b.innerHTML=`<span class="dot">${i+1}</span>${s[0]}`;bar.appendChild(b);if(i<S.length-1){const sp=document.createElement('span');sp.className='stagesep';bar.appendChild(sp);}});})();
+
+const siteSel=document.getElementById('siteSel');
+siteSel.addEventListener('change',()=>{site=siteSel.value;document.getElementById('siteHint').innerHTML=site==='all'?'Choose a site per entry.':`Entries are allocated to <b>${SITES[site]}</b>.`;renderCats();});
+const ns=document.getElementById('notesSwitch');ns.addEventListener('click',()=>{const on=document.body.classList.toggle('notes');ns.classList.toggle('on',on);ns.setAttribute('aria-pressed',on);});
+ns.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ns.click();}});
+const ts=document.getElementById('themeSwitch');ts.addEventListener('click',()=>{const d=document.documentElement.getAttribute('data-theme')!=='dark';document.documentElement.setAttribute('data-theme',d?'dark':'light');ts.classList.toggle('on',d);ts.setAttribute('aria-pressed',d);});
+ts.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ts.click();}});
+renderCats();
+</script>

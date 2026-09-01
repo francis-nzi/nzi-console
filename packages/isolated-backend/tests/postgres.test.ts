@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listJobEmissionSourceRegister,listJobFactorOptions,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listJobApplicableCategories,listJobEmissionSourceRegister,listJobFactorOptions,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -35,6 +35,43 @@ describe("isolated Postgres adapter", () => {
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.clientFactorVersionMoved, true);
     assert.ok(sql.includes("'v'||cf.version::text <> coalesce(r.factor_version,'')"));
+  });
+
+  it("lists the CRM applicable-category completeness view — all 15 Scope 3 when Scope 3 is included (NZC-046/UX1a)", async () => {
+    const db = { query: async (statement: string) => {
+      if (statement.includes("SELECT DISTINCT scope FROM")) return { rows: [{ scope: "1" }, { scope: "3" }] };
+      if (statement.includes("coalesce(nullif(category_code")) return { rows: [{ code: "3.1", entry_count: "2", tco2e: "686.3", complete_count: "1" }, { code: "1.natural-gas", entry_count: "1", tco2e: "17.6", complete_count: "1" }] };
+      return { rows: [] };
+    } } as Queryable;
+    const result = await listJobApplicableCategories(db, "job-a", "crm");
+    assert.deepEqual(result.includedScopes, ["1", "3"]);
+    assert.equal(result.categories.filter((c) => c.scope === "3").length, 15);
+    assert.equal(result.categories.filter((c) => c.scope === "1").length, 3);
+    assert.equal(result.categories.filter((c) => c.scope === "2").length, 0, "Scope 2 not included");
+    const pgs = result.categories.find((c) => c.code === "3.1")!;
+    assert.equal(pgs.name, "Purchased Goods and Services");
+    assert.equal(pgs.kind, "spend");
+    assert.equal(pgs.entryCount, 2);
+    assert.equal(pgs.tco2e, 686.3);
+    assert.equal(pgs.completeness, 50);
+    assert.equal(pgs.noData, false);
+    const empty = result.categories.find((c) => c.code === "3.2")!;
+    assert.equal(empty.noData, true);
+    assert.equal(empty.entryCount, 0);
+  });
+
+  it("lists only the client's authorised categories for the portal audience (NZC-046/UX1a)", async () => {
+    let grantSql = "";
+    const db = { query: async (statement: string) => {
+      if (statement.includes("SELECT DISTINCT scope FROM")) return { rows: [{ scope: "3" }] };
+      if (statement.includes("coalesce(nullif(category_code")) return { rows: [] };
+      if (statement.includes("FROM nzi_console.portal_data_entry_bucket_grants b")) { grantSql = statement; return { rows: [{ code: "3.1" }, { code: "3.6" }] }; }
+      return { rows: [] };
+    } } as Queryable;
+    const result = await listJobApplicableCategories(db, "job-a", "portal");
+    assert.deepEqual(result.categories.map((c) => c.code), ["3.1", "3.6"]);
+    assert.ok(result.categories.every((c) => c.authorised === true));
+    assert.ok(grantSql.includes("b.revoked_at IS NULL AND g.revoked_at IS NULL"));
   });
 
   it("maps governed datasets, provenance usage and explicit selection warnings",async()=>{let call=0;const db={query:async()=>({rows:call++===0?[{dataset_id:"dataset-a",name:"Published factors",version:"2026",valid_from:"2026-01-01",valid_to:"2026-12-31",country_code:"GB",status:"active",source_name:"Publisher",licence:"OGL",synthetic:false,factor_count:"2",job_count:"1",scopes:["1","2"],spend_count:"0",activity_count:"2"}]:[{dataset_id:"dataset-a",job_number:"J000612",warning:"Manual geography exception."}]})} as Queryable,result=await listDatasetRegistry(db);assert.equal(result.datasets[0]?.factorCount,2);assert.deepEqual(result.datasets[0]?.scopes,["1","2"]);assert.equal(result.issues[0]?.jobNumber,"J000612");});
