@@ -6,6 +6,7 @@ import {
   buildEmissionEntryFields,
   categoryRowScope,
   emissionEntryActions,
+  emissionEntryDraftToPortalRecord,
   emissionEntryDraftToScopeRow,
   isRegistrationKind,
   isSpendKind,
@@ -13,6 +14,7 @@ import {
   parseEntryNumber,
   scopeRowToEmissionEntryDraft,
   type EmissionEntryDraft,
+  type PortalBucketRef,
 } from "../app/jobs/emissionEntryModel";
 
 const draft = (over: Partial<EmissionEntryDraft> = {}): EmissionEntryDraft => ({
@@ -219,5 +221,48 @@ describe("UX1c — draft ↔ scope row mapping", () => {
     assert.equal(back.dataConfidence, "M — Medium");
     assert.equal(back.monthlyOpen, true);
     assert.equal(back.monthly?.["2026-01"], "26000");
+  });
+});
+
+describe("UX1d-2 — draft → client-portal data-entry record", () => {
+  const manualBucket: PortalBucketRef = {
+    bucketGrantId: "b-gas", entryKind: "manual_activity",
+    factors: [{ id: "f-gas", label: "Natural gas", unit: "kWh" }], units: ["kWh"], sites: [{ id: "s1", name: "HQ" }], pgsCategories: [],
+  };
+  const spendBucket: PortalBucketRef = {
+    bucketGrantId: "b-pgs", entryKind: "spend",
+    factors: [{ id: "f-ceda", label: "CEDA sector", unit: "GBP" }], units: ["GBP"], sites: [], pgsCategories: [{ id: "pgs-1", name: "Packaging" }],
+  };
+
+  it("maps a manual entry to the authorised bucket, factor and unit", () => {
+    const result = emissionEntryDraftToPortalRecord(draft({ activity: "Meter 12", quantity: "96,000", note: "annual read" }), manualBucket, { id: "s1" });
+    assert.ok(!("error" in result));
+    assert.deepEqual(result, { bucketGrantId: "b-gas", quantity: 96000, unit: "kWh", factorId: "f-gas", siteId: "s1", note: "Meter 12 · annual read" });
+  });
+
+  it("rejects a non-positive quantity", () => {
+    assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "0" }), manualBucket, { id: null }));
+    assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "" }), manualBucket, { id: null }));
+  });
+
+  it("maps a spend entry: net value → detail, quantity forced to 0, VAT/GL/category in detail", () => {
+    const result = emissionEntryDraftToPortalRecord(
+      draft({ activity: "Q1 procurement", quantity: "4,100", vatPercent: "20", glCode: "5200", spendCategoryId: "pgs-1" }),
+      spendBucket, { id: null },
+    );
+    assert.ok(!("error" in result));
+    if ("error" in result) return;
+    assert.equal(result.quantity, 0);
+    assert.equal(result.unit, "GBP");
+    assert.deepEqual(result.detail, { netValue: 4100, vatPercent: 20, glCode: "5200", pgsCategoryId: "pgs-1", invoiceDate: null, monthlyActivity: [] });
+  });
+
+  it("uses the bucket's sole factor when the portal form supplies none", () => {
+    const result = emissionEntryDraftToPortalRecord(draft({ quantity: "10", factorId: "" }), manualBucket, { id: null });
+    assert.equal("error" in result ? "" : result.factorId, "f-gas");
+  });
+
+  it("errors when the chosen factor is not one the bucket authorises", () => {
+    assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "10", factorId: "f-not-authorised" }), manualBucket, { id: null }));
   });
 });

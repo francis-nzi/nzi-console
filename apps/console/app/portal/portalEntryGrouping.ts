@@ -2,7 +2,7 @@
 // scope→category accordion (NZC-046 / DATA_ENTRY_UX.md §1, §5). The portal is a
 // constrained mirror: it shows only the categories the client's bucket grants
 // authorise, never the full 15. Pure — the component renders these sections.
-import { emissionCategoryTaxonomy, scopeMeta, type EmissionCategoryKind } from "@nzi/contracts";
+import { emissionCategoryTaxonomy, scopeMeta, type EmissionCategory, type EmissionCategoryKind } from "@nzi/contracts";
 
 export type PortalBucket = {
   bucketGrantId: string;
@@ -22,6 +22,8 @@ export type PortalAccordionSection = {
   name: string;
   scope: "1" | "2" | "3";
   kind: EmissionCategoryKind;
+  /** The category the shared `EmissionEntryForm` renders against. */
+  category: EmissionCategory;
   buckets: PortalBucket[];
   spendBuckets: PortalBucket[];
   otherBuckets: PortalBucket[];
@@ -55,11 +57,14 @@ export function buildPortalDataEntryAccordion(buckets: PortalBucket[]): PortalAc
   const sections = [...byCode.entries()].map<PortalAccordionSection>(([code, list]) => {
     const taxonomy = TAXONOMY.get(code);
     const scope = (taxonomy?.scope ?? ((code.split(".")[0] as "1" | "2" | "3") || "3"));
+    const name = taxonomy?.name ?? `${scopeMeta[scope]?.label ?? `Scope ${scope}`} — authorised`;
+    const kind = taxonomy?.kind ?? kindFor(list);
     return {
       code,
-      name: taxonomy?.name ?? `${scopeMeta[scope]?.label ?? `Scope ${scope}`} — authorised`,
+      name,
       scope,
-      kind: taxonomy?.kind ?? kindFor(list),
+      kind,
+      category: taxonomy ?? { scope, code, name, kind },
       buckets: list,
       spendBuckets: list.filter(bucket => bucket.entryKind === "spend"),
       otherBuckets: list.filter(bucket => bucket.entryKind !== "spend"),
