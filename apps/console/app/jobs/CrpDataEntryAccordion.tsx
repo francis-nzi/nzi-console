@@ -67,6 +67,26 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
   const [entryError, setEntryError] = useState("");
 
   const siteContext = { id: siteId === "" || siteId === "none" ? null : siteId, label: sites.find(site => site.id === siteId)?.label ?? null };
+  const lookupRegistration = async (registration: string): Promise<import("./emissionEntryModel").RegistrationLookupOutcome> => {
+    try {
+      const response = await fetch(`/api/isolated/jobs/${jobId}/vehicle-lookup`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ registration }),
+      });
+      const body = await response.json();
+      if (!response.ok) return { ok: false, message: body.message ?? "Vehicle lookup failed — enter it manually." };
+      return {
+        ok: true,
+        make: body.vehicle?.make ?? null,
+        fuelType: body.vehicle?.fuelType ?? null,
+        suggestedClass: body.suggestedClass ?? "vehicle",
+        year: body.vehicle?.yearOfManufacture ?? null,
+        factorId: body.factor ? `dataset:${body.factor.datasetId}|${body.factor.factorId}` : null,
+        factorLabel: body.factor?.label ?? null,
+      };
+    } catch {
+      return { ok: false, message: "Vehicle lookup failed — enter it manually." };
+    }
+  };
   const submitEntry = (category: ApplicableCategory) => async (draft: Parameters<typeof emissionEntryDraftToScopeRow>[0]) => {
     if (entryBusy) return;
     setEntryBusy(true); setEntryError("");
@@ -217,6 +237,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                               onCancel={() => setAddingCode(null)}
                               onSubmit={submitEntry(entry.category)}
                               onSaveDraft={submitEntry(entry.category)}
+                              onLookupRegistration={lookupRegistration}
                             />
                           </div>
                         ) : null}

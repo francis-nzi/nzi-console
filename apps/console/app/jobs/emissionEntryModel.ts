@@ -29,6 +29,20 @@ export type EmissionEntryDraft = {
 };
 
 export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean };
+
+/** Result of the two-step DVLA registration lookup (UX1 lookup). */
+export type RegistrationLookupOutcome =
+  | {
+      ok: true;
+      make: string | null;
+      fuelType: string | null;
+      suggestedClass: string;
+      year: number | null;
+      /** CRM only — a suggested factor when one matched. */
+      factorId?: string | null;
+      factorLabel?: string | null;
+    }
+  | { ok: false; message: string };
 export type EmissionEntryLineageStep = { label: string; detail: string };
 
 export type EmissionEntryFieldKey =
