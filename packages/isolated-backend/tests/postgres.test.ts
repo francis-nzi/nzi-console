@@ -24,9 +24,11 @@ describe("isolated Postgres adapter", () => {
   });
 
   it("maps canonical scope-row evidence without treating missing calculation as zero", async () => {
-    const db = { query: async () => ({ rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Purchased goods", quantity: "1250.5", unit: "GBP", dataset_id: "dataset-a", factor_id: "factor-a", factor_version: "2026 v1", factor_label: "Synthetic factor", quality_tier: "spend-based", calculated_tco2e: null, override_tco2e: null, override_reason: null, review_status: "pending", version: 3, enabled: true, provenance_json: { source: "synthetic" }, lineage_json: [{ title: "Captured", detail: "Synthetic" }] }] }) } as Queryable;
+    let sql = "";
+    const db = { query: async (statement: string) => { sql = statement; return { rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Purchased goods", quantity: "1250.5", unit: "GBP", dataset_id: "dataset-a", factor_id: "factor-a", factor_version: "2026 v1", factor_label: "Synthetic factor", quality_tier: "spend-based", calculated_tco2e: null, override_tco2e: null, override_reason: null, review_status: "pending", version: 3, enabled: true, category_code: "3.1", provenance_json: { source: "synthetic" }, lineage_json: [{ title: "Captured", detail: "Synthetic" }] }] }; } } as Queryable;
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.quantity, 1250.5); assert.equal(row.calculatedTco2e, null); assert.equal(row.qualityTier, "spend-based"); assert.equal(row.version, 3);
+    assert.equal(row.categoryCode, "3.1"); assert.ok(sql.includes("r.category_code"));
   });
 
   it("flags a scope row pinned to an older client factor version (S2)", async () => {

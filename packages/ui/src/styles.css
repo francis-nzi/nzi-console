@@ -2,6 +2,7 @@
   --emerald:#0BA75E;--pine:#0B7A4B;--midnight:#0B1B2B;--amber:#FFC24B;--coral:#FF5C48;--mint:#DFF5E9;
   --paper:#F6F8F7;--card:#FFFFFF;--line:#E4EAE7;--line2:#EDF1EF;--t1:#0B1B2B;--t2:#51605A;--t3:#616B65;
   --rail:#0B1B2B;--rail2:#132738;--railtx:#AFC0BC;--radius:9px;
+  --s1:#FF5C48;--s2:#FFC24B;--s3:#0BA75E;
 }
 *{box-sizing:border-box}
 .nz-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
@@ -411,3 +412,37 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-ef-dropzone{border:1px dashed var(--line);border-radius:9px;padding:12px;text-align:center;color:var(--t3);font-size:11.5px}
 .nz-ef-dropzone b{display:block;color:var(--t2);font-size:12px}
 @media(max-width:760px){.nz-months{grid-template-columns:repeat(3,1fr)}.nz-ef-two{grid-template-columns:1fr}}
+
+/* UX1b — CRP scope→category data-entry accordion (NZC-046 §1) */
+.nz-acc{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.nz-acc-tool{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:10px}
+.nz-acc-tool .hint{font-size:11.5px;color:var(--t3);max-width:320px}
+.nz-seg{display:inline-flex;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:3px;margin-left:auto}
+.nz-seg button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--t3);cursor:pointer;display:flex;align-items:center;gap:7px}
+.nz-seg button.on{background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(11,27,43,.12)}
+.nz-seg .badge{font-size:10.5px;padding:1px 6px;border-radius:999px;background:#E7ECE9;color:var(--t2)}
+.nz-seg button.on .badge.att{background:#FDEBE8;color:#B23A2B}
+.nz-acc-scopehead{display:flex;align-items:center;gap:9px;margin:14px 2px 8px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;color:var(--t2)}
+.nz-acc-scopehead .sdot{width:11px;height:11px;border-radius:3px;flex:none}
+.nz-acc-scopehead::after{content:"";flex:1;height:1px;background:var(--line)}
+.nz-acc-cat{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden;margin-bottom:10px}
+.nz-acc-cat.open{box-shadow:0 0 0 1.5px var(--cc,var(--emerald)) inset}
+.nz-acc-h{display:flex;align-items:center;gap:13px;width:100%;padding:13px 15px;cursor:pointer;border:0;border-left:4px solid var(--cc,var(--emerald));background:transparent;font-family:inherit;text-align:left}
+.nz-acc-h:hover{background:var(--paper)}
+.nz-acc-badge{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;flex:none;background:color-mix(in srgb,var(--cc,var(--emerald)) 16%,var(--card));color:var(--cc,var(--emerald));font-size:12px;font-weight:800}
+.nz-acc-tt{min-width:0;flex:1}
+.nz-acc-tt b{font-size:14px;letter-spacing:-.01em;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.nz-acc-tt .sum{display:block;color:var(--t3);font-size:11.5px;margin-top:2px}
+.nz-acc-compl{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--t3);white-space:nowrap}
+.nz-acc-compl .bar{width:56px;height:6px;border-radius:4px;background:#E7ECE9;overflow:hidden}
+.nz-acc-compl .bar i{display:block;height:100%;background:var(--emerald)}
+.nz-acc-chev{flex:none;color:var(--t3);transition:transform .2s}
+.nz-acc-cat.open .nz-acc-chev{transform:rotate(180deg)}
+.nz-acc-body{padding:4px 15px 16px}
+.nz-acc-kindnote{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--t2);background:var(--paper);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;margin:6px 0 10px}
+.nz-acc-empty{padding:14px;text-align:center;color:var(--t3);font-size:12px;border:1px dashed var(--line);border-radius:10px}
+.nz-acc-foot{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.nz-acc-extra{margin-top:12px}
+.nz-chip-mini{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;border:1px solid var(--line)}
+.nz-chip-mini.nodata{color:var(--t3);background:var(--paper)}
+.nz-chip-mini.todo{color:#8A6410;background:#FFF4DC;border-color:#F1D89B}
