@@ -95,6 +95,18 @@ describe("Postgres command boundary", () => {
     assert.ok(calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.values?.includes("INV-BATCH-14"));
     for(const value of ["Purchased materials",75,"H",1600])assert.ok(calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.values?.includes(value));
     assert.ok(calls.filter((call) => call.sql.includes("INSERT INTO nzi_console.audit_events")).length >= 2);
+    const insert = calls.find((call) => call.sql.includes("INSERT INTO nzi_console.job_scope_rows"));
+    assert.match(insert?.sql ?? "", /category_code/);
+    assert.ok(insert?.values?.includes("3.1"), "Scope 3 granular scope is auto-filed as its category_code (NZC-046/UX1c)");
+    assert.match(calls.find((call) => call.sql.includes("UPDATE nzi_console.job_scope_rows"))?.sql ?? "", /category_code=\$35/);
+  });
+
+  it("stamps an explicit NZC-046 category_code from the accordion Add-entry flow (UX1c)", async () => {
+    const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
+    const client = { async query(sql: string, values?: readonly unknown[]) { calls.push({ sql, values }); if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] }; if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] }; return { rows: [] }; }, release() {} };
+    await createScopeRow({ connect: async () => client } as never, { jobId: "job-a", scope: "1", categoryCode: "1.company-vehicles", sourceLabel: "AB12 CDE", quantity: 6200, unit: "litres", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "v1", factorLabel: "Diesel LGV", qualityTier: "measured" }, { ...context, idempotencyKey: "cat-create" });
+    const insert = calls.find((call) => call.sql.includes("INSERT INTO nzi_console.job_scope_rows"));
+    assert.ok(insert?.values?.includes("1.company-vehicles"));
   });
 
   it("derives annual activity from reporting-period monthly slots",async()=>{const calls:Array<{sql:string;values?:readonly unknown[]}>=[];const client={async query(sql:string,values?:readonly unknown[]){calls.push({sql,values});if(sql.includes("FROM nzi_console.command_idempotency"))return{rows:[]};if(sql.includes("SELECT job_family FROM"))return{rows:[{job_family:"crp"}]};if(sql.includes("SELECT reporting_from"))return{rows:[{reporting_from:"2026-01-01",reporting_to:"2026-02-28"}]};return{rows:[]};},release(){}};await createScopeRow({connect:async()=>client} as never,{jobId:"job-a",scope:"1",sourceLabel:"Gas",quantity:999,unit:"kWh",datasetId:"dataset-a",factorId:"factor-a",factorVersion:"v1",factorLabel:"Gas factor",qualityTier:"measured",monthlyActivity:[{month:"2026-01",quantity:10},{month:"2026-02",quantity:20}]},{...context,idempotencyKey:"monthly-create"});const insert=calls.find(call=>call.sql.includes("INSERT INTO nzi_console.job_scope_rows"));assert.equal(insert?.values?.[7],30);assert.deepEqual(JSON.parse(String(insert?.values?.[21])),[{month:"2026-01",quantity:10},{month:"2026-02",quantity:20}]);});

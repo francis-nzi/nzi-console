@@ -27,6 +27,15 @@ describe("command contracts", () => {
     assert.ok(validateCommand("scope.row.create", { ...base, sourceQuantity: 125, sourceUnit: null }, context).some((issue) => issue.field === "sourceUnit"));
     assert.ok(validateCommand("scope.row.create", { ...base, factorSource: "client", clientFactorId: "cf-a", isCustomEntry: false, datasetId: null }, context).some((issue) => issue.field === "clientFactorId"));
   });
+  it("validates the NZC-046 category code against the taxonomy and its scope (UX1c)", () => {
+    const s1 = { jobId: "job-a", scope: "1", sourceLabel: "Gas", quantity: 10, unit: "kWh", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "v1", factorLabel: "Gas factor", qualityTier: "measured" as const };
+    assert.equal(validateCommand("scope.row.create", { ...s1, categoryCode: "1.natural-gas" }, context).length, 0);
+    assert.equal(validateCommand("scope.row.create", { ...s1, categoryCode: null }, context).length, 0);
+    assert.ok(validateCommand("scope.row.create", { ...s1, categoryCode: "9.99" }, context).some((issue) => issue.field === "categoryCode" && issue.code === "INVALID"));
+    assert.ok(validateCommand("scope.row.create", { ...s1, categoryCode: "3.1" }, context).some((issue) => issue.field === "categoryCode" && issue.code === "INCONSISTENT"));
+    const s3 = { ...s1, scope: "3.1", categoryCode: "3.1" };
+    assert.equal(validateCommand("scope.row.create", s3, context).length, 0);
+  });
   it("registers each material mutation with permission, transaction and audit action", () => { for (const definition of Object.values(commandDefinitions)) { assert.ok(definition.permission); assert.ok(definition.transaction); assert.ok(definition.auditAction); } });
   it("blocks report publication without the validated precondition", () => assert.ok(validateCommand("report.publish", { reportVersionId: "r1", expectedStatus: "draft" as "validated", manifestVersion: 1, reviewedSnapshotId: "s1" }, context).some((issue) => issue.code === "PRECONDITION")));
   it("requires a reviewed snapshot and manifest version for validation",()=>assert.ok(validateCommand("report.validate",{reviewedSnapshotId:"",manifestVersion:0},context).length===2));
