@@ -140,7 +140,8 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 | S2 | Client factors UI — lifecycle (list · versioned edit · archive · reuse) + EPD lineage | NZC-041 | `client-factors` | `ACCEPTANCE_S2_CLIENT_FACTORS.md` · `STAGING_ACCEPTANCE_S2.md` | migration 0034 (on `main`) | 🟢 built (increments 1–2); flip pending staging flag + screen-reader (gate 9) |
 | S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
 | S4 | Row/drawer breadth (data_confidence, conversion memory, notes, column text) | NZC-044 | (folds into S1–S3) | within host slice | 0034–0036 | ⏳ partial |
-| S5 | Stage-as-section layout rollout (CRP + portal) | NZC-038 | layout | design acceptance | adapters landed | ⏳ cross-cutting |
+| UX1 | **One data-entry UX — scope→category accordion + shared capture component + site-as-context + progressive disclosure** (corrects the 31 Aug prototypes; absorbs S5's data-entry portion) | **NZC-046** | `data-entry-accordion` | `ACCEPTANCE_UX1_DATA_ENTRY_ACCORDION.md` (draft) · `DATA_ENTRY_UX.md` | B2–B5, S1, S2 built | 🟡 gate drafted for Francis (5 open questions) — **new top priority** |
+| S5 | Stage-as-section layout — non-data-entry workspaces (data-entry portion → UX1) | NZC-038 | layout | design acceptance | adapters landed | ⏳ cross-cutting |
 | — | Standards (carbon emissions; dd/mm/yyyy) | NZC-039/040 | n/a | ride-along per slice | — | ⏳ per slice |
 | P4 | Retire legacy generic path + remove flags | — | remove | — | all adapters accepted | ⏳ Phase 4 |
 
