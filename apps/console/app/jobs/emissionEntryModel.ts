@@ -3,11 +3,33 @@
 // sequence and the action set. `EmissionEntryForm.tsx` renders this verbatim so
 // the CRP workspace and the client portal are provably the same capture process
 // (the portal is a constrained mirror — same order, fewer fields).
-import type { EmissionCategory } from "@nzi/contracts";
+import type { EmissionCategory, ScopeQualityTier, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { scopeMeta } from "@nzi/contracts";
 
 export type EntryAudience = "crm" | "portal";
 export type EntryMode = "new" | "existing";
+
+/** The controlled draft the shared capture component edits (both surfaces). */
+export type EmissionEntryDraft = {
+  activity: string;
+  quantity: string;
+  unit: string;
+  vatPercent: string;
+  glCode: string;
+  spendCategoryId: string;
+  registration: string;
+  manualMode: boolean;
+  manualDetail: string;
+  factorId: string;
+  qualityTier: string;
+  dataConfidence: string;
+  note: string;
+  monthlyOpen: boolean;
+  monthly: Record<string, string>;
+};
+
+export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean };
+export type EmissionEntryLineageStep = { label: string; detail: string };
 
 export type EmissionEntryFieldKey =
   | "siteBanner"
@@ -222,3 +244,113 @@ export function emissionEntryActions(
 /** Empty-state copy for a category with no entries — neutral, never a demand (§8, NZC-046). */
 export const NO_DATA_NOTE =
   "No data yet — shown for completeness. Empty categories are excluded from the report.";
+
+// ── UX1c — mapping the shared draft to/from the canonical scope row ────────────
+// The accordion's Add-entry and drawer edit both run through `EmissionEntryForm`;
+// these pure mappers turn its draft into `scope.row.create` / `scope.row.update`
+// input (stamping the category code and the site-as-context) and back.
+
+export type EntryFactorRef = {
+  id: string;
+  label: string;
+  unit?: string;
+  /** top-level scope "1" | "2" | "3" — for filtering to a category's scope */
+  scope?: "1" | "2" | "3";
+  datasetId?: string | null;
+  datasetVersion?: string | null;
+  factorSource?: "dataset" | "client";
+  clientFactorId?: string | null;
+};
+
+const QUALITY_TO_TIER: Record<string, ScopeQualityTier> = {
+  Measured: "measured", Estimated: "estimated", "Spend-based": "spend-based", Survey: "survey",
+};
+const TIER_TO_QUALITY: Record<string, string> = {
+  measured: "Measured", estimated: "Estimated", "spend-based": "Spend-based", survey: "Survey",
+};
+const CONFIDENCE_TO_CODE: Record<string, "H" | "M" | "L"> = {
+  "H — High": "H", "M — Medium": "M", "L — Low": "L",
+};
+const CODE_TO_CONFIDENCE: Record<string, string> = {
+  H: "H — High", M: "M — Medium", L: "L — Low",
+};
+
+export function parseEntryNumber(value: string | undefined): number | null {
+  const trimmed = (value ?? "").replace(/[,\s]/g, "").trim();
+  if (trimmed === "") return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/** Row `scope` string for a category — granular ("3.1") for Scope 3, the bare scope for Scope 1/2. */
+export const categoryRowScope = (category: EmissionCategory): string =>
+  category.scope === "3" ? category.code : category.scope;
+
+export function emissionEntryDraftToScopeRow(
+  draft: EmissionEntryDraft,
+  category: EmissionCategory,
+  site: { id: string | null; label: string | null },
+  factors: EntryFactorRef[],
+  reportingMonths: string[],
+): ScopeRowWriteFields {
+  const spend = isSpendKind(category);
+  const factor = factors.find((option) => option.id === draft.factorId) ?? null;
+  const isClient = factor?.factorSource === "client";
+  const monthly = draft.monthlyOpen
+    ? reportingMonths.map((month) => ({ month, quantity: parseEntryNumber(draft.monthly[month]) }))
+    : [];
+  const label = draft.activity.trim() || draft.registration.trim() || draft.manualDetail.trim() || category.name;
+  const noteParts = [
+    draft.note.trim(),
+    spend && draft.vatPercent.trim() ? `VAT ${draft.vatPercent.trim()}%` : "",
+  ].filter(Boolean);
+  return {
+    scope: categoryRowScope(category),
+    categoryCode: category.code,
+    sourceLabel: label,
+    reportLabel: label,
+    assetIdentifier: draft.registration.trim() || null,
+    siteId: site.id,
+    siteLabel: site.label,
+    purchasedGoodsCategoryId: spend ? draft.spendCategoryId || null : null,
+    purchasedGoodsCategoryLabel: null,
+    quantity: parseEntryNumber(draft.quantity),
+    unit: spend ? "GBP" : draft.unit.trim() || null,
+    monthlyActivity: monthly,
+    datasetId: isClient ? null : factor?.datasetId ?? null,
+    factorId: factor?.id ?? null,
+    factorVersion: factor?.datasetVersion ?? null,
+    factorLabel: factor?.label ?? null,
+    factorSource: isClient ? "client" : "dataset",
+    clientFactorId: isClient ? factor?.clientFactorId ?? null : null,
+    isCustomEntry: isClient,
+    qualityTier: QUALITY_TO_TIER[draft.qualityTier] ?? null,
+    dataConfidence: CONFIDENCE_TO_CODE[draft.dataConfidence] ?? null,
+    notes: noteParts.join(" · ") || null,
+    columnText: spend ? draft.glCode.trim() || null : null,
+    overrideTco2e: null,
+    overrideReason: null,
+  };
+}
+
+export function scopeRowToEmissionEntryDraft(
+  row: ScopeRowReadModel,
+): Partial<EmissionEntryDraft> & { title: string } {
+  return {
+    title: row.sourceLabel,
+    activity: row.sourceLabel,
+    quantity: row.quantity == null ? "" : String(row.quantity),
+    unit: row.unit ?? "",
+    registration: row.assetIdentifier ?? "",
+    factorId: row.factorId ?? "",
+    qualityTier: row.qualityTier ? TIER_TO_QUALITY[row.qualityTier] ?? "Measured" : "Measured",
+    dataConfidence: row.dataConfidence ? CODE_TO_CONFIDENCE[row.dataConfidence] ?? "M — Medium" : "M — Medium",
+    note: row.notes ?? "",
+    spendCategoryId: row.purchasedGoodsCategoryId ?? "",
+    glCode: row.columnText ?? "",
+    monthlyOpen: (row.monthlyActivity?.length ?? 0) > 0,
+    monthly: Object.fromEntries(
+      (row.monthlyActivity ?? []).map((slot) => [slot.month, slot.quantity == null ? "" : String(slot.quantity)]),
+    ),
+  };
+}
