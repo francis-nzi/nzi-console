@@ -149,10 +149,9 @@ adapters.
 
 ## 7. Decisions proposed (to append to DECISIONS.md once branches settle)
 
-> Numbered NZC-048–051. NZC-047 (M6 portal breadth) is on `main` — it merged in PR #46
-> (`74e86033`, from `docs/nzc-046-047-refinements`), along with the M6 section in
-> `REDESIGN_ROLLOUT.md` and `GAP_ANALYSIS_PORTAL_BREADTH.md` — so the register is continuous
-> through NZC-047; append these once the report branches settle.
+> Numbered NZC-048–051. NZC-047 (M6 portal breadth) currently lives only on branch
+> `docs/nzc-046-047-refinements` (commit 5fb70d7) and is not on `main`; it should be merged so the
+> register stays continuous before these land.
 
 - **NZC-048 — Editable report sections.** A report is an ordered list of versioned sections, each with a
   `contentSource` of default / ai / client-edited, full provenance, and always-available Reset-to-default
