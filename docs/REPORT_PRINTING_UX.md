@@ -2,7 +2,7 @@
 
 **Status:** proposed (01 Sep 2026). Companion to `DATA_ENTRY_UX.md`. Reference prototype:
 `docs/prototypes/report_v3.html` (published Artifact:
-https://claude.ai/code/artifact/df37490d-ce57-4625-910b-36d1a513f103).
+https://claude.ai/code/artifact/d3dd74a6-5031-471a-bde6-5cfa0cefdf6f).
 
 Covers the live **Jobs → Report → Report Printing** surface (e.g. `/jobs/556/advanced-reports`,
 "First Event Carbon Reduction Plan"). Four problems drive this redesign; each has a concrete fix below.
@@ -149,8 +149,10 @@ adapters.
 
 ## 7. Decisions proposed (to append to DECISIONS.md once branches settle)
 
-> Numbered NZC-048–051. NZC-047 (M6 portal breadth) is on `main` (merged in #46), so the register is
-> continuous through NZC-047; append these once the report branches settle.
+> Numbered NZC-048–051. NZC-047 (M6 portal breadth) is on `main` — it merged in PR #46
+> (`74e86033`, from `docs/nzc-046-047-refinements`), along with the M6 section in
+> `REDESIGN_ROLLOUT.md` and `GAP_ANALYSIS_PORTAL_BREADTH.md` — so the register is continuous
+> through NZC-047; append these once the report branches settle.
 
 - **NZC-048 — Editable report sections.** A report is an ordered list of versioned sections, each with a
   `contentSource` of default / ai / client-edited, full provenance, and always-available Reset-to-default
