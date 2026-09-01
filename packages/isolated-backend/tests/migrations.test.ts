@@ -52,6 +52,8 @@ const clientImportMappingsMigration=readFileSync(resolve(here,"../migrations/004
 const portalSpendMirrorMigration=readFileSync(resolve(here,"../migrations/0042_portal_spend_mirror.sql"),"utf8");
 const scopeRowGroupRollupMigration=readFileSync(resolve(here,"../migrations/0043_scope_row_group_rollup.sql"),"utf8");
 const scopeRowCategoryCodeMigration=readFileSync(resolve(here,"../migrations/0044_scope_row_category_code.sql"),"utf8");
+const trainingCoreMigration=readFileSync(resolve(here,"../migrations/0048_training_core.sql"),"utf8");
+const trainingEntitlementsMigration=readFileSync(resolve(here,"../migrations/0049_training_entitlements.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -113,4 +115,46 @@ describe("isolated Postgres migrations", () => {
   it("adds the NZC-046 category taxonomy code to the canonical row and register source",()=>{assert.match(scopeRowCategoryCodeMigration,/ALTER TABLE nzi_console\.job_scope_rows ADD COLUMN category_code text/);assert.match(scopeRowCategoryCodeMigration,/ALTER TABLE nzi_console\.job_emission_sources ADD COLUMN category_code text/);});
   it("binds one auto-generated roll-up scope row per emission-source group",()=>{assert.match(scopeRowGroupRollupMigration,/ADD COLUMN group_id text/);assert.match(scopeRowGroupRollupMigration,/scope_row_group_fk/);assert.match(scopeRowGroupRollupMigration,/REFERENCES nzi_console\.job_emission_groups\(organisation_id, group_id\) ON DELETE SET NULL/);assert.match(scopeRowGroupRollupMigration,/CREATE UNIQUE INDEX job_scope_rows_one_rollup_per_group_idx/);assert.match(scopeRowGroupRollupMigration,/WHERE group_id IS NOT NULL/);assert.match(scopeRowGroupRollupMigration,/scope_row_rollup_shape\s+CHECK \(group_id IS NULL OR \(is_auto_generated = true AND source_id IS NULL\)\)/);});
   it("tenant-isolates the per-client remembered column map",()=>{assert.match(clientImportMappingsMigration,/CREATE TABLE nzi_console\.client_import_mappings/);assert.match(clientImportMappingsMigration,/import_kind text NOT NULL CHECK \(import_kind IN \('spend'\)\)/);assert.match(clientImportMappingsMigration,/mapping_json jsonb NOT NULL DEFAULT '\{\}'::jsonb CHECK \(jsonb_typeof\(mapping_json\) = 'object'\)/);assert.match(clientImportMappingsMigration,/PRIMARY KEY \(organisation_id, client_id, import_kind\)/);assert.match(clientImportMappingsMigration,/REFERENCES nzi_console\.clients\(organisation_id, client_id\) ON DELETE CASCADE/);assert.match(clientImportMappingsMigration,/FORCE ROW LEVEL SECURITY/);assert.match(clientImportMappingsMigration,/GRANT SELECT, INSERT, UPDATE ON nzi_console\.client_import_mappings TO nzi_console_app/);});
+
+  it("builds the training delivery spine on the governance pattern (0048)",()=>{
+    for(const table of ["training_products","training_course_runs","training_course_sessions","training_bookings","training_session_attendance"])
+      assert.ok(trainingCoreMigration.includes(`CREATE TABLE nzi_console.${table}`),table);
+    // the run is the versioned, review-bound unit
+    assert.match(trainingCoreMigration,/version integer NOT NULL DEFAULT 1 CHECK \(version > 0\)/);
+    assert.match(trainingCoreMigration,/training_run_reviewed_shape CHECK \(\(review_status = 'pending'\) = \(reviewed_version IS NULL\)\)/);
+    assert.match(trainingCoreMigration,/workflow_stage_key text NOT NULL/);
+    // attendance is one row per session per booking
+    assert.match(trainingCoreMigration,/UNIQUE \(organisation_id, session_id, booking_id\)/);
+    assert.match(trainingCoreMigration,/attendance_minutes integer CHECK/);
+    // tenant safety on every table
+    assert.equal((trainingCoreMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,5);
+    assert.equal((trainingCoreMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,5);
+  });
+
+  it("links CRP jobs to training only through an atomic entitlement row (0049)",()=>{
+    assert.ok(trainingEntitlementsMigration.includes("CREATE TABLE nzi_console.training_entitlements"));
+    assert.ok(trainingEntitlementsMigration.includes("CREATE TABLE nzi_console.training_certificates"));
+    // status machine available -> reserved -> consumed
+    assert.match(trainingEntitlementsMigration,/status text NOT NULL DEFAULT 'available' CHECK \(status IN \('available','reserved','consumed','expired','revoked'\)\)/);
+    // the source must be a CRP job for the same client — enforced, not documented
+    assert.match(trainingEntitlementsMigration,/enforce_training_entitlement_source_is_crp/);
+    assert.match(trainingEntitlementsMigration,/j\.job_family = 'crp'/);
+    // atomic transitions are row-locked like the job-number allocator
+    assert.match(trainingEntitlementsMigration,/CREATE FUNCTION nzi_console\.reserve_training_entitlement/);
+    assert.match(trainingEntitlementsMigration,/CREATE FUNCTION nzi_console\.consume_training_entitlement/);
+    assert.match(trainingEntitlementsMigration,/FOR UPDATE;/);
+    // a place cannot be consumed twice
+    assert.match(trainingEntitlementsMigration,/CREATE UNIQUE INDEX training_entitlements_one_per_booking_idx/);
+    // no hard FK from bookings to CRP jobs — the booking only gains entitlement_id
+    assert.match(trainingEntitlementsMigration,/training_booking_entitlement_fk\s+FOREIGN KEY \(organisation_id, entitlement_id\)/);
+    assert.doesNotMatch(trainingCoreMigration,/training_bookings[\s\S]*REFERENCES nzi_console\.jobs/);
+    assert.doesNotMatch(trainingEntitlementsMigration,/ALTER TABLE nzi_console\.training_bookings[\s\S]*REFERENCES nzi_console\.jobs/);
+    // certificate is content-hashed evidence, one live per booking
+    assert.match(trainingEntitlementsMigration,/certificate_hash text NOT NULL CHECK/);
+    assert.match(trainingEntitlementsMigration,/CREATE UNIQUE INDEX training_certificates_one_active_per_booking_idx/);
+    assert.match(trainingEntitlementsMigration,/GRANT EXECUTE ON FUNCTION nzi_console\.reserve_training_entitlement\(text, text, text, text\) TO nzi_console_app/);
+    for(const table of ["training_entitlements","training_certificates"]){
+      assert.ok(trainingEntitlementsMigration.includes(`ALTER TABLE nzi_console.${table} FORCE ROW LEVEL SECURITY`),table);
+    }
+  });
 });
