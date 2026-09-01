@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/scopeRegister.test.ts tests/spendLedger.test.ts tests/commutingBulk.test.ts tests/vehicleBulk.test.ts tests/yoyVariance.test.ts tests/spendImportCsv.test.ts tests/emissionEntryModel.test.ts tests/dataEntryAccordion.test.ts",
+    "test": "node --import tsx --test tests/scopeRegister.test.ts tests/spendLedger.test.ts tests/commutingBulk.test.ts tests/vehicleBulk.test.ts tests/yoyVariance.test.ts tests/spendImportCsv.test.ts tests/emissionEntryModel.test.ts tests/dataEntryAccordion.test.ts tests/portalEntryGrouping.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report"
   },
