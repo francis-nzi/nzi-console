@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { commandDefinitions, isAllowedJobStageTransition, jobWorkflowStages, validateCommand, type CommandContext } from "../src/index";
+import { commandDefinitions, emissionCategoryTaxonomy, isAllowedJobStageTransition, jobWorkflowStages, validateCommand, type CommandContext } from "../src/index";
 const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1" };
 describe("command contracts", () => {
   it("defines adjacent forward and backward transitions for every job family", () => {
@@ -39,6 +39,15 @@ describe("command contracts", () => {
   });
   it("validates monthly activity slot identity and quantities",()=>{const base={jobId:"job-a",scope:"1",sourceLabel:"Gas",quantity:30,unit:"kWh",datasetId:"dataset-a",factorId:"factor-a",factorVersion:"v1",factorLabel:"Gas factor",qualityTier:"measured" as const};assert.equal(validateCommand("scope.row.create",{...base,monthlyActivity:[{month:"2026-01",quantity:10},{month:"2026-02",quantity:20}]},context).length,0);assert.ok(validateCommand("scope.row.create",{...base,monthlyActivity:[{month:"January",quantity:-1},{month:"January",quantity:2}]},context).length>=3);});
   it("requires a reviewer note for rejection",()=>assert.ok(validateCommand("scope.review.reject",{jobId:"712",rowIds:["row-a"],expectedReviewVersion:2,reviewerNote:""},context).some(issue=>issue.field==="reviewerNote")));
+  it("defines the NZC-046 category taxonomy: 3 Scope 1, 2 Scope 2, 15 Scope 3, verbatim names, aligned codes",()=>{
+    const s1=emissionCategoryTaxonomy.filter(c=>c.scope==="1"),s2=emissionCategoryTaxonomy.filter(c=>c.scope==="2"),s3=emissionCategoryTaxonomy.filter(c=>c.scope==="3");
+    assert.equal(s1.length,3);assert.equal(s2.length,2);assert.equal(s3.length,15);
+    assert.deepEqual(s3.map(c=>c.code),["3.1","3.2","3.3","3.4","3.5","3.6","3.7","3.8","3.9","3.10","3.11","3.12","3.13","3.14","3.15"]);
+    assert.equal(emissionCategoryTaxonomy.find(c=>c.code==="3.1")!.kind,"spend");
+    assert.equal(emissionCategoryTaxonomy.find(c=>c.code==="1.company-vehicles")!.kind,"vehicle");
+    assert.equal(emissionCategoryTaxonomy.find(c=>c.code==="3.6")!.name,"Business Travel");
+    assert.ok(emissionCategoryTaxonomy.every(c=>["manual","spend","vehicle","travel","commuting","fugitive"].includes(c.kind)));
+  });
   it("validates an emission-source group roll-up and its optional factor",()=>{assert.equal(validateCommand("emission.source.group.sync",{jobId:"job-a",groupId:"grp-a"},context).length,0);assert.ok(validateCommand("emission.source.group.sync",{jobId:"job-a",groupId:""},context).some(issue=>issue.field==="groupId"));assert.ok(validateCommand("emission.source.group.create",{jobId:"job-a",name:"Fleet",factorId:"f-a",datasetId:null,unit:null},context).some(issue=>issue.field==="datasetId"));assert.equal(validateCommand("emission.source.group.create",{jobId:"job-a",name:"Fleet"},context).length,0);});
   it("validates a versioned client-factor edit and archive flag",()=>{const base={clientFactorId:"cf-a",expectedVersion:2,reportLabel:"Supplier EPD",description:"",unit:"unit",kgco2ePerUnit:12.4,geography:"GB",vintageYear:2026,source:"Supplier",evidenceFileName:null,evidenceStorageProvider:null,evidenceUrl:null,evidenceExternalItemId:null,evidenceHash:null};assert.equal(validateCommand("client.factor.update",base,context).length,0);assert.ok(validateCommand("client.factor.update",{...base,expectedVersion:0},context).some(issue=>issue.field==="expectedVersion"));assert.ok(validateCommand("client.factor.update",{...base,evidenceFileName:"epd.pdf"},context).some(issue=>issue.field==="evidenceHash"));assert.ok(validateCommand("client.factor.archive",{clientFactorId:"",archived:true},context).some(issue=>issue.field==="clientFactorId"));});
   it("requires the expected job version before snapshotting",()=>assert.ok(validateCommand("report.snapshot.create",{jobId:"712",expectedJobVersion:0},context).some(issue=>issue.field==="expectedJobVersion")));

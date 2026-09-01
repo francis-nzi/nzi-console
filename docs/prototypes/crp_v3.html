@@ -1,0 +1,532 @@
+<title>CRP Workspace Redesign</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#F5F8F6; --surface:#FFFFFF; --surface-2:#F1F5F2; --surface-3:#E7EEE9;
+  --ink:#0B1B2B; --ink-2:#3E4C45; --muted:#6B7A72;
+  --line:#E3EAE6; --line-2:#EDF1EF;
+  --brand:#0BA75E; --brand-deep:#0B7A4B; --brand-ink:#075B37;
+  --mint:#DFF5E9; --mint-line:#BCE8D0;
+  --amber:#FFC24B; --amber-bg:#FFF4DC; --amber-ink:#7A5600; --amber-line:#F3D89A;
+  --coral:#FF5C48; --coral-bg:#FEE9E5; --coral-ink:#8A2318; --coral-line:#F6C4BB;
+  --s1:#FF5C48; --s2:#FFC24B; --s3:#0BA75E;
+  --shadow:0 1px 2px rgba(11,27,43,.05),0 8px 24px rgba(11,27,43,.06);
+  --shadow-lg:0 12px 40px rgba(11,27,43,.16);
+  --focus:0 0 0 3px rgba(11,167,94,.35);
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+  --bg:#0A1620; --surface:#0F2231; --surface-2:#132A3C; --surface-3:#1A3145;
+  --ink:#EAF2ED; --ink-2:#B6C6BD; --muted:#82948B; --line:#1E3446; --line-2:#182B3B;
+  --brand:#22C57E; --brand-deep:#0BA75E; --brand-ink:#8FE6BC;
+  --mint:#12362A; --mint-line:#1E5741;
+  --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
+  --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+}}
+:root[data-theme="dark"]{
+  --bg:#0A1620; --surface:#0F2231; --surface-2:#132A3C; --surface-3:#1A3145;
+  --ink:#EAF2ED; --ink-2:#B6C6BD; --muted:#82948B; --line:#1E3446; --line-2:#182B3B;
+  --brand:#22C57E; --brand-deep:#0BA75E; --brand-ink:#8FE6BC;
+  --mint:#12362A; --mint-line:#1E5741;
+  --amber:#FFC24B; --amber-bg:#3A2E10; --amber-ink:#F5D48B; --amber-line:#5A4718;
+  --coral:#FF6B58; --coral-bg:#3A1B16; --coral-ink:#F6B7AB; --coral-line:#5E2A22;
+  --s1:#FF6B58; --s2:#FFC24B; --s3:#22C57E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--font); background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; font-size:14px; line-height:1.45}
+button{font-family:inherit}
+:focus-visible{outline:none; box-shadow:var(--focus); border-radius:8px}
+.tnum{font-variant-numeric:tabular-nums}
+.hidden{display:none !important}
+.dash{color:var(--muted)}
+
+.concept{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 18px; background:var(--ink); color:#EAF2ED; font-size:12.5px}
+.concept b{color:#fff}
+.concept .tag{background:var(--brand); color:#04180E; font-weight:700; padding:2px 8px; border-radius:999px; font-size:11px; letter-spacing:.02em}
+.concept .spacer{margin-left:auto}
+.concept .switch{display:inline-flex; align-items:center; gap:8px; cursor:pointer; color:#CFE9DB}
+.toggle{width:38px; height:22px; border-radius:999px; background:rgba(255,255,255,.22); position:relative; transition:background .18s; flex:0 0 auto}
+.toggle::after{content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .18s}
+.switch.on .toggle{background:var(--brand)} .switch.on .toggle::after{transform:translateX(16px)}
+
+.statusbar{display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:7px 22px; background:var(--surface-2); border-bottom:1px solid var(--line); font-size:11.5px; color:var(--muted)}
+.statusbar .spacer{margin-left:auto}
+.skey{display:inline-flex; align-items:center; gap:6px; font-weight:600; color:var(--ink-2)}
+.skey i{width:9px; height:9px; border-radius:3px; display:inline-block}
+i.live{background:var(--brand)} i.flag{background:var(--amber)} i.plan{background:var(--surface-3); border:1px solid var(--line)}
+.sx{font-size:9.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; padding:1px 6px; border-radius:5px; margin-left:6px; vertical-align:middle; white-space:nowrap}
+.sx.live{background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line)}
+.sx.flag{background:var(--amber-bg); color:var(--amber-ink); border:1px solid var(--amber-line)}
+.sx.plan{background:var(--surface-2); color:var(--muted); border:1px solid var(--line)}
+
+.app{display:grid; grid-template-columns:230px 1fr; min-height:calc(100vh - 39px)}
+.rail{background:var(--ink); color:#C6D6CD; padding:18px 14px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; align-self:start; height:100vh}
+.brandmark{display:flex; align-items:center; gap:10px; padding:4px 8px 18px}
+.brandmark .logo{width:34px; height:34px; border-radius:9px; background:linear-gradient(150deg,var(--brand),var(--brand-deep)); display:grid; place-items:center; color:#04180E; font-weight:800; font-size:17px}
+.brandmark b{color:#fff; font-size:15px; letter-spacing:-.01em; display:block; line-height:1.1}
+.brandmark span{font-size:10px; letter-spacing:.12em; color:#7E948A; text-transform:uppercase}
+.rail .grp{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#5E7268; margin:16px 8px 6px}
+.nav{display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:9px; color:#B7C8BF; font-weight:500; font-size:13.5px; cursor:pointer; border:1px solid transparent}
+.nav:hover{background:rgba(255,255,255,.05); color:#EAF2ED}
+.nav.active{background:linear-gradient(120deg,rgba(11,167,94,.22),rgba(11,122,75,.12)); color:#fff; border-color:rgba(34,197,126,.35)}
+.nav .ico{width:16px; height:16px; opacity:.85; flex:0 0 auto}
+.rail .who{margin-top:auto; display:flex; align-items:center; gap:10px; padding:10px 8px 2px; border-top:1px solid rgba(255,255,255,.08)}
+.rail .who .av{width:30px; height:30px; border-radius:50%; background:var(--brand-deep); color:#fff; display:grid; place-items:center; font-weight:700; font-size:12px}
+.rail .who b{color:#EAF2ED; font-size:12.5px; display:block}
+.rail .who span{color:#6E8478; font-size:11px}
+.main{min-width:0; display:flex; flex-direction:column}
+
+.topbar{display:flex; align-items:center; gap:14px; padding:11px 22px; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--surface) 90%,transparent); backdrop-filter:blur(8px); position:sticky; top:0; z-index:20}
+.crumbs{font-size:13px; color:var(--muted)} .crumbs b{color:var(--ink)}
+.search{flex:1; max-width:340px; display:flex; align-items:center; gap:8px; padding:7px 11px; border:1px solid var(--line); border-radius:9px; color:var(--muted); font-size:13px; background:var(--surface)}
+.search .k{margin-left:auto; font-size:11px; border:1px solid var(--line); border-radius:5px; padding:0 5px}
+
+.header{padding:18px 22px 0}
+.idline{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap}
+.eyebrow{font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--brand-deep); font-weight:700}
+h1{font-size:22px; letter-spacing:-.02em; margin:5px 0 3px; text-wrap:balance}
+.sub{color:var(--muted); font-size:13px}
+.idline .acts{margin-left:auto; display:flex; align-items:center; gap:10px}
+.pill{display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:6px 11px; border-radius:999px}
+.pill.ready{background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line)}
+.pill.ready i{width:7px; height:7px; border-radius:50%; background:var(--brand)}
+.btn{display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:13px; padding:9px 14px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer}
+.btn:hover{border-color:var(--brand)}
+.btn.pri{background:var(--brand); border-color:var(--brand); color:#04180E}
+.btn.pri:hover{background:var(--brand-deep); border-color:var(--brand-deep); color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 10px; font-size:12px}
+
+.stages{display:flex; align-items:center; gap:4px; margin:16px 0 0; padding:6px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; overflow-x:auto}
+.stage{display:flex; align-items:center; gap:9px; padding:9px 13px; border-radius:9px; cursor:pointer; white-space:nowrap; color:var(--ink-2); font-weight:600; font-size:13px; border:1px solid transparent; background:transparent}
+.stage .dot{width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:700; background:var(--surface-3); color:var(--muted); border:1px solid var(--line)}
+.stage[data-st="complete"] .dot{background:var(--sc,var(--brand)); color:#fff; border-color:var(--sc,var(--brand))}
+.stage[data-st="active"] .dot{background:var(--surface); color:var(--sc,var(--brand)); border:2px solid var(--sc,var(--brand))}
+.stage[data-st="active"]{background:var(--surface); box-shadow:var(--shadow); border-color:var(--line); color:var(--ink)}
+.stage:hover{background:var(--surface)}
+.stagesep{flex:1; min-width:12px; height:2px; border-radius:2px; background:var(--line)}
+.stagesep.done{background:var(--brand)}
+
+.body{padding:16px 22px 60px; display:flex; flex-direction:column; gap:14px}
+
+/* data-entry toolbar: site context + lens */
+.detool{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow)}
+.sitectx{display:flex; align-items:center; gap:9px; padding:6px 8px 6px 12px; border:1px solid var(--brand); border-radius:10px; background:var(--mint)}
+.sitectx .lab{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--brand-ink); font-weight:700}
+.sitectx select{border:1px solid var(--mint-line); background:var(--surface); color:var(--ink); border-radius:8px; padding:7px 9px; font-size:13px; font-weight:600; font-family:inherit}
+.detool .hint{font-size:11.5px; color:var(--muted); max-width:280px}
+.seg{display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:3px; margin-left:auto}
+.seg button{border:none; background:transparent; padding:6px 12px; border-radius:7px; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:7px}
+.seg button.on{background:var(--surface); color:var(--ink); box-shadow:var(--shadow)}
+.seg .badge{font-size:10.5px; padding:1px 6px; border-radius:999px; background:var(--surface-3); color:var(--ink-2)}
+.seg button.on .badge.att{background:var(--coral-bg); color:var(--coral-ink)}
+
+/* scope groups + category accordion */
+.scopegrp{margin-top:4px}
+.scopehead{display:flex; align-items:center; gap:9px; margin:14px 2px 8px; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; color:var(--ink-2)}
+.scopehead .sdot{width:11px; height:11px; border-radius:3px}
+.scopehead::after{content:""; flex:1; height:1px; background:var(--line)}
+.cat{border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden; margin-bottom:10px}
+.cat.open{box-shadow:var(--shadow),0 0 0 1.5px var(--brand) inset}
+.cat-h{display:flex; align-items:center; gap:13px; padding:13px 15px; cursor:pointer; border-left:4px solid var(--cc,var(--brand))}
+.cat-badge{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:0 0 auto; background:color-mix(in srgb,var(--cc,var(--brand)) 16%,var(--surface)); color:var(--cc,var(--brand))}
+.cat-tt{min-width:0}
+.cat-tt b{font-size:14.5px; letter-spacing:-.01em; display:flex; align-items:center; flex-wrap:wrap}
+.cat-tt .cat-sum{display:block; color:var(--muted); font-size:12px; margin-top:1px}
+.cat-h .rt{margin-left:auto; display:flex; align-items:center; gap:12px}
+.compl{display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--muted); white-space:nowrap}
+.compl .bar{width:60px; height:6px; border-radius:4px; background:var(--surface-3); overflow:hidden}
+.compl .bar i{display:block; height:100%; background:var(--brand)}
+.chev{width:24px; height:24px; border-radius:7px; display:grid; place-items:center; color:var(--muted); transition:transform .2s; flex:0 0 auto}
+.cat.open .chev{transform:rotate(180deg)}
+.cat-body{display:none; padding:2px 15px 15px}
+.cat.open .cat-body{display:block}
+.kindnote{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--line-2); border-radius:8px; padding:8px 10px; margin:6px 0 10px}
+
+.tblwrap{overflow-x:auto; border:1px solid var(--line-2); border-radius:10px}
+table{width:100%; border-collapse:collapse; font-size:13px}
+thead th{text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:9px 13px; border-bottom:1px solid var(--line); white-space:nowrap; background:var(--surface-2)}
+thead th.num,tbody td.num{text-align:right}
+tbody td{padding:10px 13px; border-bottom:1px solid var(--line-2); vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr.sel{background:var(--mint)}
+tbody tr.att td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+tbody tr.nofac td:first-child{box-shadow:inset 3px 0 0 var(--coral)}
+.src{font-weight:600}
+.mo{display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); margin-top:3px}
+.st{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px}
+.st.ok{background:var(--mint); color:var(--brand-ink)}
+.st.pend{background:var(--amber-bg); color:var(--amber-ink); border:1px solid var(--amber-line)}
+.st.bad{background:var(--coral-bg); color:var(--coral-ink); border:1px solid var(--coral-line)}
+.st.q{background:var(--surface-2); color:var(--ink-2); border:1px solid var(--line)}
+.catfoot{display:flex; align-items:center; gap:10px; margin-top:10px}
+
+.emptycat{padding:14px; text-align:center; color:var(--muted); font-size:12.5px; border:1px dashed var(--line); border-radius:10px}
+
+/* collapsed non-data stages */
+.mini{display:flex; align-items:center; gap:13px; padding:13px 15px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); cursor:pointer}
+.mini .b{width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:12px; background:var(--surface-3); color:var(--muted); border:1px solid var(--line); flex:0 0 auto}
+.mini.done .b{background:var(--brand); color:#fff; border-color:var(--brand)}
+.mini .t b{font-size:14px} .mini .t span{display:block; color:var(--muted); font-size:12px; margin-top:1px}
+.mini .s{margin-left:auto; font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px; background:var(--surface-2); color:var(--muted); border:1px solid var(--line)}
+.mini.done .s{background:var(--mint); color:var(--brand-ink); border:none}
+.donehead{display:flex; align-items:center; gap:10px; margin:8px 2px 0; color:var(--muted); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700}
+.donehead::after{content:""; flex:1; height:1px; background:var(--line)}
+
+/* drawer */
+.scrim{position:fixed; inset:0; background:rgba(11,27,43,.28); opacity:0; pointer-events:none; transition:opacity .2s; z-index:40}
+.scrim.show{opacity:1; pointer-events:auto}
+.drawer{position:fixed; top:0; right:0; height:100vh; width:min(440px,94vw); background:var(--surface); border-left:1px solid var(--line); box-shadow:var(--shadow-lg); transform:translateX(100%); transition:transform .22s cubic-bezier(.4,0,.2,1); z-index:50; display:flex; flex-direction:column}
+.drawer.show{transform:none}
+.dh{padding:16px 18px; border-bottom:1px solid var(--line-2); display:flex; align-items:flex-start; gap:10px}
+.dh .x{margin-left:auto; border:1px solid var(--line); background:var(--surface); width:30px; height:30px; border-radius:8px; cursor:pointer; color:var(--ink-2); font-size:16px}
+.db{padding:16px 18px; overflow:auto; display:flex; flex-direction:column; gap:13px}
+.banner{padding:10px 12px; border-radius:9px; font-size:12.5px; font-weight:500; background:var(--mint); color:var(--brand-ink); border:1px solid var(--mint-line)}
+.sitechip{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); padding:3px 9px; border-radius:999px}
+.sect{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-top:2px}
+.dfield{display:flex; flex-direction:column; gap:5px}
+.dfield label{font-size:11.5px; color:var(--muted); font-weight:600}
+.dfield input,.dfield select,.dfield textarea{border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.newbadge{font-size:9.5px; letter-spacing:.05em; font-weight:800; text-transform:uppercase; color:var(--brand-ink); background:var(--mint); border:1px solid var(--mint-line); padding:2px 6px; border-radius:5px; margin-left:7px; vertical-align:middle}
+.disc{border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.disc>summary{list-style:none; cursor:pointer; padding:10px 12px; font-size:12.5px; font-weight:600; color:var(--ink-2); background:var(--surface-2); display:flex; align-items:center; gap:8px}
+.disc>summary::-webkit-details-marker{display:none}
+.disc>summary .cv{margin-left:auto; transition:transform .2s} .disc[open]>summary .cv{transform:rotate(180deg)}
+.disc .dc{padding:12px}
+.mini-months{display:grid; grid-template-columns:repeat(6,1fr); gap:5px}
+.mini-months span{font-size:10.5px; text-align:center; padding:5px 0; border:1px solid var(--line); border-radius:6px; background:var(--surface-2); color:var(--ink-2)}
+.mini-months span.z{color:var(--muted); background:transparent; border-style:dashed}
+.reg{display:flex; gap:8px; align-items:flex-end}
+.reg .plate{flex:1}
+.reg input.platein{font-weight:800; letter-spacing:.08em; text-transform:uppercase; text-align:center; background:#FFDE00; color:#0B1B2B; border:2px solid #0B1B2B}
+.lin{display:flex; gap:10px; align-items:flex-start; padding:6px 0}
+.lin .n{width:20px; height:20px; border-radius:50%; background:var(--mint); color:var(--brand-ink); display:grid; place-items:center; font-size:11px; font-weight:700; flex:0 0 auto; margin-top:1px}
+.lin b{font-size:12.5px; display:block} .lin small{color:var(--muted); font-size:11.5px}
+.kv{display:flex; justify-content:space-between; gap:12px; font-size:12.5px; padding:4px 0; border-bottom:1px dashed var(--line-2)}
+.kv .k{color:var(--muted)} .kv .v{font-weight:500; text-align:right}
+
+.note{display:none; margin:2px 0 8px; padding:10px 12px 10px 14px; border-left:3px solid var(--brand); background:var(--mint); color:var(--brand-ink); font-size:12.5px; border-radius:0 9px 9px 0}
+body.notes .note{display:block}
+.note .nnum{display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--brand); color:#04180E; font-weight:800; font-size:11px; margin-right:7px; vertical-align:middle}
+
+@media (max-width:900px){ .app{grid-template-columns:1fr} .rail{display:none} }
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="concept">
+  <span class="tag">CONCEPT v3</span>
+  <b>CRP workspace — data entry, rebuilt.</b>
+  <span>Scope→category accordion · site chosen up front · one shared process with the client portal.</span>
+  <span class="spacer"></span>
+  <span class="switch" id="notesSwitch" role="button" tabindex="0" aria-pressed="false"><span class="toggle"></span> Design notes</span>
+  <span class="switch" id="themeSwitch" role="button" tabindex="0" aria-pressed="false"><span class="toggle"></span> Dark</span>
+</div>
+
+<div class="statusbar">
+  <span class="skey"><i class="live"></i>Live (staff)</span>
+  <span class="skey"><i class="flag"></i>Behind flag</span>
+  <span class="skey"><i class="plan"></i>Planned · model ready</span>
+  <span class="spacer"></span>
+  <span>Data-entry UX v3 · NZC-046 · 01/09/2026</span>
+</div>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brandmark"><div class="logo">N</div><div><b>NZI Pro</b><span>Insights Platform</span></div></div>
+    <div class="grp">Workspaces</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Control Room</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Clients</div>
+    <div class="nav active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6V4h8v2"/></svg>Jobs</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6"/></svg>Emissions</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/></svg>Datasets &amp; factors</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>Reports</div>
+    <div class="nav"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4-8 4-8-4 8-4zM4 12l8 4 8-4M4 17l8 4 8-4"/></svg>LCA / PCF / CBAM</div>
+    <div class="who"><div class="av">AS</div><div><b>A. Shaw</b><span>Lead consultant</span></div></div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumbs">Jobs / <b>J000712</b> / Workspace</div>
+      <div class="search">Search categories, sources, factors… <span class="k">⌘K</span></div>
+    </div>
+
+    <div class="header">
+      <div class="idline">
+        <div>
+          <div class="eyebrow">Carbon Reduction Plan · 2024</div>
+          <h1>J000712 — 2024 Carbon Reduction Plan</h1>
+          <div class="sub">Bushy Tails Ltd · Lead consultant A. Shaw · Reporting period 2024</div>
+        </div>
+        <div class="acts">
+          <span class="pill ready"><i></i>Report ready</span>
+        </div>
+      </div>
+      <div class="stages" id="stages" aria-label="Workflow stage"></div>
+    </div>
+
+    <div class="body">
+      <div class="note"><span class="nnum">i</span><b>One data-entry process, shared with the client portal.</b> Scope→category accordion using the dataset category names, only the categories that apply to this job, collapsed so you work one at a time. Pick a <b>site</b> once — every entry is allocated to it. Spend fields appear only under Purchased Goods and Services; registration lookup only under vehicle/travel/commuting categories.</div>
+
+      <!-- collapsed prior stage -->
+      <div class="mini done" id="setupMini">
+        <div class="b">✓</div>
+        <div class="t"><b>1 · Setup</b><span>DEFRA 2024 · GB · pathway −50% by 2030 · intensity 122.08 · 2 sites</span></div>
+        <div class="s">Complete</div>
+      </div>
+
+      <!-- ACTIVE: DATA ENTRY -->
+      <div style="display:flex; align-items:center; gap:12px; margin:4px 2px 0">
+        <div style="width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">2</div>
+        <div><b style="font-size:15px">Data Entry</b><div class="sub">Enter activity by category — one section at a time</div></div>
+      </div>
+
+      <div class="detool">
+        <div class="sitectx">
+          <span class="lab">Site</span>
+          <select id="siteSel">
+            <option value="all">All sites</option>
+            <option value="mcr" selected>Manchester operations</option>
+            <option value="depot">Leeds depot</option>
+            <option value="none">Unallocated</option>
+          </select>
+        </div>
+        <div class="hint" id="siteHint">Every entry you add is allocated to <b>Manchester operations</b> automatically.</div>
+        <div class="seg" id="lensSeg">
+          <button data-l="cat" class="on">By category</button>
+          <button data-l="att">Needs attention <span class="badge att" id="attCount">3</span></button>
+        </div>
+      </div>
+
+      <div id="catView"></div>
+      <div id="attView" class="hidden"></div>
+
+      <!-- collapsed later stages -->
+      <div class="donehead" style="margin-top:16px">Later stages</div>
+      <div class="mini" id="s3"><div class="b">3</div><div class="t"><b>Factor Mapping</b><span>1 source without a factor</span></div><div class="s">To do</div></div>
+      <div class="mini" id="s4"><div class="b">4</div><div class="t"><b>Review &amp; QA</b><span>3 sources pending independent approval</span></div><div class="s">To do</div></div>
+      <div class="mini" id="s5"><div class="b">5</div><div class="t"><b>Report &amp; Publish</b><span>Reviewed snapshot → manifest → immutable release</span></div><div class="s">To do</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Entry detail"><div class="dh">
+  <div><div class="eyebrow" id="dCatName">Company Vehicles</div><h1 style="font-size:17px;margin:4px 0 2px" id="dTitle">New entry</h1><div class="sub" id="dScope">Scope 1</div></div>
+  <button class="x" id="dClose" aria-label="Close">✕</button>
+</div><div class="db" id="dBody"></div></aside>
+
+<script>
+const SITES={all:"All sites",mcr:"Manchester operations",depot:"Leeds depot",none:"Unallocated"};
+let site="mcr";
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/* kinds: manual | fugitive | vehicle | travel | commuting | spend */
+const CATS=[
+  {scope:"1",name:"Natural Gas",kind:"manual",unit:"kWh",applic:true,entries:[
+    {src:"Gas — Manchester ops",site:"mcr",qty:"96,000",unit:"kWh",factor:"DEFRA natural gas 2024",q:"Measured",t:"17.6",r:"approved",mo:12},
+  ]},
+  {scope:"1",name:"Company Vehicles",kind:"vehicle",unit:"litres",applic:true,entries:[
+    {src:"AB12 CDE · Ford Transit",site:"mcr",reg:"AB12 CDE",qty:"6,200",unit:"litres",factor:"DEFRA diesel LGV",q:"Measured",t:"16.4",r:"approved",mo:12},
+    {src:"MN64 XYZ · VW Caddy",site:"mcr",reg:"MN64 XYZ",qty:"4,050",unit:"litres",factor:"DEFRA diesel LGV",q:"Measured",t:"10.7",r:"approved",mo:12},
+    {src:"Pool car — petrol",site:"depot",reg:"",qty:"—",unit:"litres",factor:"No factor",q:"—",t:"—",r:"nofactor",mo:0},
+  ]},
+  {scope:"1",name:"Refrigerants",kind:"fugitive",unit:"kg",applic:true,entries:[
+    {src:"R410a top-up",site:"none",qty:"—",unit:"kg",factor:"No factor",q:"—",t:"—",r:"nofactor",mo:0},
+  ]},
+  {scope:"2",name:"Purchased Electricity",kind:"manual",unit:"kWh",applic:true,entries:[
+    {src:"Grid electricity",site:"mcr",qty:"312,000",unit:"kWh",factor:"DESNZ UK grid 2024",q:"Measured",t:"64.6",r:"approved",mo:12},
+    {src:"Grid electricity",site:"depot",qty:"151,000",unit:"kWh",factor:"DESNZ UK grid 2024",q:"Measured",t:"31.3",r:"approved",mo:12},
+  ]},
+  {scope:"2",name:"Renewable Electricity",kind:"manual",unit:"kWh",applic:true,entries:[
+    {src:"REGO-backed supply",site:"mcr",qty:"48,000",unit:"kWh",factor:"Market-based · REGO",q:"Measured",t:"0.0",r:"approved",mo:12},
+  ]},
+  {scope:"3",name:"Purchased Goods and Services",kind:"spend",unit:"GBP",applic:true,entries:[
+    {src:"Packaging — supplier EPD",site:"none",qty:"62,000",unit:"m²",factor:"Client factor · Acme EPD 2025",q:"Measured",t:"12.4",r:"approved",mo:0,cf:true},
+    {src:"General procurement (spend)",site:"none",qty:"4,100,000",unit:"GBP",factor:"CEDA sector average",q:"Spend-based",t:"673.9",r:"pending",mo:0},
+  ]},
+  {scope:"3",name:"Capital Goods",kind:"spend",unit:"GBP",applic:true,entries:[]},
+  {scope:"3",name:"Fuel & Energy Related",kind:"manual",unit:"kWh",applic:true,entries:[]},
+  {scope:"3",name:"Upstream Transportation & Distribution",kind:"manual",unit:"t·km",applic:true,entries:[]},
+  {scope:"3",name:"Waste in Operations",kind:"manual",unit:"tonnes",applic:true,entries:[
+    {src:"Landfill — mixed",site:"mcr",qty:"12",unit:"tonnes",factor:"DEFRA mixed landfill",q:"Estimated",t:"2.1",r:"approved",mo:0},
+  ]},
+  {scope:"3",name:"Business Travel",kind:"travel",unit:"pax-km",applic:true,entries:[
+    {src:"Air — short haul",site:"none",qty:"—",unit:"pax-km",factor:"DEFRA air short-haul",q:"—",t:"—",r:"pending",mo:0},
+  ]},
+  {scope:"3",name:"Employee Commuting",kind:"commuting",unit:"km",applic:true,entries:[
+    {src:"Commuting survey (blend)",site:"none",qty:"210",unit:"staff",factor:"DEFRA commuting blend",q:"Survey",t:"74.8",r:"approved",mo:0},
+  ]},
+  {scope:"3",name:"Upstream Leased Assets",kind:"manual",unit:"kWh",applic:true,entries:[]},
+  {scope:"3",name:"Downstream Transportation & Distribution",kind:"manual",unit:"t·km",applic:true,entries:[]},
+  {scope:"3",name:"Processing of Sold Products",kind:"manual",unit:"tonnes",applic:true,entries:[]},
+  {scope:"3",name:"Use of Sold Products",kind:"manual",unit:"units",applic:true,entries:[]},
+  {scope:"3",name:"End-of-Life Treatment",kind:"manual",unit:"tonnes",applic:true,entries:[]},
+  {scope:"3",name:"Downstream Leased Assets",kind:"manual",unit:"kWh",applic:true,entries:[]},
+  {scope:"3",name:"Franchises",kind:"manual",unit:"kWh",applic:true,entries:[]},
+  {scope:"3",name:"Investments",kind:"spend",unit:"GBP",applic:true,entries:[]},
+];
+const SCOPEMETA={"1":{c:"var(--s1)",label:"Scope 1 · Direct"},"2":{c:"var(--s2)",label:"Scope 2 · Purchased energy"},"3":{c:"var(--s3)",label:"Scope 3 · Value chain"}};
+const KINDNOTE={
+  spend:'Spend adapter — ledger value, VAT, GL code &amp; PG&amp;S category. Consultant maps factors and syncs to Scope 3.1. <span class="sx live">live</span>',
+  vehicle:'Registration lookup (DVLA) or manual entry. <span class="sx flag">flag</span>',
+  travel:'Vehicle registration, air, rail &amp; other travel types — lookup or manual. <span class="sx flag">flag</span>',
+  commuting:'By vehicle/registration, mode, or WFH — with monthly. <span class="sx flag">flag</span>',
+  fugitive:'Refrigerant top-ups (fugitive). Manual quantity. <span class="sx live">live</span>',
+  manual:'Manual activity — quantity &amp; unit, optional monthly. <span class="sx live">live</span>'
+};
+const FACTORS={
+ "Natural Gas":["Natural gas (kWh)","Natural gas (m³)"],
+ "Company Vehicles":["Diesel — car (average)","Petrol — car (average)","Diesel — LGV","Diesel — HGV rigid"],
+ "Refrigerants":["R410a","R134a","R32","R404A"],
+ "Purchased Electricity":["UK grid average","Electricity — T&D losses"],
+ "Renewable Electricity":["REGO-backed (market-based)"],
+ "Purchased Goods and Services":["Packaging","Office supplies","IT equipment","Professional services","CEDA sector average"],
+ "Business Travel":["Air — short haul","Air — long haul","Rail — national","Hotel night","Taxi"],
+ "Employee Commuting":["Car — petrol","Car — diesel","Bus","Rail","Working from home"],
+ "Waste in Operations":["Landfill — mixed","Recycling — mixed","Composting"]
+};
+function visible(e){return site==="all"||e.site===site;}
+function stPill(r){return r==="approved"?'<span class="st ok">approved</span>':r==="nofactor"?'<span class="st bad">no factor</span>':'<span class="st pend">review</span>';}
+
+function renderCats(){
+  const host=document.getElementById('catView'); host.innerHTML='';
+  ["1","2","3"].forEach(sc=>{
+    const cats=CATS.filter(c=>c.scope===sc&&c.applic);
+    if(!cats.length) return;
+    const grp=document.createElement('div'); grp.className='scopegrp';
+    grp.innerHTML=`<div class="scopehead"><span class="sdot" style="background:${SCOPEMETA[sc].c}"></span>${SCOPEMETA[sc].label}</div>`;
+    cats.forEach(c=>{
+      const ents=c.entries.filter(visible);
+      const total=ents.reduce((s,e)=>s+(parseFloat((e.t||"0").replace(/,/g,''))||0),0);
+      const done=ents.filter(e=>e.r==="approved").length;
+      const need=ents.filter(e=>e.r!=="approved").length;
+      const pct=ents.length?Math.round(done/ents.length*100):0;
+      const idx=CATS.indexOf(c);
+      const el=document.createElement('div'); el.className='cat'; el.style.setProperty('--cc',SCOPEMETA[sc].c);
+      el.innerHTML=`<div class="cat-h" role="button" tabindex="0" aria-expanded="false">
+        <span class="cat-badge"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+        <div class="cat-tt"><b>${c.name}${ents.length===0?'<span class="sx plan">no data</span>':(need?`<span class="sx flag">${need} to do</span>`:'')}</b>
+          <span class="cat-sum">${ents.length} ${ents.length===1?'entry':'entries'} · ${total.toLocaleString(undefined,{maximumFractionDigits:1})} tCO₂e</span></div>
+        <div class="rt"><span class="compl"><span class="bar"><i style="width:${pct}%"></i></span>${pct}%</span>
+          <span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+        <div class="cat-body">
+          <div class="kindnote">⌁ ${KINDNOTE[c.kind]}</div>
+          ${ents.length?`<div class="tblwrap"><table><thead><tr><th>Source</th><th>Site</th><th class="num">Activity</th><th>Unit</th><th>Factor</th><th class="num">tCO₂e</th><th>Review</th></tr></thead><tbody>
+            ${ents.map(e=>{const gi=c.entries.indexOf(e);const cls=e.r==='nofactor'?'nofac':(e.r!=='approved'?'att':'');
+              return `<tr class="${cls}" data-c="${idx}" data-e="${gi}" tabindex="0"><td><div class="src">${e.src}${e.cf?'<span class="sx live">EPD</span>':''}</div>${e.mo?`<div class="mo">▤ ${e.mo}/12 monthly</div>`:'<div class="mo">Annual</div>'}</td>
+              <td>${e.site==='none'?'<span class="dash">Unallocated</span>':SITES[e.site]}</td>
+              <td class="num tnum">${e.qty}</td><td>${e.unit}</td>
+              <td>${e.factor==='No factor'?'<span class="st bad">No factor</span>':e.factor}</td>
+              <td class="num tnum">${e.t==='—'?'<span class="dash">—</span>':e.t}</td><td>${stPill(e.r)}</td></tr>`;}).join('')}
+          </tbody></table></div>`:`<div class="emptycat">No data yet — shown for completeness. Empty categories are excluded from the report.</div>`}
+          <div class="catfoot"><button class="btn sm pri addbtn" data-c="${idx}">+ Add entry</button>
+          <span style="font-size:11.5px;color:var(--muted)">↩ Copy previous year available</span></div>
+        </div>`;
+      grp.appendChild(el);
+    });
+    host.appendChild(grp);
+  });
+  host.querySelectorAll('.cat-h').forEach(h=>{
+    const toggle=()=>{const c=h.parentElement; c.classList.toggle('open'); h.setAttribute('aria-expanded',c.classList.contains('open'));};
+    h.addEventListener('click',e=>{if(e.target.closest('.addbtn'))return; toggle();});
+    h.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
+  });
+  host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openEntry(+tr.dataset.c,+tr.dataset.e)));
+  host.querySelectorAll('.addbtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation(); openEntry(+b.dataset.c,-1);}));
+}
+
+function renderAtt(){
+  const host=document.getElementById('attView'); const rows=[];
+  CATS.forEach((c,ci)=>c.entries.forEach((e,ei)=>{ if(visible(e)&&e.r!=='approved') rows.push({c,ci,e,ei}); }));
+  host.innerHTML=`<div class="tblwrap" style="margin-top:10px"><table><thead><tr><th>Source</th><th>Category</th><th>Site</th><th>Factor</th><th>Review</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr class="${r.e.r==='nofactor'?'nofac':'att'}" data-c="${r.ci}" data-e="${r.ei}" tabindex="0"><td class="src">${r.e.src}</td><td>${r.c.name}</td><td>${r.e.site==='none'?'<span class="dash">Unallocated</span>':SITES[r.e.site]}</td><td>${r.e.factor==='No factor'?'<span class="st bad">No factor</span>':r.e.factor}</td><td>${stPill(r.e.r)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openEntry(+tr.dataset.c,+tr.dataset.e)));
+}
+function attN(){let n=0;CATS.forEach(c=>c.entries.forEach(e=>{if(visible(e)&&e.r!=='approved')n++;}));return n;}
+
+/* drawer with category-aware fields, unified order */
+const drawer=document.getElementById('drawer'), scrim=document.getElementById('scrim');
+function monthsHtml(mo){return MON.map((m,k)=>`<span class="${mo>k?'':'z'}">${m}</span>`).join('');}
+function openEntry(ci,ei){
+  const c=CATS[ci]; const isNew=ei<0; const e=isNew?{src:'',qty:'',unit:c.unit,factor:'',q:'Measured',t:'',r:'pending',mo:0,site:site==='all'?'mcr':site}:c.entries[ei];
+  document.getElementById('dCatName').textContent=c.name;
+  document.getElementById('dScope').textContent=`Scope ${c.scope}`;
+  document.getElementById('dTitle').textContent=isNew?`New entry`:e.src;
+  const sName=(e.site&&e.site!=='none')?SITES[e.site]:(site!=='all'&&site!=='none'?SITES[site]:'Unallocated');
+  const spend=c.kind==='spend', regKind=(c.kind==='vehicle'||c.kind==='travel'||c.kind==='commuting');
+  const b=document.getElementById('dBody');
+  b.innerHTML=`
+    <div class="banner">Site: <b>${sName}</b> — this entry is allocated here. <span class="sitechip">↦ change on the row if needed</span></div>
+    ${regKind?`<div>
+      <div class="sect">${c.kind==='commuting'?'Vehicle / mode':'Vehicle'} <span class="newbadge">${c.kind==='travel'?'lookup + manual':'reg lookup'}</span></div>
+      <div class="reg" style="margin-top:6px"><div class="dfield plate"><label>Registration (DVLA lookup)</label><input class="platein" placeholder="AB12 CDE" value="${e.reg||''}"></div><button class="btn sm" style="height:37px">Look up</button></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px">…or <a href="#" style="color:var(--brand-deep)">enter manually</a> ${c.kind==='commuting'?'(mode · WFH days)':c.kind==='travel'?'(air · rail · hotel)':'(make · model · fuel)'}.</div>
+    </div>`:''}
+    <div class="dfield"><label>Activity / source <span class="newbadge">smart search</span></label><input list="facs" value="${isNew?'':e.src}" placeholder="${spend?'Search suppliers / ledger...':'Search this category\'s activities...'}"><datalist id="facs">${(FACTORS[c.name]||[]).map(f=>`<option value="${f}">`).join('')}</datalist><div style="font-size:11px;color:var(--muted);margin-top:2px">Smart search — Scope ${c.scope} · ${c.name} factors only.</div></div>
+    <div class="two">
+      <div class="dfield"><label>${spend?'Net value (£)':'Quantity'}</label><input value="${isNew?'':(e.qty==='—'?'':e.qty)}" placeholder="${spend?'e.g. 4,100':'e.g. 12,400'}"></div>
+      <div class="dfield"><label>${spend?'VAT %':'Unit'}</label>${spend?'<input placeholder="20">':`<select><option>${c.unit}</option><option>kWh</option><option>litres</option><option>tonnes</option></select>`}</div>
+    </div>
+    <details class="disc">
+      <summary>Add monthly breakdown ${e.mo?`· ${e.mo}/12 entered`:'· optional'} <span class="cv">▾</span></summary>
+      <div class="dc"><div class="mini-months">${monthsHtml(e.mo||0)}</div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sm ghost">Copy month 1 → all</button><button class="btn sm ghost">Clear</button></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Reporting-period aligned (NZC-032).</div></div>
+    </details>
+    ${spend?`<div>
+      <div class="sect">Spend details <span class="newbadge">PG&amp;S only</span></div>
+      <div class="two" style="margin-top:6px"><div class="dfield"><label>GL / nominal code</label><input placeholder="5200"></div>
+      <div class="dfield"><label>PG&amp;S category</label><select><option>Packaging</option><option>Office supplies</option><option>IT equipment</option></select></div></div>
+    </div>`:''}
+    <div class="dfield"><label>Emission factor <span class="newbadge">this category only</span></label><select>${e.factor&&e.factor!=='No factor'?`<option>${e.factor}</option>`:''}${(FACTORS[c.name]||[]).map(f=>`<option>${f}</option>`).join('')}<option>Client factor (EPD)…</option></select><div style="font-size:11px;color:var(--muted);margin-top:2px">Set from the selected activity; limited to Scope ${c.scope} · ${c.name}.</div></div>
+    <div class="two"><div class="dfield"><label>Quality tier</label><select><option>Measured</option><option>Estimated</option><option>Spend-based</option><option>Survey</option></select></div>
+    <div class="dfield"><label>Data confidence <span class="newbadge">NZC-044</span></label><select><option>H — High</option><option selected>M — Medium</option><option>L — Low</option></select></div></div>
+    <div class="dfield"><label>Notes</label><textarea rows="2" placeholder="Working note"></textarea></div>
+    <div><div class="sect">Supporting documents</div>
+      <div style="margin-top:6px;border:1px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);font-size:12px">📎 <b>Attach file</b> — EPD, invoice, evidence<br><span style="font-size:11px">PDF · image · spreadsheet · virus-scanned on upload</span></div></div>
+    ${!isNew&&e.t&&e.t!=='—'?`<div class="sect">Calculation lineage</div>
+      <div class="lin"><span class="n">1</span><div><b>Activity captured</b><small>${e.qty} ${e.unit}${e.mo?` · monthly ${e.mo}/12`:''}</small></div></div>
+      <div class="lin"><span class="n">2</span><div><b>Factor</b><small>${e.factor}</small></div></div>
+      <div class="lin"><span class="n">3</span><div><b>Emissions calculated</b><small>${e.t} tCO₂e</small></div></div>
+      <div class="sect">Provenance</div><div class="kv"><span class="k">asAt</span><span class="v">25/08/2026</span></div><div class="kv"><span class="k">dataset</span><span class="v">DEFRA 2024</span></div>`:''}
+    <div style="display:flex;gap:8px;margin-top:8px">${isNew?'<button class="btn ghost" style="flex:1">Save draft</button><button class="btn pri" style="flex:1">Save entry</button>':'<button class="btn ghost" style="flex:1">Reject</button><button class="btn pri" style="flex:1">Approve row</button>'}</div>`;
+  drawer.classList.add('show'); scrim.classList.add('show');
+  document.querySelectorAll('tbody tr').forEach(tr=>tr.classList.toggle('sel', +tr.dataset.c===ci&&+tr.dataset.e===ei));
+}
+function closeDrawer(){drawer.classList.remove('show');scrim.classList.remove('show');document.querySelectorAll('tbody tr').forEach(tr=>tr.classList.remove('sel'));}
+document.getElementById('dClose').addEventListener('click',closeDrawer);
+scrim.addEventListener('click',closeDrawer);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+
+/* stages bar */
+const STAGES=[["Setup","complete","var(--brand)"],["Data Entry","active","var(--brand)"],["Factor Mapping","todo","#12A08C"],["Review & QA","todo","#2A80B0"],["Report & Publish","todo","#3E5FA6"]];
+(function(){const bar=document.getElementById('stages'); STAGES.forEach((s,i)=>{const b=document.createElement('button');b.className='stage';b.dataset.st=s[1];b.style.setProperty('--sc',s[2]);b.innerHTML=`<span class="dot">${s[1]==='complete'?'✓':i+1}</span>${s[0]}`;bar.appendChild(b);if(i<STAGES.length-1){const sp=document.createElement('span');sp.className='stagesep'+(s[1]==='complete'?' done':'');bar.appendChild(sp);}});})();
+
+/* site context */
+const siteSel=document.getElementById('siteSel');
+siteSel.addEventListener('change',()=>{site=siteSel.value;document.getElementById('siteHint').innerHTML=site==='all'?'Showing entries across <b>all sites</b>. New entries ask for a site.':`Every entry you add is allocated to <b>${SITES[site]}</b> automatically.`;renderCats();renderAtt();document.getElementById('attCount').textContent=attN();});
+
+/* lens */
+document.getElementById('lensSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;document.querySelectorAll('#lensSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');const att=b.dataset.l==='att';document.getElementById('catView').classList.toggle('hidden',att);document.getElementById('attView').classList.toggle('hidden',!att);if(att)renderAtt();});
+
+/* toggles */
+const ns=document.getElementById('notesSwitch');ns.addEventListener('click',()=>{const on=document.body.classList.toggle('notes');ns.classList.toggle('on',on);ns.setAttribute('aria-pressed',on);});
+ns.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ns.click();}});
+const ts=document.getElementById('themeSwitch');ts.addEventListener('click',()=>{const d=document.documentElement.getAttribute('data-theme')!=='dark';document.documentElement.setAttribute('data-theme',d?'dark':'light');ts.classList.toggle('on',d);ts.setAttribute('aria-pressed',d);});
+ts.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ts.click();}});
+
+renderCats(); renderAtt(); document.getElementById('attCount').textContent=attN();
+</script>
