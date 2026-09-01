@@ -16,7 +16,7 @@ screen-reader / viewport pass happens **once**, on the accordion.
 | # | Increment | PR |
 |---|-----------|----|
 | a-backend | `emissionCategoryTaxonomy` (contracts — 3 Scope 1, 2 Scope 2, 15 Scope 3, verbatim names + `kind`); `0044` `category_code` on `job_scope_rows` + `job_emission_sources` (additive, nullable); `listJobApplicableCategories(db, jobId, audience)` — CRM completeness view (all taxonomy categories for included scopes, `noData` on empties) / portal authorised-only (bucket grants); CRM + portal GET routes | this PR |
-| a-ui | `<EmissionEntryForm>` shared component (fixed field order, progressive disclosure by `kind`, activity smart-search, monthly collapsible) | ⏳ |
+| a-ui | `<EmissionEntryForm>` shared component + `emissionEntryForm.ts` field-order spec (fixed 13-field order, progressive disclosure by `kind` — spend group / registration finder, activity smart-search, collapsible monthly, audience gating: portal never sees factor / quality / confidence / lineage). `.nz-ef-*` + `.nz-plate` + `.nz-months` + `.nz-disc` tokens in `@nzi/ui`. Presentational — endpoint wiring is b/c/d. Tests: console 68 (`emissionEntryForm.test.ts` — canonical order, progressive disclosure per kind, audience gating, action sets) | this PR |
 | b | CRP accordion container + By category / Needs attention toggle; re-home the CRP adapters into sections | ⏳ |
 | c | Site-as-context selector + `category_code`/`site_id` auto-allocation on the write paths | ⏳ |
 | d | Portal accordion mirror; re-home the portal spend surface | ⏳ |
