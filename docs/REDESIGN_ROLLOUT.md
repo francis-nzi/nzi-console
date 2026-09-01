@@ -156,3 +156,28 @@ M4 (additional services) rides on it. Parked until the data-entry framework is f
 heaviest) + 1 cross-cutting layout pass (S5) + legacy retirement — plus the two human gates and one decision.
 
 *Burndown added 31 Aug 2026; updated 31 Aug 2026 after B4 (#32) merged + deployed — B5 gate drafted next.*
+
+## M6 — Client portal breadth (added 1 Sep 2026)
+
+The live client portal is an 11-area product; the redesign so far is the M1 baseline (Data Entry, Reports,
+governance of client entry). The remaining areas come across as **M6 · Client portal breadth**, on the shared
+evidence spine and `@nzi/charts` (derived, never captured), one design language (left-nav for **areas**,
+stage-as-section for **workflow surfaces**), reviewed-snapshot-backed, and flag-gated per area. Full
+catalogue in `docs/GAP_ANALYSIS_PORTAL_BREADTH.md` (Part 2). Decision: **NZC-047**.
+
+**Entry:** the data-entry framework (S-slices) is down and the reviewed-snapshot + `@nzi/charts` spine is
+proven. Read surfaces (below) may run **in parallel** with later data-entry slices since they only read.
+
+| Order | Area(s) | Shape | Flag | Depends on | Status |
+|---|---|---|---|---|---|
+| M6.1 | Metrics, Insights | PORT (read on snapshot + SVG charts; Insights off PNGs) | `portal-metrics`, `portal-insights` | reviewed snapshot, @nzi/charts | ⏳ |
+| M6.2 | Portfolio, Dashboard | PORT/FOLD (composite read views) | `portal-portfolio` | M6.1 | ⏳ |
+| M6.3 | Strategy / Actions | MODEL (new Actions + action-lever domain) | `portal-actions` | new domain model + NZC-047 open decision | ⏳ **largest** |
+| M6.4 | SRS Readiness | MODEL (new readiness domain) | `portal-srs` | new domain model | ⏳ |
+| M6.5 | Risk, Governance, Files | FOLD (Governance extends M1; Files on upload + AV) | `portal-risk`,`portal-governance`,`portal-files` | NZC-046 upload/AV | ⏳ |
+
+**Exit per area:** its own acceptance gate + flag flip; reviewed-snapshot-backed; accessible. **Separate
+downstream track:** C (job-family modularization) still sits ahead of M4 additional services and is unrelated
+to M6.
+
+*M6 added 1 Sep 2026.*
