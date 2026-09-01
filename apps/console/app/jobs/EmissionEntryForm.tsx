@@ -18,6 +18,7 @@ import {
   type EntryAudience,
   type EntryFactorOption,
   type EntryMode,
+  type RegistrationLookupOutcome,
 } from "./emissionEntryModel";
 
 export * from "./emissionEntryModel";
@@ -43,7 +44,8 @@ export type EmissionEntryFormProps = {
   onCancel: () => void;
   onReject?: () => void | Promise<void>;
   onApprove?: () => void | Promise<void>;
-  onLookupRegistration?: (registration: string) => void | Promise<void>;
+  /** Two-step DVLA lookup: resolve a registration to a vehicle spec (+ a suggested factor for CRM). */
+  onLookupRegistration?: (registration: string) => Promise<RegistrationLookupOutcome>;
 };
 
 const QUALITY_TIERS = ["Measured", "Estimated", "Spend-based", "Survey"] as const;
@@ -79,6 +81,12 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const { category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [] } = props;
   const mode: EntryMode = entry ? "existing" : "new";
   const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry));
+  const [lookup, setLookup] = useState<
+    | { state: "idle" }
+    | { state: "loading" }
+    | { state: "done"; result: Extract<RegistrationLookupOutcome, { ok: true }> }
+    | { state: "error"; message: string }
+  >({ state: "idle" });
   const listId = useId();
 
   const fields = useMemo(() => buildEmissionEntryFields(category, audience, mode), [category, audience, mode]);
@@ -89,6 +97,26 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
 
   const patch = (next: Partial<EmissionEntryDraft>) => setDraft(current => ({ ...current, ...next }));
   const setMonth = (key: string, value: string) => patch({ monthly: { ...draft.monthly, [key]: value } });
+
+  const runLookup = async () => {
+    const plate = draft.registration.trim();
+    if (!plate || !props.onLookupRegistration) return;
+    setLookup({ state: "loading" });
+    try {
+      const outcome = await props.onLookupRegistration(plate);
+      setLookup(outcome.ok ? { state: "done", result: outcome } : { state: "error", message: outcome.message });
+    } catch {
+      setLookup({ state: "error", message: "Vehicle lookup failed — enter it manually." });
+    }
+  };
+  const applyLookup = (result: Extract<RegistrationLookupOutcome, { ok: true }>) => {
+    patch({
+      activity: [result.make, result.fuelType].filter(Boolean).join(" · ") || draft.activity,
+      factorId: result.factorId ?? draft.factorId,
+      manualMode: false,
+    });
+    setLookup({ state: "idle" });
+  };
 
   const run = (key: string) => {
     if (props.busy) return;
@@ -126,11 +154,24 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 <div className="nz-ef-reg">
                   <label className="nz-fl">Registration (DVLA lookup)
                     <input className="nz-plate" placeholder="AB12 CDE" value={draft.registration}
-                      onChange={event => patch({ registration: event.target.value.toUpperCase() })} />
+                      onChange={event => { patch({ registration: event.target.value.toUpperCase() }); setLookup({ state: "idle" }); }} />
                   </label>
-                  <button type="button" className="nz-btn" disabled={props.busy || draft.registration.trim() === ""}
-                    onClick={() => props.onLookupRegistration?.(draft.registration.trim())}>Look up</button>
+                  <button type="button" className="nz-btn" disabled={props.busy || lookup.state === "loading" || draft.registration.trim() === "" || !props.onLookupRegistration}
+                    onClick={() => void runLookup()}>{lookup.state === "loading" ? "Looking up…" : "Look up"}</button>
                 </div>
+                {lookup.state === "error" ? <p className="nz-hint bad" role="alert">{lookup.message}</p> : null}
+                {lookup.state === "done" ? (
+                  <div className="nz-banner ok" role="status" style={{ margin: "6px 0", display: "block" }}>
+                    <b>{[lookup.result.make, lookup.result.fuelType, lookup.result.year].filter(Boolean).join(" · ") || "Vehicle found"}</b>
+                    {" — "}{lookup.result.suggestedClass}
+                    {audience === "crm" && lookup.result.factorLabel ? <div className="nz-hint">Suggested factor: {lookup.result.factorLabel}</div> : null}
+                    {audience === "crm" && !lookup.result.factorLabel ? <div className="nz-hint">No factor matched — pick one below.</div> : null}
+                    <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                      <button type="button" className="nz-btn pri" onClick={() => applyLookup(lookup.result)}>Use this</button>
+                      <button type="button" className="nz-btn" onClick={() => { setLookup({ state: "idle" }); patch({ manualMode: true }); }}>Not right — enter manually</button>
+                    </div>
+                  </div>
+                ) : null}
                 <p className="nz-ef-manual-link">
                   …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({manualEntryHint(category)}).
                 </p>
