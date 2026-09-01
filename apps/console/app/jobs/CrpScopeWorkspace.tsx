@@ -8,6 +8,7 @@ import {
   putBrowserCommand,
 } from "@nzi/api-client";
 import type {
+  ApplicableCategory,
   DatasetOption,
   EmissionsTargetReadModel,
   FactorOption,
@@ -34,6 +35,7 @@ import {VehicleBulkPanel} from "./VehicleBulkPanel";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
 import {SpendImportPanel} from "./SpendImportPanel";
+import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 
 const blank = (): ScopeRowWriteFields => ({
@@ -145,16 +147,32 @@ export function CrpScopeWorkspace({
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
     [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),
+    [accordionLens,setAccordionLens]=useState<AccordionLens>("attention"),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
     } | null>(qaNotice);
+  const accordionOn=dataEntryAdapterEnabled("data-entry-accordion");
   const visibleRows=filterScopeRows(rows,registerFilter),attentionCount=rows.filter(scopeRowNeedsAttention).length;
   const selected = visibleRows.find((r) => r.id === selectedId)??visibleRows[0]??rows.find((r)=>r.id===selectedId)??rows[0];
   const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
-  const openRegister=(filter:ScopeRegisterFilter)=>{setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));};
+  const openRegister=(filter:ScopeRegisterFilter)=>{
+    if(accordionOn){setAccordionLens(filter==="all"?"category":"attention");requestAnimationFrame(()=>document.getElementById("data-entry-accordion")?.scrollIntoView({behavior:"smooth",block:"start"}));return;}
+    setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));
+  };
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
   const spendReportingMonths = reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`);
+  const addEntryFromCategory=(scope:string)=>{setDraft({...blank(),scope});setCreating(true);requestAnimationFrame(()=>document.getElementById("scope-row-editor")?.scrollIntoView({behavior:"smooth",block:"start"}));};
+  const categoryExtras=(category:ApplicableCategory)=>{
+    if(category.code==="3.1")return <>
+      {dataEntryAdapterEnabled("spend")&&<SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("spend")&&<SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("spend-import")&&<SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
+    </>;
+    if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>:null;
+    if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>:null;
+    return null;
+  };
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
   const readinessChecks = [
     { label: "Reporting datasets", complete: datasets.some((dataset) => dataset.selected), detail: `${datasets.filter((dataset) => dataset.selected).length} selected` },
@@ -293,7 +311,7 @@ export function CrpScopeWorkspace({
             <span className="nz-eyebrow">Management focus</span><h3>{qa.readyForReporting ? "Release with confidence" : "Resolve the highest-value exceptions first"}</h3>
             <p>{qa.readyForReporting ? "All enabled evidence has been calculated and independently approved. Freeze the evidence before publication." : "The workspace keeps missing calculations, incomplete quality evidence and pending reviews visible—never silently treated as zero."}</p>
             <div className="nz-focus-stats"><button type="button" onClick={()=>openRegister("calculation")}><b>{qa.calculationMissing}</b> calculations</button><button type="button" onClick={()=>openRegister("quality")}><b>{qa.qualityMissing}</b> quality gaps</button><button type="button" onClick={()=>openRegister("review")}><b>{qa.independentReviewPending}</b> QA decisions</button></div>
-            <a className="nz-btn" href="#emissions-register" onClick={()=>setRegisterFilter("attention")}>Open {attentionCount} exception{attentionCount===1?"":"s"}</a>
+            <a className="nz-btn" href={accordionOn?"#data-entry-accordion":"#emissions-register"} onClick={()=>openRegister("attention")}>Open {attentionCount} exception{attentionCount===1?"":"s"}</a>
           </div>
         </section>
         {notice && (
@@ -304,11 +322,26 @@ export function CrpScopeWorkspace({
         <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
         <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
         <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
-        {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
-        {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
-        {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
-        {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
-        {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+        {accordionOn ? (
+          <CrpDataEntryAccordion
+            jobId={job.header.id}
+            rows={rows}
+            selectedRowId={selected?.id ?? ""}
+            onSelectRow={setSelectedId}
+            onAddEntry={addEntryFromCategory}
+            categoryExtras={categoryExtras}
+            lens={accordionLens}
+            onLensChange={setAccordionLens}
+          />
+        ) : (
+          <>
+            {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
+            {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
+            {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
+            {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+            {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+          </>
+        )}
         <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>
         <DatasetPanel
           jobId={job.header.id}
@@ -330,7 +363,7 @@ export function CrpScopeWorkspace({
           </form>
         )}
         <PortalDataEntryReviewQueue jobId={job.header.id}/>
-        {rows.length === 0 ? (
+        {accordionOn ? null : rows.length === 0 ? (
           <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
         ) : (
           <div className="nz-panel" id="emissions-register">
