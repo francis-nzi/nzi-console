@@ -6,7 +6,7 @@
 // `data-entry-accordion` flag.
 import { useState } from "react";
 import { buildPortalDataEntryAccordion, type PortalBucket } from "./portalEntryGrouping";
-import { PortalEntryRecords } from "./PortalEntryRecords";
+import { PortalCategoryEntry } from "./PortalCategoryEntry";
 import { PortalSpendEntry } from "./PortalSpendEntry";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 
@@ -53,7 +53,6 @@ export function PortalDataEntryAccordion({
             <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(scope) }} />Scope {scope}</div>
             {inScope.map(section => {
               const isOpen = open.has(section.code);
-              const otherBuckets = spendOn ? section.otherBuckets : section.buckets;
               return (
                 <div key={section.code} className={`nz-acc-cat${isOpen ? " open" : ""}`} style={{ "--cc": scopeColour(scope) } as React.CSSProperties}>
                   <button type="button" className="nz-acc-h" aria-expanded={isOpen} onClick={() => toggle(section.code)}>
@@ -70,7 +69,9 @@ export function PortalDataEntryAccordion({
                       {spendOn && section.spendBuckets.length ? (
                         <PortalSpendEntry jobId={jobId} buckets={section.spendBuckets} reportingMonths={reportingMonths} />
                       ) : null}
-                      {otherBuckets.length ? <PortalEntryRecords jobId={jobId} buckets={otherBuckets} /> : null}
+                      {(spendOn ? section.otherBuckets : section.buckets).length ? (
+                        <PortalCategoryEntry jobId={jobId} section={section} buckets={spendOn ? section.otherBuckets : section.buckets} reportingMonths={reportingMonths} />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

@@ -368,3 +368,70 @@ export function scopeRowToEmissionEntryDraft(
     ),
   };
 }
+
+// ── UX1d-2 — mapping the shared draft to a client-portal data-entry record ─────
+// The portal writes through `/api/portal/jobs/{id}/data-entry-records`, not
+// `scope.row.create`: a constrained record against one authorised bucket grant,
+// submit-to-review. Factor + unit come from the bucket's authorised set (the
+// portal never picks a factor freely).
+
+export type PortalBucketRef = {
+  bucketGrantId: string;
+  entryKind: "manual_activity" | "spend" | "commuting" | "vehicle";
+  factors: Array<{ id: string; label: string; unit: string }>;
+  units: string[];
+  sites: Array<{ id: string; name: string }>;
+  pgsCategories: Array<{ id: string; name: string }>;
+};
+
+export type PortalRecordInput = {
+  bucketGrantId: string;
+  quantity: number;
+  unit: string;
+  factorId: string;
+  siteId: string | null;
+  note: string;
+  detail?: unknown;
+};
+
+export function emissionEntryDraftToPortalRecord(
+  draft: EmissionEntryDraft,
+  bucket: PortalBucketRef,
+  site: { id: string | null },
+): PortalRecordInput | { error: string } {
+  const factorId = draft.factorId || bucket.factors[0]?.id || "";
+  const factor = bucket.factors.find(option => option.id === factorId);
+  if (!factor) return { error: "Choose one of the authorised factors." };
+  const note = [draft.activity.trim(), draft.registration.trim(), draft.manualDetail.trim(), draft.note.trim()]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (bucket.entryKind === "spend") {
+    const netValue = parseEntryNumber(draft.quantity);
+    if (netValue == null || netValue <= 0) return { error: "Enter the net value." };
+    return {
+      bucketGrantId: bucket.bucketGrantId,
+      quantity: 0,
+      unit: factor.unit,
+      factorId,
+      siteId: site.id,
+      note,
+      detail: {
+        netValue,
+        vatPercent: parseEntryNumber(draft.vatPercent),
+        glCode: draft.glCode.trim() || null,
+        pgsCategoryId: draft.spendCategoryId || null,
+        invoiceDate: null,
+        monthlyActivity: draft.monthlyOpen
+          ? Object.entries(draft.monthly)
+              .map(([month, value]) => ({ month, quantity: parseEntryNumber(value) }))
+              .filter((slot): slot is { month: string; quantity: number } => slot.quantity != null)
+          : [],
+      },
+    };
+  }
+
+  const quantity = parseEntryNumber(draft.quantity);
+  if (quantity == null || quantity <= 0) return { error: "Enter a quantity greater than zero." };
+  return { bucketGrantId: bucket.bucketGrantId, quantity, unit: factor.unit, factorId, siteId: site.id, note };
+}
