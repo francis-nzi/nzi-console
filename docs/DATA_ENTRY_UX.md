@@ -41,14 +41,14 @@ portal.
 The two surfaces are **the same capture component** with the **same field order**; the portal is a
 *constrained mirror*, not a different form. Canonical order for every entry, both surfaces:
 
-1. **Source / description** (+ ID / Reference where relevant)
+1. **Activity / source** — a **smart-search typeahead** over this scope+category's factors (see §7)
+   (+ ID / Reference where relevant).
 2. **Quantity** + **Unit**
 3. **Monthly breakdown** — directly **under Quantity**, **collapsed by default**, "Add monthly breakdown"
    expands 12 reporting-period-aligned inputs with copy-month-1→all.
 4. **Category-specific detail** — shown **only** for the category it belongs to (see §4).
-5. **Factor** — CRP: consultant selects; **portal: authorised factor only** (or hidden — the consultant maps
-   and calculates).
-6. **Evidence note.**
+5. **Factor** — CRP: scope+category-scoped, set from the selected activity; **portal: hidden** (NZI sets it).
+6. **Evidence note** and **supporting documents** (see §7).
 
 Portal-only: entries **submit to review** and never count as reviewed emissions; categories, sites, factors
 and units are limited to what the grant authorises.
@@ -81,5 +81,40 @@ copy-previous-years reduce typing (spend & commuting first).
 - "Spend — purchased goods" and ad-hoc labels → **dataset category names** (§1).
 - Flat register → **scope→category accordion, collapsed** (§1), exception-first kept as a second lens.
 
-*Prepared 31 Aug 2026. Recorded as NZC-046. Companion to MODEL_FIDELITY_DATA_ENTRY.md and the B/S slices in
-REDESIGN_ROLLOUT.md.*
+## 7. Refinements — v3.1 (1 Sep 2026)
+
+- **Company Vehicles** is a Scope 1 category in both surfaces (portal added).
+- **Depersonalised copy:** no "your"/"you". The heading is the **job title**; the results section/label is
+  **Carbon emissions** (not "Your carbon impact"/"Your emissions").
+- **Emission factor is scope + category scoped** — the factor list only ever contains factors for that row's
+  scope and category, and is **set from the selected activity** (not chosen free-hand). In the **client
+  portal the factor field is hidden** (the client does not need it; NZI sets it from the selected row).
+- **Description is a smart search** — a typeahead over that scope+category's factor set, mirroring the live
+  *Search factors* field in Jobs → Data Entry → *Add data from template*. Selecting an activity is what sets
+  the factor.
+- **Supporting-document upload** on an entry (evidence / EPD / invoice). **Build requirement:** uploads are
+  **virus-scanned server-side** before a consultant can open them, with type/size limits and quarantine on
+  failure — for both CRP and portal. (Ties to the ClientFactor EPD evidence in NZC-041.)
+
+*Prepared 31 Aug 2026; refinements 1 Sep 2026. Recorded as NZC-046. Companion to
+MODEL_FIDELITY_DATA_ENTRY.md and the B/S slices in REDESIGN_ROLLOUT.md.*
+
+## 8. Refinements — v3.2 (1 Sep 2026)
+
+- **Data entry is never mandatory.** Empty categories show a neutral **"No data"** (not "Needs data" /
+  "Data needed") — a client may simply have none of those emissions. No red/amber urgency on empties.
+- **Company Vehicles is client self-serve** in the portal. The **Registration finder** (DVLA lookup) is the
+  primary entry path for **Company Vehicles, Employee Commuting and Business Travel**, with manual entry as
+  the fallback in each.
+
+*Refinements recorded 1 Sep 2026 under NZC-046.*
+
+## 9. Category completeness — CRM vs portal (1 Sep 2026)
+
+- **CRM (consultant):** Scope 3 lists **all 15 GHG categories** in order, as a completeness checklist, even
+  when empty. (Scope 1/2 likewise show the canonical set.) Empty categories show a neutral **"No data"** and
+  are **excluded from reports and downstream outputs** until an entry exists — they are never mandatory.
+- **Client portal:** shows **only the categories NZI has authorised** for that client (not the full 15), to
+  keep the client focused; empties there are also neutral "No data".
+
+*Recorded 1 Sep 2026 under NZC-046. Refines §1 (applicable-only) for the CRM completeness view.*
