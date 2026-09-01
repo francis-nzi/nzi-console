@@ -113,11 +113,12 @@ only.** Rows carry `siteId` (FK), so *assignment* works and "Unallocated" is han
 - **no lifecycle** (`vacated_date` / active-from) — a site opening or closing mid-year can only be
   *approximated* by leaving months empty, which loses the fact and the reason;
 - **no apportionment** (`apply_pct`) — one meter serving two sites can't be split;
-- **no site-scoped factors** — a site with its own grid contract / REGO can't override the job factor.
+- ~~no site-scoped factors~~ — **resolved (NZC-042):** not a gap. A site on its own grid contract / REGO is a **per-site row** carrying its own `factor_id`; factors deliberately live on the row, not the site.
 
 **Proposed model.** Extend `client_sites` with `addressLines`, `postcode`, `latitude`, `longitude`,
-`geocodeSource`, `activeFrom`, `vacatedDate`, `archived`; add `applyPct` to the row (see §1); and take an
-explicit decision on **site-scoped factor overrides** (a `siteId` on the factor selection).
+`geocodeSource`, `activeFrom`, `vacatedDate`, `archived`; add `applyPct` to the row (see §1); and note the
+now-closed NZC-042 decision on **site-scoped factor overrides** — **not** modelled; factors stay on the row,
+a per-site tariff is a per-site row.
 
 ---
 
@@ -161,7 +162,7 @@ These are all schema-shaping and should be confirmed as a batch, extending — n
 1. **Client factors are first-class** (§2): new `ClientFactor` entity, client- and job-scoped, versioned,
    with EPD evidence hashed into provenance; row gains `factorSource` + `is_custom_entry`. **P0.**
 2. **Sites are places, not labels** (§3): location + lifecycle (`vacatedDate`/`activeFrom`) on
-   `client_sites`; `applyPct` apportionment on the row; decision on site-scoped factor overrides. **P0/P1.**
+   `client_sites`; `applyPct` apportionment on the row; site-scoped factor overrides **decided (NZC-042): not modelled** — per-site rows instead. **P0/P1.**
 3. **Adopt a per-entity source register + roll-up groups** (§4) as the home for typed adapters (NZC-035),
    with a kind-specific detail store and auto-generated linkage into the canonical row. **P0/P1.**
 4. **Add the remaining row fields** (§1): `data_confidence` (reconciled with `qualityTier`),
@@ -231,8 +232,9 @@ The proven model is now expressed as migration-owned schema, typed sample data, 
   - Covered by new assertions in `packages/isolated-backend/tests/migrations.test.ts`.
 - **Typed sample data:** `packages/mock-data/src/fidelity.ts` — the three worst-case fixtures as exports.
 - **Decisions:** NZC-041–045 in `DECISIONS.md`. NZC-042's *site-scoped factor overrides* sub-question was
-  closed 30 Aug 2026: factors are **not** site-scoped — a site on its own tariff is a per-site row with its
-  own factor (`site_id` and `factor_id` are already independent on the canonical row).
+  fully closed 01 Sep 2026: factors are **not** site-scoped — a site on its own tariff is a per-site row with
+  its own factor (`site_id` and `factor_id` are already independent on the canonical row); any site "default
+  factor" is entry-time pre-fill only, never a compute-time lookup. S3 unblocked.
 
 **Verification:** `tsc` accepts the extended contract and the mock-data fixtures under `strict` +
 `noUncheckedIndexedAccess`; the round-trip test is **3/3**; all three migrations **parse as valid

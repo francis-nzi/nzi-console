@@ -49,7 +49,7 @@ new UI out behind flags. Companion to `DEVELOPMENT_PLAN.md`, `MODEL_FIDELITY_DAT
 
 ### Phase 2 — First vertical slice (one adapter, flagged)
 - **Goal:** validate the new framework end-to-end on one real capture kind before broad rollout.
-- **Entry:** Phase 1 banked; **NZC-042 (site-scoped factor overrides) decided** if the slice touches sites.
+- **Entry:** Phase 1 banked. *(NZC-042 closed — factors are not site-scoped; no longer a gate for any slice.)*
 - **Work:** build ONE adapter (recommended: **portal spend** or **commuting**) on the new model —
   kind-specific fields + monthly + the review/provenance spine — behind `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2`
   (per-adapter granularity). Old generic path stays default. Bundle the NZC-039/040 standards into this slice.
@@ -93,7 +93,7 @@ new UI out behind flags. Companion to `DEVELOPMENT_PLAN.md`, `MODEL_FIDELITY_DAT
 - Flags gate **UI only** — the schema (Phase 0) is always present, since it's additive and inert until read.
 
 ## Decision gates
-- **NZC-042 — site-scoped factor overrides:** decide before any Phase 2/3 slice that touches sites.
+- **NZC-042 — site-scoped factor overrides:** ✅ **closed** — factors are not site-scoped (they live on the row, not the site); a site on its own tariff is a per-site row. No decision pending; S3 unblocked.
 - Confirm each rendered acceptance pass (Phase 1, and per-adapter in 2–3) before flipping a flag.
 
 ## The one variable that changes the pace
@@ -138,16 +138,16 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 | B5.1 | Portal CSV upload (hardening slice) | NZC-036 | `portal-spend` | in `ACCEPTANCE_B5_PORTAL_SPEND.md` | B5, B4 parser | 🟡 gate drafted for Francis (1 open question) |
 | S1 | Source register group roll-up + commuting/vehicle framing + bulk paste (register itself already built) | NZC-043/037/036 | `commuting`,`vehicle` | `ACCEPTANCE_S1_SOURCE_REGISTER.md` · `STAGING_ACCEPTANCE_S1.md` | migrations 0036/0037/0043 | 🟢 **fully built** (model + flagged register UI + S1.1 commuting + S1.2 vehicle bulk); per-domain flips pending staging flag + screen-reader — **largest, done** |
 | S2 | Client factors UI — lifecycle (list · versioned edit · archive · reuse) + EPD lineage | NZC-041 | `client-factors` | `ACCEPTANCE_S2_CLIENT_FACTORS.md` · `STAGING_ACCEPTANCE_S2.md` | migration 0034 (on `main`) | 🟢 built (increments 1–2); flip pending staging flag + screen-reader (gate 9) |
-| S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 **+ NZC-042 decision** | ⏳ blocked on decision |
+| S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 | ⏳ **unblocked** (NZC-042 closed — factors not site-scoped); not yet started |
 | S4 | Row/drawer breadth (data_confidence, conversion memory, notes, column text) | NZC-044 | (folds into S1–S3) | within host slice | 0034–0036 | ⏳ partial |
 | UX1 | **One data-entry UX — scope→category accordion + shared capture component + site-as-context + progressive disclosure** (corrects the 31 Aug prototypes; absorbs S5's data-entry portion) | **NZC-046** | `data-entry-accordion` | `ACCEPTANCE_UX1_DATA_ENTRY_ACCORDION.md` (draft) · `DATA_ENTRY_UX.md` | B2–B5, S1, S2 built | 🟡 gate drafted for Francis (5 open questions) — **new top priority** |
 | S5 | Stage-as-section layout — non-data-entry workspaces (data-entry portion → UX1) | NZC-038 | layout | design acceptance | adapters landed | ⏳ cross-cutting |
 | — | Standards (carbon emissions; dd/mm/yyyy) | NZC-039/040 | n/a | ride-along per slice | — | ⏳ per slice |
 | P4 | Retire legacy generic path + remove flags | — | remove | — | all adapters accepted | ⏳ Phase 4 |
 
-**Human-only gates (not Claude Code):** A3 (screen-reader narration) and A4 (contrast eyeball) bank Phase 1;
-the **NZC-042 decision** unblocks S3. Any rendered accessibility review of a new adapter screen is human-only,
-like A3.
+**Human-only gates (not Claude Code):** A3 (screen-reader narration) and A4 (contrast eyeball) bank Phase 1.
+NZC-042 is **closed** (factors not site-scoped), so S3 is already unblocked. Any rendered accessibility
+review of a new adapter screen is human-only, like A3.
 
 **Separate downstream track:** C — job-family modularization (NZC-024/025) — sits *after* all of the above;
 M4 (additional services) rides on it. Parked until the data-entry framework is fully introduced.
