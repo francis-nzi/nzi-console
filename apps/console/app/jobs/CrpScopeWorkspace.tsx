@@ -20,7 +20,7 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
-import { crpScopeCategoryPath, crpScopeOptions } from "@nzi/contracts";
+import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
@@ -36,6 +36,7 @@ import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
 import {SpendImportPanel} from "./SpendImportPanel";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
+import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 
 const blank = (): ScopeRowWriteFields => ({
@@ -151,6 +152,7 @@ export function CrpScopeWorkspace({
     // exception lens is opt-in via the command-centre "Open N exceptions" action.
     [accordionLens,setAccordionLens]=useState<AccordionLens>("category"),
     [siteContextId,setSiteContextId]=useState(""),
+    [openStages,setOpenStages]=useState<Set<string>>(()=>new Set([job.header.workflowStage,"Data entry"])),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
@@ -199,6 +201,24 @@ export function CrpScopeWorkspace({
       : !target
         ? "Configure the reduction pathway"
         : "Create the reviewed reporting snapshot";
+  const stageSectionsOn = dataEntryAdapterEnabled("job-stage-sections");
+  const crpStages: readonly string[] = jobWorkflowStages.crp;
+  const activeStageIndex = Math.max(0, crpStages.indexOf(job.header.workflowStage));
+  const stageStatus = (index: number): StageStatus => (index < activeStageIndex ? "done" : index === activeStageIndex ? "active" : "todo");
+  const toggleStage = (name: string) => setOpenStages(current => { const next = new Set(current); next.has(name) ? next.delete(name) : next.add(name); return next; });
+  const jumpToStage = (name: string) => {
+    setOpenStages(current => new Set(current).add(name));
+    requestAnimationFrame(() => document.getElementById(`stage-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const selectedDatasets = datasets.filter(dataset => dataset.selected).length;
+  const noFactorCount = rows.filter(row => row.enabled && !row.factorLabel).length;
+  const stageSummary = {
+    setup: `${selectedDatasets} dataset${selectedDatasets === 1 ? "" : "s"} · ${target ? `−${target.interimReductionPercent}% by ${target.interimYear}` : "no pathway"} · ${intensityTarget ? `intensity v${intensityTarget.version}` : "no intensity metric"} · ${sites.length} site${sites.length === 1 ? "" : "s"} · ${purchasedGoodsCategories.length} PG&S`,
+    data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e across enabled rows`,
+    mapping: noFactorCount ? `${noFactorCount} source${noFactorCount === 1 ? "" : "s"} without a factor` : "Every enabled source has a factor",
+    review: qa.independentReviewPending ? `${qa.independentReviewPending} pending · ${qa.approved} approved` : `${qa.approved} approved · review complete`,
+    report: qa.readyForReporting ? "Evidence complete — ready to snapshot" : "Blocked until QA gates pass",
+  };
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
@@ -264,6 +284,120 @@ export function CrpScopeWorkspace({
       ))}
     </EvidenceDrawer>
   ) : undefined;
+
+  const configPanels = (
+    <>
+      <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
+      <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
+      <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
+      <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
+    </>
+  );
+  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} notice={setNotice}/>;
+  const dataEntrySurface = accordionOn ? (
+    <CrpDataEntryAccordion
+      jobId={job.header.id}
+      rows={rows}
+      selectedRowId={selected?.id ?? ""}
+      onOpenRow={setSelectedId}
+      onCreateEntry={createEntryFromForm}
+      sites={sites.map(site => ({ id: site.id, label: site.name }))}
+      siteId={siteContextId}
+      onSiteChange={setSiteContextId}
+      factors={entryFactorRefs}
+      reportingMonths={spendReportingMonths}
+      purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
+      categoryExtras={categoryExtras}
+      lens={accordionLens}
+      onLensChange={setAccordionLens}
+    />
+  ) : (
+    <>
+      {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+    </>
+  );
+  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>;
+  const releaseControl = <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>;
+  const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
+  const createForm = creating ? (
+    <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
+      <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>
+      <Fields value={draft} change={setDraft} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
+      <button className="nz-btn pri" disabled={pending}>{pending ? "Creating…" : "Create scope row"}</button>
+    </form>
+  ) : null;
+  const flatRegister = accordionOn ? null : rows.length === 0 ? (
+    <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
+  ) : (
+    <div className="nz-panel" id="emissions-register">
+      <div className="nz-register-head">
+        <div><span className="nz-eyebrow">Canonical evidence register</span><h3>Emissions sources</h3><p>Every result retains factor provenance, calculation lineage and an independent decision.</p></div>
+        <div className="nz-register-filters" aria-label="Filter emissions sources">{registerFilters.map(filter=><button type="button" key={filter.id} aria-pressed={registerFilter===filter.id} onClick={()=>setRegisterFilter(filter.id)}>{filter.label}<b>{filter.count}</b></button>)}</div>
+      </div>
+      <table className="nz-tbl">
+        <thead><tr><th>Source</th><th>Scope</th><th>Site</th><th>Activity</th><th>Unit</th><th>Factor</th><th>Quality</th><th>tCO₂e</th><th>Review</th></tr></thead>
+        <tbody>
+          {visibleRows.map((r) => (
+            <tr key={r.id} tabIndex={0} aria-selected={r.id === selected?.id} className={`row${r.id === selected?.id ? " sel" : ""}`}
+              onClick={() => setSelectedId(r.id)}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}>
+              <td>{r.sourceLabel}{r.assetIdentifier?<div className="muted">ID / Ref: {r.assetIdentifier}</div>:null}</td>
+              <td>{r.scope}</td>
+              <td>{r.siteLabel??"Unallocated"}</td>
+              <td>{r.quantity ?? "—"}</td>
+              <td>{r.unit ?? "—"}</td>
+              <td>{r.factorLabel ?? "No factor"}</td>
+              <td>{qualities.find((q) => q.value === r.qualityTier)?.label ?? "—"}</td>
+              <td>{r.overrideTco2e ?? r.calculatedTco2e ?? "—"}</td>
+              <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {visibleRows.length===0?<div className="nz-table-empty">No rows match this filter. The full evidence register still contains {rows.length} row{rows.length===1?"":"s"}.</div>:null}
+    </div>
+  );
+  const noticeBanner = notice ? (
+    <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div>
+  ) : null;
+  const stageBody = (
+    <div className="nz-body">
+      <StageFocusStrip
+        readinessPercent={readinessPercent}
+        nextAction={nextAction}
+        exceptions={[
+          { label: "calculations", count: qa.calculationMissing, onOpen: () => jumpToStage("Data entry") },
+          { label: "without a factor", count: noFactorCount, onOpen: () => jumpToStage("Factor mapping") },
+          { label: "QA decisions", count: qa.independentReviewPending, onOpen: () => jumpToStage("Review & QA") },
+        ]}
+      />
+      {noticeBanner}
+      <StageSection n={1} name="Setup" status={stageStatus(0)} summary={stageSummary.setup} open={openStages.has("Setup")} onToggle={() => toggleStage("Setup")}>
+        {datasetPanel}
+        {configPanels}
+      </StageSection>
+      <StageSection n={2} name="Data entry" status={stageStatus(1)} summary={stageSummary.data} open={openStages.has("Data entry")} onToggle={() => toggleStage("Data entry")}>
+        {dataEntrySurface}
+        {createForm}
+      </StageSection>
+      <StageSection n={3} name="Factor mapping" status={stageStatus(2)} summary={stageSummary.mapping} open={openStages.has("Factor mapping")} onToggle={() => toggleStage("Factor mapping")}>
+        {sourceRegister}
+      </StageSection>
+      <StageSection n={4} name="Review & QA" status={stageStatus(3)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+        {reviewQueue}
+        {flatRegister}
+      </StageSection>
+      <StageSection n={5} name="Report & publish" status={stageStatus(4)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
+        {releaseControl}
+      </StageSection>
+    </div>
+  );
+
   return (
     <AppShell
       rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}
@@ -291,6 +425,7 @@ export function CrpScopeWorkspace({
         </div>
       </div>
       <WorkflowStageControl job={job} />
+      {stageSectionsOn ? stageBody : (
       <div className="nz-body">
         <section className="nz-command-hero">
           <div className="nz-command-summary">
@@ -322,113 +457,17 @@ export function CrpScopeWorkspace({
             <a className="nz-btn" href={accordionOn?"#data-entry-accordion":"#emissions-register"} onClick={()=>openRegister("attention")}>Open {attentionCount} exception{attentionCount===1?"":"s"}</a>
           </div>
         </section>
-        {notice && (
-          <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div>
-        )}
-        <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
-        <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
-        <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
-        <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
-        <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
-        {accordionOn ? (
-          <CrpDataEntryAccordion
-            jobId={job.header.id}
-            rows={rows}
-            selectedRowId={selected?.id ?? ""}
-            onOpenRow={setSelectedId}
-            onCreateEntry={createEntryFromForm}
-            sites={sites.map(site => ({ id: site.id, label: site.name }))}
-            siteId={siteContextId}
-            onSiteChange={setSiteContextId}
-            factors={entryFactorRefs}
-            reportingMonths={spendReportingMonths}
-            purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
-            categoryExtras={categoryExtras}
-            lens={accordionLens}
-            onLensChange={setAccordionLens}
-          />
-        ) : (
-          <>
-            {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
-            {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
-            {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
-            {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
-            {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
-          </>
-        )}
-        <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>
-        <DatasetPanel
-          jobId={job.header.id}
-          datasets={datasets}
-          notice={setNotice}
-        />
-        <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
-        {creating && (
-          <form
-            className="nz-panel nz-scope-create"
-            id="scope-row-editor"
-            onSubmit={create}
-          >
-            <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>
-            <Fields value={draft} change={setDraft} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
-            <button className="nz-btn pri" disabled={pending}>
-              {pending ? "Creating…" : "Create scope row"}
-            </button>
-          </form>
-        )}
-        <PortalDataEntryReviewQueue jobId={job.header.id}/>
-        {accordionOn ? null : rows.length === 0 ? (
-          <div className="nz-panel nz-register-empty"><b>No emissions sources yet</b><span>Empty is not treated as zero. Add the first evidence row to begin calculation and review.</span></div>
-        ) : (
-          <div className="nz-panel" id="emissions-register">
-            <div className="nz-register-head">
-              <div><span className="nz-eyebrow">Canonical evidence register</span><h3>Emissions sources</h3><p>Every result retains factor provenance, calculation lineage and an independent decision.</p></div>
-              <div className="nz-register-filters" aria-label="Filter emissions sources">{registerFilters.map(filter=><button type="button" key={filter.id} aria-pressed={registerFilter===filter.id} onClick={()=>setRegisterFilter(filter.id)}>{filter.label}<b>{filter.count}</b></button>)}</div>
-            </div>
-            <table className="nz-tbl">
-              <thead>
-                <tr>
-                  <th>Source</th>
-                  <th>Scope</th>
-                  <th>Site</th>
-                  <th>Activity</th>
-                  <th>Unit</th>
-                  <th>Factor</th>
-                  <th>Quality</th>
-                  <th>tCO₂e</th>
-                  <th>Review</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((r) => (
-                  <tr
-                    key={r.id}
-                    tabIndex={0}
-                    aria-selected={r.id === selected?.id}
-                    className={`row${r.id === selected?.id ? " sel" : ""}`}
-                    onClick={() => setSelectedId(r.id)}
-                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(r.id); } }}
-                  >
-                    <td>{r.sourceLabel}{r.assetIdentifier?<div className="muted">ID / Ref: {r.assetIdentifier}</div>:null}</td>
-                    <td>{r.scope}</td>
-                    <td>{r.siteLabel??"Unallocated"}</td>
-                    <td>{r.quantity ?? "—"}</td>
-                    <td>{r.unit ?? "—"}</td>
-                    <td>{r.factorLabel ?? "No factor"}</td>
-                    <td>
-                      {qualities.find((q) => q.value === r.qualityTier)
-                        ?.label ?? "—"}
-                    </td>
-                    <td>{r.overrideTco2e ?? r.calculatedTco2e ?? "—"}</td>
-                    <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {visibleRows.length===0?<div className="nz-table-empty">No rows match this filter. The full evidence register still contains {rows.length} row{rows.length===1?"":"s"}.</div>:null}
-          </div>
-        )}
+        {noticeBanner}
+        {configPanels}
+        {dataEntrySurface}
+        {sourceRegister}
+        {datasetPanel}
+        {releaseControl}
+        {createForm}
+        {reviewQueue}
+        {flatRegister}
       </div>
+      )}
     </AppShell>
   );
 }
