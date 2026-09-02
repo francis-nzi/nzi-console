@@ -26,8 +26,11 @@ services:
       #   commuting/vehicle S1 source-register bulk (STAGING_ACCEPTANCE_S1.md)
       #   client-factors   S2 client-factor lifecycle (STAGING_ACCEPTANCE_S2.md)
       #   data-entry-accordion  UX1 one data-entry UX (STAGING_ACCEPTANCE_UX1.md)
+      #   job-stage-sections    UX1e-1 stage-as-section CRP workspace
+      #                         (ACCEPTANCE_UX1E_STAGE_SECTIONS.md) — for the e1
+      #                         acceptance run; roll back if the human pass fails
       - key: NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2
-        value: spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion
+        value: spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion,job-stage-sections
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
