@@ -8,5 +8,6 @@
     { "id": "color-contrast", "target": "figure > p", "status": "fixed-pending-deploy", "note": "chart source footer; @nzi/charts tokens.muted #8A968F -> #616B65" }
   ],
   "accordion": [],
-  "portal-accordion": []
+  "portal-accordion": [],
+  "stage-sections": []
 }

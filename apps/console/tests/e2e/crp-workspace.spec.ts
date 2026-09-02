@@ -21,9 +21,10 @@ test.describe("M2 — CRP job workspace renders end to end", () => {
 
     // Regression guard: the client-factor UNION query (fix in PR #2) and the
     // per-entity register (0036) must resolve — a 503 here is what broke the
-    // workspace when the fidelity schema first landed.
-    await expect(page.getByText("Client-specific emission factors", { exact: false })).toBeVisible();
-    await expect(page.getByText("Assets, vehicles, employees and spend sources", { exact: false })).toBeVisible();
+    // workspace when the fidelity schema first landed. ("Client methodology" is
+    // the panel eyebrow in both the plain and the `client-factors`-managed view.)
+    await expect(page.getByText("Client methodology", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Per-entity register", { exact: false })).toBeVisible();
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
