@@ -40,3 +40,4 @@ export * from "./commands";
 export * from "./spendImport";
 export * from "./jobFamilies";
 export * from "./trainingFamily";
+export * from "./consultancyFamily";

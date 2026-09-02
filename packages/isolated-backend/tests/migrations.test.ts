@@ -57,6 +57,7 @@ const lcaAssessmentsMigration=readFileSync(resolve(here,"../migrations/0046_lca_
 const lcaScenariosMigration=readFileSync(resolve(here,"../migrations/0047_lca_scenarios_snapshots.sql"),"utf8");
 const trainingCoreMigration=readFileSync(resolve(here,"../migrations/0048_training_core.sql"),"utf8");
 const trainingEntitlementsMigration=readFileSync(resolve(here,"../migrations/0049_training_entitlements.sql"),"utf8");
+const consultancyMigration=readFileSync(resolve(here,"../migrations/0050_consultancy.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -121,6 +122,25 @@ describe("isolated Postgres migrations", () => {
   it("versions LCA assessments with review bound to a reviewed version, flat line items and multi-leg transport (NZC-054/055/056)",()=>{assert.match(lcaAssessmentsMigration,/CREATE TABLE nzi_console\.lca_assessments/);assert.match(lcaAssessmentsMigration,/version integer NOT NULL DEFAULT 1 CHECK \(version > 0\)/);assert.match(lcaAssessmentsMigration,/lca_assessment_reviewed_shape\s+CHECK \(\(review_status = 'pending'\) = \(reviewed_version IS NULL\)\)/);assert.match(lcaAssessmentsMigration,/standard text NOT NULL DEFAULT 'ISO 14067'/);assert.match(lcaAssessmentsMigration,/CREATE TABLE nzi_console\.lca_line_items/);assert.match(lcaAssessmentsMigration,/module_code text NOT NULL REFERENCES nzi_console\.lca_modules/);assert.match(lcaAssessmentsMigration,/factor_source IN \('dataset','client','manual','unmapped'\)/);assert.match(lcaAssessmentsMigration,/lca_line_item_factor_shape/);assert.match(lcaAssessmentsMigration,/CREATE TABLE nzi_console\.lca_transport_legs/);assert.match(lcaAssessmentsMigration,/UNIQUE \(organisation_id, line_item_id, leg_order\)/);assert.match(lcaAssessmentsMigration,/FORCE ROW LEVEL SECURITY/);});
   it("adds LCA scenarios (schema only) and content-addressed result snapshots",()=>{assert.match(lcaScenariosMigration,/CREATE TABLE nzi_console\.lca_scenarios/);assert.match(lcaScenariosMigration,/lca_scenarios_one_baseline_idx[\s\S]*WHERE is_baseline/);assert.match(lcaScenariosMigration,/CREATE TABLE nzi_console\.lca_scenario_multipliers/);assert.match(lcaScenariosMigration,/lca_multiplier_target_shape\s+CHECK \(NOT \(material_category_id IS NOT NULL AND component_id IS NOT NULL\)\)/);assert.match(lcaScenariosMigration,/CREATE TABLE nzi_console\.lca_result_snapshots/);assert.match(lcaScenariosMigration,/data_hash text NOT NULL/);assert.match(lcaScenariosMigration,/mass_reconciliation jsonb NOT NULL/);assert.match(lcaScenariosMigration,/GRANT SELECT, INSERT ON nzi_console\.lca_result_snapshots TO nzi_console_app/);});
   it("tenant-isolates the per-client remembered column map",()=>{assert.match(clientImportMappingsMigration,/CREATE TABLE nzi_console\.client_import_mappings/);assert.match(clientImportMappingsMigration,/import_kind text NOT NULL CHECK \(import_kind IN \('spend'\)\)/);assert.match(clientImportMappingsMigration,/mapping_json jsonb NOT NULL DEFAULT '\{\}'::jsonb CHECK \(jsonb_typeof\(mapping_json\) = 'object'\)/);assert.match(clientImportMappingsMigration,/PRIMARY KEY \(organisation_id, client_id, import_kind\)/);assert.match(clientImportMappingsMigration,/REFERENCES nzi_console\.clients\(organisation_id, client_id\) ON DELETE CASCADE/);assert.match(clientImportMappingsMigration,/FORCE ROW LEVEL SECURITY/);assert.match(clientImportMappingsMigration,/GRANT SELECT, INSERT, UPDATE ON nzi_console\.client_import_mappings TO nzi_console_app/);});
+
+  it("keeps consultancy light — one versioned detail row plus a deliverable checklist (0050)",()=>{
+    assert.ok(consultancyMigration.includes("CREATE TABLE nzi_console.job_consultancy_details"));
+    assert.ok(consultancyMigration.includes("CREATE TABLE nzi_console.consultancy_deliverables"));
+    // one row per job, versioned, review bound to a reviewed version
+    assert.match(consultancyMigration,/PRIMARY KEY \(organisation_id, job_id\)/);
+    assert.match(consultancyMigration,/job_consultancy_reviewed_shape CHECK \(\(review_status = 'pending'\) = \(reviewed_version IS NULL\)\)/);
+    // hours are a budget/used pair — no time-log table
+    assert.match(consultancyMigration,/hours_budget numeric/);
+    assert.match(consultancyMigration,/hours_used numeric NOT NULL DEFAULT 0/);
+    assert.doesNotMatch(consultancyMigration,/time_log|timesheet|time_entries/i);
+    // deliverable checklist shape constraints
+    assert.match(consultancyMigration,/status text NOT NULL DEFAULT 'planned' CHECK \(status IN \('planned','in_progress','delivered','accepted','rejected'\)\)/);
+    assert.match(consultancyMigration,/consultancy_deliverable_rework_shape CHECK \(\(status = 'rejected'\) = \(rework_note IS NOT NULL\)\)/);
+    assert.match(consultancyMigration,/REFERENCES nzi_console\.report_versions\(organisation_id, report_version_id\) ON DELETE SET NULL/);
+    // tenant safety on both tables
+    assert.equal((consultancyMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
+    assert.equal((consultancyMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
+  });
 
   it("builds the training delivery spine on the governance pattern (0048)",()=>{
     for(const table of ["training_products","training_course_runs","training_course_sessions","training_bookings","training_session_attendance"])
