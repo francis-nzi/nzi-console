@@ -59,6 +59,9 @@ test.describe("UX1 — CRP data-entry accordion rendered acceptance", () => {
     const needsAttention = accordion.getByRole("tab", { name: /Needs attention/ });
     await expect(byCategory).toBeVisible();
     await expect(needsAttention).toBeVisible();
+    // Lands on the scope→category view, not the (often empty) exception table.
+    await expect(byCategory).toHaveAttribute("aria-selected", "true");
+    await expect(accordion.locator(".nz-acc")).toBeVisible();
 
     const first = accordion.locator("button.nz-acc-h").first();
     await first.click();

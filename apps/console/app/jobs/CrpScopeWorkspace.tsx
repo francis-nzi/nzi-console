@@ -147,7 +147,9 @@ export function CrpScopeWorkspace({
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
     [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),
-    [accordionLens,setAccordionLens]=useState<AccordionLens>("attention"),
+    // The accordion lands on the scope→category view (crp_v3 prototype); the
+    // exception lens is opt-in via the command-centre "Open N exceptions" action.
+    [accordionLens,setAccordionLens]=useState<AccordionLens>("category"),
     [siteContextId,setSiteContextId]=useState(""),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
