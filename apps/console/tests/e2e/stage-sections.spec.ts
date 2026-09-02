@@ -77,7 +77,7 @@ test.describe("UX1e-1 — CRP stage-as-section layout", () => {
 
     test.skip((await page.locator("section.nz-stage-sec").count()) === 0, "job-stage-sections not enabled on target");
 
-    await scanWithBaseline(page, "crp-job-workspace");
+    await scanWithBaseline(page, "stage-sections");
     await expectNoHorizontalOverflow(page, "stage sections");
   });
 });

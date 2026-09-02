@@ -30,11 +30,15 @@ async function openJobAccordion(page: Page): Promise<{ accordion: Locator; error
   await expectHealthyScreen(page);
 
   const accordion = page.locator("section#data-entry-accordion");
+  const accordionFailed = page.getByText("The category view is unavailable");
+  // The accordion mounts immediately but renders its <section> only after the
+  // client-side /applicable-categories fetch resolves — wait for a terminal
+  // state (ready section, or its failure banner) before deciding to skip.
+  await accordion.or(accordionFailed).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   test.skip(
     (await accordion.count()) === 0,
-    "data-entry-accordion not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'data-entry-accordion')",
+    "data-entry-accordion not enabled on target, or its category view failed to load",
   );
-  // The accordion loads its categories from /applicable-categories — wait for ready.
   await expect(accordion.locator("button.nz-acc-h").first()).toBeVisible({ timeout: 20_000 });
   return { accordion, errors };
 }

@@ -49,23 +49,37 @@ Everything is built and green with `data-entry-accordion` **OFF**. To flip, on i
 - no horizontal overflow at 390 / 768 / 1280 / 1920;
 - reduced-motion.
 
-**Then:** add `data-entry-accordion` (and keep the per-adapter flags) to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in `render.yaml`, merge, confirm the deploy, tick the boxes here.
+**Then:** `data-entry-accordion` + the per-adapter flags are already in `render.yaml` (PR #68, deployed) and live on staging.
+
+## Flip acceptance — run 2 Sep 2026 (Claude Code)
+
+Provisioned the acceptance accounts (`npm run acceptance:provision`, isolated DB) and ran `npm run test:e2e`
+against the deployed staging service with the full flag set live.
+
+**Automated gate — PASS.** 46 passed / 12 skipped / 0 failed. Specifically:
+- `accordion.spec.ts` — all 6: accordion renders (site context, both lenses, expand/collapse, lands on **By category**); the re-homed adapters (`#spend-import` + `#spend-ledger-adapter` under Purchased Goods and Services, `#commuting-bulk`, `#vehicle-bulk`) render inside their category sections; **Add-entry** opens the shared `EmissionEntryForm` and the DVLA registration finder resolves to a rendered outcome; the fixed field order on a manual category; the client-factor panel is reachable; no horizontal overflow at 390/768/1280/1920.
+- `accessibility.spec.ts` "scan the CRP job workspace" — the job page **with the accordion** passes the axe baseline (no uncatalogued serious/critical).
+- `crp-workspace.spec.ts` M2 regression guard — green (assertions re-pointed to flag-stable text — `fix/e2e-accordion-wait-and-m2`).
+- Skipped: `stage-sections.spec.ts` ×3 (needs `job-stage-sections`, PR #71); portal accordion (no open entry window on the staging job); the standalone adapter specs (`spend-adapter` / `commuting-bulk` / `vehicle-bulk` — their panels are re-homed into the accordion, covered by `accordion.spec.ts`).
+
+**Incident found & fixed during the run:** the isolated staging DB was at migration **0041** — **`0042_portal_spend_mirror` and `0043_scope_row_group_rollup` had never been applied** (`0044` was hand-applied out of band during the 1 Sep incident, `0045`–`0050` on 1–2 Sep, but 0042/0043 slipped). Symptom on deployed staging: `GET /jobs/{id}/emission-sources` → **503** (read model selects `r.group_id`), `GET /portal-data-entry-review` → **500**. Applied both to isolated staging 2 Sep 2026 and re-verified — all green. See the incident note below and the migrations memory.
 
 ## Gate status
 
 | Gate item | State |
 |---|---|
-| §1 taxonomy — verbatim names, applicable-only, per-category counts | ✅ |
-| §1 CRM completeness view — all 15 Scope 3 when included; empties `noData`, excluded from reports | ✅ |
+| §1 taxonomy — verbatim names, applicable-only, per-category counts | ✅ e2e |
+| §1 CRM completeness view — all 15 Scope 3 when included; empties `noData`, excluded from reports | ✅ e2e |
 | §1 portal — authorised categories only (bucket grants) | ✅ |
 | §2 site-as-context (CRP selector auto-stamps `site_id`; portal per-bucket site) | ✅ c-2 / d-2 |
-| §3 one field order, both surfaces; portal a constrained mirror | ✅ a-ui, enforced by `emissionEntryModel.test.ts` |
-| §4 progressive disclosure — spend group / registration finder only where they belong | ✅ a-ui |
+| §3 one field order, both surfaces; portal a constrained mirror | ✅ a-ui + `emissionEntryModel.test.ts` |
+| §4 progressive disclosure — spend group / registration finder only where they belong | ✅ a-ui + e2e |
 | §5 portal multi-row per authorised category | ✅ d-1 / d-2 |
-| §7 automated tests + typecheck + build | ✅ (counts above) |
-| §6 flag — `data-entry-accordion` gates the container; adapters keep per-domain flags; `0044` applied to isolated staging 01 Sep 2026 | ✅ |
+| §7 automated tests + typecheck + build | ✅ + **e2e on deployed staging (2 Sep 2026)** |
+| §6 flag — `data-entry-accordion` gates the container; adapters keep per-domain flags; `0042`–`0044` applied to isolated staging | ✅ (0042/0043 applied 2 Sep 2026) |
 | §8 "No data" neutral / never mandatory | ✅ empty categories render the neutral note, excluded from reports |
-| §2–§8 **rendered** a11y / viewport pass on the accordion | ⏳ human-only, on the flip |
+| §2–§8 **rendered** a11y / viewport — axe + overflow, automated | ✅ e2e |
+| **screen-reader narration · contrast eyeball · reduced-motion** | ⏳ **human-only — Francis** (the last box) |
 
 ## Rollback
 
@@ -94,3 +108,23 @@ flag) needs the migration applied **before that PR's deploy**, not "before the f
 own gate said this; `b`'s description didn't re-flag it because the column looked accordion-only. Future
 migrations that any always-on read model depends on go in the PR checklist as a pre-deploy step, not a
 pre-flip one.
+
+## Incident — 02 Sep 2026: `0042` / `0043` never applied to isolated staging
+
+The flip acceptance run's e2e surfaced `GET /jobs/{id}/emission-sources` → **503** and
+`GET /portal-data-entry-review` → **500** on the deployed staging service. Root cause: the isolated
+staging DB was at migration **0041**. `0042_portal_spend_mirror` (adds `entry_kind` / `detail_json` to
+`portal_data_entry_records`, `allowed_pgs_category_ids` to bucket grants) and `0043_scope_row_group_rollup`
+(adds `job_scope_rows.group_id` + the one-rollup-per-group index) had **never been applied** — `0044` was
+hand-applied out of band on 1 Sep, `0045`–`0050` on 1–2 Sep, but the 0042/0043 gap went unnoticed because
+no acceptance had exercised the emission-source register or the portal review queue on staging since B4.
+
+**Fix:** `node packages/isolated-backend/scripts/apply-migration.mjs .../0042_portal_spend_mirror.sql` then
+`.../0043_scope_row_group_rollup.sql` against the boundary-guarded isolated connection. Verified the four
+columns / index exist; re-ran the e2e — 46 passed / 0 failed. No data loss (additive columns + an index).
+
+**Process gap (4th instance of the pattern — see the migrations memory):** the manual `apply-migration`
+step has no ledger, so a skipped number is invisible until a query hits the missing object. **Mitigation
+added to the memory:** before any staging acceptance, diff `packages/isolated-backend/migrations/*` against
+the DB's actual schema (a column/table probe per migration) and apply the gap; longer term, a
+`schema_migrations` tracking table + an `apply-all-pending` script.
