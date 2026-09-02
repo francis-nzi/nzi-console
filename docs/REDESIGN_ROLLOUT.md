@@ -117,8 +117,10 @@ UI construct is then introduced as its own slice — build → its acceptance ga
 counted in slices, not calendar time.
 
 **Flag convention (as implemented):** a single env var `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` whose value
-enumerates the enabled adapters (e.g. `spend`, later `spend,commuting`). Off/empty = the current generic
-path. The committed value lives in `render.yaml` (source of truth), not the dashboard.
+enumerates the enabled flags (e.g. `spend`, later `spend,commuting`). Off/empty = the current generic
+path. `render.yaml` carries the intended value for continuity, but **the Render dashboard value is
+authoritative on this service** and `NEXT_PUBLIC_*` is build-inlined — so a flip is a dashboard edit +
+rebuild, not a `render.yaml` merge. Full procedure in `docs/DEPLOYMENT.md` §"Feature-flag flips".
 
 **Done**
 - Model schema — migrations 0034–0039 + `@nzi/contracts` types (NZC-041–045). 0034 & 0036 confirmed on
