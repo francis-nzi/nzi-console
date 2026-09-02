@@ -1,10 +1,12 @@
 {
-  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. Entries match by 'target' (selector substring) OR 'fg' (foreground colour). 'fixed-pending-deploy' = corrected in a branch not yet deployed; remove once live and re-verify green. 'catalogued-contrast' = a design-system colour decision for Francis (NZC-003 / NZC-026), not a mechanical darken. See docs/RENDERED_ACCEPTANCE_CHECKLIST.md.",
+  "_comment": "Accepted axe violations on the deployed target. The scan fails on ANY violation not listed here, and on every 'critical' unless its entry is 'fixed-pending-deploy'. '_shell' entries apply to every authenticated screen. Entries match by 'target' (selector substring) OR 'fg' (foreground colour). 'fixed-pending-deploy' = corrected in a branch not yet deployed; remove once live and re-verify green. 'catalogued-contrast' = a design-system colour decision for Francis (NZC-003 / NZC-026), not a mechanical darken. See docs/RENDERED_ACCEPTANCE_CHECKLIST.md. Page keys: 'accordion' = the CRP data-entry accordion (#data-entry-accordion, accordion.spec.ts); 'portal-accordion' = the client-portal data-entry accordion (portal.spec.ts). Both currently inherit only '_shell' — populate on the first flag-ON staging run if the surface introduces anything new.",
   "_shell": [
     { "id": "color-contrast", "target": ".nz-gate", "status": "fixed-pending-deploy", "note": "gate labels (.nz-gate small); --t3 #6B7671 -> #616B65 (5.2:1 on --paper) — #9's #6B7671 missed tinted backgrounds" },
     { "id": "color-contrast", "fg": "#0ba75e", "status": "catalogued-contrast", "note": "Emerald #0BA75E used as TEXT (links .nz-table-link, drawer kickers .nz-dh .kick, key-values .nz-kv .v, factor-box links, @nzi/charts subtitles) = 3.1:1 on white. Systemic. Needs a brand-colour decision from Francis: Deep Pine #0B7A4B passes AA; a darker emerald text token is the alternative. Emerald as a FILL/icon/border is fine and unaffected. Charts print tokens (packages/charts/src/tokens.ts) feed the PDF/portal too (NZC-026/029)." }
   ],
   "charts": [
     { "id": "color-contrast", "target": "figure > p", "status": "fixed-pending-deploy", "note": "chart source footer; @nzi/charts tokens.muted #8A968F -> #616B65" }
-  ]
+  ],
+  "accordion": [],
+  "portal-accordion": []
 }
