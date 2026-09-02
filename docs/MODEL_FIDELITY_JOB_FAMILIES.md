@@ -229,42 +229,52 @@ consume one. This shapes both modules and must be in the batch, not bolted on la
 
 ---
 
-## 6. Schema-shaping — the batch (confirm before the LCA reference module)
+## 6. Schema-shaping — the batch  **[confirmed 01 Sep 2026]**
 
 All additive, all in `nzi_console`, all on the governance spine (version + provenance + RLS + audit).
-Suggested migration grouping:
 
-| Migration | Contents | Family |
-|---|---|---|
-| `00xx_lca_core` | `lca_modules` (seeded), `lca_material_categories`, `lca_components`, `lca_suppliers` | LCA/PCF |
-| `00xx_lca_assessments` | `lca_assessments` (versioned, review-bound), `lca_assessment_datasets`, `lca_line_items`, `lca_transport_legs` | LCA/PCF |
-| `00xx_lca_scenarios_snapshots` | `lca_scenarios`, `lca_scenario_multipliers`, `lca_result_snapshots` (content-addressed) | LCA/PCF |
-| `00xx_training_core` | `training_products`, `training_course_runs` (versioned), `training_course_sessions`, `training_bookings`, `training_session_attendance` | Training |
-| `00xx_training_entitlements` | `training_entitlements` (CRP→Training), `training_certificates` (content-hashed) | Training + CRP link |
-| `00xx_consultancy` | `job_consultancy_details` (versioned), `consultancy_deliverables` | Consultancy |
+| Migration | Contents | Family | Status |
+|---|---|---|---|
+| `0045_lca_core` | `lca_modules` (seeded A1–D), `lca_material_categories`, `lca_components`, `lca_suppliers` | LCA/PCF | ✅ Phase 0 |
+| `0046_lca_assessments` | `lca_assessments` (versioned, review-bound), `lca_assessment_datasets`, `lca_line_items`, `lca_transport_legs` | LCA/PCF | ✅ Phase 0 |
+| `0047_lca_scenarios_snapshots` | `lca_scenarios`, `lca_scenario_multipliers`, `lca_result_snapshots` (content-addressed) | LCA/PCF | ✅ Phase 0 |
+| `0048_training_core` | `training_products`, `training_course_runs` (versioned), `training_course_sessions`, `training_bookings`, `training_session_attendance` | Training | ⏳ Phase 0 |
+| `0049_training_entitlements` | `training_entitlements` (CRP→Training), `training_certificates` (content-hashed) | Training + CRP link | ⏳ Phase 0 |
+| `0050_consultancy` | `job_consultancy_details` (versioned), `consultancy_deliverables` | Consultancy | ⏳ Phase 0 |
 
-**Proposed decisions for Francis (NZC-###):**
+**Confirmed decisions (Francis, 01 Sep 2026) — register as NZC-052–056 once the report decisions
+NZC-048–051 are in `DECISIONS.md`, to keep the number line continuous:**
 
-- **NZC-0aa — LCA/PCF one model, two presets.** PCF is `lca_assessments` with `standard='ISO 14067'` /
-  cradle-to-gate / A1–A3; no separate PCF tables. (Follows live `0058`.)
-- **NZC-0bb — LCA inventory is flat.** `lca_line_items` per EN 15804 module, no BOM tree; multi-leg
-  transport is a child table on transport-module lines. (Follows live.)
-- **NZC-0cc — family review spine.** The family's atomic unit (LCA line item / LCA assessment / training
-  run) is versioned with `expectedVersion`, carries `provenance`/`lineage`, and its `review_status` is
-  **bound to a reviewed version** — not the live models' free-text enums. Family reports are built from a
-  content-addressed reviewed snapshot, same as CRP.
-- **NZC-0dd — CRP↔Training only via entitlements.** No hard FK from training to CRP jobs; the
-  `training_entitlements` row (available→reserved→consumed, atomic) is the only link.
-- **NZC-0ee — factors are shared.** LCA line-item mapping uses `emission_factors` / `client_factors` /
-  the provenance signature — no parallel `factor_lookup` / `lca_factor_*` tables.
+- **NZC-052 — LCA/PCF one model, two presets.** PCF is `lca_assessments` with `standard='ISO 14067'` /
+  cradle-to-gate / A1–A3; no separate PCF tables (follows live `0058`). **The "Product Carbon Footprint"
+  term keeps its one sanctioned home in the PCF preset's UI/report labelling per NZC-039** — the shared
+  model does not remove it.
+- **NZC-053 — LCA component / supplier libraries are client-scoped or global,** mirroring `client_factors`
+  (`client_id` NULL = shared).
+- **NZC-054 — LCA inventory is flat.** `lca_line_items` per EN 15804 module, no BOM tree; a multi-leg
+  transport journey is `lca_transport_legs` (child of a transport-module line, ordered, geocoded), with the
+  parent line caching the leg sum.
+- **NZC-055 — family review spine.** A family's atomic reviewed unit (LCA assessment / training run) is
+  versioned with `expectedVersion`, carries provenance/lineage, and its `review_status` is **bound to a
+  reviewed version** — not the live models' free enums. Family reports are built from a content-addressed
+  reviewed snapshot, same as CRP.
+- **NZC-056 — CRP↔Training only via entitlements, and factors are shared.** Free training places
+  **originate from the quote / commercial terms** (quote → CRP job), with a **manual CRP grant as a
+  secondary path**; both create a `training_entitlements` row (available → reserved → consumed, atomic) —
+  the only CRP↔Training link, no hard FK. LCA line-item mapping uses the shared `emission_factors` /
+  `client_factors` + the provenance signature — no parallel `factor_lookup` / `lca_factor_*` tables.
+  Consultancy stays light — **no time-tracking engine**, just `job_consultancy_details` + a deliverable
+  checklist.
 
 ---
 
-## 7. Recommended build order (after this batch is confirmed)
+## 7. Build order
 
-1. **Model batch** (§6) applied to isolated staging; contract types + `@nzi/mock-data` worst-case
-   fixtures; migration invariants — no UI. *(Mirrors data-entry Phase 0.)*
-2. **LCA reference module** — `apps/console/app/jobs/lca/`: own routing off `job.header.family === "lca"`,
+1. **Model batch** (§6) — migrations + `@nzi/contracts` types + `@nzi/mock-data` worst-case fixtures +
+   migration invariants, **no UI**. *(Mirrors data-entry Phase 0.)* LCA slice ✅; Training + Consultancy ⏳.
+   Apply `0045`–`0050` to isolated staging before merge.
+2. **Hold the LCA reference module** until the report and data-entry tracks land (Francis, 01 Sep 2026).
+3. **LCA reference module** — `apps/console/app/jobs/lca/`: own routing off `job.header.family === "lca"`,
    own stage machine, the assessment register → line-item grid → transport legs → factor mapping →
    recalculate → module breakdown chart → report manifest. Behind a `job-module-lca` flag; `FamilyWorkspace`
    still serves lca when the flag is off. Prove it (acceptance gate, like each B/S slice).
