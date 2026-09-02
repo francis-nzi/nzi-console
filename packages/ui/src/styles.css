@@ -446,3 +446,28 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-chip-mini{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;border:1px solid var(--line)}
 .nz-chip-mini.nodata{color:var(--t3);background:var(--paper)}
 .nz-chip-mini.todo{color:#8A6410;background:#FFF4DC;border-color:#F1D89B}
+
+/* UX1e-1 — stage-as-section CRP workspace layout (NZC-038) */
+.nz-focus-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0 14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.nz-focus-strip-lead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0}
+.nz-focus-strip .next{font-size:12.5px;color:var(--t2)}
+.nz-focus-strip .next .lab{display:inline-block;margin-right:7px;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--t3)}
+.nz-focus-strip-jumps{display:flex;gap:8px;flex-wrap:wrap}
+.nz-focus-strip-jumps button{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:11.5px;color:var(--t2);cursor:pointer}
+.nz-focus-strip-jumps button:hover,.nz-focus-strip-jumps button:focus-visible{background:var(--card);border-color:var(--t3)}
+.nz-focus-strip-jumps b{color:var(--t1);font-size:13px;margin-right:4px}
+.nz-stage-sec{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;margin-bottom:12px}
+.nz-stage-sec.active{box-shadow:0 0 0 1.5px var(--emerald) inset}
+.nz-stage-sec-h{display:flex;align-items:center;gap:13px;width:100%;padding:15px 17px;cursor:pointer;border:0;background:transparent;font-family:inherit;text-align:left}
+.nz-stage-sec-h:hover{background:var(--paper)}
+.nz-stage-sec-n{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;flex:none;font-size:12px;font-weight:800;background:#E7ECE9;color:var(--t3)}
+.nz-stage-sec.done .nz-stage-sec-n{background:var(--emerald);color:#fff}
+.nz-stage-sec.active .nz-stage-sec-n{background:var(--midnight);color:#fff}
+.nz-stage-sec-tt{min-width:0;flex:1}
+.nz-stage-sec-tt b{font-size:15px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.nz-stage-sec-tt .sum{display:block;color:var(--t3);font-size:11.5px;margin-top:3px}
+.nz-stage-sec-chev{flex:none;color:var(--t3);transition:transform .2s}
+.nz-stage-sec.open .nz-stage-sec-chev{transform:rotate(180deg)}
+.nz-stage-sec-body{padding:6px 17px 18px}
+.nz-stage-sec-body>.nz-config-panel:last-child,.nz-stage-sec-body>.nz-panel:last-child{margin-bottom:0}
+@media(max-width:760px){.nz-focus-strip{align-items:flex-start;flex-direction:column}.nz-stage-sec-body{padding:6px 13px 15px}}
