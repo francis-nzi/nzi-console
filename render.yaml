@@ -15,12 +15,19 @@ services:
         value: 20.18.0
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
-      # Data-entry redesign, Phase 2 — spend ledger adapter (NZC-035). Gated
-      # rollout: this makes the flip a reviewed, source-controlled change.
-      # Acceptance: docs/STAGING_ACCEPTANCE_B2.md (every in-scope gate ✅;
-      # file upload → Phase 3, rollforward re-pin + YoY variance → B3).
+      # Data-entry redesign flags (NZC-035/036/041/043/046). Gated rollout:
+      # render.yaml is the single source of truth (docs/REDESIGN_ROLLOUT.md
+      # §"Feature-flag strategy"), so every flip is a reviewed, source-controlled
+      # change. NEXT_PUBLIC_* is inlined at `next build`, so a change here forces
+      # a rebuild with the new set baked into the client bundle.
+      #   spend            B2 ledger adapter (STAGING_ACCEPTANCE_B2.md)
+      #   spend-import     B4 CSV bulk import (STAGING_ACCEPTANCE_B4.md)
+      #   portal-spend     B5 portal spend mirror (STAGING_ACCEPTANCE_B5.md)
+      #   commuting/vehicle S1 source-register bulk (STAGING_ACCEPTANCE_S1.md)
+      #   client-factors   S2 client-factor lifecycle (STAGING_ACCEPTANCE_S2.md)
+      #   data-entry-accordion  UX1 one data-entry UX (STAGING_ACCEPTANCE_UX1.md)
       - key: NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2
-        value: spend
+        value: spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
