@@ -10,6 +10,7 @@ export * from "./sales";
 export * from "./platform";
 export * from "./fidelity";
 export * from "./lcaFidelity";
+export * from "./trainingFidelity";
 export * from "./consultancyFidelity";
 
 export type RowStatus = "complete" | "needs" | "estimated";
