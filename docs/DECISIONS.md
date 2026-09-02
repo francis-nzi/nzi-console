@@ -43,7 +43,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-021 | Reporting engine: rebuild natively in the isolated platform | Confirmed (24 Aug 2026) |
 | NZC-022 | Explicit role-based permission / SoD matrix, refined by workspace | Confirmed (24 Aug 2026) |
 | NZC-023 | Xero/Stripe sandbox-only during redesign | Proposed |
-| NZC-024 | Separate job-family modules over a shared spine | Proposed |
+| NZC-024 | Separate job-family modules over a shared spine | Confirmed (1 Sep 2026) |
 | NZC-025 | Single shared job-numbering service · official `J000612` format · gapless | Confirmed (24 Aug 2026) |
 | NZC-026 | One SVG-first chart engine (`@nzi/charts`) for all surfaces | Confirmed (24 Aug 2026) |
 | NZC-027 | Charts derived from data, never captured; content-addressed cache | Confirmed (24 Aug 2026) |
@@ -67,6 +67,15 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-045 | The reporting taxonomy (level_1..4) is stored and controlled, not derived from the scope string | Confirmed (29 Aug 2026) |
 | NZC-046 | One data-entry UX: scope→category accordion from the dataset taxonomy (collapsed), site-as-context, identical field order across CRP & portal, progressive disclosure, smart-search factor field, virus-scanned uploads | Confirmed (31 Aug 2026) |
 | NZC-047 | Client portal breadth (11 live areas) incorporated as M6 on the shared evidence spine + @nzi/charts (derived, not PNG), one design language, reviewed-snapshot-backed, phased & flag-gated; Strategy/Actions & SRS Readiness need new domain models | Confirmed (1 Sep 2026) |
+| NZC-048 | Editable report sections: ordered, versioned sections with contentSource default/ai/client-edited, Reset-to-default + Regenerate, provenance | Confirmed (1 Sep 2026) |
+| NZC-049 | Data-bound figure tokens: figures in report narrative resolve from the report snapshot as locked tokens, never free text — data-integrity survives editing | Confirmed (1 Sep 2026) |
+| NZC-050 | Deterministic print-safe charts: report charts render as static inline SVG from the snapshot; one render-ready signal gates PDF; no request-time canvas | Confirmed (1 Sep 2026) |
+| NZC-051 | Paged output discipline: repeating table-header groups, row-atomic breaks, live-PDF running header/footer, on-screen Continuous↔A4 page-break view; snapshot frozen on Mark Final | Confirmed (1 Sep 2026) |
+| NZC-052 | LCA/PCF one model, two presets — PCF is `lca_assessments` with `standard='ISO 14067'` / cradle-to-gate; keeps the "Product Carbon Footprint" label per NZC-039 | Confirmed (1 Sep 2026) |
+| NZC-053 | LCA component / supplier libraries are client-scoped or global (`client_id` NULL = shared), mirroring `client_factors` | Confirmed (1 Sep 2026) |
+| NZC-054 | LCA inventory is flat — `lca_line_items` per EN 15804 module, no BOM tree; a multi-leg transport journey is an ordered, geocoded child table with the parent line caching the leg sum | Confirmed (1 Sep 2026) |
+| NZC-055 | Family review spine — a family's atomic reviewed unit (LCA assessment / training run) is versioned with `expectedVersion`, carries provenance/lineage, `review_status` bound to a reviewed version; family reports from a content-addressed snapshot | Confirmed (1 Sep 2026) |
+| NZC-056 | CRP↔Training only via `training_entitlements` (free places originate from the quote/commercial terms, manual CRP grant secondary; atomic available→reserved→consumed, no hard FK); LCA factors use the shared `emission_factors`/`client_factors` signature; consultancy stays light (no time-tracking engine) | Confirmed (1 Sep 2026) |
 
 ---
 
@@ -261,14 +270,23 @@ All accounting/billing integration runs in test/sandbox mode until a separate, e
 live. No live financial movement is initiated from the console during redesign. *Source: `WORKFLOWS.md`
 §9; BD brief legacy-boundary principle.*
 
-### NZC-024 — Separate job-family modules over a shared spine [Proposed]
+### NZC-024 — Separate job-family modules over a shared spine [Confirmed 1 Sep 2026]
 CRP, Consultancy, LCA, PCF and Training are genuinely different work and are built as **separate workspace
 modules** — each with its own workflow/stages, page designs, detail data model and report manifest — over
 one **shared job spine** (header + numbering) and shared services (clients, factors, visualization,
 commercial, files, audit, tenancy, permissions). Adding or changing one family does not touch the others.
 Separation of modules must **not** fork the shared subsystems (esp. graphics — see NZC-026). Supersedes
-the "families as detail under one Jobs workspace" framing in earlier drafts. *Source: user requirement,
-24 Aug 2026; `JOB_TYPE_AND_WORKFLOW_BRIEF.md`; `ARCHITECTURE.md` §6.*
+the "families as detail under one Jobs workspace" framing in earlier drafts.
+
+**Confirmed by Francis, 1 Sep 2026.** Families become first-class workspace modules over the shared spine;
+the generic `FamilyWorkspace.tsx` ternary is retired. **Prove the model first** per non-CRP family (the
+schema batch in `MODEL_FIDELITY_JOB_FAMILIES.md` — domain model + worst-case fixtures + migration), then
+build **one LCA reference module** behind a flag, prove it, replicate. CRP stays canonical and untouched.
+**Phase 0 (migrations + fixtures + invariants, no UI) is complete** — `0045`–`0050` on `main`, applied to
+isolated staging (PRs #63/#64/#65); its five schema decisions are registered as **NZC-052–056**. The **LCA
+reference module waits** until the report (R-track, NZC-048–051) and data-entry (UX1 + adapters) tracks
+land. *Source: user requirement, 24 Aug 2026; `JOB_TYPE_AND_WORKFLOW_BRIEF.md`; `ARCHITECTURE.md` §6;
+`MODEL_FIDELITY_JOB_FAMILIES.md`.*
 
 ### NZC-025 — Single shared job-numbering service · official `J000612` format · gapless [Confirmed 24 Aug 2026]
 All job numbers come from **one authoritative allocator** and are **sequential across every family** (a
@@ -512,6 +530,90 @@ Data entry is a **scope→category accordion** using **dataset category names ve
 ### NZC-047 — Client portal breadth [Confirmed 1 Sep 2026]
 The live portal's eleven areas (Dashboard, Portfolio, Data Entry, Metrics, Strategy/Actions, Risk, Governance, SRS Readiness, Reports, Insights, Files) come into the redesign as **M6 · Client portal breadth**, on the **shared evidence spine** (read surfaces derive from the reviewed immutable snapshot) and **`@nzi/charts`** (derived SVG, replacing live's captured widget-PNGs), under **one design language** (left-nav for areas; stage-as-section for workflow surfaces), **flag-gated per area**. Mature read areas (Metrics, Insights, Portfolio, Dashboard) re-platform and may run in parallel with later data-entry slices; **Strategy/Actions** and **SRS Readiness** each need a **new domain model** confirmed before their UI; Risk/Governance/Files fold in as they stabilise. Catalogue: docs/GAP_ANALYSIS_PORTAL_BREADTH.md. Confirmed by Francis, 1 Sep 2026.
 
+### NZC-048 — Editable report sections [Confirmed 1 Sep 2026]
+A report is an ordered list of **versioned** sections, each with a `contentSource` of `default` (the NZI
+template wording), `ai` (an AI redraft — the Report Preparation feature generalised to every section) or
+`client-edited`. Editing is never a silent overwrite: each section carries provenance (who, when, source)
+and the previous version is recoverable, exactly like a scope row. Every section offers **Reset to default**
+and **Regenerate (AI)**; a status pill (Default / AI-drafted / Edited by client) is mirrored as a dot in the
+section outline. Rich-text editing is scoped to the section body; structural furniture (headings, tables,
+charts, sign-off) is not free-text. Editing respects the five UI states (unsaved ≠ saved).
+*Source: `docs/REPORT_PRINTING_UX.md` §2; prototype `docs/prototypes/report_v3.html`.*
+
+### NZC-049 — Data-bound figure tokens [Confirmed 1 Sep 2026]
+Figures embedded in report narrative are **not free text** — they are data-bound tokens resolved from the
+report snapshot at render time (rendered as locked chips; the surrounding wording stays fully editable).
+Consequence: the "Data integrity check passed" guarantee **survives arbitrary prose editing** — a client can
+rewrite the Executive Summary and every figure still equals the canonical total — and a re-snapshot updates
+the numbers with no re-typing and no stale figures. Tokens come from a fixed palette (total, scope
+subtotals & %, category totals, intensity metrics, target %s, dates in dd/mm/yyyy), the same catalogue the
+AI drafter draws from, so AI text is data-bound by construction. The report-side counterpart of the
+data-entry governance spine: numbers have one source of truth.
+*Source: `docs/REPORT_PRINTING_UX.md` §3.*
+
+### NZC-050 — Deterministic print-safe charts [Confirmed 1 Sep 2026]
+Report charts render as **static inline SVG**, each a pure function of the frozen report snapshot — no
+canvas, no chart library at render time, no network, no post-load layout. Fixes the recurring PDF breakage,
+whose root cause is the PDF pipeline racing a client-side canvas render (half-drawn / zero-sized / size
+mismatch). The PDF step waits on **one** deterministic render-ready signal (a `data-report-ready` flag set
+once all sections and SVGs are in the DOM) — no arbitrary sleeps. Charts read from the same snapshot as the
+tables, so a chart can never disagree with a table, and the data-integrity banner extends to cover charts.
+Charts use the canonical `@nzi/charts` palette (Scope 1 coral / Scope 2 amber / Scope 3 emerald).
+*Source: `docs/REPORT_PRINTING_UX.md` §1; `report_v3.html` (`donut()`, `bars()`, `pathway()`).*
+
+### NZC-051 — Paged output discipline + running header/footer [Confirmed 1 Sep 2026]
+Long tables use paged-media CSS so the header **group repeats on every page** a table spans
+(`thead{display:table-header-group}`, `tr{break-inside:avoid}`, explicit `break-before`/`break-after`). The
+surface offers a **Continuous ↔ Page view (A4)** toggle whose on-screen page map matches the generated PDF;
+Continuous draws a "Page N break" marker at every boundary. Every page except the cover carries the live
+PDF's running header (centred: client name over "Carbon Reduction Plan · <reporting period>") and footer
+("Net Zero International" · job number · page number); header dates follow NZC-040 (dd/mm/yyyy) — the one
+deliberate change from the live PDF's abbreviated-month format. On "Mark Final" the report version's
+numbers, section text versions and chart source data are frozen together into one content-addressed
+snapshot, so a re-print is byte-reproducible and an independent reviewer is bound to exactly what was signed
+off. Production pagination uses a paged-media engine (server-side Chromium print, or a Paged.js-style
+preview) so screen and PDF agree exactly.
+*Source: `docs/REPORT_PRINTING_UX.md` §4–§5.*
+
+### NZC-052 — LCA/PCF one model, two presets [Confirmed 1 Sep 2026]
+PCF is not a separate model: it is `lca_assessments` with `standard='ISO 14067'`, cradle-to-gate, a
+PCF-default module set — no `lca_pcf_*` tables (follows live `0058`, which dropped the never-used
+`job_pcf_details`). The **"Product Carbon Footprint"** term keeps its one sanctioned home in the PCF
+preset's UI and report labelling per NZC-039; the shared model does not remove it. Console migration
+`0046_lca_assessments`. *Source: `MODEL_FIDELITY_JOB_FAMILIES.md` §2, §6.*
+
+### NZC-053 — Client-scoped or global LCA libraries [Confirmed 1 Sep 2026]
+`lca_components` and `lca_suppliers` are reusable libraries scoped like `client_factors`: a row with
+`client_id` set is that client's; `client_id` NULL is a shared/global entry. Archive lifecycle, no hard
+delete. Console migration `0045_lca_core`. *Source: `MODEL_FIDELITY_JOB_FAMILIES.md` §2, §6.*
+
+### NZC-054 — LCA inventory is flat [Confirmed 1 Sep 2026]
+`lca_line_items` are a **flat list per EN 15804 module** (A1–D), not a bill-of-materials tree. A multi-leg
+transport journey is `lca_transport_legs` — an ordered, geocoded child of a transport-module line — with
+the parent line caching the sum of its legs. Scenarios apply as multipliers over material categories /
+components, never by editing the baseline inventory. Console migrations `0046`/`0047`. *Source:
+`MODEL_FIDELITY_JOB_FAMILIES.md` §2, §6.*
+
+### NZC-055 — Family review spine [Confirmed 1 Sep 2026]
+A family's atomic reviewed unit — an **LCA assessment**, a **training course run** — is versioned with an
+`expectedVersion` optimistic-concurrency guard, carries `provenance` / `lineage`, and its `review_status`
+is **bound to a reviewed version** (`review_status='pending'` iff `reviewed_version IS NULL`), not the live
+models' free-text enums. Family reports are assembled from a **content-addressed reviewed snapshot**, the
+same discipline as a CRP report. Console migrations `0046`/`0048` (and `0050` for consultancy). *Source:
+`MODEL_FIDELITY_JOB_FAMILIES.md` §3, §6.*
+
+### NZC-056 — CRP↔Training via entitlements; shared factors; light consultancy [Confirmed 1 Sep 2026]
+The **only** link between a CRP job and a training job is a `training_entitlements` row. Free training
+places **originate from the quote / commercial terms** (quote → CRP job); a **manual CRP grant is the
+secondary path**; both write an entitlement row whose status runs **available → reserved → consumed**
+through a row-locked, status-guarded function (same construction as the job-number allocator) — a place
+can't be double-consumed, and there is **no hard FK** from `training_bookings` to CRP jobs. LCA line-item
+factor mapping uses the shared `emission_factors` / `client_factors` + the provenance signature — no
+parallel `factor_lookup` / `lca_factor_*` tables. Consultancy stays light — **no time-tracking engine**,
+just a versioned `job_consultancy_details` row (hours budget/used pair) plus a `consultancy_deliverables`
+checklist. Console migrations `0049` (+ `0050` consultancy). *Source: `MODEL_FIDELITY_JOB_FAMILIES.md`
+§4, §5, §6.*
+
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
 for restricted migration/compatibility testing. NZC-021 resolved 24 Aug 2026: rebuild reporting natively
@@ -521,6 +623,7 @@ one shared counter, with family stored separately; guaranteed gapless via assign
 confirmed 24 Aug 2026: one derived, provenance-bearing SVG chart system across console, PDF and portal,
 with content identity and manifest validation as a hard publication gate. NZC-032–035 confirmed 28 Aug 2026: reporting-period-aligned monthly granularity with copy-to-all; scope-row hierarchy + report label; override-with-reason in the write path; and one shared data-entry framework across the portal and CRP. NZC-018 (spend categorisation) and the NZC-030 rollforward re-pin were confirmed the same day. NZC-036–037 confirmed 28 Aug 2026: a single bulk-upload standard (hardened Excel + in-browser paste grid + remembered CSV mapper) over one canonical download identity, and Company Vehicles replacing the Asset Register. NZC-038 confirmed 28 Aug 2026: a single stage-as-section workspace design language — named, numbered, colour-matched, collapsible sections with completed ones sinking to the bottom — applied site-wide including the client portal.)*
 
-The **Proposed** items (NZC-006, 007, 009, 011–019, 023, **024, 026–029**) are recommendations ready to be
-confirmed as a batch once reviewed — including the job-family module separation and the whole graphics
-redesign, which are direct responses to the two requirements raised on 24 Aug 2026.
+The **Proposed** items (NZC-006, 007, 009, 011–019, 023) are recommendations ready to be confirmed as a
+batch once reviewed. NZC-024 (job-family module separation) was confirmed 1 Sep 2026; NZC-026–029 (the
+graphics redesign) were confirmed 24 Aug 2026 — both direct responses to the two requirements raised on
+24 Aug 2026.

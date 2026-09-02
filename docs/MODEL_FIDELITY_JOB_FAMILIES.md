@@ -238,12 +238,17 @@ All additive, all in `nzi_console`, all on the governance spine (version + prove
 | `0045_lca_core` | `lca_modules` (seeded A1–D), `lca_material_categories`, `lca_components`, `lca_suppliers` | LCA/PCF | ✅ Phase 0 |
 | `0046_lca_assessments` | `lca_assessments` (versioned, review-bound), `lca_assessment_datasets`, `lca_line_items`, `lca_transport_legs` | LCA/PCF | ✅ Phase 0 |
 | `0047_lca_scenarios_snapshots` | `lca_scenarios`, `lca_scenario_multipliers`, `lca_result_snapshots` (content-addressed) | LCA/PCF | ✅ Phase 0 |
-| `0048_training_core` | `training_products`, `training_course_runs` (versioned), `training_course_sessions`, `training_bookings`, `training_session_attendance` | Training | ⏳ Phase 0 |
-| `0049_training_entitlements` | `training_entitlements` (CRP→Training), `training_certificates` (content-hashed) | Training + CRP link | ⏳ Phase 0 |
-| `0050_consultancy` | `job_consultancy_details` (versioned), `consultancy_deliverables` | Consultancy | ⏳ Phase 0 |
+| `0048_training_core` | `training_products`, `training_course_runs` (versioned), `training_course_sessions`, `training_bookings`, `training_session_attendance` | Training | ✅ Phase 0 |
+| `0049_training_entitlements` | `training_entitlements` (CRP→Training), `training_certificates` (content-hashed) | Training + CRP link | ✅ Phase 0 |
+| `0050_consultancy` | `job_consultancy_details` (versioned), `consultancy_deliverables` | Consultancy | ✅ Phase 0 |
 
-**Confirmed decisions (Francis, 01 Sep 2026) — register as NZC-052–056 once the report decisions
-NZC-048–051 are in `DECISIONS.md`, to keep the number line continuous:**
+**Phase 0 complete (1 Sep 2026):** `0045`–`0050` are on `main` (PRs #63 / #64 / #65) and applied to
+isolated staging; `@nzi/contracts` family types + `@nzi/mock-data` worst-case fixtures + migration
+invariants land with them. No UI.
+
+**Confirmed decisions (Francis, 1 Sep 2026) — registered as NZC-052–056 in `DECISIONS.md`, placed after
+the report decisions NZC-048–051 to keep the number line continuous. These carry the wording that was
+drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
 
 - **NZC-052 — LCA/PCF one model, two presets.** PCF is `lca_assessments` with `standard='ISO 14067'` /
   cradle-to-gate / A1–A3; no separate PCF tables (follows live `0058`). **The "Product Carbon Footprint"
@@ -271,19 +276,22 @@ NZC-048–051 are in `DECISIONS.md`, to keep the number line continuous:**
 ## 7. Build order
 
 1. **Model batch** (§6) — migrations + `@nzi/contracts` types + `@nzi/mock-data` worst-case fixtures +
-   migration invariants, **no UI**. *(Mirrors data-entry Phase 0.)* LCA slice ✅; Training + Consultancy ⏳.
-   Apply `0045`–`0050` to isolated staging before merge.
-2. **Hold the LCA reference module** until the report and data-entry tracks land (Francis, 01 Sep 2026).
+   migration invariants, **no UI**. *(Mirrors data-entry Phase 0.)* **✅ Done (1 Sep 2026)** — `0045`–`0050`
+   on `main` (PRs #63/#64/#65), all applied to isolated staging.
+2. **Hold the LCA reference module** until the report (R-track / M7, NZC-048–051) and data-entry (UX1 +
+   adapters) tracks land (Francis, 1 Sep 2026). ⏳ current state.
 3. **LCA reference module** — `apps/console/app/jobs/lca/`: own routing off `job.header.family === "lca"`,
    own stage machine, the assessment register → line-item grid → transport legs → factor mapping →
    recalculate → module breakdown chart → report manifest. Behind a `job-module-lca` flag; `FamilyWorkspace`
    still serves lca when the flag is off. Prove it (acceptance gate, like each B/S slice).
-3. **Retire `FamilyWorkspace` for lca**; extract the shared bits it needs into `@nzi/job-core`
+4. **Retire `FamilyWorkspace` for lca**; extract the shared bits it needs into `@nzi/job-core`
    (header card, stage control, evidence-drawer host) as the reusable module contract.
-4. **Training module** on the same pattern (largest — products/runs/sessions/bookings/attendance/
+5. **Training module** on the same pattern (largest — products/runs/sessions/bookings/attendance/
    entitlements/certificates + the CRP link surfaced on both sides).
-5. **Consultancy module** (lightest — details + deliverable checklist); then `FamilyWorkspace.tsx` is
+6. **Consultancy module** (lightest — details + deliverable checklist); then `FamilyWorkspace.tsx` is
    deleted and every family is its own module.
 
-*Prepared 01 Sep 2026. Recorded against NZC-024. Companion to `ARCHITECTURE.md` §6, `WORKFLOWS.md` §12–13,
-`MODEL_FIDELITY_DATA_ENTRY.md`. Sequenced after the current report / data-entry tracks unless focus shifts.*
+*Prepared 1 Sep 2026. Recorded against NZC-024 (Confirmed 1 Sep 2026); batch decisions registered as
+NZC-052–056. Companion to `ARCHITECTURE.md` §6, `WORKFLOWS.md` §12–13, `MODEL_FIDELITY_DATA_ENTRY.md`.
+Phase 0 done 1 Sep 2026; the LCA reference module is sequenced after the report (M7) / data-entry tracks
+unless focus shifts.*

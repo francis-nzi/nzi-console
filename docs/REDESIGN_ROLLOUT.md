@@ -149,8 +149,10 @@ path. The committed value lives in `render.yaml` (source of truth), not the dash
 NZC-042 is **closed** (factors not site-scoped), so S3 is already unblocked. Any rendered accessibility
 review of a new adapter screen is human-only, like A3.
 
-**Separate downstream track:** C — job-family modularization (NZC-024/025) — sits *after* all of the above;
-M4 (additional services) rides on it. Parked until the data-entry framework is fully introduced.
+**Separate downstream track:** C — job-family modularization (NZC-024, confirmed 1 Sep 2026; NZC-025). Its
+**Phase 0** — the additive schema batch (`0045`–`0050`, NZC-052–056), fixtures and invariants, no UI — is
+**done and on `main`**. The **LCA reference module** sits *after* the report (R-track / M7) and data-entry
+tracks; M4 (additional services) rides on it. See M7 below and `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 **Rough shape:** ~3 spend/bulk slices (B3–B5, lower risk) + ~3 model-surfacing slices (S1–S3, S1 the
 heaviest) + 1 cross-cutting layout pass (S5) + legacy retirement — plus the two human gates and one decision.
@@ -181,3 +183,28 @@ downstream track:** C (job-family modularization) still sits ahead of M4 additio
 to M6.
 
 *M6 added 1 Sep 2026.*
+
+## M7 · Report Studio (R-track) — Report → Report Printing redesign (added 1 Sep 2026)
+
+Spec: `docs/REPORT_PRINTING_UX.md` (**NZC-048–051**). Reference prototype: `docs/prototypes/report_v3.html`.
+Each slice ships behind its own flag with a rendered acceptance pass, same discipline as the data-entry
+adapters. **Sequenced after the data-entry tracks** (UX1 + adapters).
+
+| Slice | Scope | Flag | Status |
+|---|---|---|---|
+| R1 | Print-safe chart pack — report charts to deterministic SVG from the snapshot + single render-ready signal (kills the PDF breakage) | `report-svg-charts` | ⏳ queued |
+| R2 | Section model + provenance — ordered versioned sections, `contentSource`, Reset-to-default (backend/model; no new editing UI) | `report-sections` | ⏳ queued |
+| R3 | Data-bound figure tokens — token catalogue + resolver + locked-chip renderer; extend the data-integrity banner to charts + tokens | `report-tokens` | ⏳ queued |
+| R4 | In-place section editing + Regenerate — rich-text scoped to section bodies; generalise Report Preparation AI to every section | `report-edit` | ⏳ queued |
+| R5 | Paged preview + repeating headers + running header/footer — Continuous/Page-view toggle, paged-media CSS, live-PDF header/footer, page-break markers | `report-paged` | ⏳ queued |
+
+> R1 alone permanently removes the PDF-breakage problem and is the recommended first slice. R4/R5 are the
+> client-facing pieces; hold client exposure until their rendered acceptance passes.
+
+**Separate downstream track:** C — job-family modularization (NZC-024, confirmed 1 Sep 2026). **Phase 0 is
+done** — the additive schema batch (`0045`–`0050`, NZC-052–056: LCA/PCF, Training, Consultancy) is on `main`
+and applied to isolated staging, no UI. The **LCA reference module** (first family module behind
+`job-module-lca`) is **held until the R-track and the data-entry tracks land**; M4 (additional services)
+rides on it. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
+
+*M7 added 1 Sep 2026.*
