@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { collectPageErrors, expandJobStage, expectHealthyScreen } from "./lib/screen";
 
 test.describe("M2 — CRP job workspace renders end to end", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set");
@@ -15,14 +15,19 @@ test.describe("M2 — CRP job workspace renders end to end", () => {
 
     await expectHealthyScreen(page);
 
-    // The command centre and stage sections (NZC-038).
-    await expect(page.getByText("Engagement command centre", { exact: false })).toBeVisible();
+    // The governed workflow control heads the workspace in both the command-hero
+    // and the `job-stage-sections` layout (NZC-038) — a flag-stable anchor.
+    await expect(page.getByText("Workflow stage", { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/Carbon Reduction Plan/i)).toBeVisible();
 
     // Regression guard: the client-factor UNION query (fix in PR #2) and the
     // per-entity register (0036) must resolve — a 503 here is what broke the
     // workspace when the fidelity schema first landed. ("Client methodology" is
     // the panel eyebrow in both the plain and the `client-factors`-managed view.)
+    // Under `job-stage-sections` the client-factor panel is re-homed into the
+    // collapsed Setup section and the register into Factor mapping — expand both.
+    await expandJobStage(page, "stage-setup");
+    await expandJobStage(page, "stage-factor-mapping");
     await expect(page.getByText("Client methodology", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Per-entity register", { exact: false })).toBeVisible();
 
