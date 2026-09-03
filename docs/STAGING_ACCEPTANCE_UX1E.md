@@ -1,0 +1,90 @@
+# UX1e-1 — job stage-as-section shell (NZC-024 module shell) · acceptance record
+
+Running record for the `job-stage-sections` adapter (`CrpStageSections.tsx`, gated in
+`CrpScopeWorkspace.tsx:428`). Reads alongside `docs/DATA_ENTRY_UX.md`, `docs/ACCEPTANCE_UX1E_STAGE_SECTIONS.md`
+and the NZC-024 / NZC-038 decisions. The shell wraps the UX1 accordion (which stays behind
+`data-entry-accordion`) — this record covers the **stage container only**; per-stage content acceptance
+lives in each stage's own record (UX1 for Data entry).
+
+## Built
+
+| Increment | Scope | PR |
+|---|---|---|
+| e1 | Stage-as-section shell: `StageFocusStrip` + five `StageSection`s (Setup / Data entry / Factor mapping / Review & QA / Report & publish), prior collapsed · current open · later as to-do cards; existing panels re-homed into their stage; `job-stage-sections` flag added to `DataEntryAdapter` | #71 / #72 |
+
+## Flag
+
+`job-stage-sections` reads the same `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` dashboard var (build-time inlined —
+append + rebuild, per `docs/DEPLOYMENT.md` › "Feature-flag flips"). Live on staging 02 Sep 2026; deployed
+dashboard value ends `…,data-entry-accordion,job-stage-sections` (confirmed inlined in the deployed bundle
+`1011-*.js`).
+
+## Automated suite
+
+Provisioned the acceptance accounts (`npm run acceptance:provision`, isolated non-production DB) and ran
+`npm run test:e2e` against **deployed staging** (`https://nzi-pro-api-prod.onrender.com`) with the full flag
+set live, 03 Sep 2026.
+
+- **`stage-sections.spec.ts` ×3 — PASS** (un-skipped: `job-stage-sections` is now live on the staging CRP
+  job, so the runtime skip guards no longer fire).
+  1. *renders the five workflow stages, Data Entry expanded* — five `section.nz-stage-sec` in workflow order
+     with the expected stage headings; `.nz-command-hero` gone; `.nz-focus-strip` visible; `#stage-data-entry`
+     has class `open` and holds the accordion; a collapsed later stage (`#stage-factor-mapping`) opens on
+     header click and shows its `.nz-panel`.
+  2. *the focus strip jumps to and opens the relevant stage* — the "QA decisions" strip button opens
+     `#stage-review-qa`.
+  3. *the stage layout passes the axe baseline and holds the column* — `scanWithBaseline(page, "stage-sections")`
+     (no uncatalogued serious/critical) + no horizontal overflow.
+- **`accessibility.spec.ts` job-workspace scan — PASS** — the job page with the stage-section shell active
+  passes the axe baseline (no uncatalogued serious/critical).
+- **`crp-workspace.spec.ts` M2 + `source-register.spec.ts` S1 §9** — re-pointed for the stage-section layout
+  (this PR, `fix/e2e-stage-sections-layout`): the M2 "command centre" text anchor → the flag-stable
+  "Workflow stage" control heading; the client-factor / per-entity-register guards now expand the collapsed
+  Setup / Factor mapping stage (new `expandJobStage` helper) before asserting the panels render. Regression
+  intent (no 503 on the client-factor UNION query / per-entity register) preserved.
+- **Full run:** `npx playwright test` → **48 passed / 10 skipped / 0 failed** (2.0m) on deployed staging.
+  The 10 skips are the standing "not exercised on this job / adapter re-homed" set — `spend-adapter` ×2,
+  `commuting-bulk`, `vehicle-bulk`, `source-register` S1 §9 (the discovered CRP job includes no Company
+  Vehicles / Employee Commuting categories, so there is no Add-source control to drive), the standalone
+  adapter specs whose panels the accordion now owns, and the portal accordion (no open portal entry window
+  on the staging job). None are regressions.
+
+## Rendered pass (automated — Cowork 02 Sep 2026 + Claude Code 03 Sep 2026, deployed staging `/jobs/712`)
+
+Shell active (`nz-command-hero` gone; focus strip + five `nz-stage-sec` sections; Setup done/collapsed,
+Data entry active/open, later stages todo/collapsed — the UX1e-1 intent). No horizontal overflow at
+390 / 768 / 1280 / 1920; body content capped (~1309px) on wide, not stretched. Min sampled text contrast
+4.71 (WCAG AA normal-text threshold 4.5), sampled across focus-strip label/next, stage summary, readiness
+pill, status pill, eyebrow, h1, sub, primary button. **Inter throughout** (h1, stage summary, focus strip,
+button all resolve to the Inter stack — NZC-003 satisfied; no serif). Canonical green lifecycle chrome.
+
+## Gate status (`docs/ACCEPTANCE_UX1E_STAGE_SECTIONS.md` § e1)
+
+| Gate item | State |
+|---|---|
+| 1 · Five stage sections in workflow order, status-coloured number badges | ✅ e2e |
+| 2 · Data Entry expanded, accordion only (no config/register/release leak) | ✅ e2e |
+| 3 · Setup holds the six controlled-input panels, collapsed w/ summary line | ✅ e2e (expand + assert) |
+| 4 · Prior = summary, later = to-do, every section toggles from its header (`aria-expanded`) | ✅ e2e |
+| 5 · Focus strip replaces the command hero — readiness %, next action, three exception jumps | ✅ e2e |
+| 6 · Workflow stage control (advance / back / note / history) still works | ✅ (unchanged; `WorkflowStageControl` renders above the body in both layouts) |
+| 7 · Opening a scope row still opens the evidence drawer (calculate → review → history → snapshot) | ✅ covered by `accordion.spec.ts` / CRP lifecycle specs |
+| 8 · `stage-sections.spec.ts` green · typecheck · `@nzi/console` build · console tests | ✅ e2e green · typecheck clean |
+| No horizontal overflow 390/768/1280/1920 | ✅ automated |
+| Contrast (chrome + text) AA | ✅ automated (min 4.71) |
+| Inter throughout (NZC-003) | ✅ |
+| 9 · Screen-reader narration · reduced-motion (stage expand/collapse, focus-strip jumps, chevron rotate) | ⏳ human-only — Francis |
+
+## Rollback
+
+Additive + flag-gated: with `job-stage-sections` absent, `stageSectionsOn` is false and the workspace
+renders the legacy command-hero body unchanged. Roll back by removing the token from the Render dashboard
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild. No data, route or schema change.
+
+## Follow-ups
+
+- e2 (dedicated Factor Mapping + Review & QA surfaces) and e3 (Report & Publish polish; retire the legacy
+  command hero once e1–e3 accepted) — `docs/ACCEPTANCE_UX1E_STAGE_SECTIONS.md`.
+- Governance (from the flag saga, tracked in `docs/DEPLOYMENT.md`): blueprint-link the service so
+  `render.yaml` becomes authoritative again; shared-Supabase isolation risk vs NZC-001 for the boundary
+  review.

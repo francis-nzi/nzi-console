@@ -11,6 +11,20 @@ export async function expectHealthyScreen(page: Page): Promise<void> {
   await expect(page.getByText("The isolated data service is unavailable", { exact: false })).toHaveCount(0);
 }
 
+// Under the `job-stage-sections` layout the job workspace panels are re-homed
+// into collapsible stage sections; only the active stage (Data entry) is open by
+// default. Expand the named stage so a panel it now owns is on screen. No-op when
+// the flag is off (the legacy command-centre scroll has every panel visible).
+// stageId is the section id, e.g. "stage-setup", "stage-factor-mapping".
+export async function expandJobStage(page: Page, stageId: string): Promise<void> {
+  const section = page.locator(`section#${stageId}`);
+  if ((await section.count()) === 0) return;
+  if ((await page.locator(`section#${stageId}.open`).count()) === 0) {
+    await section.locator("button.nz-stage-sec-h").click();
+    await expect(page.locator(`section#${stageId}.open`)).toHaveCount(1);
+  }
+}
+
 // Known, catalogued client errors on the deployed target that the suite records
 // but does not fail on. Keep this list short and tracked — every entry is a bug.
 //  - React #418: a pre-existing SSR/CSR hydration text mismatch on the CRP job

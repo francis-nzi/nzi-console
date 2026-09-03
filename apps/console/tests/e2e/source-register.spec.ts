@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors } from "./lib/screen";
+import { collectPageErrors, expandJobStage } from "./lib/screen";
 
 // S1 gate §9 — rendered a11y + responsive of the per-entity source register with
 // the group roll-up + Company Vehicles / Employee Commuting framing
@@ -25,6 +25,7 @@ test.describe("S1 — source register rendered acceptance (gate §9)", () => {
     const errors = collectPageErrors(page);
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
+    await expandJobStage(page, "stage-factor-mapping");
 
     const panel = page.locator("#emission-source-register");
     await expect(panel).toBeVisible();

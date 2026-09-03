@@ -68,10 +68,10 @@ components — so a flip is not a restart, it is a **rebuild**.
 4. Roll back = remove the token from the dashboard value + rebuild. Flag-gated UI is additive; the legacy
    path returns.
 
-Current dashboard value (2 Sep 2026):
-`spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion`
-— `job-stage-sections` (UX1e-1) is in `render.yaml` but **not yet in the dashboard value**; appending it is
-the next flip.
+Current dashboard value (3 Sep 2026):
+`spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion,job-stage-sections`
+— `job-stage-sections` (UX1e-1) was appended and the rebuild is live; acceptance recorded in
+`docs/STAGING_ACCEPTANCE_UX1E.md`. `render.yaml` carries the same token set for continuity.
 
 **Longer-term fix:** blueprint-link the service (Render dashboard → the service → "Link to Blueprint", or
 recreate it from `render.yaml`) so `render.yaml` becomes authoritative and env changes ship as reviewed
