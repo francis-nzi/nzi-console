@@ -38,8 +38,10 @@ export function WorkflowStageControl({ job }: { job: FamilyJob }) {
         <label className="nz-fl">Transition note <span className="nz-optional">recommended</span><input className="nz-inp" value={note} maxLength={500} disabled={pending!==null} onChange={(event) => setNote(event.target.value)} placeholder="Reason or handoff context for the audit record" /></label>
         <div>{targets.map((target) => <button type="button" key={target} className={`nz-btn ${stages.indexOf(target) > activeIndex ? "pri" : ""}`} disabled={pending !== null} onClick={() => move(target)}>{pending === target ? "Moving…" : `${stages.indexOf(target) < activeIndex ? "Back to" : "Move to"} ${target}`}</button>)}</div>
       </div>
-      <div className="nz-history-head"><div><div className="nz-sect">Stage history</div><span>Immutable transition record</span></div><b>{job.stageHistory.length}</b></div>
-      {job.stageHistory.length === 0 ? <div className="nz-history-empty">No recorded transitions yet. The first stage change will appear here.</div> : <ol className="nz-stage-history">{job.stageHistory.map((event) => <li key={event.id}><i aria-hidden="true"/><div><b>{event.fromStage} → {event.toStage}</b>{event.note&&<p>{event.note}</p>}<span>{new Date(event.occurredAt).toLocaleString("en-GB")} · {event.actorId}</span></div></li>)}</ol>}
+      <details className="nz-history">
+        <summary className="nz-history-head"><span className="nz-history-toggle" aria-hidden="true" /><div><div className="nz-sect">Stage history</div><span>Immutable transition record</span></div><b>{job.stageHistory.length}</b></summary>
+        {job.stageHistory.length === 0 ? <div className="nz-history-empty">No recorded transitions yet. The first stage change will appear here.</div> : <ol className="nz-stage-history">{job.stageHistory.map((event) => <li key={event.id}><i aria-hidden="true"/><div><b>{event.fromStage} → {event.toStage}</b>{event.note&&<p>{event.note}</p>}<span>{new Date(event.occurredAt).toLocaleString("en-GB")} · {event.actorId}</span></div></li>)}</ol>}
+      </details>
     </div>
   </div>;
 }
