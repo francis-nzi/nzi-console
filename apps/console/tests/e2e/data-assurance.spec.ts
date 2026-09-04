@@ -5,12 +5,15 @@ import { collectPageErrors, expectHealthyScreen, expandJobStage } from "./lib/sc
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // DA3a — Data Assurance read surface (NZC-059; docs/ACCEPTANCE_DA3_ASSURANCE.md).
-// Behind `data-assurance`. Once the surface is present every assertion is a HARD
-// precondition (fail loud, never a silent skip — stage-sections.spec.ts
-// discipline). The one conditional skip is for the flag not yet being live on
-// the target; **this is removed and the precondition made unconditional in the
-// DA3a flip PR**, exactly as stage-sections / R1 were hardened after their flip.
+// `data-assurance` is live on deployed staging (flipped 4 Sep 2026 — see
+// docs/ACCEPTANCE_DA3_ASSURANCE.md "Human check" / flip record). Hardened per
+// stage-sections.spec.ts discipline: no conditional skip on the flag — the
+// surface is a HARD precondition, fail loudly if it is absent. The only skip
+// is the suite-wide "no staff account" gate (public smoke run) plus the
+// data-dependent skips inside individual tests (e.g. "no open gaps to
+// resolve"), which are about the target job's data state, not the flag.
 
+/** Hard precondition — the Data Assurance surface must actually be rendered. */
 async function openAssurance(page: Page): Promise<{ errors: string[]; surface: ReturnType<Page["locator"]> }> {
   const job = await discoverCrpJobAtStage(page.request, "Data entry");
   expect(job, "staging must expose a CRP job (seed J000712)").toBeTruthy();
@@ -20,12 +23,10 @@ async function openAssurance(page: Page): Promise<{ errors: string[]; surface: R
   await expectHealthyScreen(page);
   await expandJobStage(page, "stage-review-qa");
   const surface = page.locator(".nz-assurance");
-  const failedState = page.locator(".nz-assurance-banner.warn, .nz-config-panel .nz-banner.warn");
-  test.skip(
-    (await surface.count()) === 0 && (await failedState.count()) === 0,
-    "data-assurance not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
-  await expect(surface, "Data Assurance surface must render in Review & QA").toBeVisible();
+  await expect(
+    surface,
+    "Data Assurance surface absent — data-assurance must be live on the target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 must include 'data-assurance')",
+  ).toBeVisible();
   return { errors, surface };
 }
 

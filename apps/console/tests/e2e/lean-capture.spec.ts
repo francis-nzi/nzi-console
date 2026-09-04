@@ -11,9 +11,11 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // evidence notes / supporting documents deferred to the row's existing detail
 // drawer (`.nz-drawer`, unforked — it already carries these fields). Once the
 // lean shape is present every assertion is a HARD precondition (fail loud,
-// never a silent skip — stage-sections.spec.ts discipline). The one
-// conditional skip is for the flag not yet being live on the target; **this is
-// removed and the precondition made unconditional in the DA4 flip PR**.
+// never a silent skip — stage-sections.spec.ts / data-assurance.spec.ts
+// discipline). The ONE conditional skip below is for the flag not yet being
+// live on the target — delete just that `test.skip` call to harden this spec
+// the moment `entry-lean-capture` flips, same one-line change as every other
+// flag-gated spec in this suite.
 
 /** Expand a category card by its taxonomy name; null if the job doesn't include it. */
 async function expandCategory(accordion: Locator, name: string): Promise<Locator | null> {
@@ -24,6 +26,7 @@ async function expandCategory(accordion: Locator, name: string): Promise<Locator
   return header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first();
 }
 
+/** Hard precondition — the lean-capture form shape must actually be rendered. */
 async function openLeanCapture(page: Page): Promise<{ form: Locator; body: Locator; errors: string[] }> {
   const job = await discoverCrpJobAtStage(page.request, "Data entry");
   expect(job, "staging must expose a CRP job at Data entry (seed J000712)").toBeTruthy();
