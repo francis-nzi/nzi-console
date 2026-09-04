@@ -52,8 +52,9 @@ Behind `report-svg-charts` ON, on isolated staging, a staff user opening a CRP r
 ## Automated suite
 
 - `packages/charts/tests/verify.test.ts` — 3 tests (see gate #6).
-- `apps/console/tests/e2e/report-print-safe.spec.ts` — 2 tests (gate #2–#5, #7–#8). Skips until
-  `report-svg-charts` is live on the target (report sheet has no `data-report-ready`).
+- `apps/console/tests/e2e/report-print-safe.spec.ts` — 2 tests (gate #2–#5, #7–#8). **Hardened** — no
+  conditional skip on the R1 markers; a missing `data-report-ready` fails loudly (the only skip is the
+  suite-wide "no staff account" gate). `report-svg-charts` is live on deployed staging.
 
 ## Pre-flip verification (Claude Code, this branch)
 
@@ -62,12 +63,11 @@ Behind `report-svg-charts` ON, on isolated staging, a staff user opening a CRP r
 - `npm run test -w @nzi/charts` — 15/15 (12 existing + 3 new).
 - Flag OFF: report page output unchanged (the R1 branches are all gated on `reportFeatureEnabled("report-svg-charts")`).
 
-## Flip
+## Flip — DONE 3 Sep 2026
 
-Append `report-svg-charts` to `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` in the Render dashboard (create the var
-if absent) + rebuild; also add it to `render.yaml` for continuity. Then run
-`apps/console/tests/e2e/report-print-safe.spec.ts` against deployed staging and record the result plus the
-human pass (gate #11) in `docs/STAGING_ACCEPTANCE_R1.md`.
+`report-svg-charts` is in the Render dashboard `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` value and the rebuild is
+live; `render.yaml` carries it for continuity. Automated gate green on deployed staging — see
+`docs/STAGING_ACCEPTANCE_R1.md`. Outstanding: the human pass (gate #11).
 
 ## Rollback
 

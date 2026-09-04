@@ -16,6 +16,19 @@ export async function discoverCrpJob(request: APIRequestContext): Promise<{ id: 
   return crp?.header?.id ? { id: crp.header.id, number: crp.header.number ?? crp.header.id } : null;
 }
 
+export async function discoverCrpJobAtStage(
+  request: APIRequestContext,
+  workflowStage: string,
+): Promise<{ id: string; number: string } | null> {
+  const body = (await json(request, "/api/isolated/jobs")) as {
+    jobs?: Array<{ header?: { id?: string; number?: string; family?: string; workflowStage?: string } }>;
+  };
+  const match = (body.jobs ?? []).find(
+    (job) => job.header?.family === "crp" && job.header?.workflowStage === workflowStage,
+  );
+  return match?.header?.id ? { id: match.header.id, number: match.header.number ?? match.header.id } : null;
+}
+
 export async function discoverClient(request: APIRequestContext): Promise<{ id: string } | null> {
   const body = (await json(request, "/api/isolated/clients")) as { clients?: Array<{ id?: string }> };
   const client = (body.clients ?? [])[0];
