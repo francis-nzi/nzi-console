@@ -1,6 +1,6 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type {CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 import { resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
@@ -169,6 +169,32 @@ type ReportSectionRow={section_key:string;content_source:ReportSectionReadModel[
 export async function listReportSections(db:Queryable,jobId:string):Promise<ReportSectionReadModel[]>{
   const {rows}=await db.query<ReportSectionRow>(`SELECT section_key,content_source,body_html,version,updated_by,updated_at FROM nzi_console.report_sections WHERE job_id=$1`,[jobId]);
   return resolveReportSections(rows.map(row=>({key:row.section_key,contentSource:row.content_source,bodyHtml:row.body_html,version:row.version,updatedBy:row.updated_by,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at)})));
+}
+
+/** R4 — the working-sections editor screen: sections + live (unreviewed) figures. */
+export async function getReportSectionsEditorScreen(db:Queryable,jobId:string):Promise<ReportSectionEditorScreen|null>{
+  const jobResult=await db.query<{job_number:string;reporting_year:number|null;start_date:Date|string;job_family:string}>(`SELECT job_number,reporting_year,start_date,job_family FROM nzi_console.jobs WHERE job_id=$1`,[jobId]);
+  const job=jobResult.rows[0];
+  if(!job||job.job_family!=="crp")return null;
+  const reportingYear=job.reporting_year??Number((job.start_date instanceof Date?job.start_date.toISOString():String(job.start_date)).slice(0,4));
+  const [sections,rowResult,target,intensity]=await Promise.all([
+    listReportSections(db,jobId),
+    db.query<{scope:string;tco2e:string|null}>(`SELECT split_part(scope,'.',1) AS scope,coalesce(override_tco2e,calculated_tco2e)::text AS tco2e FROM nzi_console.job_scope_rows WHERE job_id=$1 AND enabled=true`,[jobId]),
+    getJobEmissionsTarget(db,jobId),
+    getJobIntensityTarget(db,jobId),
+  ]);
+  const measurements=rowResult.rows
+    .filter((row):row is {scope:"1"|"2"|"3";tco2e:string}=>row.tco2e!==null&&(row.scope==="1"||row.scope==="2"||row.scope==="3"))
+    .map(row=>({scope:row.scope,tco2e:Number(row.tco2e)}));
+  return {
+    jobId,jobNumber:job.job_number,reportingYear,sections,
+    figures:{
+      reportingYear,
+      measurements,
+      target:target?{baselineYear:target.baselineYear,baselineTco2e:target.baselineTco2e,interimYear:target.interimYear,interimReductionPercent:target.interimReductionPercent,netZeroYear:target.netZeroYear}:null,
+      intensityTarget:intensity?{denominatorUnit:intensity.denominatorUnit,reportingDenominator:intensity.reportingDenominator}:null,
+    },
+  };
 }
 export async function listReviewedCrpSnapshots(db:Queryable,jobId:string):Promise<ReviewedCrpSnapshotReadModel[]>{const {rows}=await db.query<SnapshotRow>(`SELECT snapshot_id,job_id,snapshot_version,job_version,data_hash,payload_json,created_by,created_at FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC`,[jobId]);return rows.map(row=>({id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),measurements:row.payload_json.measurements}));}
 

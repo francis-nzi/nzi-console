@@ -6,6 +6,7 @@ import {
   renderReportSectionBody,
   reportTokenCatalogue,
   resolveReportToken,
+  serializeReportSectionBody,
   verifyReportSectionTokens,
   resolveReportSections,
 } from "../src/index";
@@ -75,9 +76,30 @@ describe("report figure tokens (NZC-049)", () => {
     assert.ok(result.tokens.some((t) => !t.ok && t.key === "netZeroYear"));
   });
 
+  it("serializeReportSectionBody collapses rendered chips back to bare markers and strips markup", () => {
+    const rendered = renderReportSectionBody('<p>Total is <span data-token="total"></span> this year.</p>', snapshot, { locked: true });
+    // a full render → serialize round-trip returns the marker form
+    assert.equal(serializeReportSectionBody(rendered), '<p>Total is <span data-token="total"></span> this year.</p>');
+    // editor noise (class/style/contenteditable, a stray div, an event handler) is removed
+    const dirty = '<div><p class="x" style="color:red">Edited <span class="nz-fig-token" data-token="scope3" contenteditable="false" title="t">1,176 tCO₂e</span> text</p><script>alert(1)</script></div>';
+    const clean = serializeReportSectionBody(dirty);
+    assert.equal(clean, '<p>Edited <span data-token="scope3"></span> text</p>');
+    assert.doesNotMatch(clean, /<script|alert|class=|style=|contenteditable|<div/i);
+  });
+
+  it("a full edit → save → re-render round-trip keeps figures bound", () => {
+    const template = crpReportSectionCatalogue[0]!.defaultBodyHtml;
+    const edited = serializeReportSectionBody(
+      renderReportSectionBody(template, snapshot, { locked: true }).replace("</p>", " Additional consultant sentence.</p>"),
+    );
+    assert.match(edited, /Additional consultant sentence\./);
+    const reRendered = renderReportSectionBody(edited, snapshot);
+    assert.match(reRendered, />1,418 tCO₂e</);
+  });
+
   it("every token used in the catalogue is in the palette", () => {
     const used = new Set<string>();
-    for (const section of crpReportSectionCatalogue) for (const m of section.defaultBodyHtml.matchAll(/data-token="([a-zA-Z0-9]+)"/g)) used.add(m[1]!);
+    for (const section of crpReportSectionCatalogue) for (const body of [section.defaultBodyHtml, section.aiBodyHtml]) for (const m of body.matchAll(/data-token="([a-zA-Z0-9]+)"/g)) used.add(m[1]!);
     for (const key of used) assert.equal(isReportTokenKey(key), true, key);
     assert.ok(reportTokenCatalogue.length >= used.size);
   });

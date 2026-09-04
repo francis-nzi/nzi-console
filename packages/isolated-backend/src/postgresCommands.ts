@@ -1615,3 +1615,24 @@ export async function resetReportSection(
     };
   });
 }
+
+export async function regenerateReportSection(
+  pool: PoolLike,
+  input: CommandInputMap["report.section.regenerate"],
+  context: CommandContext,
+): Promise<StoredOutcome<{ jobId: string; sectionKey: string; version: number; contentSource: "ai" }>> {
+  return runPostgresCommand(pool, "report.section.regenerate", input, context, async (db) => {
+    const { template, currentVersion } = await loadEditableReportSection(db, context.organisationId, input.jobId, input.sectionKey);
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError();
+    const version = await writeReportSectionVersion(
+      db, context.organisationId, input.jobId, input.sectionKey, currentVersion, "ai", template.aiBodyHtml, context.actorId,
+      "AI redraft (Regenerate)",
+    );
+    return {
+      data: { jobId: input.jobId, sectionKey: input.sectionKey, version, contentSource: "ai" as const },
+      entityType: "report_section",
+      entityId: `${input.jobId}:${input.sectionKey}`,
+      topic: "report.section.regenerated",
+    };
+  });
+}

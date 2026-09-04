@@ -7,7 +7,6 @@
 // A token is stored in the section body as `<span data-token="KEY"></span>` and
 // rendered as a locked chip carrying the resolved value.
 
-import type { ReviewedCrpSnapshotReadModel } from "./commands";
 import type { ReportSectionReadModel } from "./reportSections";
 
 export type ReportTokenGroup = "totals" | "shares" | "targets" | "intensity" | "dates";
@@ -56,7 +55,18 @@ export type ResolvedReportToken = {
   detail: string;
 };
 
-type TokenSnapshot = Pick<ReviewedCrpSnapshotReadModel, "measurements" | "target" | "intensityTarget" | "reportingYear">;
+/**
+ * The figures a token can resolve against — a structural subset satisfied by
+ * both the frozen `ReviewedCrpSnapshotReadModel` and the editor's live job
+ * figures (R4).
+ */
+export type ReportTokenFigures = {
+  reportingYear: number;
+  measurements: ReadonlyArray<{ scope: "1" | "2" | "3"; tco2e: number }>;
+  target: { baselineYear: number; baselineTco2e: number; interimYear: number; interimReductionPercent: number; netZeroYear: number } | null;
+  intensityTarget: { denominatorUnit: string; reportingDenominator: number } | null;
+};
+type TokenSnapshot = ReportTokenFigures;
 
 const tco2e = (value: number): string => `${value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e`;
 const percent = (part: number, whole: number): string => (whole > 0 ? `${((part / whole) * 100).toLocaleString("en-GB", { maximumFractionDigits: 1 })}%` : "0%");
@@ -114,6 +124,26 @@ export function renderReportSectionBody(bodyHtml: string, snapshot: TokenSnapsho
     const editable = options.locked ? ' contenteditable="false"' : "";
     return `<span class="${cls}" data-token="${escapeAttr(key)}" title="${escapeAttr(resolved.detail)}"${editable}>${escapeAttr(resolved.value)}</span>`;
   });
+}
+
+const RENDERED_TOKEN = /<span\b[^>]*\bdata-token="([a-zA-Z0-9]+)"[^>]*>.*?<\/span>/g;
+const ALLOWED_TAGS = /<(?!\/?(?:p|ul|ol|li|strong|em|b|i|br|span)(?:\s|>|\/))[^>]*>/gi;
+
+/**
+ * Inverse of `renderReportSectionBody` — collapse every rendered figure chip
+ * back to its bare `<span data-token="KEY"></span>` marker and drop any tag
+ * outside the narrow allow-list. Run on the editor's contenteditable HTML before
+ * sending it to `report.section.edit`, so a stored body never carries a baked-in
+ * figure value or unexpected markup.
+ */
+export function serializeReportSectionBody(html: string): string {
+  return html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(RENDERED_TOKEN, (_match, key: string) => `<span data-token="${key}"></span>`)
+    .replace(/\s(?:on\w+|contenteditable|class|title|style|id|dir|spellcheck)\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    .replace(ALLOWED_TAGS, "")
+    .replace(/<span(?!\s+data-token=)[^>]*>/gi, "")
+    .trim();
 }
 
 export type SectionTokenVerification = {

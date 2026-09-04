@@ -541,7 +541,9 @@ charts, sign-off) is not free-text. Editing respects the five UI states (unsaved
 *Source: `docs/REPORT_PRINTING_UX.md` §2; prototype `docs/prototypes/report_v3.html`.*
 *Delivery: R2 (migration `0051`, `@nzi/contracts` `crpReportSectionCatalogue`, `report.section.edit` /
 `report.section.reset`, snapshot freeze) lands the model + provenance + Reset — `docs/ACCEPTANCE_R2_SECTION_MODEL.md`.
-The in-place editor, AI Regenerate and the report-surface rendering are R4 (`report-edit`).*
+R4 (`report-edit`) adds the in-place editor in the Report & publish stage + `report.section.regenerate`
+(deterministic per-section AI variants; a live-model call is a tracked follow-up) —
+`docs/ACCEPTANCE_R4_SECTION_EDITOR.md`. Report-surface rendering of the sections is R3 (`report-tokens`).*
 
 ### NZC-049 — Data-bound figure tokens [Confirmed 1 Sep 2026]
 Figures embedded in report narrative are **not free text** — they are data-bound tokens resolved from the

@@ -26,6 +26,7 @@ import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
+import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
 import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 import {ClientFactorPanel} from "./ClientFactorPanel";
@@ -38,6 +39,7 @@ import {SpendImportPanel} from "./SpendImportPanel";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
+import {reportFeatureEnabled} from "../lib/reportFlags";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -322,7 +324,10 @@ export function CrpScopeWorkspace({
     </>
   );
   const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>;
-  const releaseControl = <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>;
+  const releaseControl = <>
+    {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
+    <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
+  </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
   const createForm = creating ? (
     <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
