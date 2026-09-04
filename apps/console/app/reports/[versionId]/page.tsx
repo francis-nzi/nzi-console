@@ -1,5 +1,5 @@
 import {ManifestChartSet,crpProfessionalManifest,resolveCrpCoreCharts,validateManifest,verifyChartsAgainstSnapshot,type ChartVerification} from "@nzi/charts";
-import {renderReportSectionBody,verifyReportSectionTokens,type CrpReportVersionReadModel,type ReportSectionReadModel,type SectionTokenVerification} from "@nzi/contracts";
+import {buildReportAuditRows,buildReportSiteBreakdown,renderReportSectionBody,verifyReportSectionTokens,type CrpReportVersionReadModel,type ReportSectionReadModel,type SectionTokenVerification} from "@nzi/contracts";
 import {loadScreen} from "../../lib/loadScreen";
 import {ScreenState} from "../../lib/ScreenState";
 import {reportFeatureEnabled} from "../../lib/reportFlags";
@@ -35,6 +35,11 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
   // behind its own flag; with both off the report renders exactly as before.
   const r1=reportFeatureEnabled("report-svg-charts");
   const r3=reportFeatureEnabled("report-tokens");
+  // R5a (NZC-051) — the audit appendices, sourced from the same frozen
+  // measurements the tables/charts already read. No new backend.
+  const r5=reportFeatureEnabled("report-paged");
+  const auditRows=r5?buildReportAuditRows(snapshot.measurements):[];
+  const siteBreakdown=r5?buildReportSiteBreakdown(snapshot.measurements):[];
   const manifestValid=validateManifest(crpProfessionalManifest,charts,snapshot.id).valid;
   const chartVerification=r1?verifyChartsAgainstSnapshot(tokenSnapshot,charts):null;
   const tokenVerification=r3?verifyReportSectionTokens(snapshot.sections,tokenSnapshot):null;
@@ -87,9 +92,56 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
           <div><dt>Version status</dt><dd><span className={`nz-st ${version.status==="published"?"done":"est"}`}>{version.status}</span></dd></div>
         </dl>
       </section>
+      {r5&&<ReportAppendices auditRows={auditRows} sites={siteBreakdown}/>}
     </article>
   </main>;
 }
+
+/**
+ * R5a (NZC-051) — Appendix 1 (Full Emissions Audit, one row per measurement)
+ * and Appendix 2 (Emissions by Site, Scope & Category). Long tables, so they
+ * carry the repeating-header / row-atomic print CSS (`PRINT_CSS` below):
+ * `thead{display:table-header-group}` + `tr{break-inside:avoid}` — a
+ * standards-compliant paged-media table, correctly repaginated by the
+ * browser's own print engine (`window.print()` / Save as PDF), no extra
+ * pagination library needed for this part of the paged-output problem.
+ */
+function ReportAppendices({auditRows,sites}:{auditRows:ReturnType<typeof buildReportAuditRows>;sites:ReturnType<typeof buildReportSiteBreakdown>}){
+  return <section className="report-appendix" aria-label="Report appendices">
+    <div className="report-appendix-h">
+      <span className="nz-eyebrow">Appendix 1</span>
+      <h2>Full Emissions Audit <span className="report-thead-note">header repeats on every printed page</span></h2>
+    </div>
+    <div className="report-appendix-scroll">
+      <table className="nz-tbl report-audit-table">
+        <thead><tr><th>Category</th><th>Activity / source</th><th className="num">Activity data</th><th>Factor</th><th>Quality</th><th>Site</th><th className="num">tCO₂e</th></tr></thead>
+        <tbody>
+          {auditRows.map(row=><tr key={row.rowId}><td>{row.category}</td><td>{row.sourceLabel}</td><td className="num">{row.quantityLabel}</td><td>{row.factorSet}</td><td>{row.qualityTier}</td><td>{row.siteLabel}</td><td className="num">{row.tco2e.toLocaleString("en-GB",{maximumFractionDigits:2})}</td></tr>)}
+          {auditRows.length===0&&<tr><td colSpan={7} className="nz-table-empty">No enabled rows in this reviewed snapshot.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div className="report-appendix-h">
+      <span className="nz-eyebrow">Appendix 2</span>
+      <h2>Emissions by Site, Scope &amp; Category</h2>
+    </div>
+    {sites.map(site=><div className="report-appendix-scroll" key={site.siteLabel}>
+      <table className="nz-tbl report-audit-table">
+        <thead><tr><th>{site.siteLabel}</th><th className="num">tCO₂e</th></tr></thead>
+        <tbody>
+          {site.byScope.map(scope=><FragmentRows key={scope.scope}>
+            <tr className="sub"><td>Scope {scope.scope}</td><td className="num">{scope.total.toLocaleString("en-GB",{maximumFractionDigits:2})}</td></tr>
+            {scope.categories.map(category=><tr key={category.scopeCode}><td>{category.category}</td><td className="num">{category.tco2e.toLocaleString("en-GB",{maximumFractionDigits:2})}</td></tr>)}
+          </FragmentRows>)}
+          <tr className="total"><td>Total</td><td className="num">{site.total.toLocaleString("en-GB",{maximumFractionDigits:2})}</td></tr>
+        </tbody>
+      </table>
+    </div>)}
+    {sites.length===0&&<p className="muted">No enabled rows in this reviewed snapshot.</p>}
+  </section>;
+}
+
+function FragmentRows({children}:{children:React.ReactNode}){return <>{children}</>;}
 
 type TokenSnapshot=Parameters<typeof verifyReportSectionTokens>[1];
 
@@ -140,4 +192,4 @@ function IntegrityBanner({chart,tokens,manifestValid}:{chart:ChartVerification|n
   </div>;
 }
 
-const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{html,body{background:white!important}.report-canvas{background:white!important;padding:0!important}.report-toolbar{display:none!important}.report-sheet{border:0!important;border-radius:0!important;box-shadow:none!important;max-width:none!important;margin:0!important;padding:0!important}figure,[data-chart]{break-inside:avoid;page-break-inside:avoid}.nz-report-section{break-inside:avoid}.nzc-print-safe,.nz-report-integrity,.nz-section-source{display:none!important}.nz-fig-token{background:none!important;border:0!important;padding:0!important;color:inherit!important;font-weight:inherit!important}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{html,body{background:white!important}.report-canvas{background:white!important;padding:0!important}.report-toolbar{display:none!important}.report-sheet{border:0!important;border-radius:0!important;box-shadow:none!important;max-width:none!important;margin:0!important;padding:0!important}figure,[data-chart]{break-inside:avoid;page-break-inside:avoid}.nz-report-section{break-inside:avoid}.nzc-print-safe,.nz-report-integrity,.nz-section-source,.report-thead-note{display:none!important}.nz-fig-token{background:none!important;border:0!important;padding:0!important;color:inherit!important;font-weight:inherit!important}.report-appendix{break-before:page}.report-appendix-scroll{overflow:visible!important}.report-audit-table thead{display:table-header-group}.report-audit-table tr{break-inside:avoid;page-break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;

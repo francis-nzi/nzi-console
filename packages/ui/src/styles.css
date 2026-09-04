@@ -420,6 +420,18 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-report-section-body.nz-editable:focus-visible{box-shadow:0 0 0 3px rgba(11,167,94,.18)}
 .nz-report-section-body .nz-fig-token{cursor:default;user-select:none}
 
+/* R5a — report audit appendices (NZC-051). Long tables; the repeating-header /
+   row-atomic print rules live in the report page's own PRINT_CSS. */
+.report-appendix{margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}
+.report-appendix-h{display:flex;align-items:baseline;gap:10px;margin:22px 0 9px}
+.report-appendix-h:first-child{margin-top:0}
+.report-appendix-h h2{margin:0;color:var(--t1);font-size:19px}
+.report-thead-note{color:var(--t3);font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0}
+.report-appendix-scroll{overflow-x:auto;margin-bottom:14px}
+.report-audit-table{min-width:760px}
+.report-audit-table tr.sub td{font-weight:700;background:var(--paper)}
+.report-audit-table tr.total td{font-weight:800;border-top:2px solid var(--line)}
+
 /* UX1 — shared emission-entry form (NZC-046). One field order, both surfaces. */
 .nz-ef{display:flex;flex-direction:column;gap:12px}
 .nz-ef .nz-fl{margin:0}
