@@ -195,7 +195,7 @@ adapters. **Sequenced after the data-entry tracks** (UX1 + adapters).
 
 | Slice | Scope | Flag | Status |
 |---|---|---|---|
-| R1 | Print-safe chart pack — report charts to deterministic SVG from the snapshot + single render-ready signal (kills the PDF breakage) | `report-svg-charts` | ⏳ queued |
+| R1 | Print-safe chart pack — report charts to deterministic SVG from the snapshot + single render-ready signal (kills the PDF breakage) | `report-svg-charts` | 🟢 built (PR #76); `docs/ACCEPTANCE_R1_PRINT_SAFE_CHARTS.md`; flip pending staging flag + human pass. Flag var: **`NEXT_PUBLIC_FEATURE_REPORT_STUDIO`** (new, parallel to the data-entry one). |
 | R2 | Section model + provenance — ordered versioned sections, `contentSource`, Reset-to-default (backend/model; no new editing UI) | `report-sections` | ⏳ queued |
 | R3 | Data-bound figure tokens — token catalogue + resolver + locked-chip renderer; extend the data-integrity banner to charts + tokens | `report-tokens` | ⏳ queued |
 | R4 | In-place section editing + Regenerate — rich-text scoped to section bodies; generalise Report Preparation AI to every section | `report-edit` | ⏳ queued |

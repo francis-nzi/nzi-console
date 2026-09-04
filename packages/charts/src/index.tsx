@@ -5,7 +5,7 @@ export { EmissionsScopeDonut, formatDate } from "./EmissionsScopeDonut";
 export { ReductionPathway } from "./ReductionPathway";
 export { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 export { EmissionsByActivity } from "./EmissionsByActivity";
-export { ManifestChartSet } from "./ManifestChartSet";
+export { ManifestChartSet, PrintSafeBadge } from "./ManifestChartSet";
 export { EmissionsSiteDonut } from "./EmissionsSiteDonut";
 export { IntensityPathway } from "./IntensityPathway";
 export { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
@@ -17,6 +17,8 @@ export { tokens, TOKENS_VERSION, scopeColor, siteColor, readableInkOn } from "./
 export { RENDERER_VERSION, chartAssetKey } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";
+export { verifyChartsAgainstSnapshot } from "./verify";
+export type { ChartVerification, ChartFigureCheck, VerifiableSnapshot } from "./verify";
 export type { ReportManifest, ReportManifestSection, ManifestValidation, ManifestIssue } from "./manifest";
 export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts,resolveCrpCoreCharts } from "./crp";
 export type { ReviewedCrpSnapshot, ReviewedCrpSnapshotCore,ReviewedScopeMeasurement } from "./crp";
