@@ -37,6 +37,7 @@ FuelCap services.
 | `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | Dedicated Render-only secret |
 | `NZI_WRITE_API_ENABLED` | Explicit independent gate for authenticated command routes |
 | `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` | Comma-separated list of enabled data-entry / workspace UI flags (`spend`, `spend-import`, `portal-spend`, `commuting`, `vehicle`, `client-factors`, `data-entry-accordion`, `job-stage-sections`, …). Unset = every flag OFF, generic path is default. Per-flag rollout gate — see `docs/REDESIGN_ROLLOUT.md`; do not enable a flag until it has passed its rendered acceptance. **`NEXT_PUBLIC_*` is inlined at `next build`, and this service's value is currently set in the Render dashboard (not synced from `render.yaml`) — so a flip is a dashboard edit + rebuild. See "Feature-flag flips" below.** |
+| `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` | Comma-separated list of enabled Report Studio (R-track) UI flags (`report-svg-charts`, later `report-sections`, `report-tokens`, `report-edit`, `report-paged`). Own variable, parallel to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` and flipped the same way (dashboard edit + rebuild). Unset = the current report path. See `docs/REPORT_PRINTING_UX.md` and the per-slice acceptance docs. |
 | `DVLA_VES_API_KEY` | Optional. DVLA Vehicle Enquiry Service key for the UX1 registration lookup (`/api/*/jobs/{id}/vehicle-lookup`). **Unset on isolated staging** — with `NEXT_PUBLIC_APP_ENV=staging` the service returns a deterministic stub vehicle so the two-step flow is exercisable without a real key or plate. The registration is transient: never persisted, never logged. |
 
 Clients, Jobs, and individual Job workspace screens use the isolated Supabase schema and expose
@@ -76,6 +77,10 @@ Current dashboard value (3 Sep 2026):
 **Longer-term fix:** blueprint-link the service (Render dashboard → the service → "Link to Blueprint", or
 recreate it from `render.yaml`) so `render.yaml` becomes authoritative and env changes ship as reviewed
 commits. Until then, every `NEXT_PUBLIC_*` flip is the manual dashboard step above.
+
+**Other flag variables.** The Report Studio (R-track) slices use their own build-inlined variable
+`NEXT_PUBLIC_FEATURE_REPORT_STUDIO` (tokens: `report-svg-charts`, …) — same dashboard-edit-plus-rebuild
+procedure as above. R1's `report-svg-charts` is the first token; it is not yet in the dashboard value.
 
 ## ⚠️ Notes / follow-ups
 

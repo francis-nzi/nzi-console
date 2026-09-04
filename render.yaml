@@ -31,6 +31,12 @@ services:
       #                         acceptance run; roll back if the human pass fails
       - key: NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2
         value: spend,spend-import,portal-spend,commuting,vehicle,client-factors,data-entry-accordion,job-stage-sections
+      # Report Studio (R-track) flags — own variable, build-inlined, flipped via
+      # the Render dashboard + rebuild (see docs/DEPLOYMENT.md). Kept here for
+      # continuity only. R1 = report-svg-charts (ACCEPTANCE_R1_PRINT_SAFE_CHARTS.md);
+      # not yet in the dashboard value — appending it is the R1 flip.
+      - key: NEXT_PUBLIC_FEATURE_REPORT_STUDIO
+        value: ""
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
