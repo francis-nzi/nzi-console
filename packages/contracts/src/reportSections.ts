@@ -29,21 +29,23 @@ export type ReportSectionReadModel = {
   updatedAt: string | null;
 };
 
+// `<span data-token="KEY"></span>` markers are resolved to locked figure chips at
+// render time (R3 / NZC-049, @nzi/contracts renderReportSectionBody).
 export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
   {
     key: "executive-summary",
     title: "Executive summary",
     ordinal: 10,
     defaultBodyHtml:
-      "<p>This report presents the organisation's measured greenhouse gas emissions for the reporting period, prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. Emissions are reported across Scope 1, Scope 2 and the material Scope 3 categories, under the operational control boundary.</p>" +
-      "<p>The report establishes the reduction pathway to net zero, sets out the prioritised carbon reduction actions, and records the reviewed evidence from which every figure in this document is derived.</p>",
+      "<p>The organisation recorded total greenhouse gas emissions of <span data-token=\"total\"></span> for the <span data-token=\"reportingYear\"></span> reporting year, comprising <span data-token=\"scope1\"></span> from Scope 1, <span data-token=\"scope2\"></span> from Scope 2 and <span data-token=\"scope3\"></span> from Scope 3. This report is prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard, under the operational control boundary.</p>" +
+      "<p>Scope 3 value-chain activity represents <span data-token=\"scope3Pct\"></span> of the total footprint. The report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure in this document is derived.</p>",
   },
   {
     key: "net-zero-commitment",
     title: "Net zero commitment",
     ordinal: 20,
     defaultBodyHtml:
-      "<p>The organisation is committed to achieving net zero greenhouse gas emissions across all scopes, supported by a credible, evidence-led reduction pathway with an interim milestone ahead of the net zero target year.</p>" +
+      "<p>The organisation is committed to achieving net zero greenhouse gas emissions across all scopes by <span data-token=\"netZeroYear\"></span>, supported by a credible, evidence-led reduction pathway with an interim milestone of <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span>. These targets are anchored to the <span data-token=\"baselineTotal\"></span> baseline established for <span data-token=\"baselineYear\"></span>.</p>" +
       "<ul><li>Achieve the reduction targets set out in this plan.</li><li>Set realistic short- and long-term targets consistent with the net zero commitment.</li><li>Report total greenhouse gas emissions at least annually.</li></ul>",
   },
   {
@@ -51,8 +53,8 @@ export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
     title: "Background & organisation",
     ordinal: 30,
     defaultBodyHtml:
-      "<p>This section describes the reporting organisation, the nature of its operations and the organisational boundary applied to this assessment. Emissions are consolidated using the operational control approach unless stated otherwise.</p>" +
-      "<p>The reporting period, methodology and boundary decisions are recorded in the standards and methodology section and in the assurance record.</p>",
+      "<p>This section describes the reporting organisation, the nature of its operations and the organisational boundary applied to this assessment. Emissions are consolidated using the operational control approach unless stated otherwise, for the <span data-token=\"reportingYear\"></span> reporting year.</p>" +
+      "<p>The methodology and boundary decisions are recorded in the standards and methodology section and in the assurance record.</p>",
   },
   {
     key: "intensity-analysis",
@@ -60,23 +62,23 @@ export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
     ordinal: 40,
     defaultBodyHtml:
       "<p>Intensity metrics normalise emissions against a measure of business activity so that performance can be compared year on year regardless of changes in the scale of operations.</p>" +
-      "<p>This report expresses intensity against the reporting denominator recorded for the period, and projects it forward on the same pathway as absolute emissions.</p>",
+      "<p>For the <span data-token=\"reportingYear\"></span> reporting year the emissions intensity is <span data-token=\"intensityValue\"></span> <span data-token=\"intensityUnit\"></span>, projected forward on the same pathway as absolute emissions.</p>",
   },
   {
     key: "category-analysis",
     title: "Emissions by scope & category",
     ordinal: 50,
     defaultBodyHtml:
-      "<p>This section analyses the footprint by GHG Protocol scope and by emission category, identifying the categories that contribute most to the total and are therefore the focus of the reduction actions.</p>" +
-      "<p>Where a category is included in the boundary but no activity was recorded, it is shown with a nil value rather than omitted, so the completeness of the assessment is visible.</p>",
+      "<p>For the <span data-token=\"reportingYear\"></span> reporting year total measured carbon emissions are <span data-token=\"total\"></span>. Scope 3 dominates the profile at <span data-token=\"scope3\"></span> (<span data-token=\"scope3Pct\"></span>), followed by Scope 1 at <span data-token=\"scope1\"></span> and Scope 2 at <span data-token=\"scope2\"></span>.</p>" +
+      "<p>Where a category is included in the boundary but no activity was recorded, it is shown with a nil value rather than omitted, so the completeness of the assessment is visible. The categories that contribute most to the total are the focus of the reduction actions.</p>",
   },
   {
     key: "reduction-actions",
     title: "Carbon reduction actions",
     ordinal: 60,
     defaultBodyHtml:
-      "<p>The organisation has identified a set of carbon reduction actions, classified by term, and targeted at the categories that drive the footprint. Each action is owned, scheduled and tracked against the baseline established by this report.</p>" +
-      "<p>Progress against these actions is reviewed at least annually alongside the recalculated footprint.</p>",
+      "<p>The organisation has identified a set of carbon reduction actions, classified by term, and targeted at the categories that drive the <span data-token=\"total\"></span> footprint. Each action is owned, scheduled and tracked against the baseline established by this report.</p>" +
+      "<p>Progress against these actions is reviewed at least annually alongside the recalculated footprint, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
   },
 ] as const;
 

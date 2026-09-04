@@ -394,6 +394,20 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-report-integrity.fail{border-color:#F3C0BA;background:#FFF1EF;color:#9A2C1D}
 .nz-report-integrity.fail ul{margin:6px 0 0;padding-left:16px;font-weight:500}
 .nz-report-integrity.fail li{margin-top:2px}
+/* R3 — report narrative sections + data-bound figure chips (NZC-049) */
+.report-sections{display:grid;gap:24px;margin:8px 0 28px}
+.nz-report-section-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.nz-report-section-h h2{margin:0;color:var(--t1);font-size:19px}
+.nz-section-source{flex:none;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--t2);font-size:10px;font-weight:650;letter-spacing:.02em;white-space:nowrap}
+.nz-section-source.ai{border-color:#CBB6E6;background:#F3ECFA;color:#5B3E86}
+.nz-section-source.client-edited{border-color:#B7D8C6;background:var(--mint);color:var(--pine)}
+.nz-report-section-body{color:var(--t2);font-size:13.5px;line-height:1.65}
+.nz-report-section-body p{margin:0 0 10px}
+.nz-report-section-body p:last-child{margin-bottom:0}
+.nz-report-section-body ul{margin:8px 0 10px;padding-left:18px}
+.nz-fig-token{display:inline-flex;align-items:center;gap:4px;padding:0 6px;border-radius:5px;border:1px solid #B7D8C6;background:var(--mint);color:var(--pine);font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+.nz-fig-token::before{content:"";width:9px;height:9px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 10V8a6 6 0 1 1 12 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1zm2 0h8V8a4 4 0 0 0-8 0v2z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 10V8a6 6 0 1 1 12 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1zm2 0h8V8a4 4 0 0 0-8 0v2z'/%3E%3C/svg%3E") center/contain no-repeat}
+.nz-fig-token.unresolved{border-color:#F1C7A6;background:#FDEEE1;color:#9A5B22}
 
 /* UX1 — shared emission-entry form (NZC-046). One field order, both surfaces. */
 .nz-ef{display:flex;flex-direction:column;gap:12px}

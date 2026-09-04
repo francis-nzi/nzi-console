@@ -553,6 +553,10 @@ subtotals & %, category totals, intensity metrics, target %s, dates in dd/mm/yyy
 AI drafter draws from, so AI text is data-bound by construction. The report-side counterpart of the
 data-entry governance spine: numbers have one source of truth.
 *Source: `docs/REPORT_PRINTING_UX.md` §3.*
+*Delivery: R3 (`@nzi/contracts` `reportTokens.ts` — 15-token catalogue, `resolveReportToken`,
+`renderReportSectionBody`, `verifyReportSectionTokens`; token-embedded section templates; the report page
+renders the R2 sections with resolved chips behind `report-tokens` and folds token verification into the
+data-integrity banner + `data-report-ready`). `docs/ACCEPTANCE_R3_FIGURE_TOKENS.md`.*
 
 ### NZC-050 — Deterministic print-safe charts [Confirmed 1 Sep 2026]
 Report charts render as **static inline SVG**, each a pure function of the frozen report snapshot — no
