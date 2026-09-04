@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverReportVersion } from "./lib/discover";
 import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
@@ -7,30 +7,37 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // R5b — Continuous / Page view · A4 (NZC-051; docs/ACCEPTANCE_R5_PAGED_OUTPUT.md).
 // Behind `report-paged` (same flag as R5a). Page view lazy-loads Paged.js and
 // applies the SAME paged-media rules the real print/PDF path uses. Once the
-// toggle is present every assertion is a HARD precondition — the one
-// conditional skip is for the flag not yet being live, removed at flip.
+// toggle is present every assertion is a HARD precondition — fail loud, never
+// a silent skip (stage-sections.spec.ts / data-assurance.spec.ts discipline).
+// The ONE conditional skip below is for the flag not yet being live — delete
+// just that `test.skip` call to harden this spec the moment `report-paged`
+// flips, same one-line change as every other flag-gated spec in this suite.
 //
 // This spec cannot prove the Paged.js page map is byte-identical to the
 // actual generated PDF — that is a deliberate human check (print/Save-as-PDF
 // the same job and compare page-by-page), per the R5b acceptance note.
 
-async function openReportVersion(page: Page): Promise<{ errors: string[] }> {
+/** Hard precondition — the Continuous/Page-view toggle must actually be rendered. */
+async function openReportVersion(page: Page): Promise<{ errors: string[]; toggle: Locator }> {
   const report = await discoverReportVersion(page.request);
   expect(report, "staging must expose a published CRP report version (seed J000712)").toBeTruthy();
   const errors = collectPageErrors(page);
   await page.goto(`/reports/${report!.id}`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("load").catch(() => undefined);
   await expectHealthyScreen(page);
-  return { errors };
+  const toggle = page.locator(".report-view-toggle");
+  test.skip(
+    (await toggle.count()) === 0,
+    "report-paged not enabled on target (no .report-view-toggle) — harden this spec (remove the skip) as part of the flip PR",
+  );
+  return { errors, toggle };
 }
 
 test.describe("R5b — Continuous / Page view · A4 toggle", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set (public smoke run)");
 
   test("Continuous is the default view; the report renders exactly as before", async ({ page }) => {
-    const { errors } = await openReportVersion(page);
-    const toggle = page.locator(".report-view-toggle");
-    test.skip((await toggle.count()) === 0, "report-paged not enabled on target (no .report-view-toggle)");
+    const { errors, toggle } = await openReportVersion(page);
 
     await expect(toggle.getByRole("tab", { name: "Continuous" })).toHaveAttribute("aria-selected", "true");
     await expect(toggle.getByRole("tab", { name: "Page view · A4" })).toHaveAttribute("aria-selected", "false");
@@ -41,9 +48,7 @@ test.describe("R5b — Continuous / Page view · A4 toggle", () => {
   });
 
   test("Page view · A4 lazy-loads Paged.js and paginates using the same rules as print", async ({ page }) => {
-    const { errors } = await openReportVersion(page);
-    const toggle = page.locator(".report-view-toggle");
-    test.skip((await toggle.count()) === 0, "report-paged not enabled on target");
+    const { errors, toggle } = await openReportVersion(page);
 
     await toggle.getByRole("tab", { name: "Page view · A4" }).click();
     await expect(toggle.getByRole("tab", { name: "Page view · A4" })).toHaveAttribute("aria-selected", "true");
@@ -64,9 +69,7 @@ test.describe("R5b — Continuous / Page view · A4 toggle", () => {
   });
 
   test("the running header/footer is suppressed on the cover page and present from page 2", async ({ page }) => {
-    await openReportVersion(page);
-    const toggle = page.locator(".report-view-toggle");
-    test.skip((await toggle.count()) === 0, "report-paged not enabled on target");
+    const { toggle } = await openReportVersion(page);
 
     await toggle.getByRole("tab", { name: "Page view · A4" }).click();
     const pages = page.locator(".report-pagedjs-target .pagedjs_page");
@@ -82,9 +85,7 @@ test.describe("R5b — Continuous / Page view · A4 toggle", () => {
   });
 
   test("switching back to Continuous restores the normal report view", async ({ page }) => {
-    await openReportVersion(page);
-    const toggle = page.locator(".report-view-toggle");
-    test.skip((await toggle.count()) === 0, "report-paged not enabled on target");
+    const { toggle } = await openReportVersion(page);
 
     await toggle.getByRole("tab", { name: "Page view · A4" }).click();
     await expect(page.locator(".report-pagedjs-target .pagedjs_page, .report-pagedjs-wrap .nz-banner.warn").first()).toBeVisible({ timeout: 20_000 });
@@ -96,7 +97,6 @@ test.describe("R5b — Continuous / Page view · A4 toggle", () => {
 
   test("passes the axe baseline and holds the column with the toggle present", async ({ page }) => {
     await openReportVersion(page);
-    test.skip((await page.locator(".report-view-toggle").count()) === 0, "report-paged not enabled on target");
     await scanWithBaseline(page, "report-paged-view");
     await expectNoHorizontalOverflow(page, "report version with the paged-view toggle");
   });

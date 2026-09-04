@@ -117,13 +117,16 @@ actual authority; a stale client view still gets a `GAPS_OPEN`/`QA_INCOMPLETE` r
   by e2e, not the node:test unit suite).
 - Migration `0054_gap_resolution_version` applied to isolated staging + verified (column present). DA3c adds
   no new migration — `job_scope_rows.version`/`reviewer_note` and the DA1/DA3a read models are reused as-is.
-- `data-assurance.spec.ts` (9, +2 for DA3c) — skips until `data-assurance` is live; **harden at flip**.
+- `data-assurance.spec.ts` (9, +2 for DA3c) — hardened (flag skip removed from `openAssurance`), hard
+  precondition on the surface's presence.
 
-## Flip (DA3a+DA3b+DA3c)
+## Flip (DA3a+DA3b+DA3c) — DONE
 
-Append `data-assurance` to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in the Render dashboard + rebuild; add to
-`render.yaml`. Harden `data-assurance.spec.ts` (remove the flag skip), run against deployed staging, record
-here + the human pass in `docs/STAGING_ACCEPTANCE_DA3.md`.
+`data-assurance` appended to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in the Render dashboard + rebuilt —
+**Francis, 4 Sep 2026**, live on `/jobs/712`. Cowork's automated pass came back green (five-year trend, gap
+engine, responsive, contrast — full record in `docs/STAGING_ACCEPTANCE_DA3.md`); `data-assurance.spec.ts`
+hardened immediately after (no more conditional skip — gate item DA3a #7 now satisfied). Outstanding: the
+human-only pass (gate item DA3a #12 — screen-reader, keyboard, reduced-motion, BL/current tint AA).
 
 ## Rollback
 
