@@ -15,7 +15,7 @@ import {
   type ScopeRowWriteFields,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
-import { listReportSections } from "./readModels";
+import { listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
@@ -1424,6 +1424,7 @@ export async function createReviewedCrpSnapshot(
         intensityTarget,
         annualComparison,
         sections: await listReportSections(db, input.jobId),
+        gapResolutions: await listGapResolutions(db, input.jobId),
         measurements: enabled.map((row) => ({
           rowId: row.scope_row_id,
           rowVersion: row.version,
@@ -1633,6 +1634,51 @@ export async function regenerateReportSection(
       entityType: "report_section",
       entityId: `${input.jobId}:${input.sectionKey}`,
       topic: "report.section.regenerated",
+    };
+  });
+}
+
+// DA1d (NZC-060) — resolve a data-integrity gap with a reason. Upsert keyed to
+// the job + the engine's deterministic gap key; re-resolving overwrites the
+// reason (audited). CRP-only.
+export async function resolveAssuranceGap(
+  pool: PoolLike,
+  input: CommandInputMap["assurance.gap.resolve"],
+  context: CommandContext,
+): Promise<StoredOutcome<{ jobId: string; gapKey: string; resolutionId: string }>> {
+  return runPostgresCommand(pool, "assurance.gap.resolve", input, context, async (db) => {
+    const job = await db.query<{ job_family: string }>(
+      `SELECT job_family FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,
+      [context.organisationId, input.jobId],
+    );
+    if (!job.rows[0]) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "Job was not found." }]);
+    if (job.rows[0].job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Data assurance is available only for CRP jobs." }]);
+
+    const reason = input.reason.trim();
+    const scopeRowId = input.scopeRowId?.trim() || null;
+    const existing = await db.query<{ resolution_id: string }>(
+      `SELECT resolution_id FROM nzi_console.gap_resolutions WHERE organisation_id=$1 AND job_id=$2 AND gap_key=$3 FOR UPDATE`,
+      [context.organisationId, input.jobId, input.gapKey],
+    );
+    const resolutionId = existing.rows[0]?.resolution_id ?? randomUUID();
+    if (existing.rows[0]) {
+      await db.query(
+        `UPDATE nzi_console.gap_resolutions SET flag_type=$4, scope_row_id=$5, reason=$6, resolved_by=$7, resolved_at=now()
+         WHERE organisation_id=$1 AND job_id=$2 AND gap_key=$3`,
+        [context.organisationId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId],
+      );
+    } else {
+      await db.query(
+        `INSERT INTO nzi_console.gap_resolutions (organisation_id, resolution_id, job_id, gap_key, flag_type, scope_row_id, reason, resolved_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [context.organisationId, resolutionId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId],
+      );
+    }
+    return {
+      data: { jobId: input.jobId, gapKey: input.gapKey, resolutionId },
+      entityType: "gap_resolution",
+      entityId: resolutionId,
+      topic: "assurance.gap.resolved",
     };
   });
 }

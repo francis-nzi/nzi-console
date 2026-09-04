@@ -1,7 +1,7 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
-import { buildReportingChain, resolveReportSections } from "@nzi/contracts";
+import type {AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -162,7 +162,7 @@ type IntensityRow={job_id:string;metric:IntensityTargetReadModel["metric"];denom
 const mapIntensity=(row:IntensityRow):IntensityTargetReadModel=>({jobId:row.job_id,metric:row.metric,denominatorUnit:row.denominator_unit,reportingDenominator:Number(row.reporting_denominator),baselineYear:row.baseline_year,baselineIntensity:Number(row.baseline_intensity),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
 export async function getJobIntensityTarget(db:Queryable,jobId:string):Promise<IntensityTargetReadModel|null>{const {rows}=await db.query<IntensityRow>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapIntensity(rows[0]):null;}
 
-type SnapshotRow={snapshot_id:string;job_id:string;snapshot_version:number;job_version:number;data_hash:string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:EmissionsTargetReadModel|null;intensityTarget?:IntensityTargetReadModel|null;annualComparison?:ReviewedCrpSnapshotReadModel["annualComparison"];sections?:ReportSectionReadModel[];measurements:ReviewedCrpSnapshotReadModel["measurements"]};created_by:string;created_at:Date|string};
+type SnapshotRow={snapshot_id:string;job_id:string;snapshot_version:number;job_version:number;data_hash:string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:EmissionsTargetReadModel|null;intensityTarget?:IntensityTargetReadModel|null;annualComparison?:ReviewedCrpSnapshotReadModel["annualComparison"];sections?:ReportSectionReadModel[];gapResolutions?:ReviewedCrpSnapshotReadModel["gapResolutions"];measurements:ReviewedCrpSnapshotReadModel["measurements"]};created_by:string;created_at:Date|string};
 
 /** R2 (NZC-048) — the working editable report sections for a job, in report order. */
 type ReportSectionRow={section_key:string;content_source:ReportSectionReadModel["contentSource"];body_html:string;version:number;updated_by:string;updated_at:Date|string};
@@ -211,6 +211,106 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
   });
 }
 
+/** DA1d (NZC-060) — resolved-with-reason integrity gaps for a job. */
+export async function listGapResolutions(db: Queryable, jobId: string): Promise<GapResolution[]> {
+  const { rows } = await db.query<{ gap_key: string; reason: string; resolved_by: string; resolved_at: Date | string }>(
+    `SELECT gap_key, reason, resolved_by, resolved_at FROM nzi_console.gap_resolutions WHERE job_id=$1`, [jobId],
+  );
+  return rows.map((row) => ({ gapKey: row.gap_key, reason: row.reason, resolvedBy: row.resolved_by, resolvedAt: row.resolved_at instanceof Date ? row.resolved_at.toISOString() : String(row.resolved_at) }));
+}
+
+const assuranceIntensity = (target: IntensityTargetReadModel | null | undefined) =>
+  target && target.reportingDenominator > 0 ? { reportingDenominator: target.reportingDenominator, denominatorUnit: target.denominatorUnit } : null;
+
+/**
+ * DA1b (NZC-059) — the multi-year emissions trend: the reporting chain with each
+ * year's measurements aggregated by scope, category and site. Prior years read
+ * their frozen snapshot payload; the current year reads its snapshot or, when
+ * unreviewed, the live enabled scope rows.
+ */
+export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promise<AssuranceTrend | null> {
+  const chain = await resolveCrpReportingChain(db, jobId);
+  if (!chain) return null;
+
+  const snapshotIds = chain.entries.filter((entry) => entry.snapshotId).map((entry) => entry.snapshotId!);
+  const payloadById = new Map<string, SnapshotRow["payload_json"]>();
+  if (snapshotIds.length) {
+    const { rows } = await db.query<{ snapshot_id: string; payload_json: SnapshotRow["payload_json"] }>(
+      `SELECT snapshot_id, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 OR snapshot_id = ANY($2)`,
+      [jobId, snapshotIds],
+    );
+    for (const row of rows) payloadById.set(row.snapshot_id, row.payload_json);
+  }
+
+  const needsLive = chain.entries.some((entry) => entry.source === "live");
+  let liveMeasurements: AssuranceMeasurement[] = [];
+  let liveIntensity: IntensityTargetReadModel | null = null;
+  if (needsLive) {
+    const [rowResult, intensity] = await Promise.all([
+      db.query<{ scope: string; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string | null }>(
+        `SELECT split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.site_id, s.name AS site_label,
+                coalesce(r.override_tco2e, r.calculated_tco2e)::text AS tco2e
+           FROM nzi_console.job_scope_rows r
+           LEFT JOIN nzi_console.client_sites s ON (s.organisation_id, s.site_id) = (r.organisation_id, r.site_id)
+          WHERE r.job_id=$1 AND r.enabled=true`,
+        [jobId],
+      ),
+      getJobIntensityTarget(db, jobId),
+    ]);
+    liveIntensity = intensity;
+    liveMeasurements = rowResult.rows
+      .filter((row): row is { scope: "1" | "2" | "3"; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string } =>
+        row.tco2e !== null && (row.scope === "1" || row.scope === "2" || row.scope === "3"))
+      .map((row) => ({ scope: row.scope, scopeCode: row.scope_code, siteId: row.site_id, siteLabel: row.site_label, tco2e: Number(row.tco2e) }));
+  }
+
+  const years = chain.entries.map((entry) => {
+    if (entry.source === "none") return aggregateAssuranceYear({ year: entry.year, kind: entry.kind, source: "none", measurements: [] });
+    if (entry.source === "live") {
+      return aggregateAssuranceYear({ year: entry.year, kind: entry.kind, source: "live", measurements: liveMeasurements, intensity: assuranceIntensity(liveIntensity) });
+    }
+    const payload = payloadById.get(entry.snapshotId!);
+    const measurements: AssuranceMeasurement[] = (payload?.measurements ?? []).map((row) => ({
+      scope: row.scope, scopeCode: row.scopeCode ?? row.scope, siteId: row.siteId ?? null, siteLabel: row.siteLabel ?? null, tco2e: row.tco2e,
+    }));
+    return aggregateAssuranceYear({ year: entry.year, kind: entry.kind, source: "reviewed-snapshot", measurements, intensity: assuranceIntensity(payload?.intensityTarget) });
+  });
+
+  return { jobId, clientId: chain.clientId, currentYear: chain.currentYear, baselineYear: chain.baselineYear, years };
+}
+
+/**
+ * DA1 — the assurance screen: the trend + the current-year gap engine result.
+ * The DA3 surface renders this; the DA3 sign-off gate reads `gaps.openCount`.
+ */
+export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<AssuranceScreen | null> {
+  const trend = await resolveAssuranceTrend(db, jobId);
+  if (!trend) return null;
+  const [rowResult, resolutions] = await Promise.all([
+    db.query<{ scope_row_id: string; scope: string; scope_code: string | null; source_label: string; site_id: string | null; quantity: string | null; factor_id: string | null; factor_source: string | null; client_factor_id: string | null; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
+      `SELECT scope_row_id, split_part(scope,'.',1) AS scope, scope AS scope_code, source_label, site_id, quantity::text,
+              factor_id, factor_source, client_factor_id, calculated_tco2e::text, override_tco2e::text, enabled, monthly_activity_json
+         FROM nzi_console.job_scope_rows WHERE job_id=$1`,
+      [jobId],
+    ),
+    listGapResolutions(db, jobId),
+  ]);
+  const currentRows: AssuranceCurrentRow[] = rowResult.rows.map((row) => ({
+    rowId: row.scope_row_id,
+    scope: (row.scope === "1" || row.scope === "2" || row.scope === "3" ? row.scope : "3") as "1" | "2" | "3",
+    scopeCode: row.scope_code,
+    sourceLabel: row.source_label,
+    siteId: row.site_id,
+    quantity: row.quantity === null ? null : Number(row.quantity),
+    hasFactor: Boolean(row.factor_id) || (row.factor_source === "client" && Boolean(row.client_factor_id)),
+    tco2e: row.override_tco2e !== null ? Number(row.override_tco2e) : row.calculated_tco2e !== null ? Number(row.calculated_tco2e) : null,
+    enabled: row.enabled,
+    hasMonthlyActivity: Array.isArray(row.monthly_activity_json) && row.monthly_activity_json.some((slot) => slot.quantity !== null && slot.quantity !== undefined),
+  }));
+  const gaps = computeAssuranceGaps({ trend, currentRows, resolutions });
+  return { trend, gaps, resolutions };
+}
+
 /** R4 — the working-sections editor screen: sections + live (unreviewed) figures. */
 export async function getReportSectionsEditorScreen(db:Queryable,jobId:string):Promise<ReportSectionEditorScreen|null>{
   const jobResult=await db.query<{job_number:string;reporting_year:number|null;start_date:Date|string;job_family:string}>(`SELECT job_number,reporting_year,start_date,job_family FROM nzi_console.jobs WHERE job_id=$1`,[jobId]);
@@ -236,12 +336,12 @@ export async function getReportSectionsEditorScreen(db:Queryable,jobId:string):P
     },
   };
 }
-export async function listReviewedCrpSnapshots(db:Queryable,jobId:string):Promise<ReviewedCrpSnapshotReadModel[]>{const {rows}=await db.query<SnapshotRow>(`SELECT snapshot_id,job_id,snapshot_version,job_version,data_hash,payload_json,created_by,created_at FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC`,[jobId]);return rows.map(row=>({id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),measurements:row.payload_json.measurements}));}
+export async function listReviewedCrpSnapshots(db:Queryable,jobId:string):Promise<ReviewedCrpSnapshotReadModel[]>{const {rows}=await db.query<SnapshotRow>(`SELECT snapshot_id,job_id,snapshot_version,job_version,data_hash,payload_json,created_by,created_at FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC`,[jobId]);return rows.map(row=>({id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements}));}
 
 type PublishedReportRow=SnapshotRow&{report_version_id:string;manifest_version:number;report_data_hash:string;published_at:Date|string};
 type ReportVersionDetailRow=SnapshotRow&{report_version_id:string;status:CrpReportVersionReadModel["status"];manifest_version:number;report_data_hash:string;published_at:Date|string|null};
-export async function getCrpReportVersion(db:Queryable,reportVersionId:string):Promise<CrpReportVersionReadModel|null>{const {rows}=await db.query<ReportVersionDetailRow>(`SELECT r.report_version_id,r.status,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.report_version_id=$1 AND r.status IN ('validated','published','superseded') AND j.job_family='crp'`,[reportVersionId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Report version evidence hash does not match its reviewed snapshot.");return{reportVersionId:row.report_version_id,status:row.status,manifestVersion:row.manifest_version,publishedAt:row.published_at==null?null:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot:{id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),measurements:row.payload_json.measurements}};}
-export async function getCurrentPublishedCrpReport(db:Queryable,jobId:string):Promise<PublishedCrpReportReadModel|null>{const {rows}=await db.query<PublishedReportRow>(`SELECT r.report_version_id,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.job_id=$1 AND r.status='published' AND j.job_family='crp'`,[jobId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Published report evidence hash does not match its reviewed snapshot.");const snapshot:ReviewedCrpSnapshotReadModel={id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),measurements:row.payload_json.measurements};return{reportVersionId:row.report_version_id,manifestVersion:row.manifest_version,publishedAt:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot};}
+export async function getCrpReportVersion(db:Queryable,reportVersionId:string):Promise<CrpReportVersionReadModel|null>{const {rows}=await db.query<ReportVersionDetailRow>(`SELECT r.report_version_id,r.status,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.report_version_id=$1 AND r.status IN ('validated','published','superseded') AND j.job_family='crp'`,[reportVersionId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Report version evidence hash does not match its reviewed snapshot.");return{reportVersionId:row.report_version_id,status:row.status,manifestVersion:row.manifest_version,publishedAt:row.published_at==null?null:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot:{id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements}};}
+export async function getCurrentPublishedCrpReport(db:Queryable,jobId:string):Promise<PublishedCrpReportReadModel|null>{const {rows}=await db.query<PublishedReportRow>(`SELECT r.report_version_id,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.job_id=$1 AND r.status='published' AND j.job_family='crp'`,[jobId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Published report evidence hash does not match its reviewed snapshot.");const snapshot:ReviewedCrpSnapshotReadModel={id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements};return{reportVersionId:row.report_version_id,manifestVersion:row.manifest_version,publishedAt:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot};}
 export async function getGrantedPublishedCrpReport(db:Queryable,input:{portalUserId:string;clientId:string;jobId:string}):Promise<PublishedCrpReportReadModel|null>{const granted=await db.query(`SELECT 1 FROM nzi_console.portal_access_grants g JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id,j.client_id)=(g.organisation_id,g.job_id,g.client_id) WHERE g.portal_user_id=$1 AND g.client_id=$2 AND g.job_id=$3 AND g.revoked_at IS NULL`,[input.portalUserId,input.clientId,input.jobId]);if(!granted.rows[0])return null;return getCurrentPublishedCrpReport(db,input.jobId);}
 
 export async function listDatasetRegistry(db:Queryable):Promise<{datasets:DatasetRegistryItem[];issues:DatasetRegistryIssue[]}>{const datasets=await db.query<{dataset_id:string;name:string;version:string;valid_from:string;valid_to:string;country_code:string;status:DatasetRegistryItem["status"];source_name:string;licence:string;synthetic:boolean;factor_count:string;job_count:string;scopes:string[];spend_count:string;activity_count:string}>(`SELECT d.dataset_id,d.name,d.version,d.valid_from::text,d.valid_to::text,d.country_code,d.status,d.source_name,d.licence,d.synthetic,count(DISTINCT f.factor_id)::text AS factor_count,count(DISTINCT s.job_id)::text AS job_count,coalesce(array_agg(DISTINCT scope) FILTER (WHERE scope IN ('1','2','3')),'{}') AS scopes,count(DISTINCT f.factor_id) FILTER (WHERE upper(f.activity_unit) IN ('GBP','USD','EUR'))::text AS spend_count,count(DISTINCT f.factor_id) FILTER (WHERE upper(f.activity_unit) NOT IN ('GBP','USD','EUR'))::text AS activity_count FROM nzi_console.emission_factor_datasets d LEFT JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(d.organisation_id,d.dataset_id) LEFT JOIN LATERAL unnest(f.scopes) scope ON true LEFT JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(d.organisation_id,d.dataset_id) GROUP BY d.organisation_id,d.dataset_id ORDER BY d.valid_from DESC,d.name,d.version`),warnings=await db.query<{dataset_id:string;job_number:string;warning:string}>(`SELECT s.dataset_id,j.job_number,w.warning FROM nzi_console.job_dataset_selections s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) CROSS JOIN LATERAL jsonb_array_elements_text(s.warnings_json) w(warning) ORDER BY s.selected_at DESC`);return{datasets:datasets.rows.map(row=>{const spend=Number(row.spend_count),activity=Number(row.activity_count);return{id:row.dataset_id,name:row.name,version:row.version,validFrom:row.valid_from,validTo:row.valid_to,country:row.country_code,scopes:row.scopes as Array<"1"|"2"|"3">,method:spend&&activity?"mixed":spend?"spend":"activity",source:row.source_name,analysisType:"published-source",year:Number(row.valid_from.slice(0,4)),licence:row.licence,status:row.status,factorCount:Number(row.factor_count),usedByJobs:Number(row.job_count),synthetic:row.synthetic}}),issues:warnings.rows.map((row,index)=>({id:`${row.dataset_id}:${row.job_number}:${index}`,severity:"warning",datasetId:row.dataset_id,jobNumber:row.job_number,message:row.warning,state:"open"}))};}
