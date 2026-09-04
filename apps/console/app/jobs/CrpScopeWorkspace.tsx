@@ -332,7 +332,7 @@ export function CrpScopeWorkspace({
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
-  const assuranceSurface = dataEntryAdapterEnabled("data-assurance") ? <CrpAssuranceStage jobId={job.header.id}/> : null;
+  const assuranceSurface = dataEntryAdapterEnabled("data-assurance") ? <CrpAssuranceStage jobId={job.header.id} onGoToRow={(rowId) => { setSelectedId(rowId); if (accordionOn) setAccordionLens("category"); jumpToStage("Data entry"); }}/> : null;
   const createForm = creating ? (
     <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
       <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>

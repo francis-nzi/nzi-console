@@ -1645,7 +1645,7 @@ export async function resolveAssuranceGap(
   pool: PoolLike,
   input: CommandInputMap["assurance.gap.resolve"],
   context: CommandContext,
-): Promise<StoredOutcome<{ jobId: string; gapKey: string; resolutionId: string }>> {
+): Promise<StoredOutcome<{ jobId: string; gapKey: string; resolutionId: string; version: number }>> {
   return runPostgresCommand(pool, "assurance.gap.resolve", input, context, async (db) => {
     const job = await db.query<{ job_family: string }>(
       `SELECT job_family FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,
@@ -1656,26 +1656,29 @@ export async function resolveAssuranceGap(
 
     const reason = input.reason.trim();
     const scopeRowId = input.scopeRowId?.trim() || null;
-    const existing = await db.query<{ resolution_id: string }>(
-      `SELECT resolution_id FROM nzi_console.gap_resolutions WHERE organisation_id=$1 AND job_id=$2 AND gap_key=$3 FOR UPDATE`,
+    const existing = await db.query<{ resolution_id: string; version: number }>(
+      `SELECT resolution_id, version FROM nzi_console.gap_resolutions WHERE organisation_id=$1 AND job_id=$2 AND gap_key=$3 FOR UPDATE`,
       [context.organisationId, input.jobId, input.gapKey],
     );
+    const currentVersion = existing.rows[0]?.version ?? 0;
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError();
     const resolutionId = existing.rows[0]?.resolution_id ?? randomUUID();
+    const version = currentVersion + 1;
     if (existing.rows[0]) {
       await db.query(
-        `UPDATE nzi_console.gap_resolutions SET flag_type=$4, scope_row_id=$5, reason=$6, resolved_by=$7, resolved_at=now()
+        `UPDATE nzi_console.gap_resolutions SET flag_type=$4, scope_row_id=$5, reason=$6, resolved_by=$7, resolved_at=now(), version=$8
          WHERE organisation_id=$1 AND job_id=$2 AND gap_key=$3`,
-        [context.organisationId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId],
+        [context.organisationId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId, version],
       );
     } else {
       await db.query(
-        `INSERT INTO nzi_console.gap_resolutions (organisation_id, resolution_id, job_id, gap_key, flag_type, scope_row_id, reason, resolved_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [context.organisationId, resolutionId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId],
+        `INSERT INTO nzi_console.gap_resolutions (organisation_id, resolution_id, job_id, gap_key, flag_type, scope_row_id, reason, resolved_by, version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [context.organisationId, resolutionId, input.jobId, input.gapKey, input.flagType, scopeRowId, reason, context.actorId, version],
       );
     }
     return {
-      data: { jobId: input.jobId, gapKey: input.gapKey, resolutionId },
+      data: { jobId: input.jobId, gapKey: input.gapKey, resolutionId, version },
       entityType: "gap_resolution",
       entityId: resolutionId,
       topic: "assurance.gap.resolved",

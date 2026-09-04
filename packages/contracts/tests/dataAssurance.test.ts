@@ -173,7 +173,7 @@ describe("computeAssuranceGaps (DA1c / NZC-060) — all four flag types", () => 
     const key = "unmapped:r-nofactor";
     const result = computeAssuranceGaps({
       trend, currentRows: rows,
-      resolutions: [{ gapKey: key, reason: "Immaterial supplier, mapped next cycle.", resolvedBy: "rev", resolvedAt: "2026-09-04T00:00:00Z" }],
+      resolutions: [{ gapKey: key, version: 1, reason: "Immaterial supplier, mapped next cycle.", resolvedBy: "rev", resolvedAt: "2026-09-04T00:00:00Z" }],
     });
     const gap = result.gaps.find((g) => g.key === key)!;
     assert.equal(gap.resolved, true);
