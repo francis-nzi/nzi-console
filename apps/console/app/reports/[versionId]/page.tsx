@@ -4,6 +4,8 @@ import {loadScreen} from "../../lib/loadScreen";
 import {ScreenState} from "../../lib/ScreenState";
 import {reportFeatureEnabled} from "../../lib/reportFlags";
 import {PrintButton} from "./PrintButton";
+import {ReportPagedView} from "./ReportPagedView";
+import {REPORT_PAGED_MEDIA_RULES} from "./reportPrintRules";
 
 export const dynamic="force-dynamic";
 
@@ -50,15 +52,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
     ? (manifestValid && (chartVerification?.ok ?? true) && (tokenVerification?.ok ?? true))
     : null;
 
-  return <main className="report-canvas">
-    <style>{PRINT_CSS}</style>
-    <div className="report-toolbar">
-      <a href="/reports">← Publication studio</a>
-      <div><b>{version.reportVersionId}</b><span>Immutable {version.status} version</span></div>
-      <span className={`nz-st ${version.status==="published"?"done":"est"}`}>Manifest v{version.manifestVersion}</span>
-      <PrintButton/>
-    </div>
-    <article className="report-sheet" {...((r1||r3)?{"data-report-ready":reportReady?"true":"false"}:{})}>
+  const reportArticle = <article className="report-sheet" {...((r1||r3)?{"data-report-ready":reportReady?"true":"false"}:{})}>
       <header className="report-cover">
         <div className="report-brand">
           <div className="report-mark">N</div>
@@ -93,7 +87,17 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
         </dl>
       </section>
       {r5&&<ReportAppendices auditRows={auditRows} sites={siteBreakdown}/>}
-    </article>
+    </article>;
+
+  return <main className="report-canvas">
+    <style>{PRINT_CSS}</style>
+    <div className="report-toolbar">
+      <a href="/reports">← Publication studio</a>
+      <div><b>{version.reportVersionId}</b><span>Immutable {version.status} version</span></div>
+      <span className={`nz-st ${version.status==="published"?"done":"est"}`}>Manifest v{version.manifestVersion}</span>
+      <PrintButton/>
+    </div>
+    {r5?<ReportPagedView meta={{client:snapshot.client,jobNumber:snapshot.jobNumber,reportingYear:snapshot.reportingYear}}>{reportArticle}</ReportPagedView>:reportArticle}
   </main>;
 }
 
@@ -192,4 +196,4 @@ function IntegrityBanner({chart,tokens,manifestValid}:{chart:ChartVerification|n
   </div>;
 }
 
-const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{html,body{background:white!important}.report-canvas{background:white!important;padding:0!important}.report-toolbar{display:none!important}.report-sheet{border:0!important;border-radius:0!important;box-shadow:none!important;max-width:none!important;margin:0!important;padding:0!important}figure,[data-chart]{break-inside:avoid;page-break-inside:avoid}.nz-report-section{break-inside:avoid}.nzc-print-safe,.nz-report-integrity,.nz-section-source,.report-thead-note{display:none!important}.nz-fig-token{background:none!important;border:0!important;padding:0!important;color:inherit!important;font-weight:inherit!important}.report-appendix{break-before:page}.report-appendix-scroll{overflow:visible!important}.report-audit-table thead{display:table-header-group}.report-audit-table tr{break-inside:avoid;page-break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{${REPORT_PAGED_MEDIA_RULES}}`;

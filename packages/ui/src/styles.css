@@ -432,7 +432,16 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .report-audit-table tr.sub td{font-weight:700;background:var(--paper)}
 .report-audit-table tr.total td{font-weight:800;border-top:2px solid var(--line)}
 
-/* UX1 — shared emission-entry form (NZC-046). One field order, both surfaces. */
+/* R5b — Continuous / Page view · A4 toggle (NZC-051). */
+.report-view-toggle{display:flex;gap:4px;max-width:1120px;margin:0 auto 10px;padding:3px;border:1px solid var(--line);border-radius:11px;background:#fff;width:fit-content}
+.report-view-toggle button{border:0;background:transparent;font:inherit;font-weight:650;font-size:12px;color:var(--t2);padding:7px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.report-view-toggle button.on{background:var(--midnight);color:#fff}
+.report-view-toggle button:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
+.pbreak{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.pbreak::before,.pbreak::after{content:"";height:0;border-top:2px dashed var(--line);flex:1}
+.pbreak .pb-num{padding:2px 9px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--t2);white-space:nowrap}
+.report-pagedjs-wrap{max-width:1120px;margin:0 auto}
+.report-pagedjs-target{overflow:visible}
 .nz-ef{display:flex;flex-direction:column;gap:12px}
 .nz-ef .nz-fl{margin:0}
 .nz-ef-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
