@@ -66,7 +66,7 @@ Removing it from lean capture loses no function; it is not asserted as present i
 | 9 | **Flag hard-precondition** — once the lean shape is present, every check is hard (fail loud, no silent skip). The one conditional skip (flag not yet live) is removed in the flip PR. | `lean-capture.spec.ts` `openLeanCapture` |
 | 10 | `npm run typecheck` (all workspaces) · `@nzi/console` build · full unit suites green · flag OFF leaves capture unchanged | ✅ |
 
-## Verification (this branch)
+## Verification (PR #89)
 
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
 - `@nzi/console` unit suite — 89/89 (+4 DA4: field-shape lean/non-lean, existing/portal unaffected,
