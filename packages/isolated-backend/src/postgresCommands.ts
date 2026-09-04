@@ -641,6 +641,75 @@ export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMa
   return{data:{rolledForward,skipped,priorJobId,priorJobNumber},entityType:"job",entityId:input.jobId,topic:"emission.sources.rolled_forward"};
 });}
 
+/**
+ * NZC-063 — "Reuse Previous Year Rows": the consultant picks specific rows
+ * from `listScopeRowRollforwardPreview`; this copies each chosen row's
+ * factor + hierarchy + site forward as a fresh, unreviewed job_scope_rows
+ * row (quantity NULL, quality tier unset — a genuine re-check next, not a
+ * carried-over judgement). Generalises rollforwardSpendSources's pattern
+ * (re-pin the prior dataset selection so the pinned factor stays resolvable;
+ * skip anything already rolled forward) from the spend register to every
+ * canonical row type, via the new `rolled_forward_from_row_id` self-reference
+ * (migration 0055) instead of the register's `rolled_forward_from_source_id`.
+ */
+export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["scope.row.rollforward"],context:CommandContext):Promise<StoredOutcome<{rolledForward:number;skipped:number;createdRowIds:string[];priorJobNumber:string|null}>>{return runPostgresCommand(pool,"scope.row.rollforward",input,context,async db=>{
+  await requireCrpJob(db,context.organisationId,input.jobId);
+  const priorRes=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=(SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$3) AND job_family='crp'`,[context.organisationId,input.priorJobId,input.jobId]);
+  const priorJob=priorRes.rows[0];
+  if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
+  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null}>(
+    `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text
+     FROM nzi_console.job_scope_rows r
+     WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=ANY($3::text[]) AND enabled=true
+       AND NOT EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf WHERE rf.organisation_id=$1 AND rf.job_id=$4 AND rf.rolled_forward_from_row_id=r.scope_row_id)`,
+    [context.organisationId,input.priorJobId,input.rowIds,input.jobId],
+  );
+  let rolledForward=0;
+  const skipped=input.rowIds.length-priorRows.rows.length;
+  const createdRowIds:string[]=[];
+  for(const row of priorRows.rows){
+    if(row.factor_source==="dataset"&&row.dataset_id){
+      const selected=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections WHERE organisation_id=$1 AND job_id=$2 AND dataset_id=$3`,[context.organisationId,input.jobId,row.dataset_id]);
+      if(!selected.rows[0]){
+        const dataset=await db.query(`SELECT 1 FROM nzi_console.emission_factor_datasets WHERE organisation_id=$1 AND dataset_id=$2`,[context.organisationId,row.dataset_id]);
+        if(dataset.rows[0]){
+          await db.query(`INSERT INTO nzi_console.job_dataset_selections(organisation_id,job_id,dataset_id,selection_source,reason,selected_by) VALUES($1,$2,$3,'manual',$4,$5) ON CONFLICT (organisation_id,job_id,dataset_id) DO NOTHING`,[context.organisationId,input.jobId,row.dataset_id,`Re-pinned from ${priorJob.job_number} (FY${priorJob.reporting_year}) for previous-year factor-version continuity (NZC-063).`,context.actorId]);
+        }
+      }
+    }
+    let siteId=row.site_id;
+    if(siteId){
+      const site=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[context.organisationId,input.jobId,siteId]);
+      if(!site.rows[0])siteId=null;
+    }
+    let categoryId=row.purchased_goods_category_id;
+    if(categoryId){
+      const cat=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE c.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[context.organisationId,input.jobId,categoryId]);
+      if(!cat.rows[0])categoryId=null;
+    }
+    const rowId=randomUUID();
+    const writeFields:ScopeRowWriteFields={scope:row.scope,categoryCode:row.category_code,sourceLabel:row.source_label,reportLabel:row.report_label,assetIdentifier:row.asset_identifier,siteId,purchasedGoodsCategoryId:categoryId,quantity:null,unit:row.unit,datasetId:row.dataset_id,factorId:row.factor_id,factorVersion:row.factor_version,factorLabel:row.factor_label,qualityTier:null,factorSource:row.factor_source,clientFactorId:row.client_factor_id,isCustomEntry:row.is_custom_entry,applyPct:Number(row.apply_pct),columnText:row.column_text};
+    const evidence=scopeEvidence(writeFields,context);
+    const lineage=[...evidence.lineage,{title:"Rolled forward",detail:`From ${priorJob.job_number} · FY${priorJob.reporting_year}`}];
+    const categoryPath=crpScopeCategoryPath(row.scope);
+    const categoryCode=row.category_code?.trim()||(/^3\.\d+$/.test(row.scope)?row.scope:null);
+    try{
+      await db.query(
+        `INSERT INTO nzi_console.job_scope_rows
+         (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,column_text,category_code,rolled_forward_from_row_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'[]'::jsonb,$18,$19,$20,$21,$22,$23,$24,$25)`,
+        [context.organisationId,rowId,input.jobId,row.scope,row.source_label.trim(),siteId,categoryId,row.unit,row.dataset_id,row.factor_id,row.factor_version,row.factor_label,JSON.stringify(evidence.provenance),JSON.stringify(lineage),row.report_label?.trim()||row.source_label.trim(),categoryPath[0],categoryPath[1],row.asset_identifier,row.factor_source,row.client_factor_id,row.is_custom_entry,Number(row.apply_pct),row.column_text,categoryCode,row.scope_row_id],
+      );
+      createdRowIds.push(rowId);
+      rolledForward+=1;
+    }catch(error){
+      if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")continue;
+      throw error;
+    }
+  }
+  return{data:{rolledForward,skipped,createdRowIds,priorJobNumber:priorJob.job_number},entityType:"job",entityId:input.jobId,topic:"scope.rows.rolled_forward"};
+});}
+
 export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emission.source.import.commit"],context:CommandContext,secret:string|undefined):Promise<StoredOutcome<{batchId:string;created:number;blocked:number;advisory:number}>>{return runPostgresCommand(pool,"emission.source.import.commit",input,context,async db=>{
   await requireCrpJob(db,context.organisationId,input.jobId);
   const verified=verifySpendImportToken(input.token,secret);
