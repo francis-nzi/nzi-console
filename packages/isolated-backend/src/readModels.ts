@@ -1,7 +1,7 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, resolveReportSections } from "@nzi/contracts";
+import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -287,14 +287,20 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
   const trend = await resolveAssuranceTrend(db, jobId);
   if (!trend) return null;
   const [rowResult, resolutions] = await Promise.all([
-    db.query<{ scope_row_id: string; scope: string; scope_code: string | null; source_label: string; site_id: string | null; quantity: string | null; factor_id: string | null; factor_source: string | null; client_factor_id: string | null; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
-      `SELECT scope_row_id, split_part(scope,'.',1) AS scope, scope AS scope_code, source_label, site_id, quantity::text,
-              factor_id, factor_source, client_factor_id, calculated_tco2e::text, override_tco2e::text, enabled, monthly_activity_json
-         FROM nzi_console.job_scope_rows WHERE job_id=$1`,
+    db.query<{ scope_row_id: string; scope: string; scope_code: string | null; source_label: string; site_id: string | null; site_label: string | null; quantity: string | null; unit: string | null; factor_id: string | null; factor_label: string | null; factor_source: string | null; client_factor_id: string | null; quality_tier: ScopeQualityTier | null; data_confidence: string | null; review_status: string; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
+      `SELECT r.scope_row_id, split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.source_label, r.site_id, s.name AS site_label,
+              r.quantity::text, r.unit, r.factor_id, r.factor_label, r.factor_source, r.client_factor_id, r.quality_tier, r.data_confidence, r.review_status,
+              r.calculated_tco2e::text, r.override_tco2e::text, r.enabled, r.monthly_activity_json
+         FROM nzi_console.job_scope_rows r
+         LEFT JOIN nzi_console.client_sites s ON (s.organisation_id, s.site_id) = (r.organisation_id, r.site_id)
+        WHERE r.job_id=$1
+        ORDER BY split_part(r.scope,'.',1), r.scope, lower(r.source_label)`,
       [jobId],
     ),
     listGapResolutions(db, jobId),
   ]);
+  const hasFactor = (row: { factor_id: string | null; factor_source: string | null; client_factor_id: string | null }) =>
+    Boolean(row.factor_id) || (row.factor_source === "client" && Boolean(row.client_factor_id));
   const currentRows: AssuranceCurrentRow[] = rowResult.rows.map((row) => ({
     rowId: row.scope_row_id,
     scope: (row.scope === "1" || row.scope === "2" || row.scope === "3" ? row.scope : "3") as "1" | "2" | "3",
@@ -302,13 +308,26 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
     sourceLabel: row.source_label,
     siteId: row.site_id,
     quantity: row.quantity === null ? null : Number(row.quantity),
-    hasFactor: Boolean(row.factor_id) || (row.factor_source === "client" && Boolean(row.client_factor_id)),
+    hasFactor: hasFactor(row),
     tco2e: row.override_tco2e !== null ? Number(row.override_tco2e) : row.calculated_tco2e !== null ? Number(row.calculated_tco2e) : null,
     enabled: row.enabled,
     hasMonthlyActivity: Array.isArray(row.monthly_activity_json) && row.monthly_activity_json.some((slot) => slot.quantity !== null && slot.quantity !== undefined),
   }));
   const gaps = computeAssuranceGaps({ trend, currentRows, resolutions });
-  return { trend, gaps, resolutions };
+  const auditRows: AssuranceAuditRow[] = rowResult.rows.filter((row) => row.enabled).map((row) => ({
+    rowId: row.scope_row_id,
+    scopeCode: row.scope_code ?? row.scope,
+    category: crpScopeCategoryLabel(row.scope_code ?? row.scope),
+    sourceLabel: row.source_label,
+    factorLabel: row.factor_label ?? (hasFactor(row) ? "Client factor" : null),
+    quantity: row.quantity === null ? null : Number(row.quantity),
+    unit: row.unit,
+    qualityTier: row.quality_tier,
+    dataConfidence: row.data_confidence,
+    reviewStatus: row.review_status,
+    siteLabel: row.site_label?.trim() || "Unallocated",
+  }));
+  return { trend, gaps, resolutions, auditRows };
 }
 
 /** R4 — the working-sections editor screen: sections + live (unreviewed) figures. */

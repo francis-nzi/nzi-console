@@ -217,11 +217,27 @@ export type AssuranceGaps = {
   resolvedCount: number;
 };
 
-/** The Data Assurance stage screen — trend + gap engine result + resolutions. */
+/** One enabled current-year row as the Audit tab shows it. */
+export type AssuranceAuditRow = {
+  rowId: string;
+  scopeCode: string;
+  category: string;
+  sourceLabel: string;
+  factorLabel: string | null;
+  quantity: number | null;
+  unit: string | null;
+  qualityTier: string | null;
+  dataConfidence: string | null;
+  reviewStatus: string;
+  siteLabel: string;
+};
+
+/** The Data Assurance stage screen — trend + gap engine result + resolutions + audit rows. */
 export type AssuranceScreen = {
   trend: AssuranceTrend;
   gaps: AssuranceGaps;
   resolutions: GapResolution[];
+  auditRows: AssuranceAuditRow[];
 };
 
 const YOY_LOW = 0.5;
