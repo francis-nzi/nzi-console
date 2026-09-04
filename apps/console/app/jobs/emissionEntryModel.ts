@@ -97,6 +97,20 @@ export const isRegistrationKind = (category: EmissionCategory): boolean =>
 export const isSpendKind = (category: EmissionCategory): boolean =>
   category.kind === "spend";
 
+/**
+ * DA5 (NZC-061) — the per-row entry unit list. Miles were missing, so vehicles
+ * and commuting could not be entered in miles even though every bulk path
+ * (`vehicleBulk.ts`, `commutingBulk.ts`) accepts `mi`. Travel and commuting
+ * categories also get passenger-distance units.
+ */
+export function entryUnitsForCategory(category: EmissionCategory): string[] {
+  const spendFirst = category.scope === "3" && isSpendKind(category);
+  const base = [spendFirst ? "GBP" : "kWh", "litres", "tonnes", "km", "mi", "m²", "units"];
+  return category.kind === "commuting" || category.kind === "travel"
+    ? ["passenger.km", "passenger.mi", ...base]
+    : base;
+}
+
 /** Manual-entry helper text for the "…or enter manually" link, by reg kind. */
 export function manualEntryHint(category: EmissionCategory): string {
   if (category.kind === "commuting") return "mode · WFH days";

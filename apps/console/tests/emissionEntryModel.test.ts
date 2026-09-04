@@ -8,6 +8,7 @@ import {
   emissionEntryActions,
   emissionEntryDraftToPortalRecord,
   emissionEntryDraftToScopeRow,
+  entryUnitsForCategory,
   isRegistrationKind,
   isSpendKind,
   manualEntryHint,
@@ -264,5 +265,38 @@ describe("UX1d-2 — draft → client-portal data-entry record", () => {
 
   it("errors when the chosen factor is not one the bucket authorises", () => {
     assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "10", factorId: "f-not-authorised" }), manualBucket, { id: null }));
+  });
+});
+
+describe("entryUnitsForCategory (DA5 / NZC-061)", () => {
+  it("offers miles on every category (bug fix — vehicles/commuting could not be entered in miles)", () => {
+    for (const category of emissionCategoryTaxonomy) {
+      assert.ok(entryUnitsForCategory(category).includes("mi"), category.name);
+      assert.ok(entryUnitsForCategory(category).includes("km"), category.name);
+    }
+  });
+
+  it("adds passenger-distance units to travel and commuting categories only", () => {
+    for (const name of ["Business Travel", "Employee Commuting"]) {
+      const units = entryUnitsForCategory(cat(name));
+      assert.ok(units.includes("passenger.km") && units.includes("passenger.mi"), name);
+    }
+    for (const category of emissionCategoryTaxonomy) {
+      if (category.kind === "travel" || category.kind === "commuting") continue;
+      assert.ok(!entryUnitsForCategory(category).includes("passenger.km"), category.name);
+    }
+  });
+
+  it("keeps GBP first for scope-3 spend categories", () => {
+    const spend = emissionCategoryTaxonomy.find(c => c.kind === "spend" && c.scope === "3");
+    if (spend) assert.equal(entryUnitsForCategory(spend)[0], "GBP");
+    assert.equal(entryUnitsForCategory(cat("Company Vehicles"))[0], "kWh");
+  });
+
+  it("returns a de-duplicated list", () => {
+    for (const category of emissionCategoryTaxonomy) {
+      const units = entryUnitsForCategory(category);
+      assert.equal(new Set(units).size, units.length, category.name);
+    }
   });
 });

@@ -15,7 +15,7 @@ import {
   buildDataEntryAccordion,
 } from "./dataEntryAccordion";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { emissionEntryDraftToScopeRow, isSpendKind, type EntryFactorRef } from "./emissionEntryModel";
+import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRef } from "./emissionEntryModel";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -229,7 +229,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                               audience="crm"
                               site={{ id: siteContext.id, label: siteContext.label ?? "Unallocated" }}
                               factors={factors.filter(option => option.scope === entry.category.scope)}
-                              units={[entry.category.scope === "3" && isSpendKind(entry.category) ? "GBP" : "kWh", "litres", "tonnes", "km", "m²", "units"]}
+                              units={entryUnitsForCategory(entry.category)}
                               reportingMonths={reportingMonths}
                               spendCategories={purchasedGoodsCategories}
                               busy={entryBusy}
