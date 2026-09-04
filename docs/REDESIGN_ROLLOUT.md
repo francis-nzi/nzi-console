@@ -200,7 +200,7 @@ adapters. **Sequenced after the data-entry tracks** (UX1 + adapters).
 | R3 | Data-bound figure tokens — token catalogue + resolver + locked-chip renderer; extend the data-integrity banner to charts + tokens | `report-tokens` | 🟢 built (PR #80); `docs/ACCEPTANCE_R3_FIGURE_TOKENS.md`. Renders the R2 sections (read-only) with resolved chips. Flip pending staging flag + `report-figure-tokens.spec.ts` harden + human pass. |
 | R4 | In-place section editing + Regenerate — rich-text scoped to section bodies; generalise Report Preparation AI to every section | `report-edit` | 🟢 built (PR #81); `docs/ACCEPTANCE_R4_SECTION_EDITOR.md`. Editor in the Report & publish stage. AI Regenerate uses deterministic per-section variants — a live-model call is a follow-up (needs the Anthropic client + key). Flip pending staging flag + spec harden + human pass. |
 | R5a | Audit appendices (Full Emissions Audit + by Site/Scope/Category) + repeating-header/row-atomic print CSS | `report-paged` | 🟢 built (PR #90); `docs/ACCEPTANCE_R5_PAGED_OUTPUT.md` |
-| R5b | On-screen Continuous / Page-view · A4 toggle, running header/footer, page-break markers | `report-paged` | ⏳ proposed — pagination-computation approach (measure-and-bucket vs. Paged.js) awaiting Francis's confirmation before deep build, same pattern as DA1/DA3c |
+| R5b | On-screen Continuous / Page-view · A4 toggle, running header/footer, page-break markers — **Paged.js**, confirmed by Francis 4 Sep 2026 | `report-paged` | 🟢 built (PR #91); `docs/ACCEPTANCE_R5_PAGED_OUTPUT.md`; human check (Page view vs. actual PDF) pending before flip |
 
 > R1 alone permanently removes the PDF-breakage problem and is the recommended first slice. R4/R5 are the
 > client-facing pieces; hold client exposure until their rendered acceptance passes.
@@ -245,8 +245,8 @@ remaining flags (`entry-lean-capture`, `data-assurance`) still need flipping on 
 plus the human sensory pass on each — see `docs/ACCEPTANCE_DA3_ASSURANCE.md` /
 `docs/ACCEPTANCE_DA4_LEAN_CAPTURE.md`.
 
-**R-track interaction:** R1–R4 are built and merged (flag-off). The DA-track landed in full (4 Sep 2026),
-lifting the "hold R5" gate — R5a is now built too; R5b awaits the pagination-approach confirmation above.
-DA's sign-off and the R-track's "Mark Final" freeze the same snapshot.
+**R-track interaction:** R1–R4, R5a and R5b are all built and merged (flag-off) — **the entire R-track
+(M7) is now built.** DA's sign-off and the R-track's "Mark Final" freeze the same snapshot. Remaining work
+across both tracks is flips + human passes, not code — see each slice's own acceptance doc.
 
 *M8 added 4 Sep 2026.*

@@ -9,7 +9,7 @@ Sliced so the part with no design ambiguity lands first:
 | Slice | Scope | Status |
 |---|---|---|
 | **R5a** | Audit appendices (Appendix 1 Full Emissions Audit, Appendix 2 by Site/Scope/Category) + the repeating-header / row-atomic print CSS that makes them paginate cleanly. | 🟢 built (PR #90) |
-| R5b | On-screen Continuous / Page view · A4 toggle, running header/footer, dashed page-break markers. | ⏳ proposed — pagination-computation approach needs confirming before deep build |
+| **R5b** | On-screen Continuous / Page view · A4 toggle, running header/footer, page numbers, dashed page-break markers. | 🟢 built (PR #91) — Paged.js, confirmed by Francis 4 Sep 2026 |
 
 ## R5a — the audit appendices
 
@@ -56,43 +56,92 @@ array the rest of `/reports/[versionId]` already reads for the cover metrics and
 - `@nzi/contracts` — 74/74 (+5 `reportAppendix.test.ts`).
 - `report-appendix.spec.ts` (3) — skips until `report-paged` is live; **harden at flip**.
 
-## R5b — the on-screen view toggle (proposed, not yet built)
+## R5b — the on-screen view toggle
 
-The spec's harder half: "Continuous — a dashed 'Page N break' marker at every page boundary" and "Page
-view · A4 — content laid into true A4 page frames with running header/page numbers", with the on-screen
-page map required to **match the generated PDF exactly**. The reference prototype (`report_v3.html`)
-**hand-authors** its page split (a fixed `PAGES` array of pre-written chunks) precisely because true
-pagination — deciding exactly where content breaks across A4 pages — is the one genuinely open design
-question here, the R5 equivalent of DA1's baseline-model question. Two real approaches, with different
-cost/fidelity trade-offs:
+**Decision (Francis, 4 Sep 2026): Paged.js**, for consistency with R5a — it applies the exact same CSS
+fragmentation rules (repeating `<thead>`, `break-inside:avoid`, running header/footer) that R5a's print
+CSS and the server/browser's own Chromium print engine already use, so Page view agrees with the PDF.
+Measure-and-bucket would ignore that CSS and drift (splitting tables mid-row, dropping repeating headers),
+defeating the feature. **The server/browser print path stays the authoritative source of truth** — Page
+view is a high-fidelity *preview* of it, not a byte-identity guarantee.
 
-- **(a) Measure-and-bucket (no new dependency).** After the report mounts, walk its top-level blocks
-  (headings, paragraphs, table row-groups, chart figures), measure each one's rendered height, and
-  greedily bucket them into page-sized groups against a computed A4 content-area height (derived from the
-  page's own `14mm` margins). Cheap, no library, but it's an *approximation* of the browser's own print
-  layout engine — for most content it will agree with the printed PDF, but a table row split right at a
-  page edge, or the print engine's own widow/orphan handling, can disagree by a line here or there.
-- **(b) A real paged-media engine (Paged.js).** Paged.js literally implements the CSS Fragmentation spec
-  client-side and produces the same break points a compliant paged-media renderer would use, so the
-  on-screen map and the printed PDF agree far more reliably — at the cost of a new external dependency (it
-  would need to load from `cdnjs.cloudflare.com`, the one allowed source for this kind of library) and a
-  heavier, more involved integration (it takes over layout of the content it's given).
+- **`pagedjs@0.4.3`** added to `apps/console` (npm dependency, not a CDN script — this is a real app
+  bundle, not an Artifact). No new CVE: `npm audit` shows the same 3 pre-existing high-severity findings
+  (transitive to `next` itself, via `postcss`/`sharp`) before and after the install; none of pagedjs's own
+  five dependencies appear. No bundled types / no `@types/pagedjs` — a minimal ambient declaration
+  (`apps/console/app/types/pagedjs.d.ts`) covers the one class used (`Previewer`). **Imported via the bare
+  `"pagedjs"` specifier** — the package's own `exports` map has no `./dist/*` subpath, so a deep import
+  (tried first) fails a strict-`exports` resolution; the bare specifier resolves to its ES module source,
+  which webpack bundles and code-splits normally.
+- **Lazy-loaded** (guardrail): `await import("pagedjs")` runs only inside the effect that fires when the
+  user switches to **Page view · A4** — verified in the production build: `/reports/[versionId]`'s own
+  route chunk stayed at **2.33 kB / 105 kB first load** (unchanged from before pagedjs was added); pagedjs
+  itself resolved into its own **~300 kB (minified) chunk**, confirmed present in `.next/static/chunks`
+  under its own numbered filename, not inlined into the route.
+- **`apps/console/app/reports/[versionId]/reportPrintRules.ts`** — `REPORT_PAGED_MEDIA_RULES` (the shared
+  fragmentation rules, now a named export `PRINT_CSS` wraps in `@media print` and `buildReportPagedCss`
+  reuses verbatim, unwrapped — Paged.js's rendering context already *is* paged media, no `@media` needed)
+  + `buildReportPagedCss(meta)`: `@page{size:A4;margin:14mm 12mm}`, a running header/footer via **CSS
+  Generated Content for Paged Media** (`@top-center`/`@bottom-left`/`@bottom-right`, static text — this
+  report has one "chapter" so content never varies by page — with `counter(page)`/`counter(pages)` for
+  page numbers), suppressed on the cover via `@page :first{...content:none}`. Values are CSS-escaped
+  (`escapeCssContent`) before being embedded in a `content: "…"` string.
+- **`apps/console/app/reports/[versionId]/ReportPagedView.tsx`** — the toggle (`.report-view-toggle`,
+  Continuous default). On switching to Page view: clones `.report-sheet` (stripping the `.pbreak` markers),
+  dynamically imports `pagedjs`, and calls `previewer.preview(html, [{href: cssText}], target)` — the
+  object form of the stylesheet argument, so the CSS is handed to Paged.js directly with no fetch/Blob URL
+  needed. Five explicit states: idle → loading (a status banner) → ready (`.pagedjs_page` elements visible)
+  or **failed** (an alert banner, Continuous view and the real Print/Save-as-PDF path unaffected — a
+  pagination bug in the preview must never look like the report itself is broken). The Continuous view's
+  DOM is `hidden`, not unmounted, when Page view is active, and vice versa.
+- **`apps/console/app/reports/[versionId]/reportPageBreaks.ts`** (pure, unit-tested) —
+  `computePageBreakIndices`: Continuous view's own lightweight "Page N break" markers (guardrail: kept
+  cheap here — advisory editing guides, not a fidelity claim). Greedy first-fit over each top-level block's
+  measured height against the A4 content-area height; a single block taller than a page is never split
+  around, it just overflows onto the next page on its own.
 
-**Proposing (a) as the default** — no new dependency, ships faster, and is honest about being an on-screen
-*preview* (the actual PDF pagination already comes from the browser's print engine + the R5a CSS, which is
-authoritative regardless of what the preview shows) — but this is genuinely a build vs. buy / cost vs.
-fidelity call, not something to guess silently on. **Holding R5b until this is confirmed**, same as the
-DA1 baseline-model and DA3c gate-composition pattern.
+## Gate (R5b)
 
-## Flip (R5a)
+| # | Item | Check |
+|---|---|---|
+| 1 | pagedjs is lazy-loaded — the report route's bundle size is unchanged from before the dependency was added; pagedjs resolves to its own separate chunk | verified in the production build (route stayed 2.33 kB / 105 kB; a ~300 kB chunk appears separately in `.next/static/chunks`) |
+| 2 | No new CVE from the dependency | `npm audit` diffed before/after — identical 3 pre-existing findings, none in pagedjs's own deps |
+| 3 | Page view uses the *same* paged-media rules (`REPORT_PAGED_MEDIA_RULES`) as the real print path — one fragmentation contract | `reportPageBreaks.test.ts` (`buildReportPagedCss` contains `REPORT_PAGED_MEDIA_RULES` verbatim) |
+| 4 | Running header/footer + page numbers render, suppressed on the cover only | `report-paged-view.spec.ts` (asserts `.pagedjs_margin-*-content` text per page) |
+| 5 | Continuous view's break markers are a pure, greedy first-fit; a too-tall block is never split around | `reportPageBreaks.test.ts` |
+| 6 | A Paged.js failure shows an alert, never a blank container — Continuous view and Print/Save-as-PDF stay unaffected | `ReportPagedView.tsx` (`pageState:"failed"`) — forcing an actual pagedjs failure is a human check |
+| 7 | Flag OFF renders `/reports/[versionId]` exactly as before (no toggle, no pagedjs reference at all) | code review — single flag-gated wrap around the existing article |
+| 8 | No uncatalogued serious/critical axe violations; no horizontal overflow with the toggle present | `scanWithBaseline(page, "report-paged-view")` + `expectNoHorizontalOverflow` |
+| 9 | **Flag hard-precondition** — once `.report-view-toggle` is present, every check is hard. The one conditional skip (flag not yet live) is removed at the flip PR. | `report-paged-view.spec.ts` |
+| 10 | `npm run typecheck` (all workspaces) · `@nzi/console` build · full unit suites green | ✅ |
+
+## Verification (R5a: PR #90, R5b: PR #91)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green; report route
+  bundle unchanged, pagedjs confirmed split into its own chunk.
+- `@nzi/contracts` — 74/74 · `@nzi/console` unit suite — 99/99 (+10 `reportPageBreaks.test.ts`).
+- `report-appendix.spec.ts` (3) + `report-paged-view.spec.ts` (5) — skip until `report-paged` is live;
+  **harden both at flip**.
+
+## Human check (required before flip — cannot be automated)
+
+Render **First Event's** multi-page audit (the seed CRP job with enough rows to span several A4 pages)
+both ways — **Page view · A4** in-app, and the actual **Print/Save-as-PDF** output — and confirm the two
+page maps agree: same page count, the audit table's header genuinely repeats at the same rows, no row cut
+in half, the running header/footer text and page numbers match. **If they diverge materially, that is a
+signal to chase (a Paged.js/browser fragmentation mismatch worth understanding), not something to paper
+over or wave through.** Record the outcome here.
+
+## Flip
 
 Append `report-paged` to `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` in the Render dashboard + rebuild; add to
-`render.yaml`. Harden `report-appendix.spec.ts` (remove the flag skip), run against deployed staging,
-record here + a human pass (print/Save-as-PDF an actual multi-page audit table on a job with enough rows
-and confirm the header genuinely repeats and no row is cut in half — the one check this spec cannot do
-itself).
+`render.yaml`. Harden `report-appendix.spec.ts` + `report-paged-view.spec.ts` (remove the flag skips), run
+against deployed staging, complete the human check above, record both here + in
+`docs/STAGING_ACCEPTANCE_R5.md`.
 
 ## Rollback
 
 Presentational + print-CSS only, additive. Remove `report-paged` + rebuild — the report renders exactly as
-before. No data / route / schema change.
+before, pagedjs is never fetched. No data / route / schema change. The `pagedjs` npm dependency can stay in
+`package.json` even with the flag off (it costs nothing unloaded); removing it entirely is a separate,
+optional cleanup if the slice is ever reverted for good.
