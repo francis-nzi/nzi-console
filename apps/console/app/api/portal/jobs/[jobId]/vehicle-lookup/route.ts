@@ -1,7 +1,7 @@
 import { lookupVehicleByRegistration, resolveVehicleFactor, withTenantRead } from "@nzi/isolated-backend";
 import { portalAuthFailure } from "../../../../../lib/authResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
-import { currentPortalUser } from "../../../../../lib/portalSession";
+import { currentPortalUser, requirePortalOrigin } from "../../../../../lib/portalSession";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 // still maps and calculates. The registration is transient, never persisted.
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
+    requirePortalOrigin(request);
     const user = await currentPortalUser(request);
     const { jobId } = await params;
     const body = (await request.json().catch(() => ({}))) as { registration?: unknown };
