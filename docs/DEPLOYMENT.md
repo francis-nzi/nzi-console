@@ -80,7 +80,8 @@ commits. Until then, every `NEXT_PUBLIC_*` flip is the manual dashboard step abo
 
 **Other flag variables.** The Report Studio (R-track) slices use their own build-inlined variable
 `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` (tokens: `report-svg-charts`, …) — same dashboard-edit-plus-rebuild
-procedure as above. R1's `report-svg-charts` is the first token; it is not yet in the dashboard value.
+procedure as above. Current dashboard value (3 Sep 2026): `report-svg-charts` (R1, live;
+`docs/STAGING_ACCEPTANCE_R1.md`).
 
 ## ⚠️ Notes / follow-ups
 

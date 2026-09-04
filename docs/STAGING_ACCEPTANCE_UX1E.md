@@ -25,16 +25,21 @@ Provisioned the acceptance accounts (`npm run acceptance:provision`, isolated no
 `npm run test:e2e` against **deployed staging** (`https://nzi-pro-api-prod.onrender.com`) with the full flag
 set live, 03 Sep 2026.
 
-- **`stage-sections.spec.ts` ×3 — PASS** (un-skipped: `job-stage-sections` is now live on the staging CRP
-  job, so the runtime skip guards no longer fire).
-  1. *renders the five workflow stages, Data Entry expanded* — five `section.nz-stage-sec` in workflow order
-     with the expected stage headings; `.nz-command-hero` gone; `.nz-focus-strip` visible; `#stage-data-entry`
-     has class `open` and holds the accordion; a collapsed later stage (`#stage-factor-mapping`) opens on
-     header click and shows its `.nz-panel`.
-  2. *the focus strip jumps to and opens the relevant stage* — the "QA decisions" strip button opens
-     `#stage-review-qa`.
-  3. *the stage layout passes the axe baseline and holds the column* — `scanWithBaseline(page, "stage-sections")`
-     (no uncatalogued serious/critical) + no horizontal overflow.
+- **`stage-sections.spec.ts` ×3 — PASS**, and hardened: the flag/shell check is now a **hard precondition,
+  not a conditional skip** — a missing shell fails loudly. (The 2 Sep run silently opted out because the flag
+  was not yet live; that must never recur.) Each test discovers the CRP job at the "Data entry" stage
+  (`discoverCrpJobAtStage`), fails if there is none, then `assertStageShell` asserts: exactly five
+  `section.nz-stage-sec` in order with ids `stage-setup` (done, collapsed) · `stage-data-entry` (active,
+  open) · `stage-factor-mapping` / `stage-review-qa` / `stage-report-publish` (todo, collapsed); each
+  section heading; `.nz-focus-strip` visible; `.nz-command-hero` absent. The only skip left is the
+  suite-wide "no staff account" gate (public smoke run).
+  1. *renders the five workflow stages, Data Entry expanded* — shell precondition + `#stage-data-entry`
+     holds the accordion; a collapsed later stage (`#stage-factor-mapping`) opens on header click and shows
+     its `.nz-panel`.
+  2. *the focus strip jumps to and opens the relevant stage* — shell precondition + the "QA decisions" strip
+     button opens `#stage-review-qa`.
+  3. *the stage layout passes the axe baseline and holds the column* — shell precondition +
+     `scanWithBaseline(page, "stage-sections")` (no uncatalogued serious/critical) + no horizontal overflow.
 - **`accessibility.spec.ts` job-workspace scan — PASS** — the job page with the stage-section shell active
   passes the axe baseline (no uncatalogued serious/critical).
 - **`crp-workspace.spec.ts` M2 + `source-register.spec.ts` S1 §9** — re-pointed for the stage-section layout
@@ -69,7 +74,7 @@ button all resolve to the Inter stack — NZC-003 satisfied; no serif). Canonica
 | 5 · Focus strip replaces the command hero — readiness %, next action, three exception jumps | ✅ e2e |
 | 6 · Workflow stage control (advance / back / note / history) still works | ✅ (unchanged; `WorkflowStageControl` renders above the body in both layouts) |
 | 7 · Opening a scope row still opens the evidence drawer (calculate → review → history → snapshot) | ✅ covered by `accordion.spec.ts` / CRP lifecycle specs |
-| 8 · `stage-sections.spec.ts` green · typecheck · `@nzi/console` build · console tests | ✅ e2e green · typecheck clean |
+| 8 · `stage-sections.spec.ts` green on deployed staging (hard shell precondition, no conditional skip) · typecheck · build · console tests | ✅ 3/3 on staging · typecheck clean |
 | No horizontal overflow 390/768/1280/1920 | ✅ automated |
 | Contrast (chrome + text) AA | ✅ automated (min 4.71) |
 | Inter throughout (NZC-003) | ✅ |
