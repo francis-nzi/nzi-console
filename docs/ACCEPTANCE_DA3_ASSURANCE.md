@@ -10,7 +10,7 @@ Sliced so the governance-critical piece lands last:
 |---|---|---|
 | **DA3a** | Read surface — five-year trend (BL pill always shown, "% vs BL" its own column with the NZC-060 neutral tone), By scope / By site / Audit / Intensity tabs, CSV export. Read-only. | 🟢 built (PR #86) |
 | **DA3b** | Right overlay drawer (table keeps full width; reopen tab) — gaps list, resolve-with-reason via `assurance.gap.resolve` (optimistic + `expectedVersion`), "fix the row" round-tripping `computeAssuranceGaps`; drawer doubles as the shared row-detail drawer | 🟢 built (PR #87) |
-| **DA3c** | Row approvals in-stage + **governed sign-off** — the gate (blocked while any gap open **or** any enabled row unapproved) → `report.snapshot.create` freezing the snapshot (+ the frozen `gapResolutions`), reviewer + timestamp. | 🟢 built |
+| **DA3c** | Row approvals in-stage + **governed sign-off** — the gate (blocked while any gap open **or** any enabled row unapproved) → `report.snapshot.create` freezing the snapshot (+ the frozen `gapResolutions`), reviewer + timestamp. | 🟢 built (PR #88) |
 
 ## DA3b — the gap drawer + resolve/fix
 
@@ -109,7 +109,7 @@ actual authority; a stale client view still gets a `GAPS_OPEN`/`QA_INCOMPLETE` r
 | 4 | A pending row can be approved in-stage without navigating to Data entry | `data-assurance.spec.ts` |
 | 5 | `npm run typecheck` · `@nzi/console` build · full unit suites green | ✅ |
 
-## Verification (DA3a+DA3b+DA3c, this branch)
+## Verification (DA3a+DA3b+DA3c: PR #86, #87, #88)
 
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green (routes registered).
 - `@nzi/contracts` 69/69 · `@nzi/isolated-backend` 237/237 (+2 `createReviewedCrpSnapshot` gap-gate:
