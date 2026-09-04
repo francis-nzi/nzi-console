@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { crpReportSectionTemplate } from "@nzi/contracts";
-import { CommandValidationError, VersionConflictError, editReportSection, resetReportSection } from "../src/index";
+import { crpReportSectionTemplate, crpReportSectionCatalogue } from "@nzi/contracts";
+import { CommandValidationError, VersionConflictError, editReportSection, regenerateReportSection, resetReportSection } from "../src/index";
 
 const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, idempotencyKey: "sec-1", correlationId: "corr-sec-1" };
 
@@ -73,6 +73,31 @@ describe("report section commands (NZC-048)", () => {
     assert.equal(result.data.version, 0);
     assert.equal(result.data.contentSource, "default");
     assert.ok(!state.writes.some((w) => w.sql.includes("report_sections") && !w.sql.includes("SELECT")));
+  });
+
+  it("regenerate writes the AI template variant with content-source ai and history", async () => {
+    const state = sectionPool({ currentVersion: 1 });
+    const result = await regenerateReportSection(state.pool, { jobId: "job-a", sectionKey: "executive-summary", expectedVersion: 1 }, context);
+    assert.equal(result.data.version, 2);
+    assert.equal(result.data.contentSource, "ai");
+    const ai = crpReportSectionCatalogue.find((s) => s.key === "executive-summary")!.aiBodyHtml;
+    assert.ok(state.writes.some((w) => w.sql.startsWith("UPDATE nzi_console.report_sections") && w.values.includes(ai)));
+    assert.ok(state.writes.some((w) => w.sql.startsWith("INSERT INTO nzi_console.report_section_versions") && w.values.includes("ai")));
+  });
+
+  it("regenerate on an untouched section (v0) inserts the AI draft at v1", async () => {
+    const state = sectionPool();
+    const result = await regenerateReportSection(state.pool, { jobId: "job-a", sectionKey: "background", expectedVersion: 0 }, context);
+    assert.equal(result.data.version, 1);
+    assert.ok(state.writes.some((w) => w.sql.startsWith("INSERT INTO nzi_console.report_sections")));
+  });
+
+  it("regenerate with a stale version conflicts", async () => {
+    const state = sectionPool({ currentVersion: 4 });
+    await assert.rejects(
+      () => regenerateReportSection(state.pool, { jobId: "job-a", sectionKey: "background", expectedVersion: 2 }, context),
+      VersionConflictError,
+    );
   });
 
   it("reset of an edited section restores the template body at a new version", async () => {

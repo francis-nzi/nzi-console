@@ -25,8 +25,10 @@ describe("CRP report section catalogue (NZC-048)", () => {
     assert.equal(new Set(ordinals).size, ordinals.length);
     for (const section of crpReportSectionCatalogue) {
       assert.ok(section.title.trim().length > 0, section.key);
-      assert.match(section.defaultBodyHtml, /^<(p|ul)>/);
-      assert.doesNotMatch(section.defaultBodyHtml, /<script|onclick|javascript:/i);
+      for (const body of [section.defaultBodyHtml, section.aiBodyHtml]) {
+        assert.match(body, /^<(p|ul)>/, section.key);
+        assert.doesNotMatch(body, /<script|onclick|javascript:/i);
+      }
     }
   });
 
