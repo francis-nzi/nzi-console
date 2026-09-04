@@ -46,8 +46,10 @@ Also: add **M8 · Data Assurance (DA-track)** to `REDESIGN_ROLLOUT.md` (burndown
   - the unmatched-factor list → a **"Needs attention"** lens/filter within Data entry (the accordion already
     has a Needs-attention toggle — surface `!row.factorLabel` rows there).
 - **`CrpStageSections.tsx`** — now four sections; `StageFocusStrip` jump targets drop "Factor mapping".
-- Flag: **`lifecycle-4stage`** (add to `DataEntryAdapter` in `featureFlags.ts`; append to the dashboard
-  `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` + rebuild — see §6).
+- **No flag** (Francis, 4 Sep 2026): `jobWorkflowStages.crp` + the one-way stage migration have no clean
+  seam to gate — a flag would only gate cosmetic UI while the contract + migration change globally. Land
+  atomically like DA5. `data-assurance` (DA3) and `entry-lean-capture` (DA4) remain real flags.
+  *(Delivered — PR #85; `docs/ACCEPTANCE_DA2_LIFECYCLE_4STAGE.md`.)*
 
 ### 2.2 Lean capture + drawer refine (NZC-058)
 - **`apps/console/app/jobs/emissionEntryModel.ts`** — `buildEmissionEntryFields` currently pushes factor,
@@ -131,7 +133,7 @@ normal green/amber. *(Recommended default — Francis to confirm; the prototype 
 | Slice | Scope | Flag | Acceptance |
 |---|---|---|---|
 | DA1 | Backend: multi-year aggregation read models + baseline/prior-year resolution + gap-engine computation (4 flags) + gap-resolution store. No UI. | — (additive) | unit tests on aggregation + each flag; migration applied + schema-probe |
-| DA2 | Lifecycle 5→4: contract change + stage migration; retire Factor-mapping section; re-home roll-ups to Data entry + unmatched to Needs-attention | `lifecycle-4stage` | `lifecycle-4stage.spec.ts` — 4 stages render; adjacency transitions; existing "Factor mapping" jobs migrated; roll-ups + unmatched reachable in Data entry |
+| DA2 | Lifecycle 5→4: contract change + stage migration; retire Factor-mapping section; re-home roll-ups to Data entry + unmatched to Needs-attention | **— (no flag)** | `stage-sections.spec.ts` (4 stages), `commands.test.ts` (adjacency), `migrations.test.ts` (0053 remap) — **done, PR #85** |
 | DA3 | Data Assurance surface: five-year trend (BL pill, % vs BL), supporting tabs, right overlay drawer, gap list with fix/resolve, row approvals in-stage, governed sign-off + snapshot | `data-assurance` | `data-assurance.spec.ts` — see §5.1 |
 | DA4 | Lean capture + drawer refine: core-fields capture; detail fields to the row drawer | `entry-lean-capture` | `lean-capture.spec.ts` — capture shows core only; drawer holds factor/quality/confidence/notes/docs; happy-path accept-match→qty→save |
 | DA5 | Unit set fix: miles + passenger-distance | — | unit test + entry e2e can select miles |
@@ -153,7 +155,7 @@ normal green/amber. *(Recommended default — Francis to confirm; the prototype 
 
 ## 6. Migrations & gotchas (read before building)
 - **NEXT_PUBLIC flags are build-time inlined + the Render dashboard value is authoritative.** Every new flag
-  (`lifecycle-4stage`, `entry-lean-capture`, `data-assurance`) must be **appended to the dashboard
+  (`entry-lean-capture`, `data-assurance`) must be **appended to the dashboard
   `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value AND trigger a rebuild** — `render.yaml` alone is cosmetic on this
   service (already in DEPLOYMENT.md; confirm the note is there).
 - **Migration ledger:** the manual `apply-migration` step has no ledger — a skipped number is invisible until a

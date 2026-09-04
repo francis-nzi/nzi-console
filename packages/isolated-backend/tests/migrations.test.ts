@@ -60,6 +60,7 @@ const trainingEntitlementsMigration=readFileSync(resolve(here,"../migrations/004
 const consultancyMigration=readFileSync(resolve(here,"../migrations/0050_consultancy.sql"),"utf8");
 const reportSectionsMigration=readFileSync(resolve(here,"../migrations/0051_report_sections.sql"),"utf8");
 const gapResolutionsMigration=readFileSync(resolve(here,"../migrations/0052_gap_resolutions.sql"),"utf8");
+const retireFactorMappingMigration=readFileSync(resolve(here,"../migrations/0053_retire_factor_mapping_stage.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -157,6 +158,22 @@ describe("isolated Postgres migrations", () => {
     // tenant safety on both tables
     assert.equal((reportSectionsMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
     assert.equal((reportSectionsMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
+  });
+
+  it("remaps CRP jobs off the retired Factor-mapping stage, logs it, and guards completeness (0053)",()=>{
+    // CRP-only — the UPDATE and the guard both filter job_family = 'crp'
+    assert.equal((retireFactorMappingMigration.match(/job_family = 'crp'/g)||[]).length,2);
+    assert.match(retireFactorMappingMigration,/j\.workflow_stage = 'Factor mapping'/);
+    // remap rule: → Data entry if any enabled row lacks a factor, else Review & QA
+    assert.match(retireFactorMappingMigration,/r\.factor_id IS NULL/);
+    assert.match(retireFactorMappingMigration,/THEN 'Data entry' ELSE 'Review & QA' END/);
+    assert.match(retireFactorMappingMigration,/version = j\.version \+ 1/);
+    // recorded in the immutable stage-transition trail
+    assert.match(retireFactorMappingMigration,/INSERT INTO nzi_console\.job_stage_history/);
+    assert.match(retireFactorMappingMigration,/'stage retired \(NZC-057\)'/);
+    assert.match(retireFactorMappingMigration,/'migration:nzc-057'/);
+    // guard: nothing left at the retired stage
+    assert.match(retireFactorMappingMigration,/RAISE EXCEPTION 'NZC-057 remap incomplete/);
   });
 
   it("keeps gap resolutions tenant-isolated, keyed to job + gap_key, non-deletable (0052)",()=>{

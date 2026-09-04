@@ -63,9 +63,9 @@ describe("Postgres command boundary", () => {
       if (sql.includes("UPDATE nzi_console.jobs SET workflow_stage")) return { rows: [{ version: 4 }] };
       return { rows: [] };
     }, release() {} };
-    const result = await changeJobStage({ connect: async () => client } as never, { jobId: "712", fromStage: "Data entry", toStage: "Factor mapping", expectedVersion: 3, note: "Data collection complete" }, { ...context, idempotencyKey: "stage-1" });
+    const result = await changeJobStage({ connect: async () => client } as never, { jobId: "712", fromStage: "Data entry", toStage: "Review & QA", expectedVersion: 3, note: "Data collection complete" }, { ...context, idempotencyKey: "stage-1" });
     assert.equal(result.data.version, 4);
-    assert.equal(result.data.toStage, "Factor mapping");
+    assert.equal(result.data.toStage, "Review & QA");
     assert.ok(calls.some((sql) => sql.includes("INSERT INTO nzi_console.job_stage_history")));
     assert.ok(calls.some((sql) => sql.includes("INSERT INTO nzi_console.audit_events")));
     assert.ok(calls.some((sql) => sql.includes("COMMIT")));
@@ -77,7 +77,7 @@ describe("Postgres command boundary", () => {
       if (sql.includes("SELECT job_family")) return { rows: [{ job_family: "crp", workflow_stage: "Data entry", version }] };
       return { rows: [] };
     }, release() {} }) }) as never;
-    await assert.rejects(() => changeJobStage(poolFor(4), { jobId: "712", fromStage: "Data entry", toStage: "Factor mapping", expectedVersion: 3 }, { ...context, idempotencyKey: "stage-stale" }), VersionConflictError);
+    await assert.rejects(() => changeJobStage(poolFor(4), { jobId: "712", fromStage: "Data entry", toStage: "Review & QA", expectedVersion: 3 }, { ...context, idempotencyKey: "stage-stale" }), VersionConflictError);
     await assert.rejects(() => changeJobStage(poolFor(3), { jobId: "712", fromStage: "Data entry", toStage: "Report & publish", expectedVersion: 3 }, { ...context, idempotencyKey: "stage-skip" }), CommandValidationError);
   });
 

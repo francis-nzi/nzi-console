@@ -23,9 +23,12 @@ export async function discoverCrpJobAtStage(
   const body = (await json(request, "/api/isolated/jobs")) as {
     jobs?: Array<{ header?: { id?: string; number?: string; family?: string; workflowStage?: string } }>;
   };
-  const match = (body.jobs ?? []).find(
+  const candidates = (body.jobs ?? []).filter(
     (job) => job.header?.family === "crp" && job.header?.workflowStage === workflowStage,
   );
+  // Prefer the seeded demonstrator J000712 (the populated CRP job every spec
+  // targets); fall back to the first match.
+  const match = candidates.find((job) => job.header?.number === "J000712") ?? candidates[0];
   return match?.header?.id ? { id: match.header.id, number: match.header.number ?? match.header.id } : null;
 }
 

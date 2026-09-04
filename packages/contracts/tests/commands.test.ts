@@ -11,6 +11,16 @@ describe("command contracts", () => {
       assert.equal(isAllowedJobStageTransition(typedFamily, stages[0]!, stages[2]!), false);
     }
   });
+  it("CRP is a four-stage lifecycle with Factor mapping retired (NZC-057)", () => {
+    assert.deepEqual(jobWorkflowStages.crp, ["Setup", "Data entry", "Review & QA", "Report & publish"]);
+    assert.ok(!(jobWorkflowStages.crp as readonly string[]).includes("Factor mapping"));
+    // Data entry ↔ Review & QA is now the adjacent transition
+    assert.equal(isAllowedJobStageTransition("crp", "Data entry", "Review & QA"), true);
+    assert.equal(isAllowedJobStageTransition("crp", "Review & QA", "Data entry"), true);
+    assert.equal(isAllowedJobStageTransition("crp", "Data entry", "Report & publish"), false);
+    // pcf keeps its Factor mapping stage — CRP-only change
+    assert.ok((jobWorkflowStages.pcf as readonly string[]).includes("Factor mapping"));
+  });
   it("validates client and job creation before transport", () => {
     assert.equal(validateCommand("client.create", { name: "", status: "active", sector: "Services", location: "London", owner: "A" }, context).some((issue) => issue.field === "name"), true);
     assert.equal(validateCommand("job.create", { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "A", startDate: "2026-12-31", dueDate: "2026-01-01" }, context).some((issue) => issue.code === "INVALID_RANGE"), true);

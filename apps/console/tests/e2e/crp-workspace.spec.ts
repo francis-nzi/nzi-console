@@ -25,9 +25,9 @@ test.describe("M2 — CRP job workspace renders end to end", () => {
     // workspace when the fidelity schema first landed. ("Client methodology" is
     // the panel eyebrow in both the plain and the `client-factors`-managed view.)
     // Under `job-stage-sections` the client-factor panel is re-homed into the
-    // collapsed Setup section and the register into Factor mapping — expand both.
+    // collapsed Setup section; the per-entity register is in the (open) Data
+    // entry stage since NZC-057 retired the Factor mapping stage.
     await expandJobStage(page, "stage-setup");
-    await expandJobStage(page, "stage-factor-mapping");
     await expect(page.getByText("Client methodology", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Per-entity register", { exact: false })).toBeVisible();
 

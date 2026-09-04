@@ -641,7 +641,8 @@ Data entry**, not a stage everyone walks through. `packages/contracts/src/comman
 drives `isAllowedJobStageTransition` (adjacent-only) and `WorkflowStageControl`, so both follow the array.
 **CRP-only** — `pcf` keeps its "Factor mapping" stage. Existing CRP jobs at `workflow_stage = "Factor mapping"`
 migrate in the same PR: **→ "Data entry"** if any enabled row lacks a factor, else **→ "Review & QA"**, logged
-in the stage-transition / audit trail as "stage retired (NZC-057)". Flag `lifecycle-4stage`.
+in the stage-transition / audit trail as "stage retired (NZC-057)". **No flag** — the contract array plus
+the one-way stage migration have no clean seam; landed atomically (DA2, PR #85). Migration `0053`.
 *Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §2.1; prototype `docs/prototypes/review_qa_v1.html`.*
 
 ### NZC-058 — Lean capture + drawer refine [Confirmed 4 Sep 2026]
