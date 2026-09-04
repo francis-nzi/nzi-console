@@ -8,7 +8,7 @@ Sliced so the part with no design ambiguity lands first:
 
 | Slice | Scope | Status |
 |---|---|---|
-| **R5a** | Audit appendices (Appendix 1 Full Emissions Audit, Appendix 2 by Site/Scope/Category) + the repeating-header / row-atomic print CSS that makes them paginate cleanly. | 🟢 built |
+| **R5a** | Audit appendices (Appendix 1 Full Emissions Audit, Appendix 2 by Site/Scope/Category) + the repeating-header / row-atomic print CSS that makes them paginate cleanly. | 🟢 built (PR #90) |
 | R5b | On-screen Continuous / Page view · A4 toggle, running header/footer, dashed page-break markers. | ⏳ proposed — pagination-computation approach needs confirming before deep build |
 
 ## R5a — the audit appendices
