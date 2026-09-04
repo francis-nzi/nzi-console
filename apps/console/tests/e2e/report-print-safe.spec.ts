@@ -51,7 +51,8 @@ test.describe("R1 — print-safe report chart pack", () => {
     const integrity = page.locator(".nz-report-integrity");
     await expect(integrity).toBeVisible();
     await expect(integrity).not.toHaveClass(/(^|\s)fail(\s|$)/);
-    await expect(integrity).toContainText(/every chart figure matches Outputs/i);
+    await expect(integrity).toContainText(/data integrity check passed/i);
+    await expect(integrity).toContainText(/chart figure/i);
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });

@@ -197,7 +197,7 @@ adapters. **Sequenced after the data-entry tracks** (UX1 + adapters).
 |---|---|---|---|
 | R1 | Print-safe chart pack — report charts to deterministic SVG from the snapshot + single render-ready signal (kills the PDF breakage) | `report-svg-charts` | 🟢 built (#76) + **flag live on staging 3 Sep 2026**; automated gate green (`docs/STAGING_ACCEPTANCE_R1.md`); human pass (gate #11) outstanding. Flag var: **`NEXT_PUBLIC_FEATURE_REPORT_STUDIO`**. |
 | R2 | Section model + provenance — ordered versioned sections, `contentSource`, Reset-to-default (backend/model; no new editing UI) | `report-sections` | 🟢 built (PR #78); migration `0051` applied to staging; `docs/ACCEPTANCE_R2_SECTION_MODEL.md`. No visible change — R4 adds the editor + rendering. |
-| R3 | Data-bound figure tokens — token catalogue + resolver + locked-chip renderer; extend the data-integrity banner to charts + tokens | `report-tokens` | ⏳ queued |
+| R3 | Data-bound figure tokens — token catalogue + resolver + locked-chip renderer; extend the data-integrity banner to charts + tokens | `report-tokens` | 🟢 built (PR #80); `docs/ACCEPTANCE_R3_FIGURE_TOKENS.md`. Renders the R2 sections (read-only) with resolved chips. Flip pending staging flag + `report-figure-tokens.spec.ts` harden + human pass. |
 | R4 | In-place section editing + Regenerate — rich-text scoped to section bodies; generalise Report Preparation AI to every section | `report-edit` | ⏳ queued |
 | R5 | Paged preview + repeating headers + running header/footer — Continuous/Page-view toggle, paged-media CSS, live-PDF header/footer, page-break markers | `report-paged` | ⏳ queued |
 
