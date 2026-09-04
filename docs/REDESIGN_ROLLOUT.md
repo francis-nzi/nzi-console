@@ -235,12 +235,14 @@ updated to the 4-stage shape in DA2.
 | DA3a | Data Assurance **read surface** — five-year trend (BL pill, % vs BL), By scope / By site / Audit / Intensity tabs, CSV export | `data-assurance` | `data-assurance.spec.ts` | 🟢 built (PR #86); `docs/ACCEPTANCE_DA3_ASSURANCE.md`; flip pending staging flag + spec harden + human pass |
 | DA3b | Gap drawer + resolve/fix — right overlay (table stays full width), gaps list, `assurance.gap.resolve` (optimistic + `expectedVersion`), fix-the-row round-trip, doubles as row-detail | `data-assurance` | in `data-assurance.spec.ts` | 🟢 built (PR #87) |
 | DA3c | Row approvals in-stage + **governed sign-off** (blocked while any gap open or any row unapproved) → `report.snapshot.create` freeze | `data-assurance` | in `data-assurance.spec.ts` | 🟢 built (PR #88) — integration outline confirmed by Francis 4 Sep 2026 |
-| DA4 | Lean capture + drawer refine — core-fields capture; factor / quality / confidence / notes / docs / reasoned override move to the row drawer (NZC-058) | `entry-lean-capture` | `lean-capture.spec.ts` | ⏳ |
+| DA4 | Lean capture + drawer refine — core-fields capture; factor / quality / confidence / notes / docs / reasoned override move to the row drawer (NZC-058) | `entry-lean-capture` | `lean-capture.spec.ts` | 🟢 built (PR #89) |
 
-**Order:** DA5 (done) → DA1 (done) → DA2 (done) → DA3 (done: 3a/3b/3c) → DA4. DA2 has **no flag** (one-way
-contract + migration, no clean seam — atomic like DA5). The remaining new flags (`entry-lean-capture`,
-`data-assurance`) are appended to the Render dashboard `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild
-(`render.yaml` alone is cosmetic — see `DEPLOYMENT.md`).
+**Order:** DA5 (done) → DA1 (done) → DA2 (done) → DA3 (done: 3a/3b/3c) → DA4 (done). **All five DA-track
+slices are built.** DA2 has **no flag** (one-way contract + migration, no clean seam — atomic like DA5). The
+remaining flags (`entry-lean-capture`, `data-assurance`) still need flipping on the Render dashboard
+`NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild (`render.yaml` alone is cosmetic — see `DEPLOYMENT.md`),
+plus the human sensory pass on each — see `docs/ACCEPTANCE_DA3_ASSURANCE.md` /
+`docs/ACCEPTANCE_DA4_LEAN_CAPTURE.md`.
 
 **R-track interaction:** R1–R4 are built and merged (flag-off). **No new R-track slice until DA3 lands** —
 hold R5 (paged output). DA's sign-off and the R-track's "Mark Final" freeze the same snapshot.
