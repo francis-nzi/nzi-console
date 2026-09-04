@@ -9,7 +9,7 @@ Sliced so the part with no design ambiguity lands first:
 | Slice | Scope | Status |
 |---|---|---|
 | **R5a** | Audit appendices (Appendix 1 Full Emissions Audit, Appendix 2 by Site/Scope/Category) + the repeating-header / row-atomic print CSS that makes them paginate cleanly. | 🟢 built (PR #90) |
-| **R5b** | On-screen Continuous / Page view · A4 toggle, running header/footer, page numbers, dashed page-break markers. | 🟢 built — Paged.js, confirmed by Francis 4 Sep 2026 |
+| **R5b** | On-screen Continuous / Page view · A4 toggle, running header/footer, page numbers, dashed page-break markers. | 🟢 built (PR #91) — Paged.js, confirmed by Francis 4 Sep 2026 |
 
 ## R5a — the audit appendices
 
@@ -115,7 +115,7 @@ view is a high-fidelity *preview* of it, not a byte-identity guarantee.
 | 9 | **Flag hard-precondition** — once `.report-view-toggle` is present, every check is hard. The one conditional skip (flag not yet live) is removed at the flip PR. | `report-paged-view.spec.ts` |
 | 10 | `npm run typecheck` (all workspaces) · `@nzi/console` build · full unit suites green | ✅ |
 
-## Verification (R5a + R5b, this branch)
+## Verification (R5a: PR #90, R5b: PR #91)
 
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green; report route
   bundle unchanged, pagedjs confirmed split into its own chunk.
