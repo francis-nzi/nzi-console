@@ -12,6 +12,7 @@ import {
   isRegistrationKind,
   isSpendKind,
   manualEntryHint,
+  matchFactorByActivity,
   parseEntryNumber,
   scopeRowToEmissionEntryDraft,
   type EmissionEntryDraft,
@@ -29,8 +30,8 @@ const cat = (name: string): EmissionCategory => {
   if (!found) throw new Error(`no taxonomy category ${name}`);
   return found;
 };
-const keys = (category: EmissionCategory, audience: "crm" | "portal", mode: "new" | "existing" = "new") =>
-  buildEmissionEntryFields(category, audience, mode).map(field => field.key);
+const keys = (category: EmissionCategory, audience: "crm" | "portal", mode: "new" | "existing" = "new", leanCapture = false) =>
+  buildEmissionEntryFields(category, audience, mode, leanCapture).map(field => field.key);
 
 describe("buildEmissionEntryFields — one canonical order (NZC-046 §3)", () => {
   it("keeps site → activity → quantity → unit → monthly → note → documents for a plain manual category, both surfaces", () => {
@@ -298,5 +299,35 @@ describe("entryUnitsForCategory (DA5 / NZC-061)", () => {
       const units = entryUnitsForCategory(category);
       assert.equal(new Set(units).size, units.length, category.name);
     }
+  });
+});
+
+describe("lean capture (DA4 / NZC-058)", () => {
+  it("a new CRM entry drops quality tier / data confidence / note / documents, and shows the factor read-only", () => {
+    const gas = cat("Natural Gas");
+    const lean = buildEmissionEntryFields(gas, "crm", "new", true);
+    assert.deepEqual(lean.map(field => field.key), ["siteBanner", "activity", "quantity", "unit", "monthly", "factor"]);
+    assert.equal(lean.find(field => field.key === "factor")?.control, "factor-review");
+  });
+
+  it("only applies to a NEW crm entry — existing rows, and the portal, are unaffected", () => {
+    const gas = cat("Natural Gas");
+    assert.deepEqual(keys(gas, "crm", "existing", true), keys(gas, "crm", "existing", false));
+    assert.deepEqual(keys(gas, "portal", "new", true), keys(gas, "portal", "new", false));
+    assert.ok(keys(gas, "crm", "existing", true).includes("qualityTier"));
+  });
+
+  it("leanCapture=false (the default) keeps the full capture form, unchanged", () => {
+    const gas = cat("Natural Gas");
+    assert.deepEqual(keys(gas, "crm", "new"), keys(gas, "crm", "new", false));
+    assert.equal(buildEmissionEntryFields(gas, "crm", "new").find(field => field.key === "factor")?.control, "factor-select");
+  });
+
+  it("matchFactorByActivity matches a listed factor label, trimmed and case-insensitive, and nothing else", () => {
+    const factors = [{ id: "f-diesel", label: "Diesel — LGV" }, { id: "f-petrol", label: "Petrol — car" }];
+    assert.equal(matchFactorByActivity("Diesel — LGV", factors)?.id, "f-diesel");
+    assert.equal(matchFactorByActivity("  diesel — lgv  ", factors)?.id, "f-diesel");
+    assert.equal(matchFactorByActivity("Diesel", factors), null);
+    assert.equal(matchFactorByActivity("", factors), null);
   });
 });

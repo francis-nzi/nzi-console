@@ -69,6 +69,7 @@ export type EmissionEntryControl =
   | "months"
   | "spend-group"
   | "factor-select"
+  | "factor-review"
   | "select"
   | "textarea"
   | "dropzone"
@@ -121,16 +122,27 @@ export function manualEntryHint(category: EmissionCategory): string {
 /**
  * The canonical field order for one entry, both surfaces. The portal drops the
  * factor / quality / confidence / lineage fields — it never sees or sets them.
+ *
+ * DA4 (NZC-058) — `leanCapture` (behind `entry-lean-capture`) makes a **new**
+ * CRM entry core-fields-only: registration/activity, quantity + unit,
+ * site-context, save. Factor is auto-matched from the picked activity and
+ * shown read-only (`factor-review`, not a required pick); quality tier, data
+ * confidence, evidence notes and supporting documents move to the row's
+ * detail drawer for post-save editing (already the existing row-editor
+ * surface — no new drawer fields needed). Existing-row editing and the
+ * portal are unaffected.
  */
 export function buildEmissionEntryFields(
   category: EmissionCategory,
   audience: EntryAudience,
   mode: EntryMode,
+  leanCapture = false,
 ): EmissionEntryField[] {
   const spend = isSpendKind(category);
   const reg = isRegistrationKind(category);
   const scopeLabel = scopeMeta[category.scope].label;
   const scopedTo = `Scope ${category.scope} · ${category.name}`;
+  const lean = leanCapture && audience === "crm" && mode === "new";
   const fields: EmissionEntryField[] = [];
 
   // 1 — site is context, shown as a banner, changed on the row not here (§2)
@@ -200,39 +212,49 @@ export function buildEmissionEntryFields(
     });
   }
 
-  // 8–10 — factor + quality + confidence: consultant only, portal never sees them
+  // 8–10 — factor + quality + confidence: consultant only, portal never sees them.
+  // DA4/lean: factor is shown read-only (auto-matched, not a required pick) and
+  // quality tier / data confidence move to the row drawer for after saving.
   if (audience === "crm") {
     fields.push({
       key: "factor",
       label: "Emission factor",
-      control: "factor-select",
-      hint: `Set from the selected activity; limited to ${scopedTo}.`,
+      control: lean ? "factor-review" : "factor-select",
+      hint: lean
+        ? "Matched from the activity you picked — refine or override in the row's evidence panel after saving."
+        : `Set from the selected activity; limited to ${scopedTo}.`,
     });
-    fields.push({ key: "qualityTier", label: "Quality tier", control: "select" });
+    if (!lean) {
+      fields.push({ key: "qualityTier", label: "Quality tier", control: "select" });
+      fields.push({
+        key: "dataConfidence",
+        label: "Data confidence",
+        control: "select",
+        hint: "NZC-044.",
+      });
+    }
+  }
+
+  // 11 — evidence note (DA4/lean: moves to the row drawer)
+  if (!lean) {
     fields.push({
-      key: "dataConfidence",
-      label: "Data confidence",
-      control: "select",
-      hint: "NZC-044.",
+      key: "note",
+      label: audience === "portal" ? "Evidence note" : "Notes",
+      control: "textarea",
+      optional: true,
     });
   }
 
-  // 11 — evidence note
-  fields.push({
-    key: "note",
-    label: audience === "portal" ? "Evidence note" : "Notes",
-    control: "textarea",
-    optional: true,
-  });
-
-  // 12 — supporting documents
-  fields.push({
-    key: "documents",
-    label: "Supporting documents",
-    control: "dropzone",
-    hint: "PDF · image · spreadsheet · virus-scanned on upload.",
-    optional: true,
-  });
+  // 12 — supporting documents (DA4/lean: moves to the row drawer)
+  if (!lean) {
+    fields.push({
+      key: "documents",
+      label: "Supporting documents",
+      control: "dropzone",
+      hint: "PDF · image · spreadsheet · virus-scanned on upload.",
+      optional: true,
+    });
+  }
 
   // 13 — calculation lineage + provenance, consultant view of an existing row
   if (audience === "crm" && mode === "existing") {
@@ -302,6 +324,21 @@ const CONFIDENCE_TO_CODE: Record<string, "H" | "M" | "L"> = {
 const CODE_TO_CONFIDENCE: Record<string, string> = {
   H: "H — High", M: "M — Medium", L: "L — Low",
 };
+
+/**
+ * DA4 (NZC-058) — lean capture's "auto-set from the matched activity": the
+ * activity smart-search already lists factor labels as its suggestions, so an
+ * exact (trimmed, case-insensitive) pick is treated as a match and the factor
+ * is set without a separate required pick.
+ */
+export function matchFactorByActivity(
+  activity: string,
+  factors: EntryFactorOption[],
+): EntryFactorOption | null {
+  const needle = activity.trim().toLowerCase();
+  if (!needle) return null;
+  return factors.find((option) => option.label.trim().toLowerCase() === needle) ?? null;
+}
 
 export function parseEntryNumber(value: string | undefined): number | null {
   const trimmed = (value ?? "").replace(/[,\s]/g, "").trim();

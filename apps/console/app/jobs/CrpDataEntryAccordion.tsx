@@ -16,6 +16,7 @@ import {
 } from "./dataEntryAccordion";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRef } from "./emissionEntryModel";
+import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -238,6 +239,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                               onSubmit={submitEntry(entry.category)}
                               onSaveDraft={submitEntry(entry.category)}
                               onLookupRegistration={lookupRegistration}
+                              leanCapture={dataEntryAdapterEnabled("entry-lean-capture")}
                             />
                           </div>
                         ) : null}

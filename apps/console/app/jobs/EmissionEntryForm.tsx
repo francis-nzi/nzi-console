@@ -13,6 +13,7 @@ import {
   isRegistrationKind,
   isSpendKind,
   manualEntryHint,
+  matchFactorByActivity,
   type EmissionEntryDraft,
   type EmissionEntryLineageStep,
   type EntryAudience,
@@ -39,6 +40,8 @@ export type EmissionEntryFormProps = {
   busy?: boolean;
   error?: string;
   notice?: string;
+  /** DA4 (NZC-058), behind `entry-lean-capture` — core-fields-only new-entry capture. */
+  leanCapture?: boolean;
   onSubmit: (draft: EmissionEntryDraft) => void | Promise<void>;
   onSaveDraft?: (draft: EmissionEntryDraft) => void | Promise<void>;
   onCancel: () => void;
@@ -59,7 +62,12 @@ const monthLabel = (key: string) => {
     : parsed.toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
 };
 
-const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null): EmissionEntryDraft => ({
+// DA4 (NZC-058) — a lean-captured row leaves quality tier / data confidence
+// genuinely unset (mapped to null by emissionEntryDraftToScopeRow) rather than
+// silently defaulting, so the existing QA_INCOMPLETE / Approve gates still
+// force the consultant to set them for real in the row's evidence panel —
+// deferred, not skipped.
+const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null, lean = false): EmissionEntryDraft => ({
   activity: seed?.activity ?? "",
   quantity: seed?.quantity ?? "",
   unit: seed?.unit ?? units[0] ?? "",
@@ -70,17 +78,18 @@ const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null):
   manualMode: seed?.manualMode ?? false,
   manualDetail: seed?.manualDetail ?? "",
   factorId: seed?.factorId ?? "",
-  qualityTier: seed?.qualityTier ?? QUALITY_TIERS[0],
-  dataConfidence: seed?.dataConfidence ?? DATA_CONFIDENCE[1],
+  qualityTier: seed?.qualityTier ?? (lean ? "" : QUALITY_TIERS[0]),
+  dataConfidence: seed?.dataConfidence ?? (lean ? "" : DATA_CONFIDENCE[1]),
   note: seed?.note ?? "",
   monthlyOpen: seed?.monthlyOpen ?? false,
   monthly: seed?.monthly ?? {},
 });
 
 export function EmissionEntryForm(props: EmissionEntryFormProps) {
-  const { category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [] } = props;
+  const { category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [], leanCapture = false } = props;
   const mode: EntryMode = entry ? "existing" : "new";
-  const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry));
+  const lean = leanCapture && audience === "crm" && mode === "new";
+  const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry, lean));
   const [lookup, setLookup] = useState<
     | { state: "idle" }
     | { state: "loading" }
@@ -89,7 +98,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   >({ state: "idle" });
   const listId = useId();
 
-  const fields = useMemo(() => buildEmissionEntryFields(category, audience, mode), [category, audience, mode]);
+  const fields = useMemo(() => buildEmissionEntryFields(category, audience, mode, leanCapture), [category, audience, mode, leanCapture]);
   const actions = useMemo(() => emissionEntryActions(audience, mode), [audience, mode]);
   const spend = isSpendKind(category);
   const reg = isRegistrationKind(category);
@@ -190,7 +199,13 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
               <label key={field.key} className="nz-fl">{field.label} <span className="muted">· smart search</span>
                 <input className="nz-inp" list={listId} value={draft.activity}
                   placeholder={spend ? "Search suppliers / ledger…" : "Search this category’s activities…"}
-                  onChange={event => patch({ activity: event.target.value })} />
+                  onChange={event => {
+                    const activity = event.target.value;
+                    // DA4 — lean capture auto-matches the factor from an exact
+                    // activity pick instead of a separate required select.
+                    if (lean) patch({ activity, factorId: matchFactorByActivity(activity, factors)?.id ?? "" });
+                    else patch({ activity });
+                  }} />
                 <datalist id={listId}>{factors.map(option => <option key={option.id} value={option.label} />)}</datalist>
                 <span className="nz-hint">{field.hint}</span>
               </label>
@@ -282,6 +297,28 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
               </label>
             );
 
+          // DA4 — lean capture: the factor is auto-matched, shown for
+          // confirmation only. It is refined/overridden in the row's evidence
+          // panel after saving, not picked here.
+          case "factor-review": {
+            const matched = factors.find(option => option.id === draft.factorId) ?? null;
+            return (
+              <div key={field.key} className="nz-ef-factor-review">
+                <span className="nz-eyebrow">{field.label}</span>
+                {matched ? (
+                  <div className="nz-banner ok" role="status">
+                    <b>{matched.label}</b>{matched.unit ? ` · ${matched.unit}` : ""}
+                  </div>
+                ) : (
+                  <div className="nz-banner warn" role="status">
+                    No factor matched yet — pick a listed activity above, or set one after saving.
+                  </div>
+                )}
+                <span className="nz-hint">{field.hint}</span>
+              </div>
+            );
+          }
+
           case "select":
             return field.key === "qualityTier" ? (
               <label key={field.key} className="nz-fl">Quality tier
@@ -341,6 +378,11 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             return null;
         }
       })}
+
+      {lean ? (
+        <p className="nz-hint">Quality tier, data confidence, evidence notes and supporting documents are set
+          in the row's evidence panel after saving.</p>
+      ) : null}
 
       <div className="nz-dact">
         <button type="button" className="nz-btn" onClick={props.onCancel}>Cancel</button>
