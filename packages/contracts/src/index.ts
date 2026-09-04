@@ -37,6 +37,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
 export function contractFor<T>(key: ScreenKey): ScreenContract<T> { return screenContracts[key] as ScreenContract<T>; }
 export function hasData<T>(result: ScreenResult<T>): result is Extract<ScreenResult<T>, { state: "success" | "degraded" }> { return result.state === "success" || result.state === "degraded"; }
 export * from "./commands";
+export * from "./reportSections";
 export * from "./spendImport";
 export * from "./jobFamilies";
 export * from "./trainingFamily";
