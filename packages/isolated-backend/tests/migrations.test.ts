@@ -59,6 +59,7 @@ const trainingCoreMigration=readFileSync(resolve(here,"../migrations/0048_traini
 const trainingEntitlementsMigration=readFileSync(resolve(here,"../migrations/0049_training_entitlements.sql"),"utf8");
 const consultancyMigration=readFileSync(resolve(here,"../migrations/0050_consultancy.sql"),"utf8");
 const reportSectionsMigration=readFileSync(resolve(here,"../migrations/0051_report_sections.sql"),"utf8");
+const gapResolutionsMigration=readFileSync(resolve(here,"../migrations/0052_gap_resolutions.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -156,6 +157,17 @@ describe("isolated Postgres migrations", () => {
     // tenant safety on both tables
     assert.equal((reportSectionsMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
     assert.equal((reportSectionsMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
+  });
+
+  it("keeps gap resolutions tenant-isolated, keyed to job + gap_key, non-deletable (0052)",()=>{
+    assert.ok(gapResolutionsMigration.includes("CREATE TABLE nzi_console.gap_resolutions"));
+    assert.match(gapResolutionsMigration,/flag_type text NOT NULL CHECK \(flag_type IN \('yoy_movement','completeness','zero_blank','unmapped'\)\)/);
+    assert.match(gapResolutionsMigration,/reason text NOT NULL CHECK \(nullif\(trim\(reason\),''\) IS NOT NULL\)/);
+    assert.match(gapResolutionsMigration,/UNIQUE \(organisation_id, job_id, gap_key\)/);
+    assert.match(gapResolutionsMigration,/FOREIGN KEY \(organisation_id, job_id\) REFERENCES nzi_console\.jobs\(organisation_id, job_id\)/);
+    assert.match(gapResolutionsMigration,/REVOKE DELETE ON nzi_console\.gap_resolutions/);
+    assert.match(gapResolutionsMigration,/FORCE ROW LEVEL SECURITY/);
+    assert.match(gapResolutionsMigration,/CREATE POLICY tenant_isolation/);
   });
 
   it("builds the training delivery spine on the governance pattern (0048)",()=>{
