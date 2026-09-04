@@ -40,6 +40,7 @@ export * from "./commands";
 export * from "./dataAssurance";
 export * from "./reportSections";
 export * from "./reportTokens";
+export * from "./reportAppendix";
 export * from "./spendImport";
 export * from "./jobFamilies";
 export * from "./trainingFamily";
