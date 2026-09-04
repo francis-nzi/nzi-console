@@ -214,10 +214,12 @@ export function CrpScopeWorkspace({
   };
   const selectedDatasets = datasets.filter(dataset => dataset.selected).length;
   const noFactorCount = rows.filter(row => row.enabled && !row.factorLabel).length;
+  // NZC-057 — "Factor mapping" is retired as a stage; unmatched-factor sources
+  // are a "Needs attention" exception inside Data entry.
+  const openDataEntryAttention = () => { if (accordionOn) setAccordionLens("attention"); jumpToStage("Data entry"); };
   const stageSummary = {
     setup: `${selectedDatasets} dataset${selectedDatasets === 1 ? "" : "s"} · ${target ? `−${target.interimReductionPercent}% by ${target.interimYear}` : "no pathway"} · ${intensityTarget ? `intensity v${intensityTarget.version}` : "no intensity metric"} · ${sites.length} site${sites.length === 1 ? "" : "s"} · ${purchasedGoodsCategories.length} PG&S`,
-    data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e across enabled rows`,
-    mapping: noFactorCount ? `${noFactorCount} source${noFactorCount === 1 ? "" : "s"} without a factor` : "Every enabled source has a factor",
+    data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e${noFactorCount ? ` · ${noFactorCount} without a factor` : ""}`,
     review: qa.independentReviewPending ? `${qa.independentReviewPending} pending · ${qa.approved} approved` : `${qa.approved} approved · review complete`,
     report: qa.readyForReporting ? "Evidence complete — ready to snapshot" : "Blocked until QA gates pass",
   };
@@ -377,7 +379,7 @@ export function CrpScopeWorkspace({
         nextAction={nextAction}
         exceptions={[
           { label: "calculations", count: qa.calculationMissing, onOpen: () => jumpToStage("Data entry") },
-          { label: "without a factor", count: noFactorCount, onOpen: () => jumpToStage("Factor mapping") },
+          { label: "without a factor", count: noFactorCount, onOpen: openDataEntryAttention },
           { label: "QA decisions", count: qa.independentReviewPending, onOpen: () => jumpToStage("Review & QA") },
         ]}
       />
@@ -389,15 +391,13 @@ export function CrpScopeWorkspace({
       <StageSection n={2} name="Data entry" status={stageStatus(1)} summary={stageSummary.data} open={openStages.has("Data entry")} onToggle={() => toggleStage("Data entry")}>
         {dataEntrySurface}
         {createForm}
-      </StageSection>
-      <StageSection n={3} name="Factor mapping" status={stageStatus(2)} summary={stageSummary.mapping} open={openStages.has("Factor mapping")} onToggle={() => toggleStage("Factor mapping")}>
         {sourceRegister}
       </StageSection>
-      <StageSection n={4} name="Review & QA" status={stageStatus(3)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+      <StageSection n={3} name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
         {reviewQueue}
         {flatRegister}
       </StageSection>
-      <StageSection n={5} name="Report & publish" status={stageStatus(4)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
+      <StageSection n={4} name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
         {releaseControl}
       </StageSection>
     </div>

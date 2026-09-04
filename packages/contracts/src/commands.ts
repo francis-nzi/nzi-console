@@ -40,7 +40,10 @@ export type CommandKey =
   | "sales.opportunity.convert";
 
 export const jobWorkflowStages = {
-  crp: ["Setup", "Data entry", "Factor mapping", "Review & QA", "Report & publish"],
+  // NZC-057 — "Factor mapping" retired as a CRP stage (factor selection is inline
+  // at capture; unmatched-factor rows are a "Needs attention" exception within
+  // Data entry). CRP-only — `pcf` keeps its "Factor mapping" stage.
+  crp: ["Setup", "Data entry", "Review & QA", "Report & publish"],
   consultancy: ["Scope", "Plan", "Delivery", "Client review", "Complete"],
   lca: ["Goal & scope", "Inventory", "Impact assessment", "Interpretation", "Report"],
   pcf: ["Product boundary", "BOM", "Factor mapping", "Review", "Report"],

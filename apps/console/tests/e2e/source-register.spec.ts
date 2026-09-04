@@ -25,7 +25,9 @@ test.describe("S1 — source register rendered acceptance (gate §9)", () => {
     const errors = collectPageErrors(page);
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
-    await expandJobStage(page, "stage-factor-mapping");
+    // NZC-057 — the per-entity register moved from the retired Factor mapping
+    // stage into Data entry (open by default; expand is a no-op if the flag is off).
+    await expandJobStage(page, "stage-data-entry");
 
     const panel = page.locator("#emission-source-register");
     await expect(panel).toBeVisible();

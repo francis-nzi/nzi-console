@@ -18,12 +18,14 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // "Data entry" stage presents — the exact markers verified on /jobs/712:
 // prior stage done + collapsed, current stage active + open, later stages
 // to-do + collapsed.
+// NZC-057 — CRP is a FOUR-stage lifecycle; "Factor mapping" is retired (its
+// per-entity register re-homes into Data entry, unmatched-factor rows to the
+// Needs-attention lens).
 const STAGE_SHELL = [
   { id: "stage-setup", heading: "1 · Setup", status: "done", open: false },
   { id: "stage-data-entry", heading: "2 · Data entry", status: "active", open: true },
-  { id: "stage-factor-mapping", heading: "3 · Factor mapping", status: "todo", open: false },
-  { id: "stage-review-qa", heading: "4 · Review & QA", status: "todo", open: false },
-  { id: "stage-report-publish", heading: "5 · Report & publish", status: "todo", open: false },
+  { id: "stage-review-qa", heading: "3 · Review & QA", status: "todo", open: false },
+  { id: "stage-report-publish", heading: "4 · Report & publish", status: "todo", open: false },
 ] as const;
 
 /** Hard precondition — the stage-as-section shell must actually be rendered. */
@@ -32,7 +34,8 @@ async function assertStageShell(page: Page): Promise<void> {
   await expect(
     sections,
     "job-stage-sections shell absent — the flag must be live on the target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 must include 'job-stage-sections')",
-  ).toHaveCount(5);
+  ).toHaveCount(4);
+  await expect(page.locator("section#stage-factor-mapping"), "Factor mapping is retired as a stage (NZC-057)").toHaveCount(0);
   await expect(page.locator(".nz-focus-strip"), "focus strip replaces the command hero").toBeVisible();
   await expect(page.locator(".nz-command-hero"), "legacy command hero must be gone under the shell").toHaveCount(0);
 
@@ -64,18 +67,20 @@ async function openStageShell(page: Page): Promise<{ jobId: string; errors: stri
 test.describe("UX1e-1 — CRP stage-as-section layout", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set (public smoke run)");
 
-  test("renders the five workflow stages as sections, Data entry expanded", async ({ page }) => {
+  test("renders the four workflow stages as sections, Data entry expanded", async ({ page }) => {
     const { errors } = await openStageShell(page);
 
-    // Data Entry holds the accordion (or the legacy adapters) and nothing else.
+    // Data Entry holds the accordion (or the legacy adapters) and the re-homed
+    // per-entity source register (NZC-057).
     const dataEntry = page.locator("section#stage-data-entry");
     await expect(dataEntry.locator("#data-entry-accordion, .nz-config-panel").first()).toBeVisible();
+    await expect(dataEntry.locator("#emission-source-register")).toHaveCount(1);
 
     // A collapsed later stage expands on click and shows its panel.
-    const mapping = page.locator("section#stage-factor-mapping");
-    await mapping.locator("button.nz-stage-sec-h").click();
-    await expect(mapping).toHaveClass(/(^|\s)open(\s|$)/);
-    await expect(mapping.locator(".nz-panel").first()).toBeVisible();
+    const review = page.locator("section#stage-review-qa");
+    await review.locator("button.nz-stage-sec-h").click();
+    await expect(review).toHaveClass(/(^|\s)open(\s|$)/);
+    await expect(review.locator(".nz-panel").first()).toBeVisible();
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
