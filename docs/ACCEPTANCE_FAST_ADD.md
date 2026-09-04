@@ -78,7 +78,7 @@ there.
 | 9 | **Flag hard-precondition** — once `#fast-add` is present, every check is hard. The one conditional skip (flag not yet live) is removed at the flip PR. | `fast-add.spec.ts` `openFastAdd` |
 | 10 | `npm run typecheck` (all workspaces) · `@nzi/console` build · full unit suites green · flag OFF leaves Data entry unchanged | ✅ |
 
-## Verification (this branch)
+## Verification (PR #93)
 
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
 - `@nzi/contracts` — unaffected (type-only additions). `@nzi/isolated-backend` — +5
