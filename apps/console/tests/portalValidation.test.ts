@@ -11,6 +11,7 @@ const report:PublishedCrpReportReadModel={
     target:{jobId:"job-a",baselineYear:2024,baselineTco2e:100,interimYear:2030,interimReductionPercent:50,netZeroYear:2045,version:1,updatedAt:"2026-08-27T10:00:00.000Z",updatedBy:"reviewer-a"},
     intensityTarget:{jobId:"job-a",metric:"employee",denominatorUnit:"FTE",reportingDenominator:10,baselineYear:2024,baselineIntensity:10,interimYear:2030,interimReductionPercent:50,netZeroYear:2045,version:1,updatedAt:"2026-08-27T10:00:00.000Z",updatedBy:"reviewer-a"},
     annualComparison:[{year:2026,sourceSnapshotId:"snapshot-a",sourceDataHash:"sha256:report-a",values:[{scope:"1",value:10},{scope:"2",value:20},{scope:"3",value:30}]}],
+    sections:[],
     measurements:[{rowId:"row-a",rowVersion:2,scope:"1",sourceLabel:"Synthetic fuel",tco2e:10,factorSet:"Synthetic factors v1",qualityTier:"measured",reviewedBy:"reviewer-a"}]}
 };
 

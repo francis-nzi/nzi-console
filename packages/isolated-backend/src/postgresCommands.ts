@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
+  crpReportSectionTemplate,
+  type ReportSectionTemplate,
   crpScopeCategoryPath,
   isAllowedJobStageTransition,
   validateCommand,
@@ -13,6 +15,7 @@ import {
   type ScopeRowWriteFields,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
+import { listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
@@ -1420,6 +1423,7 @@ export async function createReviewedCrpSnapshot(
         target,
         intensityTarget,
         annualComparison,
+        sections: await listReportSections(db, input.jobId),
         measurements: enabled.map((row) => ({
           rowId: row.scope_row_id,
           rowVersion: row.version,
@@ -1503,4 +1507,111 @@ export async function createReviewedCrpSnapshot(
       };
     },
   );
+}
+
+// R2 (NZC-048) — editable report sections. A working row exists only once a
+// section is edited or reset away from its code template; `version` starts at 0
+// (no row) and every change appends an immutable history row. Frozen into the
+// reviewed snapshot payload at report.snapshot.create.
+async function loadEditableReportSection(
+  db: Queryable,
+  organisationId: string,
+  jobId: string,
+  sectionKey: string,
+): Promise<{ template: ReportSectionTemplate; currentVersion: number }> {
+  const template = crpReportSectionTemplate(sectionKey);
+  if (!template) throw new CommandValidationError([{ field: "sectionKey", code: "NOT_FOUND", message: "Unknown report section." }]);
+  const job = await db.query<{ job_family: string }>(
+    `SELECT job_family FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,
+    [organisationId, jobId],
+  );
+  if (!job.rows[0]) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "Job was not found." }]);
+  if (job.rows[0].job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Report sections are available only for CRP jobs." }]);
+  const existing = await db.query<{ version: number }>(
+    `SELECT version FROM nzi_console.report_sections WHERE organisation_id=$1 AND job_id=$2 AND section_key=$3 FOR UPDATE`,
+    [organisationId, jobId, sectionKey],
+  );
+  return { template, currentVersion: existing.rows[0]?.version ?? 0 };
+}
+
+async function writeReportSectionVersion(
+  db: Queryable,
+  organisationId: string,
+  jobId: string,
+  sectionKey: string,
+  currentVersion: number,
+  source: "default" | "ai" | "client-edited",
+  bodyHtml: string,
+  actorId: string,
+  note: string,
+): Promise<number> {
+  const nextVersion = currentVersion + 1;
+  if (currentVersion === 0) {
+    await db.query(
+      `INSERT INTO nzi_console.report_sections (organisation_id,job_id,section_key,content_source,body_html,version,updated_by,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+      [organisationId, jobId, sectionKey, source, bodyHtml, nextVersion, actorId],
+    );
+  } else {
+    await db.query(
+      `UPDATE nzi_console.report_sections SET content_source=$4,body_html=$5,version=$6,updated_by=$7,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND section_key=$3`,
+      [organisationId, jobId, sectionKey, source, bodyHtml, nextVersion, actorId],
+    );
+  }
+  await db.query(
+    `INSERT INTO nzi_console.report_section_versions (organisation_id,section_version_id,job_id,section_key,version,content_source,body_html,actor_id,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [organisationId, randomUUID(), jobId, sectionKey, nextVersion, source, bodyHtml, actorId, note],
+  );
+  return nextVersion;
+}
+
+export async function editReportSection(
+  pool: PoolLike,
+  input: CommandInputMap["report.section.edit"],
+  context: CommandContext,
+): Promise<StoredOutcome<{ jobId: string; sectionKey: string; version: number; contentSource: "ai" | "client-edited" }>> {
+  return runPostgresCommand(pool, "report.section.edit", input, context, async (db) => {
+    const { currentVersion } = await loadEditableReportSection(db, context.organisationId, input.jobId, input.sectionKey);
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError();
+    const source = input.contentSource ?? "client-edited";
+    const version = await writeReportSectionVersion(
+      db, context.organisationId, input.jobId, input.sectionKey, currentVersion, source, input.bodyHtml.trim(), context.actorId,
+      source === "ai" ? "AI redraft" : "Edited by consultant",
+    );
+    return {
+      data: { jobId: input.jobId, sectionKey: input.sectionKey, version, contentSource: source },
+      entityType: "report_section",
+      entityId: `${input.jobId}:${input.sectionKey}`,
+      topic: "report.section.edited",
+    };
+  });
+}
+
+export async function resetReportSection(
+  pool: PoolLike,
+  input: CommandInputMap["report.section.reset"],
+  context: CommandContext,
+): Promise<StoredOutcome<{ jobId: string; sectionKey: string; version: number; contentSource: "default" }>> {
+  return runPostgresCommand(pool, "report.section.reset", input, context, async (db) => {
+    const { template, currentVersion } = await loadEditableReportSection(db, context.organisationId, input.jobId, input.sectionKey);
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError();
+    // No working row => already the template; reset is a no-op.
+    if (currentVersion === 0) {
+      return {
+        data: { jobId: input.jobId, sectionKey: input.sectionKey, version: 0, contentSource: "default" as const },
+        entityType: "report_section",
+        entityId: `${input.jobId}:${input.sectionKey}`,
+        topic: "report.section.reset",
+      };
+    }
+    const version = await writeReportSectionVersion(
+      db, context.organisationId, input.jobId, input.sectionKey, currentVersion, "default", template.defaultBodyHtml, context.actorId,
+      "Reset to template",
+    );
+    return {
+      data: { jobId: input.jobId, sectionKey: input.sectionKey, version, contentSource: "default" as const },
+      entityType: "report_section",
+      entityId: `${input.jobId}:${input.sectionKey}`,
+      topic: "report.section.reset",
+    };
+  });
 }

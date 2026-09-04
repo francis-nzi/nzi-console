@@ -58,6 +58,7 @@ const lcaScenariosMigration=readFileSync(resolve(here,"../migrations/0047_lca_sc
 const trainingCoreMigration=readFileSync(resolve(here,"../migrations/0048_training_core.sql"),"utf8");
 const trainingEntitlementsMigration=readFileSync(resolve(here,"../migrations/0049_training_entitlements.sql"),"utf8");
 const consultancyMigration=readFileSync(resolve(here,"../migrations/0050_consultancy.sql"),"utf8");
+const reportSectionsMigration=readFileSync(resolve(here,"../migrations/0051_report_sections.sql"),"utf8");
 const portalReportSeed=readFileSync(resolve(here,"../seeds/0004_synthetic_portal_report.sql"),"utf8");
 describe("isolated Postgres migrations", () => {
   it("contains every required tenant and command invariant", () => { const sql = `${schema}\n${security}`; for (const invariant of requiredMigrationInvariants) assert.ok(sql.includes(invariant), invariant); });
@@ -140,6 +141,21 @@ describe("isolated Postgres migrations", () => {
     // tenant safety on both tables
     assert.equal((consultancyMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
     assert.equal((consultancyMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
+  });
+
+  it("keeps report sections versioned, tenant-isolated and history-immutable (0051)",()=>{
+    assert.ok(reportSectionsMigration.includes("CREATE TABLE nzi_console.report_sections"));
+    assert.ok(reportSectionsMigration.includes("CREATE TABLE nzi_console.report_section_versions"));
+    assert.match(reportSectionsMigration,/content_source text NOT NULL CHECK \(content_source IN \('default','ai','client-edited'\)\)/);
+    assert.match(reportSectionsMigration,/PRIMARY KEY \(organisation_id, job_id, section_key\)/);
+    assert.match(reportSectionsMigration,/UNIQUE \(organisation_id, job_id, section_key, version\)/);
+    assert.match(reportSectionsMigration,/FOREIGN KEY \(organisation_id, job_id\) REFERENCES nzi_console\.jobs\(organisation_id, job_id\)/);
+    // history is append-only; working rows are never hard-deleted
+    assert.match(reportSectionsMigration,/REVOKE UPDATE, DELETE ON nzi_console\.report_section_versions/);
+    assert.match(reportSectionsMigration,/REVOKE DELETE ON nzi_console\.report_sections/);
+    // tenant safety on both tables
+    assert.equal((reportSectionsMigration.match(/FORCE ROW LEVEL SECURITY/g)||[]).length,2);
+    assert.equal((reportSectionsMigration.match(/CREATE POLICY tenant_isolation/g)||[]).length,2);
   });
 
   it("builds the training delivery spine on the governance pattern (0048)",()=>{
