@@ -195,7 +195,7 @@ export type AssuranceCurrentRow = {
   hasMonthlyActivity: boolean;
 };
 
-export type GapResolution = { gapKey: string; reason: string; resolvedBy: string; resolvedAt: string };
+export type GapResolution = { gapKey: string; version: number; reason: string; resolvedBy: string; resolvedAt: string };
 
 export type AssuranceGap = {
   /** Deterministic — stable across recomputes so a resolution sticks. */
@@ -207,7 +207,7 @@ export type AssuranceGap = {
   label: string;
   detail: string;
   resolved: boolean;
-  resolution: { reason: string; resolvedBy: string; resolvedAt: string } | null;
+  resolution: { version: number; reason: string; resolvedBy: string; resolvedAt: string } | null;
 };
 
 export type AssuranceGaps = {
@@ -265,7 +265,7 @@ export function computeAssuranceGaps(input: {
       scopeCode: scope.scopeCode ?? null,
       siteId: scope.siteId ?? null,
       resolved: Boolean(resolution),
-      resolution: resolution ? { reason: resolution.reason, resolvedBy: resolution.resolvedBy, resolvedAt: resolution.resolvedAt } : null,
+      resolution: resolution ? { version: resolution.version, reason: resolution.reason, resolvedBy: resolution.resolvedBy, resolvedAt: resolution.resolvedAt } : null,
     });
   };
 

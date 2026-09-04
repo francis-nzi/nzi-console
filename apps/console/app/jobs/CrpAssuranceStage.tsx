@@ -1,16 +1,21 @@
 "use client";
 
-// DA3a (NZC-059) — the Data Assurance read surface for the Review & QA stage.
-// The aggregate Outputs tables become the QA surface: a five-year trend read
-// against the baseline (BL pill always shown, "% vs BL" its own column with the
-// NZC-060 neutral tone when driven by an unresolved flag), plus By scope / By
-// site / Audit / Intensity tabs. Behind `data-assurance`. Read-only — the gap
-// drawer + resolve/fix (DA3b) and row approvals + sign-off (DA3c) come next.
+// DA3 (NZC-059/060) — the Data Assurance surface for the Review & QA stage.
+// DA3a: the aggregate Outputs tables are the QA surface — a five-year trend
+// read against the baseline (BL pill always shown, "% vs BL" its own column
+// with the NZC-060 neutral tone when driven by an unresolved flag), plus By
+// scope / By site / Audit / Intensity tabs. DA3b: the right overlay drawer
+// (does not dock — the tables keep full width) with the gaps list,
+// resolve-with-reason (`assurance.gap.resolve`, optimistic + expectedVersion),
+// and a row-detail view (select a row → its evidence). Behind `data-assurance`.
+// Row approvals + governed sign-off are DA3c.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { postBrowserCommand } from "@nzi/api-client";
 import {
   percentVsBaseline,
   percentVsBaselineTone,
+  type AssuranceAuditRow,
   type AssuranceGap,
   type AssuranceScreen,
   type AssuranceTrend,
@@ -28,7 +33,7 @@ const fmt = (value: number | null): string =>
 const pct = (fraction: number | null): string =>
   fraction == null ? "—" : `${fraction < 0 ? "▼" : "▲"} ${Math.abs(fraction * 100).toLocaleString("en-GB", { maximumFractionDigits: 0 })}%`;
 
-export function CrpAssuranceStage({ jobId }: { jobId: string }) {
+export function CrpAssuranceStage({ jobId, onGoToRow }: { jobId: string; onGoToRow?: (rowId: string) => void }) {
   const [data, setData] = useState<AssuranceScreen | null>(null);
   const [state, setState] = useState<Screen>("loading");
   const [degraded, setDegraded] = useState<string | null>(null);
@@ -57,11 +62,14 @@ export function CrpAssuranceStage({ jobId }: { jobId: string }) {
     return <section className="nz-panel nz-config-panel"><div className="nz-banner warn" role="alert"><div><b>Data assurance is unavailable</b><div>{degraded}</div></div></div><button className="nz-btn" onClick={() => void load()}>Retry</button></section>;
   }
 
-  return <AssuranceSurface data={data} tab={tab} onTab={setTab} />;
+  return <AssuranceSurface jobId={jobId} data={data} tab={tab} onTab={setTab} onReload={load} onGoToRow={onGoToRow} />;
 }
 
-function AssuranceSurface({ data, tab, onTab }: { data: AssuranceScreen; tab: Tab; onTab: (t: Tab) => void }) {
+function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jobId: string; data: AssuranceScreen; tab: Tab; onTab: (t: Tab) => void; onReload: () => void; onGoToRow?: (rowId: string) => void }) {
   const { trend, gaps, auditRows } = data;
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const openRowDetail = (rowId: string) => { setSelectedRowId(rowId); setDrawerOpen(true); };
   const current = trend.years.find((year) => year.kind === "current");
   const baseline = trend.years.find((year) => year.kind === "baseline");
   const openGaps = gaps.openCount;
@@ -227,7 +235,7 @@ function AssuranceSurface({ data, tab, onTab }: { data: AssuranceScreen; tab: Ta
         <thead><tr><th>Category</th><th>Activity / factor</th><th className="num">Qty</th><th>Quality</th><th>Conf.</th><th>Site</th><th>Review</th></tr></thead>
         <tbody>
           {auditRows.map((row) => (
-            <tr key={row.rowId} className={row.factorLabel ? "" : "nz-flagged"}>
+            <tr key={row.rowId} className={`nz-audit-row${row.factorLabel ? "" : " nz-flagged"}`} tabIndex={0} onClick={() => openRowDetail(row.rowId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openRowDetail(row.rowId); } }}>
               <td>{row.category}</td>
               <td>{row.factorLabel ?? <span className="muted">no factor selected</span>}<div className="muted">{row.sourceLabel}</div></td>
               <td className="num">{row.quantity == null ? "—" : `${row.quantity.toLocaleString("en-GB")}${row.unit ? ` ${row.unit}` : ""}`}</td>
@@ -258,8 +266,109 @@ function AssuranceSurface({ data, tab, onTab }: { data: AssuranceScreen; tab: Ta
 
     <div className="nz-assurance-actions">
       <button className="nz-btn" onClick={() => exportTrendCsv(trend)}>⭳ Export trend CSV</button>
+      {!drawerOpen && <button className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data assurance {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
     </div>
+
+    {drawerOpen && <AssuranceDrawer
+      jobId={jobId}
+      gaps={gaps.gaps}
+      auditRows={auditRows}
+      selectedRowId={selectedRowId}
+      onSelectRow={setSelectedRowId}
+      onClose={() => { setDrawerOpen(false); setSelectedRowId(null); }}
+      onResolved={onReload}
+      onEditRow={onGoToRow}
+    />}
   </section>;
+}
+
+type DrawerSegment = "gaps" | "row";
+
+function AssuranceDrawer({ jobId, gaps, auditRows, selectedRowId, onSelectRow, onClose, onResolved, onEditRow }: {
+  jobId: string;
+  gaps: AssuranceGap[];
+  auditRows: AssuranceAuditRow[];
+  selectedRowId: string | null;
+  onSelectRow: (rowId: string | null) => void;
+  onClose: () => void;
+  onResolved: () => void;
+  onEditRow?: (rowId: string) => void;
+}) {
+  const [segment, setSegment] = useState<DrawerSegment>(selectedRowId ? "row" : "gaps");
+  useEffect(() => { if (selectedRowId) setSegment("row"); }, [selectedRowId]);
+  const selectedRow = selectedRowId ? auditRows.find((row) => row.rowId === selectedRowId) ?? null : null;
+  const openCount = gaps.filter((gap) => !gap.resolved).length;
+
+  return <aside className="nz-assurance-drawer" role="complementary" aria-label="Data assurance">
+    <div className="nz-assurance-drawer-h">
+      <div className="top"><span className="ctx">Detail · this stage</span><button className="close" onClick={onClose} aria-label="Close">✕</button></div>
+      <div className="ttl"><h3>{segment === "row" ? "Row detail" : "Data assurance"}</h3>{segment === "gaps" && <span className="count">{openCount} open</span>}</div>
+    </div>
+    <div className="nz-assurance-drawer-seg">
+      <button className={segment === "gaps" ? "on" : ""} onClick={() => { setSegment("gaps"); onSelectRow(null); }}>Gaps ({gaps.length})</button>
+      <button className={segment === "row" ? "on" : ""} disabled={!selectedRow} onClick={() => setSegment("row")}>Row detail</button>
+    </div>
+
+    {segment === "row" && selectedRow && <RowDetail row={selectedRow} onEditRow={onEditRow} />}
+
+    {segment === "gaps" && <>
+      <ol className="nz-assurance-gaps">
+        {gaps.map((gap) => <GapCard key={gap.key} jobId={jobId} gap={gap} onSelectRow={onSelectRow} onResolved={onResolved} />)}
+        {gaps.length === 0 && <li className="nz-assurance-gap-empty">No integrity gaps — the dataset is complete, consistent and fully costed.</li>}
+      </ol>
+      <p className="nz-assurance-drawer-note">This is the workspace&rsquo;s shared detail drawer — selecting any row shows its evidence here. By default it lists the assurance gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row&rsquo;s provenance so sign-off is defensible.</p>
+    </>}
+  </aside>;
+}
+
+function RowDetail({ row, onEditRow }: { row: AssuranceAuditRow; onEditRow?: (rowId: string) => void }) {
+  return <div className="nz-assurance-row-detail">
+    <div className="nz-kv"><span className="k">Category</span><span className="v">{row.category}</span></div>
+    <div className="nz-kv"><span className="k">Activity</span><span className="v">{row.sourceLabel}</span></div>
+    <div className="nz-kv"><span className="k">Factor</span><span className="v">{row.factorLabel ?? "No factor selected"}</span></div>
+    <div className="nz-kv"><span className="k">Quantity</span><span className="v">{row.quantity == null ? "—" : `${row.quantity.toLocaleString("en-GB")}${row.unit ? ` ${row.unit}` : ""}`}</span></div>
+    <div className="nz-kv"><span className="k">Quality tier</span><span className="v">{row.qualityTier ?? "—"}</span></div>
+    <div className="nz-kv"><span className="k">Data confidence</span><span className="v">{row.dataConfidence ?? "—"}</span></div>
+    <div className="nz-kv"><span className="k">Site</span><span className="v">{row.siteLabel}</span></div>
+    <div className="nz-kv"><span className="k">Review</span><span className="v">{row.reviewStatus}</span></div>
+    {onEditRow && <button className="nz-btn pri" style={{ marginTop: 10 }} onClick={() => onEditRow(row.rowId)}>Edit in Data entry →</button>}
+  </div>;
+}
+
+function GapCard({ jobId, gap, onSelectRow, onResolved }: { jobId: string; gap: AssuranceGap; onSelectRow: (rowId: string | null) => void; onResolved: () => void }) {
+  const [resolving, setResolving] = useState(false);
+  const [reason, setReason] = useState(gap.resolution?.reason ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (busy || !reason.trim()) return;
+    setBusy(true); setError(null);
+    const result = await postBrowserCommand<{ version: number }>(
+      "/api/isolated/assurance/gaps/resolve",
+      { jobId, gapKey: gap.key, flagType: gap.flag, scopeRowId: gap.scopeRowId, reason: reason.trim(), expectedVersion: gap.resolution?.version ?? 0 },
+      crypto.randomUUID(),
+    );
+    setBusy(false);
+    if (result.state !== "success") { setError(result.state === "validation_failed" ? result.issues[0]?.message ?? "Could not resolve." : result.message); return; }
+    setResolving(false);
+    onResolved();
+  }
+
+  return <li className={`nz-assurance-gap ${gap.flag}`}>
+    <div className="top"><span className="where">{gap.label}</span><span className={`nz-gap-chip ${gap.flag}`}>{gap.flag.replace("_", " ")}</span></div>
+    <div className="why">{gap.detail}</div>
+    <div className="acts">
+      {gap.scopeRowId && <button className="lnk pri" onClick={() => onSelectRow(gap.scopeRowId)}>Go to row</button>}
+      <button className="lnk" onClick={() => setResolving((current) => !current)}>{gap.resolved ? "Edit resolution…" : "Resolve…"}</button>
+    </div>
+    {resolving && <div className="reason">
+      <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason (e.g. moved to on-site renewable — genuinely zero)" rows={2} />
+      <div className="reason-acts"><button className="nz-btn pri" disabled={busy || !reason.trim()} onClick={() => void submit()}>{busy ? "Saving…" : "Save"}</button><button className="nz-btn" onClick={() => setResolving(false)}>Cancel</button></div>
+      {error && <div className="nz-banner warn" role="alert">{error}</div>}
+    </div>}
+    {gap.resolved && !resolving && <div className="rtag">✓ Resolved — {gap.resolution!.reason}</div>}
+  </li>;
 }
 
 function FragmentRows({ children }: { children: React.ReactNode }) {

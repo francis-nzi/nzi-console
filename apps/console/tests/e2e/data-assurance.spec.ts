@@ -62,6 +62,62 @@ test.describe("DA3a — Data Assurance read surface", () => {
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
 
+  test("the gap drawer overlays without shrinking the trend table, and the reopen tab works", async ({ page }) => {
+    const { surface } = await openAssurance(page);
+    const trend = surface.locator("table.nz-assurance-trend");
+    const widthBefore = await trend.evaluate((el) => el.getBoundingClientRect().width);
+
+    const drawer = page.locator(".nz-assurance-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.locator(".nz-assurance-drawer-seg button", { hasText: /Gaps/ })).toHaveClass(/on/);
+
+    // The drawer overlays (position: fixed) — closing it must not change the
+    // trend table's rendered width; it is never part of the grid layout.
+    const widthWithDrawer = await trend.evaluate((el) => el.getBoundingClientRect().width);
+    expect(widthWithDrawer).toBe(widthBefore);
+
+    await drawer.locator(".nz-assurance-drawer-h .close").click();
+    await expect(drawer).toHaveCount(0);
+    const reopen = surface.getByRole("button", { name: /Data assurance/ });
+    await expect(reopen).toBeVisible();
+    const widthAfterClose = await trend.evaluate((el) => el.getBoundingClientRect().width);
+    expect(widthAfterClose).toBe(widthBefore);
+
+    await reopen.click();
+    await expect(page.locator(".nz-assurance-drawer")).toBeVisible();
+  });
+
+  test("a gap can be resolved with a reason, and re-opens for editing", async ({ page }) => {
+    await openAssurance(page);
+    const drawer = page.locator(".nz-assurance-drawer");
+    const firstGap = drawer.locator(".nz-assurance-gap").first();
+    test.skip((await firstGap.count()) === 0, "no open integrity gaps on this job to resolve");
+
+    await firstGap.getByRole("button", { name: /Resolve…/ }).click();
+    const reason = `e2e resolution ${Date.now()}`;
+    await firstGap.locator("textarea").fill(reason);
+    await firstGap.getByRole("button", { name: "Save" }).click();
+    await expect(firstGap.locator(".rtag", { hasText: reason })).toBeVisible({ timeout: 15_000 });
+
+    // Reload the stage: the resolution persisted server-side.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expandJobStage(page, "stage-review-qa");
+    const reloaded = page.locator(".nz-assurance-drawer .nz-assurance-gap").first();
+    await expect(reloaded.locator(".rtag", { hasText: reason })).toBeVisible();
+  });
+
+  test("selecting an audit row shows its evidence in the row-detail drawer segment", async ({ page }) => {
+    const { surface } = await openAssurance(page);
+    await surface.getByRole("tab", { name: "Audit table" }).click();
+    const row = surface.locator(".nz-audit-row").first();
+    test.skip((await row.count()) === 0, "no audit rows on this job");
+    await row.click();
+
+    const drawer = page.locator(".nz-assurance-drawer");
+    await expect(drawer.locator("h3", { hasText: "Row detail" })).toBeVisible();
+    await expect(drawer.locator(".nz-assurance-row-detail .nz-kv")).not.toHaveCount(0);
+  });
+
   test("a failed /assurance read shows an alert, not a zeroed report", async ({ page }) => {
     const job = await discoverCrpJobAtStage(page.request, "Data entry");
     expect(job).toBeTruthy();

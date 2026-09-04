@@ -213,10 +213,10 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
 
 /** DA1d (NZC-060) — resolved-with-reason integrity gaps for a job. */
 export async function listGapResolutions(db: Queryable, jobId: string): Promise<GapResolution[]> {
-  const { rows } = await db.query<{ gap_key: string; reason: string; resolved_by: string; resolved_at: Date | string }>(
-    `SELECT gap_key, reason, resolved_by, resolved_at FROM nzi_console.gap_resolutions WHERE job_id=$1`, [jobId],
+  const { rows } = await db.query<{ gap_key: string; version: number; reason: string; resolved_by: string; resolved_at: Date | string }>(
+    `SELECT gap_key, version, reason, resolved_by, resolved_at FROM nzi_console.gap_resolutions WHERE job_id=$1`, [jobId],
   );
-  return rows.map((row) => ({ gapKey: row.gap_key, reason: row.reason, resolvedBy: row.resolved_by, resolvedAt: row.resolved_at instanceof Date ? row.resolved_at.toISOString() : String(row.resolved_at) }));
+  return rows.map((row) => ({ gapKey: row.gap_key, version: row.version, reason: row.reason, resolvedBy: row.resolved_by, resolvedAt: row.resolved_at instanceof Date ? row.resolved_at.toISOString() : String(row.resolved_at) }));
 }
 
 const assuranceIntensity = (target: IntensityTargetReadModel | null | undefined) =>

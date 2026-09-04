@@ -544,4 +544,44 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-pct.increase{color:#A5341C}
 .nz-pct.neutral{color:var(--t3)}
 .nz-assurance-actions{margin-top:12px}
+.nz-audit-row{cursor:pointer}
+.nz-audit-row:hover{background:var(--paper)}
+.nz-audit-row:focus-visible{outline:2px solid var(--emerald);outline-offset:-2px}
+.nz-assurance-actions{display:flex;align-items:center;gap:10px}
+/* DA3b — right overlay drawer (does not dock; the table keeps full page width) */
+.nz-assurance-reopen{border:1px solid var(--line);background:var(--midnight);color:#fff;font:inherit;font-weight:650;font-size:12.5px;padding:8px 14px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.nz-assurance-reopen .n{background:var(--coral);color:#fff;border-radius:20px;font-size:10.5px;font-weight:800;padding:1px 7px}
+.nz-assurance-drawer{position:fixed;top:0;right:0;height:100vh;width:min(392px,94vw);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(11,27,43,.14);overflow-y:auto;z-index:40;padding-bottom:24px}
+.nz-assurance-drawer-h{padding:12px 16px;border-bottom:1px solid var(--line2);background:var(--paper)}
+.nz-assurance-drawer-h .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.nz-assurance-drawer-h .ctx{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)}
+.nz-assurance-drawer-h .close{border:0;background:transparent;font-size:17px;line-height:1;color:var(--t3);cursor:pointer;padding:2px 6px;border-radius:8px}
+.nz-assurance-drawer-h .close:hover{background:var(--line2);color:var(--t1)}
+.nz-assurance-drawer-h .ttl{display:flex;justify-content:space-between;align-items:center}
+.nz-assurance-drawer-h h3{margin:0;font-size:15px}
+.nz-assurance-drawer-h .count{font-size:11.5px;font-weight:700;color:#A5341C}
+.nz-assurance-drawer-seg{display:flex;gap:4px;padding:9px 12px 2px}
+.nz-assurance-drawer-seg button{flex:1;border:1px solid var(--line);background:#fff;font:inherit;font-weight:650;font-size:11.5px;color:var(--t2);padding:6px 8px;border-radius:8px;cursor:pointer}
+.nz-assurance-drawer-seg button.on{background:var(--midnight);color:#fff;border-color:var(--midnight)}
+.nz-assurance-drawer-seg button:disabled{opacity:.45;cursor:not-allowed}
+.nz-assurance-row-detail{padding:12px 16px}
+.nz-assurance-gaps{list-style:none;margin:0;padding:10px 12px 0;display:grid;gap:10px}
+.nz-assurance-gap{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px}
+.nz-assurance-gap.yoy_movement{border-left-color:#E8912B}
+.nz-assurance-gap.zero_blank{border-left-color:#C23B22}
+.nz-assurance-gap.completeness{border-left-color:#6B4CC7}
+.nz-assurance-gap.unmapped{border-left-color:#51636F}
+.nz-assurance-gap .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.nz-assurance-gap .where{font-weight:650}
+.nz-assurance-gap .why{color:var(--t2);line-height:1.4}
+.nz-assurance-gap .acts{display:flex;gap:10px;margin-top:8px}
+.nz-assurance-gap .lnk{border:0;background:transparent;color:var(--pine);font:inherit;font-weight:650;font-size:12px;cursor:pointer;padding:0}
+.nz-assurance-gap .lnk.pri{color:var(--midnight)}
+.nz-assurance-gap .reason{margin-top:8px;display:grid;gap:6px}
+.nz-assurance-gap .reason textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;font-size:12px;resize:vertical}
+.nz-assurance-gap .reason-acts{display:flex;gap:8px}
+.nz-assurance-gap .rtag{margin-top:6px;color:var(--pine);font-size:11.5px;font-weight:650}
+.nz-assurance-gap-empty{padding:16px 12px;color:var(--t3);font-size:12.5px}
+.nz-assurance-drawer-note{margin:14px 16px 0;padding-top:12px;border-top:1px solid var(--line2);color:var(--t3);font-size:11px;line-height:1.5}
+@media(max-width:980px){.nz-assurance-drawer{width:100vw}}
 @media(max-width:760px){.nz-assurance{padding:14px 12px}.nz-assurance-summary{min-width:0;width:100%}}
