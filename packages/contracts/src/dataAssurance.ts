@@ -220,6 +220,8 @@ export type AssuranceGaps = {
 /** One enabled current-year row as the Audit tab shows it. */
 export type AssuranceAuditRow = {
   rowId: string;
+  /** Row version — required as `expectedReviewVersion` to approve/reject in-stage (DA3c). */
+  version: number;
   scopeCode: string;
   category: string;
   sourceLabel: string;
@@ -229,6 +231,7 @@ export type AssuranceAuditRow = {
   qualityTier: string | null;
   dataConfidence: string | null;
   reviewStatus: string;
+  reviewerNote: string | null;
   siteLabel: string;
 };
 

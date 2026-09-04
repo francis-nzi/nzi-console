@@ -230,17 +230,17 @@ updated to the 4-stage shape in DA2.
 | Slice | Scope | Flag | Acceptance | Status |
 |---|---|---|---|---|
 | DA5 | Entry unit set — `mi` + `passenger.km` / `passenger.mi` on the per-row list (NZC-061) | — | `emissionEntryModel.test.ts` | 🟢 **shipped** (PR #82) |
-| DA1 | Backend: multi-year aggregation read models + **baseline / prior-year resolution** + gap-engine computation (4 flags) + gap-resolution store. No UI. | — (additive) | unit tests on aggregation + each flag; migration applied + schema-probe | ⏳ **next** — baseline/prior-year model proposed in the DA1 PR for Francis to confirm before the aggregation is built on top |
+| DA1 | Backend: multi-year aggregation read models + **baseline / prior-year resolution** + gap-engine computation (4 flags) + gap-resolution store. No UI. | — (additive) | unit tests on aggregation + each flag; migration applied + schema-probe | 🟢 built (PR #83 baseline model, PR #84 trend + gap engine) |
 | DA2 | Lifecycle 5→4: `jobWorkflowStages.crp` change + stage migration `0053` (Factor-mapping jobs → Data entry / Review & QA, logged "stage retired (NZC-057)"); retire the Factor-mapping stage section; re-home the per-entity register → Data entry, unmatched-factor rows → the Needs-attention lens | **— (no flag)** — the contract array + one-way migration have no clean seam; landed atomically like DA5 | `stage-sections.spec.ts` (4 stages, no `stage-factor-mapping`), `commands.test.ts` (4-stage adjacency), `migrations.test.ts` (0053 remap rule + guard) | 🟢 built (PR #85) |
 | DA3a | Data Assurance **read surface** — five-year trend (BL pill, % vs BL), By scope / By site / Audit / Intensity tabs, CSV export | `data-assurance` | `data-assurance.spec.ts` | 🟢 built (PR #86); `docs/ACCEPTANCE_DA3_ASSURANCE.md`; flip pending staging flag + spec harden + human pass |
 | DA3b | Gap drawer + resolve/fix — right overlay (table stays full width), gaps list, `assurance.gap.resolve` (optimistic + `expectedVersion`), fix-the-row round-trip, doubles as row-detail | `data-assurance` | in `data-assurance.spec.ts` | 🟢 built (PR #87) |
-| DA3c | Row approvals in-stage + **governed sign-off** (blocked while any gap open or any row unapproved) → `report.snapshot.create` freeze | `data-assurance` | in `data-assurance.spec.ts` | ⏳ — integration outline for Francis before deep build |
+| DA3c | Row approvals in-stage + **governed sign-off** (blocked while any gap open or any row unapproved) → `report.snapshot.create` freeze | `data-assurance` | in `data-assurance.spec.ts` | 🟢 built (PR #88) — integration outline confirmed by Francis 4 Sep 2026 |
 | DA4 | Lean capture + drawer refine — core-fields capture; factor / quality / confidence / notes / docs / reasoned override move to the row drawer (NZC-058) | `entry-lean-capture` | `lean-capture.spec.ts` | ⏳ |
 
-**Order:** DA5 (done) → DA1 (done) → DA2 (done) → DA3 → DA4. DA2 has **no flag** (one-way contract + migration,
-no clean seam — atomic like DA5). The remaining new flags (`entry-lean-capture`, `data-assurance`) are
-appended to the Render dashboard `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild (`render.yaml` alone is
-cosmetic — see `DEPLOYMENT.md`).
+**Order:** DA5 (done) → DA1 (done) → DA2 (done) → DA3 (done: 3a/3b/3c) → DA4. DA2 has **no flag** (one-way
+contract + migration, no clean seam — atomic like DA5). The remaining new flags (`entry-lean-capture`,
+`data-assurance`) are appended to the Render dashboard `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild
+(`render.yaml` alone is cosmetic — see `DEPLOYMENT.md`).
 
 **R-track interaction:** R1–R4 are built and merged (flag-off). **No new R-track slice until DA3 lands** —
 hold R5 (paged output). DA's sign-off and the R-track's "Mark Final" freeze the same snapshot.

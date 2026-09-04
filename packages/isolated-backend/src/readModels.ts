@@ -287,9 +287,9 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
   const trend = await resolveAssuranceTrend(db, jobId);
   if (!trend) return null;
   const [rowResult, resolutions] = await Promise.all([
-    db.query<{ scope_row_id: string; scope: string; scope_code: string | null; source_label: string; site_id: string | null; site_label: string | null; quantity: string | null; unit: string | null; factor_id: string | null; factor_label: string | null; factor_source: string | null; client_factor_id: string | null; quality_tier: ScopeQualityTier | null; data_confidence: string | null; review_status: string; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
-      `SELECT r.scope_row_id, split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.source_label, r.site_id, s.name AS site_label,
-              r.quantity::text, r.unit, r.factor_id, r.factor_label, r.factor_source, r.client_factor_id, r.quality_tier, r.data_confidence, r.review_status,
+    db.query<{ scope_row_id: string; version: number; scope: string; scope_code: string | null; source_label: string; site_id: string | null; site_label: string | null; quantity: string | null; unit: string | null; factor_id: string | null; factor_label: string | null; factor_source: string | null; client_factor_id: string | null; quality_tier: ScopeQualityTier | null; data_confidence: string | null; review_status: string; reviewer_note: string | null; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
+      `SELECT r.scope_row_id, r.version, split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.source_label, r.site_id, s.name AS site_label,
+              r.quantity::text, r.unit, r.factor_id, r.factor_label, r.factor_source, r.client_factor_id, r.quality_tier, r.data_confidence, r.review_status, r.reviewer_note,
               r.calculated_tco2e::text, r.override_tco2e::text, r.enabled, r.monthly_activity_json
          FROM nzi_console.job_scope_rows r
          LEFT JOIN nzi_console.client_sites s ON (s.organisation_id, s.site_id) = (r.organisation_id, r.site_id)
@@ -316,6 +316,7 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
   const gaps = computeAssuranceGaps({ trend, currentRows, resolutions });
   const auditRows: AssuranceAuditRow[] = rowResult.rows.filter((row) => row.enabled).map((row) => ({
     rowId: row.scope_row_id,
+    version: Number(row.version),
     scopeCode: row.scope_code ?? row.scope,
     category: crpScopeCategoryLabel(row.scope_code ?? row.scope),
     sourceLabel: row.source_label,
@@ -325,6 +326,7 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
     qualityTier: row.quality_tier,
     dataConfidence: row.data_confidence,
     reviewStatus: row.review_status,
+    reviewerNote: row.reviewer_note,
     siteLabel: row.site_label?.trim() || "Unallocated",
   }));
   return { trend, gaps, resolutions, auditRows };

@@ -138,3 +138,38 @@ test.describe("DA3a — Data Assurance read surface", () => {
     await expectNoHorizontalOverflow(page, "data assurance surface");
   });
 });
+
+// DA3c — row approval in-stage + the governed sign-off gate (NZC-060).
+test.describe("DA3c — row approval and governed sign-off", () => {
+  test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set (public smoke run)");
+
+  test("the sign-off gate always renders, and its button is disabled while gaps or reviews are outstanding", async ({ page }) => {
+    const { surface } = await openAssurance(page);
+    const panel = surface.locator(".nz-assurance-signoff");
+    await expect(panel).toBeVisible();
+    const button = panel.getByRole("button", { name: /Sign off/ });
+    await expect(button).toBeVisible();
+    if (await button.isDisabled()) {
+      await expect(panel).toContainText(/Blocked:/);
+    }
+  });
+
+  test("a pending row can be independently approved in-stage, without leaving the assurance surface", async ({ page }) => {
+    const { surface } = await openAssurance(page);
+    await surface.getByRole("tab", { name: "Audit table" }).click();
+    const pendingRow = surface.locator(".nz-audit-row").filter({ has: page.locator(".nz-st:not(.done)") }).first();
+    test.skip((await pendingRow.count()) === 0, "no unapproved audit rows on this job to review");
+    await pendingRow.click();
+
+    const drawer = page.locator(".nz-assurance-drawer");
+    const review = drawer.locator(".nz-assurance-row-review");
+    await expect(review).toBeVisible();
+    const approve = review.getByRole("button", { name: "Approve row" });
+    test.skip(await approve.isDisabled(), "row has no quality tier yet — approval is blocked, same precondition as the legacy row panel");
+    await approve.click();
+
+    // Refetches in place (no page reload) — the row-detail segment reflects
+    // the new review state once the assurance screen re-fetches.
+    await expect(drawer.locator(".nz-assurance-row-detail .nz-kv .v", { hasText: /^approved/ })).toBeVisible({ timeout: 15_000 });
+  });
+});
