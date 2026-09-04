@@ -7,7 +7,7 @@
 // Reads `listJobApplicableCategories(…, "crm")` for the completeness view — every
 // taxonomy category for an included scope, empties shown neutrally.
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { ApplicableCategory, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
+import type { ApplicableCategory, FactorOption, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { emissionCategoryTaxonomy } from "@nzi/contracts";
 import {
   accordionAttentionRows,
@@ -17,6 +17,8 @@ import {
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRef } from "./emissionEntryModel";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
+import { TemplateSearchBar } from "./TemplateSearchBar";
+import { ReuseYearPanel } from "./ReuseYearPanel";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -33,6 +35,8 @@ const num = (value: number) => value.toLocaleString("en-GB", { maximumFractionDi
 export type AccordionLens = "category" | "attention";
 export type SiteContextOption = { id: string; label: string };
 
+type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
+
 type Props = {
   jobId: string;
   rows: ScopeRowReadModel[];
@@ -47,6 +51,8 @@ type Props = {
   onSiteChange: (siteId: string) => void;
   /** Scope-tagged factor set (workspace maps FactorOption → EntryFactorRef). */
   factors: EntryFactorRef[];
+  /** NZC-062 — the full job factor library (unmapped), for the template search. */
+  libraryFactors: FactorOption[];
   reportingMonths: string[];
   purchasedGoodsCategories: { id: string; name: string }[];
   /** Re-homed typed adapter for a category (spend / import / commuting / vehicle). */
@@ -54,9 +60,10 @@ type Props = {
   /** Optional controlled lens — lets the command-centre exception buttons switch to "attention". */
   lens?: AccordionLens;
   onLensChange?: (lens: AccordionLens) => void;
+  notice: Notice;
 };
 
-export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, reportingMonths, purchasedGoodsCategories, categoryExtras, lens: lensProp, onLensChange }: Props) {
+export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryExtras, lens: lensProp, onLensChange, notice }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
@@ -147,6 +154,13 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
           </button>
         </div>
       </div>
+
+      {dataEntryAdapterEnabled("data-entry-fast-add") ? (
+        <div className="nz-fast-add" id="fast-add">
+          <TemplateSearchBar jobId={jobId} factors={libraryFactors} siteId={siteId} siteLabel={siteContext.label} onRowCreated={() => undefined} notice={notice} />
+          <ReuseYearPanel jobId={jobId} onRowsCreated={() => undefined} notice={notice} />
+        </div>
+      ) : null}
 
       {lens === "attention" ? (
         <div className="nz-panel" style={{ padding: 0 }}>

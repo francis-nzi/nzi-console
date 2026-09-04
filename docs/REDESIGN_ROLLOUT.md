@@ -207,9 +207,11 @@ adapters. **Sequenced after the data-entry tracks** (UX1 + adapters).
 
 **Separate downstream track:** C — job-family modularization (NZC-024, confirmed 1 Sep 2026). **Phase 0 is
 done** — the additive schema batch (`0045`–`0050`, NZC-052–056: LCA/PCF, Training, Consultancy) is on `main`
-and applied to isolated staging, no UI. The **LCA reference module** (first family module behind
-`job-module-lca`) is **held until the R-track and the data-entry tracks land**; M4 (additional services)
-rides on it. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
+and applied to isolated staging, no UI. The R-track (M7) and DA-track (M8) have both now landed in full;
+M9 (fast row-adding) was inserted ahead of the LCA reference module at Francis's explicit instruction (4 Sep
+2026) — build M9 first, LCA **planning** may proceed in parallel but LCA **build** waits for M9 to land.
+The **LCA reference module** (first family module behind `job-module-lca`) starts once M9 is merged; M4
+(additional services) rides on it. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 *M7 added 1 Sep 2026.*
 
@@ -252,3 +254,22 @@ suite) — see `docs/ACCEPTANCE_DA4_LEAN_CAPTURE.md`.
 across both tracks is flips + human passes, not code — see each slice's own acceptance doc.
 
 *M8 added 4 Sep 2026.*
+
+## M9 · Fast row-adding — template search + Reuse Previous Year Rows (added 4 Sep 2026)
+
+Spec: Francis, 4 Sep 2026 — "the two fast row-adding facilities the live site has… consultants use both
+daily." Decisions **NZC-062 / NZC-063**. Landed ahead of the LCA track (Track C) at Francis's explicit
+sequencing — LCA planning proceeds in parallel, but this ships first. Docs:
+`docs/ACCEPTANCE_FAST_ADD.md`.
+
+| Slice | Scope | Flag | Acceptance | Status |
+|---|---|---|---|---|
+| NZC-062 | Add rows from template — fuzzy search across the whole job factor library; a pick stamps factor + scope + category + site into a fresh `scope.row.create` row, quantity empty, pending; multi-add (search stays open) | `data-entry-fast-add` | `templateSearch.test.ts`, `fast-add.spec.ts` | 🟢 built (PR #93) |
+| NZC-063 | Reuse Previous Year Rows — rollforward generalised from the spend-only register to every `job_scope_rows` type (`rolled_forward_from_row_id`, migration `0055`); pick specific prior rows, factor + hierarchy + site copied in, moved-factor/not-in-selection/already-rolled-forward flagged | `data-entry-fast-add` (shared) | `scopeRowRollforward.test.ts`, `fast-add.spec.ts` | 🟢 built (PR #93) |
+
+Both sit in the CRP Data-entry stage's accordion, directly below the site selector and above the
+scope→category cards, gated behind one flag (`data-entry-fast-add` — split into two only if the two ever
+need independent rollout). Flag OFF leaves Data entry byte-identical to before. Migration `0055` applied to
+isolated staging before this PR's deploy (read by both new read models, always-on once the flag ships).
+
+*M9 added 4 Sep 2026.*

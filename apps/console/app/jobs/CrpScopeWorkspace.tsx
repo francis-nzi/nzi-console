@@ -311,11 +311,13 @@ export function CrpScopeWorkspace({
       siteId={siteContextId}
       onSiteChange={setSiteContextId}
       factors={entryFactorRefs}
+      libraryFactors={factors}
       reportingMonths={spendReportingMonths}
       purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
       categoryExtras={categoryExtras}
       lens={accordionLens}
       onLensChange={setAccordionLens}
+      notice={setNotice}
     />
   ) : (
     <>

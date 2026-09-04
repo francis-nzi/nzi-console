@@ -32,6 +32,7 @@ export type CommandKey =
   | "emission.source.activity.update"
   | "emission.source.status.update"
   | "emission.source.rollforward"
+  | "scope.row.rollforward"
   | "emission.source.import.commit"
   | "emission.source.import.void"
   | "client.import.mapping.save"
@@ -134,7 +135,9 @@ export type AnnualScopeComparison={year:number;sourceSnapshotId:string;sourceDat
 export type ReviewedCrpSnapshotReadModel={id:string;jobId:string;jobNumber:string;client:string;reportingYear:number;version:number;jobVersion:number;createdAt:string;createdBy:string;dataHash:string;target:EmissionsTargetReadModel|null;intensityTarget:IntensityTargetReadModel|null;annualComparison:AnnualScopeComparison[];sections:ReportSectionReadModel[];gapResolutions:Array<{gapKey:string;reason:string;resolvedBy:string;resolvedAt:string}>;measurements:Array<{rowId:string;rowVersion:number;scope:"1"|"2"|"3";scopeCode?:string;sourceLabel:string;assetIdentifier?:string|null;reportLabel?:string;columnText?:string|null;notes?:string|null;categoryPath?:string[];monthlyActivity?:MonthlyActivitySlot[];siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;factorSource?:FactorSource;clientFactorId?:string|null;isCustomEntry?:boolean;applyPct?:number;dataConfidence?:DataConfidence|null;sourceQuantity?:number|null;sourceUnit?:string|null;tco2e:number;factorSet:string;qualityTier:ScopeQualityTier;reviewedBy:string}>};
 export type PublishedCrpReportReadModel={reportVersionId:string;manifestVersion:number;publishedAt:string;dataHash:string;snapshot:ReviewedCrpSnapshotReadModel};
 export type CrpReportVersionReadModel={reportVersionId:string;status:"validated"|"published"|"superseded";manifestVersion:number;publishedAt:string|null;dataHash:string;snapshot:ReviewedCrpSnapshotReadModel};
-export type FactorOption = { datasetId: string|null; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; selectionSource: "automatic" | "manual" | "client"; factorSource:FactorSource;clientFactorId:string|null;evidenceHash:string|null; synthetic: boolean; warnings: string[] };
+/** NZC-062 — the GHG-protocol category each of a factor's `scopes` entries resolves to (`crpScopeCategoryLabel`). */
+export type FactorOptionCategory = { scope: "1" | "2" | "3"; scopeCode: string; label: string };
+export type FactorOption = { datasetId: string|null; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; categories: FactorOptionCategory[]; selectionSource: "automatic" | "manual" | "client"; factorSource:FactorSource;clientFactorId:string|null;evidenceHash:string|null; synthetic: boolean; warnings: string[] };
 export type DatasetOption = { datasetId: string; name: string; version: string; validFrom: string; validTo: string; countryCode: string; status: "active" | "superseded" | "draft"; synthetic: boolean; selected: boolean; selectionSource: "automatic" | "manual" | null; applicable: boolean; warnings: string[]; reportingFrom: string; reportingTo: string; jobCountryCode: string };
 export function isAllowedJobStageTransition(family: WorkflowJobFamily, from: string, to: string): boolean {
   const stages: readonly string[] = jobWorkflowStages[family];
@@ -186,6 +189,8 @@ export type CommandInputMap = {
   "emission.source.create":{jobId:string;groupId:string|null;scope:string;sourceType:EmissionSourceKind;sourceSubtype:string|null;siteId:string|null;sourceName:string;assetIdentifier:string|null;purchasedGoodsCategoryId:string|null;datasetId?:string|null;factorId:string|null;factorSource:FactorSource;clientFactorId:string|null;quantity:number|null;unit:string|null;applyPct:number;dataSource:string;dataConfidence:DataConfidence|null;monthlyActivity:MonthlyActivitySlot[];detail:EmissionSourceDetail;notes:string|null;importBatchId?:string|null};
   "emission.source.sync":{jobId:string;sourceId:string};
   "emission.source.rollforward":{jobId:string;fromJobId:string|null};
+  /** NZC-063 — bulk-copy chosen prior-job scope rows forward, quantity empty, pending. */
+  "scope.row.rollforward":{jobId:string;priorJobId:string;rowIds:string[]};
   "emission.source.import.commit":{jobId:string;token:string;rows:SpendImportRow[]};
   "emission.source.import.void":{jobId:string;batchId:string};
   "client.import.mapping.save":{clientId:string;importKind:"spend";columns:SpendImportColumnMap};
@@ -254,6 +259,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "emission.source.activity.update":{key:"emission.source.activity.update",label:"Update emission-source activity",permission:"emissions.data.edit",reasonRequired:false,transaction:"versioned source activity + audit + outbox + idempotency",auditAction:"emission_source_activity_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sourceId",input.sourceId);if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<1)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected source version must be one or greater."});if(input.quantity!==null&&(!Number.isFinite(input.quantity)||input.quantity<0))issues.push({field:"quantity",code:"INVALID",message:"Quantity must be zero or greater."});if(!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100 percent."});if(input.quantity!==null&&!input.unit?.trim())issues.push({field:"unit",code:"REQUIRED",message:"Activity unit is required when quantity is present."});issues.push(...monthlyActivityIssues(input.monthlyActivity));return issues;}},
   "emission.source.status.update":{key:"emission.source.status.update",label:"Change emission-source status",permission:"emissions.data.edit",reasonRequired:false,transaction:"versioned source status + linked canonical row + audit + outbox + idempotency",auditAction:"emission_source_status_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sourceId",input.sourceId);if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<1)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected source version must be one or greater."});if(typeof input.enabled!=="boolean")issues.push({field:"enabled",code:"INVALID",message:"Source status must be enabled or archived."});return issues;}},
   "emission.source.rollforward":{key:"emission.source.rollforward",label:"Roll forward previous-year spend mappings",permission:"emissions.data.edit",reasonRequired:false,transaction:"prior-year mapping copy + re-pinned datasets + audit + outbox + idempotency",auditAction:"emission_sources_rolled_forward",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);if(input.fromJobId!=null&&(typeof input.fromJobId!=="string"||input.fromJobId.trim()===""))issues.push({field:"fromJobId",code:"INVALID",message:"Source job is invalid."});return issues;}},
+  "scope.row.rollforward":{key:"scope.row.rollforward",label:"Roll forward previous-year scope rows",permission:"emissions.data.edit",reasonRequired:false,transaction:"prior-year row copy + re-pinned datasets + audit + outbox + idempotency",auditAction:"scope_rows_rolled_forward",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"priorJobId",input.priorJobId);if(!Array.isArray(input.rowIds)||input.rowIds.length===0||input.rowIds.some(id=>typeof id!=="string"||!id.trim()))issues.push({field:"rowIds",code:"REQUIRED",message:"Select at least one prior-year row to roll forward."});return issues;}},
   "emission.source.import.commit":{key:"emission.source.import.commit",label:"Commit a spend import batch",permission:"emissions.data.edit",reasonRequired:false,transaction:"token verify + batched spend sources + audit + outbox + idempotency",auditAction:"spend_import_committed",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"token",input.token);if(!Array.isArray(input.rows)||input.rows.length===0)issues.push({field:"rows",code:"REQUIRED",message:"Import at least one row."});else if(input.rows.length>10_000)issues.push({field:"rows",code:"TOO_MANY",message:"An import may carry at most 10,000 rows."});return issues;}},
   "emission.source.import.void":{key:"emission.source.import.void",label:"Void a spend import batch",permission:"emissions.data.edit",reasonRequired:false,transaction:"audited soft-void of pending batch rows + linked rows + audit + outbox",auditAction:"spend_import_voided",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"batchId",input.batchId);return issues;}},
   "client.import.mapping.save":{key:"client.import.mapping.save",label:"Save a client's import column map",permission:"emissions.data.edit",reasonRequired:false,transaction:"versioned client import mapping + audit + outbox",auditAction:"client_import_mapping_saved",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);if(input.importKind!=="spend")issues.push({field:"importKind",code:"INVALID",message:"Import kind must be spend."});if(typeof input.columns!=="object"||input.columns===null||Array.isArray(input.columns))issues.push({field:"columns",code:"INVALID",message:"Column map must be an object."});return issues;}},
@@ -324,4 +330,20 @@ export type SpendRollforwardLine = {
 export type SpendRollforwardPreview = {
   priorJob: { id: string; number: string; reportingYear: number } | null;
   lines: SpendRollforwardLine[];
+};
+
+// NZC-063 — previous-year rollforward generalised to every scope-row type (not
+// just the spend register): the prior job's enabled canonical rows, factor +
+// hierarchy + site copied in, with the same moved-factor / not-in-selection /
+// already-rolled-forward lineage the spend mechanism already surfaces.
+export type ScopeRowRollforwardLine = {
+  priorRowId: string; sourceLabel: string; scope: string; categoryCode: string | null; categoryLabel: string;
+  siteId: string | null; siteLabel: string | null;
+  factorSource: FactorSource; factorLabel: string | null;
+  pinnedFactorVersion: string | null; currentFactorVersion: string | null; factorVersionMoved: boolean;
+  datasetInJobSelection: boolean; alreadyRolledForward: boolean;
+};
+export type ScopeRowRollforwardPreview = {
+  priorJob: { id: string; number: string; reportingYear: number } | null;
+  rows: ScopeRowRollforwardLine[];
 };

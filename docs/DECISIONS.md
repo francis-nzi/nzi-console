@@ -81,6 +81,8 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-059 | Review & QA is the Data-Assurance stage: the aggregate Outputs tables (five-year trend, by scope, by site, audit, intensity) are the QA surface, in the same stage as row-level independent approval, under one sign-off that freezes the content-addressed snapshot Report consumes. Baseline year always shown with a BL pill; trend = baseline + current + prior three years; "% vs BL" is a dedicated column. Assurance is a right-hand overlay drawer so the data view keeps full width. | Confirmed (4 Sep 2026) |
 | NZC-060 | Data-integrity gap engine: before sign-off the dataset must clear four flag types — (1) YoY movement beyond the NZC-018 50%/200% band read against the trend, (2) completeness (a category/site with prior-year data now absent), (3) zero/blank where a value is expected, (4) unmapped/uncalculated. Each gap is fixed (edit the row) or resolved-with-reason (recorded on the row's provenance). Sign-off is blocked while any gap is open. A "% vs BL" reduction driven by an *unresolved* flag renders neutral grey until the gap is resolved. | Confirmed (4 Sep 2026) |
 | NZC-061 | Entry unit set: `mi` and passenger-distance units (`passenger.km`, `passenger.mi`) added to the per-row entry unit list (bulk paths already carry `mi`). | Confirmed (4 Sep 2026) |
+| NZC-062 | Add rows from template: a fuzzy-matched search across the whole job factor library (every selected dataset + client factor, every scope/category) — the unscoped power-user path alongside the per-category smart-search. A pick stamps factor + scope + category + site into a fresh enabled `scope.row.create` row, quantity empty, pending; the search stays open for a multi-add run. | Confirmed (4 Sep 2026) |
+| NZC-063 | Reuse Previous Year Rows: previous-year rollforward generalised from the spend-only register (`job_emission_sources`) to every canonical row type, via a new `job_scope_rows.rolled_forward_from_row_id` self-reference. Select specific prior-job rows (not "roll everything"); factor + hierarchy + site copied in, quantity empty, pending; the same moved-factor / not-in-selection / already-rolled-forward lineage the spend mechanism already surfaces. | Confirmed (4 Sep 2026) |
 
 ---
 
@@ -682,6 +684,34 @@ list**, which omitted them (vehicles / commuting could not be entered in miles).
 (`vehicleBulk.ts`, `commutingBulk.ts`) already carry `mi`. Delivered as DA5 (`entryUnitsForCategory`,
 `apps/console/app/jobs/emissionEntryModel.ts`, PR #82) — standalone, no flag.
 *Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §2.3.*
+
+### NZC-062 — Add rows from template [Confirmed 4 Sep 2026]
+A fast, forgiving fuzzy search across the **whole job factor library** (every selected dataset + client
+factor, every scope/category) — reuses `listJobFactorOptions`, extended with a derived
+`categories: {scope, scopeCode, label}[]` per factor (its `scopes` resolved through the existing
+`crpScopeCategoryLabel`, no new storage). This is the **unscoped power-user path**, alongside — not
+replacing — the per-category smart-search already in the accordion's "+ Add entry" form. A result is shown
+as `factor label · scope · category · unit · dataset`; picking one creates a fresh **enabled** row via the
+existing `scope.row.create` (unforked), stamping the factor, scope, category and the selected site
+(All sites → Unallocated, changeable on the row after), quantity empty, `pending`. The search stays open
+after each pick (multi-add). Sits directly under the Data-entry stage's site selector, above the
+scope→category cards. Flag `data-entry-fast-add`.
+*Source: Francis, 4 Sep 2026 — "the two fast row-adding facilities the live site has."*
+
+### NZC-063 — Reuse Previous Year Rows [Confirmed 4 Sep 2026]
+Previous-year rollforward **generalised from the spend-only register** (`job_emission_sources`,
+`rolled_forward_from_source_id`, NZC-030) **to every canonical row type**, by reading and writing
+`job_scope_rows` directly — so a plain manually-added row rolls forward exactly like a
+spend/vehicle/commuting-synced one. New self-referencing `job_scope_rows.rolled_forward_from_row_id`
+(migration `0055`), mirroring the register's own `rolled_forward_from_source_id` pattern (one rolled-forward
+copy per origin per job). The consultant **picks specific prior-year rows** (select-all / per-row — not an
+automatic "roll everything forward"); each carries the same lineage the spend mechanism already surfaces —
+factor-version-moved, dataset-not-in-selection, already-rolled-forward — computed the same way. On confirm,
+the chosen rows are copied forward with factor + hierarchy + site intact, quantity empty, `pending`,
+re-pinning the prior dataset selection (same NZC-030 continuity pattern) so the pinned factor stays
+resolvable. Presented as a panel beside the template search. Flag `data-entry-fast-add` (shared with NZC-062
+— split later only if the two need independent rollout).
+*Source: Francis, 4 Sep 2026.*
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only

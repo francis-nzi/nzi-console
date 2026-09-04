@@ -1,6 +1,6 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
@@ -151,6 +151,53 @@ export async function listSpendRollforwardPreview(db:Queryable,jobId:string):Pro
   if(!p)return{priorJob:null,lines:[]};
   const lines=await db.query<{prior_source_id:string;description:string;gl_code:string|null;purchased_goods_category_id:string|null;category_label:string|null;factor_source:import("@nzi/contracts").FactorSource;factor_label:string|null;pinned_version:string|null;current_version:string|null;dataset_in_selection:boolean;already_rolled_forward:boolean}>(`SELECT s.source_id AS prior_source_id,s.source_name AS description,s.source_subtype AS gl_code,s.purchased_goods_category_id,pgc.name AS category_label,s.factor_source,coalesce(cf.report_label,f.label) AS factor_label,coalesce('v'||cf.version::text,d.version) AS pinned_version,(SELECT d2.version FROM nzi_console.emission_factor_datasets d1 JOIN nzi_console.emission_factor_datasets d2 ON d2.organisation_id=d1.organisation_id AND d2.name=d1.name JOIN nzi_console.job_dataset_selections sel ON sel.organisation_id=d2.organisation_id AND sel.dataset_id=d2.dataset_id AND sel.job_id=$2 WHERE d1.organisation_id=s.organisation_id AND d1.dataset_id=s.dataset_id ORDER BY (d2.dataset_id=s.dataset_id) DESC LIMIT 1) AS current_version,EXISTS(SELECT 1 FROM nzi_console.job_dataset_selections sel WHERE sel.organisation_id=s.organisation_id AND sel.job_id=$2 AND sel.dataset_id=s.dataset_id) AS dataset_in_selection,EXISTS(SELECT 1 FROM nzi_console.job_emission_sources rf WHERE rf.organisation_id=s.organisation_id AND rf.job_id=$2 AND rf.rolled_forward_from_source_id=s.source_id) AS already_rolled_forward FROM nzi_console.job_emission_sources s LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(s.organisation_id,s.purchased_goods_category_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(s.organisation_id,s.client_factor_id) LEFT JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id,f.factor_id)=(s.organisation_id,s.dataset_id,s.factor_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.job_id=$1 AND s.source_type='spend' AND s.enabled=true ORDER BY lower(s.source_name),s.source_id`,[p.job_id,jobId]);
   return{priorJob:{id:p.job_id,number:p.job_number,reportingYear:p.reporting_year},lines:lines.rows.map(row=>({priorSourceId:row.prior_source_id,description:row.description,glCode:row.gl_code,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.category_label,factorSource:row.factor_source,factorLabel:row.factor_label,pinnedFactorVersion:row.pinned_version,currentFactorVersion:row.current_version,factorVersionMoved:row.current_version!=null&&row.current_version!==row.pinned_version,datasetInJobSelection:row.dataset_in_selection===true,alreadyRolledForward:row.already_rolled_forward===true}))};
+}
+
+/**
+ * NZC-063 — previous-year rollforward generalised from the spend-only
+ * register (`listSpendRollforwardPreview`, `job_emission_sources`) to every
+ * canonical row type: this reads the prior CRP job's enabled `job_scope_rows`
+ * directly, so a manually-added row rolls forward exactly the same as a
+ * spend/vehicle/commuting-synced one. Same lineage the spend mechanism
+ * already surfaces — factor-version-moved, dataset-not-in-selection,
+ * already-rolled-forward — computed the same way, against the new
+ * `rolled_forward_from_row_id` self-reference (migration 0055) instead of
+ * `job_emission_sources.rolled_forward_from_source_id`.
+ */
+export async function listScopeRowRollforwardPreview(db:Queryable,jobId:string):Promise<ScopeRowRollforwardPreview>{
+  const target=await db.query<{client_id:string;reporting_year:number|null;start_date:Date|string}>(`SELECT client_id,reporting_year,start_date FROM nzi_console.jobs WHERE job_id=$1 AND job_family='crp'`,[jobId]);
+  const t=target.rows[0];
+  if(!t)return{priorJob:null,rows:[]};
+  const targetYear=t.reporting_year??Number((t.start_date instanceof Date?t.start_date.toISOString():String(t.start_date)).slice(0,4));
+  const prior=await db.query<{job_id:string;job_number:string;reporting_year:number}>(`SELECT j.job_id,j.job_number,coalesce(j.reporting_year,extract(year from j.start_date)::int) AS reporting_year FROM nzi_console.jobs j WHERE j.client_id=$1 AND j.job_family='crp' AND j.job_id<>$2 AND coalesce(j.reporting_year,extract(year from j.start_date)::int)<$3 AND EXISTS(SELECT 1 FROM nzi_console.job_scope_rows r WHERE r.organisation_id=j.organisation_id AND r.job_id=j.job_id AND r.enabled=true) ORDER BY coalesce(j.reporting_year,extract(year from j.start_date)::int) DESC,j.sequence DESC LIMIT 1`,[t.client_id,jobId,targetYear]);
+  const p=prior.rows[0];
+  if(!p)return{priorJob:null,rows:[]};
+  const rows=await db.query<{prior_row_id:string;source_label:string;scope:string;category_code:string|null;site_id:string|null;site_label:string|null;factor_source:import("@nzi/contracts").FactorSource;factor_label:string|null;pinned_version:string|null;current_version:string|null;dataset_in_selection:boolean;already_rolled_forward:boolean}>(
+    `SELECT r.scope_row_id AS prior_row_id,r.source_label,r.scope,r.category_code,r.site_id,s.name AS site_label,r.factor_source,coalesce(cf.report_label,f.label) AS factor_label,
+        coalesce('v'||cf.version::text,d.version) AS pinned_version,
+        (SELECT d2.version FROM nzi_console.emission_factor_datasets d1 JOIN nzi_console.emission_factor_datasets d2 ON d2.organisation_id=d1.organisation_id AND d2.name=d1.name JOIN nzi_console.job_dataset_selections sel ON sel.organisation_id=d2.organisation_id AND sel.dataset_id=d2.dataset_id AND sel.job_id=$2 WHERE d1.organisation_id=r.organisation_id AND d1.dataset_id=r.dataset_id ORDER BY (d2.dataset_id=r.dataset_id) DESC LIMIT 1) AS current_version,
+        EXISTS(SELECT 1 FROM nzi_console.job_dataset_selections sel WHERE sel.organisation_id=r.organisation_id AND sel.job_id=$2 AND sel.dataset_id=r.dataset_id) AS dataset_in_selection,
+        EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf WHERE rf.organisation_id=r.organisation_id AND rf.job_id=$2 AND rf.rolled_forward_from_row_id=r.scope_row_id) AS already_rolled_forward
+      FROM nzi_console.job_scope_rows r
+      LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
+      LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id)
+      LEFT JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id,f.factor_id)=(r.organisation_id,r.dataset_id,r.factor_id)
+      LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id)
+      WHERE r.job_id=$1 AND r.enabled=true
+      ORDER BY r.scope,lower(r.source_label),r.scope_row_id`,
+    [p.job_id,jobId],
+  );
+  // `category_code` is a GHG code for scope 3 (crpScopeCategoryLabel resolves
+  // it directly) but a UI-taxonomy slug for scope 1/2 (e.g.
+  // "1.company-vehicles") that crpScopeCategoryLabel does not know — look
+  // that up in the taxonomy first so scope 1/2 rows show a real name
+  // ("Company Vehicles") rather than the raw slug.
+  const {emissionCategoryTaxonomy}=await import("@nzi/contracts");
+  const categoryLabel=(categoryCode:string|null,scope:string):string=>{
+    const taxonomyMatch=categoryCode?emissionCategoryTaxonomy.find(entry=>entry.code===categoryCode):undefined;
+    return taxonomyMatch?taxonomyMatch.name:crpScopeCategoryLabel(categoryCode??scope);
+  };
+  return{priorJob:{id:p.job_id,number:p.job_number,reportingYear:p.reporting_year},rows:rows.rows.map(row=>({priorRowId:row.prior_row_id,sourceLabel:row.source_label,scope:row.scope,categoryCode:row.category_code,categoryLabel:categoryLabel(row.category_code,row.scope),siteId:row.site_id,siteLabel:row.site_label,factorSource:row.factor_source,factorLabel:row.factor_label,pinnedFactorVersion:row.pinned_version,currentFactorVersion:row.current_version,factorVersionMoved:row.current_version!=null&&row.current_version!==row.pinned_version,datasetInJobSelection:row.dataset_in_selection===true,alreadyRolledForward:row.already_rolled_forward===true}))};
 }
 
 export async function getScopeQaReadiness(db:Queryable,jobId:string):Promise<ScopeQaReadiness>{const {rows}=await db.query<{total:string;enabled:string;approved:string;pending:string;rejected:string;calculation_missing:string;quality_missing:string;independent_review_pending:string}>(`SELECT count(*)::text AS total,count(*) FILTER(WHERE enabled)::text AS enabled,count(*) FILTER(WHERE enabled AND review_status='approved')::text AS approved,count(*) FILTER(WHERE enabled AND review_status='pending')::text AS pending,count(*) FILTER(WHERE enabled AND review_status='rejected')::text AS rejected,count(*) FILTER(WHERE enabled AND calculated_tco2e IS NULL AND override_tco2e IS NULL)::text AS calculation_missing,count(*) FILTER(WHERE enabled AND quality_tier IS NULL)::text AS quality_missing,count(*) FILTER(WHERE enabled AND review_status<>'approved')::text AS independent_review_pending FROM nzi_console.job_scope_rows WHERE job_id=$1`,[jobId]);const r=rows[0]??{total:"0",enabled:"0",approved:"0",pending:"0",rejected:"0",calculation_missing:"0",quality_missing:"0",independent_review_pending:"0"};const result={total:Number(r.total),enabled:Number(r.enabled),approved:Number(r.approved),pending:Number(r.pending),rejected:Number(r.rejected),calculationMissing:Number(r.calculation_missing),qualityMissing:Number(r.quality_missing),independentReviewPending:Number(r.independent_review_pending),readyForReporting:false};result.readyForReporting=result.enabled>0&&result.calculationMissing===0&&result.qualityMissing===0&&result.independentReviewPending===0;return result;}
@@ -385,9 +432,20 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
     FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id)
     WHERE j.job_id=$1 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false) options
     ORDER BY lower(dataset_name),lower(label),factor_id`,[jobId]);
+  // NZC-062 — the fast-add template search needs each factor's category
+  // hierarchy for display and filing; derived here (not stored) from the
+  // same `scopes` this read model already carries, via the single shared
+  // crpScopeCategoryLabel function so this can never drift from the rest of
+  // the app's scope→category naming.
+  const toCategory=(scopeCode:string):FactorOptionCategory|null=>{
+    const scope=(scopeCode.split(".")[0]) as "1"|"2"|"3"|undefined;
+    if(scope!=="1"&&scope!=="2"&&scope!=="3")return null;
+    return{scope,scopeCode,label:crpScopeCategoryLabel(scopeCode)};
+  };
   return rows.map((row) => ({ datasetId: row.dataset_id,datasetName: row.dataset_name,datasetVersion: row.dataset_version,
     factorId: row.factor_id,label: row.label,activityUnit: row.activity_unit,kgco2ePerUnit:Number(row.kgco2e_per_unit),
-    scopes:row.scopes,selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
+    scopes:row.scopes,categories:row.scopes.map(toCategory).filter((c):c is FactorOptionCategory=>c!==null),
+    selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
 }
 
 // NZC-046 / UX1a — the scope→category accordion's applicable-category list.
