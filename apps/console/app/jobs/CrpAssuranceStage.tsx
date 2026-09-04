@@ -8,7 +8,14 @@
 // (does not dock — the tables keep full width) with the gaps list,
 // resolve-with-reason (`assurance.gap.resolve`, optimistic + expectedVersion),
 // and a row-detail view (select a row → its evidence). Behind `data-assurance`.
-// Row approvals + governed sign-off are DA3c.
+// DA3c: independent row approval in the row-detail view (the existing
+// scope.review.approve/reject commands, unforked — same
+// /scope-rows/{id}/review endpoint the legacy Data entry panel uses) and the
+// governed sign-off gate, blocked while any gap is open or any enabled row is
+// unapproved. The gate composes read-only signals this surface already has;
+// the freeze itself reuses report.snapshot.create unforked — that command now
+// also blocks server-side on open gaps (GAPS_OPEN), same transaction as the
+// existing QA_INCOMPLETE check.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
@@ -73,6 +80,8 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
   const current = trend.years.find((year) => year.kind === "current");
   const baseline = trend.years.find((year) => year.kind === "baseline");
   const openGaps = gaps.openCount;
+  const pendingReview = auditRows.filter((row) => row.reviewStatus !== "approved").length;
+  const canSignOff = auditRows.length > 0 && openGaps === 0 && pendingReview === 0;
 
   const gapsByScopeCode = useMemo(() => {
     const map = new Map<string, AssuranceGap[]>();
@@ -269,6 +278,8 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
       {!drawerOpen && <button className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data assurance {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
     </div>
 
+    <SignOffPanel jobId={jobId} canSignOff={canSignOff} openGaps={openGaps} pendingReview={pendingReview} onSignedOff={onReload} />
+
     {drawerOpen && <AssuranceDrawer
       jobId={jobId}
       gaps={gaps.gaps}
@@ -309,7 +320,7 @@ function AssuranceDrawer({ jobId, gaps, auditRows, selectedRowId, onSelectRow, o
       <button className={segment === "row" ? "on" : ""} disabled={!selectedRow} onClick={() => setSegment("row")}>Row detail</button>
     </div>
 
-    {segment === "row" && selectedRow && <RowDetail row={selectedRow} onEditRow={onEditRow} />}
+    {segment === "row" && selectedRow && <RowDetail jobId={jobId} row={selectedRow} onEditRow={onEditRow} onReviewed={onResolved} />}
 
     {segment === "gaps" && <>
       <ol className="nz-assurance-gaps">
@@ -321,7 +332,7 @@ function AssuranceDrawer({ jobId, gaps, auditRows, selectedRowId, onSelectRow, o
   </aside>;
 }
 
-function RowDetail({ row, onEditRow }: { row: AssuranceAuditRow; onEditRow?: (rowId: string) => void }) {
+function RowDetail({ jobId, row, onEditRow, onReviewed }: { jobId: string; row: AssuranceAuditRow; onEditRow?: (rowId: string) => void; onReviewed: () => void }) {
   return <div className="nz-assurance-row-detail">
     <div className="nz-kv"><span className="k">Category</span><span className="v">{row.category}</span></div>
     <div className="nz-kv"><span className="k">Activity</span><span className="v">{row.sourceLabel}</span></div>
@@ -330,8 +341,86 @@ function RowDetail({ row, onEditRow }: { row: AssuranceAuditRow; onEditRow?: (ro
     <div className="nz-kv"><span className="k">Quality tier</span><span className="v">{row.qualityTier ?? "—"}</span></div>
     <div className="nz-kv"><span className="k">Data confidence</span><span className="v">{row.dataConfidence ?? "—"}</span></div>
     <div className="nz-kv"><span className="k">Site</span><span className="v">{row.siteLabel}</span></div>
-    <div className="nz-kv"><span className="k">Review</span><span className="v">{row.reviewStatus}</span></div>
-    {onEditRow && <button className="nz-btn pri" style={{ marginTop: 10 }} onClick={() => onEditRow(row.rowId)}>Edit in Data entry →</button>}
+    <div className="nz-kv"><span className="k">Review</span><span className="v">{row.reviewStatus}{row.reviewStatus === "rejected" && row.reviewerNote ? ` — ${row.reviewerNote}` : ""}</span></div>
+    {onEditRow && <button className="nz-btn" style={{ marginTop: 10 }} onClick={() => onEditRow(row.rowId)}>Edit in Data entry →</button>}
+    <RowReview row={row} jobId={jobId} onReviewed={onReviewed} />
+  </div>;
+}
+
+/** DA3c — independent review in-stage: the same scope.review.approve/reject
+ *  commands the legacy Data entry row panel calls, surfaced here so a reviewer
+ *  need not leave the assurance surface to clear the sign-off gate. */
+function RowReview({ jobId, row, onReviewed }: { jobId: string; row: AssuranceAuditRow; onReviewed: () => void }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(decision: "approved" | "rejected") {
+    if (busy || (decision === "rejected" && !note.trim())) return;
+    setBusy(true); setError(null);
+    const result = await postBrowserCommand<{ decision: string; version: number }>(
+      `/api/isolated/jobs/${jobId}/scope-rows/${row.rowId}/review`,
+      { decision, expectedReviewVersion: row.version, reviewerNote: note.trim() || undefined },
+      crypto.randomUUID(),
+    );
+    setBusy(false);
+    if (result.state !== "success") { setError(result.state === "validation_failed" ? result.issues[0]?.message ?? "Could not record the review." : result.message); return; }
+    setNote("");
+    onReviewed();
+  }
+
+  if (row.reviewStatus === "approved") {
+    return <div className="nz-banner ok" style={{ marginTop: 12 }}>Approved{row.reviewerNote ? ` — ${row.reviewerNote}` : ""}.</div>;
+  }
+  return <div className="nz-assurance-row-review">
+    <div className="nz-sect" style={{ marginTop: 12 }}>Independent review</div>
+    <textarea className="nz-notes" style={{ width: "100%" }} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reviewer note (required for rejection)" rows={2} />
+    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+      <button className="nz-btn" disabled={busy || !note.trim()} onClick={() => void decide("rejected")}>Reject</button>
+      <button className="nz-btn pri" disabled={busy || !row.qualityTier} onClick={() => void decide("approved")}>Approve row</button>
+    </div>
+    {error && <div className="nz-banner warn" role="alert">{error}</div>}
+  </div>;
+}
+
+/** DA3c — the governed sign-off gate: composes "all gaps resolved" (openGaps)
+ *  and "all enabled rows approved" (pendingReview), both already read by this
+ *  surface. The freeze is the existing report.snapshot.create/reviewed-snapshots
+ *  endpoint, unforked — it now also enforces the gap half of this gate itself. */
+function SignOffPanel({ jobId, canSignOff, openGaps, pendingReview, onSignedOff }: { jobId: string; canSignOff: boolean; openGaps: number; pendingReview: number; onSignedOff: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
+
+  async function signOff() {
+    setBusy(true); setResult(null);
+    const outcome = await postBrowserCommand<{ snapshotId: string; version: number; reused: boolean }>(
+      `/api/isolated/jobs/${jobId}/reviewed-snapshots`,
+      {},
+      crypto.randomUUID(),
+    );
+    setBusy(false);
+    if (outcome.state === "success") {
+      setResult({ kind: "ok", text: outcome.data.reused ? `Reviewed snapshot v${outcome.data.version} is already current.` : `Signed off — immutable reviewed snapshot v${outcome.data.version} created.` });
+      onSignedOff();
+    } else {
+      setResult({ kind: "warn", text: outcome.state === "validation_failed" ? outcome.issues[0]?.message ?? "Sign-off is blocked." : outcome.message });
+    }
+  }
+
+  const blockers: string[] = [];
+  if (openGaps > 0) blockers.push(`${openGaps} gap${openGaps === 1 ? "" : "s"} open`);
+  if (pendingReview > 0) blockers.push(`${pendingReview} row${pendingReview === 1 ? "" : "s"} awaiting review`);
+
+  return <div className="nz-assurance-signoff">
+    <div className="nz-sect">Governed sign-off</div>
+    <p className="muted" style={{ fontSize: 12 }}>
+      Freezes an immutable, content-addressed snapshot for reporting — only once every integrity gap is resolved and every enabled row is independently approved.
+    </p>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <button className="nz-btn pri" disabled={busy || !canSignOff} onClick={() => void signOff()}>{busy ? "Signing off…" : "Sign off & freeze snapshot"}</button>
+      {!canSignOff && blockers.length > 0 && <span className="muted" style={{ fontSize: 12 }}>Blocked: {blockers.join(" · ")}</span>}
+    </div>
+    {result && <div className={`nz-banner ${result.kind}`} role={result.kind === "warn" ? "alert" : "status"} style={{ marginTop: 8 }}>{result.text}</div>}
   </div>;
 }
 

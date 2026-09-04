@@ -15,7 +15,7 @@ import {
   type ScopeRowWriteFields,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
-import { listGapResolutions, listReportSections } from "./readModels";
+import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
@@ -1400,6 +1400,19 @@ export async function createReviewedCrpSnapshot(
             field: "jobId",
             code: "QA_INCOMPLETE",
             message: `${incomplete.length} enabled scope row(s) are not calculation-complete and independently approved.`,
+          },
+        ]);
+      // DA3c (NZC-060) — the freeze is also blocked while any integrity gap is
+      // unresolved. Reuses the DA1/DA3a read model unforked: same trend +
+      // gap-engine the assurance surface already reads, evaluated inside this
+      // same transaction/lock so the check sees the rows just locked above.
+      const assuranceScreen = await getAssuranceScreen(db, input.jobId);
+      if (assuranceScreen && assuranceScreen.gaps.openCount > 0)
+        throw new CommandValidationError([
+          {
+            field: "jobId",
+            code: "GAPS_OPEN",
+            message: `${assuranceScreen.gaps.openCount} integrity gap(s) must be resolved before sign-off.`,
           },
         ]);
       const reportingYear =

@@ -10,7 +10,7 @@ Sliced so the governance-critical piece lands last:
 |---|---|---|
 | **DA3a** | Read surface — five-year trend (BL pill always shown, "% vs BL" its own column with the NZC-060 neutral tone), By scope / By site / Audit / Intensity tabs, CSV export. Read-only. | 🟢 built (PR #86) |
 | **DA3b** | Right overlay drawer (table keeps full width; reopen tab) — gaps list, resolve-with-reason via `assurance.gap.resolve` (optimistic + `expectedVersion`), "fix the row" round-tripping `computeAssuranceGaps`; drawer doubles as the shared row-detail drawer | 🟢 built (PR #87) |
-| DA3c | Row approvals in-stage + **governed sign-off** — the gate (blocked while any gap open **or** any enabled row unapproved) → `report.snapshot.create` freezing the snapshot (+ the frozen `gapResolutions`), reviewer + timestamp. **Integration outline posted for Francis before deep build.** | ⏳ |
+| **DA3c** | Row approvals in-stage + **governed sign-off** — the gate (blocked while any gap open **or** any enabled row unapproved) → `report.snapshot.create` freezing the snapshot (+ the frozen `gapResolutions`), reviewer + timestamp. | 🟢 built |
 
 ## DA3b — the gap drawer + resolve/fix
 
@@ -35,6 +35,32 @@ N" tab reopens it when closed.
   `expectedVersion`; `GapResolution` / `AssuranceGap.resolution` now include it. Applied to isolated staging
   before merge — required because `listGapResolutions` (already read by `report.snapshot.create`, an
   always-on command) now selects the new column.
+
+## DA3c — row approval in-stage + governed sign-off
+
+**Integration outline (confirmed by Francis, 4 Sep 2026)** — the gate composes two signals this surface
+already reads, no new computation:
+
+- **All gaps resolved** — `gaps.openCount === 0`, from the existing `GET /assurance` payload.
+- **All enabled rows approved** — `pendingReview === 0`, derived client-side from `auditRows` (already
+  enabled-only) where `reviewStatus !== "approved"`.
+
+**Row approval** (`RowReview`, inside the drawer's row-detail segment) calls the *existing*
+`scope.review.approve` / `scope.review.reject` commands — the same `POST
+/scope-rows/{rowId}/review` endpoint the legacy Data-entry row panel uses — unforked. `AssuranceAuditRow`
+gained `version` (→ `expectedReviewVersion`) and `reviewerNote` to support this in place, reading directly
+off the already-selected `job_scope_rows` columns (no new column, no migration).
+
+**Governed sign-off** (`SignOffPanel`) reuses `report.snapshot.create` / the existing `POST
+/reviewed-snapshots` endpoint unforked — same button the legacy panel already exposed, moved here. The
+**new** server-side work is one gap-check inside `createReviewedCrpSnapshot`, in the same transaction and
+row-lock as the existing `QA_INCOMPLETE` check: it now also calls `getAssuranceScreen` and throws a
+`GAPS_OPEN` validation error if `openCount > 0`. "All rows approved" was **already enforced** there
+(`QA_INCOMPLETE`) before DA3c — nothing new needed for that half. `gapResolutions`, reviewer and timestamp
+were already folded into the frozen payload (DA1e) / the snapshot's own `created_by`/`created_at`.
+
+The client-side gate (`canSignOff`) only disables the button and explains the blocker — the server is the
+actual authority; a stale client view still gets a `GAPS_OPEN`/`QA_INCOMPLETE` rejection, not a bad freeze.
 
 ## DA3a — the read surface
 
@@ -73,15 +99,27 @@ N" tab reopens it when closed.
 | 11 | `npm run typecheck` · `@nzi/console` build · full unit suites green · **flag OFF leaves Review & QA unchanged** | ✅ |
 | 12 | **Human-only:** screen-reader on the tabs + trend table + banner + drawer; keyboard reaches Resolve/Save/Cancel and the audit rows; reduced-motion; the BL / current tint reads as AA | ⏳ Francis |
 
-## Verification (DA3a+DA3b, this branch)
+## Gate (DA3c)
 
-- `npm run typecheck` — clean · `npm run build -w @nzi/console` — green (routes registered).
-- `@nzi/contracts` 69/69 · `@nzi/isolated-backend` 235/235 (+2 `getAssuranceScreen`, gap-resolve version
-  conflict) · console 85/85 · portal 89/89 · staff 33/33.
-- Migration `0054_gap_resolution_version` applied to isolated staging + verified (column present).
-- `data-assurance.spec.ts` (7) — skips until `data-assurance` is live; **harden at flip**.
+| # | Item | Check |
+|---|---|---|
+| 1 | Sign-off blocked while `openCount > 0` **or** any enabled row is unapproved — `GAPS_OPEN` / `QA_INCOMPLETE`, same transaction, unforked from `report.snapshot.create` | `packages/isolated-backend/tests/snapshotGapsGate.test.ts` |
+| 2 | Row approval reuses `scope.review.approve`/`reject` unforked — no new command, no new column | code review (`RowReview` → existing `/scope-rows/{id}/review`) |
+| 3 | The sign-off panel always renders; its button is disabled with a stated blocker reason while gated | `data-assurance.spec.ts` |
+| 4 | A pending row can be approved in-stage without navigating to Data entry | `data-assurance.spec.ts` |
+| 5 | `npm run typecheck` · `@nzi/console` build · full unit suites green | ✅ |
 
-## Flip (DA3a)
+## Verification (DA3a+DA3b+DA3c, this branch)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green (routes registered).
+- `@nzi/contracts` 69/69 · `@nzi/isolated-backend` 237/237 (+2 `createReviewedCrpSnapshot` gap-gate:
+  `GAPS_OPEN` blocks, clears once mapped) · `@nzi/console` unit suite 85/85 (unaffected — DA3c UI is covered
+  by e2e, not the node:test unit suite).
+- Migration `0054_gap_resolution_version` applied to isolated staging + verified (column present). DA3c adds
+  no new migration — `job_scope_rows.version`/`reviewer_note` and the DA1/DA3a read models are reused as-is.
+- `data-assurance.spec.ts` (9, +2 for DA3c) — skips until `data-assurance` is live; **harden at flip**.
+
+## Flip (DA3a+DA3b+DA3c)
 
 Append `data-assurance` to `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` in the Render dashboard + rebuild; add to
 `render.yaml`. Harden `data-assurance.spec.ts` (remove the flag skip), run against deployed staging, record
