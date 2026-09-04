@@ -27,6 +27,7 @@ import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
+import {CrpAssuranceStage} from "./CrpAssuranceStage";
 import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 import {ClientFactorPanel} from "./ClientFactorPanel";
@@ -331,6 +332,7 @@ export function CrpScopeWorkspace({
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
+  const assuranceSurface = dataEntryAdapterEnabled("data-assurance") ? <CrpAssuranceStage jobId={job.header.id}/> : null;
   const createForm = creating ? (
     <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
       <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>
@@ -394,6 +396,7 @@ export function CrpScopeWorkspace({
         {sourceRegister}
       </StageSection>
       <StageSection n={3} name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+        {assuranceSurface}
         {reviewQueue}
         {flatRegister}
       </StageSection>
@@ -467,6 +470,7 @@ export function CrpScopeWorkspace({
         {dataEntrySurface}
         {sourceRegister}
         {datasetPanel}
+        {assuranceSurface}
         {releaseControl}
         {createForm}
         {reviewQueue}

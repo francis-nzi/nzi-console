@@ -502,3 +502,46 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-stage-sec-body{padding:6px 17px 18px}
 .nz-stage-sec-body>.nz-config-panel:last-child,.nz-stage-sec-body>.nz-panel:last-child{margin-bottom:0}
 @media(max-width:760px){.nz-focus-strip{align-items:flex-start;flex-direction:column}.nz-stage-sec-body{padding:6px 13px 15px}}
+
+/* DA3 — Data Assurance surface (NZC-059/060) */
+.nz-assurance{padding:16px 18px}
+.nz-assurance-head{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.nz-assurance-meta{margin-top:4px;color:var(--t2);font-size:12px}
+.nz-bl-pill{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:5px;background:var(--amber);color:#5a3d00;font-size:9px;font-weight:800;letter-spacing:.03em;vertical-align:middle}
+.nz-cur-pill{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:5px;background:var(--midnight);color:#fff;font-size:9px;font-weight:700;vertical-align:middle}
+.nz-assurance-summary{display:grid;grid-template-columns:repeat(4,minmax(78px,1fr));gap:1px;margin:0;background:var(--line);border:1px solid var(--line);border-radius:11px;overflow:hidden;min-width:320px}
+.nz-assurance-summary>div{background:#fff;padding:8px 13px}
+.nz-assurance-summary dt{margin:0;color:var(--t3);font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.nz-assurance-summary dd{margin:2px 0 0;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.nz-assurance-summary dd.s1{color:var(--coral)}.nz-assurance-summary dd.s2{color:#C98A00}.nz-assurance-summary dd.s3{color:var(--emerald)}
+.nz-assurance-banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;border-radius:11px;border:1px solid;font-size:12.5px}
+.nz-assurance-banner b{font-size:13px}
+.nz-assurance-banner span{font-weight:500;color:var(--t2)}
+.nz-assurance-banner.ok{background:var(--mint);border-color:#BFE6CF;color:var(--pine)}
+.nz-assurance-banner.warn{background:#FFF6E7;border-color:#F0D9AE;color:#8A5A0E}
+.nz-assurance-chips{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.nz-gap-chip{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid;white-space:nowrap}
+.nz-gap-chip.yoy_movement{background:#FFF6E7;border-color:#F0D9AE;color:#8A5A0E}
+.nz-gap-chip.zero_blank{background:#FDEDE9;border-color:#F3C9BF;color:#A5341C}
+.nz-gap-chip.completeness{background:#F0ECFB;border-color:#DAD0F4;color:#5a3fb0}
+.nz-gap-chip.unmapped{background:#EEF2F4;border-color:#D9E1E5;color:#41525c}
+.nz-gap-chip+.nz-gap-chip{margin-left:4px}
+.nz-assurance-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.nz-assurance-tabs button{border:1px solid transparent;background:transparent;color:var(--t2);font:inherit;font-weight:600;font-size:12.5px;padding:7px 12px;border-radius:9px;cursor:pointer}
+.nz-assurance-tabs button:hover{background:var(--paper)}
+.nz-assurance-tabs button.on{background:var(--midnight);color:#fff}
+.nz-assurance-tabs button:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
+.nz-assurance-scroll{overflow-x:auto}
+.nz-assurance-scroll>p.sub{margin:6px 2px 10px;color:var(--t2);font-size:12px}
+.nz-assurance .nz-tbl{min-width:760px}
+.nz-assurance .nz-tbl td.bl,.nz-assurance .nz-tbl th.bl{background:#FDF3E2}
+.nz-assurance .nz-tbl td.cur,.nz-assurance .nz-tbl th.cur{background:#EEF6F1}
+.nz-assurance .nz-tbl tr.sub td{font-weight:700;background:var(--paper)}
+.nz-assurance .nz-tbl tr.total td{font-weight:800;border-top:2px solid var(--line)}
+.nz-assurance .nz-tbl tr.nz-flagged td:first-child{box-shadow:inset 3px 0 0 var(--coral)}
+.nz-pct{font-weight:700;font-variant-numeric:tabular-nums}
+.nz-pct.reduction{color:var(--pine)}
+.nz-pct.increase{color:#A5341C}
+.nz-pct.neutral{color:var(--t3)}
+.nz-assurance-actions{margin-top:12px}
+@media(max-width:760px){.nz-assurance{padding:14px 12px}.nz-assurance-summary{min-width:0;width:100%}}
