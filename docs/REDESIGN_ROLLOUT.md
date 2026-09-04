@@ -211,3 +211,35 @@ and applied to isolated staging, no UI. The **LCA reference module** (first fami
 rides on it. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 *M7 added 1 Sep 2026.*
+
+## M8 · Data Assurance (DA-track) — Review & QA → assurance surface + job-process simplification (added 4 Sep 2026)
+
+Spec: `docs/_handoff_DATA_ASSURANCE_brief.md` (to be retired). Prototype: `docs/prototypes/review_qa_v1.html`
+(Artifact `bc4f6e3c`). Decisions **NZC-057–061**. **The active track (Francis, 4 Sep 2026.)** Two connected
+changes: (A) retire the CRP **Factor-mapping stage** (mapping goes inline at capture) — 5-stage shell → 4;
+(B) build **Review & QA** into a Data-Assurance surface — the Outputs tables become the QA surface with a
+five-year trend, a four-flag integrity gap engine and a governed sign-off that freezes the same
+content-addressed reviewed snapshot the R-track consumes (**built on the existing reviewed-snapshot
+mechanism — not forked**).
+
+**Revises NZC-024 / UX1e-1 (#71/#72):** the stage shell is now **4** sections. `StageSection` /
+`StageFocusStrip` and the `job-stage-sections` flag are kept; only Factor-mapping is removed and its content
+re-homed (roll-ups → Data entry; unmatched-factor rows → a Needs-attention lens). `STAGING_ACCEPTANCE_UX1E.md`
+updated to the 4-stage shape in DA2.
+
+| Slice | Scope | Flag | Acceptance | Status |
+|---|---|---|---|---|
+| DA5 | Entry unit set — `mi` + `passenger.km` / `passenger.mi` on the per-row list (NZC-061) | — | `emissionEntryModel.test.ts` | 🟢 **shipped** (PR #82) |
+| DA1 | Backend: multi-year aggregation read models + **baseline / prior-year resolution** + gap-engine computation (4 flags) + gap-resolution store. No UI. | — (additive) | unit tests on aggregation + each flag; migration applied + schema-probe | ⏳ **next** — baseline/prior-year model proposed in the DA1 PR for Francis to confirm before the aggregation is built on top |
+| DA2 | Lifecycle 5→4: `jobWorkflowStages.crp` change + stage migration (Factor-mapping jobs → Data entry / Review & QA, logged "stage retired (NZC-057)"); retire the Factor-mapping section; re-home roll-ups + unmatched | `lifecycle-4stage` | `lifecycle-4stage.spec.ts` — 4 stages render; adjacency transitions; existing jobs migrated; roll-ups + unmatched reachable in Data entry | ⏳ |
+| DA3 | Data Assurance surface — five-year trend (BL pill, % vs BL), supporting tabs, right overlay drawer, gap list (fix / resolve-with-reason), row approvals in-stage, governed sign-off + snapshot freeze | `data-assurance` | `data-assurance.spec.ts` (brief §5.1) | ⏳ |
+| DA4 | Lean capture + drawer refine — core-fields capture; factor / quality / confidence / notes / docs / reasoned override move to the row drawer (NZC-058) | `entry-lean-capture` | `lean-capture.spec.ts` | ⏳ |
+
+**Order:** DA5 (done) → DA1 → DA2 → DA3 → DA4. Each new flag (`lifecycle-4stage`, `entry-lean-capture`,
+`data-assurance`) is appended to the Render dashboard `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild
+(`render.yaml` alone is cosmetic — see `DEPLOYMENT.md`).
+
+**R-track interaction:** R1–R4 are built and merged (flag-off). **No new R-track slice until DA3 lands** —
+hold R5 (paged output). DA's sign-off and the R-track's "Mark Final" freeze the same snapshot.
+
+*M8 added 4 Sep 2026.*

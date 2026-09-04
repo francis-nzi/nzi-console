@@ -1,7 +1,7 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
-import { resolveReportSections } from "@nzi/contracts";
+import type {CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import { buildReportingChain, resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -169,6 +169,46 @@ type ReportSectionRow={section_key:string;content_source:ReportSectionReadModel[
 export async function listReportSections(db:Queryable,jobId:string):Promise<ReportSectionReadModel[]>{
   const {rows}=await db.query<ReportSectionRow>(`SELECT section_key,content_source,body_html,version,updated_by,updated_at FROM nzi_console.report_sections WHERE job_id=$1`,[jobId]);
   return resolveReportSections(rows.map(row=>({key:row.section_key,contentSource:row.content_source,bodyHtml:row.body_html,version:row.version,updatedBy:row.updated_by,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at)})));
+}
+
+/**
+ * DA1 (NZC-059) — the baseline / prior-year chain for a CRP job's assurance
+ * trend. Baseline year from the job's emissions target; prior years are the
+ * latest reviewed CRP snapshot per distinct reporting year for the same client
+ * (< current); current year is this job's own reviewed snapshot or `live`.
+ */
+export async function resolveCrpReportingChain(db: Queryable, jobId: string): Promise<CrpReportingChain | null> {
+  const jobResult = await db.query<{ client_id: string; reporting_year: number | null; start_date: Date | string; job_family: string }>(
+    `SELECT client_id, reporting_year, start_date, job_family FROM nzi_console.jobs WHERE job_id=$1`, [jobId],
+  );
+  const job = jobResult.rows[0];
+  if (!job || job.job_family !== "crp") return null;
+  const currentYear = job.reporting_year ?? Number((job.start_date instanceof Date ? job.start_date.toISOString() : String(job.start_date)).slice(0, 4));
+
+  const [targetResult, priorResult, currentResult] = await Promise.all([
+    db.query<{ baseline_year: number }>(`SELECT baseline_year FROM nzi_console.job_emissions_targets WHERE job_id=$1`, [jobId]),
+    db.query<{ snapshot_id: string; data_hash: string; reporting_year: number }>(
+      `SELECT DISTINCT ON ((s.payload_json->>'reportingYear')::integer)
+         s.snapshot_id, s.data_hash, (s.payload_json->>'reportingYear')::integer AS reporting_year
+       FROM nzi_console.reviewed_crp_snapshots s
+       JOIN nzi_console.jobs pj ON (pj.organisation_id, pj.job_id) = (s.organisation_id, s.job_id)
+       WHERE pj.client_id = $1 AND pj.job_family = 'crp' AND (s.payload_json->>'reportingYear')::integer < $2
+       ORDER BY (s.payload_json->>'reportingYear')::integer, s.snapshot_version DESC`,
+      [job.client_id, currentYear],
+    ),
+    db.query<{ snapshot_id: string; data_hash: string }>(
+      `SELECT snapshot_id, data_hash FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC LIMIT 1`, [jobId],
+    ),
+  ]);
+
+  return buildReportingChain({
+    jobId,
+    clientId: job.client_id,
+    currentYear,
+    baselineYear: targetResult.rows[0]?.baseline_year ?? null,
+    priorSnapshots: priorResult.rows.map((row) => ({ year: row.reporting_year, snapshotId: row.snapshot_id, dataHash: row.data_hash })),
+    currentSnapshot: currentResult.rows[0] ? { snapshotId: currentResult.rows[0].snapshot_id, dataHash: currentResult.rows[0].data_hash } : null,
+  });
 }
 
 /** R4 — the working-sections editor screen: sections + live (unreviewed) figures. */

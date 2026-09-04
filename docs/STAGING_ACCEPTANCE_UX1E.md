@@ -1,8 +1,18 @@
 # UX1e-1 — job stage-as-section shell (NZC-024 module shell) · acceptance record
 
+> **REVISED by NZC-057 (DA-track / M8, 4 Sep 2026): CRP is now a FOUR-stage shell.**
+> "Factor mapping" is retired as a stage — factor selection happens inline at capture; unmatched-factor
+> rows become a "Needs attention" exception within Data entry. The `StageSection` / `StageFocusStrip`
+> components and the `job-stage-sections` flag are **kept**; the shell loses one section and its content is
+> re-homed (roll-ups → Data entry, unmatched → a Needs-attention lens). The **4-stage** shape is:
+> `stage-setup` (done · collapsed) · `stage-data-entry` (active · open) · `stage-review-qa` (todo ·
+> collapsed) · `stage-report-publish` (todo · collapsed). The code change + the re-run of
+> `stage-sections.spec.ts` against the 4-stage shell land in **DA2** (`lifecycle-4stage`); the sections
+> below record the original 5-stage acceptance (2–3 Sep 2026) and are superseded for the stage count only.
+
 Running record for the `job-stage-sections` adapter (`CrpStageSections.tsx`, gated in
 `CrpScopeWorkspace.tsx:428`). Reads alongside `docs/DATA_ENTRY_UX.md`, `docs/ACCEPTANCE_UX1E_STAGE_SECTIONS.md`
-and the NZC-024 / NZC-038 decisions. The shell wraps the UX1 accordion (which stays behind
+and the NZC-024 / NZC-038 / NZC-057 decisions. The shell wraps the UX1 accordion (which stays behind
 `data-entry-accordion`) — this record covers the **stage container only**; per-stage content acceptance
 lives in each stage's own record (UX1 for Data entry).
 

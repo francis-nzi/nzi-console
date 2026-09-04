@@ -76,6 +76,11 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-054 | LCA inventory is flat — `lca_line_items` per EN 15804 module, no BOM tree; a multi-leg transport journey is an ordered, geocoded child table with the parent line caching the leg sum | Confirmed (1 Sep 2026) |
 | NZC-055 | Family review spine — a family's atomic reviewed unit (LCA assessment / training run) is versioned with `expectedVersion`, carries provenance/lineage, `review_status` bound to a reviewed version; family reports from a content-addressed snapshot | Confirmed (1 Sep 2026) |
 | NZC-056 | CRP↔Training only via `training_entitlements` (free places originate from the quote/commercial terms, manual CRP grant secondary; atomic available→reserved→consumed, no hard FK); LCA factors use the shared `emission_factors`/`client_factors` signature; consultancy stays light (no time-tracking engine) | Confirmed (1 Sep 2026) |
+| NZC-057 | Four-stage CRP lifecycle: Setup → Data entry → Review & QA → Report & publish. "Factor mapping" is retired as a stage — factor selection happens inline at capture; unmatched-factor rows are a "Needs attention" exception within Data entry, not a stage. CRP-only (leave `pcf`). | Confirmed (4 Sep 2026) |
+| NZC-058 | Lean capture + drawer refine: the entry form captures core fields only (matched type / activity, quantity + unit, site-context, save); factor override, quality tier, data confidence, evidence notes, supporting docs and reasoned override move to the row's detail drawer. CRM adopts the portal's core-fields-only capture model. | Confirmed (4 Sep 2026) |
+| NZC-059 | Review & QA is the Data-Assurance stage: the aggregate Outputs tables (five-year trend, by scope, by site, audit, intensity) are the QA surface, in the same stage as row-level independent approval, under one sign-off that freezes the content-addressed snapshot Report consumes. Baseline year always shown with a BL pill; trend = baseline + current + prior three years; "% vs BL" is a dedicated column. Assurance is a right-hand overlay drawer so the data view keeps full width. | Confirmed (4 Sep 2026) |
+| NZC-060 | Data-integrity gap engine: before sign-off the dataset must clear four flag types — (1) YoY movement beyond the NZC-018 50%/200% band read against the trend, (2) completeness (a category/site with prior-year data now absent), (3) zero/blank where a value is expected, (4) unmapped/uncalculated. Each gap is fixed (edit the row) or resolved-with-reason (recorded on the row's provenance). Sign-off is blocked while any gap is open. A "% vs BL" reduction driven by an *unresolved* flag renders neutral grey until the gap is resolved. | Confirmed (4 Sep 2026) |
+| NZC-061 | Entry unit set: `mi` and passenger-distance units (`passenger.km`, `passenger.mi`) added to the per-row entry unit list (bulk paths already carry `mi`). | Confirmed (4 Sep 2026) |
 
 ---
 
@@ -282,6 +287,11 @@ the "families as detail under one Jobs workspace" framing in earlier drafts.
 the generic `FamilyWorkspace.tsx` ternary is retired. **Prove the model first** per non-CRP family (the
 schema batch in `MODEL_FIDELITY_JOB_FAMILIES.md` — domain model + worst-case fixtures + migration), then
 build **one LCA reference module** behind a flag, prove it, replicate. CRP stays canonical and untouched.
+
+*Update (NZC-057, 4 Sep 2026):* the **CRP** module shell is now **four** stages — Setup → Data entry →
+Review & QA → Report & publish. "Factor mapping" is retired (mapping is inline at capture). The `StageSection`
+/ `StageFocusStrip` components and the `job-stage-sections` flag from UX1e-1 (#71/#72) are kept; the shell
+loses one section. Other families (esp. `pcf`) keep their own stage sets.
 **Phase 0 (migrations + fixtures + invariants, no UI) is complete** — `0045`–`0050` on `main`, applied to
 isolated staging (PRs #63/#64/#65); its five schema decisions are registered as **NZC-052–056**. The **LCA
 reference module waits** until the report (R-track, NZC-048–051) and data-entry (UX1 + adapters) tracks
@@ -622,6 +632,55 @@ parallel `factor_lookup` / `lca_factor_*` tables. Consultancy stays light — **
 just a versioned `job_consultancy_details` row (hours budget/used pair) plus a `consultancy_deliverables`
 checklist. Console migrations `0049` (+ `0050` consultancy). *Source: `MODEL_FIDELITY_JOB_FAMILIES.md`
 §4, §5, §6.*
+
+### NZC-057 — Four-stage CRP lifecycle [Confirmed 4 Sep 2026]
+`crp` workflow stages become **Setup → Data entry → Review & QA → Report & publish**. **Factor mapping is
+retired as a stage**: factor selection happens **inline at capture** (activity smart-search / DVLA lookup
+auto-matches, the user accepts). A row that still has no factor is a **"Needs attention" exception within
+Data entry**, not a stage everyone walks through. `packages/contracts/src/commands.ts` `jobWorkflowStages.crp`
+drives `isAllowedJobStageTransition` (adjacent-only) and `WorkflowStageControl`, so both follow the array.
+**CRP-only** — `pcf` keeps its "Factor mapping" stage. Existing CRP jobs at `workflow_stage = "Factor mapping"`
+migrate in the same PR: **→ "Data entry"** if any enabled row lacks a factor, else **→ "Review & QA"**, logged
+in the stage-transition / audit trail as "stage retired (NZC-057)". Flag `lifecycle-4stage`.
+*Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §2.1; prototype `docs/prototypes/review_qa_v1.html`.*
+
+### NZC-058 — Lean capture + drawer refine [Confirmed 4 Sep 2026]
+The entry form captures **core fields only** — matched type (from registration) or activity, quantity + unit,
+site-context, save. The factor is auto-set from the matched activity / lookup and shown **read-only**, not a
+required pick. Factor override, quality tier, data confidence, evidence notes, supporting docs, reasoned
+override and apportionment move to the **row's right-hand detail drawer** for post-save editing. The CRM
+capture model thereby matches the portal's constrained one (`buildEmissionEntryFields`
+`apps/console/app/jobs/emissionEntryModel.ts`). Flag `entry-lean-capture`.
+*Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §2.2.*
+
+### NZC-059 — Review & QA is the Data-Assurance stage [Confirmed 4 Sep 2026]
+The aggregate **Outputs tables** (five-year trend, by scope, by site, audit, intensity) **are** the QA
+surface, in the same stage as row-level independent approval, under **one governed sign-off** that freezes
+the content-addressed reviewed snapshot the Report track (NZC-051) consumes. The **baseline year** is always
+shown with a **BL pill**; the trend shows **baseline + current + prior three reporting years**; **"% vs BL"**
+(current ÷ baseline − 1) is a dedicated column. Assurance is a **right-hand overlay drawer** (the shared
+scope-row detail drawer) so the trend table keeps **full page width**; a "🛡 Data assurance · N" tab reopens
+it. Sign-off is **blocked while any gap is open** and while any enabled row is unapproved. Flag `data-assurance`.
+*Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §3.*
+
+### NZC-060 — Data-integrity gap engine [Confirmed 4 Sep 2026]
+Before sign-off the dataset must clear **four flag types**: (1) **YoY movement** — current vs the trend
+outside the NZC-018 `[0.5×, 2×]` band (generalise `apps/console/app/jobs/yoyVariance.ts` from a single prior
+to baseline + multi-year); (2) **completeness** — a category or site with prior-year data and none in the
+current year; (3) **zero / blank** — a value expected (factor set) but 0 or missing quantity; (4)
+**unmapped / uncalculated** — a row with no factor or no calculation. Each gap is **fixed** (edit the row →
+re-evaluate) or **resolved-with-reason** (free-text reason stored on the row's provenance / lineage,
+who + when). A resolved flag no longer blocks sign-off but stays visible (resolved state + reason) in the
+audit trail. **A "% vs BL" reduction driven by an *unresolved* flag renders neutral grey** until the gap is
+resolved, so an unverified data hole cannot read as a genuine reduction (the prototype's green is changed).
+*Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §3.*
+
+### NZC-061 — Entry unit set [Confirmed 4 Sep 2026]
+`mi` and passenger-distance units (`passenger.km`, `passenger.mi`) are added to the **per-row entry unit
+list**, which omitted them (vehicles / commuting could not be entered in miles). Bulk paths
+(`vehicleBulk.ts`, `commutingBulk.ts`) already carry `mi`. Delivered as DA5 (`entryUnitsForCategory`,
+`apps/console/app/jobs/emissionEntryModel.ts`, PR #82) — standalone, no flag.
+*Source: `docs/_handoff_DATA_ASSURANCE_brief.md` §2.3.*
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
