@@ -1,0 +1,537 @@
+<title>Review &amp; QA — Data Assurance</title>
+<style>
+:root{
+  --s1:#FF5C48; --s2:#FFC24B; --s3:#0BA75E;
+  --brand:#0B7A46; --brand-d:#0A5E37;
+  --ink:#12211B; --ink-2:#41504A; --muted:#6B7A73;
+  --line:#E4E8E5; --line-2:#EEF1EF;
+  --bg:#F5F7F5; --panel:#FFFFFF; --panel-2:#FAFBFA;
+  --warn:#B4690E; --warn-bg:#FFF6E7; --warn-line:#F0D9AE;
+  --danger:#C23B22; --danger-bg:#FDEDE9; --danger-line:#F3C9BF;
+  --violet:#6B4CC7; --violet-bg:#F0ECFB; --violet-line:#DAD0F4;
+  --slate:#51636F; --slate-bg:#EEF2F4; --slate-line:#D9E1E5;
+  --ok:#0B7A46; --ok-bg:#E7F5EE; --ok-line:#BEE6D2;
+  --bl:#E8912B; --bl-bg:#FDF0DC;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 22px 120px}
+h1,h2,h3,h4{margin:0;font-weight:700;letter-spacing:-.01em}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+a{color:var(--brand-d)}
+
+/* header */
+.jobhead{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px}
+.jobhead h1{font-size:22px;margin:2px 0 3px}
+.jobhead .sub{color:var(--ink-2);font-size:13px}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(84px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;min-width:340px}
+.summary>div{background:var(--panel);padding:9px 14px}
+.summary .k{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.summary .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.summary .v.s1{color:var(--s1)} .summary .v.s2{color:#C98A00} .summary .v.s3{color:var(--s3)}
+
+/* pills */
+.blpill{display:inline-block;background:var(--bl);color:#fff;font-size:9px;font-weight:800;letter-spacing:.04em;padding:1px 5px;border-radius:5px;vertical-align:middle;margin-left:4px}
+.curpill{display:inline-block;background:var(--ink);color:#fff;font-size:9px;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:5px;vertical-align:middle;margin-left:4px}
+
+/* stage strip */
+.stages{display:flex;align-items:center;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:14px;overflow-x:auto}
+.stage{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.stage .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--line-2);color:var(--muted);flex:0 0 auto}
+.stage.done .dot{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+.stage.active .dot{background:var(--ink);color:#fff}
+.stage .lab{font-size:13px;font-weight:600;color:var(--ink-2)}
+.stage.active .lab{color:var(--ink);font-weight:700}
+.stage.todo .lab{color:var(--muted);font-weight:500}
+.stage-link{flex:1 1 auto;height:2px;background:var(--line);margin:0 12px;min-width:18px}
+.stage.done+.stage-link{background:var(--ok-line)}
+.retired{margin-left:auto;font-size:11px;color:var(--muted);padding-left:14px;white-space:nowrap}
+.retired s{color:#B9C2BC}
+
+/* banner */
+.banner{display:flex;align-items:center;gap:12px;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-weight:600;border:1px solid;flex-wrap:wrap}
+.banner.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+.banner.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.banner .big{font-size:15px}
+.banner .sub{font-weight:500;color:var(--ink-2)}
+.banner .spacer{flex:1}
+
+/* layout */
+.grid{display:block}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.panel-b{padding:6px 8px 12px}
+
+/* view tabs */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:2px}
+.tab{border:1px solid transparent;background:transparent;color:var(--ink-2);font:inherit;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:7px}
+.tab:hover{background:var(--panel-2)}
+.tab.on{background:var(--ink);color:#fff}
+.tab .pill{background:var(--danger);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center}
+.tab.on .pill{background:#fff;color:var(--ink)}
+.view{display:none}
+.view.on{display:block}
+.scroll{overflow-x:auto}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 10px 12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:var(--panel);font:inherit;font-weight:600;font-size:12px;color:var(--ink-2);padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--ink);color:#fff}
+.ghost{margin-left:auto;border:1px solid var(--line);background:var(--panel);font:inherit;font-weight:600;font-size:12px;color:var(--ink-2);padding:6px 12px;border-radius:9px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+
+/* tables */
+table.nz{width:100%;border-collapse:collapse;font-size:13px;min-width:880px}
+table.nz th{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.nz th.num,table.nz td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.nz td{padding:9px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+table.nz tr:last-child td{border-bottom:0}
+th.yr-bl,td.yr-bl{background:var(--bl-bg)}
+th.yr-cur,td.yr-cur{background:#EEF6F1}
+.scopetag{display:inline-flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap}
+.scopetag i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.i1{background:var(--s1)} .i2{background:var(--s2)} .i3{background:var(--s3)}
+tr.sub td{background:var(--panel-2);font-weight:700}
+tr.sub td.yr-bl{background:#F7EBD7}
+tr.sub td.yr-cur{background:#E6F1EA}
+tr.total td{background:#F0F3F1;font-weight:800;border-top:2px solid var(--line)}
+tr.total td.yr-bl{background:#F3E6CF}
+tr.total td.yr-cur{background:#DEEDE4}
+.mdelta{display:block;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}
+.mdelta.up{color:var(--warn)} .mdelta.dn{color:var(--danger)} .mdelta.flat{color:var(--muted)}
+th.yr-pct,td.yr-pct{background:#F3F1EC}
+.pct{font-weight:700;font-variant-numeric:tabular-nums}
+.pct.up{color:var(--warn)} .pct.dn{color:var(--ok)} .pct.flat{color:var(--muted)}
+.pct .ar{font-size:10px;margin-right:2px}
+.gonemark{color:var(--danger);font-weight:700}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid;white-space:nowrap}
+.chip.yoy{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+.chip.zero{background:var(--danger-bg);border-color:var(--danger-line);color:var(--danger)}
+.chip.comp{background:var(--violet-bg);border-color:var(--violet-line);color:var(--violet)}
+.chip.unmap{background:var(--slate-bg);border-color:var(--slate-line);color:var(--slate)}
+.chip.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+tr.flagged td:first-child{box-shadow:inset 3px 0 0 var(--fl,var(--warn))}
+.act-row td:first-child{padding-left:26px;color:var(--ink-2)}
+.act-row td{border-bottom:1px dashed var(--line-2)}
+.drill-toggle{cursor:pointer;user-select:none;color:var(--brand-d);font-weight:600;font-size:12px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 12px 6px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.note{font-size:12.5px;color:var(--ink-2);padding:2px 12px 10px}
+
+/* RIGHT DETAIL DRAWER (overlay — shared app region) */
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(384px,94vw);background:var(--panel);border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(18,33,27,.14);overflow-y:auto;z-index:30;transform:translateX(100%);transition:transform .22s ease;padding-bottom:80px}
+.drawer.open{transform:none}
+.drawer-close{border:0;background:transparent;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:8px}
+.drawer-close:hover{background:var(--line-2);color:var(--ink)}
+.assure-toggle{position:fixed;right:0;top:150px;z-index:29;background:var(--ink);color:#fff;border:0;border-radius:10px 0 0 10px;padding:11px 14px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:-4px 0 16px rgba(18,33,27,.16);display:flex;align-items:center;gap:8px}
+.assure-toggle .n{background:var(--danger);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px}
+.assure-toggle[hidden]{display:none}
+.drawer-h{padding:12px 15px;border-bottom:1px solid var(--line-2);display:flex;flex-direction:column;gap:2px;background:var(--panel-2)}
+.drawer-h .ctx{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.drawer-h .ttl{display:flex;justify-content:space-between;align-items:center}
+.drawer-h h3{font-size:15px}
+.drawer-h .count{font-size:12px;font-weight:700;color:var(--danger)}
+.drawer-seg{display:flex;gap:4px;padding:8px 10px 2px}
+.drawer-seg button{flex:1;border:1px solid var(--line);background:var(--panel);font:inherit;font-weight:600;font-size:12px;color:var(--ink-2);padding:6px 8px;border-radius:8px;cursor:pointer}
+.drawer-seg button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.gap{border:1px solid var(--line);border-left:3px solid var(--fl,var(--warn));border-radius:10px;padding:10px 12px;margin:8px 10px 0}
+.gap.resolved{opacity:.6;border-left-color:var(--ok-line);background:var(--ok-bg)}
+.gap .top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.gap .where{font-weight:700;font-size:13px}
+.gap .why{color:var(--ink-2);font-size:12.5px;margin-top:3px}
+.gap .acts{display:flex;gap:8px;margin-top:9px}
+.gap .lnk{font:inherit;font-size:12px;font-weight:700;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--ink-2)}
+.gap .lnk.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+.gap .reason{display:none;margin-top:8px}
+.gap .reason input{width:100%;font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px}
+.gap .rtag{display:none;margin-top:7px;font-size:12px;color:var(--ok);font-weight:600}
+.drawer-note{font-size:12px;color:var(--muted);padding:10px 12px 12px}
+.assure .bar{height:8px;border-radius:6px;background:var(--line-2);overflow:hidden;margin:10px 12px 4px}
+.assure .bar>i{display:block;height:100%;background:var(--brand)}
+.assure .row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line-2);gap:8px}
+.assure .row:last-child{border-bottom:0}
+.assure .who{font-weight:600;font-size:12.5px}
+.assure .who small{display:block;color:var(--muted);font-weight:500}
+.mini{font:inherit;font-size:12px;font-weight:700;border:1px solid var(--brand);background:var(--brand);color:#fff;border-radius:8px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+
+/* signoff */
+.signoff{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(18,33,27,.06);z-index:20}
+.signoff .in{max-width:1360px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.signoff .state{font-weight:700}
+.signoff .state small{display:block;font-weight:500;color:var(--muted)}
+.btn{font:inherit;font-weight:700;font-size:14px;border-radius:10px;padding:11px 20px;cursor:pointer;border:1px solid var(--brand);background:var(--brand);color:#fff}
+.btn[disabled]{background:var(--line-2);border-color:var(--line);color:var(--muted);cursor:not-allowed}
+.prov{font-size:12px;color:var(--muted);margin-left:auto}
+@media(max-width:980px){.drawer{width:100vw}}
+</style>
+
+<div class="wrap">
+
+  <!-- JOB HEADER -->
+  <div class="jobhead">
+    <div>
+      <div class="eyebrow">Carbon Reduction Plan &nbsp;·&nbsp; Baseline year 2022 <span class="blpill">BL</span> &nbsp;·&nbsp; Reporting 01/02/2025 – 31/01/2026</div>
+      <h1>J000566 — First Event Carbon Reduction Plan</h1>
+      <div class="sub">First Event · Owner: David Hawes · CRM: Tina Hartley</div>
+    </div>
+    <div class="summary" aria-label="Emissions summary (current year)">
+      <div><div class="k">Total tCO₂e</div><div class="v">108.07</div></div>
+      <div><div class="k">Scope 1</div><div class="v s1">3.34</div></div>
+      <div><div class="k">Scope 2</div><div class="v s2">0.54</div></div>
+      <div><div class="k">Scope 3</div><div class="v s3">104.19</div></div>
+    </div>
+  </div>
+
+  <!-- STAGE STRIP (4 stages) -->
+  <div class="stages">
+    <div class="stage done"><span class="dot">✓</span><span class="lab">1 · Setup</span></div>
+    <div class="stage-link"></div>
+    <div class="stage done"><span class="dot">✓</span><span class="lab">2 · Data entry</span></div>
+    <div class="stage-link"></div>
+    <div class="stage active"><span class="dot">3</span><span class="lab">Review &amp; QA</span></div>
+    <div class="stage-link"></div>
+    <div class="stage todo"><span class="dot">4</span><span class="lab">Report &amp; publish</span></div>
+    <div class="retired">Was 5 stages · <s>Factor mapping</s> now inline at capture</div>
+  </div>
+
+  <!-- INTEGRITY BANNER -->
+  <div id="banner" class="banner warn">
+    <span class="big">⚠ <span id="gapCountBanner">5</span> gaps to resolve</span>
+    <span class="sub">Complete, consistent and fully costed across the trend before this stage can be signed off.</span>
+    <span class="spacer"></span>
+    <span class="chip yoy">2 YoY</span><span class="chip zero">1 zero</span><span class="chip comp">1 missing</span><span class="chip unmap">1 unmapped</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- MAIN -->
+    <div class="panel">
+      <div class="panel-b">
+        <div class="tabs" role="tablist">
+          <button class="tab on" data-v="yoy">5-year trend <span class="pill" id="tabPill">5</span></button>
+          <button class="tab" data-v="scope">By scope</button>
+          <button class="tab" data-v="site">By site</button>
+          <button class="tab" data-v="audit">Audit table</button>
+          <button class="tab" data-v="intensity">Intensity</button>
+          <button class="tab" data-v="rows">Row approvals</button>
+        </div>
+
+        <!-- VIEW: 5-year trend (hero) -->
+        <div class="view on" data-view="yoy">
+          <div class="toolbar">
+            <div class="seg"><button class="on">Emissions (tCO₂e)</button><button>Volume</button></div>
+            <span class="muted" style="font-size:12.5px">Baseline + four reporting years · % change measured against baseline (2022) — a series that cliffs or a category that vanishes is the integrity signal.</span>
+            <button class="ghost">⭳ CSV</button>
+          </div>
+          <div class="scroll">
+          <table class="nz" aria-label="Five year trend">
+            <thead><tr>
+              <th>Scope</th><th>Category</th>
+              <th class="num yr-bl">2022 <span class="blpill">BL</span></th>
+              <th class="num">2023</th><th class="num">2024</th><th class="num">2025</th>
+              <th class="num yr-cur">2026 <span class="curpill">current</span></th>
+              <th class="num yr-pct">% vs BL</th>
+              <th>Integrity</th>
+            </tr></thead>
+            <tbody>
+              <!-- S1 -->
+              <tr><td><span class="scopetag"><i class="i1"></i>Scope 1</span></td><td>Company Vehicles</td>
+                <td class="num yr-bl">4.10</td><td class="num">3.80</td><td class="num">2.90</td><td class="num">2.10</td>
+                <td class="num yr-cur">3.34</td><td class="num yr-pct pct dn"><span class="ar">▼</span>19%</td><td></td></tr>
+              <tr class="sub"><td></td><td>Scope 1 subtotal</td><td class="num yr-bl">4.10</td><td class="num">3.80</td><td class="num">2.90</td><td class="num">2.10</td><td class="num yr-cur">3.34</td><td class="num yr-pct pct dn"><span class="ar">▼</span>19%</td><td></td></tr>
+              <!-- S2 -->
+              <tr><td><span class="scopetag"><i class="i2"></i>Scope 2</span></td><td>Company Vehicles</td>
+                <td class="num yr-bl">0.70</td><td class="num">0.66</td><td class="num">0.62</td><td class="num">0.60</td>
+                <td class="num yr-cur">0.54</td><td class="num yr-pct pct dn"><span class="ar">▼</span>23%</td><td></td></tr>
+              <tr class="flagged" style="--fl:var(--danger)" id="row-energy"><td><span class="scopetag"><i class="i2"></i>Scope 2</span></td><td>Energy</td>
+                <td class="num yr-bl">5.10</td><td class="num">5.00</td><td class="num">4.90</td><td class="num">4.80</td>
+                <td class="num yr-cur">0.00</td><td class="num yr-pct pct dn"><span class="ar">▼</span>100%</td><td><span class="chip zero">● zero — 4 yrs of data, now nil</span></td></tr>
+              <tr class="sub"><td></td><td>Scope 2 subtotal</td><td class="num yr-bl">5.80</td><td class="num">5.66</td><td class="num">5.52</td><td class="num">5.40</td><td class="num yr-cur">0.54</td><td class="num yr-pct pct dn"><span class="ar">▼</span>91%</td><td></td></tr>
+              <!-- S3 -->
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Employee Commuting
+                <div class="drill-toggle" data-drill="commuting">▸ 12 activity lines</div></td>
+                <td class="num yr-bl">33.00</td><td class="num">35.00</td><td class="num">37.00</td><td class="num">38.00</td>
+                <td class="num yr-cur">41.76</td><td class="num yr-pct pct up"><span class="ar">▲</span>27%</td><td></td></tr>
+              <tr class="act-row drill commuting" hidden><td>Average Car Diesel</td><td></td><td class="num yr-bl">0.60</td><td class="num">0.55</td><td class="num">0.52</td><td class="num">0.51</td><td class="num yr-cur">0.43</td><td class="num yr-pct pct dn"><span class="ar">▼</span>28%</td><td></td></tr>
+              <tr class="act-row drill commuting" hidden><td>Medium Car Petrol (1401-2000cc)</td><td></td><td class="num yr-bl">5.40</td><td class="num">5.80</td><td class="num">6.10</td><td class="num">6.20</td><td class="num yr-cur">6.95</td><td class="num yr-pct pct up"><span class="ar">▲</span>29%</td><td></td></tr>
+              <tr class="act-row drill commuting" hidden><td>Homeworking (Office Equipment + Heating)</td><td></td><td class="num yr-bl">6.10</td><td class="num">8.40</td><td class="num">9.60</td><td class="num">10.10</td><td class="num yr-cur">11.41</td><td class="num yr-pct pct up"><span class="ar">▲</span>87%</td><td></td></tr>
+              <tr class="act-row drill commuting" hidden><td class="muted">…9 further lines</td><td></td><td class="num yr-bl"></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num yr-cur"></td><td class="num yr-pct"></td><td></td></tr>
+
+              <tr class="flagged" style="--fl:var(--warn)" id="row-travel"><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Travel</td>
+                <td class="num yr-bl">14.00</td><td class="num">12.50</td><td class="num">10.00</td><td class="num">11.90</td>
+                <td class="num yr-cur">36.38</td><td class="num yr-pct pct up"><span class="ar">▲</span>160%</td><td><span class="chip yoy">▲ 3.1× vs trend</span></td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Business Travel</td>
+                <td class="num yr-bl">22.00</td><td class="num">24.00</td><td class="num">23.50</td><td class="num">26.00</td>
+                <td class="num yr-cur">25.12</td><td class="num yr-pct pct up"><span class="ar">▲</span>14%</td><td></td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Fuels &amp; Energy Related Activities</td>
+                <td class="num yr-bl">1.00</td><td class="num">0.95</td><td class="num">0.92</td><td class="num">0.90</td>
+                <td class="num yr-cur">0.76</td><td class="num yr-pct pct dn"><span class="ar">▼</span>24%</td><td></td></tr>
+              <tr class="flagged" style="--fl:var(--danger)" id="row-waste"><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Waste Generated in Operations</td>
+                <td class="num yr-bl">3.00</td><td class="num">3.10</td><td class="num">3.30</td><td class="num">3.20</td>
+                <td class="num yr-cur">0.14</td><td class="num yr-pct pct dn"><span class="ar">▼</span>95%</td><td><span class="chip yoy">▼ 4% of trend</span></td></tr>
+              <tr id="row-pgs"><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Purchased Goods &amp; Services
+                <div class="drill-toggle" data-drill="pgs">▸ 2 activity lines</div></td>
+                <td class="num yr-bl">0.06</td><td class="num">0.05</td><td class="num">0.05</td><td class="num">0.05</td>
+                <td class="num yr-cur">0.03</td><td class="num yr-pct pct dn"><span class="ar">▼</span>50%</td><td></td></tr>
+              <tr class="act-row drill pgs" hidden><td>Water Supply</td><td></td><td class="num yr-bl">0.06</td><td class="num">0.05</td><td class="num">0.05</td><td class="num">0.05</td><td class="num yr-cur">0.03</td><td class="num yr-pct pct dn"><span class="ar">▼</span>50%</td><td></td></tr>
+              <tr class="act-row drill pgs flagged" style="--fl:var(--slate)" id="row-unmapped" hidden><td>Waste water treatment</td><td></td><td class="num yr-bl">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num yr-cur">—</td><td class="num yr-pct">—</td><td><span class="chip unmap">⬦ 1,200 m³ · no factor</span></td></tr>
+
+              <tr class="flagged" style="--fl:var(--violet)" id="row-refrig"><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Refrigerants (Fugitive Emissions)</td>
+                <td class="num yr-bl">1.90</td><td class="num">1.85</td><td class="num">1.80</td><td class="num">1.80</td>
+                <td class="num yr-cur"><span class="gonemark">—</span></td><td class="num yr-pct pct dn"><span class="ar">▼</span>100%</td><td><span class="chip comp">◇ 4 yrs of data · none now</span></td></tr>
+
+              <tr class="sub"><td></td><td>Scope 3 subtotal</td><td class="num yr-bl">74.96</td><td class="num">77.45</td><td class="num">76.57</td><td class="num">81.85</td><td class="num yr-cur">104.19</td><td class="num yr-pct pct up"><span class="ar">▲</span>39%</td><td></td></tr>
+              <tr class="total"><td></td><td>All scopes total</td><td class="num yr-bl">84.86</td><td class="num">86.91</td><td class="num">84.99</td><td class="num">89.35</td><td class="num yr-cur">108.07</td><td class="num yr-pct pct up"><span class="ar">▲</span>27%</td><td></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="legend">
+            <span><span class="chip yoy">YoY</span> movement beyond 50%/200% (NZC-018)</span>
+            <span><span class="chip zero">zero</span> value expected</span>
+            <span><span class="chip comp">missing</span> completeness</span>
+            <span><span class="chip unmap">unmapped</span> no factor / no calc</span>
+          </div>
+        </div>
+
+        <!-- VIEW: By scope -->
+        <div class="view" data-view="scope">
+          <div class="note">Category amalgamation for the current year — Scope → Category → Rows, with the site count each category spans.</div>
+          <div class="scroll">
+          <table class="nz">
+            <thead><tr><th>Scope</th><th>Category</th><th class="num">Sites</th><th class="num">2022 <span class="blpill">BL</span></th><th class="num yr-cur">2026</th></tr></thead>
+            <tbody>
+              <tr><td><span class="scopetag"><i class="i1"></i>Scope 1</span></td><td>Company Vehicles</td><td class="num">1</td><td class="num">4.10</td><td class="num yr-cur">3.34</td></tr>
+              <tr class="sub"><td></td><td>Scope 1</td><td class="num"></td><td class="num">4.10</td><td class="num yr-cur">3.34</td></tr>
+              <tr><td><span class="scopetag"><i class="i2"></i>Scope 2</span></td><td>Company Vehicles</td><td class="num">1</td><td class="num">0.70</td><td class="num yr-cur">0.54</td></tr>
+              <tr><td><span class="scopetag"><i class="i2"></i>Scope 2</span></td><td>Energy</td><td class="num">1</td><td class="num">5.10</td><td class="num yr-cur">0.00</td></tr>
+              <tr class="sub"><td></td><td>Scope 2</td><td class="num"></td><td class="num">5.80</td><td class="num yr-cur">0.54</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Employee Commuting</td><td class="num">1</td><td class="num">33.00</td><td class="num yr-cur">41.76</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Travel</td><td class="num">1</td><td class="num">14.00</td><td class="num yr-cur">36.38</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Business Travel</td><td class="num">1</td><td class="num">22.00</td><td class="num yr-cur">25.12</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Fuels &amp; Energy Related Activities</td><td class="num">1</td><td class="num">1.00</td><td class="num yr-cur">0.76</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Waste Generated in Operations</td><td class="num">1</td><td class="num">3.00</td><td class="num yr-cur">0.14</td></tr>
+              <tr><td><span class="scopetag"><i class="i3"></i>Scope 3</span></td><td>Purchased Goods &amp; Services</td><td class="num">1</td><td class="num">0.06</td><td class="num yr-cur">0.03</td></tr>
+              <tr class="sub"><td></td><td>Scope 3</td><td class="num"></td><td class="num">74.96</td><td class="num yr-cur">104.19</td></tr>
+              <tr class="total"><td></td><td>Total</td><td class="num"></td><td class="num">84.86</td><td class="num yr-cur">108.07</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- VIEW: By site -->
+        <div class="view" data-view="site">
+          <div class="note">Emissions allocated by site (current year). Rows in <b>Unallocated</b> are a completeness signal — every activity should resolve to a place (ties into Sites-as-places, S3).</div>
+          <div class="scroll">
+          <table class="nz">
+            <thead><tr><th>Site</th><th class="num">Scope 1</th><th class="num">Scope 2</th><th class="num">Scope 3</th><th class="num yr-cur">Total</th></tr></thead>
+            <tbody>
+              <tr><td>Head Office — London</td><td class="num">3.34</td><td class="num">0.54</td><td class="num">61.20</td><td class="num yr-cur">65.08</td></tr>
+              <tr><td>Regional depot — Manchester</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">28.10</td><td class="num yr-cur">28.10</td></tr>
+              <tr class="flagged" style="--fl:var(--violet)"><td>Unallocated <span class="chip comp" style="margin-left:6px">◇ 14.89 unplaced</span></td><td class="num">0.00</td><td class="num">0.00</td><td class="num">14.89</td><td class="num yr-cur">14.89</td></tr>
+              <tr class="total"><td>Total</td><td class="num">3.34</td><td class="num">0.54</td><td class="num">104.19</td><td class="num yr-cur">108.07</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- VIEW: Audit table -->
+        <div class="view" data-view="audit">
+          <div class="note">Row-level lineage — every canonical row with its factor, activity, quality tier, confidence and review state. The evidence trail an assessor is bound to.</div>
+          <div class="scroll">
+          <table class="nz">
+            <thead><tr><th>Category</th><th>Activity / factor</th><th class="num">Qty</th><th>Quality</th><th>Conf.</th><th>Review</th></tr></thead>
+            <tbody>
+              <tr><td>Company Vehicles</td><td>Passenger Vehicles: Average Car Diesel</td><td class="num">7,500 L</td><td>Measured</td><td>H</td><td><span class="chip ok">approved</span></td></tr>
+              <tr><td>Employee Commuting</td><td>Medium Car Petrol (1401-2000cc)</td><td class="num">18,400 mi</td><td>Estimated</td><td>M</td><td><span class="chip ok">approved</span></td></tr>
+              <tr><td>Travel</td><td>Passenger transport by railway and road</td><td class="num">£24,900</td><td>Spend-based</td><td>L</td><td><span class="chip yoy">pending</span></td></tr>
+              <tr><td>Energy</td><td>UK Renewable Electricity: Grid</td><td class="num">— kWh</td><td>—</td><td>—</td><td><span class="chip zero">no quantity</span></td></tr>
+              <tr><td>Purchased Goods &amp; Services</td><td class="muted">Waste water treatment — no factor selected</td><td class="num">1,200 m³</td><td>—</td><td>—</td><td><span class="chip unmap">unmapped</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- VIEW: Intensity -->
+        <div class="view" data-view="intensity">
+          <div class="note">Normalised metrics across the trend — the same totals against business denominators, for benchmarking and target-setting.</div>
+          <div class="scroll">
+          <table class="nz">
+            <thead><tr><th>Metric</th><th class="num yr-bl">2022 <span class="blpill">BL</span></th><th class="num">2023</th><th class="num">2024</th><th class="num">2025</th><th class="num yr-cur">2026</th></tr></thead>
+            <tbody>
+              <tr><td>tCO₂e per FTE</td><td class="num yr-bl">2.05</td><td class="num">2.02</td><td class="num">1.95</td><td class="num">1.98</td><td class="num yr-cur">2.16</td></tr>
+              <tr><td>tCO₂e per £m revenue</td><td class="num yr-bl">13.1</td><td class="num">12.8</td><td class="num">12.0</td><td class="num">12.4</td><td class="num yr-cur">11.1</td></tr>
+              <tr><td>tCO₂e per event delivered</td><td class="num yr-bl">0.74</td><td class="num">0.72</td><td class="num">0.70</td><td class="num">0.71</td><td class="num yr-cur">0.68</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- VIEW: Row approvals -->
+        <div class="view" data-view="rows">
+          <div class="note">Independent review lives in the same stage — the tables show <i>whether</i> the numbers are right; here each row is formally approved.</div>
+          <div class="assure">
+            <div class="bar"><i style="width:86%"></i></div>
+            <div class="row"><div class="who">18 of 21 rows approved<small>3 pending independent review</small></div><div><span class="chip ok">86% assured</span></div></div>
+            <div class="row"><div class="who">Travel — Passenger transport by railway &amp; road<small>Spend-based · L confidence · flagged 3.1× vs trend</small></div><button class="mini">Approve</button></div>
+            <div class="row"><div class="who">Energy — UK Renewable Electricity<small>No quantity entered</small></div><button class="mini">Approve</button></div>
+            <div class="row"><div class="who">Purchased Goods — Waste water treatment<small>No factor selected</small></div><button class="mini">Approve</button></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT DETAIL DRAWER (overlay) -->
+    <div class="drawer open" id="drawer">
+      <div class="drawer-h">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="ctx">Detail · this stage</span><button class="drawer-close" id="drawerClose" aria-label="Close">✕</button></div>
+        <div class="ttl"><h3 id="drawerTitle">Data assurance</h3><span class="count" id="gapCount">5 open</span></div>
+      </div>
+      <div class="drawer-seg">
+        <button class="on" data-d="gaps">Gaps <span id="segGapN">(5)</span></button>
+        <button data-d="assure">Row approvals</button>
+      </div>
+
+      <div id="d-gaps">
+        <div id="gapList">
+          <div class="gap" style="--fl:var(--danger)" data-target="row-energy">
+            <div class="top"><span class="where">Scope 2 · Energy</span><span class="chip zero">zero</span></div>
+            <div class="why">0.00 this year after four years around 5.0. Factor set, no quantity entered.</div>
+            <div class="acts"><button class="lnk pri" data-jump>Go to row</button><button class="lnk" data-resolve>Resolve…</button></div>
+            <div class="reason"><input placeholder="Reason (e.g. moved to on-site renewable — genuinely zero)"></div>
+            <div class="rtag">✓ Resolved</div>
+          </div>
+          <div class="gap" style="--fl:var(--warn)" data-target="row-travel">
+            <div class="top"><span class="where">Scope 3 · Travel</span><span class="chip yoy">YoY ▲</span></div>
+            <div class="why">36.38 vs a 10–14 range across the trend (3.1×). Confirm it's real, not a double-count.</div>
+            <div class="acts"><button class="lnk pri" data-jump>Go to row</button><button class="lnk" data-resolve>Resolve…</button></div>
+            <div class="reason"><input placeholder="Reason (e.g. return to in-person events)"></div>
+            <div class="rtag">✓ Resolved</div>
+          </div>
+          <div class="gap" style="--fl:var(--danger)" data-target="row-waste">
+            <div class="top"><span class="where">Scope 3 · Waste</span><span class="chip yoy">YoY ▼</span></div>
+            <div class="why">0.14 after four years around 3.0 (4%). A cliff this steep usually means missing data.</div>
+            <div class="acts"><button class="lnk pri" data-jump>Go to row</button><button class="lnk" data-resolve>Resolve…</button></div>
+            <div class="reason"><input placeholder="Reason (e.g. waste contractor data outstanding)"></div>
+            <div class="rtag">✓ Resolved</div>
+          </div>
+          <div class="gap" style="--fl:var(--violet)" data-target="row-refrig">
+            <div class="top"><span class="where">Scope 3 · Refrigerants</span><span class="chip comp">missing</span></div>
+            <div class="why">Ran 1.8–1.9 for four years, nothing this year. Category dropped out entirely.</div>
+            <div class="acts"><button class="lnk pri" data-jump>Go to row</button><button class="lnk" data-resolve>Resolve…</button></div>
+            <div class="reason"><input placeholder="Reason (e.g. no top-ups this year — confirmed with facilities)"></div>
+            <div class="rtag">✓ Resolved</div>
+          </div>
+          <div class="gap" style="--fl:var(--slate)" data-target="row-unmapped">
+            <div class="top"><span class="where">PG&amp;S · Waste water</span><span class="chip unmap">unmapped</span></div>
+            <div class="why">1,200 m³ entered but no factor selected — would reach the report uncosted.</div>
+            <div class="acts"><button class="lnk pri" data-jump>Map factor</button><button class="lnk" data-resolve>Resolve…</button></div>
+            <div class="reason"><input placeholder="Reason (e.g. de-minimis — excluded with note)"></div>
+            <div class="rtag">✓ Resolved</div>
+          </div>
+        </div>
+        <div class="drawer-note">This is the workspace's shared detail drawer — selecting any row shows its evidence and lineage here. By default it lists the assurance gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row's provenance so sign-off is defensible.</div>
+      </div>
+
+      <div id="d-assure" hidden>
+        <div class="assure">
+          <div class="bar"><i style="width:86%"></i></div>
+          <div class="row"><div class="who">18 of 21 rows approved<small>3 pending independent review</small></div></div>
+          <div class="row"><div class="who">Travel — rail &amp; road<small>Spend-based · L conf.</small></div><button class="mini">Approve</button></div>
+          <div class="row"><div class="who">Energy — renewable grid<small>No quantity</small></div><button class="mini">Approve</button></div>
+          <div class="row"><div class="who">PG&amp;S — waste water<small>No factor</small></div><button class="mini">Approve</button></div>
+        </div>
+        <div class="drawer-note">Row approvals sit in the same stage as the aggregate tables — one sign-off covers both “the totals are right” and “each row is independently approved”.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- reopen tab for the assurance drawer -->
+<button class="assure-toggle" id="assureToggle" hidden>🛡 Data assurance <span class="n" id="toggleN">5</span></button>
+
+<!-- SIGN-OFF BAR -->
+<div class="signoff">
+  <div class="in">
+    <div class="state" id="soState">Review &amp; QA — <span id="soCount">5</span> gaps open<small>Resolve every gap and approve all rows to sign off</small></div>
+    <div class="prov">Will record: reviewed by <b>Tina Hartley</b> · <span id="soDate"></span> · content-addressed snapshot frozen</div>
+    <button class="btn" id="soBtn" disabled>Sign off &amp; continue to Report →</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const tabs=[...document.querySelectorAll('.tab')];
+  const views=[...document.querySelectorAll('.view')];
+  tabs.forEach(t=>t.addEventListener('click',()=>{
+    tabs.forEach(x=>x.classList.remove('on'));t.classList.add('on');
+    const v=t.dataset.v;views.forEach(x=>x.classList.toggle('on',x.dataset.view===v));
+  }));
+  // drawer segments
+  document.querySelectorAll('.drawer-seg button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.drawer-seg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    const d=b.dataset.d;
+    document.getElementById('d-gaps').hidden=(d!=='gaps');
+    document.getElementById('d-assure').hidden=(d!=='assure');
+    document.getElementById('drawerTitle').textContent=(d==='gaps'?'Data assurance':'Row approvals');
+  }));
+  // drill toggles
+  document.querySelectorAll('.drill-toggle').forEach(d=>d.addEventListener('click',()=>{
+    const key=d.dataset.drill;const rows=document.querySelectorAll('.drill.'+key);
+    const open=rows[0] && rows[0].hidden;
+    rows.forEach(r=>r.hidden=!open);
+    d.textContent=(open?'▾ ':'▸ ')+d.textContent.replace(/^[▸▾]\s*/,'');
+  }));
+  document.getElementById('soDate').textContent=new Date().toLocaleDateString('en-GB');
+  // drawer open / close
+  const drawer=document.getElementById('drawer');
+  const toggle=document.getElementById('assureToggle');
+  function setDrawer(on){drawer.classList.toggle('open',on);toggle.hidden=on;}
+  document.getElementById('drawerClose').addEventListener('click',()=>setDrawer(false));
+  toggle.addEventListener('click',()=>setDrawer(true));
+  let open=5;
+  function refresh(){
+    document.getElementById('gapCount').textContent=open+' open';
+    document.getElementById('gapCountBanner').textContent=open;
+    document.getElementById('tabPill').textContent=open;
+    document.getElementById('segGapN').textContent='('+open+')';
+    document.getElementById('toggleN').textContent=open;
+    document.getElementById('soCount').textContent=open;
+    const banner=document.getElementById('banner');
+    const btn=document.getElementById('soBtn');
+    const pill=document.getElementById('tabPill');
+    if(open===0){
+      banner.className='banner ok';
+      banner.querySelector('.big').innerHTML='✓ Data integrity check passed';
+      banner.querySelector('.sub').textContent='All gaps resolved and every row independently approved — safe to freeze and report.';
+      banner.querySelectorAll('.chip').forEach(c=>c.remove());
+      btn.disabled=false;pill.style.display='none';
+      document.getElementById('soState').innerHTML='Review &amp; QA — <b style="color:var(--ok)">ready to sign off</b><small>Integrity check passed · 21 of 21 rows approved</small>';
+    }else{btn.disabled=true;}
+  }
+  document.querySelectorAll('.gap').forEach(g=>{
+    const jump=g.querySelector('[data-jump]');
+    const res=g.querySelector('[data-resolve]');
+    const reason=g.querySelector('.reason');
+    const rtag=g.querySelector('.rtag');
+    jump && jump.addEventListener('click',()=>{
+      const el=document.getElementById(g.dataset.target);
+      // ensure the 5-year tab is active
+      tabs[0].click();
+      if(el){
+        if(el.classList.contains('drill')&&el.hidden){const t=document.querySelector('.drill-toggle[data-drill="pgs"]');t&&t.click();}
+        el.scrollIntoView({behavior:'smooth',block:'center'});
+        const o=el.style.background;el.style.transition='background .3s';el.style.background='#FFF3D6';
+        setTimeout(()=>el.style.background=o,900);
+      }
+    });
+    res && res.addEventListener('click',()=>{
+      if(g.classList.contains('resolved'))return;
+      if(reason.style.display==='block'){reason.style.display='none';rtag.style.display='block';g.classList.add('resolved');open--;refresh();}
+      else{reason.style.display='block';res.textContent='Confirm';reason.querySelector('input').focus();}
+    });
+  });
+  refresh();
+})();
+</script>
