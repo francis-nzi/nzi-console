@@ -22,11 +22,12 @@ prototype (`review_qa_v1.html`):
 - **Contrast**: min text contrast 5.02, passes WCAG AA.
 - **Type**: Inter throughout (NZC-003).
 
-`data-assurance.spec.ts` was **hardened** immediately after this pass — the conditional flag-skip removed
-from `openAssurance`, so the surface's presence is now a hard precondition (fail loud, no silent skip; same
-`stage-sections.spec.ts` discipline every other flipped slice this track uses). Re-running the suite against
-deployed staging is the next automatable step to fold into this record (the pass above was run before the
-hardening landed, against the same live surface the hardened spec now asserts unconditionally).
+`data-assurance.spec.ts` was **hardened** immediately after this pass (PR #92) — the conditional flag-skip
+removed from `openAssurance`, so the surface's presence is now a hard precondition (fail loud, no silent
+skip; same `stage-sections.spec.ts` discipline every other flipped slice this track uses). Re-running the
+suite against deployed staging is the next automatable step to fold into this record (the pass above was
+run before the hardening landed, against the same live surface the hardened spec now asserts
+unconditionally).
 
 ## Gate status
 
