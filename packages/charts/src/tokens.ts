@@ -54,6 +54,25 @@ export function scopeColor(scope: string): string {
   return tokens.scope[key] ?? tokens.brand.pine;
 }
 
+/**
+ * EN 15804 module-group identity for LCA charts. Categorical, fixed order,
+ * five groups. Uses hexes already in the palette (product → emerald, then the
+ * site categorical slots) — no new token, so `TOKENS_VERSION` is unchanged.
+ * Dataviz check (light surface #FFF): the five are the same set the site donut
+ * already validates for CVD separation; module fills always carry secondary
+ * encoding (direct labels + legend + a table view), never colour-alone.
+ */
+export function moduleGroupColor(group: string): string {
+  const map: Record<string, string> = {
+    product: tokens.brand.emerald,
+    transport: tokens.site[1]!, // #2F7E8D
+    use: tokens.site[2]!, // #6B6FB3
+    end_of_life: tokens.site[3]!, // #D28B36
+    benefits: tokens.brand.pine,
+  };
+  return map[group] ?? tokens.brand.pine;
+}
+
 /** Stable site colour: the same site id always resolves to the same palette slot. */
 export function siteColor(siteId: string): string {
   let hash = 0;

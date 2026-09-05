@@ -4,9 +4,13 @@ import { ChartProof } from "./ChartProof";
 import { loadFixtureScreen } from "@nzi/api-client";
 import { ScreenState } from "../lib/ScreenState";
 import {
+  ManifestChartSet,
   crpChartSamples,
   crpProfessionalManifest,
+  lcaChartSamples,
+  lcaProfessionalManifest,
   reviewedCrpSnapshotSample,
+  reviewedLcaSnapshotSample,
   validateManifest,
 } from "@nzi/charts";
 
@@ -41,6 +45,11 @@ export default function ChartsPage() {
         <section className="nz-chart-hero"><div><span className="nz-eyebrow light">Illustrative reviewed snapshot · J000712</span><h2>From calculation lineage to publication-ready insight.</h2><p>Every visual is derived from reviewed data, carries its evidence identity, and renders consistently across every delivery surface.</p></div><div className="nz-chart-flow" aria-label="Chart governance flow"><span><b>01</b>Reviewed data</span><i aria-hidden="true">→</i><span><b>02</b>Manifest gate</span><i aria-hidden="true">→</i><span><b>03</b>Every surface</span></div></section>
         <div className="nz-chart-metrics"><div><span>Charts governed</span><strong>{crpProfessionalManifest.charts.length}</strong><small>CRP professional manifest v{crpProfessionalManifest.version}</small></div><div><span>Required present</span><strong>{requiredPercent}%</strong><small>{requiredPresent} of {requiredCharts.length} required charts resolved</small></div><div><span>Publication gate</span><strong>{validation.valid ? "Passed" : "Blocked"}</strong><small>{validation.valid ? "No manifest exceptions" : `${validation.issues.length} manifest exception${validation.issues.length === 1 ? "" : "s"}`}</small></div><div><span>Evidence state</span><strong>Illustrative</strong><small>{reviewedCrpSnapshotSample.id}</small></div></div>
         <ChartProof target="screen" label="Consultant console" />
+        <section className="nz-chart-register-head" style={{ marginTop: 24 }}>
+          <div><span className="nz-eyebrow">LCA / PCF chart set</span><b>Life-cycle assessment · Track C L6</b><span>Manifest v{lcaProfessionalManifest.version} · reviewed snapshot {reviewedLcaSnapshotSample.id}</span></div>
+          <span className={`nz-st ${validateManifest(lcaProfessionalManifest, lcaChartSamples, reviewedLcaSnapshotSample.id).valid ? "done" : "nof"}`}>{validateManifest(lcaProfessionalManifest, lcaChartSamples, reviewedLcaSnapshotSample.id).valid ? "Publication gate passed" : "Publication blocked"}</span>
+        </section>
+        <div className="nz-chart-catalogue"><ManifestChartSet manifest={lcaProfessionalManifest} charts={lcaChartSamples} reviewedSnapshotId={reviewedLcaSnapshotSample.id} /></div>
       </div>
     </AppShell>
   )}</ScreenState>;

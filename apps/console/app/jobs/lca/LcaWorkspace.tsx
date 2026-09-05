@@ -21,8 +21,29 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { freightDefaultFactorIds, lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { WorkflowStageControl } from "../WorkflowStageControl";
+import { LcaHotspotsBar, LcaModuleDonut, resolveLcaCharts, type ReviewedLcaSnapshot } from "@nzi/charts";
 import { fuzzyScore } from "../templateSearch";
 import { lcaBomTemplateCsv, parseLcaBomLines } from "./lcaBomImport";
+
+/**
+ * Best-effort mapping from a frozen L4 `LcaResultSnapshot` (+ the current
+ * assessment header) to the chart resolver's input. The snapshot's `dataHash`
+ * is the real content-addressed identity; the surrounding labels come from
+ * the live assessment. Factor sets are derived from the mapped lines.
+ */
+function toReviewedLcaSnapshot(snapshot: LcaResultSnapshot, assessment: LcaAssessment, clientName: string): ReviewedLcaSnapshot {
+  const moduleOf = new Map(assessment.lines.map((line) => [line.id, line.moduleCode]));
+  const factorSets = [...new Set(assessment.lines.map((line) => line.factorLabel).filter((label): label is string => !!label))];
+  return {
+    id: snapshot.id, jobId: assessment.jobId, jobNumber: assessment.jobNumber, client: clientName,
+    assessmentName: assessment.name, functionalUnit: assessment.functionalUnitUnit, standard: assessment.standard,
+    isPcf: assessment.isPcf, generatedAt: assessment.lastCalculatedAt ?? new Date().toISOString(),
+    dataHash: snapshot.dataHash, factorSets: factorSets.length ? factorSets : ["as reviewed"],
+    totalTco2e: snapshot.totalTco2e,
+    moduleBreakdown: snapshot.moduleBreakdown,
+    hotspots: snapshot.hotspots.map((h) => ({ ...h, moduleCode: moduleOf.get(h.lineItemId) })),
+  };
+}
 
 type Notice = { kind: "ok" | "warn"; text: string };
 
@@ -94,7 +115,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
                       {open && (
                         <tr>
                           <td colSpan={8} className="nz-lca-inventory-cell">
-                            <AssessmentInventory jobId={header.id} assessment={assessment} factors={factors} components={components} categories={categories} notice={setNotice} />
+                            <AssessmentInventory jobId={header.id} clientName={header.client} assessment={assessment} factors={factors} components={components} categories={categories} notice={setNotice} />
                           </td>
                         </tr>
                       )}
@@ -225,8 +246,8 @@ const FACTOR_STATUS: Record<string, { cls: string; label: string }> = {
 /** L3 — transport legs only belong to these modules (transport to manufacturer/site/waste). */
 const TRANSPORT_MODULES: readonly LcaModuleCode[] = ["A2", "A4", "C2"];
 
-function AssessmentInventory({ jobId, assessment, factors, components, categories, notice }: {
-  jobId: string; assessment: LcaAssessment; factors: FactorOption[];
+function AssessmentInventory({ jobId, clientName, assessment, factors, components, categories, notice }: {
+  jobId: string; clientName: string; assessment: LcaAssessment; factors: FactorOption[];
   components: LcaComponentOption[]; categories: { id: string; name: string }[]; notice: (n: Notice) => void;
 }) {
   const router = useRouter();
@@ -267,7 +288,7 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
         </div>
       </div>
 
-      <AssessmentResults jobId={jobId} assessment={assessment} categories={categories} notice={notice} />
+      <AssessmentResults jobId={jobId} clientName={clientName} assessment={assessment} categories={categories} notice={notice} />
 
       {modules.map((code) => {
         const lines = linesByModule.get(code) ?? [];
@@ -898,7 +919,7 @@ const REVIEW_STATUS: Record<string, { cls: string; label: string }> = {
   rejected: { cls: "nof", label: "Rejected" },
 };
 
-function AssessmentResults({ jobId, assessment, categories, notice }: { jobId: string; assessment: LcaAssessment; categories: { id: string; name: string }[]; notice: (n: Notice) => void }) {
+function AssessmentResults({ jobId, clientName, assessment, categories, notice }: { jobId: string; clientName: string; assessment: LcaAssessment; categories: { id: string; name: string }[]; notice: (n: Notice) => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"" | "calc" | "approve" | "reject" | "snapshot">("");
   const [fresh, setFresh] = useState<null | { totalTco2e: number; moduleBreakdown: LcaResultSnapshot["moduleBreakdown"]; hotspots: LcaResultSnapshot["hotspots"]; massReconciliation: LcaResultSnapshot["massReconciliation"] }>(null);
@@ -1029,7 +1050,14 @@ function AssessmentResults({ jobId, assessment, categories, notice }: { jobId: s
 
       {snapshots && snapshots.length > 0 && (
         <div className="nz-lca-breakdown">
-          <div className="nz-sect">Freeze history</div>
+          <div className="nz-sect">Charts <span className="muted">· from the frozen snapshot · deterministic SVG (screen = report)</span></div>
+          <div className="nz-lca-chart-grid">
+            {(() => {
+              const charts = resolveLcaCharts(toReviewedLcaSnapshot(snapshots[0]!, assessment, clientName));
+              return <><LcaModuleDonut data={charts[0]} /><LcaHotspotsBar data={charts[1]} /></>;
+            })()}
+          </div>
+          <div className="nz-sect" style={{ marginTop: 12 }}>Freeze history</div>
           <ul className="nz-lca-snap-list">
             {snapshots.map((snap) => (
               <li key={snap.id}><b>{snap.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e</b> · v{snap.assessmentVersion} · <span className="muted">{snap.dataHash.slice(0, 22)}…</span></li>
@@ -1037,7 +1065,7 @@ function AssessmentResults({ jobId, assessment, categories, notice }: { jobId: s
           </ul>
         </div>
       )}
-      {snapshots && snapshots.length === 0 && <div className="sub">No result snapshot has been frozen yet.</div>}
+      {snapshots && snapshots.length === 0 && <div className="sub">No result snapshot has been frozen yet — freeze one to generate the module donut and hotspots chart.</div>}
 
       <ScenariosPanel jobId={jobId} assessment={assessment} categories={categories} notice={notice} />
     </section>

@@ -1,4 +1,5 @@
 import { resolveCrpCharts, type ReviewedCrpSnapshot } from "./crp";
+import { resolveLcaCharts, type ReviewedLcaSnapshot } from "./lca";
 import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, PurchasedGoodsBreakdownData, ScopeYearOnYearData, SiteDonutData } from "./types";
 
 export const reviewedCrpSnapshotSample: ReviewedCrpSnapshot = {
@@ -90,3 +91,30 @@ export const crpChartSamples: AnyChartData[] = [
   scopeDonutSample, reductionPathwaySample, scopeYearOnYearSample, emissionsByActivitySample,
   emissionsSiteDonutSample, intensityPathwaySample, purchasedGoodsBreakdownSample,
 ];
+
+export const reviewedLcaSnapshotSample: ReviewedLcaSnapshot = {
+  id: "reviewed-lca-J000714-v1",
+  jobId: "714",
+  jobNumber: "J000714",
+  client: "Verdant Foods Co",
+  assessmentName: "Recyclable food pack — 6L variant",
+  functionalUnit: "filled pack",
+  standard: "ISO 14040 / ISO 14044",
+  isPcf: false,
+  generatedAt: "2026-09-05T00:00:00Z",
+  dataHash: "sha256-demo-reviewed-lca-J000714-v1",
+  factorSets: ["ecoinvent 3.10", "DEFRA 2025 freight"],
+  totalTco2e: 0.0643,
+  moduleBreakdown: [
+    { moduleCode: "A1", tco2e: 0.0531 },
+    { moduleCode: "A3", tco2e: 0.0002 },
+    { moduleCode: "A4", tco2e: 0.011 },
+  ],
+  hotspots: [
+    { lineItemId: "714-6l-tray", label: "rPET tray", tco2e: 0.0529, sharePct: 82, moduleCode: "A1" },
+    { lineItemId: "714-6l-inbound-transport", label: "Inbound tray shipment", tco2e: 0.011, sharePct: 17, moduleCode: "A4" },
+    { lineItemId: "714-6l-label-ink", label: "Label ink", tco2e: 0.0002, sharePct: 1, moduleCode: "A1" },
+  ],
+};
+export const [lcaModuleDonutSample, lcaHotspotsBarSample] = resolveLcaCharts(reviewedLcaSnapshotSample);
+export const lcaChartSamples: AnyChartData[] = [lcaModuleDonutSample, lcaHotspotsBarSample];

@@ -1,6 +1,7 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "lca_stage_bar" | "training_attendance";
+export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance";
+export type LcaModuleGroup = "product" | "transport" | "use" | "end_of_life" | "benefits";
 export type DataQuality = "Measured" | "Estimated" | "Spend-based" | "Survey";
 
 export type Provenance = {
@@ -48,6 +49,10 @@ export type IntensityPathwayData = ReductionPathwayData & { metric: "turnover" |
 export type PurchasedGoodsBreakdownData = EmissionsByActivityData & { basis: "category" | "supplier" };
 export type LcaStageValue = { id: string; label: string; value: number; status?: "modelled" | "provisional" };
 export type LcaStageBarData = ChartEnvelope & { stages: LcaStageValue[]; functionalUnit: string };
+export type LcaModuleSegment = { code: string; label: string; group: LcaModuleGroup; value: number };
+export type LcaModuleDonutData = ChartEnvelope & { modules: LcaModuleSegment[]; total?: number; functionalUnit: string };
+export type LcaHotspot = { id: string; label: string; group: LcaModuleGroup; value: number; sharePct: number };
+export type LcaHotspotsBarData = ChartEnvelope & { hotspots: LcaHotspot[]; functionalUnit: string };
 export type TrainingAttendanceValue = { id: string; label: string; invited: number; attended: number; completed: number };
 export type TrainingAttendanceData = ChartEnvelope & { cohorts: TrainingAttendanceValue[] };
-export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | TrainingAttendanceData;
+export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | LcaModuleDonutData | LcaHotspotsBarData | TrainingAttendanceData;
