@@ -29,7 +29,9 @@ type AssessmentRow = {
   confirmed_quantity: string | null; confirmed_quantity_unit: string;
   lifecycle_boundary: "cradle_to_gate" | "cradle_to_grave" | "custom";
   included_modules: LcaModuleCode[]; standard: string; reference_year: number | null; geography: string | null;
-  version: number; review_status: "pending" | "approved" | "rejected"; reviewed_version: number | null; total_tco2e: string;
+  version: number; review_status: "pending" | "approved" | "rejected"; reviewed_version: number | null;
+  reviewed_by: string | null; reviewed_at: Date | string | null; reviewer_note: string | null;
+  total_tco2e: string; last_calculated_at: Date | string | null;
 };
 const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[]): LcaAssessment => ({
   id: row.assessment_id, jobId: row.job_id, jobNumber: row.job_number, clientId: row.client_id,
@@ -41,7 +43,10 @@ const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[]): LcaAssessment 
   lifecycleBoundary: row.lifecycle_boundary, includedModules: row.included_modules, standard: row.standard,
   referenceYear: row.reference_year, geography: row.geography,
   version: row.version, reviewStatus: row.review_status, reviewedVersion: row.reviewed_version,
+  reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at == null ? null : new Date(row.reviewed_at).toISOString(),
+  reviewerNote: row.reviewer_note,
   totalTco2e: Number(row.total_tco2e),
+  lastCalculatedAt: row.last_calculated_at == null ? null : new Date(row.last_calculated_at).toISOString(),
   lines, scenarios: [],
 });
 
@@ -50,7 +55,8 @@ export async function listLcaAssessments(db: Queryable, jobId: string): Promise<
     `SELECT a.assessment_id,a.job_id,j.job_number,a.client_id,a.assessment_type,a.name,a.sku,
         a.functional_unit_value::text,a.functional_unit_unit,a.confirmed_quantity::text,a.confirmed_quantity_unit,
         a.lifecycle_boundary,a.included_modules,a.standard,a.reference_year,a.geography,
-        a.version,a.review_status,a.reviewed_version,a.total_tco2e::text
+        a.version,a.review_status,a.reviewed_version,a.reviewed_by,a.reviewed_at,a.reviewer_note,
+        a.total_tco2e::text,a.last_calculated_at
      FROM nzi_console.lca_assessments a
      JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(a.organisation_id,a.job_id)
      WHERE a.job_id=$1

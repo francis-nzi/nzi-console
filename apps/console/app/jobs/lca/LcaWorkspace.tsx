@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
-import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaTransportLegWriteFields } from "@nzi/contracts";
+import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { WorkflowStageControl } from "../WorkflowStageControl";
 import { fuzzyScore } from "../templateSearch";
@@ -267,6 +267,8 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
         </div>
       </div>
 
+      <AssessmentResults jobId={jobId} assessment={assessment} notice={notice} />
+
       {modules.map((code) => {
         const lines = linesByModule.get(code) ?? [];
         return (
@@ -284,6 +286,8 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
                       const component = line.componentId ? components.find((candidate) => candidate.id === line.componentId) : undefined;
                       const isTransport = TRANSPORT_MODULES.includes(line.moduleCode);
                       const legsOpen = expandedLegsId === line.id;
+                      const canGapFill = line.factorSource === "unmapped" && !line.isPlaceholder;
+                      const gapOpen = expandedLegsId === `gap:${line.id}`;
                       return (
                         <Fragment key={line.id}>
                           <tr>
@@ -291,6 +295,7 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
                               <b>{line.lineLabel}</b>
                               {line.isPlaceholder && <span className="nz-chip-mini nodata" style={{ marginLeft: 6 }}>Excluded</span>}
                               {line.isGapFilled && <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>Gap-filled</span>}
+                              {line.gapFillMethod && <div className="muted">{line.gapFillMethod}</div>}
                               {line.notes && <div className="muted">{line.notes}</div>}
                             </td>
                             <td>{component ? component.description : "—"}</td>
@@ -305,6 +310,7 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
                             </td>
                             <td style={{ whiteSpace: "nowrap" }}>
                               {isTransport && <button type="button" className="nz-btn" aria-expanded={legsOpen} onClick={() => setExpandedLegsId(legsOpen ? null : line.id)} style={{ marginRight: 6 }}>{legsOpen ? "Close legs" : `Transport legs (${line.transportLegs.length})`}</button>}
+                              {canGapFill && <button type="button" className="nz-btn" aria-expanded={gapOpen} onClick={() => setExpandedLegsId(gapOpen ? null : `gap:${line.id}`)} style={{ marginRight: 6 }}>{gapOpen ? "Close" : "Gap-fill"}</button>}
                               <button type="button" className="nz-btn" disabled={busyId === line.id} onClick={() => void removeLine(line.id, line.lineLabel)}>{busyId === line.id ? "Deleting…" : "Delete"}</button>
                             </td>
                           </tr>
@@ -312,6 +318,13 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
                             <tr>
                               <td colSpan={6} className="nz-lca-legs-cell">
                                 <TransportLegsPanel jobId={jobId} assessmentId={assessment.id} lineItem={line} factors={factors} notice={notice} />
+                              </td>
+                            </tr>
+                          )}
+                          {gapOpen && (
+                            <tr>
+                              <td colSpan={6} className="nz-lca-legs-cell">
+                                <GapFillForm jobId={jobId} assessmentId={assessment.id} lineItem={line} onDone={() => setExpandedLegsId(null)} notice={notice} />
                               </td>
                             </tr>
                           )}
@@ -810,5 +823,200 @@ function BulkImportPanel({ jobId, assessment, onDone, notice }: { jobId: string;
         </>
       )}
     </div>
+  );
+}
+
+// ── Slice 4: gap-filling, the calc engine, review and result snapshots ──────
+
+function GapFillForm({ jobId, assessmentId, lineItem, onDone, notice }: {
+  jobId: string; assessmentId: string; lineItem: LcaLineItem; onDone: () => void; notice: (n: Notice) => void;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [value, setValue] = useState({ factorValue: 0, factorUnit: `kgCO₂e/${lineItem.unit}`, gapFillMethod: "", dataQuality: "proxy" as LcaDataQuality });
+
+  async function submit() {
+    if (pending || !value.gapFillMethod.trim()) return;
+    setPending(true);
+    const result = await postBrowserCommand<{ lineItemId: string }>(
+      `/api/isolated/jobs/${jobId}/lca-assessments/${assessmentId}/line-items/${lineItem.id}/gap-fill`,
+      { factorValue: Number(value.factorValue), factorUnit: value.factorUnit.trim() || null, gapFillMethod: value.gapFillMethod.trim(), dataQuality: value.dataQuality },
+      crypto.randomUUID(),
+    );
+    setPending(false);
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") : result.message });
+      return;
+    }
+    notice({ kind: "ok", text: `${lineItem.lineLabel} gap-filled — recalculate to fold it into the total.` });
+    onDone();
+    router.refresh();
+  }
+
+  return (
+    <div className="nz-lca-legs">
+      <div className="sub">Gap-fill <b>{lineItem.lineLabel}</b> with a documented proxy value — the LCA analogue of the Data Assurance gate. It's recorded as a proxy and folded into the total on the next recalculation.</div>
+      <div className="nz-config-grid lca" style={{ marginTop: 10 }}>
+        <label className="nz-fl">Proxy factor value<input className="nz-inp" type="number" min="0" step="any" value={value.factorValue} onChange={(e) => setValue({ ...value, factorValue: Number(e.target.value) })} /></label>
+        <label className="nz-fl">Factor unit<input className="nz-inp" value={value.factorUnit} onChange={(e) => setValue({ ...value, factorUnit: e.target.value })} /></label>
+        <label className="nz-fl">Data quality
+          <select className="nz-sel" value={value.dataQuality} onChange={(e) => setValue({ ...value, dataQuality: e.target.value as LcaDataQuality })}>
+            <option value="proxy">Proxy</option>
+            <option value="estimated">Estimated</option>
+            <option value="secondary">Secondary</option>
+          </select>
+        </label>
+      </div>
+      <label className="nz-fl" style={{ marginTop: 8 }}>Gap-fill method<textarea className="nz-notes" value={value.gapFillMethod} onChange={(e) => setValue({ ...value, gapFillMethod: e.target.value })} placeholder="e.g. Category-average printing ink, DEFRA 2025" /></label>
+      <div className="nz-config-actions">
+        <button type="button" className="nz-btn" onClick={onDone}>Cancel</button>
+        <button type="button" className="nz-btn pri" disabled={pending || !value.gapFillMethod.trim()} onClick={() => void submit()}>{pending ? "Saving…" : "Gap-fill line"}</button>
+      </div>
+    </div>
+  );
+}
+
+const REVIEW_STATUS: Record<string, { cls: string; label: string }> = {
+  pending: { cls: "est", label: "Review pending" },
+  approved: { cls: "done", label: "Approved" },
+  rejected: { cls: "nof", label: "Rejected" },
+};
+
+function AssessmentResults({ jobId, assessment, notice }: { jobId: string; assessment: LcaAssessment; notice: (n: Notice) => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<"" | "calc" | "approve" | "reject" | "snapshot">("");
+  const [fresh, setFresh] = useState<null | { totalTco2e: number; moduleBreakdown: LcaResultSnapshot["moduleBreakdown"]; hotspots: LcaResultSnapshot["hotspots"]; massReconciliation: LcaResultSnapshot["massReconciliation"] }>(null);
+  const [snapshots, setSnapshots] = useState<LcaResultSnapshot[] | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+  // The command chain (calculate → review → freeze) is optimistically locked
+  // on the assessment version; track it locally off each command's response
+  // so a slower router.refresh() can't wedge the next step with a stale value.
+  const [version, setVersion] = useState(assessment.version);
+  const base = `/api/isolated/jobs/${jobId}/lca-assessments/${assessment.id}`;
+
+  async function loadSnapshots() {
+    try {
+      const response = await fetch(`${base}/snapshots`, { cache: "no-store" });
+      const body = await response.json();
+      if (response.ok && Array.isArray(body.snapshots)) setSnapshots(body.snapshots);
+    } catch { /* the freeze action surfaces its own errors */ }
+  }
+
+  async function recalculate() {
+    if (busy) return;
+    setBusy("calc");
+    const result = await postBrowserCommand<{ version: number; totalTco2e: number; moduleBreakdown: LcaResultSnapshot["moduleBreakdown"]; hotspots: LcaResultSnapshot["hotspots"]; massReconciliation: LcaResultSnapshot["massReconciliation"] }>(
+      `${base}/calculate`, { expectedVersion: version }, crypto.randomUUID(),
+    );
+    setBusy("");
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "conflict" ? "The assessment changed — refresh and recalculate." : result.state === "validation_failed" ? result.issues.map((i) => i.message).join(" ") : result.message });
+      return;
+    }
+    setVersion(result.data.version);
+    setFresh(result.data);
+    notice({ kind: "ok", text: `Recalculated — ${result.data.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e. Review resets to pending.` });
+    router.refresh();
+  }
+
+  async function review(decision: "approve" | "reject") {
+    if (busy) return;
+    if (decision === "reject" && !rejectNote.trim()) { notice({ kind: "warn", text: "A rejection needs a reviewer note." }); return; }
+    setBusy(decision);
+    const result = await postBrowserCommand<{ version: number }>(
+      `${base}/review/${decision}`,
+      decision === "reject" ? { expectedVersion: version, reviewerNote: rejectNote.trim() } : { expectedVersion: version },
+      crypto.randomUUID(),
+    );
+    setBusy("");
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "conflict" ? "The assessment changed — refresh first." : result.state === "validation_failed" ? result.issues.map((i) => i.message).join(" ") : result.message });
+      return;
+    }
+    setVersion(result.data.version);
+    setRejectNote("");
+    notice({ kind: "ok", text: decision === "approve" ? "Assessment approved — it can now be frozen into a result snapshot." : "Assessment rejected." });
+    router.refresh();
+  }
+
+  async function freeze() {
+    if (busy) return;
+    setBusy("snapshot");
+    const result = await postBrowserCommand<{ snapshotId: string; dataHash: string; reused: boolean }>(
+      `${base}/snapshots`, { expectedVersion: version }, crypto.randomUUID(),
+    );
+    setBusy("");
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((i) => i.message).join(" ") : result.message });
+      return;
+    }
+    notice({ kind: "ok", text: result.data.reused ? "Nothing changed since the last freeze — reused the existing snapshot." : `Result snapshot frozen · ${result.data.dataHash.slice(0, 22)}…` });
+    void loadSnapshots();
+  }
+
+  const review0 = REVIEW_STATUS[assessment.reviewStatus] ?? REVIEW_STATUS.pending!;
+  const summary = fresh ?? (snapshots?.[0] ? { totalTco2e: snapshots[0].totalTco2e, moduleBreakdown: snapshots[0].moduleBreakdown, hotspots: snapshots[0].hotspots, massReconciliation: snapshots[0].massReconciliation } : null);
+
+  return (
+    <section className="nz-panel nz-lca-results">
+      <div className="nz-acc-tool">
+        <div>
+          <b>{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e</b>
+          <span className="hint">{assessment.lastCalculatedAt ? `last calculated ${new Date(assessment.lastCalculatedAt).toLocaleDateString("en-GB")}` : "not yet calculated"}</span>
+        </div>
+        <span className={`nz-st ${review0.cls}`}>{review0.label}</span>
+        {assessment.reviewerNote && <span className="hint">“{assessment.reviewerNote}”</span>}
+      </div>
+      <div className="nz-config-actions" style={{ justifyContent: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <button type="button" className="nz-btn pri" disabled={busy !== ""} onClick={() => void recalculate()}>{busy === "calc" ? "Recalculating…" : "Recalculate"}</button>
+        <button type="button" className="nz-btn" disabled={busy !== "" || assessment.reviewStatus === "approved"} onClick={() => void review("approve")}>{busy === "approve" ? "Approving…" : "Approve"}</button>
+        <button type="button" className="nz-btn" disabled={busy !== ""} onClick={() => void freeze()}>{busy === "snapshot" ? "Freezing…" : "Freeze snapshot"}</button>
+        {!snapshots && <button type="button" className="nz-btn" onClick={() => void loadSnapshots()}>Show freeze history</button>}
+      </div>
+      <div className="nz-lca-reject">
+        <input className="nz-inp" value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} placeholder="Reviewer note (required to reject)" />
+        <button type="button" className="nz-btn" disabled={busy !== "" || !rejectNote.trim()} onClick={() => void review("reject")}>{busy === "reject" ? "Rejecting…" : "Reject"}</button>
+      </div>
+
+      {summary && (
+        <div className="nz-lca-breakdown">
+          <div className="nz-sect">{fresh ? "Latest recalculation" : "Last frozen snapshot"} · module breakdown</div>
+          <div className="nz-table-wrap">
+            <table className="nz-tbl">
+              <thead><tr><th>Module</th><th className="num">tCO₂e</th><th className="num">Share</th></tr></thead>
+              <tbody>
+                {summary.moduleBreakdown.map((entry) => (
+                  <tr key={entry.moduleCode}>
+                    <td>{MODULE_LABEL[entry.moduleCode]}</td>
+                    <td className="num">{entry.tco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>
+                    <td className="num">{summary.totalTco2e > 0 ? `${((entry.tco2e / summary.totalTco2e) * 100).toFixed(1)}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {summary.hotspots.length > 0 && (
+            <div className="sub" style={{ marginTop: 8 }}>Hotspots: {summary.hotspots.map((h) => `${h.label} (${h.sharePct.toFixed(0)}%)`).join(" · ")}</div>
+          )}
+          <div className="sub" style={{ marginTop: 6 }}>
+            Mass reconciliation: captured {summary.massReconciliation.capturedMassKg.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kg
+            {summary.massReconciliation.confirmedMassKg != null && ` vs confirmed ${summary.massReconciliation.confirmedMassKg.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kg`}
+            {summary.massReconciliation.deltaPct != null && ` (${summary.massReconciliation.deltaPct > 0 ? "+" : ""}${summary.massReconciliation.deltaPct.toFixed(1)}%)`}
+          </div>
+        </div>
+      )}
+
+      {snapshots && snapshots.length > 0 && (
+        <div className="nz-lca-breakdown">
+          <div className="nz-sect">Freeze history</div>
+          <ul className="nz-lca-snap-list">
+            {snapshots.map((snap) => (
+              <li key={snap.id}><b>{snap.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e</b> · v{snap.assessmentVersion} · <span className="muted">{snap.dataHash.slice(0, 22)}…</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {snapshots && snapshots.length === 0 && <div className="sub">No result snapshot has been frozen yet.</div>}
+    </section>
   );
 }
