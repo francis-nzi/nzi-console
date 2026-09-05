@@ -293,7 +293,7 @@ drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
    **L4 Gap-filling + calc engine + result snapshot + review** (built 5 Sep 2026 —
    `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md`; assessment-level independent-review spine + content-addressed
    result snapshots reusing the `reviewed_crp_snapshots` hash discipline, gated on
-   `review_status='approved'`) → **L5 Scenarios** (built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE5.md`) → **L6 Charts** → **L7 Report manifest + PCF labelling**.
+   `review_status='approved'`) → **L5 Scenarios** (built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE5.md`) → **L6 Charts** (built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE6.md`) → **L7 Report manifest + PCF labelling**.
    L2–L4 built as the pre-authorized run; L5 onward gets a status check-in first. L3/L4 initially shipped
    with a few disclosed interpretation calls (no live-source access); Francis then reviewed the live engine
    and a **correction PR (`fix/lca-engine-parity`)** landed the exact values + fixed two real bugs — the

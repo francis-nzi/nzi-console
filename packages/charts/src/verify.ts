@@ -12,6 +12,8 @@
 import type {
   AnyChartData,
   EmissionsByActivityData,
+  LcaHotspotsBarData,
+  LcaModuleDonutData,
   ReductionPathwayData,
   ScopeDonutData,
   ScopeYearOnYearData,
@@ -133,5 +135,45 @@ export function verifyChartsAgainstSnapshot(
     }
   }
 
+  return { ok: checks.every((entry) => entry.ok), checks };
+}
+
+/** Snapshot shape for the LCA figure check — a structural subset of the reviewed LCA snapshot. */
+export type VerifiableLcaSnapshot = {
+  totalTco2e: number;
+  moduleBreakdown: Array<{ moduleCode: string; tco2e: number }>;
+};
+
+/**
+ * The LCA analogue of `verifyChartsAgainstSnapshot`: the module-donut total
+ * and every segment must equal the reviewed snapshot's `moduleBreakdown`, and
+ * the hotspots bar can never claim more than the total.
+ */
+export function verifyLcaChartsAgainstSnapshot(
+  snapshot: VerifiableLcaSnapshot,
+  charts: readonly AnyChartData[],
+): ChartVerification {
+  const byModule = new Map(snapshot.moduleBreakdown.map((entry) => [entry.moduleCode, entry.tco2e]));
+  const moduleTotal = snapshot.moduleBreakdown.reduce((sum, entry) => sum + entry.tco2e, 0);
+  const checks: ChartFigureCheck[] = [];
+  const check = (chartId: string, label: string, expected: number, actual: number): void => {
+    checks.push({ chartId, label, expected: round2(expected), actual: round2(actual), ok: matches(expected, actual) });
+  };
+  for (const chart of charts) {
+    if (chart.state !== "success") continue;
+    if (chart.spec.type === "lca_module_donut") {
+      const donut = chart as LcaModuleDonutData;
+      const shownTotal = donut.total ?? donut.modules.reduce((sum, m) => sum + m.value, 0);
+      check(chart.spec.id, "Module donut — total", snapshot.totalTco2e, shownTotal);
+      check(chart.spec.id, "Module donut — Σ segments", moduleTotal, donut.modules.reduce((sum, m) => sum + m.value, 0));
+      for (const segment of donut.modules) {
+        check(chart.spec.id, `Module donut — ${segment.code}`, byModule.get(segment.code) ?? 0, segment.value);
+      }
+    } else if (chart.spec.type === "lca_hotspots_bar") {
+      const bars = chart as LcaHotspotsBarData;
+      const sum = bars.hotspots.reduce((total, h) => total + h.value, 0);
+      checks.push({ chartId: chart.spec.id, label: "Hotspots bar — Σ ≤ total", expected: round2(snapshot.totalTco2e), actual: round2(sum), ok: sum <= snapshot.totalTco2e + TOLERANCE });
+    }
+  }
   return { ok: checks.every((entry) => entry.ok), checks };
 }
