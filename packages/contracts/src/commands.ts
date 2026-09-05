@@ -1,7 +1,7 @@
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import { isCrpReportSectionKey } from "./reportSections";
-import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaGapFillWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaTransportLegWriteFields } from "./jobFamilies";
+import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaGapFillWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaScenarioMultiplierWriteFields, LcaScenarioWriteFields, LcaTransportLegWriteFields } from "./jobFamilies";
 import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 
 export type CommandKey =
@@ -54,7 +54,12 @@ export type CommandKey =
   | "lca.assessment.calculate"
   | "lca.assessment.review.approve"
   | "lca.assessment.review.reject"
-  | "lca.assessment.snapshot.create";
+  | "lca.assessment.snapshot.create"
+  | "lca.scenario.create"
+  | "lca.scenario.update"
+  | "lca.scenario.delete"
+  | "lca.scenario.multiplier.set"
+  | "lca.scenario.multiplier.delete";
 
 export const jobWorkflowStages = {
   // NZC-057 — "Factor mapping" retired as a CRP stage (factor selection is inline
@@ -230,6 +235,11 @@ export type CommandInputMap = {
   "lca.assessment.review.approve": { jobId: string; assessmentId: string; expectedVersion: number; reviewerNote?: string };
   "lca.assessment.review.reject": { jobId: string; assessmentId: string; expectedVersion: number; reviewerNote: string };
   "lca.assessment.snapshot.create": { jobId: string; assessmentId: string; expectedVersion: number };
+  "lca.scenario.create": { jobId: string; assessmentId: string } & LcaScenarioWriteFields;
+  "lca.scenario.update": { jobId: string; assessmentId: string; scenarioId: string } & LcaScenarioWriteFields;
+  "lca.scenario.delete": { jobId: string; assessmentId: string; scenarioId: string };
+  "lca.scenario.multiplier.set": { jobId: string; assessmentId: string; scenarioId: string } & LcaScenarioMultiplierWriteFields;
+  "lca.scenario.multiplier.delete": { jobId: string; assessmentId: string; scenarioId: string; multiplierId: string };
 };
 
 export type CommandDefinition<K extends CommandKey = CommandKey> = {
@@ -301,6 +311,13 @@ const lcaTransportLegIssues = (input: LcaTransportLegWriteFields): CommandIssue[
   else if (factorSource === "manual" && input.factorValue == null) issues.push({ field: "factorValue", code: "REQUIRED", message: "A manual factor must give its value." });
   return issues;
 };
+const lcaScenarioMultiplierIssues = (input: LcaScenarioMultiplierWriteFields): CommandIssue[] => {
+  const issues: CommandIssue[] = [];
+  if (!lcaModuleCodes.includes(input.moduleCode)) issues.push({ field: "moduleCode", code: "INVALID", message: "Module code is not a recognised EN 15804 code." });
+  if (typeof input.multiplier !== "number" || !Number.isFinite(input.multiplier) || input.multiplier < 0) issues.push({ field: "multiplier", code: "INVALID", message: "Multiplier must be zero or greater." });
+  if (input.materialCategoryId != null && input.componentId != null) issues.push({ field: "componentId", code: "CONFLICT", message: "A rule targets a material category or a component, not both." });
+  return issues;
+};
 const lcaGapFillIssues = (input: LcaGapFillWriteFields): CommandIssue[] => {
   const issues: CommandIssue[] = [];
   if (typeof input.factorValue !== "number" || !Number.isFinite(input.factorValue) || input.factorValue < 0) issues.push({ field: "factorValue", code: "INVALID", message: "Factor value must be zero or greater." });
@@ -361,6 +378,11 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "lca.assessment.review.approve": { key: "lca.assessment.review.approve", label: "Approve LCA assessment", permission: "emissions.review", reasonRequired: false, transaction: "assessment review + audit + outbox + idempotency", auditAction: "lca_assessment_approved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "lca.assessment.review.reject": { key: "lca.assessment.review.reject", label: "Reject LCA assessment", permission: "emissions.review", reasonRequired: false, transaction: "assessment review + audit + outbox + idempotency", auditAction: "lca_assessment_rejected", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "reviewerNote", input.reviewerNote); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "lca.assessment.snapshot.create": { key: "lca.assessment.snapshot.create", label: "Freeze LCA result snapshot", permission: "reports.publish", reasonRequired: false, transaction: "content-addressed snapshot + audit + outbox + idempotency", auditAction: "lca_result_snapshot_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "lca.scenario.create": { key: "lca.scenario.create", label: "Create LCA scenario", permission: "emissions.data.edit", reasonRequired: false, transaction: "scenario + audit + outbox + idempotency", auditAction: "lca_scenario_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "name", input.name); return issues; } },
+  "lca.scenario.update": { key: "lca.scenario.update", label: "Update LCA scenario", permission: "emissions.data.edit", reasonRequired: false, transaction: "scenario + audit + outbox + idempotency", auditAction: "lca_scenario_updated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "scenarioId", input.scenarioId); required(issues, "name", input.name); return issues; } },
+  "lca.scenario.delete": { key: "lca.scenario.delete", label: "Delete LCA scenario", permission: "emissions.data.edit", reasonRequired: false, transaction: "scenario removal + audit + outbox + idempotency", auditAction: "lca_scenario_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "scenarioId", input.scenarioId); return issues; } },
+  "lca.scenario.multiplier.set": { key: "lca.scenario.multiplier.set", label: "Set LCA scenario multiplier", permission: "emissions.data.edit", reasonRequired: false, transaction: "scenario multiplier + audit + outbox + idempotency", auditAction: "lca_scenario_multiplier_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaScenarioMultiplierIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "scenarioId", input.scenarioId); return issues; } },
+  "lca.scenario.multiplier.delete": { key: "lca.scenario.multiplier.delete", label: "Delete LCA scenario multiplier", permission: "emissions.data.edit", reasonRequired: false, transaction: "scenario multiplier removal + audit + outbox + idempotency", auditAction: "lca_scenario_multiplier_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "scenarioId", input.scenarioId); required(issues, "multiplierId", input.multiplierId); return issues; } },
 };
 
 export function validateCommand<K extends CommandKey>(key: K, input: CommandInputMap[K], context: CommandContext) { return commandDefinitions[key].validate(input, context); }
