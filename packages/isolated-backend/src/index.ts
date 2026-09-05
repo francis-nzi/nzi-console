@@ -11,6 +11,7 @@ export * from "./readModels";
 export * from "./spendImportIdentity";
 export * from "./spendImport";
 export * from "./scopeRowHistory";
+export * from "./lcaAssessments";
 export * from "./portalReview";
 export * from "./portalAccess";
 export * from "./portalInvitations";

@@ -10,6 +10,8 @@ export type LcaModuleCode =
   | "A1" | "A2" | "A3" | "A4" | "A5"
   | "B1" | "B2" | "B3" | "B4" | "B5" | "B6" | "B7"
   | "C1" | "C2" | "C3" | "C4" | "D";
+/** Canonical list (seeded 1:1 by migration 0045) — for validation, without a DB round-trip. */
+export const lcaModuleCodes: readonly LcaModuleCode[] = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "C1", "C2", "C3", "C4", "D"];
 
 export type LcaModuleGroup = "product" | "transport" | "use" | "end_of_life" | "benefits";
 
@@ -130,4 +132,23 @@ export type LcaAssessment = {
   totalTco2e: number;
   lines: LcaLineItem[];
   scenarios: LcaScenario[];
+};
+
+/** The editable fields of an assessment — `lca.assessment.create` / `.update` (NZC-055). */
+export type LcaAssessmentWriteFields = {
+  assessmentType: LcaAssessmentType;
+  name: string;
+  sku?: string | null;
+  description?: string;
+  functionalUnitValue: number;
+  functionalUnitUnit: string;
+  confirmedQuantity?: number | null;
+  confirmedQuantityUnit?: string;
+  lifecycleBoundary: LcaLifecycleBoundary;
+  includedModules: LcaModuleCode[];
+  standard?: string;
+  referenceYear?: number | null;
+  geography?: string | null;
+  assumptions?: string;
+  dataSourcesNote?: string;
 };

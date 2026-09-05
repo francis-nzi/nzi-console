@@ -284,7 +284,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-scope-create{padding:18px 20px;margin-bottom:17px;border-color:#CFE2D8}.nz-scope-create-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;margin-bottom:15px;border-bottom:1px solid var(--line2)}.nz-scope-create-head .nz-eyebrow{margin-bottom:5px}.nz-scope-create-head p{margin:4px 0 0}.nz-scope-fields{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:12px;margin-bottom:14px}.nz-register-empty{display:grid;gap:5px;padding:27px;text-align:center}.nz-register-empty b{font-size:14px}.nz-register-empty span{color:var(--t3);font-size:12px}
 
 /* CRP configuration panels */
-.nz-config-panel{padding:18px 20px;margin-bottom:16px}.nz-config-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.nz-config-head>div{display:grid;gap:4px}.nz-config-head .nz-eyebrow{margin-bottom:1px}.nz-config-grid{display:grid;gap:11px;margin-top:15px}.nz-config-grid.target{grid-template-columns:repeat(5,minmax(120px,1fr))}.nz-config-grid.intensity{grid-template-columns:repeat(4,minmax(130px,1fr))}.nz-config-actions{display:flex;justify-content:flex-end;margin-top:13px}.nz-inline-create{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:10px;margin-top:13px}.nz-inline-create .nz-inp{min-width:0}.nz-dataset-add{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;margin-top:13px}
+.nz-config-panel{padding:18px 20px;margin-bottom:16px}.nz-config-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.nz-config-head>div{display:grid;gap:4px}.nz-config-head .nz-eyebrow{margin-bottom:1px}.nz-config-grid{display:grid;gap:11px;margin-top:15px}.nz-config-grid.target{grid-template-columns:repeat(5,minmax(120px,1fr))}.nz-config-grid.intensity{grid-template-columns:repeat(4,minmax(130px,1fr))}.nz-config-grid.lca{grid-template-columns:repeat(3,minmax(140px,1fr))}.nz-config-actions{display:flex;justify-content:flex-end;margin-top:13px}.nz-inline-create{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:10px;margin-top:13px}.nz-inline-create .nz-inp{min-width:0}.nz-dataset-add{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;margin-top:13px}
 
 @media (max-width:1200px){
   .nz-app{grid-template-columns:210px minmax(0,1fr) 300px}
@@ -294,7 +294,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 }
 
 @media (max-width:900px){
-  .nz-config-grid.target,.nz-config-grid.intensity{grid-template-columns:repeat(2,minmax(140px,1fr))}.nz-dataset-add{grid-template-columns:1fr 1.5fr}.nz-dataset-add .nz-btn{grid-column:2;justify-self:end}
+  .nz-config-grid.target,.nz-config-grid.intensity,.nz-config-grid.lca{grid-template-columns:repeat(2,minmax(140px,1fr))}.nz-dataset-add{grid-template-columns:1fr 1.5fr}.nz-dataset-add .nz-btn{grid-column:2;justify-self:end}
   .nz-scope-fields{grid-template-columns:repeat(2,minmax(150px,1fr))}
   .nz-client-grid{grid-template-columns:1fr}.nz-client-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-client-experience{grid-column:1/-1}
   .nz-portal-invite-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-portal-invite-form .nz-btn{align-self:end}.nz-invite-result{grid-template-columns:1fr auto}.nz-invite-result>div{grid-column:1/-1}
@@ -333,7 +333,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media (max-width:680px){
-  .nz-config-panel{padding:16px}.nz-config-head{flex-direction:column}.nz-config-grid.target,.nz-config-grid.intensity{grid-template-columns:1fr}.nz-inline-create,.nz-dataset-add{grid-template-columns:1fr}.nz-inline-create .nz-btn,.nz-config-actions .nz-btn,.nz-dataset-add .nz-btn{width:100%}.nz-dataset-add .nz-btn{grid-column:auto;justify-self:stretch}
+  .nz-config-panel{padding:16px}.nz-config-head{flex-direction:column}.nz-config-grid.target,.nz-config-grid.intensity,.nz-config-grid.lca{grid-template-columns:1fr}.nz-inline-create,.nz-dataset-add{grid-template-columns:1fr}.nz-inline-create .nz-btn,.nz-config-actions .nz-btn,.nz-dataset-add .nz-btn{width:100%}.nz-dataset-add .nz-btn{grid-column:auto;justify-self:stretch}
   .nz-scope-create{padding:16px}.nz-scope-create-head{flex-direction:column}.nz-scope-fields{grid-template-columns:1fr}
   .nz-client-head{flex-wrap:wrap}.nz-client-identity{min-width:0;flex:1}.nz-client-identity>div{align-items:flex-start;flex-direction:column}.nz-client-head>.nz-head-actions{display:grid;width:100%;grid-template-columns:1fr 1fr;margin-left:0}.nz-client-aside,.nz-client-signals{grid-template-columns:1fr}.nz-client-experience{grid-column:auto}.nz-client-experience>div:last-child{display:grid;grid-template-columns:1fr 1fr}
   .nz-portal-invite-head{flex-direction:column}.nz-portal-invite-form{grid-template-columns:1fr}.nz-portal-invite-form .nz-btn{width:100%}.nz-invite-result{grid-template-columns:1fr}.nz-invite-result .nz-btn{width:100%}
@@ -523,6 +523,11 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-reuse-info{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
 .nz-reuse-info b{font-size:12.5px}
 .nz-reuse-meta{font-size:11px;color:var(--t3)}
+
+/* Track C — LCA/PCF reference module, slice 1 (Model Register, NZC-052/054/055) */
+.nz-lca-modules{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.nz-lca-module-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;cursor:pointer}
+.nz-lca-module-chip:has(input:checked){border-color:var(--emerald);background:var(--mint);color:var(--pine);font-weight:650}
 
 /* UX1e-1 — stage-as-section CRP workspace layout (NZC-038) */
 .nz-focus-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0 14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}

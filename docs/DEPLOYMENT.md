@@ -83,6 +83,11 @@ commits. Until then, every `NEXT_PUBLIC_*` flip is the manual dashboard step abo
 procedure as above. Current dashboard value (3 Sep 2026): `report-svg-charts` (R1, live;
 `docs/STAGING_ACCEPTANCE_R1.md`).
 
+Job-family modules (Track C, NZC-024) use a third variable, `NEXT_PUBLIC_FEATURE_JOB_MODULES` (tokens:
+`job-module-lca`, …), same procedure. **Not yet set on the dashboard** — the LCA module's slice 1 (Model
+Register, `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`) is not recommended to flip on its own (no seed LCA/PCF
+job exists to see it against).
+
 ## ⚠️ Notes / follow-ups
 
 - **Public URL is misleadingly named** `nzi-pro-api-prod.onrender.com` — this is a **staging redesign UI with
