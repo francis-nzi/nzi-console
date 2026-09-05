@@ -3,18 +3,22 @@
 // Track C — LCA/PCF reference module. Behind `job-module-lca`; FamilyWorkspace
 // still serves lca/pcf jobs when the flag is off.
 // Slice 1 (Model Register): create/edit an assessment's header fields.
-// Slice 2 (Inventory, this file): line items grouped by EN 15804 module,
-// manual add + BOM bulk-paste import, a component-library quick-pick, and
-// per-line factor mapping reusing the job's shared factor library
-// (docs/MODEL_FIDELITY_JOB_FAMILIES.md §2/§6/§7; NZC-053/054/056). Transport
-// legs, gap-filling, the calc engine, charts and the report manifest are
+// Slice 2 (Inventory): line items grouped by EN 15804 module, manual add + BOM
+// bulk-paste import, a component-library quick-pick, and per-line factor
+// mapping reusing the job's shared factor library (docs/MODEL_FIDELITY_JOB_
+// FAMILIES.md §2/§6/§7; NZC-053/054/056).
+// Slice 3 (this file, transport legs): A2/A4/C2 line items only. Nominatim
+// geocoding (`/api/isolated/lca-geocode`) estimates a distance; manual entry
+// is always available and the estimate stays fully editable. Each leg's own
+// `calculatedKgco2e` waits on the calc engine (L4) — honest, not a shortcut.
+// Gap-filling, the calc engine, scenarios, charts and the report manifest are
 // later slices.
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
-import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode } from "@nzi/contracts";
+import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaTransportLegWriteFields } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { WorkflowStageControl } from "../WorkflowStageControl";
 import { fuzzyScore } from "../templateSearch";
@@ -218,6 +222,9 @@ const FACTOR_STATUS: Record<string, { cls: string; label: string }> = {
   client: { cls: "done", label: "Mapped (client)" },
 };
 
+/** L3 — transport legs only belong to these modules (transport to manufacturer/site/waste). */
+const TRANSPORT_MODULES: readonly LcaModuleCode[] = ["A2", "A4", "C2"];
+
 function AssessmentInventory({ jobId, assessment, factors, components, categories, notice }: {
   jobId: string; assessment: LcaAssessment; factors: FactorOption[];
   components: LcaComponentOption[]; categories: { id: string; name: string }[]; notice: (n: Notice) => void;
@@ -226,6 +233,7 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
   const [formOpen, setFormOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedLegsId, setExpandedLegsId] = useState<string | null>(null);
   const modules = useMemo(() => lcaModuleCodes.filter((code) => assessment.includedModules.includes(code)), [assessment.includedModules]);
   const linesByModule = useMemo(() => {
     const map = new Map<LcaModuleCode, LcaLineItem[]>();
@@ -274,23 +282,40 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
                     {lines.map((line) => {
                       const status = FACTOR_STATUS[line.factorSource] ?? FACTOR_STATUS.unmapped!;
                       const component = line.componentId ? components.find((candidate) => candidate.id === line.componentId) : undefined;
+                      const isTransport = TRANSPORT_MODULES.includes(line.moduleCode);
+                      const legsOpen = expandedLegsId === line.id;
                       return (
-                        <tr key={line.id}>
-                          <td>
-                            <b>{line.lineLabel}</b>
-                            {line.isPlaceholder && <span className="nz-chip-mini nodata" style={{ marginLeft: 6 }}>Excluded</span>}
-                            {line.isGapFilled && <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>Gap-filled</span>}
-                            {line.notes && <div className="muted">{line.notes}</div>}
-                          </td>
-                          <td>{component ? component.description : "—"}</td>
-                          <td className="num">{line.quantity.toLocaleString("en-GB", { maximumFractionDigits: 3 })} {line.unit}</td>
-                          <td>
-                            <span className={`nz-st ${status.cls}`}>{status.label}</span>
-                            {line.factorLabel && <div className="muted">{line.factorLabel}</div>}
-                          </td>
-                          <td className="num">{line.calculatedKgco2e != null ? line.calculatedKgco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 }) : "—"}</td>
-                          <td><button type="button" className="nz-btn" disabled={busyId === line.id} onClick={() => void removeLine(line.id, line.lineLabel)}>{busyId === line.id ? "Deleting…" : "Delete"}</button></td>
-                        </tr>
+                        <Fragment key={line.id}>
+                          <tr>
+                            <td>
+                              <b>{line.lineLabel}</b>
+                              {line.isPlaceholder && <span className="nz-chip-mini nodata" style={{ marginLeft: 6 }}>Excluded</span>}
+                              {line.isGapFilled && <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>Gap-filled</span>}
+                              {line.notes && <div className="muted">{line.notes}</div>}
+                            </td>
+                            <td>{component ? component.description : "—"}</td>
+                            <td className="num">{line.quantity.toLocaleString("en-GB", { maximumFractionDigits: 3 })} {line.unit}</td>
+                            <td>
+                              <span className={`nz-st ${status.cls}`}>{status.label}</span>
+                              {line.factorLabel && <div className="muted">{line.factorLabel}</div>}
+                            </td>
+                            <td className="num">
+                              {line.calculatedKgco2e != null ? line.calculatedKgco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 }) : "—"}
+                              {isTransport && line.transportKgco2e > 0 && <div className="muted">+{line.transportKgco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} transport</div>}
+                            </td>
+                            <td style={{ whiteSpace: "nowrap" }}>
+                              {isTransport && <button type="button" className="nz-btn" aria-expanded={legsOpen} onClick={() => setExpandedLegsId(legsOpen ? null : line.id)} style={{ marginRight: 6 }}>{legsOpen ? "Close legs" : `Transport legs (${line.transportLegs.length})`}</button>}
+                              <button type="button" className="nz-btn" disabled={busyId === line.id} onClick={() => void removeLine(line.id, line.lineLabel)}>{busyId === line.id ? "Deleting…" : "Delete"}</button>
+                            </td>
+                          </tr>
+                          {isTransport && legsOpen && (
+                            <tr>
+                              <td colSpan={6} className="nz-lca-legs-cell">
+                                <TransportLegsPanel jobId={jobId} assessmentId={assessment.id} lineItem={line} factors={factors} notice={notice} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -307,6 +332,177 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
       </div>
       {formOpen && <NewLineItemForm jobId={jobId} assessment={assessment} factors={factors} components={components} categories={categories} onDone={() => setFormOpen(false)} notice={notice} />}
       {bulkOpen && <BulkImportPanel jobId={jobId} assessment={assessment} onDone={() => setBulkOpen(false)} notice={notice} />}
+    </div>
+  );
+}
+
+// ── Slice 3: transport legs (A2/A4/C2 only) ─────────────────────────────────
+
+const TRANSPORT_MODE_LABEL: Record<string, string> = {
+  road_hgv: "Road (HGV)", road_van: "Road (van)", rail: "Rail", sea: "Sea", air: "Air", inland_water: "Inland water", other: "Other",
+};
+const LEG_FACTOR_STATUS: Record<string, { cls: string; label: string }> = {
+  unmapped: { cls: "need", label: "Unmapped" },
+  manual: { cls: "est", label: "Manual value" },
+  dataset: { cls: "done", label: "Mapped" },
+};
+
+function TransportLegsPanel({ jobId, assessmentId, lineItem, factors, notice }: {
+  jobId: string; assessmentId: string; lineItem: LcaLineItem; factors: FactorOption[]; notice: (n: Notice) => void;
+}) {
+  const router = useRouter();
+  const [formOpen, setFormOpen] = useState(lineItem.transportLegs.length === 0);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const base = `/api/isolated/jobs/${jobId}/lca-assessments/${assessmentId}/line-items/${lineItem.id}/transport-legs`;
+
+  async function removeLeg(legId: string, label: string) {
+    if (busyId || !window.confirm(`Delete the leg "${label}"?`)) return;
+    setBusyId(legId);
+    try {
+      const response = await fetch(`${base}/${legId}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({} as { message?: string }));
+      if (!response.ok) throw new Error(body.message ?? "The leg could not be deleted.");
+      notice({ kind: "ok", text: "Transport leg deleted." });
+      router.refresh();
+    } catch (error) {
+      notice({ kind: "warn", text: error instanceof Error ? error.message : "The leg could not be deleted." });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="nz-lca-legs">
+      <div className="sub">{lineItem.lineLabel} — {lineItem.transportLegs.length} leg{lineItem.transportLegs.length === 1 ? "" : "s"}. Each leg's own emissions wait on the calc engine (L4); distances and factor mapping are captured here.</div>
+      {lineItem.transportLegs.length > 0 && (
+        <div className="nz-table-wrap" style={{ marginTop: 10 }}>
+          <table className="nz-tbl">
+            <thead><tr><th>#</th><th>From</th><th>To</th><th>Mode</th><th className="num">Distance</th><th>Factor</th><th /></tr></thead>
+            <tbody>
+              {lineItem.transportLegs.map((leg, index) => {
+                const status = LEG_FACTOR_STATUS[leg.factorSource] ?? LEG_FACTOR_STATUS.unmapped!;
+                return (
+                  <tr key={leg.id}>
+                    <td>{index + 1}</td>
+                    <td>{leg.fromLabel}</td>
+                    <td>{leg.toLabel}</td>
+                    <td>{TRANSPORT_MODE_LABEL[leg.mode] ?? leg.mode}</td>
+                    <td className="num">{leg.distanceKm.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km<div className="muted">{leg.distanceSource === "geocoded" ? "geocoded" : "manual"}</div></td>
+                    <td><span className={`nz-st ${status.cls}`}>{status.label}</span></td>
+                    <td><button type="button" className="nz-btn" disabled={busyId === leg.id} onClick={() => void removeLeg(leg.id, `${leg.fromLabel} → ${leg.toLabel}`)}>{busyId === leg.id ? "Deleting…" : "Delete"}</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="nz-acc-foot">
+        <button type="button" className="nz-btn pri" aria-expanded={formOpen} onClick={() => setFormOpen((current) => !current)}>{formOpen ? "Close" : "+ Add leg"}</button>
+      </div>
+      {formOpen && <NewTransportLegForm base={base} factors={factors} onDone={() => setFormOpen(false)} notice={notice} />}
+    </div>
+  );
+}
+
+function NewTransportLegForm({ base, factors, onDone, notice }: { base: string; factors: FactorOption[]; onDone: () => void; notice: (n: Notice) => void }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [value, setValue] = useState({
+    fromLabel: "", toLabel: "", mode: "road_hgv" as LcaTransportLegWriteFields["mode"],
+    distanceKm: 0, distanceSource: "manual" as "manual" | "geocoded",
+    pickMode: "unmapped" as "unmapped" | "manual" | "search",
+    datasetId: null as string | null, factorId: null as string | null, factorValue: null as number | null, factorLabel: null as string | null,
+  });
+
+  async function geocode() {
+    if (geocoding || !value.fromLabel.trim() || !value.toLabel.trim()) return;
+    setGeocoding(true);
+    try {
+      const response = await fetch("/api/isolated/lca-geocode", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fromQuery: value.fromLabel, toQuery: value.toLabel, mode: value.mode }),
+      });
+      const body = await response.json().catch(() => ({} as { message?: string }));
+      if (!response.ok) throw new Error(body.message ?? "Geocoding failed.");
+      setValue((current) => ({ ...current, distanceKm: body.distanceKm, distanceSource: "geocoded" }));
+      notice({ kind: "ok", text: `Estimated ${body.distanceKm.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km (${body.source === "stub" ? "staging stub" : "Nominatim"}). Distance stays editable — override it any time.` });
+    } catch (error) {
+      notice({ kind: "warn", text: error instanceof Error ? error.message : "Geocoding failed — enter the distance manually." });
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  function pickFactor(factor: FactorOption) {
+    if (factor.factorSource === "client") { notice({ kind: "warn", text: "Client factors aren't yet supported on transport legs — pick a dataset factor or enter a value manually." }); return; }
+    setValue((current) => ({ ...current, datasetId: factor.datasetId, factorId: factor.factorId, factorLabel: factor.label }));
+  }
+
+  async function create() {
+    if (pending || !value.fromLabel.trim() || !value.toLabel.trim()) return;
+    setPending(true);
+    const factorSource = value.pickMode === "unmapped" ? "unmapped" : value.pickMode === "manual" ? "manual" : "dataset";
+    const result = await postBrowserCommand<{ legId: string }>(
+      base,
+      {
+        fromLabel: value.fromLabel.trim(), toLabel: value.toLabel.trim(), mode: value.mode,
+        distanceKm: Number(value.distanceKm), distanceSource: value.distanceSource,
+        factorSource, datasetId: value.datasetId, factorId: value.factorId,
+        factorValue: factorSource === "manual" ? value.factorValue : null,
+      },
+      crypto.randomUUID(),
+    );
+    setPending(false);
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") : result.message });
+      return;
+    }
+    notice({ kind: "ok", text: `Leg ${value.fromLabel} → ${value.toLabel} added.` });
+    onDone();
+    router.refresh();
+  }
+
+  return (
+    <div className="nz-acc-extra">
+      <div className="nz-config-grid lca">
+        <label className="nz-fl">From<input className="nz-inp" value={value.fromLabel} onChange={(e) => setValue({ ...value, fromLabel: e.target.value, distanceSource: "manual" })} placeholder="e.g. Ningbo plant, CN" /></label>
+        <label className="nz-fl">To<input className="nz-inp" value={value.toLabel} onChange={(e) => setValue({ ...value, toLabel: e.target.value, distanceSource: "manual" })} placeholder="e.g. Felixstowe port, UK" /></label>
+        <label className="nz-fl">Mode
+          <select className="nz-sel" value={value.mode} onChange={(e) => setValue({ ...value, mode: e.target.value as LcaTransportLegWriteFields["mode"] })}>
+            {Object.entries(TRANSPORT_MODE_LABEL).map(([mode, label]) => <option key={mode} value={mode}>{label}</option>)}
+          </select>
+        </label>
+        <label className="nz-fl">Distance (km)<input className="nz-inp" type="number" min="0" step="any" value={value.distanceKm} onChange={(e) => setValue({ ...value, distanceKm: Number(e.target.value), distanceSource: "manual" })} /></label>
+      </div>
+      <div className="nz-config-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+        <button type="button" className="nz-btn" disabled={geocoding || !value.fromLabel.trim() || !value.toLabel.trim()} onClick={() => void geocode()}>{geocoding ? "Geocoding…" : "Estimate distance (geocode)"}</button>
+        {value.distanceSource === "geocoded" && <span className="nz-hint">✓ geocoded — distance stays editable</span>}
+      </div>
+
+      <div className="nz-sect">Emission factor</div>
+      <div className="nz-lca-modules">
+        <label className="nz-lca-module-chip"><input type="radio" name="leg-factor-mode" checked={value.pickMode === "unmapped"} onChange={() => setValue({ ...value, pickMode: "unmapped" })} />Leave unmapped</label>
+        <label className="nz-lca-module-chip"><input type="radio" name="leg-factor-mode" checked={value.pickMode === "search"} onChange={() => setValue({ ...value, pickMode: "search" })} />Search the factor library</label>
+        <label className="nz-lca-module-chip"><input type="radio" name="leg-factor-mode" checked={value.pickMode === "manual"} onChange={() => setValue({ ...value, pickMode: "manual" })} />Enter a value manually</label>
+      </div>
+      {value.pickMode === "search" && (
+        <div style={{ marginTop: 10 }}>
+          <FactorPicker factors={factors} onPick={pickFactor} />
+          {value.factorLabel && <div className="nz-hint">✓ {value.factorLabel}</div>}
+        </div>
+      )}
+      {value.pickMode === "manual" && (
+        <div className="nz-config-grid lca" style={{ marginTop: 10 }}>
+          <label className="nz-fl">Factor value (kgCO₂e)<input className="nz-inp" type="number" step="any" value={value.factorValue ?? ""} onChange={(e) => setValue({ ...value, factorValue: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+        </div>
+      )}
+
+      <div className="nz-config-actions">
+        <button type="button" className="nz-btn" onClick={onDone}>Cancel</button>
+        <button type="button" className="nz-btn pri" disabled={pending || !value.fromLabel.trim() || !value.toLabel.trim()} onClick={() => void create()}>{pending ? "Adding…" : "Add leg"}</button>
+      </div>
     </div>
   );
 }

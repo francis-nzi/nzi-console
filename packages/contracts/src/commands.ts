@@ -1,8 +1,8 @@
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import { isCrpReportSectionKey } from "./reportSections";
-import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode } from "./jobFamilies";
-import { lcaModuleCodes } from "./jobFamilies";
+import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaTransportLegWriteFields } from "./jobFamilies";
+import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 
 export type CommandKey =
   | "client.create"
@@ -46,7 +46,10 @@ export type CommandKey =
   | "lca.lineItem.create"
   | "lca.lineItem.update"
   | "lca.lineItem.delete"
-  | "lca.lineItem.bulkCreate";
+  | "lca.lineItem.bulkCreate"
+  | "lca.transportLeg.create"
+  | "lca.transportLeg.update"
+  | "lca.transportLeg.delete";
 
 export const jobWorkflowStages = {
   // NZC-057 — "Factor mapping" retired as a CRP stage (factor selection is inline
@@ -214,6 +217,9 @@ export type CommandInputMap = {
   "lca.lineItem.update": { jobId: string; assessmentId: string; lineItemId: string } & LcaLineItemWriteFields;
   "lca.lineItem.delete": { jobId: string; assessmentId: string; lineItemId: string };
   "lca.lineItem.bulkCreate": { jobId: string; assessmentId: string; lines: LcaLineItemWriteFields[] };
+  "lca.transportLeg.create": { jobId: string; assessmentId: string; lineItemId: string } & LcaTransportLegWriteFields;
+  "lca.transportLeg.update": { jobId: string; assessmentId: string; lineItemId: string; legId: string } & LcaTransportLegWriteFields;
+  "lca.transportLeg.delete": { jobId: string; assessmentId: string; lineItemId: string; legId: string };
 };
 
 export type CommandDefinition<K extends CommandKey = CommandKey> = {
@@ -271,6 +277,20 @@ const lcaLineItemIssues = (input: LcaLineItemWriteFields): CommandIssue[] => {
   if (input.dataQuality != null && !oneOf(input.dataQuality, ["primary", "secondary", "proxy", "estimated"] as const)) issues.push({ field: "dataQuality", code: "INVALID", message: "Data quality is invalid." });
   return issues;
 };
+const lcaTransportLegIssues = (input: LcaTransportLegWriteFields): CommandIssue[] => {
+  const issues: CommandIssue[] = [];
+  required(issues, "fromLabel", input.fromLabel);
+  required(issues, "toLabel", input.toLabel);
+  if (!lcaTransportModes.includes(input.mode)) issues.push({ field: "mode", code: "INVALID", message: "Transport mode is not recognised." });
+  if (typeof input.distanceKm !== "number" || !Number.isFinite(input.distanceKm) || input.distanceKm < 0) issues.push({ field: "distanceKm", code: "INVALID", message: "Distance must be zero or greater." });
+  if (input.distanceSource != null && !oneOf(input.distanceSource, ["geocoded", "manual"] as const)) issues.push({ field: "distanceSource", code: "INVALID", message: "Distance source is invalid." });
+  const factorSource = input.factorSource ?? "unmapped";
+  // No client_factor_id column on lca_transport_legs (unlike line items) — 'client' is not offered here.
+  if (!oneOf(factorSource, ["dataset", "manual", "unmapped"] as const)) issues.push({ field: "factorSource", code: "INVALID", message: "Factor source is invalid for a transport leg." });
+  else if (factorSource === "dataset" && (!text(input.factorId) || !text(input.datasetId))) issues.push({ field: "factorId", code: "REQUIRED", message: "A dataset factor must identify its factor and dataset." });
+  else if (factorSource === "manual" && input.factorValue == null) issues.push({ field: "factorValue", code: "REQUIRED", message: "A manual factor must give its value." });
+  return issues;
+};
 const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = monthlyActivityIssues(input.monthlyActivity); required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (input.assetIdentifier != null && (typeof input.assetIdentifier !== "string" || input.assetIdentifier.trim().length > 240)) issues.push({field:"assetIdentifier",code:"INVALID",message:"ID / Reference must be text of 240 characters or fewer."}); if (input.applyPct != null && (typeof input.applyPct!=="number"||!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)) issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100%."}); if (input.dataConfidence != null && !(["H","M","L"] as const).includes(input.dataConfidence)) issues.push({field:"dataConfidence",code:"INVALID",message:"Data confidence must be high, medium, or low."}); if (input.sourceQuantity != null && (typeof input.sourceQuantity!=="number"||!Number.isFinite(input.sourceQuantity)||input.sourceQuantity<0)) issues.push({field:"sourceQuantity",code:"INVALID",message:"As-entered quantity must be zero or greater."}); if ((input.sourceQuantity!=null)!==Boolean(text(input.sourceUnit))) issues.push({field:"sourceUnit",code:"PAIRED",message:"As-entered quantity and unit must be provided together."}); const factorSource=input.factorSource??"dataset";if(factorSource==="client"&&(!text(input.clientFactorId)||input.isCustomEntry!==true))issues.push({field:"clientFactorId",code:"REQUIRED",message:"A client factor row must identify its client factor."});if(factorSource==="dataset"&&(text(input.clientFactorId)||input.isCustomEntry===true))issues.push({field:"factorSource",code:"INCONSISTENT",message:"Dataset factors cannot carry client-factor identity."}); if (typeof input.scope === "string" && !crpScopeOptions.some((option) => option.value === input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Select a controlled Scope 1, Scope 2, or Scope 3 category." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId && factorSource!=="client") issues.push({ field: "datasetId", code: "REQUIRED", message: "A dataset factor must identify its dataset." }); if (input.categoryCode != null && input.categoryCode !== "") { const category = emissionCategoryTaxonomy.find((entry) => entry.code === input.categoryCode); if (!category) issues.push({ field: "categoryCode", code: "INVALID", message: "Category code is not in the emission taxonomy (NZC-046)." }); else if (typeof input.scope === "string" && category.scope !== input.scope.split(".")[0]) issues.push({ field: "categoryCode", code: "INCONSISTENT", message: "Category belongs to a different scope than the row." }); } return issues; };
 
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
@@ -316,6 +336,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "lca.lineItem.update": { key: "lca.lineItem.update", label: "Update LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item + audit + outbox + idempotency", auditAction: "lca_line_item_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaLineItemIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
   "lca.lineItem.delete": { key: "lca.lineItem.delete", label: "Delete LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item removal + audit + outbox + idempotency", auditAction: "lca_line_item_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
   "lca.lineItem.bulkCreate": { key: "lca.lineItem.bulkCreate", label: "Bulk-add LCA line items", permission: "emissions.data.edit", reasonRequired: false, transaction: "line items + audit + outbox + idempotency", auditAction: "lca_line_items_bulk_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!Array.isArray(input.lines) || input.lines.length === 0) issues.push({ field: "lines", code: "REQUIRED", message: "Add at least one line item." }); else input.lines.forEach((line, index) => lcaLineItemIssues(line).forEach((issue) => issues.push({ ...issue, field: `lines.${index}.${issue.field}` }))); return issues; } },
+  "lca.transportLeg.create": { key: "lca.transportLeg.create", label: "Add transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaTransportLegIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
+  "lca.transportLeg.update": { key: "lca.transportLeg.update", label: "Update transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaTransportLegIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); required(issues, "legId", input.legId); return issues; } },
+  "lca.transportLeg.delete": { key: "lca.transportLeg.delete", label: "Delete transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg removal + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); required(issues, "legId", input.legId); return issues; } },
 };
 
 export function validateCommand<K extends CommandKey>(key: K, input: CommandInputMap[K], context: CommandContext) { return commandDefinitions[key].validate(input, context); }

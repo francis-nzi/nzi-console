@@ -214,13 +214,15 @@ The **LCA reference module** (first family module behind `job-module-lca`) start
 1 (the Model Register) built 5 Sep 2026**, `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`. Francis then corrected
 the remaining slicing against the live product's actual seven-stage workflow (5 Sep 2026): **L2 Inventory**
 (line items + factor mapping, folded per the CRP "mapping at capture" precedent — **built 5 Sep 2026**,
-`docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`) → **L3 Transport legs** (+ Nominatim geocoding behind a deterministic
-staging stub) → **L4 Gap-filling + calc engine + result snapshot + review** → **L5 Scenarios** → **L6
-Charts** → **L7 Report manifest + PCF labelling**. L2–L4 pre-authorized to build straight through without
-further check-in; L5 onward gets a status check-in first. A seed LCA/PCF assessment + inventory now exists
-on staging (job `714`/`715`, `packages/isolated-backend/seeds/0005_synthetic_lca_pcf.sql`) — the flag is
-ready to flip pending a human Render-dashboard edit + rebuild. M4 (additional services) rides on the
-completed module. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
+`docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`) → **L3 Transport legs** (A2/A4/C2 only, + Nominatim geocoding behind
+a deterministic staging stub — **built 5 Sep 2026**, `docs/ACCEPTANCE_LCA_MODULE_SLICE3.md`, shipped with a
+documented placeholder detour-factor set pending the live app's real `FREIGHT_DEFAULT_FACTORS`) → **L4
+Gap-filling + calc engine + result snapshot + review** → **L5 Scenarios** → **L6 Charts** → **L7 Report
+manifest + PCF labelling**. L2–L4 pre-authorized to build straight through without further check-in; L5
+onward gets a status check-in first. A seed LCA/PCF assessment + inventory + transport legs now exists on
+staging (job `714`/`715`, `packages/isolated-backend/seeds/0005_synthetic_lca_pcf.sql` +
+`0006_synthetic_lca_transport_legs.sql`) — the flag is ready to flip pending a human Render-dashboard edit +
+rebuild. M4 (additional services) rides on the completed module. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 *M7 added 1 Sep 2026.*
 
