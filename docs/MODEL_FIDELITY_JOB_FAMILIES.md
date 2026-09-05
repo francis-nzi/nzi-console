@@ -282,14 +282,19 @@ drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
    adapters) tracks land (Francis, 1 Sep 2026). **✅ Both landed 4 Sep 2026** — gate lifted; M9 (fast
    row-adding) inserted ahead of this module per Francis's explicit sequencing, also landed.
 3. **LCA reference module** — `apps/console/app/jobs/lca/`: own routing off `job.header.family === "lca"`,
-   own stage machine, the assessment register → line-item grid → transport legs → factor mapping →
-   recalculate → module breakdown chart → report manifest. Behind a `job-module-lca` flag; `FamilyWorkspace`
-   still serves lca when the flag is off. Prove it (acceptance gate, like each B/S slice).
-   **Slice 1 (Model Register) built 5 Sep 2026, PR #94** — `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`. Remaining
-   slices (line items + factor mapping, transport legs + geocoding, recalculate + snapshots, charts, report
-   manifest) proposed there, awaiting confirmation before deep build — same "propose, don't guess" pattern
-   as DA1's baseline model / R5b's Paged.js choice, since transport-leg geocoding is a genuine new
-   external-dependency decision.
+   own stage machine. Behind a `job-module-lca` flag; `FamilyWorkspace` still serves lca when the flag is
+   off. Prove it (acceptance gate, like each B/S slice).
+   **Slice 1 (Model Register) built 5 Sep 2026, PR #94** — `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`.
+   **Corrected slicing (Francis, 5 Sep 2026)**, from a review of the live LCA product's actual seven-stage
+   workflow (goal-scope → inventory → factor-mapping → gap-filling → impact → scenarios → reporting):
+   **L2 Inventory** (folds inventory + factor-mapping; built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`)
+   → **L3 Transport legs** (+ Nominatim geocoding behind a deterministic staging stub, mirroring
+   `vehicleLookup.ts`) → **L4 Gap-filling + calc engine + result snapshot + review** → **L5 Scenarios** →
+   **L6 Charts** → **L7 Report manifest + PCF labelling**. L2–L4 pre-authorized to build straight through;
+   L5 onward gets a status check-in first. Built from Francis's description of the live product plus this
+   doc, not the live NZI Pro source directly — this session's local path for the live repo was an empty git
+   init, not an actual checkout (disclosed to Francis; L3's exact `FREIGHT_DEFAULT_FACTORS` values are
+   needed from him for live parity).
 4. **Retire `FamilyWorkspace` for lca**; extract the shared bits it needs into `@nzi/job-core`
    (header card, stage control, evidence-drawer host) as the reusable module contract.
 5. **Training module** on the same pattern (largest — products/runs/sessions/bookings/attendance/

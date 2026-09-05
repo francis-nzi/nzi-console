@@ -529,6 +529,11 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-lca-module-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;cursor:pointer}
 .nz-lca-module-chip:has(input:checked){border-color:var(--emerald);background:var(--mint);color:var(--pine);font-weight:650}
 
+/* Track C — slice 2 (Inventory, NZC-053/054/056) */
+.nz-lca-inventory-cell{padding:18px!important;background:var(--paper)}
+.nz-lca-inventory{display:grid;gap:2px}
+.nz-lca-inventory .nz-table-wrap{margin:4px 0 16px}
+
 /* UX1e-1 — stage-as-section CRP workspace layout (NZC-038) */
 .nz-focus-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0 14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .nz-focus-strip-lead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0}

@@ -1,19 +1,24 @@
 "use client";
 
-// Track C — LCA/PCF reference module, slice 1: the assessment register
-// (NZC-052/054/055; docs/MODEL_FIDELITY_JOB_FAMILIES.md §2/§6/§7). Behind
-// `job-module-lca`; FamilyWorkspace still serves lca/pcf jobs when the flag
-// is off. This slice is the "Model Register" only — create/edit an
-// assessment's header fields. Line items, factor mapping, transport legs,
-// the calc engine, charts and the report manifest are later slices.
-import { useState } from "react";
+// Track C — LCA/PCF reference module. Behind `job-module-lca`; FamilyWorkspace
+// still serves lca/pcf jobs when the flag is off.
+// Slice 1 (Model Register): create/edit an assessment's header fields.
+// Slice 2 (Inventory, this file): line items grouped by EN 15804 module,
+// manual add + BOM bulk-paste import, a component-library quick-pick, and
+// per-line factor mapping reusing the job's shared factor library
+// (docs/MODEL_FIDELITY_JOB_FAMILIES.md §2/§6/§7; NZC-053/054/056). Transport
+// legs, gap-filling, the calc engine, charts and the report manifest are
+// later slices.
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
-import { lcaModuleCodes, type LcaAssessment, type LcaAssessmentType, type LcaLifecycleBoundary, type LcaModuleCode } from "@nzi/contracts";
+import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { WorkflowStageControl } from "../WorkflowStageControl";
+import { fuzzyScore } from "../templateSearch";
+import { lcaBomTemplateCsv, parseLcaBomLines } from "./lcaBomImport";
 
 type Notice = { kind: "ok" | "warn"; text: string };
 
@@ -26,11 +31,15 @@ const MODULE_LABEL: Record<LcaModuleCode, string> = {
   D: "D · Benefits beyond boundary",
 };
 
-export function LcaWorkspace({ job, assessments }: { job: FamilyJob; assessments: LcaAssessment[] }) {
+export function LcaWorkspace({ job, assessments, factors, components, categories }: {
+  job: FamilyJob; assessments: LcaAssessment[]; factors: FactorOption[];
+  components: LcaComponentOption[]; categories: { id: string; name: string }[];
+}) {
   const { header } = job;
   const meta = jobFamilyMeta[header.family];
   const [notice, setNotice] = useState<Notice | null>(null);
   const [creating, setCreating] = useState(assessments.length === 0);
+  const [expandedId, setExpandedId] = useState<string | null>(assessments.length === 1 ? assessments[0]!.id : null);
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
     <TopBar searchPlaceholder={`Search ${meta.code} job…`} crumbs={<>Engagements <span className="muted">/</span> <b>{header.number}</b></>} />
@@ -62,19 +71,32 @@ export function LcaWorkspace({ job, assessments }: { job: FamilyJob; assessments
         ) : (
           <div className="nz-table-wrap">
             <table className="nz-tbl">
-              <thead><tr><th>Name</th><th>Type</th><th>Functional unit</th><th>Boundary</th><th>Modules</th><th className="num">tCO₂e</th><th>Review</th></tr></thead>
+              <thead><tr><th>Name</th><th>Type</th><th>Functional unit</th><th>Boundary</th><th>Modules</th><th className="num">tCO₂e</th><th>Review</th><th /></tr></thead>
               <tbody>
-                {assessments.map((assessment) => (
-                  <tr key={assessment.id}>
-                    <td><b>{assessment.name}</b>{assessment.sku ? <div className="muted">SKU {assessment.sku}</div> : null}{assessment.isPcf ? <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>PCF</span> : null}</td>
-                    <td>{assessment.assessmentType}</td>
-                    <td>{assessment.functionalUnitValue} {assessment.functionalUnitUnit}</td>
-                    <td>{assessment.lifecycleBoundary.replaceAll("_", " ")}</td>
-                    <td>{assessment.includedModules.join(", ")}</td>
-                    <td className="num">{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>
-                    <td><span className={`nz-st ${assessment.reviewStatus === "approved" ? "done" : assessment.reviewStatus === "rejected" ? "nof" : "est"}`}>{assessment.reviewStatus}</span></td>
-                  </tr>
-                ))}
+                {assessments.map((assessment) => {
+                  const open = expandedId === assessment.id;
+                  return (
+                    <Fragment key={assessment.id}>
+                      <tr>
+                        <td><b>{assessment.name}</b>{assessment.sku ? <div className="muted">SKU {assessment.sku}</div> : null}{assessment.isPcf ? <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>PCF</span> : null}</td>
+                        <td>{assessment.assessmentType}</td>
+                        <td>{assessment.functionalUnitValue} {assessment.functionalUnitUnit}</td>
+                        <td>{assessment.lifecycleBoundary.replaceAll("_", " ")}</td>
+                        <td>{assessment.includedModules.join(", ")}</td>
+                        <td className="num">{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>
+                        <td><span className={`nz-st ${assessment.reviewStatus === "approved" ? "done" : assessment.reviewStatus === "rejected" ? "nof" : "est"}`}>{assessment.reviewStatus}</span></td>
+                        <td><button type="button" className="nz-btn" aria-expanded={open} onClick={() => setExpandedId(open ? null : assessment.id)}>{open ? "Close" : `Inventory (${assessment.lines.length})`}</button></td>
+                      </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={8} className="nz-lca-inventory-cell">
+                            <AssessmentInventory jobId={header.id} assessment={assessment} factors={factors} components={components} categories={categories} notice={setNotice} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -92,8 +114,8 @@ export function LcaWorkspace({ job, assessments }: { job: FamilyJob; assessments
         <div className="nz-config-head">
           <div>
             <span className="nz-eyebrow">Coming next</span>
-            <h2>Line items, factor mapping, transport legs, recalculation, module-breakdown chart and the report manifest</h2>
-            <p>{meta.description}. This register is slice 1 of the reference module — the rest lands behind the same flag as it is built.</p>
+            <h2>Transport legs, gap-filling + recalculation, scenarios, module-breakdown chart and the report manifest</h2>
+            <p>{meta.description}. The Model Register and the flat inventory (slices 1–2) are built — the rest lands behind the same flag as it is built.</p>
           </div>
         </div>
       </section>
@@ -183,6 +205,414 @@ function NewAssessmentForm({ jobId, onDone, notice }: { jobId: string; onDone: (
           {pending ? "Adding…" : "Add assessment"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Slice 2: the flat inventory ─────────────────────────────────────────────
+
+const FACTOR_STATUS: Record<string, { cls: string; label: string }> = {
+  unmapped: { cls: "need", label: "Unmapped" },
+  manual: { cls: "est", label: "Manual value" },
+  dataset: { cls: "done", label: "Mapped" },
+  client: { cls: "done", label: "Mapped (client)" },
+};
+
+function AssessmentInventory({ jobId, assessment, factors, components, categories, notice }: {
+  jobId: string; assessment: LcaAssessment; factors: FactorOption[];
+  components: LcaComponentOption[]; categories: { id: string; name: string }[]; notice: (n: Notice) => void;
+}) {
+  const router = useRouter();
+  const [formOpen, setFormOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const modules = useMemo(() => lcaModuleCodes.filter((code) => assessment.includedModules.includes(code)), [assessment.includedModules]);
+  const linesByModule = useMemo(() => {
+    const map = new Map<LcaModuleCode, LcaLineItem[]>();
+    for (const code of modules) map.set(code, assessment.lines.filter((line) => line.moduleCode === code));
+    return map;
+  }, [modules, assessment.lines]);
+
+  async function removeLine(lineItemId: string, label: string) {
+    if (busyId || !window.confirm(`Delete "${label}"?`)) return;
+    setBusyId(lineItemId);
+    try {
+      const response = await fetch(`/api/isolated/jobs/${jobId}/lca-assessments/${assessment.id}/line-items/${lineItemId}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({} as { message?: string }));
+      if (!response.ok) throw new Error(body.message ?? "The line item could not be deleted.");
+      notice({ kind: "ok", text: `${label} deleted.` });
+      router.refresh();
+    } catch (error) {
+      notice({ kind: "warn", text: error instanceof Error ? error.message : "The line item could not be deleted." });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="nz-lca-inventory">
+      <div className="nz-config-head">
+        <div>
+          <span className="nz-eyebrow">Inventory</span>
+          <b>{assessment.name}</b>
+          <div className="sub">{assessment.lines.length} line item{assessment.lines.length === 1 ? "" : "s"} across {modules.length} included module{modules.length === 1 ? "" : "s"}.</div>
+        </div>
+      </div>
+
+      {modules.map((code) => {
+        const lines = linesByModule.get(code) ?? [];
+        return (
+          <div key={code}>
+            <div className="nz-acc-scopehead"><span className="sdot" style={{ background: "var(--emerald)" }} />{MODULE_LABEL[code]}</div>
+            {lines.length === 0 ? (
+              <div className="nz-acc-empty">No lines yet.</div>
+            ) : (
+              <div className="nz-table-wrap">
+                <table className="nz-tbl">
+                  <thead><tr><th>Line</th><th>Component</th><th className="num">Quantity</th><th>Factor</th><th className="num">kgCO₂e</th><th /></tr></thead>
+                  <tbody>
+                    {lines.map((line) => {
+                      const status = FACTOR_STATUS[line.factorSource] ?? FACTOR_STATUS.unmapped!;
+                      const component = line.componentId ? components.find((candidate) => candidate.id === line.componentId) : undefined;
+                      return (
+                        <tr key={line.id}>
+                          <td>
+                            <b>{line.lineLabel}</b>
+                            {line.isPlaceholder && <span className="nz-chip-mini nodata" style={{ marginLeft: 6 }}>Excluded</span>}
+                            {line.isGapFilled && <span className="nz-chip-mini todo" style={{ marginLeft: 6 }}>Gap-filled</span>}
+                            {line.notes && <div className="muted">{line.notes}</div>}
+                          </td>
+                          <td>{component ? component.description : "—"}</td>
+                          <td className="num">{line.quantity.toLocaleString("en-GB", { maximumFractionDigits: 3 })} {line.unit}</td>
+                          <td>
+                            <span className={`nz-st ${status.cls}`}>{status.label}</span>
+                            {line.factorLabel && <div className="muted">{line.factorLabel}</div>}
+                          </td>
+                          <td className="num">{line.calculatedKgco2e != null ? line.calculatedKgco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 }) : "—"}</td>
+                          <td><button type="button" className="nz-btn" disabled={busyId === line.id} onClick={() => void removeLine(line.id, line.lineLabel)}>{busyId === line.id ? "Deleting…" : "Delete"}</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="nz-acc-foot">
+        <button type="button" className="nz-btn pri" aria-expanded={formOpen} onClick={() => { setFormOpen((current) => !current); setBulkOpen(false); }}>{formOpen ? "Close" : "+ Add line item"}</button>
+        <button type="button" className="nz-btn" aria-expanded={bulkOpen} onClick={() => { setBulkOpen((current) => !current); setFormOpen(false); }}>{bulkOpen ? "Close" : "Bulk import (BOM paste)"}</button>
+      </div>
+      {formOpen && <NewLineItemForm jobId={jobId} assessment={assessment} factors={factors} components={components} categories={categories} onDone={() => setFormOpen(false)} notice={notice} />}
+      {bulkOpen && <BulkImportPanel jobId={jobId} assessment={assessment} onDone={() => setBulkOpen(false)} notice={notice} />}
+    </div>
+  );
+}
+
+function ComponentPicker({ components, onPick }: { components: LcaComponentOption[]; onPick: (component: LcaComponentOption) => void }) {
+  const [query, setQuery] = useState("");
+  const results = useMemo(() => {
+    if (!query.trim()) return [];
+    return components
+      .map((component) => ({ component, score: fuzzyScore(query, `${component.description} ${component.componentCode ?? ""} ${component.supplierName ?? ""} ${component.materialCategoryLabel ?? ""}`) }))
+      .filter((entry): entry is { component: LcaComponentOption; score: number } => entry.score !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map((entry) => entry.component);
+  }, [components, query]);
+
+  return (
+    <div className="nz-fast-add-search">
+      <label className="nz-fl" style={{ margin: 0 }}>
+        Component library <span className="muted">· optional quick-pick, prefills the fields below</span>
+        <input className="nz-inp" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search reusable components…" />
+      </label>
+      {query.trim() && (
+        <ul className="nz-template-results">
+          {results.length === 0 && <li className="nz-template-empty">No component matches "{query}".</li>}
+          {results.map((component) => (
+            <li key={component.id}>
+              <button type="button" onClick={() => { onPick(component); setQuery(""); }}>
+                <b>{component.description}</b>
+                <span className="nz-template-meta">{component.componentCode ?? "No code"} · {component.defaultUnit}{component.originCountry ? ` · ${component.originCountry}` : ""}{component.clientId ? "" : " · global"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function FactorPicker({ factors, onPick }: { factors: FactorOption[]; onPick: (factor: FactorOption) => void }) {
+  const [query, setQuery] = useState("");
+  const results = useMemo(() => {
+    if (!query.trim()) return [];
+    return factors
+      .map((factor) => ({ factor, score: fuzzyScore(query, `${factor.label} ${factor.datasetName} ${factor.activityUnit}`) }))
+      .filter((entry): entry is { factor: FactorOption; score: number } => entry.score !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map((entry) => entry.factor);
+  }, [factors, query]);
+
+  return (
+    <div className="nz-fast-add-search">
+      <label className="nz-fl" style={{ margin: 0 }}>
+        Factor library <span className="muted">· shared with the job's Scope rows</span>
+        <input className="nz-inp" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search datasets and client factors…" />
+      </label>
+      {query.trim() && (
+        <ul className="nz-template-results">
+          {results.length === 0 && <li className="nz-template-empty">No factor matches "{query}".</li>}
+          {results.map((factor) => (
+            <li key={`${factor.factorSource}:${factor.clientFactorId ?? factor.datasetId}|${factor.factorId}`}>
+              <button type="button" onClick={() => { onPick(factor); setQuery(""); }}>
+                <b>{factor.label}</b>
+                <span className="nz-template-meta">{factor.activityUnit} · {factor.datasetName}{factor.factorSource === "client" ? " · client factor" : ""}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type PickMode = "unmapped" | "manual" | "search";
+type LineItemDraft = {
+  moduleCode: LcaModuleCode; lineLabel: string; componentId: string | null; materialCategoryId: string | null;
+  quantity: number; unit: string; originCountry: string;
+  pickMode: PickMode; datasetId: string | null; factorId: string | null; clientFactorId: string | null;
+  factorValue: number | null; factorUnit: string; factorLabel: string | null; dataQuality: LcaDataQuality;
+};
+
+function NewLineItemForm({ jobId, assessment, factors, components, categories, onDone, notice }: {
+  jobId: string; assessment: LcaAssessment; factors: FactorOption[]; components: LcaComponentOption[];
+  categories: { id: string; name: string }[]; onDone: () => void; notice: (n: Notice) => void;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [value, setValue] = useState<LineItemDraft>({
+    moduleCode: assessment.includedModules[0] ?? "A1", lineLabel: "", componentId: null, materialCategoryId: null,
+    quantity: 0, unit: "kg", originCountry: "",
+    pickMode: "unmapped", datasetId: null, factorId: null, clientFactorId: null,
+    factorValue: null, factorUnit: "", factorLabel: null, dataQuality: "estimated",
+  });
+
+  function pickComponent(component: LcaComponentOption) {
+    setValue((current) => ({
+      ...current,
+      componentId: component.id,
+      lineLabel: current.lineLabel.trim() || component.description,
+      materialCategoryId: component.materialCategoryId ?? current.materialCategoryId,
+      unit: component.defaultUnit || current.unit,
+      quantity: component.defaultUnitMass ?? current.quantity,
+      originCountry: component.originCountry ?? current.originCountry,
+    }));
+  }
+
+  function pickFactor(factor: FactorOption) {
+    setValue((current) => ({
+      ...current,
+      datasetId: factor.factorSource === "client" ? null : factor.datasetId,
+      factorId: factor.factorSource === "client" ? null : factor.factorId,
+      clientFactorId: factor.factorSource === "client" ? factor.clientFactorId : null,
+      factorUnit: factor.activityUnit, factorLabel: factor.label,
+    }));
+  }
+
+  function setPickMode(mode: PickMode) {
+    setValue((current) => ({
+      ...current, pickMode: mode,
+      ...(mode === "unmapped" ? { datasetId: null, factorId: null, clientFactorId: null, factorValue: null, factorUnit: "", factorLabel: null } : {}),
+      ...(mode === "manual" ? { datasetId: null, factorId: null, clientFactorId: null, factorLabel: null } : {}),
+      ...(mode === "search" ? { factorValue: null } : {}),
+    }));
+  }
+
+  async function create() {
+    if (pending || !value.lineLabel.trim() || !value.unit.trim()) return;
+    setPending(true);
+    const factorSource = value.pickMode === "unmapped" ? "unmapped" : value.pickMode === "manual" ? "manual" : value.clientFactorId ? "client" : "dataset";
+    const result = await postBrowserCommand<{ lineItemId: string }>(
+      `/api/isolated/jobs/${jobId}/lca-assessments/${assessment.id}/line-items`,
+      {
+        componentId: value.componentId, moduleCode: value.moduleCode, lineLabel: value.lineLabel.trim(),
+        materialCategoryId: value.materialCategoryId, quantity: Number(value.quantity), unit: value.unit.trim(),
+        originCountry: value.originCountry.trim() || null,
+        factorSource, datasetId: value.datasetId, factorId: value.factorId, clientFactorId: value.clientFactorId,
+        factorValue: factorSource === "manual" ? value.factorValue : null,
+        factorUnit: value.factorUnit.trim() || null, factorLabel: value.factorLabel,
+        dataQuality: value.dataQuality,
+      },
+      crypto.randomUUID(),
+    );
+    setPending(false);
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") : result.message });
+      return;
+    }
+    notice({ kind: "ok", text: `${value.lineLabel} added to ${MODULE_LABEL[value.moduleCode]}.` });
+    onDone();
+    router.refresh();
+  }
+
+  return (
+    <div className="nz-acc-extra">
+      <ComponentPicker components={components} onPick={pickComponent} />
+      <div className="nz-config-grid lca" style={{ marginTop: 12 }}>
+        <label className="nz-fl">Module
+          <select className="nz-sel" value={value.moduleCode} onChange={(e) => setValue({ ...value, moduleCode: e.target.value as LcaModuleCode })}>
+            {assessment.includedModules.map((code) => <option key={code} value={code}>{MODULE_LABEL[code]}</option>)}
+          </select>
+        </label>
+        <label className="nz-fl">Line label<input className="nz-inp" value={value.lineLabel} onChange={(e) => setValue({ ...value, lineLabel: e.target.value })} placeholder="e.g. rPET tray" /></label>
+        <label className="nz-fl">Material category
+          <select className="nz-sel" value={value.materialCategoryId ?? ""} onChange={(e) => setValue({ ...value, materialCategoryId: e.target.value || null })}>
+            <option value="">Unspecified</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+        <label className="nz-fl">Quantity<input className="nz-inp" type="number" min="0" step="any" value={value.quantity} onChange={(e) => setValue({ ...value, quantity: Number(e.target.value) })} /></label>
+        <label className="nz-fl">Unit<input className="nz-inp" value={value.unit} onChange={(e) => setValue({ ...value, unit: e.target.value })} /></label>
+        <label className="nz-fl">Origin country<input className="nz-inp" value={value.originCountry} onChange={(e) => setValue({ ...value, originCountry: e.target.value })} placeholder="Optional" /></label>
+        <label className="nz-fl">Data quality
+          <select className="nz-sel" value={value.dataQuality} onChange={(e) => setValue({ ...value, dataQuality: e.target.value as LcaDataQuality })}>
+            <option value="primary">Primary</option>
+            <option value="secondary">Secondary</option>
+            <option value="proxy">Proxy</option>
+            <option value="estimated">Estimated</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="nz-sect">Emission factor</div>
+      <div className="nz-lca-modules">
+        <label className="nz-lca-module-chip"><input type="radio" name="factor-mode" checked={value.pickMode === "unmapped"} onChange={() => setPickMode("unmapped")} />Leave unmapped</label>
+        <label className="nz-lca-module-chip"><input type="radio" name="factor-mode" checked={value.pickMode === "search"} onChange={() => setPickMode("search")} />Search the factor library</label>
+        <label className="nz-lca-module-chip"><input type="radio" name="factor-mode" checked={value.pickMode === "manual"} onChange={() => setPickMode("manual")} />Enter a value manually</label>
+      </div>
+      {value.pickMode === "search" && (
+        <div style={{ marginTop: 10 }}>
+          <FactorPicker factors={factors} onPick={pickFactor} />
+          {value.factorLabel && <div className="nz-hint">✓ {value.factorLabel} ({value.factorUnit})</div>}
+        </div>
+      )}
+      {value.pickMode === "manual" && (
+        <div className="nz-config-grid lca" style={{ marginTop: 10 }}>
+          <label className="nz-fl">Factor value (kgCO₂e per unit)<input className="nz-inp" type="number" step="any" value={value.factorValue ?? ""} onChange={(e) => setValue({ ...value, factorValue: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <label className="nz-fl">Factor unit<input className="nz-inp" value={value.factorUnit} onChange={(e) => setValue({ ...value, factorUnit: e.target.value })} placeholder="e.g. kg" /></label>
+        </div>
+      )}
+
+      <div className="nz-config-actions">
+        <button type="button" className="nz-btn" onClick={onDone}>Cancel</button>
+        <button type="button" className="nz-btn pri" disabled={pending || !value.lineLabel.trim() || !value.unit.trim()} onClick={() => void create()}>
+          {pending ? "Adding…" : "Add line item"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type BomRow = { key: string; moduleCode: LcaModuleCode | null; lineLabel: string; quantity: number | null; unit: string; originCountry: string | null };
+
+function BulkImportPanel({ jobId, assessment, onDone, notice }: { jobId: string; assessment: LcaAssessment; onDone: () => void; notice: (n: Notice) => void }) {
+  const router = useRouter();
+  const [raw, setRaw] = useState("");
+  const [rows, setRows] = useState<BomRow[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  function parse() {
+    const parsed = parseLcaBomLines(raw).map((line) => ({ key: crypto.randomUUID(), ...line, moduleCode: line.moduleCode ?? assessment.includedModules[0] ?? "A1" }));
+    setRows((current) => [...current, ...parsed]);
+    setRaw("");
+    notice(parsed.length
+      ? { kind: "ok", text: `${parsed.length} line${parsed.length === 1 ? "" : "s"} parsed. Confirm the module for each, then import.` }
+      : { kind: "warn", text: "No BOM rows were recognised. Expected module, label, quantity, unit." });
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([lcaBomTemplateCsv()], { type: "text/csv;charset=utf-8" });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = "lca-bom-template.csv";
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
+  }
+
+  const update = (key: string, patch: Partial<BomRow>) => setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  const remove = (key: string) => setRows((current) => current.filter((row) => row.key !== key));
+  const ready = (row: BomRow) => row.lineLabel.trim() !== "" && row.quantity !== null && row.quantity >= 0 && row.moduleCode !== null;
+  const readyCount = rows.filter(ready).length;
+
+  async function importRows() {
+    if (busy) return;
+    const toSave = rows.filter(ready);
+    if (toSave.length === 0) { notice({ kind: "warn", text: "Add at least one line with a label, a module and a non-negative quantity." }); return; }
+    setBusy(true);
+    const result = await postBrowserCommand<{ lineItemIds: string[] }>(
+      `/api/isolated/jobs/${jobId}/lca-assessments/${assessment.id}/line-items-bulk`,
+      { lines: toSave.map((row) => ({ moduleCode: row.moduleCode, lineLabel: row.lineLabel.trim(), quantity: Number(row.quantity), unit: row.unit.trim() || "kg", originCountry: row.originCountry?.trim() || null })) },
+      crypto.randomUUID(),
+    );
+    setBusy(false);
+    if (result.state !== "success") {
+      notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") : result.message });
+      return;
+    }
+    notice({ kind: "ok", text: `${result.data.lineItemIds.length} line item${result.data.lineItemIds.length === 1 ? "" : "s"} imported. Map their factors next.` });
+    setRows([]);
+    onDone();
+    router.refresh();
+  }
+
+  return (
+    <div className="nz-acc-extra">
+      {rows.length === 0 ? (
+        <div className="nz-config-grid">
+          <label className="nz-fl" style={{ gridColumn: "1/-1" }}>
+            BOM rows <span className="muted">· module, label, quantity, unit, origin country</span>
+            <textarea className="nz-notes" rows={6} value={raw} placeholder={"Module,Label,Quantity,Unit,Origin country\nA1,rPET tray,31.5,kg,GB"} onChange={(e) => setRaw(e.target.value)} />
+          </label>
+          <div className="nz-config-actions">
+            <button type="button" className="nz-btn" onClick={onDone}>Cancel</button>
+            <button type="button" className="nz-btn" onClick={downloadTemplate}>Download .csv template</button>
+            <button type="button" className="nz-btn pri" disabled={!raw.trim()} onClick={parse}>Parse rows</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="nz-table-wrap">
+            <table className="nz-tbl">
+              <thead><tr><th>Module</th><th>Label</th><th className="num">Quantity</th><th>Unit</th><th>Origin</th><th /></tr></thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.key}>
+                    <td>
+                      <select className="nz-sel" aria-label={`Module for ${row.lineLabel || "row"}`} value={row.moduleCode ?? ""} onChange={(e) => update(row.key, { moduleCode: e.target.value as LcaModuleCode })}>
+                        {assessment.includedModules.map((code) => <option key={code} value={code}>{code}</option>)}
+                      </select>
+                    </td>
+                    <td><input className="nz-inp" aria-label="Label" value={row.lineLabel} onChange={(e) => update(row.key, { lineLabel: e.target.value })} /></td>
+                    <td className="num"><input className="nz-inp" type="number" min="0" step="any" aria-label="Quantity" value={row.quantity ?? ""} onChange={(e) => update(row.key, { quantity: e.target.value === "" ? null : Number(e.target.value) })} /></td>
+                    <td><input className="nz-inp" aria-label="Unit" value={row.unit} onChange={(e) => update(row.key, { unit: e.target.value })} /></td>
+                    <td><input className="nz-inp" aria-label="Origin country" value={row.originCountry ?? ""} onChange={(e) => update(row.key, { originCountry: e.target.value })} /></td>
+                    <td><button type="button" className="nz-btn" onClick={() => remove(row.key)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="nz-config-actions" style={{ marginTop: 12 }}>
+            <button type="button" className="nz-btn" disabled={busy} onClick={() => { setRows([]); setRaw(""); }}>Clear</button>
+            <button type="button" className="nz-btn pri" disabled={busy || readyCount === 0} onClick={() => void importRows()}>{busy ? "Importing…" : `Import ${readyCount} line${readyCount === 1 ? "" : "s"}`}</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

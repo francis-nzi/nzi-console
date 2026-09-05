@@ -9,9 +9,9 @@ import type { LcaAssessment, LcaComponent, LcaLineItem, LcaResultSnapshot } from
 const line = (over: Partial<LcaLineItem> & Pick<LcaLineItem, "id" | "lineLabel" | "moduleCode">): LcaLineItem => ({
   assessmentId: "assess-714-6l", componentId: null, materialCategoryId: null, quantity: 0, unit: "kg",
   originCountry: null, energyKwh: null, endOfLifeRoute: null, factorSource: "unmapped", datasetId: null,
-  factorId: null, clientFactorId: null, factorValue: null, factorLabel: null, factorMatchConfidence: null,
+  factorId: null, clientFactorId: null, factorValue: null, factorUnit: null, factorLabel: null, factorMatchConfidence: null,
   dataQuality: "secondary", isGapFilled: false, gapFillMethod: null, isPlaceholder: false,
-  transportKgco2e: 0, calculatedKgco2e: null, transportLegs: [], ...over,
+  transportKgco2e: 0, calculatedKgco2e: null, transportLegs: [], notes: "", ...over,
 });
 
 // ── Reusable component library — one client-scoped, one global ────────────────

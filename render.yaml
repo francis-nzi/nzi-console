@@ -37,6 +37,12 @@ services:
       # (docs/STAGING_ACCEPTANCE_R1.md).
       - key: NEXT_PUBLIC_FEATURE_REPORT_STUDIO
         value: report-svg-charts
+      # Job-family modules (Track C, NZC-024) — own variable, same dashboard-edit-
+      # plus-rebuild procedure. job-module-lca (slices 1–2) has a seed LCA/PCF job
+      # to see it against as of 5 Sep 2026 (docs/ACCEPTANCE_LCA_MODULE_SLICE2.md) —
+      # continuity value here; the dashboard flip is still a manual step.
+      - key: NEXT_PUBLIC_FEATURE_JOB_MODULES
+        value: job-module-lca
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY

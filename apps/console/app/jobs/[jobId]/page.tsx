@@ -1,5 +1,5 @@
 import type { JobScreenReadModel } from "@nzi/isolated-backend";
-import type { DatasetOption,EmissionsTargetReadModel,FactorOption,IntensityTargetReadModel,LcaAssessment,PurchasedGoodsCategoryOption,SiteOption,ScopeQaReadiness,ScopeRowReadModel } from "@nzi/contracts";
+import type { DatasetOption,EmissionsTargetReadModel,FactorOption,IntensityTargetReadModel,LcaAssessment,LcaComponentOption,PurchasedGoodsCategoryOption,SiteOption,ScopeQaReadiness,ScopeRowReadModel } from "@nzi/contracts";
 import { notFound } from "next/navigation";
 import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const [result, scopeRows, factors,target,intensity,sites,categories,lca] = await Promise.all([
+  const [result, scopeRows, factors,target,intensity,sites,categories,lca,lcaComponents] = await Promise.all([
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
     loadScreen<{ rows: ScopeRowReadModel[];qa:ScopeQaReadiness }>("scopeRows", { rows: [],qa:{total:0,enabled:0,approved:0,pending:0,rejected:0,calculationMissing:0,qualityMissing:0,independentReviewPending:0,readyForReporting:false} }, `jobs/${jobId}/scope-rows`),
     loadScreen<{ factors: FactorOption[];datasets:DatasetOption[] }>("factorOptions", { factors: [],datasets:[] }, `jobs/${jobId}/factors`),
@@ -21,12 +21,13 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     loadScreen<{sites:SiteOption[]}>("sites",{sites:[]},`jobs/${jobId}/sites`),
     loadScreen<{categories:PurchasedGoodsCategoryOption[]}>("purchasedGoodsCategories",{categories:[]},`jobs/${jobId}/purchased-goods-categories`),
     loadScreen<{assessments:LcaAssessment[]}>("lca",{assessments:[]},`jobs/${jobId}/lca-assessments`),
+    loadScreen<{components:LcaComponentOption[];categories:{id:string;name:string}[]}>("lcaComponents",{components:[],categories:[]},`jobs/${jobId}/lca-components`),
   ]);
   return <ScreenState result={result}>{(data) => {
     const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
     if (!job) notFound();
     if (job.header.family === "crp") return <ScreenState result={scopeRows}>{(scopeData) => <ScreenState result={factors}>{(factorData) => <ScreenState result={target}>{targetData=><ScreenState result={intensity}>{intensityData=><ScreenState result={sites}>{siteData=><ScreenState result={categories}>{categoryData=><CrpScopeWorkspace job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
-    if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca}>{(lcaData) => <LcaWorkspace job={job} assessments={lcaData.assessments}/>}</ScreenState>;
+    if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca}>{(lcaData) => <ScreenState result={factors}>{(factorData) => <ScreenState result={lcaComponents}>{(componentData) => <LcaWorkspace job={job} assessments={lcaData.assessments} factors={factorData.factors} components={componentData.components} categories={componentData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>;
     return <FamilyWorkspace job={job} />;
   }}</ScreenState>;
 }

@@ -1,7 +1,7 @@
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import { isCrpReportSectionKey } from "./reportSections";
-import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaLifecycleBoundary, LcaModuleCode } from "./jobFamilies";
+import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode } from "./jobFamilies";
 import { lcaModuleCodes } from "./jobFamilies";
 
 export type CommandKey =
@@ -42,7 +42,11 @@ export type CommandKey =
   | "portal.access.grant"
   | "sales.opportunity.convert"
   | "lca.assessment.create"
-  | "lca.assessment.update";
+  | "lca.assessment.update"
+  | "lca.lineItem.create"
+  | "lca.lineItem.update"
+  | "lca.lineItem.delete"
+  | "lca.lineItem.bulkCreate";
 
 export const jobWorkflowStages = {
   // NZC-057 — "Factor mapping" retired as a CRP stage (factor selection is inline
@@ -206,6 +210,10 @@ export type CommandInputMap = {
   /** Track C / NZC-055 — LCA reference module, slice 1 (assessment register). */
   "lca.assessment.create": { jobId: string } & LcaAssessmentWriteFields;
   "lca.assessment.update": { jobId: string; assessmentId: string; expectedVersion: number } & LcaAssessmentWriteFields;
+  "lca.lineItem.create": { jobId: string; assessmentId: string } & LcaLineItemWriteFields;
+  "lca.lineItem.update": { jobId: string; assessmentId: string; lineItemId: string } & LcaLineItemWriteFields;
+  "lca.lineItem.delete": { jobId: string; assessmentId: string; lineItemId: string };
+  "lca.lineItem.bulkCreate": { jobId: string; assessmentId: string; lines: LcaLineItemWriteFields[] };
 };
 
 export type CommandDefinition<K extends CommandKey = CommandKey> = {
@@ -245,6 +253,22 @@ const lcaAssessmentIssues = (input: LcaAssessmentWriteFields): CommandIssue[] =>
   if (!Array.isArray(input.includedModules) || input.includedModules.length === 0) issues.push({ field: "includedModules", code: "REQUIRED", message: "Include at least one EN 15804 module." });
   else if (input.includedModules.some((code) => !lcaModuleCodes.includes(code))) issues.push({ field: "includedModules", code: "INVALID", message: "Every module must be a recognised EN 15804 code." });
   if (input.referenceYear != null && (typeof input.referenceYear !== "number" || !Number.isInteger(input.referenceYear) || input.referenceYear < 2000 || input.referenceYear > 2100)) issues.push({ field: "referenceYear", code: "INVALID", message: "Reference year is out of range." });
+  return issues;
+};
+const lcaLineItemIssues = (input: LcaLineItemWriteFields): CommandIssue[] => {
+  const issues: CommandIssue[] = [];
+  required(issues, "lineLabel", input.lineLabel);
+  if (!lcaModuleCodes.includes(input.moduleCode)) issues.push({ field: "moduleCode", code: "INVALID", message: "Module code is not a recognised EN 15804 code." });
+  if (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." });
+  required(issues, "unit", input.unit);
+  if (input.energyKwh != null && (typeof input.energyKwh !== "number" || !Number.isFinite(input.energyKwh) || input.energyKwh < 0)) issues.push({ field: "energyKwh", code: "INVALID", message: "Energy must be zero or greater." });
+  if (input.endOfLifeRoute != null && !oneOf(input.endOfLifeRoute, ["landfill", "recycling", "incineration", "compost", "reuse", "other"] as const)) issues.push({ field: "endOfLifeRoute", code: "INVALID", message: "End-of-life route is invalid." });
+  const factorSource = input.factorSource ?? "unmapped";
+  if (!oneOf(factorSource, ["dataset", "client", "manual", "unmapped"] as const)) issues.push({ field: "factorSource", code: "INVALID", message: "Factor source is invalid." });
+  else if (factorSource === "dataset" && (!text(input.factorId) || !text(input.datasetId))) issues.push({ field: "factorId", code: "REQUIRED", message: "A dataset factor must identify its factor and dataset." });
+  else if (factorSource === "client" && !text(input.clientFactorId)) issues.push({ field: "clientFactorId", code: "REQUIRED", message: "A client-factor line must identify its client factor." });
+  else if (factorSource === "manual" && input.factorValue == null) issues.push({ field: "factorValue", code: "REQUIRED", message: "A manual factor must give its value." });
+  if (input.dataQuality != null && !oneOf(input.dataQuality, ["primary", "secondary", "proxy", "estimated"] as const)) issues.push({ field: "dataQuality", code: "INVALID", message: "Data quality is invalid." });
   return issues;
 };
 const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = monthlyActivityIssues(input.monthlyActivity); required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (input.assetIdentifier != null && (typeof input.assetIdentifier !== "string" || input.assetIdentifier.trim().length > 240)) issues.push({field:"assetIdentifier",code:"INVALID",message:"ID / Reference must be text of 240 characters or fewer."}); if (input.applyPct != null && (typeof input.applyPct!=="number"||!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)) issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100%."}); if (input.dataConfidence != null && !(["H","M","L"] as const).includes(input.dataConfidence)) issues.push({field:"dataConfidence",code:"INVALID",message:"Data confidence must be high, medium, or low."}); if (input.sourceQuantity != null && (typeof input.sourceQuantity!=="number"||!Number.isFinite(input.sourceQuantity)||input.sourceQuantity<0)) issues.push({field:"sourceQuantity",code:"INVALID",message:"As-entered quantity must be zero or greater."}); if ((input.sourceQuantity!=null)!==Boolean(text(input.sourceUnit))) issues.push({field:"sourceUnit",code:"PAIRED",message:"As-entered quantity and unit must be provided together."}); const factorSource=input.factorSource??"dataset";if(factorSource==="client"&&(!text(input.clientFactorId)||input.isCustomEntry!==true))issues.push({field:"clientFactorId",code:"REQUIRED",message:"A client factor row must identify its client factor."});if(factorSource==="dataset"&&(text(input.clientFactorId)||input.isCustomEntry===true))issues.push({field:"factorSource",code:"INCONSISTENT",message:"Dataset factors cannot carry client-factor identity."}); if (typeof input.scope === "string" && !crpScopeOptions.some((option) => option.value === input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Select a controlled Scope 1, Scope 2, or Scope 3 category." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId && factorSource!=="client") issues.push({ field: "datasetId", code: "REQUIRED", message: "A dataset factor must identify its dataset." }); if (input.categoryCode != null && input.categoryCode !== "") { const category = emissionCategoryTaxonomy.find((entry) => entry.code === input.categoryCode); if (!category) issues.push({ field: "categoryCode", code: "INVALID", message: "Category code is not in the emission taxonomy (NZC-046)." }); else if (typeof input.scope === "string" && category.scope !== input.scope.split(".")[0]) issues.push({ field: "categoryCode", code: "INCONSISTENT", message: "Category belongs to a different scope than the row." }); } return issues; };
@@ -288,6 +312,10 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "sales.opportunity.convert": { key: "sales.opportunity.convert", label: "Convert won opportunity", permission: "sales.convert", reasonRequired: false, transaction: "client + quote + optional job + outbox", auditAction: "opportunity_converted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "opportunityId", input.opportunityId); required(issues, "quoteId", input.quoteId); if (input.expectedStatus !== "WON") issues.push({ field: "expectedStatus", code: "PRECONDITION", message: "Opportunity must be WON." }); return issues; } },
   "lca.assessment.create": { key: "lca.assessment.create", label: "Create LCA assessment", permission: "emissions.data.edit", reasonRequired: false, transaction: "assessment + audit + outbox + idempotency", auditAction: "lca_assessment_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaAssessmentIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "lca.assessment.update": { key: "lca.assessment.update", label: "Update LCA assessment", permission: "emissions.data.edit", reasonRequired: false, transaction: "versioned assessment + audit + outbox + idempotency", auditAction: "lca_assessment_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaAssessmentIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "lca.lineItem.create": { key: "lca.lineItem.create", label: "Create LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item + audit + outbox + idempotency", auditAction: "lca_line_item_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaLineItemIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); return issues; } },
+  "lca.lineItem.update": { key: "lca.lineItem.update", label: "Update LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item + audit + outbox + idempotency", auditAction: "lca_line_item_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaLineItemIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
+  "lca.lineItem.delete": { key: "lca.lineItem.delete", label: "Delete LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item removal + audit + outbox + idempotency", auditAction: "lca_line_item_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
+  "lca.lineItem.bulkCreate": { key: "lca.lineItem.bulkCreate", label: "Bulk-add LCA line items", permission: "emissions.data.edit", reasonRequired: false, transaction: "line items + audit + outbox + idempotency", auditAction: "lca_line_items_bulk_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!Array.isArray(input.lines) || input.lines.length === 0) issues.push({ field: "lines", code: "REQUIRED", message: "Add at least one line item." }); else input.lines.forEach((line, index) => lcaLineItemIssues(line).forEach((issue) => issues.push({ ...issue, field: `lines.${index}.${issue.field}` }))); return issues; } },
 };
 
 export function validateCommand<K extends CommandKey>(key: K, input: CommandInputMap[K], context: CommandContext) { return commandDefinitions[key].validate(input, context); }

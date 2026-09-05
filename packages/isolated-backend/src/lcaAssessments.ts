@@ -1,14 +1,15 @@
 // Track C — LCA/PCF reference module, slice 1: the assessment register
 // (NZC-052/054/055; docs/MODEL_FIDELITY_JOB_FAMILIES.md §2/§6/§7). Reads and
 // writes `lca_assessments` (migration 0046) — versioned, provenance, additive.
-// Line items / transport legs / scenarios / result snapshots are later slices;
-// this file only ever returns `lines: []` / `scenarios: []` because no command
-// yet creates either (truthful, not yet capable — not a shortcut).
+// `lines` is real as of slice 2 (`lcaLineItems.ts`); transport legs / scenarios
+// / result snapshots are later slices — `scenarios` stays `[]` because no
+// command yet creates any (truthful, not yet capable — not a shortcut).
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap, CommandOutcome, LcaAssessment, LcaModuleCode } from "@nzi/contracts";
+import type { CommandContext, CommandInputMap, CommandOutcome, LcaAssessment, LcaLineItem, LcaModuleCode } from "@nzi/contracts";
 import { CommandValidationError, runPostgresCommand } from "./postgresCommands";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
+import { listLcaLineItemsByAssessments } from "./lcaLineItems";
 
 async function requireLcaJob(db: Queryable, organisationId: string, jobId: string): Promise<void> {
   const found = await db.query<{ job_family: string }>(
@@ -30,7 +31,7 @@ type AssessmentRow = {
   included_modules: LcaModuleCode[]; standard: string; reference_year: number | null; geography: string | null;
   version: number; review_status: "pending" | "approved" | "rejected"; reviewed_version: number | null; total_tco2e: string;
 };
-const mapAssessment = (row: AssessmentRow): LcaAssessment => ({
+const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[]): LcaAssessment => ({
   id: row.assessment_id, jobId: row.job_id, jobNumber: row.job_number, clientId: row.client_id,
   assessmentType: row.assessment_type,
   isPcf: row.standard === "ISO 14067" && row.lifecycle_boundary === "cradle_to_gate",
@@ -41,7 +42,7 @@ const mapAssessment = (row: AssessmentRow): LcaAssessment => ({
   referenceYear: row.reference_year, geography: row.geography,
   version: row.version, reviewStatus: row.review_status, reviewedVersion: row.reviewed_version,
   totalTco2e: Number(row.total_tco2e),
-  lines: [], scenarios: [],
+  lines, scenarios: [],
 });
 
 export async function listLcaAssessments(db: Queryable, jobId: string): Promise<LcaAssessment[]> {
@@ -56,7 +57,8 @@ export async function listLcaAssessments(db: Queryable, jobId: string): Promise<
      ORDER BY a.created_at,a.assessment_id`,
     [jobId],
   );
-  return rows.map(mapAssessment);
+  const linesByAssessment = await listLcaLineItemsByAssessments(db, rows.map((row) => row.assessment_id));
+  return rows.map((row) => mapAssessment(row, linesByAssessment.get(row.assessment_id) ?? []));
 }
 
 export async function createLcaAssessment(
