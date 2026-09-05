@@ -58,7 +58,7 @@ the line-item slice lands.
 | 5 | Flag OFF: `job.header.family==="lca"` renders `FamilyWorkspace` exactly as before | code review — single flag-gated branch in `page.tsx`, no other change |
 | 6 | `npm run typecheck` (all workspaces) · `@nzi/console` build · full unit suites green | ✅ |
 
-## Verification
+## Verification (PR #94)
 
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
 - `packages/isolated-backend/tests/lcaAssessments.test.ts` — 8 new tests.

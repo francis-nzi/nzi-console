@@ -285,7 +285,7 @@ drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
    own stage machine, the assessment register → line-item grid → transport legs → factor mapping →
    recalculate → module breakdown chart → report manifest. Behind a `job-module-lca` flag; `FamilyWorkspace`
    still serves lca when the flag is off. Prove it (acceptance gate, like each B/S slice).
-   **Slice 1 (Model Register) built 5 Sep 2026** — `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`. Remaining
+   **Slice 1 (Model Register) built 5 Sep 2026, PR #94** — `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`. Remaining
    slices (line items + factor mapping, transport legs + geocoding, recalculate + snapshots, charts, report
    manifest) proposed there, awaiting confirmation before deep build — same "propose, don't guess" pattern
    as DA1's baseline model / R5b's Paged.js choice, since transport-leg geocoding is a genuine new
