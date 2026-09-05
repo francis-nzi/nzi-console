@@ -267,7 +267,7 @@ function AssessmentInventory({ jobId, assessment, factors, components, categorie
         </div>
       </div>
 
-      <AssessmentResults jobId={jobId} assessment={assessment} notice={notice} />
+      <AssessmentResults jobId={jobId} assessment={assessment} categories={categories} notice={notice} />
 
       {modules.map((code) => {
         const lines = linesByModule.get(code) ?? [];
@@ -898,7 +898,7 @@ const REVIEW_STATUS: Record<string, { cls: string; label: string }> = {
   rejected: { cls: "nof", label: "Rejected" },
 };
 
-function AssessmentResults({ jobId, assessment, notice }: { jobId: string; assessment: LcaAssessment; notice: (n: Notice) => void }) {
+function AssessmentResults({ jobId, assessment, categories, notice }: { jobId: string; assessment: LcaAssessment; categories: { id: string; name: string }[]; notice: (n: Notice) => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"" | "calc" | "approve" | "reject" | "snapshot">("");
   const [fresh, setFresh] = useState<null | { totalTco2e: number; moduleBreakdown: LcaResultSnapshot["moduleBreakdown"]; hotspots: LcaResultSnapshot["hotspots"]; massReconciliation: LcaResultSnapshot["massReconciliation"] }>(null);
@@ -1038,6 +1038,176 @@ function AssessmentResults({ jobId, assessment, notice }: { jobId: string; asses
         </div>
       )}
       {snapshots && snapshots.length === 0 && <div className="sub">No result snapshot has been frozen yet.</div>}
+
+      <ScenariosPanel jobId={jobId} assessment={assessment} categories={categories} notice={notice} />
     </section>
+  );
+}
+
+// ── Slice 5: what-if scenarios ─────────────────────────────────────────────
+
+type CalcResult = { totalTco2e: number; perFunctionalUnitTco2e: number; moduleBreakdown: LcaResultSnapshot["moduleBreakdown"]; hotspots: LcaResultSnapshot["hotspots"] };
+type ScenarioComparison = { baseline: CalcResult; scenarios: Array<{ scenarioId: string; name: string; isBaseline: boolean; result: CalcResult }> };
+
+function ScenariosPanel({ jobId, assessment, categories, notice }: { jobId: string; assessment: LcaAssessment; categories: { id: string; name: string }[]; notice: (n: Notice) => void }) {
+  const router = useRouter();
+  const base = `/api/isolated/jobs/${jobId}/lca-assessments/${assessment.id}/scenarios`;
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editingRules, setEditingRules] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<ScenarioComparison | null>(null);
+  const modules = useMemo(() => lcaModuleCodes.filter((code) => assessment.includedModules.includes(code)), [assessment.includedModules]);
+
+  async function addScenario() {
+    if (busy || !name.trim()) return;
+    setBusy(true);
+    const result = await postBrowserCommand<{ scenarioId: string }>(base, { name: name.trim(), description: description.trim() || undefined }, crypto.randomUUID());
+    setBusy(false);
+    if (result.state !== "success") { notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((i) => i.message).join(" ") : result.message }); return; }
+    notice({ kind: "ok", text: `Scenario "${name}" added.` });
+    setName(""); setDescription(""); setAdding(false);
+    router.refresh();
+  }
+
+  async function removeScenario(scenarioId: string, label: string) {
+    if (busy || !window.confirm(`Delete the scenario "${label}"?`)) return;
+    setBusy(true);
+    const response = await fetch(`${base}/${scenarioId}`, { method: "DELETE" });
+    setBusy(false);
+    if (!response.ok) { notice({ kind: "warn", text: "The scenario could not be deleted." }); return; }
+    notice({ kind: "ok", text: "Scenario deleted." });
+    setComparison(null);
+    router.refresh();
+  }
+
+  async function setRule(scenarioId: string, rule: { moduleCode: LcaModuleCode; materialCategoryId: string | null; multiplier: number }) {
+    setBusy(true);
+    const result = await postBrowserCommand<{ multiplierId: string }>(
+      `${base}/${scenarioId}/multipliers`,
+      { moduleCode: rule.moduleCode, materialCategoryId: rule.materialCategoryId, multiplier: rule.multiplier },
+      crypto.randomUUID(), (input, init) => fetch(input, { ...init, method: "PUT" }),
+    );
+    setBusy(false);
+    if (result.state !== "success") { notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((i) => i.message).join(" ") : result.message }); return; }
+    notice({ kind: "ok", text: "Multiplier rule saved. Re-run the comparison to see the effect." });
+    setComparison(null);
+    router.refresh();
+  }
+
+  async function removeRule(scenarioId: string, multiplierId: string) {
+    setBusy(true);
+    const response = await fetch(`${base}/${scenarioId}/multipliers/${multiplierId}`, { method: "DELETE" });
+    setBusy(false);
+    if (!response.ok) { notice({ kind: "warn", text: "The rule could not be removed." }); return; }
+    setComparison(null);
+    router.refresh();
+  }
+
+  async function compare() {
+    setBusy(true);
+    try {
+      const response = await fetch(`${base}/results`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message ?? "Comparison unavailable.");
+      setComparison(body);
+    } catch (error) {
+      notice({ kind: "warn", text: error instanceof Error ? error.message : "Comparison unavailable." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="nz-lca-breakdown">
+      <div className="nz-sect">Scenarios <span className="muted">· what-if module/material multipliers (§9)</span></div>
+      {assessment.scenarios.length === 0 ? (
+        <div className="sub">No scenarios yet — add one to model a design change.</div>
+      ) : (
+        <div className="nz-lca-snap-list">
+          {assessment.scenarios.map((scenario) => (
+            <div key={scenario.id} style={{ padding: "8px 10px", border: "1px solid var(--line2)", borderRadius: 8, background: "var(--card)" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                <b>{scenario.name}</b>{scenario.isBaseline && <span className="nz-chip-mini todo">baseline</span>}
+                {scenario.description && <span className="muted">{scenario.description}</span>}
+                <span className="muted">· {scenario.multipliers.length} rule{scenario.multipliers.length === 1 ? "" : "s"}</span>
+                <button type="button" className="nz-btn" style={{ marginLeft: "auto" }} onClick={() => setEditingRules(editingRules === scenario.id ? null : scenario.id)}>{editingRules === scenario.id ? "Close rules" : "Rules"}</button>
+                <button type="button" className="nz-btn" disabled={busy} onClick={() => void removeScenario(scenario.id, scenario.name)}>Delete</button>
+              </div>
+              {scenario.multipliers.length > 0 && (
+                <ul style={{ listStyle: "none", margin: "6px 0 0", padding: 0, display: "grid", gap: 3, fontSize: 11.5 }}>
+                  {scenario.multipliers.map((rule) => (
+                    <li key={rule.id}>
+                      ×{rule.multiplier} on {MODULE_LABEL[rule.moduleCode]}{rule.materialCategoryId ? ` · ${categories.find((c) => c.id === rule.materialCategoryId)?.name ?? "category"}` : " · all materials"}
+                      <button type="button" className="nz-btn" style={{ marginLeft: 6, padding: "1px 6px", fontSize: 10 }} disabled={busy} onClick={() => void removeRule(scenario.id, rule.id)}>remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {editingRules === scenario.id && <RuleForm modules={modules} categories={categories} busy={busy} onAdd={(rule) => void setRule(scenario.id, rule)} />}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="nz-acc-foot">
+        <button type="button" className="nz-btn" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>{adding ? "Close" : "+ Add scenario"}</button>
+        {assessment.scenarios.length > 0 && <button type="button" className="nz-btn pri" disabled={busy} onClick={() => void compare()}>{busy ? "Comparing…" : "Compare scenarios"}</button>}
+      </div>
+      {adding && (
+        <div className="nz-config-grid lca" style={{ marginTop: 8 }}>
+          <label className="nz-fl">Scenario name<input className="nz-inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Lightweight tray" /></label>
+          <label className="nz-fl">Description<input className="nz-inp" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" /></label>
+          <div style={{ alignSelf: "end" }}><button type="button" className="nz-btn pri" disabled={busy || !name.trim()} onClick={() => void addScenario()}>Add</button></div>
+        </div>
+      )}
+      {comparison && (
+        <div className="nz-table-wrap" style={{ marginTop: 10 }}>
+          <table className="nz-tbl">
+            <thead><tr><th>Module</th><th className="num">Baseline</th>{comparison.scenarios.map((s) => <th key={s.scenarioId} className="num">{s.name}</th>)}</tr></thead>
+            <tbody>
+              {lcaModuleCodes.filter((code) => comparison.baseline.moduleBreakdown.some((e) => e.moduleCode === code) || comparison.scenarios.some((s) => s.result.moduleBreakdown.some((e) => e.moduleCode === code))).map((code) => (
+                <tr key={code}>
+                  <td>{code}</td>
+                  <td className="num">{(comparison.baseline.moduleBreakdown.find((e) => e.moduleCode === code)?.tco2e ?? 0).toLocaleString("en-GB", { maximumFractionDigits: 3 })}</td>
+                  {comparison.scenarios.map((s) => <td key={s.scenarioId} className="num">{(s.result.moduleBreakdown.find((e) => e.moduleCode === code)?.tco2e ?? 0).toLocaleString("en-GB", { maximumFractionDigits: 3 })}</td>)}
+                </tr>
+              ))}
+              <tr>
+                <td><b>Total tCO₂e</b></td>
+                <td className="num"><b>{comparison.baseline.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</b></td>
+                {comparison.scenarios.map((s) => {
+                  const delta = comparison.baseline.totalTco2e > 0 ? ((s.result.totalTco2e - comparison.baseline.totalTco2e) / comparison.baseline.totalTco2e) * 100 : 0;
+                  return <td key={s.scenarioId} className="num"><b>{s.result.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</b>{delta !== 0 && <div className="muted">{delta > 0 ? "+" : ""}{delta.toFixed(1)}%</div>}</td>;
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuleForm({ modules, categories, busy, onAdd }: { modules: LcaModuleCode[]; categories: { id: string; name: string }[]; busy: boolean; onAdd: (rule: { moduleCode: LcaModuleCode; materialCategoryId: string | null; multiplier: number }) => void }) {
+  const [moduleCode, setModuleCode] = useState<LcaModuleCode>(modules[0] ?? "A1");
+  const [materialCategoryId, setMaterialCategoryId] = useState<string>("");
+  const [multiplier, setMultiplier] = useState(0.9);
+  return (
+    <div className="nz-config-grid lca" style={{ marginTop: 8 }}>
+      <label className="nz-fl">Module
+        <select className="nz-sel" value={moduleCode} onChange={(e) => setModuleCode(e.target.value as LcaModuleCode)}>
+          {modules.map((code) => <option key={code} value={code}>{MODULE_LABEL[code]}</option>)}
+        </select>
+      </label>
+      <label className="nz-fl">Material category
+        <select className="nz-sel" value={materialCategoryId} onChange={(e) => setMaterialCategoryId(e.target.value)}>
+          <option value="">All materials in the module</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </label>
+      <label className="nz-fl">Multiplier<input className="nz-inp" type="number" min="0" step="any" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} /></label>
+      <div style={{ alignSelf: "end" }}><button type="button" className="nz-btn pri" disabled={busy} onClick={() => onAdd({ moduleCode, materialCategoryId: materialCategoryId || null, multiplier: Number(multiplier) })}>Save rule</button></div>
+    </div>
   );
 }

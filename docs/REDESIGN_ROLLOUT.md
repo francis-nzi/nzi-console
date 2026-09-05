@@ -219,7 +219,7 @@ a deterministic staging stub — **built 5 Sep 2026**, `docs/ACCEPTANCE_LCA_MODU
 Gap-filling + calc engine + result snapshot + review** (**built 5 Sep 2026**,
 `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md` — an assessment-level independent-review spine (NZC-055) and
 content-addressed result snapshots reusing the `reviewed_crp_snapshots` freeze discipline gated on
-`review_status='approved'`) → **L5 Scenarios** → **L6 Charts** → **L7 Report manifest + PCF labelling**.
+`review_status='approved'`) → **L5 Scenarios** (built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE5.md`) → **L6 Charts** → **L7 Report manifest + PCF labelling**.
 L2–L4 built as the pre-authorized run; L5 onward gets a status check-in first. L3/L4 shipped with a few
 disclosed interpretation calls; Francis then reviewed the live engine and a **correction PR
 (`fix/lca-engine-parity`)** landed the exact values + fixed two real bugs (transport-leg tonne.km maths;

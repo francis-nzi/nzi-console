@@ -5,11 +5,12 @@
 // / result snapshots are later slices — `scenarios` stays `[]` because no
 // command yet creates any (truthful, not yet capable — not a shortcut).
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap, CommandOutcome, LcaAssessment, LcaLineItem, LcaModuleCode } from "@nzi/contracts";
+import type { CommandContext, CommandInputMap, CommandOutcome, LcaAssessment, LcaLineItem, LcaModuleCode, LcaScenario } from "@nzi/contracts";
 import { CommandValidationError, runPostgresCommand } from "./postgresCommands";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { listLcaLineItemsByAssessments } from "./lcaLineItems";
+import { listLcaScenariosByAssessments } from "./lcaScenarios";
 
 async function requireLcaJob(db: Queryable, organisationId: string, jobId: string): Promise<void> {
   const found = await db.query<{ job_family: string }>(
@@ -33,7 +34,7 @@ type AssessmentRow = {
   reviewed_by: string | null; reviewed_at: Date | string | null; reviewer_note: string | null;
   total_tco2e: string; last_calculated_at: Date | string | null;
 };
-const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[]): LcaAssessment => ({
+const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[], scenarios: LcaScenario[]): LcaAssessment => ({
   id: row.assessment_id, jobId: row.job_id, jobNumber: row.job_number, clientId: row.client_id,
   assessmentType: row.assessment_type,
   isPcf: row.standard === "ISO 14067" && row.lifecycle_boundary === "cradle_to_gate",
@@ -47,7 +48,7 @@ const mapAssessment = (row: AssessmentRow, lines: LcaLineItem[]): LcaAssessment 
   reviewerNote: row.reviewer_note,
   totalTco2e: Number(row.total_tco2e),
   lastCalculatedAt: row.last_calculated_at == null ? null : new Date(row.last_calculated_at).toISOString(),
-  lines, scenarios: [],
+  lines, scenarios,
 });
 
 export async function listLcaAssessments(db: Queryable, jobId: string): Promise<LcaAssessment[]> {
@@ -63,8 +64,12 @@ export async function listLcaAssessments(db: Queryable, jobId: string): Promise<
      ORDER BY a.created_at,a.assessment_id`,
     [jobId],
   );
-  const linesByAssessment = await listLcaLineItemsByAssessments(db, rows.map((row) => row.assessment_id));
-  return rows.map((row) => mapAssessment(row, linesByAssessment.get(row.assessment_id) ?? []));
+  const assessmentIds = rows.map((row) => row.assessment_id);
+  const [linesByAssessment, scenariosByAssessment] = await Promise.all([
+    listLcaLineItemsByAssessments(db, assessmentIds),
+    listLcaScenariosByAssessments(db, assessmentIds),
+  ]);
+  return rows.map((row) => mapAssessment(row, linesByAssessment.get(row.assessment_id) ?? [], scenariosByAssessment.get(row.assessment_id) ?? []));
 }
 
 export async function createLcaAssessment(

@@ -46,8 +46,8 @@ const registerAssessment = (variant: "6l" | "9l", trayMass: number, total: numbe
   reviewerNote: variant === "6l" ? "Independently reviewed against the mass reconciliation and hotspot check." : null,
   totalTco2e: total, lastCalculatedAt: "2025-11-03T00:00:00.000Z",
   scenarios: [
-    { id: `scn-${variant}-base`, name: "Current design", isBaseline: true, multipliers: [] },
-    { id: `scn-${variant}-light`, name: "Lightweight tray", isBaseline: false, multipliers: [{ moduleCode: "A1", materialCategoryId: "mc-polymers", componentId: null, multiplier: 0.85 }] },
+    { id: `scn-${variant}-base`, name: "Current design", description: "", isBaseline: true, multipliers: [] },
+    { id: `scn-${variant}-light`, name: "Lightweight tray", description: "15% less polymer at A1", isBaseline: false, multipliers: [{ id: `mul-${variant}-light-1`, moduleCode: "A1", materialCategoryId: "mc-polymers", componentId: null, multiplier: 0.85 }] },
   ],
   lines: [
     line({

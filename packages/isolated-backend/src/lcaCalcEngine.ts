@@ -78,6 +78,54 @@ export type LcaCalcResult = {
   massReconciliation: { confirmedMassKg: number | null; capturedMassKg: number; deltaPct: number | null };
 };
 
+type LineEmission = { lineItemId: string; moduleCode: LcaModuleCode; label: string; quantity: number; unit: string; kgco2e: number };
+
+/**
+ * Turn a set of per-line kg figures into the summary shape — shared by the
+ * "summarize what's stored" path (`computeLcaAssessmentResult`) and the
+ * "compute a what-if" path (`computeLcaScenarioResult`), so a scenario's
+ * numbers are derived exactly as the baseline's are.
+ */
+function summariseLineEmissions(
+  lines: LineEmission[],
+  meta: { functionalUnitValue: number; isMaterial: boolean; confirmedMassKg: number | null },
+): LcaCalcResult {
+  const perLine = lines.map((line) => ({ ...line, tco2e: line.kgco2e / 1000 }));
+  const moduleBreakdown = lcaModuleCodes
+    .map((moduleCode) => ({ moduleCode, tco2e: perLine.filter((line) => line.moduleCode === moduleCode).reduce((sum, line) => sum + line.tco2e, 0) }))
+    .filter((entry) => entry.tco2e !== 0);
+  const totalTco2e = moduleBreakdown.reduce((sum, entry) => sum + entry.tco2e, 0);
+  const perFunctionalUnitTco2e = meta.functionalUnitValue > 0 ? totalTco2e / meta.functionalUnitValue : 0;
+  const hotspots = [...perLine]
+    .filter((line) => line.tco2e > 0)
+    .sort((a, b) => b.tco2e - a.tco2e)
+    .slice(0, 5)
+    .map((line) => ({ lineItemId: line.lineItemId, label: line.label, tco2e: line.tco2e, sharePct: totalTco2e > 0 ? (line.tco2e / totalTco2e) * 100 : 0 }));
+  const capturedMassKg = !meta.isMaterial ? 0 : lines
+    .filter((line) => line.moduleCode === MASS_RECONCILIATION_MODULE)
+    .reduce((sum, line) => {
+      const unit = line.unit.trim().toLowerCase();
+      if (unit === "kg") return sum + line.quantity;
+      if (unit === "tonne" || unit === "t" || unit === "tonnes") return sum + line.quantity * 1000;
+      return sum;
+    }, 0);
+  const deltaPct = meta.confirmedMassKg && meta.confirmedMassKg > 0 ? ((capturedMassKg - meta.confirmedMassKg) / meta.confirmedMassKg) * 100 : null;
+  return { totalTco2e, perFunctionalUnitTco2e, moduleBreakdown, hotspots, massReconciliation: { confirmedMassKg: meta.confirmedMassKg, capturedMassKg, deltaPct } };
+}
+
+async function assessmentMeta(db: Queryable, organisationId: string, assessmentId: string) {
+  const { rows } = await db.query<{ functional_unit_value: string; confirmed_quantity: string | null; assessment_type: string }>(
+    "SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type FROM nzi_console.lca_assessments WHERE organisation_id=$1 AND assessment_id=$2",
+    [organisationId, assessmentId],
+  );
+  const isMaterial = (rows[0]?.assessment_type ?? "product") === "product";
+  return {
+    functionalUnitValue: Number(rows[0]?.functional_unit_value ?? 1),
+    isMaterial,
+    confirmedMassKg: !isMaterial || rows[0]?.confirmed_quantity == null ? null : Number(rows[0].confirmed_quantity),
+  };
+}
+
 /**
  * Summarize an assessment's CURRENTLY STORED calculated figures — a pure
  * read, no factor resolution. Used both to derive `calculateLcaAssessment`'s
@@ -86,54 +134,88 @@ export type LcaCalcResult = {
  * two can never drift apart from independently re-deriving the same maths.
  */
 export async function computeLcaAssessmentResult(db: Queryable, organisationId: string, assessmentId: string): Promise<LcaCalcResult> {
-  const assessment = await db.query<{ functional_unit_value: string; confirmed_quantity: string | null; assessment_type: string }>(
-    "SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type FROM nzi_console.lca_assessments WHERE organisation_id=$1 AND assessment_id=$2",
-    [organisationId, assessmentId],
-  );
-  const functionalUnitValue = Number(assessment.rows[0]?.functional_unit_value ?? 1);
-  const isMaterial = (assessment.rows[0]?.assessment_type ?? "product") === "product";
-  const confirmedMassKg = !isMaterial || assessment.rows[0]?.confirmed_quantity == null ? null : Number(assessment.rows[0].confirmed_quantity);
-
+  const meta = await assessmentMeta(db, organisationId, assessmentId);
   const { rows: lines } = await db.query<{ line_item_id: string; module_code: LcaModuleCode; line_label: string; quantity: string; unit: string; is_placeholder: boolean; calculated_kgco2e: string | null; transport_kgco2e: string }>(
     `SELECT line_item_id,module_code,line_label,quantity::text,unit,is_placeholder,calculated_kgco2e::text,transport_kgco2e::text
      FROM nzi_console.lca_line_items WHERE assessment_id=$1`,
     [assessmentId],
   );
-  const active = lines.filter((row) => !row.is_placeholder);
-  // §4 — a line's figure is its ABSOLUTE emissions (kg stored → tonnes here),
-  // never scaled to the functional unit.
-  const perLine = active.map((row) => {
-    const material = row.calculated_kgco2e == null ? 0 : Number(row.calculated_kgco2e);
-    const transport = Number(row.transport_kgco2e);
-    return { ...row, tco2e: (material + transport) / 1000 };
-  });
+  const emissions: LineEmission[] = lines
+    .filter((row) => !row.is_placeholder)
+    .map((row) => ({
+      lineItemId: row.line_item_id, moduleCode: row.module_code, label: row.line_label,
+      quantity: Number(row.quantity), unit: row.unit,
+      kgco2e: (row.calculated_kgco2e == null ? 0 : Number(row.calculated_kgco2e)) + Number(row.transport_kgco2e),
+    }));
+  return summariseLineEmissions(emissions, meta);
+}
 
-  const moduleBreakdown = lcaModuleCodes
-    .map((moduleCode) => ({ moduleCode, tco2e: perLine.filter((row) => row.module_code === moduleCode).reduce((sum, row) => sum + row.tco2e, 0) }))
-    .filter((entry) => entry.tco2e !== 0);
-  const totalTco2e = moduleBreakdown.reduce((sum, entry) => sum + entry.tco2e, 0);
-  const perFunctionalUnitTco2e = functionalUnitValue > 0 ? totalTco2e / functionalUnitValue : 0;
+// ── L5 — scenarios (docs/_handoff_LCA_engine_parity.md §9) ──────────────────
 
-  const hotspots = [...perLine]
-    .filter((row) => row.tco2e > 0)
-    .sort((a, b) => b.tco2e - a.tco2e)
-    .slice(0, 5)
-    .map((row) => ({ lineItemId: row.line_item_id, label: row.line_label, tco2e: row.tco2e, sharePct: totalTco2e > 0 ? (row.tco2e / totalTco2e) * 100 : 0 }));
+export type ScenarioMultiplierRule = { moduleCode: string; materialCategoryId: string | null; componentId: string | null; multiplier: number };
 
-  // §5 — captured mass is the A1 (raw material) module's mass-based line
-  // quantities; kg pass through, tonne converts to kg. Material assessments
-  // only.
-  const capturedMassKg = !isMaterial ? 0 : active
-    .filter((row) => row.module_code === MASS_RECONCILIATION_MODULE)
-    .reduce((sum, row) => {
-      const unit = row.unit.trim().toLowerCase();
-      if (unit === "kg") return sum + Number(row.quantity);
-      if (unit === "tonne" || unit === "t" || unit === "tonnes") return sum + Number(row.quantity) * 1000;
-      return sum;
-    }, 0);
-  const deltaPct = confirmedMassKg && confirmedMassKg > 0 ? ((capturedMassKg - confirmedMassKg) / confirmedMassKg) * 100 : null;
+/** §9 — the multiplier for one line: the most specific matching rule (component > category > module wildcard), 1.0 if none. */
+export function scenarioMultiplierFor(rules: readonly ScenarioMultiplierRule[], line: { moduleCode: string; materialCategoryId: string | null; componentId: string | null }): number {
+  const matches = rules.filter((rule) =>
+    rule.moduleCode === line.moduleCode
+    && (rule.materialCategoryId == null || rule.materialCategoryId === line.materialCategoryId)
+    && (rule.componentId == null || rule.componentId === line.componentId));
+  if (matches.length === 0) return 1.0;
+  const specificity = (rule: ScenarioMultiplierRule) => (rule.componentId != null ? 2 : rule.materialCategoryId != null ? 1 : 0);
+  return matches.reduce((best, rule) => (specificity(rule) > specificity(best) ? rule : best)).multiplier;
+}
 
-  return { totalTco2e, perFunctionalUnitTco2e, moduleBreakdown, hotspots, massReconciliation: { confirmedMassKg, capturedMassKg, deltaPct } };
+/**
+ * Compute a what-if result for a scenario — the live `apply_scenario_
+ * multipliers` (§9): each line's factor value is scaled by its matching
+ * rule's multiplier, then the assessment is re-summarised. Pure read, no
+ * writes; the baseline is this with an empty rule set.
+ */
+export async function computeLcaScenarioResult(
+  db: Queryable, organisationId: string, jobId: string, assessmentId: string, rules: readonly ScenarioMultiplierRule[],
+): Promise<LcaCalcResult> {
+  const meta = await assessmentMeta(db, organisationId, assessmentId);
+  const { rows: lines } = await db.query<LineForCalc & { material_category_id: string | null; component_id: string | null }>(
+    `SELECT line_item_id,module_code,line_label,quantity::text,unit,factor_source,dataset_id,factor_id,client_factor_id,factor_value::text,factor_unit,is_placeholder,material_category_id,component_id
+     FROM nzi_console.lca_line_items WHERE organisation_id=$1 AND assessment_id=$2`,
+    [organisationId, assessmentId],
+  );
+  const transportLineIds = lines.filter((line) => TRANSPORT_MODULES.has(line.module_code)).map((line) => line.line_item_id);
+  const legsByLine = new Map<string, LegForCalc[]>();
+  if (transportLineIds.length > 0) {
+    const { rows: legs } = await db.query<LegForCalc>(
+      `SELECT leg_id,line_item_id,distance_km::text,factor_source,dataset_id,factor_id,factor_value::text
+       FROM nzi_console.lca_transport_legs WHERE organisation_id=$1 AND line_item_id=ANY($2::text[])`,
+      [organisationId, transportLineIds],
+    );
+    for (const leg of legs) legsByLine.set(leg.line_item_id, [...(legsByLine.get(leg.line_item_id) ?? []), leg]);
+  }
+
+  const emissions: LineEmission[] = [];
+  for (const line of lines) {
+    if (line.is_placeholder) continue;
+    const quantity = Number(line.quantity);
+    const multiplier = scenarioMultiplierFor(rules, { moduleCode: line.module_code, materialCategoryId: line.material_category_id, componentId: line.component_id });
+    let kgco2e = 0;
+    if (TRANSPORT_MODULES.has(line.module_code)) {
+      for (const leg of legsByLine.get(line.line_item_id) ?? []) {
+        const distanceKm = Number(leg.distance_km);
+        if (leg.factor_source === "manual") {
+          if (leg.factor_value != null) kgco2e += transportLegKgco2e({ massKg: quantity, distanceKm, factorValue: Number(leg.factor_value) * multiplier, factorUnit: null });
+        } else if (leg.factor_source === "dataset") {
+          const factor = await resolveFactorValue(db, organisationId, jobId, "dataset", leg.dataset_id, leg.factor_id, null);
+          if (factor) kgco2e += transportLegKgco2e({ massKg: quantity, distanceKm, factorValue: factor.kgco2ePerUnit * multiplier, factorUnit: datasetFactorUnit(factor.activityUnit) });
+        }
+      }
+    } else if (line.factor_source === "manual") {
+      if (line.factor_value != null) kgco2e = lineItemKgco2e(quantity, Number(line.factor_value) * multiplier, line.factor_unit);
+    } else if (line.factor_source !== "unmapped") {
+      const factor = await resolveFactorValue(db, organisationId, jobId, line.factor_source, line.dataset_id, line.factor_id, line.client_factor_id);
+      if (factor) kgco2e = lineItemKgco2e(quantity, factor.kgco2ePerUnit * multiplier, datasetFactorUnit(factor.activityUnit));
+    }
+    emissions.push({ lineItemId: line.line_item_id, moduleCode: line.module_code, label: line.line_label, quantity, unit: line.unit, kgco2e });
+  }
+  return summariseLineEmissions(emissions, meta);
 }
 
 export async function calculateLcaAssessment(

@@ -186,11 +186,25 @@ export type LcaComponentOption = {
   supplierName: string | null;
 };
 
+export type LcaScenarioMultiplier = { id: string; moduleCode: LcaModuleCode; materialCategoryId: string | null; componentId: string | null; multiplier: number };
+
 export type LcaScenario = {
   id: string;
   name: string;
+  description: string;
   isBaseline: boolean;
-  multipliers: Array<{ moduleCode: LcaModuleCode; materialCategoryId: string | null; componentId: string | null; multiplier: number }>;
+  multipliers: LcaScenarioMultiplier[];
+};
+
+/** The editable fields of a scenario — `lca.scenario.create` / `.update` (L5, §9). */
+export type LcaScenarioWriteFields = { name: string; description?: string; isBaseline?: boolean };
+
+/** One what-if multiplier rule — `lca.scenario.multiplier.set` (L5). A NULL category/component is a wildcard for the module. */
+export type LcaScenarioMultiplierWriteFields = {
+  moduleCode: LcaModuleCode;
+  materialCategoryId?: string | null;
+  componentId?: string | null;
+  multiplier: number;
 };
 
 /** Content-addressed calculation output — the reviewed artefact an LCA report cites. */

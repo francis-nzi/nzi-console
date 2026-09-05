@@ -19,6 +19,7 @@ export * from "./lcaGeocoding";
 export * from "./lcaCalcEngine";
 export * from "./lcaAssessmentReview";
 export * from "./lcaResultSnapshots";
+export * from "./lcaScenarios";
 export * from "./portalReview";
 export * from "./portalAccess";
 export * from "./portalInvitations";
