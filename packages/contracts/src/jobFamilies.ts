@@ -75,6 +75,7 @@ export type LcaLineItem = {
   factorId: string | null;
   clientFactorId: string | null;
   factorValue: number | null;
+  factorUnit: string | null;
   factorLabel: string | null;
   factorMatchConfidence: number | null;
   dataQuality: LcaDataQuality;
@@ -84,7 +85,45 @@ export type LcaLineItem = {
   isPlaceholder: boolean;
   transportKgco2e: number;
   calculatedKgco2e: number | null;
+  notes: string;
   transportLegs: LcaTransportLeg[];
+};
+
+/** The editable fields of a line item — `lca.lineItem.create` / `.update` (NZC-054/056). */
+export type LcaLineItemWriteFields = {
+  componentId?: string | null;
+  moduleCode: LcaModuleCode;
+  lineLabel: string;
+  materialCategoryId?: string | null;
+  quantity: number;
+  unit: string;
+  originCountry?: string | null;
+  energyKwh?: number | null;
+  endOfLifeRoute?: LcaEndOfLifeRoute | null;
+  factorSource?: LcaFactorSource;
+  datasetId?: string | null;
+  factorId?: string | null;
+  clientFactorId?: string | null;
+  factorValue?: number | null;
+  factorUnit?: string | null;
+  factorLabel?: string | null;
+  dataQuality?: LcaDataQuality;
+  isPlaceholder?: boolean;
+  notes?: string;
+};
+
+/** A reusable, client-scoped (or global) component library entry, for search/pick (mirrors ClientFactorRecord). */
+export type LcaComponentOption = {
+  id: string;
+  clientId: string | null;
+  componentCode: string | null;
+  description: string;
+  materialCategoryId: string | null;
+  materialCategoryLabel: string | null;
+  defaultUnitMass: number | null;
+  defaultUnit: string;
+  originCountry: string | null;
+  supplierName: string | null;
 };
 
 export type LcaScenario = {

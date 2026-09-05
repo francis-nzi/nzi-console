@@ -32,6 +32,14 @@ export async function discoverCrpJobAtStage(
   return match?.header?.id ? { id: match.header.id, number: match.header.number ?? match.header.id } : null;
 }
 
+/** Track C — an LCA or PCF job (they share one model, NZC-052); prefers the seeded J000714 (lca). */
+export async function discoverLcaJob(request: APIRequestContext): Promise<{ id: string; number: string; family: string } | null> {
+  const body = (await json(request, "/api/isolated/jobs")) as { jobs?: Array<{ header?: { id?: string; number?: string; family?: string } }> };
+  const candidates = (body.jobs ?? []).filter((job) => job.header?.family === "lca" || job.header?.family === "pcf");
+  const match = candidates.find((job) => job.header?.number === "J000714") ?? candidates[0];
+  return match?.header?.id ? { id: match.header.id, number: match.header.number ?? match.header.id, family: match.header.family! } : null;
+}
+
 export async function discoverClient(request: APIRequestContext): Promise<{ id: string } | null> {
   const body = (await json(request, "/api/isolated/clients")) as { clients?: Array<{ id?: string }> };
   const client = (body.clients ?? [])[0];
