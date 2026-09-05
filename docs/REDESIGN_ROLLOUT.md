@@ -210,8 +210,12 @@ done** — the additive schema batch (`0045`–`0050`, NZC-052–056: LCA/PCF, T
 and applied to isolated staging, no UI. The R-track (M7) and DA-track (M8) have both now landed in full;
 M9 (fast row-adding) was inserted ahead of the LCA reference module at Francis's explicit instruction (4 Sep
 2026) — build M9 first, LCA **planning** may proceed in parallel but LCA **build** waits for M9 to land.
-The **LCA reference module** (first family module behind `job-module-lca`) starts once M9 is merged; M4
-(additional services) rides on it. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
+The **LCA reference module** (first family module behind `job-module-lca`) started once M9 merged — **slice
+1 (the Model Register) built 5 Sep 2026**, `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`; remaining slices (line
+items + factor mapping, transport legs + geocoding, recalculate + result snapshots, charts, report
+manifest) are proposed there, awaiting confirmation before deep build — transport-leg geocoding in
+particular is a genuine new external-dependency decision, same "propose, don't guess" pattern as DA1/R5b.
+M4 (additional services) rides on the completed module. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 *M7 added 1 Sep 2026.*
 
