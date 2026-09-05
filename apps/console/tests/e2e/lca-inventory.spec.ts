@@ -11,12 +11,10 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // (packages/isolated-backend/seeds/0005_synthetic_lca_pcf.sql) so this suite
 // never has to skip for want of a job to discover.
 //
-// Once the flag is live every assertion below is a HARD precondition (fail
-// loud, never a silent skip — stage-sections.spec.ts / data-assurance.spec.ts
-// discipline). The ONE conditional skip is for the flag not yet being live on
-// the target — delete just that `test.skip` call to harden this spec the
-// moment `job-module-lca` flips, same one-line change as every other
-// flag-gated spec in this suite.
+// `job-module-lca` is live on deployed staging — every assertion below is a
+// HARD precondition (fail loud, never a silent skip — stage-sections.spec.ts
+// / data-assurance.spec.ts discipline). The only skip is the suite-wide "no
+// staff account" gate.
 
 /** Discover the seeded LCA job, open it, expand its assessment's inventory. */
 async function openInventory(page: Page): Promise<{ errors: string[] }> {
@@ -29,10 +27,10 @@ async function openInventory(page: Page): Promise<{ errors: string[] }> {
   await expectHealthyScreen(page);
 
   const register = page.locator("#lca-assessment-register");
-  test.skip(
-    (await register.count()) === 0,
-    "job-module-lca not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(
+    register,
+    "job-module-lca shell absent — the flag must be live on the target (NEXT_PUBLIC_FEATURE_JOB_MODULES must include 'job-module-lca')",
+  ).toHaveCount(1);
 
   const toggle = register.getByRole("button", { name: /Inventory/ }).first();
   await expect(toggle, "an inventory toggle for the seeded assessment").toBeVisible();

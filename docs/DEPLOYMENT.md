@@ -84,15 +84,13 @@ procedure as above. Current dashboard value (3 Sep 2026): `report-svg-charts` (R
 `docs/STAGING_ACCEPTANCE_R1.md`).
 
 Job-family modules (Track C, NZC-024) use a third variable, `NEXT_PUBLIC_FEATURE_JOB_MODULES` (tokens:
-`job-module-lca`, …), same procedure. **Not yet set on the dashboard.** Slice 1 (Model Register,
-`docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`) held off flipping for want of a seed LCA/PCF job to see it against;
-that's resolved as of slice 2 (Inventory, `docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`, 5 Sep 2026) —
-`packages/isolated-backend/seeds/0005_synthetic_lca_pcf.sql` seeds a Model Register assessment + inventory
-lines onto the existing job `714` (Verdant Foods, lca) and `715` (Quaymed Devices, pcf), already applied to
-isolated staging. **Ready to flip**: append `job-module-lca` to `NEXT_PUBLIC_FEATURE_JOB_MODULES` in the
-Render dashboard (create the variable if it isn't there yet) and rebuild; `render.yaml` already carries the
-value for continuity. This is a dashboard-only step — outside what this agent's tooling can do — so it
-needs a human with Render access.
+`job-module-lca`, …), same procedure. **Flipped 5 Sep 2026** — `job-module-lca` is set on the dashboard and
+the rebuild is live; the three LCA e2e specs (`lca-inventory` / `lca-transport-legs` / `lca-calc-review`)
+were un-skipped in the flip PR and are now hard preconditions. Staging seed: jobs `714` (Verdant Foods, lca)
+and `715` (Quaymed Devices, pcf) carry a full worked example — Model Register → inventory → transport legs
+(with the live freight shortlist) → calc-ready factors (`packages/isolated-backend/seeds/0005`–`0008`).
+`render.yaml` carries the value for continuity. Roll back = remove the token from the dashboard value +
+rebuild; `lca`/`pcf` jobs return to `FamilyWorkspace`, no data change.
 
 ## ⚠️ Notes / follow-ups
 
