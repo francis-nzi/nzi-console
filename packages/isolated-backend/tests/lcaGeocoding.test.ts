@@ -68,14 +68,17 @@ describe("haversineDistanceKm / estimateRoutedDistanceKm", () => {
     assert.ok(Math.abs(km - 344) < 5, `expected ~344km, got ${km}`);
   });
 
-  it("applies the per-mode detour factor on top of the great-circle distance", () => {
+  it("applies the live per-mode detour factor (road 1.25 · rail 1.2 · sea 1.0 · air 1.05) on top of the great-circle distance", () => {
     const a = { lat: 51.5074, lng: -0.1278 };
     const b = { lat: 48.8566, lng: 2.3522 };
     const straight = haversineDistanceKm(a, b);
-    for (const mode of Object.keys(MODE_DETOUR_FACTOR) as (keyof typeof MODE_DETOUR_FACTOR)[]) {
+    for (const mode of ["road_hgv", "road_van", "rail", "sea", "air", "inland_water", "other"] as const) {
       const routed = estimateRoutedDistanceKm(a, b, mode);
-      assert.ok(Math.abs(routed - straight * MODE_DETOUR_FACTOR[mode]) < 1e-9);
+      assert.ok(Math.abs(routed - straight * (MODE_DETOUR_FACTOR[mode] ?? 1)) < 1e-9);
     }
+    assert.equal(MODE_DETOUR_FACTOR.road_hgv, 1.25);
+    assert.equal(MODE_DETOUR_FACTOR.sea, 1.0);
+    assert.equal(MODE_DETOUR_FACTOR.other, 1.0);
   });
 });
 
@@ -85,7 +88,8 @@ describe("geocodeTransportLeg", () => {
     assert.equal(result.ok, true);
     if (result.ok) {
       assert.equal(result.source, "stub");
-      assert.ok(result.distanceKm >= 0);
+      assert.ok(result.straightLineKm >= 0);
+      assert.equal(result.distanceKm, Number((result.straightLineKm * 1.0).toFixed(1)), "sea detour factor is 1.0");
       assert.equal(result.from.displayName, "Ningbo plant, CN");
       assert.equal(result.to.displayName, "Felixstowe port, UK");
     }

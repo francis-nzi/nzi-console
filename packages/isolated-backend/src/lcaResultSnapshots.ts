@@ -39,7 +39,13 @@ export async function createLcaResultSnapshot(
     if (assessment.review_status !== "approved") throw new CommandValidationError([{ field: "assessmentId", code: "NOT_APPROVED", message: "Only an independently reviewed and approved assessment may be frozen into a result snapshot." }]);
 
     const result = await computeLcaAssessmentResult(db, context.organisationId, input.assessmentId);
-    const payload = { assessmentId: input.assessmentId, assessmentVersion: assessment.version, ...result };
+    // Hash only the fields the snapshot row persists (per-functional-unit is a
+    // reporting-time division, not frozen state — §4).
+    const payload = {
+      assessmentId: input.assessmentId, assessmentVersion: assessment.version,
+      totalTco2e: result.totalTco2e, moduleBreakdown: result.moduleBreakdown,
+      hotspots: result.hotspots, massReconciliation: result.massReconciliation,
+    };
     const dataHash = `sha256:${createHash("sha256").update(JSON.stringify(stable(payload))).digest("hex")}`;
 
     const existing = await db.query<{ snapshot_id: string }>(

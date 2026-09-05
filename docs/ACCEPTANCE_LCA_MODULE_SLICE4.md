@@ -27,22 +27,29 @@ Data Assurance gate" (Francis's framing):
 
 **Not in this slice**: scenarios (L5), charts (L6), the report manifest + PCF labelling (L7).
 
-## Interpretation choices (disclosed — the live `services/lca_engine.py` was not readable this session)
+## Engine parity — resolved against the live engine (correction PR `fix/lca-engine-parity`)
 
-- **Ordering.** This slice implements **calculate → independent review → freeze snapshot** (an unreviewed
-  number should not become the artefact a report cites). Francis's brief listed "freeze … then independent
-  review"; if the live product genuinely freezes *before* review, the `NOT_APPROVED` gate on
-  `createLcaResultSnapshot` is the one line to relax.
-- **Functional-unit scaling.** Line-item `calculated_kgco2e` is PER FUNCTIONAL UNIT; the assessment
-  aggregates (`total_tco2e`, module breakdown, hotspots) scale by `functional_unit_value` and convert kg →
-  tonnes (÷1000). This reconciles with the illustrative `lcaFidelity.ts` fixture's own numbers (a
-  31.5kg-per-pack tray × 1000 packs ÷ 1000 ≈ its ~52.9t contribution).
-- **Transport legs** have no "unit" to match a factor against — a dataset/manual leg factor is multiplied
-  straight against `distance_km` (assumed already a per-km figure). A line/leg whose dataset factor is
-  unresolvable or unit-mismatched is left honestly uncalculated (contributes 0), not silently fudged.
-- **Mass reconciliation** compares `confirmed_quantity` against the sum of the product-module (non-transport)
-  lines' own kg quantities — transport-module lines' quantity is the same shipped mass, excluded to avoid
-  double-counting.
+L4 shipped with three disclosed interpretation calls. Francis reviewed the live engine
+(`NZI Live/services/lca_engine.py` + `lca_transport.py`) and supplied the exact rules in
+`docs/_handoff_LCA_engine_parity.md` (deleted once the correction landed — see git history). Outcome:
+
+- **Ordering — kept.** `calculate → review → freeze` is correct; the `NOT_APPROVED` gate stays.
+- **Functional-unit scaling — REMOVED (was wrong).** `total_tco2e` is now the plain sum of absolute line
+  emissions ÷ 1000 (line quantities are always kg, converted per the factor denominator). Per-functional-unit
+  is `total ÷ functional_unit_value`, computed at presentation only (`perFunctionalUnitTco2e` in the calc
+  result, shown in the UI, never stored/frozen).
+- **Transport legs — CORRECTED (was a bug).** The freight defaults are tonne.km, so "straight ×
+  distance_km" under-counted by ~1000×. `lcaUnits.transportLegKgco2e` now branches on the factor's
+  DENOMINATOR unit: `tonne.km` → mass_t × dist_km × factor; `tonne.mile` → mass_t × dist_mi × factor;
+  `mile` → dist_mi × factor (mass-independent); `km`/other → dist_km × factor. `lineItemKgco2e` applies the
+  `material_basis` (kg↔tonne) and `ghg` (kg/tonne/g CO2e numerator) multipliers from §2/§3 — an odd unit is
+  normalised, not zeroed (the strict unit-match check is gone). A manual leg (no unit column) is treated as
+  the mass-independent per-km branch.
+- **Mass reconciliation — A1 basis confirmed.** `capturedMassKg` = the A1 (raw-material) module's mass-based
+  line quantities (`MASS_RECONCILIATION_MODULE = "A1"`); material assessments only (`null` for service).
+
+All the unit maths now lives in `packages/isolated-backend/src/lcaUnits.ts` (pure, `lcaUnits.test.ts`), so
+the line-items path, the calc engine and any future report path go through one resolver.
 
 ## What's built
 

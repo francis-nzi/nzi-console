@@ -9,16 +9,16 @@
 // same shape as `vehicleLookup.ts`'s DVLA-lookup pattern, so tests/staging
 // never hit the live geocoder.
 //
-// `haversineDistanceKm` + a per-mode detour multiplier approximate a routed
-// distance from two geocoded points — no routing API, matching the live app
-// (straight-line x a mode factor, not a real route). The detour multipliers
-// are a DOCUMENTED PLACEHOLDER pending the live app's exact
-// `FREIGHT_DEFAULT_FACTORS` (`services/lca_transport.py`, also not readable
-// this session) — swap in the real figures when available; nothing else
-// about this module changes shape. A manual distance entry
+// The routed-distance estimate (haversine × a per-mode detour factor, no
+// routing API — straight-line × a mode factor, matching the live app) lives
+// in `lcaUnits.ts` alongside the rest of the live-parity maths
+// (docs/_handoff_LCA_engine_parity.md §7). This module re-exports it and adds
+// the two-point orchestration. A manual distance entry
 // (`distanceSource: 'manual'`) is always available in the UI regardless of
-// whether geocoding succeeds.
+// whether geocoding succeeds; a geocode result also carries the raw
+// `straightLineKm` for display.
 import type { LcaTransportMode } from "@nzi/contracts";
+import { detourFactor, haversineDistanceKm } from "./lcaUnits";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
@@ -70,35 +70,13 @@ export async function geocodeFreeText(query: string, config: GeocodeConfig): Pro
   return { ok: true, source: "nominatim", point: { lat: Number(first.lat), lng: Number(first.lon), displayName: first.display_name ?? text } };
 }
 
-const EARTH_RADIUS_KM = 6371;
-
-/** Great-circle distance between two points, in kilometres. */
-export function haversineDistanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const h = sinLat * sinLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(Math.min(1, h)));
-}
-
-/**
- * Great-circle -> an approximate ROUTED distance. PLACEHOLDER figures — not
- * the live app's real per-mode values (`FREIGHT_DEFAULT_FACTORS` in
- * `services/lca_transport.py`, which this session could not read). Swap in
- * the real figures when available; this stays a per-mode lookup either way.
- */
-export const MODE_DETOUR_FACTOR: Record<LcaTransportMode, number> = {
-  road_hgv: 1.3, road_van: 1.3, rail: 1.2, sea: 1.0, air: 1.05, inland_water: 1.15, other: 1.2,
-};
-
+/** Great-circle → an approximate routed distance (§7): haversine × the mode's detour factor. */
 export function estimateRoutedDistanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode: LcaTransportMode): number {
-  return haversineDistanceKm(a, b) * (MODE_DETOUR_FACTOR[mode] ?? 1);
+  return haversineDistanceKm(a, b) * detourFactor(mode);
 }
 
 export type TransportLegGeocodeResult =
-  | { ok: true; source: "nominatim" | "stub"; from: GeocodePoint; to: GeocodePoint; distanceKm: number }
+  | { ok: true; source: "nominatim" | "stub"; from: GeocodePoint; to: GeocodePoint; straightLineKm: number; distanceKm: number }
   | { ok: false; status: 400 | 404 | 429 | 503; message: string };
 
 /** Geocode both ends of a leg and estimate its routed distance. Sequential (Nominatim-friendly), stops at the first failure. */
@@ -107,6 +85,7 @@ export async function geocodeTransportLeg(fromQuery: string, toQuery: string, mo
   if (!from.ok) return from;
   const to = await geocodeFreeText(toQuery, config);
   if (!to.ok) return to;
-  const distanceKm = Number(estimateRoutedDistanceKm(from.point, to.point, mode).toFixed(1));
-  return { ok: true, source: from.source, from: from.point, to: to.point, distanceKm };
+  const straightLineKm = Number(haversineDistanceKm(from.point, to.point).toFixed(1));
+  const distanceKm = Number((straightLineKm * detourFactor(mode)).toFixed(1));
+  return { ok: true, source: from.source, from: from.point, to: to.point, straightLineKm, distanceKm };
 }
