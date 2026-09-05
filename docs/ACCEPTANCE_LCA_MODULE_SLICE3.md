@@ -18,22 +18,22 @@ afterwards. **Not in this slice**: leg-level `calculated_kgco2e` (and therefore 
 `transport_kgco2e`) — both are left at their honest default (null / 0) pending the calc engine (L4); gap-
 filling; scenarios; charts; the report manifest.
 
-## Disclosure (unchanged from slice 2, restated because it matters most here)
+## Engine parity correction (landed after the L3 merge)
 
-This slice is built from Francis's description of the live product + `MODEL_FIDELITY_JOB_FAMILIES.md`, not
-the live NZI Pro source directly — the local `nzi-pro` checkout this session had access to was an empty git
-init. Two concrete places where that shows:
+The placeholders below were resolved against the live engine and applied as a correction PR
+(`fix/lca-engine-parity`; the source handoff `docs/_handoff_LCA_engine_parity.md` was deleted once it
+landed — see git history). What changed:
 
-- **The detour multipliers in `MODE_DETOUR_FACTOR`** (`lcaGeocoding.ts`) — a documented **placeholder** set
-  (road ×1.3, rail ×1.2, sea ×1.0, air ×1.05, inland water ×1.15, other ×1.2) approximating a routed distance
-  from a great-circle one. These are NOT the live app's real `FREIGHT_DEFAULT_FACTORS`
-  (`services/lca_transport.py`), which this session could not read. Swap in the real figures when available
-  — nothing else about the module's shape changes.
-- **No per-mode freight emission-factor quick-picks.** Francis's brief named `FREIGHT_DEFAULT_FACTORS` as a
-  per-mode carbon-intensity default the live app offers as a quick pick. Rather than fabricate plausible-
-  looking numbers, this slice ships the factor mapping via the **shared** factor library search (same
-  `FactorPicker` pattern as line items) plus a manual-value fallback, and leaves the quick-pick as a follow-
-  up once the real values are available.
+- **Detour multipliers** (`lcaUnits.MODE_DETOUR_FACTOR`) are now the live values: **road 1.25 · rail 1.2 ·
+  sea 1.0 · air 1.05**, 1.0 for anything else. `EARTH_RADIUS_KM` is 6371.0088. `geocodeTransportLeg` now
+  also returns `straightLineKm` alongside the detoured `distanceKm`.
+- **Freight quick-picks** (`freightDefaultFactorIds`, contracts) — the live 13-factor tonne.km shortlist
+  across road/rail/sea/air, keyed by the live `original_id`s, resolved against the job's active dataset at
+  lookup time (never hardcoded to a year). Surfaced as a per-mode "Freight quick-picks" row in the leg
+  `FactorPicker`; free-text search stays available alongside. Seeded on staging by
+  `0008_synthetic_lca_freight_factors.sql` (demonstration kgCO2e values).
+- **The transport-leg calc is corrected** — see `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md`'s parity section; the
+  factors are tonne.km, so "straight × distance_km" was a real bug.
 
 ## What's built
 

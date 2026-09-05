@@ -49,6 +49,36 @@ export type LcaComponent = {
 /** Canonical list — for validation without a DB round-trip. */
 export const lcaTransportModes: readonly LcaTransportMode[] = ["road_hgv", "road_van", "rail", "sea", "air", "inland_water", "other"];
 
+/**
+ * Freight default factor shortlist per transport mode
+ * (docs/_handoff_LCA_engine_parity.md §8). Factor ids match the live app's
+ * cross-dataset `original_id`s — resolved against the job's active dataset at
+ * lookup time, never hardcoded to a dataset/year. Free-text search stays
+ * available alongside for anything unusual.
+ */
+export const freightDefaultFactorIds: Partial<Record<LcaTransportMode, ReadonlyArray<{ factorId: string; label: string }>>> = {
+  road_van: [{ factorId: "27_303_3102_14_1", label: "Van (up to 3.5t) Diesel" }],
+  road_hgv: [
+    { factorId: "27_304_3140_14_1", label: "HGV (All Diesel), Average Laden" },
+    { factorId: "27_306_3140_14_1", label: "HGV Refrigerated (All Diesel), Average Laden" },
+  ],
+  rail: [{ factorId: "27_315_3151_14_1", label: "Freight Train" }],
+  sea: [
+    { factorId: "27_319_3197_14_1", label: "Tanker — Crude" },
+    { factorId: "27_319_3208_14_1", label: "Tanker — Chemical" },
+    { factorId: "27_319_3211_14_1", label: "Tanker — LNG" },
+    { factorId: "27_319_3214_14_1", label: "Tanker — LPG" },
+    { factorId: "27_320_3221_14_1", label: "Cargo Ship — Bulk Carrier" },
+    { factorId: "27_320_3228_14_1", label: "Cargo Ship — General Cargo" },
+    { factorId: "27_320_3235_14_1", label: "Cargo Ship — Container Ship" },
+  ],
+  air: [
+    { factorId: "27_317_3152_14_1", label: "Freight Flight — Domestic (to/from UK)" },
+    { factorId: "27_317_3154_14_1", label: "Freight Flight — Short-Haul (to/from UK)" },
+    { factorId: "27_317_3158_14_1", label: "Freight Flight — International (to/from non-UK)" },
+  ],
+};
+
 export type LcaTransportLeg = {
   id: string;
   legOrder: number;

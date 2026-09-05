@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
-import { lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
+import { freightDefaultFactorIds, lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { WorkflowStageControl } from "../WorkflowStageControl";
 import { fuzzyScore } from "../templateSearch";
@@ -440,7 +440,8 @@ function NewTransportLegForm({ base, factors, onDone, notice }: { base: string; 
       const body = await response.json().catch(() => ({} as { message?: string }));
       if (!response.ok) throw new Error(body.message ?? "Geocoding failed.");
       setValue((current) => ({ ...current, distanceKm: body.distanceKm, distanceSource: "geocoded" }));
-      notice({ kind: "ok", text: `Estimated ${body.distanceKm.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km (${body.source === "stub" ? "staging stub" : "Nominatim"}). Distance stays editable — override it any time.` });
+      const straight = typeof body.straightLineKm === "number" ? ` (great-circle ${body.straightLineKm.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km × ${value.mode.startsWith("road") ? "1.25" : value.mode === "rail" ? "1.2" : value.mode === "air" ? "1.05" : "1.0"} detour)` : "";
+      notice({ kind: "ok", text: `Estimated ${body.distanceKm.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km${straight} via ${body.source === "stub" ? "the staging stub" : "Nominatim"}. Distance stays editable — override it any time.` });
     } catch (error) {
       notice({ kind: "warn", text: error instanceof Error ? error.message : "Geocoding failed — enter the distance manually." });
     } finally {
@@ -502,13 +503,14 @@ function NewTransportLegForm({ base, factors, onDone, notice }: { base: string; 
       </div>
       {value.pickMode === "search" && (
         <div style={{ marginTop: 10 }}>
-          <FactorPicker factors={factors} onPick={pickFactor} />
+          <FactorPicker factors={factors} onPick={pickFactor} quickPicks={freightDefaultFactorIds[value.mode]} />
           {value.factorLabel && <div className="nz-hint">✓ {value.factorLabel}</div>}
         </div>
       )}
       {value.pickMode === "manual" && (
         <div className="nz-config-grid lca" style={{ marginTop: 10 }}>
-          <label className="nz-fl">Factor value (kgCO₂e)<input className="nz-inp" type="number" step="any" value={value.factorValue ?? ""} onChange={(e) => setValue({ ...value, factorValue: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <label className="nz-fl">Factor value (kgCO₂e per km)<input className="nz-inp" type="number" step="any" value={value.factorValue ?? ""} onChange={(e) => setValue({ ...value, factorValue: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <div className="sub" style={{ alignSelf: "center" }}>A manual leg factor is treated as kgCO₂e per km (mass-independent) — use a dataset tonne·km factor for mass-scaled freight.</div>
         </div>
       )}
 
@@ -555,7 +557,7 @@ function ComponentPicker({ components, onPick }: { components: LcaComponentOptio
   );
 }
 
-function FactorPicker({ factors, onPick }: { factors: FactorOption[]; onPick: (factor: FactorOption) => void }) {
+function FactorPicker({ factors, onPick, quickPicks }: { factors: FactorOption[]; onPick: (factor: FactorOption) => void; quickPicks?: ReadonlyArray<{ factorId: string; label: string }> }) {
   const [query, setQuery] = useState("");
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -566,6 +568,12 @@ function FactorPicker({ factors, onPick }: { factors: FactorOption[]; onPick: (f
       .slice(0, 12)
       .map((entry) => entry.factor);
   }, [factors, query]);
+  // §8 — a per-mode freight shortlist, shown only for the ids that resolve
+  // against this job's active dataset(s). Free-text search stays available.
+  const resolvedQuickPicks = useMemo(
+    () => (quickPicks ?? []).map((pick) => factors.find((factor) => factor.factorId === pick.factorId)).filter((factor): factor is FactorOption => factor !== undefined),
+    [factors, quickPicks],
+  );
 
   return (
     <div className="nz-fast-add-search">
@@ -573,6 +581,14 @@ function FactorPicker({ factors, onPick }: { factors: FactorOption[]; onPick: (f
         Factor library <span className="muted">· shared with the job's Scope rows</span>
         <input className="nz-inp" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search datasets and client factors…" />
       </label>
+      {resolvedQuickPicks.length > 0 && !query.trim() && (
+        <div className="nz-lca-quickpicks">
+          <span className="muted">Freight quick-picks:</span>
+          {resolvedQuickPicks.map((factor) => (
+            <button key={factor.factorId} type="button" className="nz-btn" onClick={() => onPick(factor)}>{factor.label}</button>
+          ))}
+        </div>
+      )}
       {query.trim() && (
         <ul className="nz-template-results">
           {results.length === 0 && <li className="nz-template-empty">No factor matches "{query}".</li>}
@@ -956,13 +972,18 @@ function AssessmentResults({ jobId, assessment, notice }: { jobId: string; asses
 
   const review0 = REVIEW_STATUS[assessment.reviewStatus] ?? REVIEW_STATUS.pending!;
   const summary = fresh ?? (snapshots?.[0] ? { totalTco2e: snapshots[0].totalTco2e, moduleBreakdown: snapshots[0].moduleBreakdown, hotspots: snapshots[0].hotspots, massReconciliation: snapshots[0].massReconciliation } : null);
+  // §4 — per-functional-unit is a reporting-time division, not stored.
+  const perFu = assessment.functionalUnitValue > 0 ? assessment.totalTco2e / assessment.functionalUnitValue : 0;
 
   return (
     <section className="nz-panel nz-lca-results">
       <div className="nz-acc-tool">
         <div>
-          <b>{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e</b>
-          <span className="hint">{assessment.lastCalculatedAt ? `last calculated ${new Date(assessment.lastCalculatedAt).toLocaleDateString("en-GB")}` : "not yet calculated"}</span>
+          <b>{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })} tCO₂e</b>
+          <span className="hint">
+            {assessment.totalTco2e > 0 && `${perFu.toLocaleString("en-GB", { maximumFractionDigits: 4 })} tCO₂e per ${assessment.functionalUnitUnit} · `}
+            {assessment.lastCalculatedAt ? `last calculated ${new Date(assessment.lastCalculatedAt).toLocaleDateString("en-GB")}` : "not yet calculated"}
+          </span>
         </div>
         <span className={`nz-st ${review0.cls}`}>{review0.label}</span>
         {assessment.reviewerNote && <span className="hint">“{assessment.reviewerNote}”</span>}

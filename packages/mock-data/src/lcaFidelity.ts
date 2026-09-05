@@ -59,8 +59,8 @@ const registerAssessment = (variant: "6l" | "9l", trayMass: number, total: numbe
     // multi-leg geocoded transport: factory (CN) → port (CN) → port (UK) → client site
     line({
       id: `${variant}-inbound-transport`, assessmentId: `assess-714-${variant}`, moduleCode: "A4",
-      lineLabel: "Inbound tray shipment", quantity: trayMass, unit: "kg", factorSource: "manual",
-      factorValue: 0, dataQuality: "secondary", transportKgco2e: 6.4, calculatedKgco2e: 6.4,
+      lineLabel: "Inbound tray shipment", quantity: trayMass, unit: "kg", factorSource: "unmapped",
+      dataQuality: "secondary", transportKgco2e: 6.4, calculatedKgco2e: null,
       transportLegs: [
         transportLeg({ id: `${variant}-leg-1`, legOrder: 0, fromLabel: "Ningbo plant, CN", fromLat: 29.87, fromLng: 121.55, toLabel: "Ningbo port, CN", toLat: 29.95, toLng: 121.85, mode: "road_hgv", distanceKm: 42, distanceSource: "geocoded", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-freight-hgv", calculatedKgco2e: 0.3 }),
         transportLeg({ id: `${variant}-leg-2`, legOrder: 1, fromLabel: "Ningbo port, CN", fromLat: 29.95, fromLng: 121.85, toLabel: "Felixstowe port, UK", toLat: 51.96, toLng: 1.35, mode: "sea", distanceKm: 19600, distanceSource: "geocoded", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-freight-sea", calculatedKgco2e: 5.4 }),
@@ -86,8 +86,10 @@ const registerAssessment = (variant: "6l" | "9l", trayMass: number, total: numbe
   ],
 });
 
-export const modelRegister6L = registerAssessment("6l", 31.5, 62.9);
-export const modelRegister9L = registerAssessment("9l", 44.2, 84.1);
+// totalTco2e is the plain sum of absolute line emissions (kg) ÷ 1000 — NOT
+// scaled to the functional unit (docs/_handoff_LCA_engine_parity.md §4).
+export const modelRegister6L = registerAssessment("6l", 31.5, 0.059);
+export const modelRegister9L = registerAssessment("9l", 44.2, 0.081);
 
 // ── PCF preset — ISO 14067, cradle-to-gate, A1–A3; keeps the "PCF" label ──────
 export const pcfDiagnosticUnit: LcaAssessment = {
@@ -97,7 +99,7 @@ export const pcfDiagnosticUnit: LcaAssessment = {
   confirmedQuantity: 3.92, confirmedQuantityUnit: "kg", lifecycleBoundary: "cradle_to_gate",
   includedModules: ["A1", "A2", "A3"], standard: "ISO 14067", referenceYear: 2026, geography: "DE",
   version: 2, reviewStatus: "pending", reviewedVersion: null, reviewedBy: null, reviewedAt: null, reviewerNote: null,
-  totalTco2e: 0.284, lastCalculatedAt: "2026-02-01T00:00:00.000Z",
+  totalTco2e: 0.071, lastCalculatedAt: "2026-02-01T00:00:00.000Z",
   scenarios: [],
   lines: [
     line({ id: "pcf-housing", assessmentId: "assess-715-pcf", moduleCode: "A1", lineLabel: "ABS enclosure", materialCategoryId: "mc-polymers", quantity: 2.4, unit: "kg", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-abs", factorLabel: "ABS production, Europe", factorMatchConfidence: 0.91, dataQuality: "primary", calculatedKgco2e: 9.8 }),
@@ -110,15 +112,16 @@ export const pcfDiagnosticUnit: LcaAssessment = {
 export const massReconciliationSnapshot: LcaResultSnapshot = {
   id: "lca-snap-714-6l-v3", assessmentId: "assess-714-6l", scenarioId: "scn-6l-base", assessmentVersion: 3,
   dataHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  totalTco2e: 62.9,
+  // absolute tonnes (Σ line kg ÷ 1000), not FU-scaled (§4)
+  totalTco2e: 0.059,
   moduleBreakdown: [
-    { moduleCode: "A1", tco2e: 54.2 },
-    { moduleCode: "A3", tco2e: 1.4 },
-    { moduleCode: "A4", tco2e: 6.4 },
-    { moduleCode: "C3", tco2e: 0.6 },
-    { moduleCode: "C4", tco2e: 0.3 },
+    { moduleCode: "A1", tco2e: 0.0531 },
+    { moduleCode: "A3", tco2e: 0.0014 },
+    { moduleCode: "A4", tco2e: 0.0064 },
+    { moduleCode: "C3", tco2e: 0.0006 },
+    { moduleCode: "C4", tco2e: 0.0003 },
   ],
-  hotspots: [{ lineItemId: "6l-tray", label: "rPET tray", tco2e: 52.9, sharePct: 84 }],
+  hotspots: [{ lineItemId: "6l-tray", label: "rPET tray", tco2e: 0.0529, sharePct: 90 }],
   massReconciliation: { confirmedMassKg: 31.5, capturedMassKg: 28.9, deltaPct: -8.25 },
 };
 

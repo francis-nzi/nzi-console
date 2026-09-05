@@ -14,6 +14,7 @@ export * from "./scopeRowHistory";
 export * from "./lcaAssessments";
 export * from "./lcaLineItems";
 export * from "./lcaTransportLegs";
+export * from "./lcaUnits";
 export * from "./lcaGeocoding";
 export * from "./lcaCalcEngine";
 export * from "./lcaAssessmentReview";

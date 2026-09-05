@@ -289,17 +289,18 @@ drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
    workflow (goal-scope → inventory → factor-mapping → gap-filling → impact → scenarios → reporting):
    **L2 Inventory** (folds inventory + factor-mapping; built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`)
    → **L3 Transport legs** (A2/A4/C2 only, + Nominatim geocoding behind a deterministic staging stub
-   mirroring `vehicleLookup.ts`; built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE3.md`, shipped with a
-   documented placeholder detour-factor set pending the live app's real `FREIGHT_DEFAULT_FACTORS`) →
+   mirroring `vehicleLookup.ts`; built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE3.md`) →
    **L4 Gap-filling + calc engine + result snapshot + review** (built 5 Sep 2026 —
-   `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md`; the calc engine mirrors CRP's `quantity × factor` convention,
-   scales per-functional-unit line figures to a per-assessment tonnes total, and the snapshot freeze reuses
-   the `reviewed_crp_snapshots` hash discipline gated on `review_status='approved'`) → **L5 Scenarios** →
-   **L6 Charts** → **L7 Report manifest + PCF labelling**. L2–L4 built as the pre-authorized run; L5 onward
-   gets a status check-in first. Built from Francis's description of the live product plus this doc, not the live
-   NZI Pro source directly — this session's local path for the live repo was an empty git init, not an
-   actual checkout (disclosed to Francis; L3's exact `FREIGHT_DEFAULT_FACTORS` values are still needed from
-   him for live parity — the placeholder set stays in place until then).
+   `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md`; assessment-level independent-review spine + content-addressed
+   result snapshots reusing the `reviewed_crp_snapshots` hash discipline, gated on
+   `review_status='approved'`) → **L5 Scenarios** → **L6 Charts** → **L7 Report manifest + PCF labelling**.
+   L2–L4 built as the pre-authorized run; L5 onward gets a status check-in first. L3/L4 initially shipped
+   with a few disclosed interpretation calls (no live-source access); Francis then reviewed the live engine
+   and a **correction PR (`fix/lca-engine-parity`)** landed the exact values + fixed two real bugs — the
+   transport-leg maths (tonne.km factors, was "straight × distance") and the functional-unit scaling (total
+   is the plain absolute sum; per-FU is a presentation-time division). All unit maths is now in
+   `packages/isolated-backend/src/lcaUnits.ts`. Freight quick-picks (`freightDefaultFactorIds`) are the live
+   13-factor shortlist.
 4. **Retire `FamilyWorkspace` for lca**; extract the shared bits it needs into `@nzi/job-core`
    (header card, stage control, evidence-drawer host) as the reusable module contract.
 5. **Training module** on the same pattern (largest — products/runs/sessions/bookings/attendance/
