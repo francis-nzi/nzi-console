@@ -198,9 +198,21 @@ export type LcaAssessment = {
   version: number;
   reviewStatus: LcaReviewStatus;
   reviewedVersion: number | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewerNote: string | null;
   totalTco2e: number;
+  lastCalculatedAt: string | null;
   lines: LcaLineItem[];
   scenarios: LcaScenario[];
+};
+
+/** The editable fields of a gap-fill — `lca.lineItem.gapFill` (L4; "the LCA analogue of the Data Assurance gate"). */
+export type LcaGapFillWriteFields = {
+  factorValue: number;
+  factorUnit?: string | null;
+  gapFillMethod: string;
+  dataQuality?: LcaDataQuality;
 };
 
 /** The editable fields of an assessment — `lca.assessment.create` / `.update` (NZC-055). */

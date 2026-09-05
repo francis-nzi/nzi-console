@@ -40,7 +40,11 @@ const registerAssessment = (variant: "6l" | "9l", trayMass: number, total: numbe
   lifecycleBoundary: "cradle_to_grave", includedModules: ["A1", "A2", "A3", "A4", "C3", "C4"],
   standard: "ISO 14040 / ISO 14044", referenceYear: 2025, geography: "GB",
   version: 4, reviewStatus: variant === "6l" ? "approved" : "pending",
-  reviewedVersion: variant === "6l" ? 3 : null, totalTco2e: total,
+  reviewedVersion: variant === "6l" ? 3 : null,
+  reviewedBy: variant === "6l" ? "demo-reviewer" : null,
+  reviewedAt: variant === "6l" ? "2025-11-04T00:00:00.000Z" : null,
+  reviewerNote: variant === "6l" ? "Independently reviewed against the mass reconciliation and hotspot check." : null,
+  totalTco2e: total, lastCalculatedAt: "2025-11-03T00:00:00.000Z",
   scenarios: [
     { id: `scn-${variant}-base`, name: "Current design", isBaseline: true, multipliers: [] },
     { id: `scn-${variant}-light`, name: "Lightweight tray", isBaseline: false, multipliers: [{ moduleCode: "A1", materialCategoryId: "mc-polymers", componentId: null, multiplier: 0.85 }] },
@@ -92,7 +96,8 @@ export const pcfDiagnosticUnit: LcaAssessment = {
   sku: "QMD-1", functionalUnitValue: 1, functionalUnitUnit: "device over service life",
   confirmedQuantity: 3.92, confirmedQuantityUnit: "kg", lifecycleBoundary: "cradle_to_gate",
   includedModules: ["A1", "A2", "A3"], standard: "ISO 14067", referenceYear: 2026, geography: "DE",
-  version: 2, reviewStatus: "pending", reviewedVersion: null, totalTco2e: 0.284,
+  version: 2, reviewStatus: "pending", reviewedVersion: null, reviewedBy: null, reviewedAt: null, reviewerNote: null,
+  totalTco2e: 0.284, lastCalculatedAt: "2026-02-01T00:00:00.000Z",
   scenarios: [],
   lines: [
     line({ id: "pcf-housing", assessmentId: "assess-715-pcf", moduleCode: "A1", lineLabel: "ABS enclosure", materialCategoryId: "mc-polymers", quantity: 2.4, unit: "kg", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-abs", factorLabel: "ABS production, Europe", factorMatchConfidence: 0.91, dataQuality: "primary", calculatedKgco2e: 9.8 }),

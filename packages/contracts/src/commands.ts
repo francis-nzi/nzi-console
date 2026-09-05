@@ -1,7 +1,7 @@
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import { isCrpReportSectionKey } from "./reportSections";
-import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaTransportLegWriteFields } from "./jobFamilies";
+import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaGapFillWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaTransportLegWriteFields } from "./jobFamilies";
 import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 
 export type CommandKey =
@@ -49,7 +49,12 @@ export type CommandKey =
   | "lca.lineItem.bulkCreate"
   | "lca.transportLeg.create"
   | "lca.transportLeg.update"
-  | "lca.transportLeg.delete";
+  | "lca.transportLeg.delete"
+  | "lca.lineItem.gapFill"
+  | "lca.assessment.calculate"
+  | "lca.assessment.review.approve"
+  | "lca.assessment.review.reject"
+  | "lca.assessment.snapshot.create";
 
 export const jobWorkflowStages = {
   // NZC-057 — "Factor mapping" retired as a CRP stage (factor selection is inline
@@ -220,6 +225,11 @@ export type CommandInputMap = {
   "lca.transportLeg.create": { jobId: string; assessmentId: string; lineItemId: string } & LcaTransportLegWriteFields;
   "lca.transportLeg.update": { jobId: string; assessmentId: string; lineItemId: string; legId: string } & LcaTransportLegWriteFields;
   "lca.transportLeg.delete": { jobId: string; assessmentId: string; lineItemId: string; legId: string };
+  "lca.lineItem.gapFill": { jobId: string; assessmentId: string; lineItemId: string } & LcaGapFillWriteFields;
+  "lca.assessment.calculate": { jobId: string; assessmentId: string; expectedVersion: number };
+  "lca.assessment.review.approve": { jobId: string; assessmentId: string; expectedVersion: number; reviewerNote?: string };
+  "lca.assessment.review.reject": { jobId: string; assessmentId: string; expectedVersion: number; reviewerNote: string };
+  "lca.assessment.snapshot.create": { jobId: string; assessmentId: string; expectedVersion: number };
 };
 
 export type CommandDefinition<K extends CommandKey = CommandKey> = {
@@ -291,6 +301,13 @@ const lcaTransportLegIssues = (input: LcaTransportLegWriteFields): CommandIssue[
   else if (factorSource === "manual" && input.factorValue == null) issues.push({ field: "factorValue", code: "REQUIRED", message: "A manual factor must give its value." });
   return issues;
 };
+const lcaGapFillIssues = (input: LcaGapFillWriteFields): CommandIssue[] => {
+  const issues: CommandIssue[] = [];
+  if (typeof input.factorValue !== "number" || !Number.isFinite(input.factorValue) || input.factorValue < 0) issues.push({ field: "factorValue", code: "INVALID", message: "Factor value must be zero or greater." });
+  required(issues, "gapFillMethod", input.gapFillMethod);
+  if (input.dataQuality != null && !oneOf(input.dataQuality, ["primary", "secondary", "proxy", "estimated"] as const)) issues.push({ field: "dataQuality", code: "INVALID", message: "Data quality is invalid." });
+  return issues;
+};
 const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = monthlyActivityIssues(input.monthlyActivity); required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (input.assetIdentifier != null && (typeof input.assetIdentifier !== "string" || input.assetIdentifier.trim().length > 240)) issues.push({field:"assetIdentifier",code:"INVALID",message:"ID / Reference must be text of 240 characters or fewer."}); if (input.applyPct != null && (typeof input.applyPct!=="number"||!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)) issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100%."}); if (input.dataConfidence != null && !(["H","M","L"] as const).includes(input.dataConfidence)) issues.push({field:"dataConfidence",code:"INVALID",message:"Data confidence must be high, medium, or low."}); if (input.sourceQuantity != null && (typeof input.sourceQuantity!=="number"||!Number.isFinite(input.sourceQuantity)||input.sourceQuantity<0)) issues.push({field:"sourceQuantity",code:"INVALID",message:"As-entered quantity must be zero or greater."}); if ((input.sourceQuantity!=null)!==Boolean(text(input.sourceUnit))) issues.push({field:"sourceUnit",code:"PAIRED",message:"As-entered quantity and unit must be provided together."}); const factorSource=input.factorSource??"dataset";if(factorSource==="client"&&(!text(input.clientFactorId)||input.isCustomEntry!==true))issues.push({field:"clientFactorId",code:"REQUIRED",message:"A client factor row must identify its client factor."});if(factorSource==="dataset"&&(text(input.clientFactorId)||input.isCustomEntry===true))issues.push({field:"factorSource",code:"INCONSISTENT",message:"Dataset factors cannot carry client-factor identity."}); if (typeof input.scope === "string" && !crpScopeOptions.some((option) => option.value === input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Select a controlled Scope 1, Scope 2, or Scope 3 category." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId && factorSource!=="client") issues.push({ field: "datasetId", code: "REQUIRED", message: "A dataset factor must identify its dataset." }); if (input.categoryCode != null && input.categoryCode !== "") { const category = emissionCategoryTaxonomy.find((entry) => entry.code === input.categoryCode); if (!category) issues.push({ field: "categoryCode", code: "INVALID", message: "Category code is not in the emission taxonomy (NZC-046)." }); else if (typeof input.scope === "string" && category.scope !== input.scope.split(".")[0]) issues.push({ field: "categoryCode", code: "INCONSISTENT", message: "Category belongs to a different scope than the row." }); } return issues; };
 
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
@@ -339,6 +356,11 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "lca.transportLeg.create": { key: "lca.transportLeg.create", label: "Add transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaTransportLegIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
   "lca.transportLeg.update": { key: "lca.transportLeg.update", label: "Update transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaTransportLegIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); required(issues, "legId", input.legId); return issues; } },
   "lca.transportLeg.delete": { key: "lca.transportLeg.delete", label: "Delete transport leg", permission: "emissions.data.edit", reasonRequired: false, transaction: "transport leg removal + line-item transport total + audit + outbox + idempotency", auditAction: "lca_transport_leg_deleted", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); required(issues, "legId", input.legId); return issues; } },
+  "lca.lineItem.gapFill": { key: "lca.lineItem.gapFill", label: "Gap-fill LCA line item", permission: "emissions.data.edit", reasonRequired: false, transaction: "line item + audit + outbox + idempotency", auditAction: "lca_line_item_gap_filled", validate: (input, context) => { const issues = [...baseIssues(context, false), ...lcaGapFillIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "lineItemId", input.lineItemId); return issues; } },
+  "lca.assessment.calculate": { key: "lca.assessment.calculate", label: "Calculate LCA assessment", permission: "emissions.data.edit", reasonRequired: false, transaction: "line items + transport legs + assessment totals + audit + outbox + idempotency", auditAction: "lca_assessment_calculated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "lca.assessment.review.approve": { key: "lca.assessment.review.approve", label: "Approve LCA assessment", permission: "emissions.review", reasonRequired: false, transaction: "assessment review + audit + outbox + idempotency", auditAction: "lca_assessment_approved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "lca.assessment.review.reject": { key: "lca.assessment.review.reject", label: "Reject LCA assessment", permission: "emissions.review", reasonRequired: false, transaction: "assessment review + audit + outbox + idempotency", auditAction: "lca_assessment_rejected", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); required(issues, "reviewerNote", input.reviewerNote); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "lca.assessment.snapshot.create": { key: "lca.assessment.snapshot.create", label: "Freeze LCA result snapshot", permission: "reports.publish", reasonRequired: false, transaction: "content-addressed snapshot + audit + outbox + idempotency", auditAction: "lca_result_snapshot_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "assessmentId", input.assessmentId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
 };
 
 export function validateCommand<K extends CommandKey>(key: K, input: CommandInputMap[K], context: CommandContext) { return commandDefinitions[key].validate(input, context); }

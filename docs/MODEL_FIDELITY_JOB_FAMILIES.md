@@ -291,9 +291,12 @@ drafted as `NZC-0aa..0ee` (0aa→052 … 0ee→056):**
    → **L3 Transport legs** (A2/A4/C2 only, + Nominatim geocoding behind a deterministic staging stub
    mirroring `vehicleLookup.ts`; built 5 Sep 2026 — `docs/ACCEPTANCE_LCA_MODULE_SLICE3.md`, shipped with a
    documented placeholder detour-factor set pending the live app's real `FREIGHT_DEFAULT_FACTORS`) →
-   **L4 Gap-filling + calc engine + result snapshot + review** → **L5 Scenarios** → **L6 Charts** →
-   **L7 Report manifest + PCF labelling**. L2–L4 pre-authorized to build straight through; L5 onward gets a
-   status check-in first. Built from Francis's description of the live product plus this doc, not the live
+   **L4 Gap-filling + calc engine + result snapshot + review** (built 5 Sep 2026 —
+   `docs/ACCEPTANCE_LCA_MODULE_SLICE4.md`; the calc engine mirrors CRP's `quantity × factor` convention,
+   scales per-functional-unit line figures to a per-assessment tonnes total, and the snapshot freeze reuses
+   the `reviewed_crp_snapshots` hash discipline gated on `review_status='approved'`) → **L5 Scenarios** →
+   **L6 Charts** → **L7 Report manifest + PCF labelling**. L2–L4 built as the pre-authorized run; L5 onward
+   gets a status check-in first. Built from Francis's description of the live product plus this doc, not the live
    NZI Pro source directly — this session's local path for the live repo was an empty git init, not an
    actual checkout (disclosed to Francis; L3's exact `FREIGHT_DEFAULT_FACTORS` values are still needed from
    him for live parity — the placeholder set stays in place until then).

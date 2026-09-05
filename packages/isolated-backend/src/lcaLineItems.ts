@@ -151,6 +151,42 @@ export async function updateLcaLineItem(
   });
 }
 
+/**
+ * L4 — gap-filling: the LCA analogue of the Data Assurance gate
+ * (`assurance.gap.resolve`). Sets an unmapped line to a manual proxy value
+ * with a documented method, so `lca.assessment.calculate` has something to
+ * work with. Only applies to a genuinely unmapped line (mirrors
+ * `assurance.gap.resolve`'s "this is for filling a gap, not re-editing a
+ * mapped line" scope) — a mapped or placeholder line should be edited or
+ * gap-filled by first clearing its factor, not gap-filled over the top.
+ */
+export async function gapFillLcaLineItem(
+  pool: PoolLike,
+  input: CommandInputMap["lca.lineItem.gapFill"],
+  context: CommandContext,
+): Promise<Extract<CommandOutcome<{ lineItemId: string }>, { state: "success" }>> {
+  return runPostgresCommand(pool, "lca.lineItem.gapFill", input, context, async (db) => {
+    await requireLcaAssessment(db, context.organisationId, input.jobId, input.assessmentId);
+    const found = await db.query<{ factor_source: string; is_placeholder: boolean }>(
+      "SELECT factor_source,is_placeholder FROM nzi_console.lca_line_items WHERE organisation_id=$1 AND assessment_id=$2 AND line_item_id=$3 FOR UPDATE",
+      [context.organisationId, input.assessmentId, input.lineItemId],
+    );
+    const row = found.rows[0];
+    if (!row) throw new CommandValidationError([{ field: "lineItemId", code: "NOT_FOUND", message: "Line item was not found." }]);
+    if (row.is_placeholder) throw new CommandValidationError([{ field: "lineItemId", code: "PLACEHOLDER", message: "A placeholder row is excluded from the calculation — it has nothing to gap-fill." }]);
+    if (row.factor_source !== "unmapped") throw new CommandValidationError([{ field: "lineItemId", code: "ALREADY_MAPPED", message: "This line already has a factor — edit it directly instead of gap-filling." }]);
+    await db.query(
+      `UPDATE nzi_console.lca_line_items SET
+         factor_source='manual',dataset_id=NULL,factor_id=NULL,client_factor_id=NULL,
+         factor_value=$4,factor_unit=$5,is_gap_filled=true,gap_fill_method=$6,data_quality=$7,
+         updated_by=$8,updated_at=now()
+       WHERE organisation_id=$1 AND assessment_id=$2 AND line_item_id=$3`,
+      [context.organisationId, input.assessmentId, input.lineItemId, input.factorValue, input.factorUnit?.trim() || null, input.gapFillMethod.trim(), input.dataQuality ?? "proxy", context.actorId],
+    );
+    return { data: { lineItemId: input.lineItemId }, entityType: "lca_line_item", entityId: input.lineItemId, topic: "lca.line_item.gap_filled" };
+  });
+}
+
 export async function deleteLcaLineItem(
   pool: PoolLike,
   input: CommandInputMap["lca.lineItem.delete"],

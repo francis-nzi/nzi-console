@@ -217,12 +217,15 @@ the remaining slicing against the live product's actual seven-stage workflow (5 
 `docs/ACCEPTANCE_LCA_MODULE_SLICE2.md`) → **L3 Transport legs** (A2/A4/C2 only, + Nominatim geocoding behind
 a deterministic staging stub — **built 5 Sep 2026**, `docs/ACCEPTANCE_LCA_MODULE_SLICE3.md`, shipped with a
 documented placeholder detour-factor set pending the live app's real `FREIGHT_DEFAULT_FACTORS`) → **L4
-Gap-filling + calc engine + result snapshot + review** → **L5 Scenarios** → **L6 Charts** → **L7 Report
-manifest + PCF labelling**. L2–L4 pre-authorized to build straight through without further check-in; L5
-onward gets a status check-in first. A seed LCA/PCF assessment + inventory + transport legs now exists on
-staging (job `714`/`715`, `packages/isolated-backend/seeds/0005_synthetic_lca_pcf.sql` +
-`0006_synthetic_lca_transport_legs.sql`) — the flag is ready to flip pending a human Render-dashboard edit +
-rebuild. M4 (additional services) rides on the completed module. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
+Gap-filling + calc engine + result snapshot + review** (**built 5 Sep 2026**,
+`docs/ACCEPTANCE_LCA_MODULE_SLICE4.md` — the calc engine mirrors CRP's `quantity × factor` convention, an
+assessment-level independent-review spine (NZC-055), and content-addressed result snapshots reusing the
+`reviewed_crp_snapshots` freeze discipline gated on `review_status='approved'`) → **L5 Scenarios** → **L6
+Charts** → **L7 Report manifest + PCF labelling**. L2–L4 built as the pre-authorized run; L5 onward gets a
+status check-in first. A seed LCA/PCF assessment + inventory + transport legs + calc-ready factors now
+exists on staging (job `714`/`715`, `packages/isolated-backend/seeds/0005`–`0007`) — the flag is ready to
+flip pending a human Render-dashboard edit + rebuild. M4 (additional services) rides on the completed
+module. See `docs/MODEL_FIDELITY_JOB_FAMILIES.md`.
 
 *M7 added 1 Sep 2026.*
 

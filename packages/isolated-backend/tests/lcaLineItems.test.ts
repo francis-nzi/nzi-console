@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  bulkCreateLcaLineItems, CommandValidationError, createLcaLineItem, deleteLcaLineItem,
+  bulkCreateLcaLineItems, CommandValidationError, createLcaLineItem, deleteLcaLineItem, gapFillLcaLineItem,
   listLcaComponentsForJob, listLcaLineItems, listLcaMaterialCategories, updateLcaLineItem, withTenantRead,
 } from "../src/index";
 
@@ -110,6 +110,58 @@ describe("listLcaLineItems (Track C)", () => {
     assert.equal(rows[0]!.isGapFilled, true);
     assert.equal(rows[0]!.calculatedKgco2e, 0.4);
     assert.deepEqual(rows[0]!.transportLegs, []);
+  });
+});
+
+function gapFillPool(opts: { row?: { factor_source: string; is_placeholder: boolean } | null } = {}) {
+  const { row = { factor_source: "unmapped", is_placeholder: false } } = opts;
+  const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
+  const client = {
+    async query(sql: string, values?: readonly unknown[]) {
+      writes.push({ sql, values });
+      if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
+      if (sql.includes("FROM nzi_console.lca_assessments a JOIN")) return { rows: [{ ok: 1 }] };
+      if (sql.includes("SELECT factor_source,is_placeholder FROM nzi_console.lca_line_items WHERE")) return { rows: row == null ? [] : [row] };
+      return { rows: [] };
+    },
+    release() {},
+  };
+  return { pool: { connect: async () => client } as never, writes };
+}
+
+describe("gapFillLcaLineItem (Track C / L4 — the LCA analogue of the Data Assurance gate)", () => {
+  const fill = { factorValue: 3.1, factorUnit: "kgCO2e/kg", gapFillMethod: "Category-average printing ink, DEFRA 2025" };
+
+  it("gap-fills an unmapped line with a manual proxy value", async () => {
+    const state = gapFillPool();
+    const result = await gapFillLcaLineItem(state.pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-1", ...fill }, context("gap-1"));
+    assert.equal(result.data.lineItemId, "line-1");
+    const update = state.writes.find((w) => w.sql.startsWith("UPDATE nzi_console.lca_line_items"));
+    assert.ok(update?.sql.includes("is_gap_filled=true"), "is_gap_filled is set");
+    assert.ok(update?.values?.includes(fill.gapFillMethod));
+  });
+
+  it("rejects an unknown line item", async () => {
+    await assert.rejects(
+      () => gapFillLcaLineItem(gapFillPool({ row: null }).pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-missing", ...fill }, context("gap-missing")),
+      (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "NOT_FOUND"),
+    );
+  });
+
+  it("rejects a placeholder row and an already-mapped line", async () => {
+    await assert.rejects(
+      () => gapFillLcaLineItem(gapFillPool({ row: { factor_source: "unmapped", is_placeholder: true } }).pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-1", ...fill }, context("gap-placeholder")),
+      (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "PLACEHOLDER"),
+    );
+    await assert.rejects(
+      () => gapFillLcaLineItem(gapFillPool({ row: { factor_source: "dataset", is_placeholder: false } }).pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-1", ...fill }, context("gap-mapped")),
+      (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "ALREADY_MAPPED"),
+    );
+  });
+
+  it("rejects a negative factor value and a blank method", async () => {
+    await assert.rejects(() => gapFillLcaLineItem(gapFillPool().pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-1", ...fill, factorValue: -1 }, context("gap-bad-1")), CommandValidationError);
+    await assert.rejects(() => gapFillLcaLineItem(gapFillPool().pool, { jobId: "job-1", assessmentId: "assess-1", lineItemId: "line-1", ...fill, gapFillMethod: " " }, context("gap-bad-2")), CommandValidationError);
   });
 });
 
