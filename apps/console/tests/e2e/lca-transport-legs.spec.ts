@@ -11,10 +11,9 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // (packages/isolated-backend/seeds/0006_synthetic_lca_transport_legs.sql), so
 // this suite never has to skip for want of a line item to discover.
 //
-// Once the flag is live every assertion below is a HARD precondition (fail
-// loud, never a silent skip). The ONE conditional skip is for the flag not
-// yet being live on the target — delete just that `test.skip` call to harden
-// this spec the moment `job-module-lca` flips.
+// `job-module-lca` is live on deployed staging — every assertion below is a
+// HARD precondition (fail loud, never a silent skip). The only skip is the
+// suite-wide "no staff account" gate.
 
 /** Discover the seeded LCA job, open its inventory, expand the transport-module line's legs. */
 async function openTransportLegs(page: Page): Promise<{ errors: string[] }> {
@@ -27,10 +26,7 @@ async function openTransportLegs(page: Page): Promise<{ errors: string[] }> {
   await expectHealthyScreen(page);
 
   const register = page.locator("#lca-assessment-register");
-  test.skip(
-    (await register.count()) === 0,
-    "job-module-lca not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(register, "job-module-lca must be live on the target").toHaveCount(1);
 
   await register.getByRole("button", { name: /Inventory/ }).first().click();
   await expect(register.locator(".nz-lca-inventory")).toBeVisible();

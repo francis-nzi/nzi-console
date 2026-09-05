@@ -10,9 +10,8 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 // "Recalculate" produces a genuine module breakdown / total, not zeros
 // (packages/isolated-backend/seeds/0007_synthetic_lca_calc.sql).
 //
-// Once the flag is live every assertion is a HARD precondition. The ONE
-// conditional skip is for the flag not yet being live on the target — delete
-// that one `test.skip` at the flip PR.
+// `job-module-lca` is live on deployed staging — every assertion is a HARD
+// precondition. The only skip is the suite-wide "no staff account" gate.
 
 async function openResults(page: Page): Promise<{ errors: string[] }> {
   const job = await discoverLcaJob(page.request);
@@ -24,10 +23,7 @@ async function openResults(page: Page): Promise<{ errors: string[] }> {
   await expectHealthyScreen(page);
 
   const register = page.locator("#lca-assessment-register");
-  test.skip(
-    (await register.count()) === 0,
-    "job-module-lca not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(register, "job-module-lca must be live on the target").toHaveCount(1);
 
   await register.getByRole("button", { name: /Inventory/ }).first().click();
   await expect(page.locator(".nz-lca-results")).toBeVisible();
