@@ -46,16 +46,46 @@ export type LcaComponent = {
   archived: boolean;
 };
 
+/** Canonical list — for validation without a DB round-trip. */
+export const lcaTransportModes: readonly LcaTransportMode[] = ["road_hgv", "road_van", "rail", "sea", "air", "inland_water", "other"];
+
 export type LcaTransportLeg = {
   id: string;
   legOrder: number;
   fromLabel: string;
+  fromLat: number | null;
+  fromLng: number | null;
   toLabel: string;
+  toLat: number | null;
+  toLng: number | null;
   mode: LcaTransportMode;
   distanceKm: number;
   distanceSource: "geocoded" | "manual";
-  factorSource: LcaFactorSource;
+  /** No `client_factor_id` column on this table (unlike line items) — 'client' is not a valid source here. */
+  factorSource: Exclude<LcaFactorSource, "client">;
+  datasetId: string | null;
+  factorId: string | null;
+  factorValue: number | null;
   calculatedKgco2e: number | null;
+  notes: string;
+};
+
+/** The editable fields of a transport leg — `lca.transportLeg.create` / `.update` (L3). */
+export type LcaTransportLegWriteFields = {
+  fromLabel: string;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLabel: string;
+  toLat?: number | null;
+  toLng?: number | null;
+  mode: LcaTransportMode;
+  distanceKm: number;
+  distanceSource?: "geocoded" | "manual";
+  factorSource?: Exclude<LcaFactorSource, "client">;
+  datasetId?: string | null;
+  factorId?: string | null;
+  factorValue?: number | null;
+  notes?: string;
 };
 
 export type LcaLineItem = {

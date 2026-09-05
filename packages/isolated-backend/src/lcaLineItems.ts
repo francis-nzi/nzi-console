@@ -4,11 +4,13 @@
 // mapping is the SHARED `emission_factors`/`client_factors` — this file never
 // reads/writes a parallel lookup. No `version` column on this table (unlike
 // `lca_assessments`) — updates are last-write-wins, same as the schema itself.
-// Transport legs are a later slice (L3): `transportLegs` here is always `[]`.
+// `transportLegs` (slice 3, `lcaTransportLegs.ts`) is attached batched, same
+// N+1-avoidance shape as `lcaAssessments.ts` attaching lines.
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap, CommandOutcome, LcaComponentOption, LcaLineItem, LcaLineItemWriteFields, LcaModuleCode } from "@nzi/contracts";
+import type { CommandContext, CommandInputMap, CommandOutcome, LcaComponentOption, LcaLineItem, LcaLineItemWriteFields, LcaModuleCode, LcaTransportLeg } from "@nzi/contracts";
 import { CommandValidationError, runPostgresCommand } from "./postgresCommands";
 import type { PoolLike, Queryable } from "./postgres";
+import { listLcaTransportLegsByLineItems } from "./lcaTransportLegs";
 
 async function requireLcaAssessment(db: Queryable, organisationId: string, jobId: string, assessmentId: string): Promise<void> {
   const found = await db.query(
@@ -28,7 +30,7 @@ type LineItemRow = {
   data_quality: LcaLineItem["dataQuality"]; is_gap_filled: boolean; gap_fill_method: string | null; is_placeholder: boolean;
   transport_kgco2e: string; calculated_kgco2e: string | null; notes: string;
 };
-const mapLineItem = (row: LineItemRow): LcaLineItem => ({
+const mapLineItem = (row: LineItemRow, transportLegs: LcaTransportLeg[]): LcaLineItem => ({
   id: row.line_item_id, assessmentId: row.assessment_id, componentId: row.component_id, moduleCode: row.module_code,
   lineLabel: row.line_label, materialCategoryId: row.material_category_id, quantity: Number(row.quantity), unit: row.unit,
   originCountry: row.origin_country, energyKwh: row.energy_kwh == null ? null : Number(row.energy_kwh), endOfLifeRoute: row.end_of_life_route,
@@ -37,7 +39,7 @@ const mapLineItem = (row: LineItemRow): LcaLineItem => ({
   factorMatchConfidence: row.factor_match_confidence == null ? null : Number(row.factor_match_confidence),
   dataQuality: row.data_quality, isGapFilled: row.is_gap_filled, gapFillMethod: row.gap_fill_method, isPlaceholder: row.is_placeholder,
   transportKgco2e: Number(row.transport_kgco2e), calculatedKgco2e: row.calculated_kgco2e == null ? null : Number(row.calculated_kgco2e),
-  notes: row.notes, transportLegs: [],
+  notes: row.notes, transportLegs,
 });
 
 const LINE_ITEM_COLUMNS = `line_item_id,assessment_id,component_id,module_code,line_label,material_category_id,quantity::text,unit,
@@ -50,10 +52,11 @@ export async function listLcaLineItems(db: Queryable, assessmentId: string): Pro
     `SELECT ${LINE_ITEM_COLUMNS} FROM nzi_console.lca_line_items WHERE assessment_id=$1 ORDER BY module_code,lower(line_label)`,
     [assessmentId],
   );
-  return rows.map(mapLineItem);
+  const legsByLineItem = await listLcaTransportLegsByLineItems(db, rows.map((row) => row.line_item_id));
+  return rows.map((row) => mapLineItem(row, legsByLineItem.get(row.line_item_id) ?? []));
 }
 
-/** Batched — one query for every assessment's lines, so listing a job's whole register never N+1s. */
+/** Batched — one query for every assessment's lines (+ their legs), so listing a job's whole register never N+1s. */
 export async function listLcaLineItemsByAssessments(db: Queryable, assessmentIds: readonly string[]): Promise<Map<string, LcaLineItem[]>> {
   const byAssessment = new Map<string, LcaLineItem[]>();
   if (assessmentIds.length === 0) return byAssessment;
@@ -61,8 +64,9 @@ export async function listLcaLineItemsByAssessments(db: Queryable, assessmentIds
     `SELECT ${LINE_ITEM_COLUMNS} FROM nzi_console.lca_line_items WHERE assessment_id=ANY($1::text[]) ORDER BY assessment_id,module_code,lower(line_label)`,
     [assessmentIds],
   );
+  const legsByLineItem = await listLcaTransportLegsByLineItems(db, rows.map((row) => row.line_item_id));
   for (const row of rows) {
-    const line = mapLineItem(row);
+    const line = mapLineItem(row, legsByLineItem.get(row.line_item_id) ?? []);
     const bucket = byAssessment.get(row.assessment_id);
     if (bucket) bucket.push(line); else byAssessment.set(row.assessment_id, [line]);
   }

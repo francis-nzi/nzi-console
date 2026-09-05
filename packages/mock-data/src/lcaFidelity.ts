@@ -4,7 +4,12 @@
 // a mass-reconciliation mismatch, and client-scoped vs global components.
 // Typed against @nzi/contracts; see docs/MODEL_FIDELITY_JOB_FAMILIES.md §2.
 // Illustrative demonstrator data only — no real client data, no PII.
-import type { LcaAssessment, LcaComponent, LcaLineItem, LcaResultSnapshot } from "@nzi/contracts";
+import type { LcaAssessment, LcaComponent, LcaLineItem, LcaResultSnapshot, LcaTransportLeg } from "@nzi/contracts";
+
+const transportLeg = (over: Partial<LcaTransportLeg> & Pick<LcaTransportLeg, "id" | "legOrder" | "fromLabel" | "toLabel" | "mode">): LcaTransportLeg => ({
+  fromLat: null, fromLng: null, toLat: null, toLng: null, distanceKm: 0, distanceSource: "manual",
+  factorSource: "unmapped", datasetId: null, factorId: null, factorValue: null, calculatedKgco2e: null, notes: "", ...over,
+});
 
 const line = (over: Partial<LcaLineItem> & Pick<LcaLineItem, "id" | "lineLabel" | "moduleCode">): LcaLineItem => ({
   assessmentId: "assess-714-6l", componentId: null, materialCategoryId: null, quantity: 0, unit: "kg",
@@ -53,9 +58,9 @@ const registerAssessment = (variant: "6l" | "9l", trayMass: number, total: numbe
       lineLabel: "Inbound tray shipment", quantity: trayMass, unit: "kg", factorSource: "manual",
       factorValue: 0, dataQuality: "secondary", transportKgco2e: 6.4, calculatedKgco2e: 6.4,
       transportLegs: [
-        { id: `${variant}-leg-1`, legOrder: 0, fromLabel: "Ningbo plant, CN", toLabel: "Ningbo port, CN", mode: "road_hgv", distanceKm: 42, distanceSource: "geocoded", factorSource: "dataset", calculatedKgco2e: 0.3 },
-        { id: `${variant}-leg-2`, legOrder: 1, fromLabel: "Ningbo port, CN", toLabel: "Felixstowe port, UK", mode: "sea", distanceKm: 19600, distanceSource: "geocoded", factorSource: "dataset", calculatedKgco2e: 5.4 },
-        { id: `${variant}-leg-3`, legOrder: 2, fromLabel: "Felixstowe port, UK", toLabel: "Leeds pack site, UK", mode: "road_hgv", distanceKm: 310, distanceSource: "geocoded", factorSource: "dataset", calculatedKgco2e: 0.7 },
+        transportLeg({ id: `${variant}-leg-1`, legOrder: 0, fromLabel: "Ningbo plant, CN", fromLat: 29.87, fromLng: 121.55, toLabel: "Ningbo port, CN", toLat: 29.95, toLng: 121.85, mode: "road_hgv", distanceKm: 42, distanceSource: "geocoded", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-freight-hgv", calculatedKgco2e: 0.3 }),
+        transportLeg({ id: `${variant}-leg-2`, legOrder: 1, fromLabel: "Ningbo port, CN", fromLat: 29.95, fromLng: 121.85, toLabel: "Felixstowe port, UK", toLat: 51.96, toLng: 1.35, mode: "sea", distanceKm: 19600, distanceSource: "geocoded", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-freight-sea", calculatedKgco2e: 5.4 }),
+        transportLeg({ id: `${variant}-leg-3`, legOrder: 2, fromLabel: "Felixstowe port, UK", fromLat: 51.96, fromLng: 1.35, toLabel: "Leeds pack site, UK", toLat: 53.8, toLng: -1.55, mode: "road_hgv", distanceKm: 310, distanceSource: "geocoded", factorSource: "dataset", datasetId: "ds-ecoinvent-310", factorId: "f-freight-hgv", calculatedKgco2e: 0.7 }),
       ],
     }),
     // unmapped line — supplier data still outstanding

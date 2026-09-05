@@ -13,6 +13,8 @@ export * from "./spendImport";
 export * from "./scopeRowHistory";
 export * from "./lcaAssessments";
 export * from "./lcaLineItems";
+export * from "./lcaTransportLegs";
+export * from "./lcaGeocoding";
 export * from "./portalReview";
 export * from "./portalAccess";
 export * from "./portalInvitations";
