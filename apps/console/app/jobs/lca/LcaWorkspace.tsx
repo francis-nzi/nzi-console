@@ -26,14 +26,13 @@ import { fuzzyScore } from "../templateSearch";
 import { lcaBomTemplateCsv, parseLcaBomLines } from "./lcaBomImport";
 
 /**
- * Best-effort mapping from a frozen L4 `LcaResultSnapshot` (+ the current
- * assessment header) to the chart resolver's input. The snapshot's `dataHash`
- * is the real content-addressed identity; the surrounding labels come from
- * the live assessment. Factor sets are derived from the mapped lines.
+ * Map a frozen L4 `LcaResultSnapshot` (+ the current assessment header) to the
+ * chart resolver's input. Everything the report cites — the numbers, the
+ * hotspot module codes and the factor citation — is read from the FROZEN
+ * snapshot, not re-derived from the live lines (L7).
  */
 function toReviewedLcaSnapshot(snapshot: LcaResultSnapshot, assessment: LcaAssessment, clientName: string): ReviewedLcaSnapshot {
-  const moduleOf = new Map(assessment.lines.map((line) => [line.id, line.moduleCode]));
-  const factorSets = [...new Set(assessment.lines.map((line) => line.factorLabel).filter((label): label is string => !!label))];
+  const factorSets = snapshot.factorSets.map((f) => `${f.label} · ${f.dataset}${f.version && f.version !== "—" ? ` ${f.version}` : ""}`);
   return {
     id: snapshot.id, jobId: assessment.jobId, jobNumber: assessment.jobNumber, client: clientName,
     assessmentName: assessment.name, functionalUnit: assessment.functionalUnitUnit, standard: assessment.standard,
@@ -41,7 +40,7 @@ function toReviewedLcaSnapshot(snapshot: LcaResultSnapshot, assessment: LcaAsses
     dataHash: snapshot.dataHash, factorSets: factorSets.length ? factorSets : ["as reviewed"],
     totalTco2e: snapshot.totalTco2e,
     moduleBreakdown: snapshot.moduleBreakdown,
-    hotspots: snapshot.hotspots.map((h) => ({ ...h, moduleCode: moduleOf.get(h.lineItemId) })),
+    hotspots: snapshot.hotspots.map((h) => ({ lineItemId: h.lineItemId, label: h.label, tco2e: h.tco2e, sharePct: h.sharePct, moduleCode: h.moduleCode })),
   };
 }
 
@@ -1060,7 +1059,11 @@ function AssessmentResults({ jobId, clientName, assessment, categories, notice }
           <div className="nz-sect" style={{ marginTop: 12 }}>Freeze history</div>
           <ul className="nz-lca-snap-list">
             {snapshots.map((snap) => (
-              <li key={snap.id}><b>{snap.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 2 })} tCO₂e</b> · v{snap.assessmentVersion} · <span className="muted">{snap.dataHash.slice(0, 22)}…</span></li>
+              <li key={snap.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <b>{snap.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })} tCO₂e</b> · v{snap.assessmentVersion} · <span className="muted">{snap.dataHash.slice(0, 22)}…</span>
+                <span className="muted">· {snap.factorSets.length} factor{snap.factorSets.length === 1 ? "" : "s"} cited</span>
+                <a className="nz-btn" style={{ marginLeft: "auto" }} href={`/jobs/${jobId}/lca-report/${snap.id}`}>Open report</a>
+              </li>
             ))}
           </ul>
         </div>
