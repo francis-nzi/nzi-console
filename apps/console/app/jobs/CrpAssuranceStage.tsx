@@ -17,8 +17,9 @@
 // also blocks server-side on open gaps (GAPS_OPEN), same transaction as the
 // existing QA_INCOMPLETE check.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
+import { Drawer, GatedButton, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 import {
   percentVsBaseline,
   percentVsBaselineTone,
@@ -31,6 +32,11 @@ import {
 
 type Tab = "trend" | "scope" | "site" | "audit" | "intensity";
 type Screen = "loading" | "failed" | "ready";
+
+const TAB_ITEMS: readonly TabDescriptor[] = [
+  { id: "trend", label: "5-year trend" }, { id: "scope", label: "By scope" },
+  { id: "site", label: "By site" }, { id: "audit", label: "Audit table" }, { id: "intensity", label: "Intensity" },
+];
 
 const GAP_LABEL: Record<AssuranceGap["flag"], string> = {
   yoy_movement: "YoY", completeness: "missing", zero_blank: "zero", unmapped: "unmapped",
@@ -77,6 +83,11 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const openRowDetail = (rowId: string) => { setSelectedRowId(rowId); setDrawerOpen(true); };
+  // The reopen toggle is conditionally rendered, so Drawer can't restore focus
+  // to it — do it here once it re-mounts after a close (WCAG 2.4.3).
+  const reopenRef = useRef<HTMLButtonElement>(null);
+  const closedByUser = useRef(false);
+  useEffect(() => { if (!drawerOpen && closedByUser.current) { reopenRef.current?.focus(); closedByUser.current = false; } }, [drawerOpen]);
   const current = trend.years.find((year) => year.kind === "current");
   const baseline = trend.years.find((year) => year.kind === "baseline");
   const openGaps = gaps.openCount;
@@ -139,13 +150,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
       </span>}
     </div>
 
-    <div className="nz-assurance-tabs" role="tablist">
-      {([["trend", "5-year trend"], ["scope", "By scope"], ["site", "By site"], ["audit", "Audit table"], ["intensity", "Intensity"]] as const).map(([id, label]) => (
-        <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => onTab(id)}>{label}</button>
-      ))}
-    </div>
+    <Tabs items={TAB_ITEMS} value={tab} onChange={(id) => onTab(id as Tab)} ariaLabel="Data assurance views" idBase="assurance" className="nz-assurance-tabs" />
 
-    {tab === "trend" && <div className="nz-assurance-scroll">
+    <TabPanel id="trend" idBase="assurance" active={tab === "trend"} className="nz-assurance-scroll">
       <table className="nz-tbl nz-assurance-trend">
         <thead><tr>
           <th>Scope</th><th>Category</th>
@@ -193,9 +200,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           </tr>
         </tbody>
       </table>
-    </div>}
+    </TabPanel>
 
-    {tab === "scope" && <div className="nz-assurance-scroll">
+    <TabPanel id="scope" idBase="assurance" active={tab === "scope"} className="nz-assurance-scroll">
       <p className="sub">Category amalgamation for the current year, with the baseline for comparison.</p>
       <table className="nz-tbl">
         <thead><tr><th>Scope</th><th>Category</th><th className="num">Baseline{trend.baselineYear ? ` (${trend.baselineYear})` : ""}</th><th className="num cur">{trend.currentYear}</th></tr></thead>
@@ -217,9 +224,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           <tr className="total"><td /><td>Total</td><td className="num">{fmt(baseline?.total ?? null)}</td><td className="num cur">{fmt(current?.total ?? null)}</td></tr>
         </tbody>
       </table>
-    </div>}
+    </TabPanel>
 
-    {tab === "site" && <div className="nz-assurance-scroll">
+    <TabPanel id="site" idBase="assurance" active={tab === "site"} className="nz-assurance-scroll">
       <p className="sub">Emissions by site for the current year. <b>Unallocated</b> rows are a completeness signal — every activity should resolve to a place.</p>
       <table className="nz-tbl">
         <thead><tr><th>Site</th><th className="num cur">{trend.currentYear} tCO₂e</th><th className="num">% of total</th></tr></thead>
@@ -236,9 +243,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           <tr className="total"><td>Total</td><td className="num cur">{fmt(current?.total ?? null)}</td><td className="num">100%</td></tr>
         </tbody>
       </table>
-    </div>}
+    </TabPanel>
 
-    {tab === "audit" && <div className="nz-assurance-scroll">
+    <TabPanel id="audit" idBase="assurance" active={tab === "audit"} className="nz-assurance-scroll">
       <p className="sub">Row-level lineage — every enabled canonical row with its factor, activity, quality tier, confidence and review state.</p>
       <table className="nz-tbl">
         <thead><tr><th>Category</th><th>Activity / factor</th><th className="num">Qty</th><th>Quality</th><th>Conf.</th><th>Site</th><th>Review</th></tr></thead>
@@ -257,9 +264,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           {auditRows.length === 0 && <tr><td colSpan={7} className="nz-table-empty">No enabled rows yet.</td></tr>}
         </tbody>
       </table>
-    </div>}
+    </TabPanel>
 
-    {tab === "intensity" && <div className="nz-assurance-scroll">
+    <TabPanel id="intensity" idBase="assurance" active={tab === "intensity"} className="nz-assurance-scroll">
       <p className="sub">Normalised metric across the trend — the same totals against the job&rsquo;s reporting denominator.</p>
       <table className="nz-tbl">
         <thead><tr><th>Metric</th>{trend.years.map((year) => <th key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.year}</th>)}</tr></thead>
@@ -271,31 +278,33 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           {trend.years.every((year) => year.intensity == null) && <tr><td colSpan={trend.years.length + 1} className="nz-table-empty">No intensity target / reporting denominator set for this job.</td></tr>}
         </tbody>
       </table>
-    </div>}
+    </TabPanel>
 
     <div className="nz-assurance-actions">
       <button className="nz-btn" onClick={() => exportTrendCsv(trend)}>⭳ Export trend CSV</button>
-      {!drawerOpen && <button className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data assurance {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
+      {!drawerOpen && <button ref={reopenRef} type="button" className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data assurance {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
     </div>
 
     <SignOffPanel jobId={jobId} canSignOff={canSignOff} openGaps={openGaps} pendingReview={pendingReview} onSignedOff={onReload} />
 
-    {drawerOpen && <AssuranceDrawer
+    <AssuranceDrawer
+      open={drawerOpen}
       jobId={jobId}
       gaps={gaps.gaps}
       auditRows={auditRows}
       selectedRowId={selectedRowId}
       onSelectRow={setSelectedRowId}
-      onClose={() => { setDrawerOpen(false); setSelectedRowId(null); }}
+      onClose={() => { closedByUser.current = true; setDrawerOpen(false); setSelectedRowId(null); }}
       onResolved={onReload}
       onEditRow={onGoToRow}
-    />}
+    />
   </section>;
 }
 
 type DrawerSegment = "gaps" | "row";
 
-function AssuranceDrawer({ jobId, gaps, auditRows, selectedRowId, onSelectRow, onClose, onResolved, onEditRow }: {
+function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelectRow, onClose, onResolved, onEditRow }: {
+  open: boolean;
   jobId: string;
   gaps: AssuranceGap[];
   auditRows: AssuranceAuditRow[];
@@ -310,26 +319,32 @@ function AssuranceDrawer({ jobId, gaps, auditRows, selectedRowId, onSelectRow, o
   const selectedRow = selectedRowId ? auditRows.find((row) => row.rowId === selectedRowId) ?? null : null;
   const openCount = gaps.filter((gap) => !gap.resolved).length;
 
-  return <aside className="nz-assurance-drawer" role="complementary" aria-label="Data assurance">
+  return <Drawer open={open} onClose={onClose} ariaLabel="Data assurance detail" className="nz-assurance-drawer">
     <div className="nz-assurance-drawer-h">
-      <div className="top"><span className="ctx">Detail · this stage</span><button className="close" onClick={onClose} aria-label="Close">✕</button></div>
+      <div className="top"><span className="ctx">Detail · this stage</span><button type="button" className="close" onClick={onClose} aria-label="Close data assurance detail">✕</button></div>
       <div className="ttl"><h3>{segment === "row" ? "Row detail" : "Data assurance"}</h3>{segment === "gaps" && <span className="count">{openCount} open</span>}</div>
     </div>
-    <div className="nz-assurance-drawer-seg">
-      <button className={segment === "gaps" ? "on" : ""} onClick={() => { setSegment("gaps"); onSelectRow(null); }}>Gaps ({gaps.length})</button>
-      <button className={segment === "row" ? "on" : ""} disabled={!selectedRow} onClick={() => setSegment("row")}>Row detail</button>
-    </div>
+    <Tabs
+      items={[{ id: "gaps", label: `Gaps (${gaps.length})` }, { id: "row", label: "Row detail", disabled: !selectedRow }]}
+      value={segment}
+      onChange={(id) => { const seg = id as DrawerSegment; setSegment(seg); if (seg === "gaps") onSelectRow(null); }}
+      ariaLabel="Drawer view"
+      idBase="assurance-drawer"
+      className="nz-assurance-drawer-seg"
+    />
 
-    {segment === "row" && selectedRow && <RowDetail jobId={jobId} row={selectedRow} onEditRow={onEditRow} onReviewed={onResolved} />}
+    <TabPanel id="row" idBase="assurance-drawer" active={segment === "row" && !!selectedRow}>
+      {selectedRow && <RowDetail jobId={jobId} row={selectedRow} onEditRow={onEditRow} onReviewed={onResolved} />}
+    </TabPanel>
 
-    {segment === "gaps" && <>
+    <TabPanel id="gaps" idBase="assurance-drawer" active={segment === "gaps"}>
       <ol className="nz-assurance-gaps">
         {gaps.map((gap) => <GapCard key={gap.key} jobId={jobId} gap={gap} onSelectRow={onSelectRow} onResolved={onResolved} />)}
         {gaps.length === 0 && <li className="nz-assurance-gap-empty">No integrity gaps — the dataset is complete, consistent and fully costed.</li>}
       </ol>
       <p className="nz-assurance-drawer-note">This is the workspace&rsquo;s shared detail drawer — selecting any row shows its evidence here. By default it lists the assurance gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row&rsquo;s provenance so sign-off is defensible.</p>
-    </>}
-  </aside>;
+    </TabPanel>
+  </Drawer>;
 }
 
 function RowDetail({ jobId, row, onEditRow, onReviewed }: { jobId: string; row: AssuranceAuditRow; onEditRow?: (rowId: string) => void; onReviewed: () => void }) {
@@ -375,9 +390,9 @@ function RowReview({ jobId, row, onReviewed }: { jobId: string; row: AssuranceAu
   return <div className="nz-assurance-row-review">
     <div className="nz-sect" style={{ marginTop: 12 }}>Independent review</div>
     <textarea className="nz-notes" style={{ width: "100%" }} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reviewer note (required for rejection)" rows={2} />
-    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
-      <button className="nz-btn" disabled={busy || !note.trim()} onClick={() => void decide("rejected")}>Reject</button>
-      <button className="nz-btn pri" disabled={busy || !row.qualityTier} onClick={() => void decide("approved")}>Approve row</button>
+    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6, flexWrap: "wrap" }}>
+      <GatedButton className="nz-btn" blocked={busy || !note.trim()} blockedReason={!busy && !note.trim() ? "A reviewer note is required to reject" : undefined} onClick={() => void decide("rejected")}>Reject</GatedButton>
+      <GatedButton className="nz-btn pri" blocked={busy || !row.qualityTier} blockedReason={!busy && !row.qualityTier ? "Set a quality tier on the row before approving" : undefined} onClick={() => void decide("approved")}>Approve row</GatedButton>
     </div>
     {error && <div className="nz-banner warn" role="alert">{error}</div>}
   </div>;
@@ -392,6 +407,7 @@ function SignOffPanel({ jobId, canSignOff, openGaps, pendingReview, onSignedOff 
   const [result, setResult] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
 
   async function signOff() {
+    if (busy || !canSignOff) return;
     setBusy(true); setResult(null);
     const outcome = await postBrowserCommand<{ snapshotId: string; version: number; reused: boolean }>(
       `/api/isolated/jobs/${jobId}/reviewed-snapshots`,
@@ -417,8 +433,14 @@ function SignOffPanel({ jobId, canSignOff, openGaps, pendingReview, onSignedOff 
       Freezes an immutable, content-addressed snapshot for reporting — only once every integrity gap is resolved and every enabled row is independently approved.
     </p>
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      <button className="nz-btn pri" disabled={busy || !canSignOff} onClick={() => void signOff()}>{busy ? "Signing off…" : "Sign off & freeze snapshot"}</button>
-      {!canSignOff && blockers.length > 0 && <span className="muted" style={{ fontSize: 12 }}>Blocked: {blockers.join(" · ")}</span>}
+      <GatedButton
+        className="nz-btn pri"
+        blocked={!canSignOff || busy}
+        blockedReason={!busy && !canSignOff && blockers.length > 0 ? `Blocked: ${blockers.join(" · ")}` : undefined}
+        reasonClassName="muted nz-gated-reason"
+        aria-busy={busy || undefined}
+        onClick={() => void signOff()}
+      >{busy ? "Signing off…" : "Sign off & freeze snapshot"}</GatedButton>
     </div>
     {result && <div className={`nz-banner ${result.kind}`} role={result.kind === "warn" ? "alert" : "status"} style={{ marginTop: 8 }}>{result.text}</div>}
   </div>;

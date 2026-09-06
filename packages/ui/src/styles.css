@@ -77,8 +77,11 @@ a{color:inherit}
 .nz-btn{height:34px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:inherit;font-weight:600;font-size:12.5px;color:var(--t1);padding:0 13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
 .nz-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none}
 .nz-btn.pri{background:var(--pine);border-color:var(--pine);color:#fff}
-.nz-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 12px rgba(11,27,43,.09)}
-.nz-btn:disabled{opacity:.55;cursor:not-allowed}
+.nz-btn:hover:not(:disabled):not([aria-disabled="true"]){transform:translateY(-1px);box-shadow:0 4px 12px rgba(11,27,43,.09)}
+.nz-btn:disabled,.nz-btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+/* gated-action pattern (WCAG 4.1.2): the control stays focusable, the reason is announced */
+.nz-gated-reason{color:var(--t3);font-size:12px}
+[role="tab"][aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 .nz-btn:focus-visible,.nz-inp:focus-visible,.nz-sel:focus-visible,.nz-notes:focus-visible,.nz-nav a:focus-visible,a:focus-visible,button:focus-visible,[role="tab"]:focus-visible{outline:3px solid #0B7A4B;outline-offset:3px}
 
 .nz-body{padding:0 24px 40px;overflow:auto}

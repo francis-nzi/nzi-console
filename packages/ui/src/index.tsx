@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { CommandSearch } from "./CommandSearch";
 
+export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
+export { Drawer } from "./Drawer";
+export { GatedButton } from "./GatedButton";
+
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"
   | "trend" | "settings" | "search" | "bell";
