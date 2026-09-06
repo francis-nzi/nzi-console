@@ -158,4 +158,17 @@ test.describe("Data-entry row-detail drawer", () => {
     const drawer = page.locator("aside.nz-drawer");
     await expect(drawer.locator(".nz-collapsible-h", { hasText: "Spend detail (PG&S)" })).toBeVisible();
   });
+
+  test("item 3 — the category kind-note is an ⓘ, not a standing paragraph", async ({ page }) => {
+    const { accordion } = await openAccordion(page);
+    const headers = accordion.locator("button.nz-acc-h");
+    for (let i = 0; i < (await headers.count()); i += 1) {
+      const header = headers.nth(i);
+      if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+    }
+    // The always-visible instruction strip is gone everywhere...
+    await expect(accordion.locator(".nz-acc-kindnote")).toHaveCount(0);
+    // ...and at least one category foot now carries the ⓘ instead.
+    await expect(accordion.locator(".nz-acc-foot .nz-infotip button.nz-infotip-btn").first()).toBeVisible();
+  });
 });

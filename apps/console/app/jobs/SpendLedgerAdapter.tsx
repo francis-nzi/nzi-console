@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
+import { InfoTip } from "@nzi/ui";
 import type { FactorOption, PurchasedGoodsCategoryOption } from "@nzi/contracts";
 import { formatDate } from "../lib/formatDate";
 import { monthlySlotsForLine, parseSpendLedger, suggestCategory, type SpendLedgerLine } from "./spendLedger";
@@ -122,8 +123,7 @@ export function SpendLedgerAdapter({
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · spend (flagged preview)</span>
-          <b>Spend ledger</b>
-          <div className="sub">Paste ledger lines, confirm a controlled category and factor per line, then import. Each line becomes a Scope 3.1 emission source carrying the Spend-based quality tier, synced through the standard review workflow.</div>
+          <b>Spend ledger <InfoTip label="Spend ledger">Paste ledger lines, confirm a controlled category and factor per line, then import. Each line becomes a Scope 3.1 emission source carrying the Spend-based quality tier, synced through the standard review workflow.</InfoTip></b>
         </div>
         <span className={`nz-st ${rows.length ? "done" : "need"}`}>{rows.length} lines</span>
       </div>

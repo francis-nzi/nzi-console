@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
+import { InfoTip } from "@nzi/ui";
 import type { EmissionSourceGroup, FactorOption } from "@nzi/contracts";
 import { crpScopeOptions } from "@nzi/contracts";
 import { matchFuel, parseVehicleLedger, vehicleTemplateCsv, VEHICLE_FUELS } from "./vehicleBulk";
@@ -112,8 +113,7 @@ export function VehicleBulkPanel({ jobId, factors, notice }: { jobId: string; fa
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · company vehicles (bulk)</span>
-          <b>Company vehicles — paste a list</b>
-          <div className="sub">Paste your fleet list, confirm a fuel and an emission factor per vehicle, then import. Each row becomes a Scope 1 (or Scope 3.6) source through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</div>
+          <b>Company vehicles — paste a list <InfoTip label="Company vehicles — paste a list">Paste your fleet list, confirm a fuel and an emission factor per vehicle, then import. Each row becomes a Scope 1 (or Scope 3.6) source through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</InfoTip></b>
         </div>
         <span className={`nz-st ${rows.length ? "done" : "need"}`}>{rows.length} rows</span>
       </div>

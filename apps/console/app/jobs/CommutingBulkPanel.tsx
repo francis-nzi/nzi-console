@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
+import { InfoTip } from "@nzi/ui";
 import type { EmissionSourceGroup, FactorOption } from "@nzi/contracts";
 import { COMMUTE_MODES, commutingTemplateCsv, matchCommuteMode, parseCommutingLedger } from "./commutingBulk";
 
@@ -110,8 +111,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · employee commuting (bulk)</span>
-          <b>Employee commuting — paste a list</b>
-          <div className="sub">Paste your commuting survey, confirm a controlled mode and an emission factor per employee, then import. Each row becomes a Scope 3.7 source through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</div>
+          <b>Employee commuting — paste a list <InfoTip label="Employee commuting — paste a list">Paste your commuting survey, confirm a controlled mode and an emission factor per employee, then import. Each row becomes a Scope 3.7 source through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</InfoTip></b>
         </div>
         <span className={`nz-st ${rows.length ? "done" : "need"}`}>{rows.length} rows</span>
       </div>

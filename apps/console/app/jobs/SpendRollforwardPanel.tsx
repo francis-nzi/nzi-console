@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { postBrowserCommand } from "@nzi/api-client";
+import { InfoTip } from "@nzi/ui";
 import type { SpendRollforwardPreview } from "@nzi/contracts";
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
@@ -60,10 +61,7 @@ export function SpendRollforwardPanel({ jobId, notice }: { jobId: string; notice
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · spend (flagged preview)</span>
-          <b>Roll forward last year's spend</b>
-          <div className="sub">
-            Copy the prior reporting year's spend mappings — description, controlled category and emission factor — forward as fresh, unreviewed sources, re-pinning the factor version last year's report used. Amounts are not carried; enter this year's figures.
-          </div>
+          <b>Roll forward last year&apos;s spend <InfoTip label="Roll forward last year's spend">Copy the prior reporting year&apos;s spend mappings — description, controlled category and emission factor — forward as fresh, unreviewed sources, re-pinning the factor version last year&apos;s report used. Amounts are not carried; enter this year&apos;s figures.</InfoTip></b>
         </div>
         <span className={`nz-st ${pending.length ? "need" : "done"}`}>
           {state === "loading" ? "…" : `${pending.length} to roll forward`}

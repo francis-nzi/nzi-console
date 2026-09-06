@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postBrowserCommand, putBrowserCommand } from "@nzi/api-client";
+import { InfoTip } from "@nzi/ui";
 import {
   IMPORT_MAX_ROWS,
   SPEND_IMPORT_FIELDS,
@@ -129,8 +130,7 @@ export function SpendImportPanel({
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · spend import (flagged preview)</span>
-          <b>Import a spend ledger</b>
-          <div className="sub">Download the CSV template or upload the client&apos;s own export, map the columns once (remembered for this client), preview every row, then import. Rows land as pending Scope 3.1 sources for the standard sync and review.</div>
+          <b>Import a spend ledger <InfoTip label="Import a spend ledger">Download the CSV template or upload the client&apos;s own export, map the columns once (remembered for this client), preview every row, then import. Rows land as pending Scope 3.1 sources for the standard sync and review.</InfoTip></b>
         </div>
         <button type="button" className="nz-btn" onClick={downloadTemplate}>Download CSV template</button>
       </div>

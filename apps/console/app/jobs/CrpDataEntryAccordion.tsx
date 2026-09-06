@@ -19,7 +19,7 @@ import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRe
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 import { TemplateSearchBar } from "./TemplateSearchBar";
 import { ReuseYearPanel } from "./ReuseYearPanel";
-import { Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
+import { InfoTip, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -210,7 +210,6 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                     </button>
                     {isOpen ? (
                       <div className="nz-acc-body">
-                        <div className="nz-acc-kindnote">⌁ {KIND_NOTE[entry.category.kind]}</div>
                         {entry.rows.length ? (
                           <div className="nz-table-wrap">
                             <table className="nz-tbl">
@@ -240,6 +239,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                             onClick={() => { setEntryError(""); setAddingCode(addingCode === code ? null : code); }}>
                             {addingCode === code ? "Close" : "+ Add entry"}
                           </button>
+                          {KIND_NOTE[entry.category.kind] ? <InfoTip label={`${entry.category.name} — how data entry works`}>{KIND_NOTE[entry.category.kind]}</InfoTip> : null}
                         </div>
                         {addingCode === code ? (
                           <div className="nz-acc-extra">
