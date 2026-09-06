@@ -117,6 +117,35 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-dh h3{font-size:16px;font-weight:600;margin:5px 0 2px}
 .nz-dh .m{font-size:12px;color:var(--t2)}
 .nz-dbody{padding:12px 18px 8px;overflow:auto;flex:1}
+
+/* collapsed-by-default section (Collapsible) — data-entry UX review items 2 & 6 */
+.nz-collapsible{border-top:1px solid var(--line2)}
+.nz-collapsible:first-of-type{border-top:0}
+.nz-collapsible-h{width:100%;display:flex;align-items:center;gap:9px;padding:11px 2px;border:0;background:transparent;font:inherit;font-weight:600;font-size:12.5px;color:var(--t1);cursor:pointer;text-align:left}
+.nz-collapsible-h:hover{color:var(--pine)}
+.nz-collapsible-h .t{flex:1;min-width:0}
+.nz-collapsible-h .c{flex:none;font-size:11px;font-weight:600;color:var(--t3);background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+.nz-collapsible-chev{flex:none;color:var(--t3);transition:transform .18s ease}
+.nz-collapsible.open .nz-collapsible-chev{transform:rotate(90deg)}
+.nz-collapsible-b{padding:0 2px 14px}
+
+/* info tooltip (InfoTip) — one ⓘ replacing inline instruction blurbs (item 3) */
+.nz-infotip{position:relative;display:inline-flex;vertical-align:middle}
+.nz-infotip-btn{width:15px;height:15px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--t3);font-size:10px;font-weight:800;font-style:normal;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.nz-infotip-btn:hover,.nz-infotip-btn:focus-visible{border-color:var(--pine);color:var(--pine)}
+.nz-infotip-pop{position:absolute;z-index:20;top:calc(100% + 6px);left:0;width:230px;max-width:60vw;background:var(--midnight);color:#fff;font-size:11.5px;font-weight:400;line-height:1.45;letter-spacing:0;text-transform:none;padding:8px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(11,27,43,.22)}
+.nz-infotip:not(.open) .nz-infotip-pop{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;box-shadow:none}
+.nz-infotip-pop::before{content:"";position:absolute;top:-5px;left:10px;border:5px solid transparent;border-bottom-color:var(--midnight)}
+
+/* reworked row-detail drawer (item 2) — single column, key summary always visible */
+.nz-rd-keys{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;padding:12px;margin:2px 0 6px;background:var(--paper);border:1px solid var(--line2);border-radius:10px}
+.nz-rd-keys .kv{display:flex;flex-direction:column;gap:1px;min-width:0}
+.nz-rd-keys .kv .l{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--t3)}
+.nz-rd-keys .kv .v{font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.nz-rd-keys .kv .v.co2{color:var(--pine)}
+.nz-rd .nz-scope-fields{grid-template-columns:1fr}
+.nz-rd .nz-kv .v{overflow-wrap:anywhere;word-break:break-word}
+.nz-rd-foot{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--card);padding:12px 0 4px;border-top:1px solid var(--line2);margin-top:6px}
 .nz-banner{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:9px;font-size:12px;margin-bottom:10px;line-height:1.45}
 .nz-banner svg{width:15px;height:15px;flex:none;margin-top:1px;stroke-width:2;fill:none}
 .nz-banner.warn{background:#FFF4DC;color:#7A5808;border:1px solid #F1D89B}

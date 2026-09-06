@@ -4,6 +4,8 @@ import { CommandSearch } from "./CommandSearch";
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
 export { GatedButton } from "./GatedButton";
+export { Collapsible } from "./Collapsible";
+export { InfoTip } from "./InfoTip";
 
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"

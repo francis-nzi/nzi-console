@@ -22,7 +22,8 @@ import type {
 } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
-import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, TopBar, WorkspaceRail } from "@nzi/ui";
+import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
@@ -259,34 +260,6 @@ export function CrpScopeWorkspace({
         reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
         notice={setNotice}
       />
-      {selected.factorSource === "client" && selected.clientFactorVersionMoved ? (
-        <div className="nz-banner warn" role="note">
-          <div>
-            <b>Client factor version moved</b>
-            <div>This row is pinned to <b>{selected.factorVersion}</b>; the client factor has since been updated. Re-calculate to move it, and re-review — the pinned value still stands until you do (NZC-030).</div>
-          </div>
-        </div>
-      ) : null}
-      <div className="nz-sect">Calculation lineage</div>
-      {selected.lineage.length ? (
-        selected.lineage.map((x, i) => (
-          <div className="nz-lin" key={i}>
-            <div className="stepl">
-              {x.title}
-              <small>{x.detail}</small>
-            </div>
-          </div>
-        ))
-      ) : (
-        <div className="muted">No calculation lineage yet.</div>
-      )}
-      <div className="nz-sect">Provenance</div>
-      {Object.entries(selected.provenance).map(([k, v]) => (
-        <div className="nz-kv" key={k}>
-          <span className="k">{k}</span>
-          <span className="v">{v === null ? "—" : String(v)}</span>
-        </div>
-      ))}
     </EvidenceDrawer>
   ) : undefined;
 
@@ -762,6 +735,7 @@ function Editor({
     [enabled, setEnabled] = useState(row.enabled),
     [pending, setPending] = useState(false),
     [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? ""),
+    [showEvidence, setShowEvidence] = useState(false),
     [history,setHistory]=useState<Array<{id:string;at:string;actor:string;action:string;correlationId:string}>>([]),
     [historyState,setHistoryState]=useState<"loading"|"ready"|"failed">("loading");
   useEffect(()=>{const controller=new AbortController();fetch(`/api/isolated/jobs/${jobId}/scope-rows/${row.id}/history`,{cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(!Array.isArray(body.events))throw new Error();setHistory(body.events.filter((event:unknown)=>event&&typeof event==="object"&&"id" in event&&"at" in event&&"actor" in event&&"action" in event&&"correlationId" in event));setHistoryState("ready")}).catch(error=>{if(error?.name!=="AbortError")setHistoryState("failed")});return()=>controller.abort();},[jobId,row.id]);
@@ -835,101 +809,119 @@ function Editor({
       router.refresh();
     } else notice({ kind: "warn", text: errorText(r) });
   }
+  // The reworked drawer (data-entry UX review item 2): 7 key fields always
+  // visible, everything else in collapsed-by-default sections, single column.
+  const available = factors.filter((f) => f.scopes.includes(f.factorSource === "client" ? value.scope : value.scope.split(".")[0]!));
+  const factorKey = (f: FactorOption) => `${f.factorSource}:${f.clientFactorId ?? f.datasetId}|${f.factorId}`;
+  const selectedFactor = value.factorId ? `${value.factorSource ?? "dataset"}:${value.clientFactorId ?? value.datasetId}|${value.factorId}` : "";
+  const detail = rowSourceDetail(row);
+  const displayTco2e = row.overrideTco2e ?? row.calculatedTco2e;
+  const keyPairs: Array<[string, React.ReactNode, string?]> = [
+    ["Site", value.siteLabel ?? "Unallocated"],
+    ["Scope", crpScopeCategoryPath(value.scope).join(" › ")],
+    ["Category", row.categoryPath[row.categoryPath.length - 1] ?? crpScopeCategoryPath(value.scope).at(-1) ?? "—"],
+    ["Report label", value.reportLabel || value.sourceLabel],
+    ["Quantity", value.quantity ?? "—"],
+    ["UoM", value.unit ?? "—"],
+    ["tCO₂e", displayTco2e === null ? "—" : displayTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 }), "co2"],
+  ];
   return (
-    <>
-      <div
-        className={`nz-banner ${row.calculatedTco2e === null ? "warn" : "ok"}`}
-      >
-        {row.calculatedTco2e === null
-          ? "Save changes, then calculate."
-          : "Calculated evidence is available."}
+    <div className="nz-rd">
+      <div className={`nz-banner ${displayTco2e === null ? "warn" : "ok"}`}>
+        {displayTco2e === null ? "Save changes, then calculate." : "Calculated evidence is available."}
       </div>
-      <Fields value={value} change={setValue} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
-      <MonthlyActivityEditor value={value} change={setValue} reportingFrom={reportingFrom} reportingTo={reportingTo}/>
-      <div className="nz-sect">Evidence notes</div>
-      <textarea className="nz-notes" style={{width:"100%"}} value={value.notes??""} onChange={event=>setValue({...value,notes:event.target.value||null})} placeholder="Method, source context, assumptions or follow-up notes"/>
-      <div className="nz-sect">Reasoned override</div>
-      <p className="muted" style={{ fontSize: 12 }}>
-        Leave blank to use the calculated result. An override is recorded in the row lineage and always requires a reason.
-      </p>
-      <label className="nz-fl">
-        Override tCO₂e
-        <input className="nz-inp" type="number" min="0" step="any" value={value.overrideTco2e ?? ""} onChange={(e) => setValue({ ...value, overrideTco2e: e.target.value === "" ? null : Number(e.target.value) })} />
-      </label>
-      <label className="nz-fl">
-        Override reason
-        <textarea className="nz-notes" value={value.overrideReason ?? ""} onChange={(e) => setValue({ ...value, overrideReason: e.target.value || null })} placeholder="Required when an override value is entered" />
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />{" "}
-        Enabled
-      </label>
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button
-          className="nz-btn"
-          disabled={pending || row.calculatedTco2e !== null}
-          onClick={calculate}
-        >
-          Calculate
-        </button>
-        <button className="nz-btn pri" disabled={pending} onClick={save}>
-          Save and invalidate calculation
-        </button>
+
+      <div className="nz-rd-keys">
+        {keyPairs.map(([label, node, tone]) => (
+          <div className="kv" key={label}><span className="l">{label}</span><span className={`v${tone ? ` ${tone}` : ""}`}>{node}</span></div>
+        ))}
       </div>
-      <div className="nz-sect">Independent review</div>
-      <div
-        className={`nz-banner ${row.reviewStatus === "approved" ? "ok" : "warn"}`}
-      >
-        {row.reviewStatus === "approved"
-          ? `Approved by ${row.reviewedBy} at ${row.reviewedAt}.`
-          : row.reviewStatus === "rejected"
-            ? `Rejected: ${row.reviewerNote}`
-            : "Pending independent reviewer decision."}
+
+      <Collapsible title="Factor & calculation">
+        <label className="nz-fl">
+          Emission factor
+          <select className="nz-sel" value={selectedFactor} onChange={(e) => {
+            const f = available.find((x) => factorKey(x) === e.target.value);
+            setValue({ ...value, datasetId: f?.datasetId ?? null, factorId: f?.factorId ?? null, factorLabel: f?.label ?? null, factorVersion: f?.datasetVersion ?? null, unit: f?.activityUnit ?? value.unit, factorSource: f?.factorSource ?? "dataset", clientFactorId: f?.clientFactorId ?? null, isCustomEntry: f?.factorSource === "client" });
+          }}>
+            <option value="">No factor</option>
+            {available.map((f) => <option key={factorKey(f)} value={factorKey(f)}>{f.label} · {f.activityUnit}{f.synthetic ? " · DEMO" : ""}</option>)}
+          </select>
+        </label>
+        <div className="nz-kv"><span className="k">Factor set <InfoTip label="Factor set">The dataset and version the emission factor is pinned from. Frozen into the report snapshot at sign-off.</InfoTip></span><span className="v">{value.factorLabel ?? "—"}{value.factorVersion ? ` · ${value.factorVersion}` : ""}</span></div>
+        <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? "—" : row.calculatedTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
+        <div className="nz-scope-fields">
+          <label className="nz-fl">As-entered quantity<input className="nz-inp" type="number" min="0" step="any" value={value.sourceQuantity ?? ""} onChange={(e) => setValue({ ...value, sourceQuantity: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <label className="nz-fl">As-entered unit<input className="nz-inp" value={value.sourceUnit ?? ""} onChange={(e) => setValue({ ...value, sourceUnit: e.target.value || null })} /></label>
+        </div>
+        <p className="nz-hint">Reasoned override <InfoTip label="Reasoned override">Leave blank to use the calculated result. Entering a value records an override in the row&rsquo;s lineage and always requires a reason.</InfoTip></p>
+        <label className="nz-fl">Override tCO₂e<input className="nz-inp" type="number" min="0" step="any" value={value.overrideTco2e ?? ""} onChange={(e) => setValue({ ...value, overrideTco2e: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+        <label className="nz-fl">Override reason<textarea className="nz-notes" value={value.overrideReason ?? ""} onChange={(e) => setValue({ ...value, overrideReason: e.target.value || null })} placeholder="Required when an override value is entered" /></label>
+        <button className="nz-btn" disabled={pending || row.calculatedTco2e !== null} onClick={calculate}>Calculate</button>
+      </Collapsible>
+
+      <Collapsible title="Data quality">
+        <label className="nz-fl">Quality tier<select className="nz-sel" value={value.qualityTier ?? ""} onChange={(e) => setValue({ ...value, qualityTier: (e.target.value as ScopeQualityTier) || null })}><option value="">Not set</option>{qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}</select></label>
+        <label className="nz-fl">Data confidence <InfoTip label="Data confidence">NZC-044 — your confidence in the underlying data source (High / Medium / Low). Feeds the quality signals in the report.</InfoTip><select className="nz-sel" value={value.dataConfidence ?? ""} onChange={(e) => setValue({ ...value, dataConfidence: (e.target.value as "H" | "M" | "L") || null })}><option value="">Not set</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select></label>
+      </Collapsible>
+
+      <Collapsible title="Apportionment & site">
+        <label className="nz-fl">Apportionment % <InfoTip label="Apportionment">The share of this source attributed to the reporting boundary (e.g. a shared building).</InfoTip><input className="nz-inp" type="number" min="0" max="100" step="any" value={value.applyPct ?? 100} onChange={(e) => setValue({ ...value, applyPct: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+        <label className="nz-fl">Site<select className="nz-sel" value={value.siteId ?? ""} onChange={(e) => { const site = sites.find((item) => item.id === e.target.value); setValue({ ...value, siteId: site?.id ?? null, siteLabel: site?.name ?? null }); }}><option value="">Unallocated</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+      </Collapsible>
+
+      <Collapsible title={detail.title} count={detail.fields.length || undefined}>
+        {detail.fields.map((field) => <div className="nz-kv" key={field.label}><span className="k">{field.label}</span><span className="v">{field.value}</span></div>)}
+        <label className="nz-fl">Source label<input className="nz-inp" required value={value.sourceLabel} onChange={(e) => setValue({ ...value, sourceLabel: e.target.value })} /></label>
+        <label className="nz-fl">Report label <InfoTip label="Report label">How this source is named in the client report — independent of the internal source name.</InfoTip><input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => setValue({ ...value, reportLabel: e.target.value || null })} /></label>
+        <label className="nz-fl">{detail.kind === "vehicle" ? "Registration" : detail.kind === "spend" ? "Invoice date / reference" : "ID / reference"}<input className="nz-inp" maxLength={240} value={value.assetIdentifier ?? ""} onChange={(e) => setValue({ ...value, assetIdentifier: e.target.value || null })} /></label>
+        {value.scope === "3.1" && (
+          <label className="nz-fl">Purchased-goods category <InfoTip label="PG&S category">The controlled Purchased Goods &amp; Services category this spend line maps to. Drives the Scope 3.1 factor.</InfoTip><select className="nz-sel" value={value.purchasedGoodsCategoryId ?? ""} onChange={(e) => { const category = purchasedGoodsCategories.find((item) => item.id === e.target.value); setValue({ ...value, purchasedGoodsCategoryId: category?.id ?? null, purchasedGoodsCategoryLabel: category?.name ?? null }); }}><option value="">Uncategorised</option>{purchasedGoodsCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        )}
+        <label className="nz-fl">Report column heading<input className="nz-inp" value={value.columnText ?? ""} placeholder="Optional column heading" onChange={(e) => setValue({ ...value, columnText: e.target.value || null })} /></label>
+      </Collapsible>
+
+      <Collapsible title="Monthly activity">
+        <MonthlyActivityEditor value={value} change={setValue} reportingFrom={reportingFrom} reportingTo={reportingTo} />
+      </Collapsible>
+
+      <Collapsible title="Evidence & provenance" open={showEvidence} onOpenChange={setShowEvidence}>
+        <label className="nz-fl">Evidence notes<textarea className="nz-notes" value={value.notes ?? ""} onChange={(e) => setValue({ ...value, notes: e.target.value || null })} placeholder="Method, source context, assumptions or follow-up notes" /></label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, margin: "8px 0" }}><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Row is enabled (included in the report)</label>
+
+        {row.factorSource === "client" && row.clientFactorVersionMoved ? (
+          <div className="nz-banner warn" role="note"><div><b>Client factor version moved</b><div>This row is pinned to <b>{row.factorVersion}</b>; the client factor has since been updated. Re-calculate to move it, and re-review — the pinned value still stands until you do (NZC-030).</div></div></div>
+        ) : null}
+
+        <div className="nz-sect">Calculation lineage</div>
+        {row.lineage.length ? row.lineage.map((x, i) => <div className="nz-lin" key={i}><div className="stepl">{x.title}<small>{x.detail}</small></div></div>) : <div className="muted">No calculation lineage yet.</div>}
+
+        <div className="nz-sect">Provenance</div>
+        {Object.entries(row.provenance).map(([k, v]) => <div className="nz-kv" key={k}><span className="k">{k}</span><span className="v">{v === null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}</span></div>)}
+
+        <div className="nz-sect">Independent review</div>
+        <div className={`nz-banner ${row.reviewStatus === "approved" ? "ok" : "warn"}`}>
+          {row.reviewStatus === "approved" ? `Approved by ${row.reviewedBy} at ${row.reviewedAt}.` : row.reviewStatus === "rejected" ? `Rejected: ${row.reviewerNote}` : "Pending independent reviewer decision."}
+        </div>
+        <textarea className="nz-notes" style={{ width: "100%" }} value={reviewerNote} onChange={(e) => setReviewerNote(e.target.value)} placeholder="Reviewer note (required for rejection)" />
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8, flexWrap: "wrap" }}>
+          <GatedButton className="nz-btn" blocked={pending || !reviewerNote.trim()} blockedReason={!pending && !reviewerNote.trim() ? "A reviewer note is required to reject" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void review("rejected")}>Reject</GatedButton>
+          <GatedButton className="nz-btn pri" blocked={pending || (row.calculatedTco2e === null && row.overrideTco2e === null) || !row.qualityTier} blockedReason={!pending && (row.calculatedTco2e === null && row.overrideTco2e === null) ? "Calculate the row before approving" : !pending && !row.qualityTier ? "Set a quality tier before approving" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void review("approved")}>Approve row</GatedButton>
+        </div>
+
+        <div className="nz-sect">Activity history</div>
+        {historyState === "loading" ? <p className="muted" role="status">Loading immutable row history…</p> : historyState === "failed" ? <div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div> : history.length === 0 ? <p className="muted">No row events are recorded yet.</p> : <div>{history.map((event) => <div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_", " ")}</b><small>{new Date(event.at).toLocaleString("en-GB")} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
+
+        <div className="nz-sect">Reporting snapshot</div>
+        <p className="muted" style={{ fontSize: 12 }}>Creates an immutable, content-addressed snapshot only when every enabled row passes QA.</p>
+        <button className="nz-btn" disabled={pending} onClick={snapshot}>Create reviewed snapshot</button>
+      </Collapsible>
+
+      <div className="nz-rd-foot">
+        <button className="nz-btn pri" disabled={pending} onClick={save}>Save</button>
+        <button className="nz-btn" disabled={pending || row.calculatedTco2e !== null} onClick={calculate}>Calculate</button>
+        <button className="nz-btn" aria-expanded={showEvidence} onClick={() => setShowEvidence((prev) => !prev)}>History</button>
       </div>
-      <textarea
-        className="nz-notes"
-        style={{ width: "100%" }}
-        value={reviewerNote}
-        onChange={(e) => setReviewerNote(e.target.value)}
-        placeholder="Reviewer note (required for rejection)"
-      />
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          justifyContent: "flex-end",
-          marginTop: 8,
-        }}
-      >
-        <button
-          className="nz-btn"
-          disabled={pending || !reviewerNote.trim()}
-          onClick={() => review("rejected")}
-        >
-          Reject
-        </button>
-        <button
-          className="nz-btn pri"
-          disabled={pending || (row.calculatedTco2e === null && row.overrideTco2e === null) || !row.qualityTier}
-          onClick={() => review("approved")}
-        >
-          Approve row
-        </button>
-      </div>
-      <div className="nz-sect">Activity history</div>
-      {historyState==="loading"?<p className="muted" role="status">Loading immutable row history…</p>:historyState==="failed"?<div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div>:history.length===0?<p className="muted">No row events are recorded yet.</p>:<div>{history.map(event=><div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_"," ")}</b><small>{new Date(event.at).toLocaleString("en-GB")} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
-      <div className="nz-sect">Reporting snapshot</div>
-      <p className="muted" style={{ fontSize: 12 }}>
-        Creates an immutable, content-addressed snapshot only when every enabled
-        row passes QA.
-      </p>
-      <button className="nz-btn pri" disabled={pending} onClick={snapshot}>
-        Create reviewed snapshot
-      </button>
-    </>
+    </div>
   );
 }

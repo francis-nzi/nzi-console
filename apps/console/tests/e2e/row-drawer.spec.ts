@@ -4,14 +4,35 @@ import { discoverCrpJob } from "./lib/discover";
 import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
 
 // Data-entry UX review (docs/_handoff_DATA_ENTRY_UX_review.md) — the row-detail
-// drawer. Item 1: EVERY displayed row opens the shared right-hand drawer,
-// including rows that are not in the flat register's current filter (a
-// calculated + independently-approved row is not "needs attention", so before
-// the fix clicking it snapped the drawer to the first attention row instead).
+// drawer.
+//   Item 1: EVERY displayed row opens the shared right-hand drawer, including
+//   rows not in the flat register's current filter (a calculated + approved row
+//   is not "needs attention", so before the fix clicking it snapped the drawer
+//   to the first attention row).
+//   Item 2: the drawer is reworked to the prototype — 7 key fields always
+//   visible, everything else in collapsed-by-default sections, single column,
+//   the Source-detail section adapts to the row type, ⓘ tooltips.
 //
 // Behind `data-entry-accordion` (+ the per-adapter flags for the source
 // register). Hard precondition once the flag is live — the only skips are the
 // public-smoke gate and the target job's data state.
+
+const KEY_LABELS = ["Site", "Scope", "Category", "Report label", "Quantity", "UoM", "tCO₂e"];
+const SECTIONS = ["Factor & calculation", "Data quality", "Apportionment & site", "Monthly activity", "Evidence & provenance"];
+
+async function openFirstRowDrawer(page: Page, accordion: Locator): Promise<Locator> {
+  const headers = accordion.locator("button.nz-acc-h");
+  for (let i = 0; i < (await headers.count()); i += 1) {
+    const header = headers.nth(i);
+    if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  }
+  const firstRow = accordion.locator("tr.row").first();
+  test.skip((await firstRow.count()) === 0, "no category rows on this job");
+  await firstRow.click();
+  const drawer = page.locator("aside.nz-drawer");
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
 
 async function openAccordion(page: Page): Promise<{ accordion: Locator; errors: string[] }> {
   const job = await discoverCrpJob(page.request);
@@ -75,5 +96,66 @@ test.describe("Data-entry row-detail drawer", () => {
     await expect(drawer).toBeVisible();
     await expect(drawer.locator(".nz-dh .kick")).toContainText(/Scope row/);
     await expect(drawer.locator(".nz-dh h3")).not.toBeEmpty();
+  });
+
+  test("item 2 — the 7 key fields are always visible; the other sections are collapsed by default", async ({ page }) => {
+    const { accordion } = await openAccordion(page);
+    const drawer = await openFirstRowDrawer(page, accordion);
+
+    const keys = drawer.locator(".nz-rd-keys .kv");
+    await expect(keys).toHaveCount(KEY_LABELS.length);
+    for (const [i, label] of KEY_LABELS.entries()) {
+      await expect(keys.nth(i).locator(".l")).toHaveText(label);
+    }
+
+    // Every collapsible section is closed on open.
+    const sections = drawer.locator(".nz-collapsible");
+    await expect(sections.first()).toBeVisible();
+    for (const heading of SECTIONS) {
+      const header = drawer.locator(".nz-collapsible-h", { hasText: heading });
+      if ((await header.count()) === 0) continue;
+      await expect(header).toHaveAttribute("aria-expanded", "false");
+    }
+
+    // No sideways scroll inside the drawer.
+    const overflow = await drawer.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow, "the row drawer must not scroll horizontally").toBeLessThanOrEqual(1);
+  });
+
+  test("item 2 — a section expands on click and its ⓘ tooltip opens and closes by keyboard", async ({ page }) => {
+    const { accordion } = await openAccordion(page);
+    const drawer = await openFirstRowDrawer(page, accordion);
+
+    const factorHeader = drawer.locator(".nz-collapsible-h", { hasText: "Factor & calculation" });
+    await factorHeader.click();
+    await expect(factorHeader).toHaveAttribute("aria-expanded", "true");
+    const factorPanel = drawer.locator(".nz-collapsible.open", { has: factorHeader });
+    await expect(factorPanel.locator("select").first()).toBeVisible();
+
+    const info = factorPanel.locator(".nz-infotip").first();
+    test.skip((await info.count()) === 0, "no info tooltip in this section");
+    await info.locator("button.nz-infotip-btn").click();
+    await expect(info).toHaveClass(/open/);
+    await expect(info.locator(".nz-infotip-pop")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(info).not.toHaveClass(/open/);
+  });
+
+  test("item 2 — the Source detail section title adapts to the row type", async ({ page }) => {
+    const { accordion } = await openAccordion(page);
+    const headers = accordion.locator("button.nz-acc-h");
+    for (let i = 0; i < (await headers.count()); i += 1) {
+      const header = headers.nth(i);
+      if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+    }
+    // A Purchased Goods & Services row → "Spend detail (PG&S)" section.
+    const pgsCard = accordion.locator(".nz-acc-cat", { has: page.locator(".nz-acc-h", { hasText: /Purchased Goods/i }) });
+    test.skip((await pgsCard.count()) === 0, "job has no Purchased Goods & Services category");
+    const pgsRow = pgsCard.locator("tr.row").first();
+    test.skip((await pgsRow.count()) === 0, "no PG&S rows on this job");
+    await pgsRow.click();
+
+    const drawer = page.locator("aside.nz-drawer");
+    await expect(drawer.locator(".nz-collapsible-h", { hasText: "Spend detail (PG&S)" })).toBeVisible();
   });
 });

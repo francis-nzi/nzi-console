@@ -9,9 +9,9 @@ once live. Build order **1 → 5** (6 is the cross-cutting principle).
 | # | Item | Status |
 |---|---|---|
 | **1** | BUG — the row-detail drawer doesn't update on many Scope 3 / adapter rows | 🟢 built (PR #104) |
-| **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | ⚪ next |
-| **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | ⚪ planned |
-| **4** | "Import & templates" modal per category (Vehicles, Travel, Commuting, PG&S) — methods as tabs, reuse the accessible dialog | ⚪ planned |
+| **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | 🟢 built (PR #105) |
+| **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟡 component built (PR #105); roll-out to the remaining panel blurbs pending |
+| **4** | "Import & templates" modal per category (Vehicles, Travel, Commuting, PG&S) — methods as tabs, reuse the accessible dialog | ⚪ next |
 | **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | ⚪ planned |
 | **6** | Noise reduction overall — a category card at rest is just its rows + two actions | ⚪ folded through 2–5 |
 
@@ -61,19 +61,61 @@ already wired to `onOpenRow` — the defect was purely in how the target was res
 
 ---
 
-## Items 2–6
+## Item 2 — row-detail drawer reworked to the prototype
 
-Recorded from the hand-off; specs land with each PR.
+`docs/prototypes/row_drawer_v1.html`. The old drawer rendered the whole `Editor` at once (a flat 3-col
+`nz-scope-fields` grid that scrolled sideways, plus lineage / provenance / review / history / snapshot
+stacked below). Reworked:
 
-**2 — row-detail drawer rework** (`docs/prototypes/row_drawer_v1.html`): 7 key fields always visible (Site ·
-Scope · Category · Report label · Quantity · UoM · tCO₂e); everything else in **collapsed-by-default**
-sections (Factor & calculation · Data quality · Apportionment & site · Source detail · Monthly activity ·
-Evidence & provenance); single column, no horizontal scroll; the **Source detail** section adapts to the
-row type (vehicle → reg/make/model/fuel; spend → net/VAT/GL/PG&S category/invoice date). Reuse the
-assurance-drawer dialog/focus patterns.
+- **`@nzi/ui/Collapsible`** (new) — a lean collapsed-by-default disclosure (`aria-expanded` header +
+  `hidden` region, children mounted only when open). Uncontrolled by default; accepts `open` +
+  `onOpenChange` for the "History" footer button to open one section. Distinct from `StageSection`.
+- **`@nzi/ui/InfoTip`** (new, also item 3) — one ⓘ button + popup. Keyboard-reachable (`<button>`),
+  toggles on click/Enter/Space, dismisses on Escape or an outside pointer/focus. Text is always in the DOM
+  (CSS-clipped when closed) so `aria-describedby` works for a screen reader without opening it.
+- **`apps/console/app/jobs/rowSourceDetail.ts`** (new, pure) — `rowSourceDetail(row)` returns the
+  type-adaptive **Source detail** section: `Vehicle detail` (reg / make / model / fuel, from
+  `provenance.detail`), `Spend detail (PG&S)` (net / VAT / GL / PG&S category / invoice ref, from
+  `provenance.detail | provenance.spendDetail`; the row's PG&S label wins over the frozen one), or a
+  generic `Source detail`. Empty fields are dropped.
+- **`Editor`** (`CrpScopeWorkspace.tsx`) rebuilt: a status banner, then the **7 always-visible key
+  fields** (`.nz-rd-keys` — Site · Scope · Category · Report label · Quantity · UoM · tCO₂e), then six
+  **collapsed-by-default** `Collapsible` sections — Factor & calculation · Data quality · Apportionment &
+  site · {Source detail — adaptive title} · Monthly activity · Evidence & provenance (lineage,
+  provenance, the client-factor-moved note, independent review as `GatedButton`s, activity history,
+  reporting snapshot). A sticky footer: **Save · Calculate · History**. Single column
+  (`.nz-rd .nz-scope-fields{grid-template-columns:1fr}`), `overflow-wrap:anywhere` on provenance values —
+  no horizontal scroll. Inline instruction paragraphs replaced by ⓘ (Factor set · Reasoned override ·
+  Data confidence · Apportionment · Report label · PG&S category).
+- The lineage / provenance blocks the drawer wrapper rendered after `<Editor/>` moved **into** the
+  Evidence & provenance section.
 
-**3 — shared ⓘ tooltip**: one component in `@nzi/ui` replacing the standing instruction paragraphs
-(`KIND_NOTE`, the per-panel blurbs). Keyboard-reachable, dismissible (Esc / click-away).
+### Gate (item 2)
+
+| # | Check | Where |
+|---|---|---|
+| 1 | `rowSourceDetail` adapts to vehicle / spend / generic; PG&S label beats the frozen category; empty fields dropped; a 3.1 row with no frozen detail still shows the PG&S section | `rowSourceDetail.test.ts` (5) |
+| 2 | The 7 key fields render, in order, always visible | `row-drawer.spec.ts` — "7 key fields" |
+| 3 | Every other section is collapsed on open (`aria-expanded="false"`); the drawer does not scroll horizontally | `row-drawer.spec.ts` — "7 key fields" |
+| 4 | A section expands on click; its ⓘ opens on click and closes on Escape | `row-drawer.spec.ts` — "section expands / tooltip" |
+| 5 | A Purchased Goods & Services row shows the "Spend detail (PG&S)" section | `row-drawer.spec.ts` — "Source detail adapts" |
+| 6 | Save / Calculate / review / snapshot / history all still work (same commands, same endpoints — only the layout changed) | code review + `@nzi/console` build |
+| 7 | `npm run typecheck` (all workspaces) · build · unit suites green | ✅ |
+
+### Verification (item 2)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
+- `npm run test -w @nzi/console` — **126 / 126** (+5 `rowSourceDetail.test.ts`; `rowSourceDetail.test.ts`
+  added to the `test` script).
+- `row-drawer.spec.ts` (6) runs on the next rendered-acceptance pass.
+
+---
+
+## Items 3–6
+
+**3 — shared ⓘ tooltip**: the `InfoTip` component is built and in use in the row drawer (item 2). Remaining:
+replace the standing instruction paragraphs elsewhere — `CrpDataEntryAccordion`'s `KIND_NOTE` strip, the
+`nz-config-head .sub` blurbs on the adapter panels — with ⓘ, keeping the panels quiet.
 
 **4 — "Import & templates" modal**: one button per category (Company Vehicles, Business Travel, Commuting,
 PG&S) opening one large accessible modal (reuse the `Drawer` dialog primitive — focus trap, Esc, return
