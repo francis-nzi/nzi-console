@@ -1,0 +1,218 @@
+<title>Row Detail Drawer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2; --panel:#FFFFFF; --panel-2:#F7FAF8;
+  --ink:#14201A; --ink-2:#3C4A43; --muted:#66746C;
+  --line:#E2E8E3; --line-2:#EDF1ED;
+  --accent:#0B7A46; --accent-d:#095C35;
+  --s1:#FF5C48; --s2:#E0A11B; --s3:#0BA75E;
+  --ok:#0B7A46; --ok-bg:#E6F4EC; --ok-line:#BFE4CF;
+  --info:#5A6B93; --info-bg:#EEF1F8;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,Menlo,Consolas,monospace;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512; --panel:#141C18; --panel-2:#101713;
+  --ink:#E8EFEA; --ink-2:#AFBCB4; --muted:#7E8D84;
+  --line:#26302B; --line-2:#1D2621;
+  --accent:#37C07E; --accent-d:#59CE93;
+  --ok:#37C07E; --ok-bg:#122A1E; --ok-line:#1F4632;
+  --info:#93A2C7; --info-bg:#1A2030;
+}}
+:root[data-theme="dark"]{
+  --ground:#0E1512; --panel:#141C18; --panel-2:#101713;
+  --ink:#E8EFEA; --ink-2:#AFBCB4; --muted:#7E8D84;
+  --line:#26302B; --line-2:#1D2621;
+  --accent:#37C07E; --accent-d:#59CE93;
+  --ok:#37C07E; --ok-bg:#122A1E; --ok-line:#1F4632;
+  --info:#93A2C7; --info-bg:#1A2030;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 22px 60px}
+h1,h2,h3{margin:0;letter-spacing:-.01em}
+.lede{color:var(--ink-2);max-width:64ch;margin:6px 0 22px}
+.lede b{color:var(--ink)}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.grid{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+
+/* row picker */
+.rows{display:flex;flex-direction:column;gap:8px}
+.rows .h{font-size:12px;color:var(--muted);margin-bottom:2px}
+.rowbtn{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;font:inherit;display:flex;gap:10px;align-items:flex-start}
+.rowbtn:hover{border-color:var(--accent)}
+.rowbtn.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.rowbtn .sd{width:9px;height:9px;border-radius:3px;margin-top:5px;flex:0 0 auto}
+.rowbtn .nm{font-weight:600;display:block}
+.rowbtn .mt{font-size:12px;color:var(--muted);margin-top:1px;display:block}
+.rowbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* drawer */
+.drawer{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(18,33,27,.05)}
+.dh{padding:16px 18px;border-bottom:1px solid var(--line-2)}
+.dh .ctx{display:flex;justify-content:space-between;align-items:center}
+.dh h2{font-size:17px;margin:3px 0 2px}
+.dh .sc{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2)}
+.dh .sc i{width:8px;height:8px;border-radius:2px}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--ok);background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:20px;padding:3px 9px}
+
+/* key summary */
+.keys{padding:14px 18px;background:var(--panel-2);border-bottom:1px solid var(--line-2)}
+.keys .kk{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px}
+.kv .l{font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.kv .v{font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums}
+.kv .v.big{font-size:16px}
+.kv .v.co2{color:var(--accent-d)}
+
+/* sections */
+.sec{border-bottom:1px solid var(--line-2)}
+.sec:last-child{border-bottom:0}
+.sec>button{width:100%;background:transparent;border:0;font:inherit;cursor:pointer;display:flex;align-items:center;gap:9px;padding:13px 18px;color:var(--ink)}
+.sec>button:hover{background:var(--panel-2)}
+.sec>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.sec .tt{font-weight:600;flex:1;text-align:left}
+.sec .chev{transition:transform .18s;color:var(--muted)}
+.sec.open .chev{transform:rotate(90deg)}
+.sec .cnt{font-size:11.5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+.body{display:none;padding:2px 18px 16px}
+.sec.open .body{display:block}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f.full{grid-column:1/-1}
+.f .l{font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:5px}
+.f .inp{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--panel);font:inherit;font-size:13.5px;color:var(--ink);min-height:34px;display:flex;align-items:center;word-break:break-word}
+.f .inp.ph{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid var(--line);background:var(--panel-2)}
+
+/* info icon */
+.info{position:relative;display:inline-flex}
+.info button{width:15px;height:15px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:10px;font-weight:800;cursor:pointer;display:grid;place-items:center;padding:0;line-height:1}
+.info button:hover,.info button:focus-visible{border-color:var(--info);color:var(--info);outline:none}
+.info .pop{position:absolute;z-index:5;top:20px;left:-8px;width:220px;background:var(--ink);color:#fff;font-size:12px;font-weight:400;line-height:1.4;padding:9px 11px;border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.22);display:none}
+:root[data-theme="dark"] .info .pop, :root:not([data-theme="light"]) .info .pop{background:#000}
+.info.show .pop{display:block}
+.info .pop::before{content:"";position:absolute;top:-5px;left:12px;border:5px solid transparent;border-bottom-color:var(--ink)}
+
+/* footer */
+.foot{display:flex;gap:8px;padding:14px 18px;border-top:1px solid var(--line-2);flex-wrap:wrap}
+.btn{font:inherit;font-weight:600;font-size:13px;border-radius:9px;padding:9px 15px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.legend{margin-top:18px;font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+.legend b{color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">NZI Console · data entry</div>
+  <h1>Row detail drawer — reworked</h1>
+  <p class="lede">The right-hand drawer, cut down to the essentials. <b>Key data shows immediately</b> — site, scope, category, report label, quantity, UoM, tCO₂e — and everything else lives in <b>collapsible sections you open only when needed</b>. One column, no sideways scroll. Inline instructions are gone; each field carries an <b>ⓘ</b> that explains it on demand. Pick a row to see the drawer adapt to its type (a vehicle vs a spend line).</p>
+
+  <div class="grid">
+    <div class="rows">
+      <div class="h">Scope 3 &amp; Scope 1 rows — click to open</div>
+      <button class="rowbtn on" data-row="vehicle"><span class="sd" style="background:var(--s1)"></span><span><span class="nm">Diesel — company vehicles</span><span class="mt">Scope 1 · Company Vehicles</span></span></button>
+      <button class="rowbtn" data-row="spend"><span class="sd" style="background:var(--s3)"></span><span><span class="nm">Purchased goods — spend</span><span class="mt">Scope 3 · Purchased Goods &amp; Services</span></span></button>
+      <div class="hint">In the current build, clicking a spend / PG&amp;S row doesn't update the drawer — this shows the intended behaviour: every row opens here.</div>
+    </div>
+
+    <div class="drawer" id="drawer"><!-- rendered by JS --></div>
+  </div>
+
+  <div class="legend">
+    <span><b>Always visible:</b> the 7 key fields</span>
+    <span><b>Collapsed by default:</b> factor &amp; calc · quality · apportionment · monthly · source detail · evidence · provenance</span>
+    <span><b>ⓘ</b> replaces inline help</span>
+  </div>
+</div>
+
+<script>
+const ROWS = {
+  vehicle: {
+    name:"Diesel — company vehicles", scope:"Scope 1", scopeText:"Scope 1 · Direct emissions", sc:"var(--s1)",
+    keys:{ site:"Head Office — London", scope:"Scope 1 · Direct", category:"Company Vehicles", label:"Diesel — company vehicles", qty:"48,200", uom:"litres", co2:"129.3" },
+    factor:[["Activity","Passenger Vehicles: Average Car Diesel"],["Factor set","DEFRA 2024 · v1"],["Calculated tCO₂e","129.3"],["Reasoned override","—"]],
+    quality:[["Quality tier","Measured"],["Data confidence","M — Medium"]],
+    appor:[["Apply %","100"],["As-entered","48,200 litres"]],
+    monthly:"Annual figure — no monthly split entered.",
+    detailTitle:"Vehicle detail", detail:[["Registration","KU69 AAA"],["Make","Volkswagen"],["Model","Transporter"],["Fuel","Diesel"]],
+    review:[["Version","v1"],["Review","Approved · A. Shaw"],["Lineage","Factor → activity → row"]]
+  },
+  spend: {
+    name:"Purchased goods — spend", scope:"Scope 3", scopeText:"Scope 3 · Value chain", sc:"var(--s3)",
+    keys:{ site:"Manchester operations", scope:"Scope 3 · Value chain", category:"Purchased Goods & Services", label:"Purchased goods — spend", qty:"4,100,000", uom:"GBP", co2:"686.3" },
+    factor:[["Activity","CEDA sector average"],["Factor set","CEDA 2025 · v1"],["Calculated tCO₂e","686.3"],["Reasoned override","—"]],
+    quality:[["Quality tier","Spend-based"],["Data confidence","L — Low"]],
+    appor:[["Apply %","100"],["As-entered","£4,100,000"]],
+    monthly:"Annual figure — no monthly split entered.",
+    detailTitle:"Spend detail (PG&S)", detail:[["Net value","£4,100,000"],["VAT %","20"],["GL code","7504"],["PG&S category","CEDA sector average"],["Invoice date","14/03/2025"]],
+    review:[["Version","v1"],["Review","Approved · A. Shaw"],["Lineage","Ledger line → factor → Scope 3.1 row"]]
+  }
+};
+const INFO = {
+  "Data confidence":"NZC-044 — your confidence in the underlying data source (High / Medium / Low). Feeds the quality signals in the report.",
+  "Reasoned override":"Leave blank to use the calculated result. Entering a value records an override in the row's lineage and always requires a reason.",
+  "Apply %":"Apportionment — the share of this source attributed to the reporting boundary (e.g. a shared building).",
+  "Factor set":"The dataset and version the emission factor was pinned from. Frozen into the report snapshot at sign-off.",
+  "PG&S category":"The controlled Purchased Goods & Services category this spend line maps to. Drives the Scope 3.1 factor.",
+  "Report label":"How this source is named in the client report — independent of the internal source name."
+};
+function infoIcon(label){
+  if(!INFO[label]) return "";
+  return `<span class="info"><button aria-label="About ${label}" data-tip>i</button><span class="pop">${INFO[label]}</span></span>`;
+}
+function fieldRows(pairs){
+  return pairs.map(([l,v])=>`<div class="f"><span class="l">${l}${infoIcon(l)}</span><span class="inp${v==="—"?" ph":""}">${v}</span></div>`).join("");
+}
+function section(id,title,count,pairs,open){
+  return `<div class="sec${open?" open":""}" data-sec="${id}">
+    <button aria-expanded="${open?"true":"false"}"><svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="tt">${title}</span>${count?`<span class="cnt">${count}</span>`:""}</button>
+    <div class="body"><div class="fields">${fieldRows(pairs)}</div></div>
+  </div>`;
+}
+function render(key){
+  const r=ROWS[key];
+  document.getElementById("drawer").innerHTML=`
+    <div class="dh">
+      <div class="ctx"><span class="eyebrow">Scope row · v1</span><span class="status">✓ Calculated evidence available</span></div>
+      <h2>${r.name}</h2>
+      <span class="sc"><i style="background:${r.sc}"></i>${r.scopeText}</span>
+    </div>
+    <div class="keys"><div class="kk">
+      <div class="kv"><div class="l">Site</div><div class="v">${r.keys.site}</div></div>
+      <div class="kv"><div class="l">Scope</div><div class="v">${r.keys.scope}</div></div>
+      <div class="kv"><div class="l">Category</div><div class="v">${r.keys.category}</div></div>
+      <div class="kv"><div class="l">Report label</div><div class="v">${r.keys.label}</div></div>
+      <div class="kv"><div class="l">Quantity</div><div class="v big">${r.keys.qty}</div></div>
+      <div class="kv"><div class="l">UoM</div><div class="v big">${r.keys.uom}</div></div>
+      <div class="kv"><div class="l">tCO₂e</div><div class="v big co2">${r.keys.co2}</div></div>
+    </div></div>
+    ${section("factor","Factor & calculation",null,r.factor,false)}
+    ${section("quality","Data quality",null,r.quality,false)}
+    ${section("appor","Apportionment & site",null,r.appor,false)}
+    ${section("detail",r.detailTitle,String(r.detail.length),r.detail,false)}
+    ${section("monthly","Monthly activity",null,[["Monthly split",r.monthly]],false)}
+    ${section("review","Evidence & provenance",null,r.review,false)}
+    <div class="foot"><button class="btn pri">Save</button><button class="btn">Recalculate</button><button class="btn">History</button></div>
+  `;
+  wire();
+}
+function wire(){
+  document.querySelectorAll(".sec>button").forEach(b=>b.addEventListener("click",()=>{
+    const sec=b.closest(".sec");const open=sec.classList.toggle("open");b.setAttribute("aria-expanded",open?"true":"false");
+  }));
+  document.querySelectorAll(".info>button[data-tip]").forEach(b=>{
+    b.addEventListener("click",e=>{e.stopPropagation();const w=b.closest(".info");const on=w.classList.contains("show");document.querySelectorAll(".info.show").forEach(x=>x.classList.remove("show"));if(!on)w.classList.add("show");});
+  });
+}
+document.addEventListener("click",()=>document.querySelectorAll(".info.show").forEach(x=>x.classList.remove("show")));
+document.querySelectorAll(".rowbtn").forEach(btn=>btn.addEventListener("click",()=>{
+  document.querySelectorAll(".rowbtn").forEach(x=>x.classList.remove("on"));btn.classList.add("on");
+  render(btn.dataset.row);
+}));
+render("vehicle");
+</script>
