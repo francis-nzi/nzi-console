@@ -28,7 +28,7 @@ import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
 import {CrpAssuranceStage} from "./CrpAssuranceStage";
-import {filterScopeRows,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
+import {filterScopeRows,resolveSelectedScopeRow,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 import {ClientFactorPanel} from "./ClientFactorPanel";
 import {EmissionSourceRegister} from "./EmissionSourceRegister";
@@ -168,7 +168,7 @@ export function CrpScopeWorkspace({
     return{ok:false,message:errorText(result)};
   }
   const visibleRows=filterScopeRows(rows,registerFilter),attentionCount=rows.filter(scopeRowNeedsAttention).length;
-  const selected = visibleRows.find((r) => r.id === selectedId)??visibleRows[0]??rows.find((r)=>r.id===selectedId)??rows[0];
+  const selected = resolveSelectedScopeRow(rows, visibleRows, selectedId);
   const registerFilters:Array<{id:ScopeRegisterFilter;label:string;count:number}>=[{id:"attention",label:"Needs attention",count:attentionCount},{id:"calculation",label:"Calculation",count:qa.calculationMissing},{id:"quality",label:"Quality",count:qa.qualityMissing},{id:"review",label:"Review",count:qa.independentReviewPending},{id:"rejected",label:"Rejected",count:qa.rejected},{id:"all",label:"All rows",count:rows.length}];
   const openRegister=(filter:ScopeRegisterFilter)=>{
     if(accordionOn){setAccordionLens(filter==="all"?"category":"attention");requestAnimationFrame(()=>document.getElementById("data-entry-accordion")?.scrollIntoView({behavior:"smooth",block:"start"}));return;}
@@ -328,7 +328,7 @@ export function CrpScopeWorkspace({
       {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
     </>
   );
-  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice}/>;
+  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
   const releaseControl = <>
     {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>

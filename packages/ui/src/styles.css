@@ -82,6 +82,9 @@ a{color:inherit}
 /* gated-action pattern (WCAG 4.1.2): the control stays focusable, the reason is announced */
 .nz-gated-reason{color:var(--t3);font-size:12px}
 [role="tab"][aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+/* link-style button — a real <button> that reads as inline text (e.g. a row name that opens the detail drawer) */
+.nz-linkish{appearance:none;border:0;background:none;padding:0;margin:0;font:inherit;font-weight:600;color:var(--t1);text-align:left;cursor:pointer}
+.nz-linkish:hover{text-decoration:underline;text-underline-offset:2px}
 .nz-btn:focus-visible,.nz-inp:focus-visible,.nz-sel:focus-visible,.nz-notes:focus-visible,.nz-nav a:focus-visible,a:focus-visible,button:focus-visible,[role="tab"]:focus-visible{outline:3px solid #0B7A4B;outline-offset:3px}
 
 .nz-body{padding:0 24px 40px;overflow:auto}
