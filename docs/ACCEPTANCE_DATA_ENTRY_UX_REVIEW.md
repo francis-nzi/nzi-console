@@ -10,7 +10,7 @@ once live. Build order **1 → 5** (6 is the cross-cutting principle).
 |---|---|---|
 | **1** | BUG — the row-detail drawer doesn't update on many Scope 3 / adapter rows | 🟢 built (PR #104) |
 | **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | 🟢 built (PR #105) |
-| **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟡 component built (PR #105); roll-out to the remaining panel blurbs pending |
+| **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟢 built (PR #105 component, PR #106 roll-out) |
 | **4** | "Import & templates" modal per category (Vehicles, Travel, Commuting, PG&S) — methods as tabs, reuse the accessible dialog | ⚪ next |
 | **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | ⚪ planned |
 | **6** | Noise reduction overall — a category card at rest is just its rows + two actions | ⚪ folded through 2–5 |
@@ -111,11 +111,36 @@ stacked below). Reworked:
 
 ---
 
-## Items 3–6
+## Item 3 — ⓘ instead of standing instruction paragraphs (systemic)
 
-**3 — shared ⓘ tooltip**: the `InfoTip` component is built and in use in the row drawer (item 2). Remaining:
-replace the standing instruction paragraphs elsewhere — `CrpDataEntryAccordion`'s `KIND_NOTE` strip, the
-`nz-config-head .sub` blurbs on the adapter panels — with ⓘ, keeping the panels quiet.
+The `InfoTip` component (built in item 2) rolled out across the staff data-entry surface:
+
+- `CrpDataEntryAccordion` — the always-visible `.nz-acc-kindnote` "⌁ …" strip inside every expanded
+  category is removed; the same text is now an ⓘ next to "+ Add entry".
+- The re-homed adapter panels drop their `<div className="sub">…</div>` head blurb for an ⓘ on the panel
+  title: `SpendLedgerAdapter`, `SpendImportPanel`, `SpendRollforwardPanel`, `CommutingBulkPanel`,
+  `VehicleBulkPanel`, `EmissionSourceRegister`.
+- Not touched: the client **portal** accordion (`PortalDataEntryAccordion`) keeps its kind-note — a
+  different audience and surface; the Setup-stage config panels (Target / Intensity / Site / PG&S /
+  Client factor) — Setup, not data entry.
+
+### Gate (item 3)
+
+| # | Check | Where |
+|---|---|---|
+| 1 | `InfoTip` is keyboard-operable (`<button>`, toggles on Enter/Space) and dismisses on Escape / outside click; the tip text is always in the a11y tree (`aria-describedby`) | `row-drawer.spec.ts` — "section expands / tooltip"; `InfoTip.tsx` review |
+| 2 | The accordion's `.nz-acc-kindnote` strip is gone; an ⓘ sits in the category foot instead | `row-drawer.spec.ts` — "category kind-note is an ⓘ" |
+| 3 | Adapter panels render an ⓘ in the head, no `.sub` blurb | code review + build |
+| 4 | `npm run typecheck` · build · unit suites green | ✅ |
+
+### Verification (item 3)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green ·
+  `npm run test -w @nzi/console` — 126 / 126.
+
+---
+
+## Items 4–6
 
 **4 — "Import & templates" modal**: one button per category (Company Vehicles, Business Travel, Commuting,
 PG&S) opening one large accessible modal (reuse the `Drawer` dialog primitive — focus trap, Esc, return
