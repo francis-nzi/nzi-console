@@ -11,8 +11,8 @@ once live. Build order **1 → 5** (6 is the cross-cutting principle).
 | **1** | BUG — the row-detail drawer doesn't update on many Scope 3 / adapter rows | 🟢 built (PR #104) |
 | **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | 🟢 built (PR #105) |
 | **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟢 built (PR #105 component, PR #106 roll-out) |
-| **4** | "Import & templates" modal per category (Vehicles, Travel, Commuting, PG&S) — methods as tabs, reuse the accessible dialog | ⚪ next |
-| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | ⚪ planned |
+| **4** | "Import & templates" modal per category — methods as tabs, reuse the accessible dialog | 🟢 built (PR #107) — Vehicles / Commuting / PG&S; Business Travel tab lands with item 5 |
+| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | ⚪ next |
 | **6** | Noise reduction overall — a category card at rest is just its rows + two actions | ⚪ folded through 2–5 |
 
 ---
@@ -140,13 +140,49 @@ The `InfoTip` component (built in item 2) rolled out across the staff data-entry
 
 ---
 
-## Items 4–6
+## Item 4 — "Import & templates" modal per category
 
-**4 — "Import & templates" modal**: one button per category (Company Vehicles, Business Travel, Commuting,
-PG&S) opening one large accessible modal (reuse the `Drawer` dialog primitive — focus trap, Esc, return
-focus, `aria-modal`), methods as tabs (Paste a list · Download template / Upload CSV · Roll forward for
-PG&S). Wide preview scrolls inside the modal. Keep "+ Add entry" and the template search on the page. The
-per-entity roll-up register stays on-page / in the drawer, not in the modal.
+The bulk panels (`SpendRollforwardPanel`, `SpendLedgerAdapter`, `SpendImportPanel` for PG&S;
+`CommutingBulkPanel`; `VehicleBulkPanel`) stacked always-open in each category card body — most of the
+card's vertical noise. Now one **"Import & templates"** button per category opens them in a modal.
+
+- **`@nzi/ui/Drawer`** gains `dismissOnOutsideClick` — a pointer-down directly on the dialog root (used as
+  the centered-modal backdrop) closes it. Escape and the ✕ already close; focus still traps + restores.
+- **`CrpScopeWorkspace.categoryImport(category)`** replaces `categoryExtras` — returns `{ title, body } |
+  null`. For PG&S the `body` is `<ImportMethods>` (a local `Tabs` + `TabPanel` wrapper): **Paste a list**
+  (`SpendLedgerAdapter`) · **Download template / Upload CSV** (`SpendImportPanel`) · **Roll forward last
+  year** (`SpendRollforwardPanel`), each tab only present if its flag is on. Commuting / Vehicles have a
+  single method, so no tab strip. `null` when no adapter flag is on → no button.
+- **`CrpDataEntryAccordion`** renders the "Import & templates" button in `.nz-acc-foot` when
+  `categoryImport(category)` is non-null, and one `<Drawer className="nz-import-modal">` at the section
+  root holding the active category's `body`. The `.nz-import-modal` root is the dim backdrop + centering;
+  `.nz-import-modal-card` (`max-height:90vh`, internal scroll) holds a header (title + ✕) and the body.
+  Wide preview tables keep their own `overflow-x:auto` — they scroll inside the modal, the page never does.
+- Untouched, as the brief requires: **"+ Add entry"** (per category) and the **template search**
+  (`TemplateSearchBar`, top of the surface) stay on the page; the **per-entity roll-up register**
+  (`EmissionSourceRegister`) stays on the page (it was never in `categoryExtras`).
+- The legacy pre-accordion surface keeps the panels inline (that path is being retired).
+
+### Gate (item 4)
+
+| # | Check | Where |
+|---|---|---|
+| 1 | The bulk panels are no longer in the always-open card body; an "Import & templates" button is | `accordion.spec.ts` — "re-homed adapters … modal" |
+| 2 | The button opens a `role="dialog"` + `aria-modal` modal; PG&S shows the three methods as tabs, each revealing its panel | same |
+| 3 | Escape closes the modal and returns focus to the trigger; ✕ closes it | same |
+| 4 | The adapter a11y specs still reach their grids (through the modal on the accordion surface, inline on the legacy one) | `spend-adapter.spec.ts` · `commuting-bulk.spec.ts` · `vehicle-bulk.spec.ts` via `lib/importModal.ts` |
+| 5 | No new flag — reuses `spend` / `spend-import` / `commuting` / `vehicle` | code review |
+| 6 | `npm run typecheck` · build · unit suites green | ✅ |
+
+### Verification (item 4)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green ·
+  `npm run test -w @nzi/console` — 126 / 126.
+- `accordion.spec.ts` + the three adapter specs run on the next rendered-acceptance pass.
+
+---
+
+## Items 5–6
 
 **5 — Business Travel multi-mode + consolidation**: generalise the per-entity roll-up (currently hard-scoped
 to Company Vehicles + Employee Commuting) into a capability any many-sub-item category can use; Business

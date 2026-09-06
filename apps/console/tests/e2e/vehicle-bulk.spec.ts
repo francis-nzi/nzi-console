@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
 import { collectPageErrors } from "./lib/screen";
+import { openImportModal } from "./lib/importModal";
 
 // S1.2 gate — rendered a11y + responsive of the Company Vehicles bulk-paste grid
 // (docs/ACCEPTANCE_S1_SOURCE_REGISTER.md, S1.2). Skips until a staff account is
@@ -28,8 +29,9 @@ test.describe("S1.2 — company vehicles bulk grid rendered acceptance", () => {
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
 
+    const opened = await openImportModal(page, /Company Vehicles/);
     const panel = page.locator("#vehicle-bulk");
-    test.skip((await panel.count()) === 0, "vehicle not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'vehicle')");
+    test.skip(!opened || (await panel.count()) === 0, "vehicle not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'vehicle'), or Scope 1 company-vehicles not on this job");
     await panel.getByLabel("Vehicle rows").fill(SAMPLE);
     await panel.getByRole("button", { name: "Parse rows" }).click();
     await expect(panel.locator("table.nz-tbl")).toBeVisible();

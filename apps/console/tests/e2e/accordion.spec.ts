@@ -86,34 +86,39 @@ test.describe("UX1 — CRP data-entry accordion rendered acceptance", () => {
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
 
-  test("re-homed adapters appear inside their category sections (B4 / S1)", async ({ page }) => {
+  test("the re-homed adapters live in a per-category 'Import & templates' modal (UX review item 4)", async ({ page }) => {
     const { accordion, errors } = await openJobAccordion(page);
 
     const pgs = await expandCategory(accordion, "Purchased Goods and Services");
     test.skip(!pgs, "Scope 3 not included on this job");
-    await expect(
-      pgs!.locator("#spend-import"),
-      "spend-import panel missing — is 'spend-import' in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2?",
-    ).toBeVisible();
-    await expect(
-      pgs!.locator("#spend-ledger-adapter"),
-      "spend ledger adapter missing — is 'spend' in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2?",
-    ).toBeVisible();
 
-    const commuting = await expandCategory(accordion, "Employee Commuting");
-    if (commuting) {
-      await expect(
-        commuting.locator("#commuting-bulk"),
-        "commuting bulk panel missing — is 'commuting' in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2?",
-      ).toBeVisible();
-    }
+    // The bulk panels are NOT in the always-open card body any more.
+    await expect(pgs!.locator("#spend-import")).toHaveCount(0);
+    await expect(pgs!.locator("#spend-ledger-adapter")).toHaveCount(0);
+
+    await pgs!.getByRole("button", { name: /Import & templates/ }).click();
+    const modal = page.locator('[role="dialog"].nz-import-modal');
+    await expect(modal).toBeVisible();
+    await expect(modal).toHaveAttribute("aria-modal", "true");
+
+    // Methods as tabs; each reveals its panel.
+    await modal.getByRole("tab", { name: "Paste a list" }).click();
+    await expect(modal.locator("#spend-ledger-adapter")).toBeVisible();
+    await modal.getByRole("tab", { name: /Upload CSV/ }).click();
+    await expect(modal.locator("#spend-import")).toBeVisible();
+    await modal.getByRole("tab", { name: /Roll forward/ }).click();
+    await expect(modal.locator("#spend-rollforward")).toBeVisible();
+
+    // Escape closes it and returns focus to the trigger.
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(pgs!.getByRole("button", { name: /Import & templates/ })).toBeFocused();
 
     const vehicles = await expandCategory(accordion, "Company Vehicles");
     if (vehicles) {
-      await expect(
-        vehicles.locator("#vehicle-bulk"),
-        "vehicle bulk panel missing — is 'vehicle' in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2?",
-      ).toBeVisible();
+      await vehicles.getByRole("button", { name: /Import & templates/ }).click();
+      await expect(page.locator('[role="dialog"].nz-import-modal #vehicle-bulk')).toBeVisible();
+      await page.locator('[role="dialog"].nz-import-modal').getByRole("button", { name: /Close import/ }).click();
     }
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);

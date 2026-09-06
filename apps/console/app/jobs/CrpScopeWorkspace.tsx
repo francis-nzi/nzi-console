@@ -22,7 +22,7 @@ import type {
 } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
-import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { WorkflowStageControl } from "./WorkflowStageControl";
@@ -116,6 +116,18 @@ const errorText = (r: {
     ? (r.issues?.[0]?.message ?? r.message ?? "Validation failed.")
     : (r.message ?? "Command failed.");
 
+/** The "Import & templates" modal body — the bulk methods as tabs (item 4). */
+function ImportMethods({ idBase, tabs }: { idBase: string; tabs: Array<{ id: string; label: string; node: React.ReactNode }> }) {
+  const [active, setActive] = useState(tabs[0]?.id ?? "");
+  if (tabs.length <= 1) return <>{tabs[0]?.node ?? null}</>;
+  return (
+    <>
+      <Tabs items={tabs.map((tab) => ({ id: tab.id, label: tab.label }))} value={active} onChange={setActive} ariaLabel="Import method" idBase={idBase} className="nz-import-methods" />
+      {tabs.map((tab) => <TabPanel key={tab.id} id={tab.id} idBase={idBase} active={active === tab.id}>{tab.node}</TabPanel>)}
+    </>
+  );
+}
+
 export function CrpScopeWorkspace({
   job,
   rows,
@@ -177,14 +189,18 @@ export function CrpScopeWorkspace({
   };
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
   const spendReportingMonths = reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`);
-  const categoryExtras=(category:ApplicableCategory)=>{
-    if(category.code==="3.1")return <>
-      {dataEntryAdapterEnabled("spend")&&<SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
-      {dataEntryAdapterEnabled("spend")&&<SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
-      {dataEntryAdapterEnabled("spend-import")&&<SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
-    </>;
-    if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>:null;
-    if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>:null;
+  // Accordion surface (data-entry UX review item 4): one "Import & templates"
+  // modal per category, the bulk methods as tabs inside it.
+  const categoryImport=(category:ApplicableCategory):{title:string;body:React.ReactNode}|null=>{
+    if(category.code==="3.1"){
+      const tabs:Array<{id:string;label:string;node:React.ReactNode}>=[];
+      if(dataEntryAdapterEnabled("spend"))tabs.push({id:"paste",label:"Paste a list",node:<SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>});
+      if(dataEntryAdapterEnabled("spend-import"))tabs.push({id:"csv",label:"Download template / Upload CSV",node:<SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>});
+      if(dataEntryAdapterEnabled("spend"))tabs.push({id:"roll",label:"Roll forward last year",node:<SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>});
+      return tabs.length?{title:`${category.name} — import & templates`,body:<ImportMethods idBase="import-pgs" tabs={tabs}/>}:null;
+    }
+    if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?{title:`${category.name} — import & templates`,body:<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
+    if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
     return null;
   };
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
@@ -287,7 +303,7 @@ export function CrpScopeWorkspace({
       libraryFactors={factors}
       reportingMonths={spendReportingMonths}
       purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
-      categoryExtras={categoryExtras}
+      categoryImport={categoryImport}
       lens={accordionLens}
       onLensChange={setAccordionLens}
       notice={setNotice}

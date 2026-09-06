@@ -4,6 +4,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
 import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { openImportModal } from "./lib/importModal";
 
 // B2 gate 8 — rendered a11y + responsive review of the spend ledger grid
 // (docs/ACCEPTANCE_B2_SPEND_ADAPTER.md §8). The generic-path scans already cover
@@ -28,6 +29,7 @@ const SAMPLE_LEDGER =
   "Courier and postage\t880.50\t20\t7501\t02/04/2025";
 
 async function openParsedGrid(page: Page): Promise<boolean> {
+  if (!(await openImportModal(page, /Purchased Goods/, /Paste a list/))) return false;
   const panel = page.locator("#spend-ledger-adapter");
   if ((await panel.count()) === 0) return false;
   await panel.getByLabel("Ledger lines").fill(SAMPLE_LEDGER);
@@ -97,8 +99,9 @@ test.describe("B2 — spend ledger grid rendered acceptance (gate 8)", () => {
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
 
+    const opened = await openImportModal(page, /Purchased Goods/, /Roll forward/);
     const panel = page.locator("#spend-rollforward");
-    test.skip((await panel.count()) === 0, "spend adapter not enabled on target");
+    test.skip(!opened || (await panel.count()) === 0, "spend adapter not enabled on target, or Scope 3 not on this job");
     // Let the prior-year lookup settle out of its loading state.
     await expect(panel.getByText(/Looking for a prior reporting year/)).toHaveCount(0, { timeout: 10_000 }).catch(() => undefined);
 
@@ -121,8 +124,9 @@ test.describe("B2 — spend ledger grid rendered acceptance (gate 8)", () => {
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
 
+    const opened = await openImportModal(page, /Purchased Goods/, /Upload CSV/);
     const panel = page.locator("#spend-import");
-    test.skip((await panel.count()) === 0, "spend-import not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'spend-import')");
+    test.skip(!opened || (await panel.count()) === 0, "spend-import not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'spend-import'), or Scope 3 not on this job");
     // Paste a couple of rows to reach the column-mapper state.
     await panel.getByLabel("…or paste the rows").fill("Description,Net value,VAT %,GL code,Invoice date,PG&S category,Emission factor\nOffice paper,1240,20,7504,14/03/2025,Paper,Paper factor");
     await panel.getByRole("button", { name: "Parse pasted rows" }).click();
