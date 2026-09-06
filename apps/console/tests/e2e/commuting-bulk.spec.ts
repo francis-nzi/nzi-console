@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
 import { collectPageErrors } from "./lib/screen";
+import { openImportModal } from "./lib/importModal";
 
 // S1.1 gate — rendered a11y + responsive of the Employee Commuting bulk-paste
 // grid (docs/ACCEPTANCE_S1_SOURCE_REGISTER.md, S1.1). Skips until a staff account
@@ -28,8 +29,9 @@ test.describe("S1.1 — employee commuting bulk grid rendered acceptance", () =>
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
 
+    const opened = await openImportModal(page, /Employee Commuting/);
     const panel = page.locator("#commuting-bulk");
-    test.skip((await panel.count()) === 0, "commuting not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'commuting')");
+    test.skip(!opened || (await panel.count()) === 0, "commuting not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has no 'commuting'), or the category is not on this job");
     await panel.getByLabel("Commuting rows").fill(SAMPLE);
     await panel.getByRole("button", { name: "Parse rows" }).click();
     await expect(panel.locator("table.nz-tbl")).toBeVisible();

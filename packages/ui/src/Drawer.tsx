@@ -20,12 +20,15 @@ const FOCUSABLE = [
   "input:not([disabled])", "select:not([disabled])", '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-export function Drawer({ open, onClose, ariaLabel, children, className }: {
+export function Drawer({ open, onClose, ariaLabel, children, className, dismissOnOutsideClick }: {
   open: boolean;
   onClose: () => void;
   ariaLabel: string;
   children: ReactNode;
   className?: string;
+  /** For a centered modal whose root element is also the backdrop: a pointer-down
+   *  directly on the root (not a child) closes it. Escape always closes. */
+  dismissOnOutsideClick?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -61,7 +64,15 @@ export function Drawer({ open, onClose, ariaLabel, children, className }: {
 
   if (!open) return null;
   return (
-    <div ref={ref} role="dialog" aria-modal="true" aria-label={ariaLabel} tabIndex={-1} className={className}>
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel}
+      tabIndex={-1}
+      className={className}
+      onMouseDown={dismissOnOutsideClick ? (event) => { if (event.target === event.currentTarget) onClose(); } : undefined}
+    >
       {children}
     </div>
   );

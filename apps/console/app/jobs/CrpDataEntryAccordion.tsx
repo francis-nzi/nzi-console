@@ -19,7 +19,7 @@ import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRe
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 import { TemplateSearchBar } from "./TemplateSearchBar";
 import { ReuseYearPanel } from "./ReuseYearPanel";
-import { InfoTip, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
+import { Drawer, InfoTip, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -56,15 +56,20 @@ type Props = {
   libraryFactors: FactorOption[];
   reportingMonths: string[];
   purchasedGoodsCategories: { id: string; name: string }[];
-  /** Re-homed typed adapter for a category (spend / import / commuting / vehicle). */
-  categoryExtras?: (category: ApplicableCategory) => ReactNode;
+  /**
+   * Bulk import / templates for a category (spend / CSV / roll-forward / vehicle
+   * / commuting). Returns `null` when the category has none. Opened in a modal
+   * from the card's "Import & templates" button (data-entry UX review item 4) —
+   * the always-open panels no longer sit in the card body.
+   */
+  categoryImport?: (category: ApplicableCategory) => { title: string; body: ReactNode } | null;
   /** Optional controlled lens — lets the command-centre exception buttons switch to "attention". */
   lens?: AccordionLens;
   onLensChange?: (lens: AccordionLens) => void;
   notice: Notice;
 };
 
-export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryExtras, lens: lensProp, onLensChange, notice }: Props) {
+export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
@@ -72,6 +77,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
   const setLens = (next: AccordionLens) => { setLensInternal(next); onLensChange?.(next); };
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [addingCode, setAddingCode] = useState<string | null>(null);
+  const [importFor, setImportFor] = useState<{ title: string; body: ReactNode } | null>(null);
   const [entryBusy, setEntryBusy] = useState(false);
   const [entryError, setEntryError] = useState("");
 
@@ -195,6 +201,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
               {group.categories.map(entry => {
                 const code = entry.category.code;
                 const isOpen = open.has(code);
+                const imp = categoryImport?.(entry.category) ?? null;
                 return (
                   <div key={code} className={`nz-acc-cat${isOpen ? " open" : ""}`} style={{ "--cc": scopeColour(group.scope) } as React.CSSProperties}>
                     <button type="button" className="nz-acc-h" aria-expanded={isOpen} onClick={() => toggle(code)}>
@@ -239,6 +246,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                             onClick={() => { setEntryError(""); setAddingCode(addingCode === code ? null : code); }}>
                             {addingCode === code ? "Close" : "+ Add entry"}
                           </button>
+                          {imp ? <button type="button" className="nz-btn" onClick={() => setImportFor(imp)}>Import &amp; templates</button> : null}
                           {KIND_NOTE[entry.category.kind] ? <InfoTip label={`${entry.category.name} — how data entry works`}>{KIND_NOTE[entry.category.kind]}</InfoTip> : null}
                         </div>
                         {addingCode === code ? (
@@ -262,7 +270,6 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                             />
                           </div>
                         ) : null}
-                        {categoryExtras ? <div className="nz-acc-extra">{categoryExtras(entry.category)}</div> : null}
                       </div>
                     ) : null}
                   </div>
@@ -307,6 +314,16 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
           ) : null}
       </TabPanel>
       <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.unsorted ? ` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).</p>
+
+      <Drawer open={importFor !== null} onClose={() => setImportFor(null)} ariaLabel={importFor?.title ?? "Import & templates"} className="nz-import-modal" dismissOnOutsideClick>
+        <div className="nz-import-modal-card">
+          <div className="nz-import-modal-h">
+            <h2>{importFor?.title}</h2>
+            <button type="button" className="nz-btn" aria-label="Close import and templates" onClick={() => setImportFor(null)}>✕</button>
+          </div>
+          <div className="nz-import-modal-b">{importFor?.body}</div>
+        </div>
+      </Drawer>
     </section>
   );
 }
