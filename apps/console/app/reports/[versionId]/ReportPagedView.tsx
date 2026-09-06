@@ -16,6 +16,7 @@
 // The server/browser print engine stays the authoritative source of truth;
 // this is a high-fidelity *preview* of it, not a byte-identity guarantee.
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Tabs } from "@nzi/ui";
 import { buildReportPagedCss, type ReportPagedMeta } from "./reportPrintRules";
 import { computePageBreakIndices } from "./reportPageBreaks";
 
@@ -83,12 +84,16 @@ export function ReportPagedView({ meta, children }: { meta: ReportPagedMeta; chi
   }, [mode, meta]);
 
   return <>
-    <div className="report-view-toggle" role="tablist" aria-label="Report view">
-      <button type="button" role="tab" aria-selected={mode === "flow"} className={mode === "flow" ? "on" : ""} onClick={() => setMode("flow")}>Continuous</button>
-      <button type="button" role="tab" aria-selected={mode === "page"} className={mode === "page" ? "on" : ""} onClick={() => setMode("page")}>Page view · A4</button>
-    </div>
-    <div ref={flowRef} hidden={mode !== "flow"}>{children}</div>
-    {mode === "page" && <div className="report-pagedjs-wrap">
+    <Tabs
+      items={[{ id: "flow", label: "Continuous" }, { id: "page", label: "Page view · A4" }]}
+      value={mode}
+      onChange={(id) => setMode(id as Mode)}
+      ariaLabel="Report view"
+      idBase="report-view"
+      className="report-view-toggle"
+    />
+    <div ref={flowRef} id="report-view-panel-flow" role="tabpanel" aria-labelledby="report-view-tab-flow" hidden={mode !== "flow"}>{children}</div>
+    {mode === "page" && <div className="report-pagedjs-wrap" id="report-view-panel-page" role="tabpanel" aria-labelledby="report-view-tab-page">
       {pageState === "loading" && <div className="nz-register-loading" role="status"><i /><span><b>Building the A4 page view</b><small>Applying the same paged-media rules as the printed PDF…</small></span></div>}
       {pageState === "failed" && <div className="nz-banner warn" role="alert"><div><b>Page view is unavailable</b><div>{pageError} The Continuous view and Print/Save as PDF are unaffected.</div></div></div>}
       <div ref={pagedTargetRef} className="report-pagedjs-target" hidden={pageState !== "ready"} />

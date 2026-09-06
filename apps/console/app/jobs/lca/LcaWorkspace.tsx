@@ -15,7 +15,7 @@
 // later slices.
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, GatedButton, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
 import { freightDefaultFactorIds, lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
@@ -1010,13 +1010,13 @@ function AssessmentResults({ jobId, clientName, assessment, categories, notice }
       </div>
       <div className="nz-config-actions" style={{ justifyContent: "flex-start", flexWrap: "wrap", gap: 8 }}>
         <button type="button" className="nz-btn pri" disabled={busy !== ""} onClick={() => void recalculate()}>{busy === "calc" ? "Recalculating…" : "Recalculate"}</button>
-        <button type="button" className="nz-btn" disabled={busy !== "" || assessment.reviewStatus === "approved"} onClick={() => void review("approve")}>{busy === "approve" ? "Approving…" : "Approve"}</button>
-        <button type="button" className="nz-btn" disabled={busy !== ""} onClick={() => void freeze()}>{busy === "snapshot" ? "Freezing…" : "Freeze snapshot"}</button>
+        <GatedButton className="nz-btn" blocked={busy !== "" || assessment.reviewStatus === "approved"} blockedReason={busy === "" && assessment.reviewStatus === "approved" ? "This assessment version is already approved" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void review("approve")}>{busy === "approve" ? "Approving…" : "Approve"}</GatedButton>
+        <GatedButton className="nz-btn" blocked={busy !== "" || assessment.reviewStatus !== "approved"} blockedReason={busy === "" && assessment.reviewStatus !== "approved" ? "Approve the assessment before freezing a result snapshot" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void freeze()}>{busy === "snapshot" ? "Freezing…" : "Freeze snapshot"}</GatedButton>
         {!snapshots && <button type="button" className="nz-btn" onClick={() => void loadSnapshots()}>Show freeze history</button>}
       </div>
       <div className="nz-lca-reject">
         <input className="nz-inp" value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} placeholder="Reviewer note (required to reject)" />
-        <button type="button" className="nz-btn" disabled={busy !== "" || !rejectNote.trim()} onClick={() => void review("reject")}>{busy === "reject" ? "Rejecting…" : "Reject"}</button>
+        <GatedButton className="nz-btn" blocked={busy !== "" || !rejectNote.trim()} blockedReason={busy === "" && !rejectNote.trim() ? "Enter a reviewer note to reject" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void review("reject")}>{busy === "reject" ? "Rejecting…" : "Reject"}</GatedButton>
       </div>
 
       {summary && (

@@ -58,7 +58,7 @@ test.describe("DA3a — Data Assurance read surface", () => {
       await expect(surface.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
     }
     await surface.getByRole("tab", { name: "By site" }).click();
-    await expect(surface.locator(".nz-assurance-scroll")).toContainText(/Unallocated|by site/i);
+    await expect(surface.locator('[role="tabpanel"].nz-assurance-scroll:not([hidden])')).toContainText(/Unallocated|by site/i);
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
@@ -144,13 +144,17 @@ test.describe("DA3a — Data Assurance read surface", () => {
 test.describe("DA3c — row approval and governed sign-off", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set (public smoke run)");
 
-  test("the sign-off gate always renders, and its button is disabled while gaps or reviews are outstanding", async ({ page }) => {
+  test("the sign-off gate always renders, and while blocked its button is aria-disabled (not removed from the tab order) with a reason", async ({ page }) => {
     const { surface } = await openAssurance(page);
     const panel = surface.locator(".nz-assurance-signoff");
     await expect(panel).toBeVisible();
     const button = panel.getByRole("button", { name: /Sign off/ });
     await expect(button).toBeVisible();
-    if (await button.isDisabled()) {
+    if ((await button.getAttribute("aria-disabled")) === "true") {
+      // Gated, not disabled — a keyboard / SR user must still reach it and hear why.
+      await expect(button).toHaveJSProperty("disabled", false);
+      await button.focus();
+      await expect(button).toBeFocused();
       await expect(panel).toContainText(/Blocked:/);
     }
   });
@@ -166,7 +170,7 @@ test.describe("DA3c — row approval and governed sign-off", () => {
     const review = drawer.locator(".nz-assurance-row-review");
     await expect(review).toBeVisible();
     const approve = review.getByRole("button", { name: "Approve row" });
-    test.skip(await approve.isDisabled(), "row has no quality tier yet — approval is blocked, same precondition as the legacy row panel");
+    test.skip((await approve.getAttribute("aria-disabled")) === "true", "row has no quality tier yet — approval is blocked, same precondition as the legacy row panel");
     await approve.click();
 
     // Refetches in place (no page reload) — the row-detail segment reflects

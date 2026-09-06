@@ -19,6 +19,7 @@ import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRe
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 import { TemplateSearchBar } from "./TemplateSearchBar";
 import { ReuseYearPanel } from "./ReuseYearPanel";
+import { Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -147,12 +148,17 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
           </select>
         </label>
         <span className="hint">{siteId === "" ? "Showing every site. New entries ask for a site." : siteId === "none" ? "New entries are left unallocated." : `New entries are allocated to ${sites.find(site => site.id === siteId)?.label ?? "this site"}.`}</span>
-        <div className="nz-seg" role="tablist" aria-label="Data-entry view">
-          <button type="button" role="tab" aria-selected={lens === "category"} className={lens === "category" ? "on" : ""} onClick={() => setLens("category")}>By category</button>
-          <button type="button" role="tab" aria-selected={lens === "attention"} className={lens === "attention" ? "on" : ""} onClick={() => setLens("attention")}>
-            Needs attention <span className="badge att">{totals.needsAttention}</span>
-          </button>
-        </div>
+        <Tabs
+          className="nz-seg"
+          ariaLabel="Data-entry view"
+          idBase="crp-data-entry"
+          value={lens}
+          onChange={(id) => setLens(id as AccordionLens)}
+          items={[
+            { id: "category", label: "By category" },
+            { id: "attention", label: <>Needs attention <span className="badge att">{totals.needsAttention}</span></> },
+          ] satisfies TabDescriptor[]}
+        />
       </div>
 
       {dataEntryAdapterEnabled("data-entry-fast-add") ? (
@@ -162,28 +168,27 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
         </div>
       ) : null}
 
-      {lens === "attention" ? (
-        <div className="nz-panel" style={{ padding: 0 }}>
-          <table className="nz-tbl">
-            <thead><tr><th>Source</th><th>Scope</th><th>Site</th><th>Factor</th><th>Review</th></tr></thead>
-            <tbody>
-              {attentionRows.map(row => (
-                <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
-                  onClick={() => onOpenRow(row.id)}
-                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
-                  <td>{row.sourceLabel}</td>
-                  <td>{row.scope}</td>
-                  <td>{row.siteLabel ?? "Unallocated"}</td>
-                  <td>{row.factorLabel ?? <span className="nz-st nof">No factor</span>}</td>
-                  <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {attentionRows.length === 0 ? <div className="nz-table-empty">Nothing needs attention — every enabled row is calculated, has a quality tier and is approved.</div> : null}
-        </div>
-      ) : (
-        <div className="nz-acc">
+      <TabPanel id="attention" idBase="crp-data-entry" active={lens === "attention"} className="nz-panel" style={{ padding: 0 }}>
+        <table className="nz-tbl">
+          <thead><tr><th>Source</th><th>Scope</th><th>Site</th><th>Factor</th><th>Review</th></tr></thead>
+          <tbody>
+            {attentionRows.map(row => (
+              <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
+                onClick={() => onOpenRow(row.id)}
+                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
+                <td>{row.sourceLabel}</td>
+                <td>{row.scope}</td>
+                <td>{row.siteLabel ?? "Unallocated"}</td>
+                <td>{row.factorLabel ?? <span className="nz-st nof">No factor</span>}</td>
+                <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {attentionRows.length === 0 ? <div className="nz-table-empty">Nothing needs attention — every enabled row is calculated, has a quality tier and is approved.</div> : null}
+      </TabPanel>
+
+      <TabPanel id="category" idBase="crp-data-entry" active={lens === "category"} className="nz-acc">
           {groups.map(group => (
             <div key={group.scope}>
               <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}</div>
@@ -300,8 +305,7 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
           {groups.length === 0 ? (
             <div className="nz-acc-empty">No scopes are included for this job yet. Select reporting datasets to populate the category view.</div>
           ) : null}
-        </div>
-      )}
+      </TabPanel>
       <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.unsorted ? ` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).</p>
     </section>
   );
