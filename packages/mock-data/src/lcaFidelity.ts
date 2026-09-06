@@ -121,8 +121,12 @@ export const massReconciliationSnapshot: LcaResultSnapshot = {
     { moduleCode: "C3", tco2e: 0.0006 },
     { moduleCode: "C4", tco2e: 0.0003 },
   ],
-  hotspots: [{ lineItemId: "6l-tray", label: "rPET tray", tco2e: 0.0529, sharePct: 90 }],
+  hotspots: [{ lineItemId: "6l-tray", label: "rPET tray", moduleCode: "A1", tco2e: 0.0529, sharePct: 90 }],
   massReconciliation: { confirmedMassKg: 31.5, capturedMassKg: 28.9, deltaPct: -8.25 },
+  factorSets: [
+    { label: "Recycled PET granulate", version: "3.10", dataset: "ecoinvent", originalId: "f-rpet" },
+    { label: "Cargo Ship — Container Ship — freight", version: "2025", dataset: "DEFRA freight", originalId: "27_320_3235_14_1" },
+  ],
 };
 
 export const lcaFidelityAssessments = [modelRegister6L, modelRegister9L, pcfDiagnosticUnit];

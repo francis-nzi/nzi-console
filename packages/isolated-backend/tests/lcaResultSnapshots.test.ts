@@ -16,6 +16,9 @@ function snapshotPool(opts: { found?: boolean; version?: number; reviewStatus?: 
       if (sql.includes("SELECT line_item_id,module_code,line_label,quantity::text,unit,is_placeholder,calculated_kgco2e::text,transport_kgco2e::text")) {
         return { rows: [{ line_item_id: "li-1", module_code: "A1", line_label: "rPET tray", quantity: "31.5", unit: "kg", is_placeholder: false, calculated_kgco2e: "52.92", transport_kgco2e: "0" }] };
       }
+      if (sql.includes("SELECT DISTINCT f.label, d.version, d.name AS dataset")) return { rows: [{ label: "Recycled PET granulate", version: "3.10", dataset: "ecoinvent", original_id: "f-rpet" }] };
+      if (sql.includes("SELECT DISTINCT cf.report_label AS label")) return { rows: [] };
+      if (sql.includes("factor_source='manual'")) return { rows: [{ label: "Category-average ink" }] };
       if (sql.includes("SELECT snapshot_id FROM nzi_console.lca_result_snapshots WHERE")) return { rows: existingHash ? [{ snapshot_id: "existing-snap" }] : [] };
       if (sql.startsWith("INSERT INTO nzi_console.lca_result_snapshots")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_result_snapshots WHERE assessment_id=$1")) return { rows: [{ snapshot_id: "snap-1", assessment_id: "assess-1", scenario_id: null, assessment_version: version, data_hash: "sha256:x", total_tco2e: "52.92", module_breakdown: [{ moduleCode: "A1", tco2e: 52.92 }], hotspots: [], mass_reconciliation: { confirmedMassKg: 31.5, capturedMassKg: 31.5, deltaPct: 0 } }] };
@@ -27,6 +30,15 @@ function snapshotPool(opts: { found?: boolean; version?: number; reviewStatus?: 
 }
 
 describe("createLcaResultSnapshot (Track C / L4 — the DA freeze pattern)", () => {
+  it("freezes the factor citation into the snapshot payload (L7)", async () => {
+    const state = snapshotPool();
+    await createLcaResultSnapshot(state.pool, { jobId: "job-1", assessmentId: "assess-1", expectedVersion: 4 }, context("snap-fs"));
+    const insert = state.writes.find((w) => w.sql.startsWith("INSERT INTO nzi_console.lca_result_snapshots"));
+    assert.ok(insert?.sql.includes("factor_sets"));
+    const frozen = JSON.parse(String((insert!.values as unknown[])[9]));
+    assert.deepEqual(frozen.map((c: { originalId: string }) => c.originalId).sort(), ["f-rpet", "—"].sort());
+  });
+
   it("freezes an approved assessment into a content-addressed snapshot", async () => {
     const state = snapshotPool();
     const result = await createLcaResultSnapshot(state.pool, { jobId: "job-1", assessmentId: "assess-1", expectedVersion: 4 }, context("snap-1"));

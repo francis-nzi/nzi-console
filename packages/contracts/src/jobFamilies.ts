@@ -207,6 +207,9 @@ export type LcaScenarioMultiplierWriteFields = {
   multiplier: number;
 };
 
+/** One emission-factor citation frozen into a result snapshot — the exact factor, version and dataset used at sign-off. */
+export type LcaFactorCitation = { label: string; version: string; dataset: string; originalId: string };
+
 /** Content-addressed calculation output — the reviewed artefact an LCA report cites. */
 export type LcaResultSnapshot = {
   id: string;
@@ -216,8 +219,10 @@ export type LcaResultSnapshot = {
   dataHash: string;
   totalTco2e: number;
   moduleBreakdown: Array<{ moduleCode: LcaModuleCode; tco2e: number }>;
-  hotspots: Array<{ lineItemId: string; label: string; tco2e: number; sharePct: number }>;
+  hotspots: Array<{ lineItemId: string; label: string; moduleCode: LcaModuleCode; tco2e: number; sharePct: number }>;
   massReconciliation: { confirmedMassKg: number | null; capturedMassKg: number; deltaPct: number | null };
+  /** Frozen at sign-off (L7) — the report footer cites this verbatim, never re-derived from current lines. */
+  factorSets: LcaFactorCitation[];
 };
 
 export type LcaAssessment = {

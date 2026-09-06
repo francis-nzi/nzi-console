@@ -74,7 +74,7 @@ export type LcaCalcResult = {
   totalTco2e: number;
   perFunctionalUnitTco2e: number;
   moduleBreakdown: Array<{ moduleCode: LcaModuleCode; tco2e: number }>;
-  hotspots: Array<{ lineItemId: string; label: string; tco2e: number; sharePct: number }>;
+  hotspots: Array<{ lineItemId: string; label: string; moduleCode: LcaModuleCode; tco2e: number; sharePct: number }>;
   massReconciliation: { confirmedMassKg: number | null; capturedMassKg: number; deltaPct: number | null };
 };
 
@@ -100,7 +100,7 @@ function summariseLineEmissions(
     .filter((line) => line.tco2e > 0)
     .sort((a, b) => b.tco2e - a.tco2e)
     .slice(0, 5)
-    .map((line) => ({ lineItemId: line.lineItemId, label: line.label, tco2e: line.tco2e, sharePct: totalTco2e > 0 ? (line.tco2e / totalTco2e) * 100 : 0 }));
+    .map((line) => ({ lineItemId: line.lineItemId, label: line.label, moduleCode: line.moduleCode, tco2e: line.tco2e, sharePct: totalTco2e > 0 ? (line.tco2e / totalTco2e) * 100 : 0 }));
   const capturedMassKg = !meta.isMaterial ? 0 : lines
     .filter((line) => line.moduleCode === MASS_RECONCILIATION_MODULE)
     .reduce((sum, line) => {
