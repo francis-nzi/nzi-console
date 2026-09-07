@@ -79,7 +79,9 @@ stacked below). Reworked:
   `provenance.detail | provenance.spendDetail`; the row's PG&S label wins over the frozen one), or a
   generic `Source detail`. Empty fields are dropped.
 - **`Editor`** (`CrpScopeWorkspace.tsx`) rebuilt: a status banner, then the **7 always-visible key
-  fields** (`.nz-rd-keys` — Site · Scope · Category · Report label · Quantity · UoM · tCO₂e), then six
+  fields** (`.nz-rd-keys` — Site · Scope · Category · Report label · Quantity · UoM · tCO₂e) where
+  **Quantity and UoM are editable inline** (they are the row's primary activity — a follow-up fix,
+  PR #110; disabled with a hint when monthly activity drives the total), then six
   **collapsed-by-default** `Collapsible` sections — Factor & calculation · Data quality · Apportionment &
   site · {Source detail — adaptive title} · Monthly activity · Evidence & provenance (lineage,
   provenance, the client-factor-moved note, independent review as `GatedButton`s, activity history,

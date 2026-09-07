@@ -832,26 +832,34 @@ function Editor({
   const selectedFactor = value.factorId ? `${value.factorSource ?? "dataset"}:${value.clientFactorId ?? value.datasetId}|${value.factorId}` : "";
   const detail = rowSourceDetail(row);
   const displayTco2e = row.overrideTco2e ?? row.calculatedTco2e;
-  const keyPairs: Array<[string, React.ReactNode, string?]> = [
-    ["Site", value.siteLabel ?? "Unallocated"],
-    ["Scope", crpScopeCategoryPath(value.scope).join(" › ")],
-    ["Category", row.categoryPath[row.categoryPath.length - 1] ?? crpScopeCategoryPath(value.scope).at(-1) ?? "—"],
-    ["Report label", value.reportLabel || value.sourceLabel],
-    ["Quantity", value.quantity ?? "—"],
-    ["UoM", value.unit ?? "—"],
-    ["tCO₂e", displayTco2e === null ? "—" : displayTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 }), "co2"],
-  ];
+  const monthlyOn = (value.monthlyActivity?.length ?? 0) > 0;
+  const category = row.categoryPath[row.categoryPath.length - 1] ?? crpScopeCategoryPath(value.scope).at(-1) ?? "—";
   return (
     <div className="nz-rd">
       <div className={`nz-banner ${displayTco2e === null ? "warn" : "ok"}`}>
         {displayTco2e === null ? "Save changes, then calculate." : "Calculated evidence is available."}
       </div>
 
+      {/* The 7 key fields, always visible (item 2). Quantity + UoM are the row's
+          primary editable activity — the rest are a read-only glance. */}
       <div className="nz-rd-keys">
-        {keyPairs.map(([label, node, tone]) => (
-          <div className="kv" key={label}><span className="l">{label}</span><span className={`v${tone ? ` ${tone}` : ""}`}>{node}</span></div>
-        ))}
+        <div className="kv"><span className="l">Site</span><span className="v">{value.siteLabel ?? "Unallocated"}</span></div>
+        <div className="kv"><span className="l">Scope</span><span className="v">{crpScopeCategoryPath(value.scope).join(" › ")}</span></div>
+        <div className="kv"><span className="l">Category</span><span className="v">{category}</span></div>
+        <div className="kv"><span className="l">Report label</span><span className="v">{value.reportLabel || value.sourceLabel}</span></div>
+        <label className="kv edit"><span className="l">Quantity</span>
+          <input className="nz-inp" type="number" min="0" step="any" value={value.quantity ?? ""} disabled={monthlyOn}
+            onChange={(e) => setValue({ ...value, quantity: e.target.value === "" ? null : Number(e.target.value) })} />
+        </label>
+        <label className="kv edit"><span className="l">UoM</span>
+          <input className="nz-inp" value={value.unit ?? ""} placeholder={selectedFactor ? "" : "e.g. kWh"}
+            onChange={(e) => setValue({ ...value, unit: e.target.value || null })} />
+        </label>
+        <div className="kv"><span className="l">tCO₂e</span><span className="v co2">{displayTco2e === null ? "—" : displayTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
       </div>
+      {monthlyOn
+        ? <p className="nz-hint">Quantity is the sum of the monthly figures in “Monthly activity” — edit it there.</p>
+        : <p className="nz-hint">Enter the activity quantity, then <b>Save</b> and <b>Calculate</b>.</p>}
 
       <Collapsible title="Factor & calculation">
         <label className="nz-fl">
@@ -866,6 +874,7 @@ function Editor({
         </label>
         <div className="nz-kv"><span className="k">Factor set <InfoTip label="Factor set">The dataset and version the emission factor is pinned from. Frozen into the report snapshot at sign-off.</InfoTip></span><span className="v">{value.factorLabel ?? "—"}{value.factorVersion ? ` · ${value.factorVersion}` : ""}</span></div>
         <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? "—" : row.calculatedTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
+        <p className="nz-hint">As-entered <InfoTip label="As-entered quantity">The figure and unit exactly as the client supplied them, before any conversion to the factor&rsquo;s activity unit. Kept for the audit trail; the <b>Quantity</b> at the top is what the calculation uses.</InfoTip></p>
         <div className="nz-scope-fields">
           <label className="nz-fl">As-entered quantity<input className="nz-inp" type="number" min="0" step="any" value={value.sourceQuantity ?? ""} onChange={(e) => setValue({ ...value, sourceQuantity: e.target.value === "" ? null : Number(e.target.value) })} /></label>
           <label className="nz-fl">As-entered unit<input className="nz-inp" value={value.sourceUnit ?? ""} onChange={(e) => setValue({ ...value, sourceUnit: e.target.value || null })} /></label>
