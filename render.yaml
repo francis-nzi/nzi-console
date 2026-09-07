@@ -24,6 +24,9 @@ services:
       #   spend-import     B4 CSV bulk import (STAGING_ACCEPTANCE_B4.md)
       #   portal-spend     B5 portal spend mirror (STAGING_ACCEPTANCE_B5.md)
       #   commuting/vehicle S1 source-register bulk (STAGING_ACCEPTANCE_S1.md)
+      #   travel           Business Travel per-entity roll-up — data-entry UX
+      #                    review item 5 (ACCEPTANCE_DATA_ENTRY_UX_REVIEW.md);
+      #                    migration 0057 must be live on staging first
       #   client-factors   S2 client-factor lifecycle (STAGING_ACCEPTANCE_S2.md)
       #   data-entry-accordion  UX1 one data-entry UX (STAGING_ACCEPTANCE_UX1.md)
       #   job-stage-sections    UX1e-1 stage-as-section CRP workspace

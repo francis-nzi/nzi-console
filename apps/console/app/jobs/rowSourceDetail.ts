@@ -11,7 +11,7 @@
 // label, PG&S category, reference) are rendered alongside by the drawer.
 import type { ScopeRowReadModel } from "@nzi/contracts";
 
-export type SourceDetailKind = "vehicle" | "spend" | "generic";
+export type SourceDetailKind = "vehicle" | "spend" | "travel" | "generic";
 export type SourceDetailField = { label: string; value: string };
 export type RowSourceDetail = { title: string; kind: SourceDetailKind; fields: SourceDetailField[] };
 
@@ -41,6 +41,21 @@ export function rowSourceDetail(row: ScopeRowReadModel): RowSourceDetail {
         ["Make", text(detail.make)],
         ["Model", text(detail.model)],
         ["Fuel", text(detail.fuel)],
+      ]),
+    };
+  }
+
+  if (detailKind === "travel" || row.categoryCode === "3.6") {
+    const leg = [text(detail.origin), text(detail.destination)].filter(Boolean).join(" → ");
+    return {
+      title: "Travel detail",
+      kind: "travel",
+      fields: compact([
+        ["Mode", text(detail.travelMode)],
+        ["Leg", leg || null],
+        ["Carrier", text(detail.carrier)],
+        ["Passengers", text(detail.passengers)],
+        ["Traveller / ref", row.assetIdentifier],
       ]),
     };
   }

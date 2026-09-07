@@ -43,6 +43,18 @@ it("falls back to a generic source detail and drops empty fields", () => {
   assert.deepEqual(withRef.fields.map((f) => `${f.label}=${f.value}`), ["ID / reference=Meter 4", "Report column heading=Electricity"]);
 });
 
+it("adapts to a business-travel row — mode / leg / carrier / passengers (data-entry UX review item 5)", () => {
+  const detail = rowSourceDetail(row({
+    scope: "3.6", categoryCode: "3.6", assetIdentifier: "A. Traveller",
+    provenance: { detail: { kind: "travel", travelMode: "Flight — long haul", origin: "London Heathrow", destination: "New York JFK", carrier: "BA", passengers: 1 } },
+  }));
+  assert.equal(detail.title, "Travel detail");
+  assert.equal(detail.kind, "travel");
+  assert.equal(detail.fields.find((f) => f.label === "Leg")?.value, "London Heathrow → New York JFK");
+  assert.equal(detail.fields.find((f) => f.label === "Mode")?.value, "Flight — long haul");
+  assert.equal(detail.fields.find((f) => f.label === "Traveller / ref")?.value, "A. Traveller");
+});
+
 it("a scope 3.1 row with no frozen detail still shows the PG&S section (category + reference)", () => {
   const detail = rowSourceDetail(row({ scope: "3.1", purchasedGoodsCategoryLabel: "Freight", assetIdentifier: "INV-9" }));
   assert.equal(detail.kind, "spend");

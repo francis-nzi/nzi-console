@@ -99,4 +99,12 @@ describe("command contracts", () => {
     assert.ok(validateCommand("emission.source.create",{...base,monthlyActivity:[{month:"Jan",quantity:-5}]},context).some(issue=>issue.field.startsWith("monthlyActivity")));
     assert.ok(validateCommand("emission.source.create",{...base,detail:{kind:"asset" as const}},context).some(issue=>issue.field==="detail"));
   });
+  it("validates business-travel emission sources (data-entry UX review item 5)",()=>{
+    const travel={jobId:"job-a",groupId:null,scope:"3.6",sourceType:"travel" as const,sourceSubtype:null,siteId:null,sourceName:"LHR → JFK",assetIdentifier:"A. Traveller",purchasedGoodsCategoryId:null,datasetId:"dataset-a",factorId:"factor-a",factorSource:"dataset" as const,clientFactorId:null,quantity:5540,unit:"km",applyPct:100,dataSource:"Source Register",dataConfidence:null,monthlyActivity:[],detail:{kind:"travel" as const,travelMode:"Flight — long haul",origin:"London Heathrow",destination:"New York JFK",carrier:"BA",distanceUnit:"km",passengers:1},notes:null};
+    assert.equal(validateCommand("emission.source.create",travel,context).length,0);
+    // detail.kind must match the source type
+    assert.ok(validateCommand("emission.source.create",{...travel,detail:{kind:"vehicle" as const,vehicleRegistration:null,make:null,model:null,fuel:null}},context).some(issue=>issue.field==="detail"));
+    // travel is a valid sourceType (not rejected as INVALID)
+    assert.equal(validateCommand("emission.source.create",travel,context).some(issue=>issue.field==="sourceType"),false);
+  });
 });
