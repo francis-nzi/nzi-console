@@ -1,10 +1,10 @@
 # Data-entry UX review — acceptance
 
 Origin: Francis's walk of the live data-entry surface (`entry-lean-capture` + `data-entry-fast-add` on),
-06 Sep 2026. Hand-off `docs/_handoff_DATA_ENTRY_UX_review.md`; drawer reference
+06 Sep 2026 (hand-off since deleted — its six items are recorded here). Drawer reference
 `docs/prototypes/row_drawer_v1.html` (Artifact 91f575f2). Theme: **lead with the data, collapse
-everything else, help on demand.** All work behind the existing data-entry flags, e2e + hard-precondition
-once live. Build order **1 → 5** (6 is the cross-cutting principle).
+everything else, help on demand.** All work behind the data-entry flags, e2e + hard-precondition once
+live. Built in order 1 → 5; 6 is the cross-cutting principle.
 
 | # | Item | Status |
 |---|---|---|
@@ -12,8 +12,8 @@ once live. Build order **1 → 5** (6 is the cross-cutting principle).
 | **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | 🟢 built (PR #105) |
 | **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟢 built (PR #105 component, PR #106 roll-out) |
 | **4** | "Import & templates" modal per category — methods as tabs, reuse the accessible dialog | 🟢 built (PR #107) — Vehicles / Commuting / PG&S; Business Travel tab lands with item 5 |
-| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | ⚪ next |
-| **6** | Noise reduction overall — a category card at rest is just its rows + two actions | ⚪ folded through 2–5 |
+| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | 🟢 built (PR #108) — behind new flag `travel`; migration 0057 applied to staging; **needs the Render dashboard flip** |
+| **6** | Noise reduction overall — a category card at rest is just its rows + two actions | 🟢 delivered through 2–5 |
 
 ---
 
@@ -182,12 +182,62 @@ card's vertical noise. Now one **"Import & templates"** button per category open
 
 ---
 
-## Items 5–6
+## Item 5 — Business Travel joins the per-entity roll-up
 
-**5 — Business Travel multi-mode + consolidation**: generalise the per-entity roll-up (currently hard-scoped
-to Company Vehicles + Employee Commuting) into a capability any many-sub-item category can use; Business
-Travel adds trips across modes (flights, rail, hire car, taxi) and consolidates to canonical rows. Lean the
-create-source form (core fields inline, detail to the drawer).
+The per-entity register (`EmissionSourceRegister`) was hard-scoped to Company Vehicles + Employee Commuting
+(`addKinds`). **Business Travel** now joins as a third kind — many trips across modes (flight / rail / hire
+car / taxi …) roll up into one canonical **Scope 3.6** row, the same mechanism the other two already use
+(add sources → group → roll up). Per Francis: minimal "add `travel` as a third kind", **new `travel`
+flag**.
 
-**6 — noise reduction**: collapse-by-default across the category panels — a card at rest is its rows plus
-"+ Add entry" and "Import & templates".
+- **`@nzi/contracts`** — `EmissionSourceKind += "travel"`; new `TravelDetail` (`{ kind:"travel";
+  travelMode; origin; destination; carrier; distanceUnit; passengers }`) in `EmissionSourceDetail`; the
+  `emission.source.create` validator accepts `travel` (the existing `detail.kind === sourceType` check
+  covers the rest).
+- **Migration `0057_emission_source_travel_kind.sql`** — widens the `job_emission_sources.source_type`
+  CHECK to `('asset','vehicle','commuting','spend','travel')`. `DROP CONSTRAINT IF EXISTS` + re-`ADD` —
+  idempotent. **Applied to isolated staging** (re-run verified) — Render dashboard flip of `travel` still
+  needed before its e2e hardens.
+- **`@nzi/isolated-backend`** — `syncEmissionSourceToScope`: the existing `/^3\.\d+$/` branch already maps
+  scope `3.6` → category code `3.6`, so no sync-logic change; only the inline `source_type` row type
+  widened. The group roll-up is kind-agnostic already.
+- **`apps/console`** — `featureFlags.ts` `DataEntryAdapter += "travel"`. `EmissionSourceRegister`:
+  `travelOn` → `addKinds` includes `travel`; `kindLabel.travel`; `travelModes` list; `Draft` +
+  `blank()` + `buildDetail` travel branch; `scopeForKind(kind)` (`vehicle`→1, `travel`→3.6, else 3.7)
+  replaces the inline vehicle/commuting ternaries; a travel field block (mode · from · to · carrier ·
+  passengers · distance unit) in the create form. `rowSourceDetail.ts` gains a **"Travel detail"** branch
+  (mode / leg / carrier / passengers) so the item-2 drawer adapts for a travel row; the drawer's
+  reference-field label follows suit.
+- The import-modal (item 4) does **not** get a Business Travel tab — travel entry is the roll-up register,
+  which stays on the page (there is no BT bulk-paste adapter).
+- **Form leaning** (brief: "lean its create-source form") — the travel block is kept compact; a fuller
+  pass that moves per-kind detail out of the register's flat grid into the row drawer for *all* kinds is
+  deferred (bigger refactor, out of the "add travel as a third kind" scope Francis chose).
+
+### Gate (item 5)
+
+| # | Check | Where |
+|---|---|---|
+| 1 | `emission.source.create` validates a `travel` source; `detail.kind` must match; `travel` is not rejected as an invalid `sourceType` | `commands.test.ts` (+1) |
+| 2 | `rowSourceDetail` adapts to a travel row — mode / leg / carrier / passengers / ref | `rowSourceDetail.test.ts` (+1) |
+| 3 | Migration 0057 widens the CHECK, is idempotent, applied to staging | migration file + `apply-migration.mjs` run (×2) |
+| 4 | The register offers a "Business travel" kind; picking it sets Scope 3.6 and shows the trip fields | `business-travel.spec.ts` — **flag-skips until `travel` is live; harden at the flip PR** |
+| 5 | Sync of a travel source lands a Scope 3.6 canonical row (no category-code change needed) | code review — the `/^3\.\d+$/` branch |
+| 6 | `npm run typecheck` (all workspaces) · build · unit suites green | ✅ |
+
+### Verification (item 5)
+
+- `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
+- `@nzi/contracts` — 75 / 75 (+1). `@nzi/console` — 127 / 127 (+1). `@nzi/isolated-backend` — 329 / 329.
+- Migration 0057 applied + idempotency-verified against isolated staging.
+- **Open — Francis:** add `travel` to the Render `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild, then
+  a flip PR removes the `business-travel.spec.ts` flag skip (same discipline as data-assurance / R5).
+
+---
+
+## Item 6 — noise reduction
+
+Delivered through items 2–5, not a separate change: the row drawer leads with 7 key fields and collapses
+the rest (item 2); the standing instruction paragraphs are gone (item 3); the bulk import/template
+machinery is behind one button (item 4). A category card at rest is now its rows + **"+ Add entry"** +
+**"Import & templates"**.
