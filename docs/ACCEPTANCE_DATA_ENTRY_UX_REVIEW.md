@@ -12,7 +12,7 @@ live. Built in order 1 → 5; 6 is the cross-cutting principle.
 | **2** | Rework the row-detail drawer to the prototype (7 key fields + collapsible sections, single column, type-adaptive source section) | 🟢 built (PR #105) |
 | **3** | Info icons instead of inline instructions — one shared ⓘ tooltip component, systemic | 🟢 built (PR #105 component, PR #106 roll-out) |
 | **4** | "Import & templates" modal per category — methods as tabs, reuse the accessible dialog | 🟢 built (PR #107) — Vehicles / Commuting / PG&S; Business Travel tab lands with item 5 |
-| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | 🟢 built (PR #108) — behind new flag `travel`; migration 0057 applied to staging; **needs the Render dashboard flip** |
+| **5** | Business Travel multi-mode entry + consolidation — generalise the per-entity roll-up beyond vehicles/commuting; lean the create-source form | 🟢 built (PR #108) + **flipped live** (`travel` added to the Render value 7 Sep 2026, PR #109); migration 0057 on staging |
 | **6** | Noise reduction overall — a category card at rest is just its rows + two actions | 🟢 delivered through 2–5 |
 
 ---
@@ -221,7 +221,7 @@ flag**.
 | 1 | `emission.source.create` validates a `travel` source; `detail.kind` must match; `travel` is not rejected as an invalid `sourceType` | `commands.test.ts` (+1) |
 | 2 | `rowSourceDetail` adapts to a travel row — mode / leg / carrier / passengers / ref | `rowSourceDetail.test.ts` (+1) |
 | 3 | Migration 0057 widens the CHECK, is idempotent, applied to staging | migration file + `apply-migration.mjs` run (×2) |
-| 4 | The register offers a "Business travel" kind; picking it sets Scope 3.6 and shows the trip fields | `business-travel.spec.ts` — **flag-skips until `travel` is live; harden at the flip PR** |
+| 4 | The register offers a "Business travel" kind; picking it sets Scope 3.6 and shows the trip fields | `business-travel.spec.ts` — **hard precondition** since the flip (PR #109); only the no-staff-account skip remains |
 | 5 | Sync of a travel source lands a Scope 3.6 canonical row (no category-code change needed) | code review — the `/^3\.\d+$/` branch |
 | 6 | `npm run typecheck` (all workspaces) · build · unit suites green | ✅ |
 
@@ -230,8 +230,9 @@ flag**.
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green.
 - `@nzi/contracts` — 75 / 75 (+1). `@nzi/console` — 127 / 127 (+1). `@nzi/isolated-backend` — 329 / 329.
 - Migration 0057 applied + idempotency-verified against isolated staging.
-- **Open — Francis:** add `travel` to the Render `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild, then
-  a flip PR removes the `business-travel.spec.ts` flag skip (same discipline as data-assurance / R5).
+- **Flipped:** `travel` added to the Render `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` value + rebuild
+  (Francis, 7 Sep 2026); `business-travel.spec.ts` hardened to a precondition (PR #109). `render.yaml`
+  value line updated to match.
 
 ---
 
