@@ -5,9 +5,10 @@ import { collectPageErrors } from "./lib/screen";
 
 // Data-entry UX review item 5 — Business Travel joins Company Vehicles and
 // Employee Commuting as a per-entity roll-up kind (many trips across modes →
-// one canonical Scope 3.6 row). Behind the NEXT_PUBLIC data-entry flag
-// `travel`. HARDEN at the flip PR (remove the flag skip) — same discipline as
-// data-assurance / report-paged.
+// one canonical Scope 3.6 row). `travel` is LIVE on deployed staging (added to
+// NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 by Francis, 7 Sep 2026). Hardened: the
+// Business-travel kind is a HARD precondition — the only skip is the suite-wide
+// "no staff account" gate.
 
 test.describe("Business Travel per-entity register (item 5)", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set (public smoke run)");
@@ -20,19 +21,19 @@ test.describe("Business Travel per-entity register (item 5)", () => {
     await page.waitForLoadState("load").catch(() => undefined);
 
     const register = page.locator("section#emission-source-register");
-    await expect(register).toBeVisible();
+    await expect(
+      register,
+      "per-entity source register absent — commuting / vehicle / travel must be live on the target",
+    ).toBeVisible();
 
-    const addSource = register.getByRole("button", { name: "Add source" });
-    test.skip((await addSource.count()) === 0, "no add-source path — no per-entity adapter flag on this target");
-    await addSource.click();
+    await register.getByRole("button", { name: "Add source" }).click();
 
     const typeSelect = register.getByRole("combobox", { name: "Type" });
     await expect(typeSelect).toBeVisible();
-    // Flag not yet live → no "Business travel" option. Remove this skip at the flip PR.
-    test.skip(
-      (await typeSelect.locator("option", { hasText: "Business travel" }).count()) === 0,
-      "`travel` not in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 on this target yet",
-    );
+    await expect(
+      typeSelect.locator("option", { hasText: "Business travel" }),
+      "Business travel kind missing — `travel` must be in NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2",
+    ).toHaveCount(1);
 
     await typeSelect.selectOption({ label: "Business travel" });
     // The scope follows the kind (Scope 3.6 · Business travel).
