@@ -117,9 +117,14 @@ test.describe("Data-entry row-detail drawer", () => {
       await expect(header).toHaveAttribute("aria-expanded", "false");
     }
 
-    // Quantity + UoM are editable inline in the key block (not read-only text).
+    // Quantity is editable inline in the key block; UoM is read-only (fixed by
+    // the emission factor's dataset).
     await expect(drawer.locator('.nz-rd-keys .kv.edit input[type="number"]')).toBeVisible();
-    await expect(drawer.locator(".nz-rd-keys .kv.edit input").nth(1)).toBeVisible();
+    await expect(drawer.locator(".nz-rd-keys .kv.edit")).toHaveCount(1);
+    await expect(drawer.locator(".nz-rd-keys .kv", { hasText: "UoM" }).locator("input")).toHaveCount(0);
+    // One footer button does both save + calculate.
+    await expect(drawer.locator(".nz-rd-foot").getByRole("button", { name: /Save & calculate/ })).toBeVisible();
+    await expect(drawer.locator(".nz-rd-foot").getByRole("button", { name: "Calculate", exact: true })).toHaveCount(0);
 
     // No sideways scroll inside the drawer.
     const overflow = await drawer.evaluate((el) => el.scrollWidth - el.clientWidth);

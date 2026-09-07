@@ -122,6 +122,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
     patch({
       activity: [result.make, result.fuelType].filter(Boolean).join(" · ") || draft.activity,
       factorId: result.factorId ?? draft.factorId,
+      unit: (result.factorId ? factors.find(option => option.id === result.factorId)?.unit : undefined) ?? draft.unit,
       manualMode: false,
     });
     setLookup({ state: "idle" });
@@ -202,9 +203,13 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   onChange={event => {
                     const activity = event.target.value;
                     // DA4 — lean capture auto-matches the factor from an exact
-                    // activity pick instead of a separate required select.
-                    if (lean) patch({ activity, factorId: matchFactorByActivity(activity, factors)?.id ?? "" });
-                    else patch({ activity });
+                    // activity pick instead of a separate required select. The
+                    // matched factor also fixes the unit (its dataset activity
+                    // unit) — the user never picks it.
+                    if (lean) {
+                      const matched = matchFactorByActivity(activity, factors);
+                      patch({ activity, factorId: matched?.id ?? "", unit: matched?.unit ?? draft.unit });
+                    } else patch({ activity });
                   }} />
                 <datalist id={listId}>{factors.map(option => <option key={option.id} value={option.label} />)}</datalist>
                 <span className="nz-hint">{field.hint}</span>
@@ -222,6 +227,11 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   <label className="nz-fl">VAT %
                     <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder="20"
                       onChange={event => patch({ vatPercent: event.target.value })} />
+                  </label>
+                ) : audience === "crm" ? (
+                  <label className="nz-fl">Unit <span className="muted">· from the factor</span>
+                    <input className="nz-inp" readOnly value={draft.unit || ""} placeholder="set by the emission factor"
+                      aria-label="Unit — set by the selected emission factor" />
                   </label>
                 ) : (
                   <label className="nz-fl">Unit
@@ -288,7 +298,10 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
           case "factor-select":
             return (
               <label key={field.key} className="nz-fl">{field.label}
-                <select className="nz-sel" value={draft.factorId} onChange={event => patch({ factorId: event.target.value })}>
+                <select className="nz-sel" value={draft.factorId} onChange={event => {
+                  const id = event.target.value;
+                  patch({ factorId: id, unit: factors.find(option => option.id === id)?.unit ?? draft.unit });
+                }}>
                   <option value="">Select a factor</option>
                   {factors.map(option => <option key={option.id} value={option.id}>{option.label}{option.unit ? ` · ${option.unit}` : ""}</option>)}
                   <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option>

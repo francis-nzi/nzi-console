@@ -755,37 +755,46 @@ function Editor({
     [history,setHistory]=useState<Array<{id:string;at:string;actor:string;action:string;correlationId:string}>>([]),
     [historyState,setHistoryState]=useState<"loading"|"ready"|"failed">("loading");
   useEffect(()=>{const controller=new AbortController();fetch(`/api/isolated/jobs/${jobId}/scope-rows/${row.id}/history`,{cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(!Array.isArray(body.events))throw new Error();setHistory(body.events.filter((event:unknown)=>event&&typeof event==="object"&&"id" in event&&"at" in event&&"actor" in event&&"action" in event&&"correlationId" in event));setHistoryState("ready")}).catch(error=>{if(error?.name!=="AbortError")setHistoryState("failed")});return()=>controller.abort();},[jobId,row.id]);
-  async function save() {
-    setPending(true);
+  // Returns the row's new version on success (needed to chain a calculate in the
+  // same click — `row.version` is a stale prop until `router.refresh()` lands).
+  async function save(): Promise<number | null> {
     const r = await patchBrowserCommand<{ version: number }>(
       `/api/isolated/jobs/${jobId}/scope-rows/${row.id}`,
       { ...value, enabled, expectedVersion: row.version },
       crypto.randomUUID(),
     );
-    setPending(false);
-    if (r.state === "success") {
-      notice({
-        kind: "ok",
-        text: "Saved; calculation and review reset pending.",
-      });
-      router.refresh();
-    } else notice({ kind: "warn", text: errorText(r) });
+    if (r.state === "success") return r.data.version;
+    notice({ kind: "warn", text: errorText(r) });
+    return null;
   }
-  async function calculate() {
-    setPending(true);
+  async function calculate(atVersion?: number): Promise<boolean> {
     const r = await postBrowserCommand<{ calculatedTco2e: number }>(
       `/api/isolated/jobs/${jobId}/scope-rows/${row.id}/calculate`,
-      { expectedVersion: row.version },
+      { expectedVersion: atVersion ?? row.version },
       crypto.randomUUID(),
     );
-    setPending(false);
     if (r.state === "success") {
-      notice({
-        kind: "ok",
-        text: `Calculated ${r.data.calculatedTco2e.toLocaleString("en-GB")} tCO₂e with recorded lineage.`,
-      });
-      router.refresh();
-    } else notice({ kind: "warn", text: errorText(r) });
+      notice({ kind: "ok", text: `Saved and calculated ${r.data.calculatedTco2e.toLocaleString("en-GB")} tCO₂e with recorded lineage.` });
+      return true;
+    }
+    notice({ kind: "warn", text: errorText(r) });
+    return false;
+  }
+  // One click: save the edits, then calculate if the row can be (has a factor
+  // and a quantity / monthly split / override) — data-entry UX review follow-up.
+  async function saveAndCalculate() {
+    if (pending) return;
+    setPending(true);
+    const version = await save();
+    if (version === null) { setPending(false); return; }
+    const calculable = value.factorId != null && (value.quantity != null || (value.monthlyActivity?.length ?? 0) > 0);
+    if (value.overrideTco2e != null || !calculable) {
+      notice({ kind: "ok", text: value.overrideTco2e != null ? "Saved. The reasoned override stands as the result." : "Saved. Add an emission factor and quantity, then Save & calculate to compute." });
+    } else {
+      await calculate(version);
+    }
+    setPending(false);
+    router.refresh();
   }
   async function review(decision: "approved" | "rejected") {
     setPending(true);
@@ -830,6 +839,7 @@ function Editor({
   const available = factors.filter((f) => f.scopes.includes(f.factorSource === "client" ? value.scope : value.scope.split(".")[0]!));
   const factorKey = (f: FactorOption) => `${f.factorSource}:${f.clientFactorId ?? f.datasetId}|${f.factorId}`;
   const selectedFactor = value.factorId ? `${value.factorSource ?? "dataset"}:${value.clientFactorId ?? value.datasetId}|${value.factorId}` : "";
+  const matchedFactor = available.find((f) => factorKey(f) === selectedFactor) ?? null;
   const detail = rowSourceDetail(row);
   const displayTco2e = row.overrideTco2e ?? row.calculatedTco2e;
   const monthlyOn = (value.monthlyActivity?.length ?? 0) > 0;
@@ -837,11 +847,11 @@ function Editor({
   return (
     <div className="nz-rd">
       <div className={`nz-banner ${displayTco2e === null ? "warn" : "ok"}`}>
-        {displayTco2e === null ? "Save changes, then calculate." : "Calculated evidence is available."}
+        {displayTco2e === null ? "Not calculated yet — edit the fields, then Save & calculate." : "Calculated evidence is available."}
       </div>
 
-      {/* The 7 key fields, always visible (item 2). Quantity + UoM are the row's
-          primary editable activity — the rest are a read-only glance. */}
+      {/* The 7 key fields, always visible (item 2). Quantity is the row's primary
+          editable activity; UoM is fixed by the emission factor's dataset. */}
       <div className="nz-rd-keys">
         <div className="kv"><span className="l">Site</span><span className="v">{value.siteLabel ?? "Unallocated"}</span></div>
         <div className="kv"><span className="l">Scope</span><span className="v">{crpScopeCategoryPath(value.scope).join(" › ")}</span></div>
@@ -851,17 +861,17 @@ function Editor({
           <input className="nz-inp" type="number" min="0" step="any" value={value.quantity ?? ""} disabled={monthlyOn}
             onChange={(e) => setValue({ ...value, quantity: e.target.value === "" ? null : Number(e.target.value) })} />
         </label>
-        <label className="kv edit"><span className="l">UoM</span>
-          <input className="nz-inp" value={value.unit ?? ""} placeholder={selectedFactor ? "" : "e.g. kWh"}
-            onChange={(e) => setValue({ ...value, unit: e.target.value || null })} />
-        </label>
+        <div className="kv"><span className="l">UoM</span><span className="v">{value.unit ?? "—"}</span></div>
         <div className="kv"><span className="l">tCO₂e</span><span className="v co2">{displayTco2e === null ? "—" : displayTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
       </div>
       {monthlyOn
-        ? <p className="nz-hint">Quantity is the sum of the monthly figures in “Monthly activity” — edit it there.</p>
-        : <p className="nz-hint">Enter the activity quantity, then <b>Save</b> and <b>Calculate</b>.</p>}
+        ? <p className="nz-hint">Quantity is the sum of the monthly figures in “Monthly activity” — edit it there. The unit is set by the emission factor.</p>
+        : <p className="nz-hint">Enter the activity quantity, then <b>Save &amp; calculate</b>. The unit is set by the emission factor.</p>}
 
       <Collapsible title="Factor & calculation">
+        <label className="nz-fl">Report label <InfoTip label="Report label">How this source is named in the client report — independent of the internal source name.</InfoTip>
+          <input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => setValue({ ...value, reportLabel: e.target.value || null })} />
+        </label>
         <label className="nz-fl">
           Emission factor
           <select className="nz-sel" value={selectedFactor} onChange={(e) => {
@@ -872,6 +882,7 @@ function Editor({
             {available.map((f) => <option key={factorKey(f)} value={factorKey(f)}>{f.label} · {f.activityUnit}{f.synthetic ? " · DEMO" : ""}</option>)}
           </select>
         </label>
+        <div className="nz-kv"><span className="k">GHG / unit <InfoTip label="GHG per unit">The dataset factor&rsquo;s emission intensity — kg CO₂e per activity unit. Multiplied by the quantity to give the result.</InfoTip></span><span className="v">{matchedFactor ? `${matchedFactor.kgco2ePerUnit.toLocaleString("en-GB", { maximumFractionDigits: 6 })} kgCO₂e / ${matchedFactor.activityUnit}` : "—"}</span></div>
         <div className="nz-kv"><span className="k">Factor set <InfoTip label="Factor set">The dataset and version the emission factor is pinned from. Frozen into the report snapshot at sign-off.</InfoTip></span><span className="v">{value.factorLabel ?? "—"}{value.factorVersion ? ` · ${value.factorVersion}` : ""}</span></div>
         <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? "—" : row.calculatedTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
         <p className="nz-hint">As-entered <InfoTip label="As-entered quantity">The figure and unit exactly as the client supplied them, before any conversion to the factor&rsquo;s activity unit. Kept for the audit trail; the <b>Quantity</b> at the top is what the calculation uses.</InfoTip></p>
@@ -882,7 +893,6 @@ function Editor({
         <p className="nz-hint">Reasoned override <InfoTip label="Reasoned override">Leave blank to use the calculated result. Entering a value records an override in the row&rsquo;s lineage and always requires a reason.</InfoTip></p>
         <label className="nz-fl">Override tCO₂e<input className="nz-inp" type="number" min="0" step="any" value={value.overrideTco2e ?? ""} onChange={(e) => setValue({ ...value, overrideTco2e: e.target.value === "" ? null : Number(e.target.value) })} /></label>
         <label className="nz-fl">Override reason<textarea className="nz-notes" value={value.overrideReason ?? ""} onChange={(e) => setValue({ ...value, overrideReason: e.target.value || null })} placeholder="Required when an override value is entered" /></label>
-        <button className="nz-btn" disabled={pending || row.calculatedTco2e !== null} onClick={calculate}>Calculate</button>
       </Collapsible>
 
       <Collapsible title="Data quality">
@@ -897,8 +907,7 @@ function Editor({
 
       <Collapsible title={detail.title} count={detail.fields.length || undefined}>
         {detail.fields.map((field) => <div className="nz-kv" key={field.label}><span className="k">{field.label}</span><span className="v">{field.value}</span></div>)}
-        <label className="nz-fl">Source label<input className="nz-inp" required value={value.sourceLabel} onChange={(e) => setValue({ ...value, sourceLabel: e.target.value })} /></label>
-        <label className="nz-fl">Report label <InfoTip label="Report label">How this source is named in the client report — independent of the internal source name.</InfoTip><input className="nz-inp" value={value.reportLabel ?? ""} placeholder={value.sourceLabel || "Defaults to source"} onChange={(e) => setValue({ ...value, reportLabel: e.target.value || null })} /></label>
+        <label className="nz-fl">Source label <InfoTip label="Source label">The internal name for this source. The client report uses <b>Report label</b> (in Factor &amp; calculation) instead.</InfoTip><input className="nz-inp" required value={value.sourceLabel} onChange={(e) => setValue({ ...value, sourceLabel: e.target.value })} /></label>
         <label className="nz-fl">{detail.kind === "vehicle" ? "Registration" : detail.kind === "spend" ? "Invoice date / reference" : detail.kind === "travel" ? "Traveller / trip ref" : "ID / reference"}<input className="nz-inp" maxLength={240} value={value.assetIdentifier ?? ""} onChange={(e) => setValue({ ...value, assetIdentifier: e.target.value || null })} /></label>
         {value.scope === "3.1" && (
           <label className="nz-fl">Purchased-goods category <InfoTip label="PG&S category">The controlled Purchased Goods &amp; Services category this spend line maps to. Drives the Scope 3.1 factor.</InfoTip><select className="nz-sel" value={value.purchasedGoodsCategoryId ?? ""} onChange={(e) => { const category = purchasedGoodsCategories.find((item) => item.id === e.target.value); setValue({ ...value, purchasedGoodsCategoryId: category?.id ?? null, purchasedGoodsCategoryLabel: category?.name ?? null }); }}><option value="">Uncategorised</option>{purchasedGoodsCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
@@ -943,8 +952,7 @@ function Editor({
       </Collapsible>
 
       <div className="nz-rd-foot">
-        <button className="nz-btn pri" disabled={pending} onClick={save}>Save</button>
-        <button className="nz-btn" disabled={pending || row.calculatedTco2e !== null} onClick={calculate}>Calculate</button>
+        <button className="nz-btn pri" disabled={pending} onClick={() => void saveAndCalculate()}>{pending ? "Saving…" : "Save & calculate"}</button>
         <button className="nz-btn" aria-expanded={showEvidence} onClick={() => setShowEvidence((prev) => !prev)}>History</button>
       </div>
     </div>

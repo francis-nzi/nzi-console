@@ -79,16 +79,18 @@ stacked below). Reworked:
   `provenance.detail | provenance.spendDetail`; the row's PG&S label wins over the frozen one), or a
   generic `Source detail`. Empty fields are dropped.
 - **`Editor`** (`CrpScopeWorkspace.tsx`) rebuilt: a status banner, then the **7 always-visible key
-  fields** (`.nz-rd-keys` — Site · Scope · Category · Report label · Quantity · UoM · tCO₂e) where
-  **Quantity and UoM are editable inline** (they are the row's primary activity — a follow-up fix,
-  PR #110; disabled with a hint when monthly activity drives the total), then six
-  **collapsed-by-default** `Collapsible` sections — Factor & calculation · Data quality · Apportionment &
-  site · {Source detail — adaptive title} · Monthly activity · Evidence & provenance (lineage,
-  provenance, the client-factor-moved note, independent review as `GatedButton`s, activity history,
-  reporting snapshot). A sticky footer: **Save · Calculate · History**. Single column
+  fields** (`.nz-rd-keys` — Site · Scope · Category · Report label · Quantity · UoM · tCO₂e). **Quantity
+  is editable inline** (the row's primary activity — PR #110; disabled with a hint when monthly activity
+  drives the total); **UoM is read-only** — it is fixed by the emission factor's dataset unit, never
+  picked (sensory-pass follow-up, PR #113). Then six **collapsed-by-default** `Collapsible` sections —
+  Factor & calculation · Data quality · Apportionment & site · {Source detail — adaptive title} · Monthly
+  activity · Evidence & provenance. **Factor & calculation** leads with Report label → Emission factor →
+  **GHG / unit** (the dataset factor's `kgco2ePerUnit`, shown so the intensity is visible) → Factor set →
+  Calculated tCO₂e → as-entered → override. A sticky footer: **Save & calculate · History** — one button
+  saves the edits and (when the row has a factor + quantity, and no override) calculates in the same
+  click (sensory-pass follow-up, PR #113). Single column
   (`.nz-rd .nz-scope-fields{grid-template-columns:1fr}`), `overflow-wrap:anywhere` on provenance values —
-  no horizontal scroll. Inline instruction paragraphs replaced by ⓘ (Factor set · Reasoned override ·
-  Data confidence · Apportionment · Report label · PG&S category).
+  no horizontal scroll. Inline instruction paragraphs replaced by ⓘ.
 - The lineage / provenance blocks the drawer wrapper rendered after `<Editor/>` moved **into** the
   Evidence & provenance section.
 
