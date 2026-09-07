@@ -157,7 +157,15 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-rd-keys .kv.edit{gap:3px}
 .nz-rd-keys .kv.edit .nz-inp{height:30px;font-size:13px;font-weight:600}
 .nz-rd-keys .kv.edit .nz-inp:disabled{background:var(--paper);color:var(--t3)}
-.nz-rd .nz-scope-fields{grid-template-columns:1fr}
+.nz-rd .nz-scope-fields{grid-template-columns:1fr;gap:10px;margin:0}
+/* `.nz-fl` here is the <label> itself with its text + control — style the
+   text small (the codebase's `.nz-fl label` rule only hits a nested label,
+   which nothing in the drawer uses) and keep the field rhythm tight. */
+.nz-rd .nz-fl{display:block;margin:10px 0 0;font-size:11px;font-weight:600;color:var(--t2)}
+.nz-rd .nz-fl:first-child{margin-top:0}
+.nz-rd .nz-scope-fields .nz-fl{margin:0}
+.nz-rd .nz-fl>.nz-inp,.nz-rd .nz-fl>.nz-sel,.nz-rd .nz-fl>.nz-notes{margin-top:4px;font-weight:400;color:var(--t1)}
+.nz-rd .nz-collapsible-b>.nz-hint{margin:10px 0 2px;font-weight:600;color:var(--t2);text-transform:none;letter-spacing:0}
 .nz-rd .nz-kv .v{overflow-wrap:anywhere;word-break:break-word}
 .nz-rd-foot{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--card);padding:12px 0 4px;border-top:1px solid var(--line2);margin-top:6px}
 .nz-banner{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:9px;font-size:12px;margin-bottom:10px;line-height:1.45}
