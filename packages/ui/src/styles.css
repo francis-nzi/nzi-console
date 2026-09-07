@@ -158,14 +158,10 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-rd-keys .kv.edit .nz-inp{height:30px;font-size:13px;font-weight:600}
 .nz-rd-keys .kv.edit .nz-inp:disabled{background:var(--paper);color:var(--t3)}
 .nz-rd .nz-scope-fields{grid-template-columns:1fr;gap:10px;margin:0}
-/* `.nz-fl` here is the <label> itself with its text + control — style the
-   text small (the codebase's `.nz-fl label` rule only hits a nested label,
-   which nothing in the drawer uses) and keep the field rhythm tight. */
-.nz-rd .nz-fl{display:block;margin:10px 0 0;font-size:11px;font-weight:600;color:var(--t2)}
+.nz-rd .nz-fl{margin:10px 0 0}
 .nz-rd .nz-fl:first-child{margin-top:0}
 .nz-rd .nz-scope-fields .nz-fl{margin:0}
-.nz-rd .nz-fl>.nz-inp,.nz-rd .nz-fl>.nz-sel,.nz-rd .nz-fl>.nz-notes{margin-top:4px;font-weight:400;color:var(--t1)}
-.nz-rd .nz-collapsible-b>.nz-hint{margin:10px 0 2px;font-weight:600;color:var(--t2);text-transform:none;letter-spacing:0}
+.nz-rd .nz-collapsible-b>.nz-hint{margin:10px 0 2px;font-weight:600;color:var(--t2)}
 .nz-rd .nz-kv .v{overflow-wrap:anywhere;word-break:break-word}
 .nz-rd-foot{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--card);padding:12px 0 4px;border-top:1px solid var(--line2);margin-top:6px}
 .nz-banner{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:9px;font-size:12px;margin-bottom:10px;line-height:1.45}
@@ -174,9 +170,16 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-banner.warn svg{stroke:#B8860B}
 .nz-banner.ok{background:var(--mint);color:var(--pine);border:1px solid #BEE7D3}
 .nz-banner.ok svg{stroke:var(--pine)}
-.nz-fl{margin:12px 0}
-.nz-fl label{display:block;font-size:11px;font-weight:600;color:var(--t2);margin-bottom:5px}
-.nz-fl .req{color:var(--coral);margin-left:3px}
+/* `.nz-fl` is the field wrapper AND, across most of the app, the <label>
+   itself — the label text sits as a direct child. So it carries the label
+   typography (11px / 600 / --t2); a nested <label> or a leading <span> is the
+   same label; controls and helper text inside reset to normal weight. */
+.nz-fl{margin:12px 0;font-size:11px;font-weight:600;color:var(--t2)}
+.nz-fl>label,.nz-fl>span:first-child{display:block;margin-bottom:5px}
+.nz-fl .nz-inp,.nz-fl .nz-sel,.nz-fl .nz-notes,.nz-fl .nz-factorbox,.nz-fl .nz-hint,.nz-fl .muted,.nz-fl option{font-weight:400}
+.nz-fl .nz-notes{color:var(--t1)}
+.nz-fl>.nz-inp,.nz-fl>.nz-sel,.nz-fl>.nz-notes,.nz-fl>.nz-inp2,.nz-fl>.nz-factorbox{margin-top:5px}
+.nz-fl .req{color:var(--coral);font-weight:600;margin-left:3px}
 .nz-inp,.nz-sel{width:100%;height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 11px;font-family:inherit;font-size:13px;color:var(--t1)}
 .nz-inp.bad{border-color:var(--coral);background:#FFF7F6}
 .nz-inp2{display:flex;gap:8px}
