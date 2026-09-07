@@ -117,6 +117,10 @@ test.describe("Data-entry row-detail drawer", () => {
       await expect(header).toHaveAttribute("aria-expanded", "false");
     }
 
+    // Quantity + UoM are editable inline in the key block (not read-only text).
+    await expect(drawer.locator('.nz-rd-keys .kv.edit input[type="number"]')).toBeVisible();
+    await expect(drawer.locator(".nz-rd-keys .kv.edit input").nth(1)).toBeVisible();
+
     // No sideways scroll inside the drawer.
     const overflow = await drawer.evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow, "the row drawer must not scroll horizontally").toBeLessThanOrEqual(1);

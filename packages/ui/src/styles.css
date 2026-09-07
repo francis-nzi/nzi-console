@@ -154,6 +154,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-rd-keys .kv .l{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--t3)}
 .nz-rd-keys .kv .v{font-weight:600;font-size:13px;overflow-wrap:anywhere}
 .nz-rd-keys .kv .v.co2{color:var(--pine)}
+.nz-rd-keys .kv.edit{gap:3px}
+.nz-rd-keys .kv.edit .nz-inp{height:30px;font-size:13px;font-weight:600}
+.nz-rd-keys .kv.edit .nz-inp:disabled{background:var(--paper);color:var(--t3)}
 .nz-rd .nz-scope-fields{grid-template-columns:1fr}
 .nz-rd .nz-kv .v{overflow-wrap:anywhere;word-break:break-word}
 .nz-rd-foot{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--card);padding:12px 0 4px;border-top:1px solid var(--line2);margin-top:6px}
