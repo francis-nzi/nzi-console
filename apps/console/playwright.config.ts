@@ -34,13 +34,13 @@ export default defineConfig({
     {
       name: "staff",
       testMatch: /\.(spec)\.ts$/,
-      testIgnore: /portal\.spec\.ts/,
+      testIgnore: /portal(-security)?\.spec\.ts/,
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: STAFF_STATE },
     },
     {
       name: "portal",
-      testMatch: /portal\.spec\.ts/,
+      testMatch: /portal(-security)?\.spec\.ts/,
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: PORTAL_STATE },
     },

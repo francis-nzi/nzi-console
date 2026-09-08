@@ -10,7 +10,8 @@ export type StaffPermission =
   | "emissions.data.edit" | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
 export type PortalSession = { principal:"portal";sessionId:string;userId:string;clientId:string;organisationId:string;issuedAt:number;expiresAt:number };
-export type PortalPrincipal=PortalSession&{displayName:string;email:string};
+export type PortalPrincipal=PortalSession&{displayName:string;email:string;idleLimitMinutes:number};
+export const PORTAL_IDLE_LIMIT_DEFAULT_MINUTES=30;
 export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
 
 export const rolePermissions: Record<StaffRole, readonly StaffPermission[]> = {
@@ -55,7 +56,21 @@ export function verifyStaffSession(token: string | undefined, secret: string | u
 export function issuePortalSession(session:PortalSession,secret:string):string{const payload=encode(JSON.stringify(session));return `${payload}.${sign(payload,requireSecret(secret))}`;}
 export function verifyPortalSession(token:string|undefined,secret:string|undefined,nowSeconds=Math.floor(Date.now()/1000)):PortalSession{if(!token)throw new AuthenticationError("Client portal authentication is required.");const [payload,signature,extra]=token.split(".");if(!payload||!signature||extra)throw new AuthenticationError("Invalid client portal session.");const expected=sign(payload,requireSecret(secret)),actualBuffer=Buffer.from(signature),expectedBuffer=Buffer.from(expected);if(actualBuffer.length!==expectedBuffer.length||!timingSafeEqual(actualBuffer,expectedBuffer))throw new AuthenticationError("Invalid client portal session.");let session:PortalSession;try{session=JSON.parse(Buffer.from(payload,"base64url").toString("utf8")) as PortalSession;}catch{throw new AuthenticationError("Invalid client portal session.");}if(session.principal!=="portal"||!session.sessionId?.trim()||!session.userId?.trim()||!session.clientId?.trim()||!session.organisationId?.trim()||!Number.isInteger(session.issuedAt)||!Number.isInteger(session.expiresAt))throw new AuthenticationError("Invalid client portal session.");if(session.issuedAt>nowSeconds+60||session.expiresAt<=nowSeconds)throw new AuthenticationError("Client portal session has expired.");return session;}
 
-export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession):Promise<PortalPrincipal>{return withAuthTransaction(pool,"read",async db=>{const result=await db.query<{display_name:string;email_normalized:string}>(`SELECT u.display_name,u.email_normalized FROM nzi_console.portal_sessions s JOIN nzi_console.portal_users u ON (u.organisation_id,u.portal_user_id,u.client_id)=(s.organisation_id,s.portal_user_id,s.client_id) WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.portal_user_id=$3 AND s.client_id=$4 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active'`,[session.organisationId,session.sessionId,session.userId,session.clientId]);const user=result.rows[0];if(!user)throw new AuthenticationError("No active client portal session exists.");return{...session,displayName:user.display_name,email:user.email_normalized};});}
+// P1 (Portal Phase 2) — idle-session enforcement lives here, at the single
+// request-time resolve every portal API route already goes through: a session
+// whose `last_seen_at` is older than the idle limit is rejected server-side
+// (so a closed laptop or a killed client JS still self-heals), and a live
+// session's activity slides the window forward (throttled to one write / 30s).
+export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession,options?:{idleLimitMinutes?:number}):Promise<PortalPrincipal>{
+  const idleLimitMinutes=Number.isFinite(options?.idleLimitMinutes)&&(options?.idleLimitMinutes??0)>0?Math.floor(options!.idleLimitMinutes!):PORTAL_IDLE_LIMIT_DEFAULT_MINUTES;
+  return withAuthTransaction(pool,"write",async db=>{
+    const result=await db.query<{display_name:string;email_normalized:string}>(`SELECT u.display_name,u.email_normalized FROM nzi_console.portal_sessions s JOIN nzi_console.portal_users u ON (u.organisation_id,u.portal_user_id,u.client_id)=(s.organisation_id,s.portal_user_id,s.client_id) WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.portal_user_id=$3 AND s.client_id=$4 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND s.last_seen_at > now() - ($5 || ' minutes')::interval`,[session.organisationId,session.sessionId,session.userId,session.clientId,String(idleLimitMinutes)]);
+    const user=result.rows[0];
+    if(!user)throw new AuthenticationError("No active client portal session exists.");
+    await db.query(`UPDATE nzi_console.portal_sessions SET last_seen_at=now() WHERE organisation_id=$1 AND session_id=$2 AND last_seen_at < now() - interval '30 seconds'`,[session.organisationId,session.sessionId]);
+    return{...session,displayName:user.display_name,email:user.email_normalized,idleLimitMinutes};
+  });
+}
 
 export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSession): Promise<StaffPrincipal> {
   return withAuthTransaction(pool, "read", async (db: Queryable) => {

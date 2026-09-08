@@ -10,5 +10,6 @@ export class PortalAuthDisabledError extends Error{constructor(){super("Client p
 export const requirePortalAuthEnabled=()=>{if(process.env.NZI_PORTAL_AUTH_ENABLED!=="true")throw new PortalAuthDisabledError();};
 export const requirePortalOrigin=(request:Request)=>assertSameOrigin(request.headers.get("origin"),process.env.NZI_ISOLATED_API_URL);
 export const signPortalSession=(session:Parameters<typeof issuePortalSession>[0])=>issuePortalSession(session,process.env.NZI_PORTAL_SESSION_SECRET??"");
-export async function currentPortalUser(request:Request){requirePortalAuthEnabled();const session=verifyPortalSession(cookieValue(request.headers.get("cookie"),PORTAL_SESSION_COOKIE),process.env.NZI_PORTAL_SESSION_SECRET);return resolvePortalPrincipal(isolatedPool(),session);}
+export const portalIdleLimitMinutes=()=>{const parsed=Number(process.env.NZI_PORTAL_IDLE_LIMIT_MINUTES);return Number.isFinite(parsed)&&parsed>0?Math.floor(parsed):30;};
+export async function currentPortalUser(request:Request){requirePortalAuthEnabled();const session=verifyPortalSession(cookieValue(request.headers.get("cookie"),PORTAL_SESSION_COOKIE),process.env.NZI_PORTAL_SESSION_SECRET);return resolvePortalPrincipal(isolatedPool(),session,{idleLimitMinutes:portalIdleLimitMinutes()});}
 export async function endPortalSession(request:Request){const session=verifyPortalSession(cookieValue(request.headers.get("cookie"),PORTAL_SESSION_COOKIE),process.env.NZI_PORTAL_SESSION_SECRET);await revokePortalSession(isolatedPool(),session);}
