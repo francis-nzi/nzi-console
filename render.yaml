@@ -36,10 +36,10 @@ services:
         value: spend,spend-import,portal-spend,commuting,vehicle,travel,client-factors,data-entry-accordion,job-stage-sections
       # Report Studio (R-track) flags — own variable, build-inlined, flipped via
       # the Render dashboard + rebuild (see docs/DEPLOYMENT.md). Kept here for
-      # continuity only. R1/R3/R4 live: SVG charts, data-bound tokens, editor.
+      # continuity only. R1/R3/R4/R5 are live on isolated staging.
       # (docs/STAGING_ACCEPTANCE_R1.md).
       - key: NEXT_PUBLIC_FEATURE_REPORT_STUDIO
-        value: report-svg-charts,report-tokens,report-edit
+        value: report-svg-charts,report-tokens,report-edit,report-paged
       # Job-family modules (Track C, NZC-024) — own variable, same dashboard-edit-
       # plus-rebuild procedure. job-module-lca (slices 1–2) has a seed LCA/PCF job
       # to see it against as of 5 Sep 2026 (docs/ACCEPTANCE_LCA_MODULE_SLICE2.md) —

@@ -24,10 +24,7 @@ async function openReportVersion(page: Page): Promise<{ errors: string[]; append
   await page.waitForLoadState("load").catch(() => undefined);
   await expectHealthyScreen(page);
   const appendix = page.locator(".report-appendix");
-  test.skip(
-    (await appendix.count()) === 0,
-    "report-paged not enabled on target (no .report-appendix) — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(appendix, "report-paged must render the audit appendix").toBeVisible();
   return { errors, appendix };
 }
 

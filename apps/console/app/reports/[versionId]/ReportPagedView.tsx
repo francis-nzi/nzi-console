@@ -65,6 +65,12 @@ export function ReportPagedView({ meta, children }: { meta: ReportPagedMeta; chi
         const sheet = flowRef.current?.querySelector<HTMLElement>(".report-sheet");
         const target = pagedTargetRef.current;
         if (!sheet || !target) throw new Error("Report content is not available to paginate.");
+        // Paged.js measures each generated page through offsetParent and
+        // getBoundingClientRect. `hidden` makes the target display:none, which
+        // leaves those pages without an offset parent and crashes pagination.
+        // Keep the target in layout while it builds; the loading state remains
+        // the accessible status announced to the user.
+        target.hidden = false;
         const clone = sheet.cloneNode(true) as HTMLElement;
         for (const marker of Array.from(clone.querySelectorAll(".pbreak"))) marker.remove();
         const { Previewer } = await import("pagedjs");
@@ -96,7 +102,12 @@ export function ReportPagedView({ meta, children }: { meta: ReportPagedMeta; chi
     {mode === "page" && <div className="report-pagedjs-wrap" id="report-view-panel-page" role="tabpanel" aria-labelledby="report-view-tab-page">
       {pageState === "loading" && <div className="nz-register-loading" role="status"><i /><span><b>Building the A4 page view</b><small>Applying the same paged-media rules as the printed PDF…</small></span></div>}
       {pageState === "failed" && <div className="nz-banner warn" role="alert"><div><b>Page view is unavailable</b><div>{pageError} The Continuous view and Print/Save as PDF are unaffected.</div></div></div>}
-      <div ref={pagedTargetRef} className="report-pagedjs-target" hidden={pageState !== "ready"} />
+      <div
+        ref={pagedTargetRef}
+        className="report-pagedjs-target"
+        aria-hidden={pageState !== "ready"}
+        hidden={pageState === "idle" || pageState === "failed"}
+      />
     </div>}
   </>;
 }
