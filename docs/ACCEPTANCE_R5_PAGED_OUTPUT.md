@@ -117,6 +117,10 @@ view is a high-fidelity *preview* of it, not a byte-identity guarantee.
 
 ## Verification (R5a: PR #90, R5b: PR #91)
 
+Automated staging acceptance completed on 8 September 2026 with `report-paged` live: the hardened
+combined R5a/R5b Playwright run passed **10/10** on Render revision `301864a`. The page-view versus
+browser Save-as-PDF visual comparison remains a human-only gate; see `docs/STAGING_ACCEPTANCE_R5.md`.
+
 - `npm run typecheck` (all workspaces) — clean · `npm run build -w @nzi/console` — green; report route
   bundle unchanged, pagedjs confirmed split into its own chunk.
 - `@nzi/contracts` — 74/74 · `@nzi/console` unit suite — 99/99 (+10 `reportPageBreaks.test.ts`).
