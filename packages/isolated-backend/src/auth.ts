@@ -10,7 +10,7 @@ export type StaffPermission =
   | "emissions.data.edit" | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
 export type PortalSession = { principal:"portal";sessionId:string;userId:string;clientId:string;organisationId:string;issuedAt:number;expiresAt:number };
-export type PortalPrincipal=PortalSession&{displayName:string;email:string;idleLimitMinutes:number};
+export type PortalPrincipal=PortalSession&{displayName:string;email:string;idleLimitMinutes:number;termsVersion:string;mustAcceptTerms:boolean};
 export const PORTAL_IDLE_LIMIT_DEFAULT_MINUTES=30;
 export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
 
@@ -61,14 +61,18 @@ export function verifyPortalSession(token:string|undefined,secret:string|undefin
 // whose `last_seen_at` is older than the idle limit is rejected server-side
 // (so a closed laptop or a killed client JS still self-heals), and a live
 // session's activity slides the window forward (throttled to one write / 30s).
-export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession,options?:{idleLimitMinutes?:number}):Promise<PortalPrincipal>{
+export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession,options?:{idleLimitMinutes?:number;termsVersion?:string}):Promise<PortalPrincipal>{
   const idleLimitMinutes=Number.isFinite(options?.idleLimitMinutes)&&(options?.idleLimitMinutes??0)>0?Math.floor(options!.idleLimitMinutes!):PORTAL_IDLE_LIMIT_DEFAULT_MINUTES;
+  const termsVersion=(options?.termsVersion??"").trim();
   return withAuthTransaction(pool,"write",async db=>{
-    const result=await db.query<{display_name:string;email_normalized:string}>(`SELECT u.display_name,u.email_normalized FROM nzi_console.portal_sessions s JOIN nzi_console.portal_users u ON (u.organisation_id,u.portal_user_id,u.client_id)=(s.organisation_id,s.portal_user_id,s.client_id) WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.portal_user_id=$3 AND s.client_id=$4 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND s.last_seen_at > now() - ($5 || ' minutes')::interval`,[session.organisationId,session.sessionId,session.userId,session.clientId,String(idleLimitMinutes)]);
+    // P2b — `must_accept_tac`: when a terms version is configured, the session is
+    // still resolved, but flagged `mustAcceptTerms` until an acceptance row for
+    // THAT version exists (so a re-issued version re-gates existing users).
+    const result=await db.query<{display_name:string;email_normalized:string;terms_ok:boolean}>(`SELECT u.display_name,u.email_normalized,($6='' OR EXISTS(SELECT 1 FROM nzi_console.portal_terms_acceptances t WHERE (t.organisation_id,t.portal_user_id)=(s.organisation_id,s.portal_user_id) AND t.terms_version=$6)) AS terms_ok FROM nzi_console.portal_sessions s JOIN nzi_console.portal_users u ON (u.organisation_id,u.portal_user_id,u.client_id)=(s.organisation_id,s.portal_user_id,s.client_id) WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.portal_user_id=$3 AND s.client_id=$4 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND s.last_seen_at > now() - ($5 || ' minutes')::interval`,[session.organisationId,session.sessionId,session.userId,session.clientId,String(idleLimitMinutes),termsVersion]);
     const user=result.rows[0];
     if(!user)throw new AuthenticationError("No active client portal session exists.");
     await db.query(`UPDATE nzi_console.portal_sessions SET last_seen_at=now() WHERE organisation_id=$1 AND session_id=$2 AND last_seen_at < now() - interval '30 seconds'`,[session.organisationId,session.sessionId]);
-    return{...session,displayName:user.display_name,email:user.email_normalized,idleLimitMinutes};
+    return{...session,displayName:user.display_name,email:user.email_normalized,idleLimitMinutes,termsVersion,mustAcceptTerms:termsVersion!==""&&!user.terms_ok};
   });
 }
 

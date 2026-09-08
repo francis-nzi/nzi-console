@@ -1,7 +1,7 @@
 import { lookupVehicleByRegistration, resolveVehicleFactor, withTenantRead } from "@nzi/isolated-backend";
 import { portalAuthFailure } from "../../../../../lib/authResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
-import { currentPortalUser, requirePortalOrigin } from "../../../../../lib/portalSession";
+import { currentPortalUserForData, requirePortalOrigin } from "../../../../../lib/portalSession";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     requirePortalOrigin(request);
-    const user = await currentPortalUser(request);
+    const user = await currentPortalUserForData(request);
     const { jobId } = await params;
     const body = (await request.json().catch(() => ({}))) as { registration?: unknown };
     if (typeof body.registration !== "string" || body.registration.trim() === "") {

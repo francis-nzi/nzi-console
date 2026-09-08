@@ -80,9 +80,9 @@ export function PortalInactivityGuard() {
   const ss = String(warnLeft % 60).padStart(2, "0");
   return (
     <Drawer open onClose={stayIn} ariaLabel="Session about to end" className="nz-portal-idle">
-      <div className="nz-portal-idle-card" role="alertdialog" aria-labelledby="nz-portal-idle-h" aria-describedby="nz-portal-idle-d">
+      <div className="nz-portal-idle-card">
         <h2 id="nz-portal-idle-h">Still there?</h2>
-        <p id="nz-portal-idle-d">For your security you&rsquo;ll be signed out after {Math.round(idleMs / 60_000)} minutes of inactivity. You have <b>{mm}:{ss}</b> left.</p>
+        <p>For your security you&rsquo;ll be signed out after {Math.round(idleMs / 60_000)} minutes of inactivity. You have <b>{mm}:{ss}</b> left.</p>
         <div className="nz-portal-idle-actions">
           <button type="button" className="nz-btn" onClick={() => void logout()}>Sign out now</button>
           <button type="button" className="nz-btn pri" onClick={stayIn} autoFocus>Stay signed in</button>

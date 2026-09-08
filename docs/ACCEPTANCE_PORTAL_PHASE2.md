@@ -12,8 +12,8 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 | Item | Status |
 |---|---|
 | **P1** — inactivity auto-logout | 🟢 built (PR #114) |
-| **P2** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
-| **P2** — accept-terms gate | 🔴 missing — next PR |
+| **P2a** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
+| **P2b** — accept-terms gate | 🟢 built (PR #115) |
 | **§0** — snapshot-sourcing e2e | ⚪ before any 2a surface |
 | **A1** — client dashboard + charts | ⚪ 2a |
 | **A2** — decarbonisation levers | ⚪ 2a |
@@ -88,13 +88,52 @@ Traced the full portal auth path:
   requires a valid TOTP against the enrolled secret and checks `row.enabled`.
 - There is exactly one session-issuing path and it is TOTP-verified. **No gap.**
 
-### P2 — accept-terms — MISSING (next PR)
+### P2b — accept-terms — was MISSING, now built (PR #115)
 
-Live has an `accept-terms` step; the rebuild invite flow is password → MFA → active, with no terms gate and
-no `terms_accepted_at` anywhere. To build: a `portal_users.terms_accepted_at` + `terms_version` (small
-migration), acceptance captured at invite completion (and re-prompted if the version bumps), and the
-request-time resolve / portal shell blocking data access until terms are accepted. e2e: a first-login
-client without accepted terms is blocked from the portal.
+Live gates every shell load on `must_accept_tac` (`login/page.tsx`, `PortalShell.tsx` → `/accept-terms`);
+the rebuild had no terms handling at all.
+
+**Built (PR #115):**
+- **Migration `0058_portal_terms_acceptances.sql`** — an **append-only** record: one row per
+  `(organisation_id, portal_user_id, terms_version)`, `accepted_at`. RLS `tenant_isolation` +
+  `auth_terms_acceptance` (the gate check and the write both run under the auth role at request time).
+  `REVOKE UPDATE, DELETE` from every app role — an acceptance is permanent.
+- **`resolvePortalPrincipal`** — when `NZI_PORTAL_TERMS_VERSION` is set (default **`2026-v1`**), the
+  session still resolves but the principal carries `termsVersion` + `mustAcceptTerms` (true until an
+  acceptance row for *that* version exists — so bumping the version re-gates every existing user). No
+  version configured → never flagged (backwards compatible).
+- **`packages/isolated-backend/src/portalTerms.ts`** (new) — `portalTermsVersion()` (env → default),
+  `acceptPortalTerms(pool, session, {version}, currentVersion)` (idempotent `INSERT … ON CONFLICT DO
+  NOTHING`; rejects a stale / empty / wrong version *before* any DB call; requires an active session),
+  `PortalTermsRequiredError` + `requirePortalTermsAccepted(principal)`.
+- **`lib/portalSession.ts`** — `currentPortalUserForData(request)` = `currentPortalUser` +
+  `requirePortalTermsAccepted`. **All 10 portal `jobs/*` data routes** swapped to it; `/me`, `/password`
+  and the new `/accept-terms` keep the plain `currentPortalUser` so an un-accepted user can still reach
+  them. `authResponse` maps `PortalTermsRequiredError` → **403 `PORTAL_TERMS_REQUIRED`** (session cookie
+  untouched — the session is valid, it just owes terms).
+- **`/api/portal/auth/me`** returns `mustAcceptTerms` + `termsVersion`. **`/api/portal/auth/accept-terms`**
+  (POST) records the acceptance.
+- **`apps/console/app/portal/PortalTermsGate.tsx`** (new) — a blocking overlay on the hardened `@nzi/ui`
+  `Drawer` (`onClose` no-op — not dismissible), mounted in `portal/layout.tsx` alongside the P1 guard.
+  Re-checks `/me` on mount **and on tab refocus** (matches live's "every shell load"). The terms copy is
+  `portalTermsContent.ts`, versioned with the env string. "Accept & continue" → `POST /accept-terms` →
+  reload; "Decline & sign out" → `POST /logout` → `/portal/login?reason=terms-declined`. Inert when there
+  is no session.
+- **`auth.setup.ts`** does NOT accept terms; **`provision-acceptance-accounts.ts`** deletes any
+  acceptance for the fixed portal user each run — so `portal-security.spec.ts` (which runs first) can
+  exercise the block, then records acceptance, clearing it for every later portal test.
+
+**Gate (P2b)**
+
+| # | Check | Where |
+|---|---|---|
+| 1 | Version helper defaults + trims; `mustAcceptTerms` flagged only when a version is configured and no acceptance row exists; not flagged when the row is present or no version is set | `portalTerms.test.ts` |
+| 2 | `acceptPortalTerms` — idempotent insert for the current version; rejects stale/empty/wrong version with no DB call; rejects an inactive session | `portalTerms.test.ts` |
+| 3 | `requirePortalTermsAccepted` throws `PortalTermsRequiredError` (carrying the version) when outstanding | `portalTerms.test.ts` |
+| 4 | A user with terms outstanding: `/api/portal/jobs` → **403 `PORTAL_TERMS_REQUIRED`**; the overlay renders; after accepting, the same route → 200 and `/me` clears the flag. Stale / empty version at the endpoint → 409 / 422 | `portal-security.spec.ts` — P2b |
+| 5 | `npm run typecheck` (all workspaces) · `@nzi/console` build · unit suites green | ✅ |
+| 6 | Migration diffed + applied to isolated staging before merge | ✅ (see verification) |
+| 7 | Hard precondition once the portal is live — skips only on "no portal account" and (block leg only) "re-run without provision" | `portal-security.spec.ts` |
 
 ---
 
