@@ -12,8 +12,8 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 | Item | Status |
 |---|---|
 | **P1** — inactivity auto-logout | 🟢 built (PR #114) |
-| **P2** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
-| **P2** — accept-terms gate | 🔴 missing — next PR |
+| **P2a** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
+| **P2b** — accept-terms gate | 🟢 built (PR #115) |
 | **§0** — snapshot-sourcing e2e | ⚪ before any 2a surface |
 | **A1** — client dashboard + charts | ⚪ 2a |
 | **A2** — decarbonisation levers | ⚪ 2a |
@@ -88,21 +88,82 @@ Traced the full portal auth path:
   requires a valid TOTP against the enrolled secret and checks `row.enabled`.
 - There is exactly one session-issuing path and it is TOTP-verified. **No gap.**
 
-### P2 — accept-terms — MISSING (next PR)
+### P2b — accept-terms — was MISSING, now built (PR #115)
 
-Live has an `accept-terms` step; the rebuild invite flow is password → MFA → active, with no terms gate and
-no `terms_accepted_at` anywhere. To build: a `portal_users.terms_accepted_at` + `terms_version` (small
-migration), acceptance captured at invite completion (and re-prompted if the version bumps), and the
-request-time resolve / portal shell blocking data access until terms are accepted. e2e: a first-login
-client without accepted terms is blocked from the portal.
+Live gates every shell load on `must_accept_tac` (`login/page.tsx`, `PortalShell.tsx` → `/accept-terms`);
+the rebuild had no terms handling at all.
+
+**Built (PR #115):**
+- **Migration `0058_portal_terms_acceptances.sql`** — an **append-only** record: one row per
+  `(organisation_id, portal_user_id, terms_version)`, `accepted_at`. RLS `tenant_isolation` +
+  `auth_terms_acceptance` (the gate check and the write both run under the auth role at request time).
+  `REVOKE UPDATE, DELETE` from every app role — an acceptance is permanent.
+- **`resolvePortalPrincipal`** — when `NZI_PORTAL_TERMS_VERSION` is set (default **`2026-v1`**), the
+  session still resolves but the principal carries `termsVersion` + `mustAcceptTerms` (true until an
+  acceptance row for *that* version exists — so bumping the version re-gates every existing user). No
+  version configured → never flagged (backwards compatible).
+- **`packages/isolated-backend/src/portalTerms.ts`** (new) — `portalTermsVersion()` (env → default),
+  `acceptPortalTerms(pool, session, {version}, currentVersion)` (idempotent `INSERT … ON CONFLICT DO
+  NOTHING`; rejects a stale / empty / wrong version *before* any DB call; requires an active session),
+  `PortalTermsRequiredError` + `requirePortalTermsAccepted(principal)`.
+- **`lib/portalSession.ts`** — `currentPortalUserForData(request)` = `currentPortalUser` +
+  `requirePortalTermsAccepted`. **All 10 portal `jobs/*` data routes** swapped to it; `/me`, `/password`
+  and the new `/accept-terms` keep the plain `currentPortalUser` so an un-accepted user can still reach
+  them. `authResponse` maps `PortalTermsRequiredError` → **403 `PORTAL_TERMS_REQUIRED`** (session cookie
+  untouched — the session is valid, it just owes terms).
+- **`/api/portal/auth/me`** returns `mustAcceptTerms` + `termsVersion`. **`/api/portal/auth/accept-terms`**
+  (POST) records the acceptance.
+- **`apps/console/app/portal/PortalTermsGate.tsx`** (new) — a blocking overlay on the hardened `@nzi/ui`
+  `Drawer` (`onClose` no-op — not dismissible), mounted in `portal/layout.tsx` alongside the P1 guard.
+  Re-checks `/me` on mount **and on tab refocus** (matches live's "every shell load"). The terms copy is
+  `portalTermsContent.ts`, versioned with the env string. "Accept & continue" → `POST /accept-terms` →
+  reload; "Decline & sign out" → `POST /logout` → `/portal/login?reason=terms-declined`. Inert when there
+  is no session.
+- **`auth.setup.ts`** does NOT accept terms; **`provision-acceptance-accounts.ts`** deletes any
+  acceptance for the fixed portal user each run — so `portal-security.spec.ts` (which runs first) can
+  exercise the block, then records acceptance, clearing it for every later portal test.
+
+**Gate (P2b)**
+
+| # | Check | Where |
+|---|---|---|
+| 1 | Version helper defaults + trims; `mustAcceptTerms` flagged only when a version is configured and no acceptance row exists; not flagged when the row is present or no version is set | `portalTerms.test.ts` |
+| 2 | `acceptPortalTerms` — idempotent insert for the current version; rejects stale/empty/wrong version with no DB call; rejects an inactive session | `portalTerms.test.ts` |
+| 3 | `requirePortalTermsAccepted` throws `PortalTermsRequiredError` (carrying the version) when outstanding | `portalTerms.test.ts` |
+| 4 | A user with terms outstanding: `/api/portal/jobs` → **403 `PORTAL_TERMS_REQUIRED`**; the overlay renders; after accepting, the same route → 200 and `/me` clears the flag. Stale / empty version at the endpoint → 409 / 422 | `portal-security.spec.ts` — P2b |
+| 5 | `npm run typecheck` (all workspaces) · `@nzi/console` build · unit suites green | ✅ |
+| 6 | Migration diffed + applied to isolated staging before merge | ✅ (see verification) |
+| 7 | Hard precondition once the portal is live — skips only on "no portal account" and (block leg only) "re-run without provision" | `portal-security.spec.ts` |
 
 ---
 
 ## Phase 2a / 2b
 
 Behind a single build-time `NEXT_PUBLIC_*` `portal-analytics` flag (dashboard-authoritative, needs **Clear
-build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is green. A1 (dashboard + charts,
-`@nzi/charts`, canonical scope palette, text equivalents, real empty-state) and A2 (levers as a
-presentation-time projection off the assured baseline, what-if visually distinct, scenario stored as an
-artefact not as data edits) first; 2b after 2a proves the snapshot-sourcing pattern. Same
-flag / e2e / hard-precondition discipline throughout.
+build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is green.
+
+### Reconnaissance (08 Sep 2026) — before building 2a
+
+- **Live's portal dashboard is NOT snapshot-sourced.** `api/portal_routes.py::portal_job_overview` calls
+  `get_scope_totals(job_id)` / `get_emissions_by_category(job_id)` (live data), and there's a
+  `portal_live_report_data` endpoint mirroring the CRM *live* report. Only `portal_snapshot_data` reads the
+  frozen `job_report_versions.snapshot_json`. The rebuild's §0 rule means A1 must source **only** from the
+  published snapshot — a deliberate improvement on live, not a port.
+- **A1 chart data shapes (live `PortalDashboardCharts`, recharts):** `scopeData {name,value}[]`, `total`,
+  `trendData {year,total,scope1,scope2,scope3}[]`, `topCategoryData {category,emissions,percentage}[]`.
+  Rebuild renders these with **`@nzi/charts`** (SVG-first). Totals / scope / top-category from
+  `getCurrentPublishedCrpReport().snapshot.measurements`; the 5-year trend from the Data Assurance chain
+  (`resolveCrpReportingChain` already resolves the prior *published* snapshot per reporting year).
+- **⚠️ A2 — the live `LeverSelect` / `ActionLeverGrid` / `PortalActions` contain NO emissions-projection
+  maths.** They implement a qualitative **Spheres of Influence** framework (3 spheres → 9 sub-spheres →
+  24 levers; Futerra / Oxford Net Zero) — `services/report_actions.py` computes per-lever
+  `action_count` / `completed_count` / `AVG(progress)` over tracked *actions* (name, description,
+  category, progress %, target date). There is **no lever → tCO₂e-abatement model** anywhere in live.
+  The brief's A2 ("client selects levers … sees **modelled impact vs their assured baseline** …
+  presentation-time projection … what-if figures") describes a capability live does not have. **Flagged
+  to Francis — needs direction on A2 scope before building** (like-for-like action tracker vs. a new
+  projection model that needs a lever→abatement methodology).
+
+A1 first (dashboard + charts, `@nzi/charts`, canonical scope palette, text equivalents, real
+empty-state); A2 after the A2-scope question is answered; 2b after 2a proves the snapshot-sourcing
+pattern. Same flag / e2e / hard-precondition discipline throughout.

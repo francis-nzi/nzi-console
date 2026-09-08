@@ -125,6 +125,12 @@ async function main(): Promise<void> {
            enabled = true, failed_attempts = 0, locked_until = NULL, password_changed_at = now()`,
         [ORG, PORTAL_USER_ID, portalPw.salt, portalPw.hash, portalTotpEnc.ciphertext, portalTotpEnc.iv, portalTotpEnc.tag],
       );
+      // P2b — start every acceptance run with terms outstanding, so
+      // portal-security.spec.ts can exercise the block before it accepts.
+      await client.query(
+        `DELETE FROM nzi_console.portal_terms_acceptances WHERE organisation_id = $1 AND portal_user_id = $2`,
+        [ORG, PORTAL_USER_ID],
+      );
       await client.query(
         `INSERT INTO nzi_console.portal_access_grants
            (organisation_id, grant_id, client_id, portal_user_id, job_id, data_entry_starts_at, data_entry_expires_at)

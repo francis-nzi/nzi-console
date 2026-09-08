@@ -32,28 +32,36 @@ the whole spine exists to make.
 
 ---
 
-## PRECONDITION — security boundary (do this first, gate the rest on it)
+## PRECONDITION — security boundary (verified 08 Sep 2026 against the code)
 
-These two aren't features to schedule alongside dashboards — they're the boundary that has to be closed
-before real client users are let in. Land them first, on their own PRs.
+**Two of the three items are already done and solid — do NOT rebuild them. Only the terms gate is a real
+gap.** Cowork traced the rebuild's portal auth path directly; findings below.
 
-### P1. Inactivity auto-logout
-Live has `PortalInactivityLogout`; no equivalent found in the rebuild portal. Add idle-session auto-logout to
-the portal shell — configurable timeout, a warning countdown before it fires, activity resets the timer, and
-it ends the session server-side (not just a client redirect). e2e: idle past timeout → session invalid on
-next request.
+### P1. Inactivity auto-logout — ✅ DONE (present, server-authoritative). No work.
+`PortalInactivityGuard` is wired into `apps/console/app/portal/layout.tsx`. The client half gives the warning
+countdown + activity-slides-the-window UX and ends the session on timeout; the **authoritative** half is
+server-side: `resolvePortalPrincipal` (`packages/isolated-backend/src/auth.ts`) only returns a session where
+`last_seen_at > now() - (idleLimit)::interval` (plus `revoked_at IS NULL`, `expires_at > now()`,
+`u.status='active'`), so a closed-laptop session self-heals within the window regardless of the client. Idle
+limit is configurable via `NZI_PORTAL_IDLE_LIMIT_MINUTES` (default 30). This is stronger than the live
+implementation, not weaker.
 
-### P2. MFA enforcement + accept-terms — **verify, then close the gap**
-The rebuild has the auth *pages* (login, invite setup, recover, account); what's unverified is
-**enforcement**. Before building anything else:
-- Confirm the client login path actually **enrols/enforces MFA** for client users (live has a dedicated
-  `setup-mfa` step). If enforcement is missing, add it — a client without MFA cannot reach portal data.
-- Confirm first login is **gated behind terms acceptance** (live `accept-terms`). If missing, add the gate to
-  the invite/first-login flow.
-- e2e for each: client without MFA enrolled is blocked from data; first login without accepted terms is
-  blocked from the portal.
+### P2a. MFA enforcement — ✅ DONE (structurally enforced). No work.
+The login route (`api/portal/auth/login/route.ts`) sets **no session cookie** — it always returns
+`mfaRequired:true` + a challenge token. Only `api/portal/auth/mfa/route.ts` → `completePortalMfa` issues the
+session, and only after a valid TOTP (attempt-limited to 5, challenge-expiry checked, secret decrypted from
+`portal_credentials`). There is no code path that mints a portal session without passing MFA. Nothing to
+enforce — it already can't be bypassed.
 
-Report back what you found on enforcement before assuming these need building — they may be partly there.
+### P2b. Accept-terms gate — ⚠️ REAL GAP. Build this. (The only precondition item with work.)
+Live gates the portal behind terms acceptance via a `must_accept_tac` flag: `login/page.tsx` routes to
+`/accept-terms`, and `PortalShell.tsx` re-checks it on **every** shell load (`if (d.must_accept_tac)
+router.replace("/accept-terms")`). The rebuild has **no terms handling anywhere** — no `must_accept_tac`, no
+`/accept-terms` route, nothing in `completePortalInvitationSetup`. Build it to match live:
+- A `must_accept_tac` (or equiv) flag on the portal user / returned by `/api/portal/auth/me`.
+- A terms-acceptance step gating first authenticated access, recording who accepted which version and when.
+- Re-checked on shell load, not only at first login (so a re-issued terms version re-gates existing users).
+- e2e: a portal user with terms outstanding is blocked from portal data until acceptance is recorded.
 
 ---
 
@@ -115,8 +123,10 @@ same or a sibling flag, each with e2e:
 
 - [ ] §0 snapshot-sourcing e2e green **before** any 2a surface ships (publish → change draft → portal figure
       unchanged).
-- [ ] P1 inactivity logout: idle past timeout invalidates the session server-side; e2e proves it.
-- [ ] P2 MFA + accept-terms **enforcement** confirmed or added; e2e blocks a non-MFA / non-terms client.
+- [x] P1 inactivity logout — verified present & server-authoritative (no work).
+- [x] P2a MFA — verified structurally enforced (no work).
+- [ ] P2b accept-terms gate built to match live (`must_accept_tac`), re-checked on shell load; e2e blocks a
+      client with terms outstanding.
 - [ ] A1 dashboard renders from `@nzi/charts`, canonical scope palette, text equivalents for every figure,
       empty-state handled.
 - [ ] A2 levers model off the assured baseline as a projection; what-if figures never mutate reported data
@@ -126,4 +136,5 @@ same or a sibling flag, each with e2e:
 
 ---
 
-*Sequence: P1/P2 → A1/A2 → 2b. Delete this hand-off once the items are in the acceptance docs / register.*
+*Sequence: P2b (accept-terms) → A1/A2 → 2b. P1 and P2a are already done. Delete this hand-off once the items
+are in the acceptance docs / register.*

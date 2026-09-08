@@ -32,6 +32,7 @@ FuelCap services.
 | `NZI_PORTAL_AUTH_ENABLED` | Set to `true` when independent client portal sign-in is enabled |
 | `NZI_PORTAL_SESSION_SECRET` | Dedicated random secret of at least 32 bytes; never reuse the staff session secret |
 | `NZI_PORTAL_IDLE_LIMIT_MINUTES` | Optional. Idle auto-logout window for portal sessions (server-enforced); default `30`. The client warning countdown reads this via `/api/portal/auth/me`. |
+| `NZI_PORTAL_TERMS_VERSION` | Optional. Current portal terms-of-access version; default `2026-v1`. `resolvePortalPrincipal` flags `mustAcceptTerms` until an acceptance row for this version exists — **bump this string to re-prompt every existing portal user** (update `portalTermsContent.ts` copy at the same time). Set to empty only to disable the gate. |
 | `NZI_AUTH_ENABLED` | `true` |
 | `NZI_AUTH_REQUIRED` | `true` |
 | `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |
