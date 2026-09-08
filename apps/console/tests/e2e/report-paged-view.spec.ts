@@ -26,10 +26,7 @@ async function openReportVersion(page: Page): Promise<{ errors: string[]; toggle
   await page.waitForLoadState("load").catch(() => undefined);
   await expectHealthyScreen(page);
   const toggle = page.locator(".report-view-toggle");
-  test.skip(
-    (await toggle.count()) === 0,
-    "report-paged not enabled on target (no .report-view-toggle) — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(toggle, "report-paged must render the Continuous/A4 toggle").toBeVisible();
   return { errors, toggle };
 }
 
