@@ -20,6 +20,6 @@ CREATE TABLE nzi_console.portal_tracker_actions (
 CREATE INDEX portal_tracker_actions_job_idx ON nzi_console.portal_tracker_actions(organisation_id,client_id,job_id,lever_code);
 ALTER TABLE nzi_console.portal_tracker_actions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nzi_console.portal_tracker_actions FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON nzi_console.portal_tracker_actions USING (organisation_id=nzi_console.current_organisation_id()) WITH CHECK (organisation_id=nzi_console.current_organisation_id());
+CREATE POLICY tenant_isolation ON nzi_console.portal_tracker_actions USING (organisation_id=current_setting('app.organisation_id',true)) WITH CHECK (organisation_id=current_setting('app.organisation_id',true));
 GRANT SELECT,INSERT,UPDATE,DELETE ON nzi_console.portal_tracker_actions TO nzi_console_app;
 COMMENT ON TABLE nzi_console.portal_tracker_actions IS 'A2-lite client-managed engagement actions. Qualitative only: no emissions quantities, factors, reductions, projections, or write-back to reported figures.';

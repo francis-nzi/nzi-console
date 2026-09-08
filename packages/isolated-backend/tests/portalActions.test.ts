@@ -28,6 +28,8 @@ describe("portal A2-lite action tracker", () => {
     assert.match(migration, /CREATE TABLE nzi_console\.portal_tracker_actions/);
     assert.match(migration, /FOREIGN KEY \(organisation_id, job_id\) REFERENCES nzi_console\.jobs\(organisation_id, job_id\)/);
     assert.doesNotMatch(migration, /REFERENCES nzi_console\.jobs\(organisation_id, job_id, client_id\)/);
+    assert.match(migration, /organisation_id=current_setting\('app\.organisation_id',true\)/);
+    assert.doesNotMatch(migration, /current_organisation_id/);
     assert.match(migration, /FORCE ROW LEVEL SECURITY/);
     assert.match(migration, /CREATE POLICY tenant_isolation/);
     assert.doesNotMatch(migration, /tco2e|emission_factor|projected_reduction/i);
