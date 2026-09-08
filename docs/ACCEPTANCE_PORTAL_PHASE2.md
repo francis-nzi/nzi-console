@@ -13,10 +13,10 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 |---|---|
 | **P1** — inactivity auto-logout | 🟢 built (PR #114) |
 | **P2a** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
-| **P2b** — accept-terms gate | 🟢 built (PR #115) |
-| **§0** — snapshot-sourcing e2e | ⚪ before any 2a surface |
-| **A1** — client dashboard + charts | ⚪ 2a |
-| **A2** — decarbonisation levers | ⚪ 2a |
+| **P2b** — accept-terms gate | 🟢 built (PR #115, held on the Supabase blocker) |
+| **§0** — snapshot-sourcing gate + e2e | 🟢 built (PR #116) |
+| **A1** — client dashboard + charts | 🟢 built (PR #116) |
+| **A2** — decarbonisation levers | ⚪ blocked on the lever-contract question |
 | **2b** — insights / risk / SRS / geo / leaderboard / portfolio / files / category history | ⚪ deferred |
 
 ---
@@ -167,3 +167,51 @@ build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is g
 A1 first (dashboard + charts, `@nzi/charts`, canonical scope palette, text equivalents, real
 empty-state); A2 after the A2-scope question is answered; 2b after 2a proves the snapshot-sourcing
 pattern. Same flag / e2e / hard-precondition discipline throughout.
+
+### §0 + A1 — built (PR #116)
+
+**The seam Francis asked for:** A1's endpoint is the assured-baseline source A2 will read from. It
+returns the published baseline at **per-scope AND per-category/site** granularity (not headline totals),
+so A1's dashboard aggregates client-side and A2's lever targeting gets the breakdown from the same
+contract. The projection compute (apply multipliers → re-summarise) is a separate endpoint added at A2
+time, off this same baseline.
+
+- **`@nzi/contracts/portalAnalytics.ts`** (pure) — `derivePortalBaseline(snapshot)` and
+  `derivePortalTrendYear(...)` run the snapshot's `measurements` through the **same
+  `aggregateAssuranceYear`** the CRM report and Data Assurance use → `{ total, byScope, byCategory,
+  bySite, intensity, target }`. `portalTargetProgress(baseline)` is a presentation-only
+  fraction-of-the-way-to-interim.
+- **`@nzi/isolated-backend/portalAnalytics.ts`** — `getPortalAssuredDashboard(db, {portalUserId,
+  clientId, jobId})`: `getGrantedPublishedCrpReport` → the **published** snapshot (current year,
+  §0-exact) + the reporting chain's baseline/prior **frozen snapshots** for the trend. **Never queries
+  `job_scope_rows`** (`resolveAssuranceTrend` would fall back to live rows for an unreviewed current
+  year — the portal must not). `{ published: false }` when there is no published version.
+- **`GET /api/portal/jobs/[jobId]/dashboard`** — `currentPortalUserForData` (terms-gated), 502 guard via
+  `isPortalAssuredDashboard`.
+- **`PortalDashboard.tsx`** (behind `portal-analytics`) — headline total + reporting year + evidence
+  hash; target-progress bar; the scope donut / reduction pathway / YoY charts from the **same published
+  snapshot** via `resolveCrpCoreCharts` + `ManifestChartSet` (identical marks to the report/PDF,
+  canonical palette); and **text/table equivalents for every figure** (by scope, by category, five-year
+  trend, by site) so Narrator reaches every number. Real first-engagement empty state ("your first
+  assured report will appear here" — not a zeroed dashboard). Failed read → honest alert, no inferred
+  zeros. Linked from each published job on `PortalHome`; `/portal/jobs/[jobId]/dashboard` page redirects
+  to the report when the flag is off.
+- **Flag:** `portal-analytics` in `NEXT_PUBLIC_FEATURE_PORTAL` (`portalFeatureEnabled`), build-time,
+  dashboard-authoritative — **Clear build cache & deploy** to flip. Off in prod until P1/P2b are merged
+  and this e2e is green on staging.
+
+**Gate (§0 + A1)**
+
+| # | Check | Where |
+|---|---|---|
+| 1 | `derivePortalBaseline` — total is the plain measurement sum; by scope / category / site correct; intensity + target carried | `portalAnalytics.test.ts` (contracts) |
+| 2 | `getPortalAssuredDashboard` — `{published:false}` with no published report; otherwise the **published** snapshot + prior frozen snapshots, `dataHash` = the published report's, **no `job_scope_rows` query** | `portalAnalytics.test.ts` (isolated-backend) |
+| 3 | §0 — the portal `/dashboard` total == the published snapshot's measurement sum, and carries the published report's `dataHash` | `portal-analytics.spec.ts` |
+| 4 | §0 — a staff draft-row change (PATCH + revert) does **not** move the portal `total` or `dataHash` | `portal-analytics.spec.ts` |
+| 5 | A1 — the dashboard renders the assured total + a scope table (`All scopes` row) + a five-year-trend table; or the real empty state when unpublished | `portal-analytics.spec.ts` |
+| 6 | `npm run typecheck` · `@nzi/console` build · unit suites green | ✅ |
+| 7 | Hard precondition once `portal-analytics` is live; the file runs first among the portal specs so its first test also clears the P2b terms gate | `portal-analytics.spec.ts` |
+
+**Verification (§0 + A1):** `npm run typecheck` (all workspaces) — clean · `@nzi/console` build — green ·
+`@nzi/contracts` 81/81 · `@nzi/console` 127/127 · `@nzi/isolated-backend` 343/343. e2e runs on the next
+rendered-acceptance pass. No migration.
