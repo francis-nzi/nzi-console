@@ -15,7 +15,7 @@ CREATE TABLE nzi_console.portal_tracker_actions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (organisation_id, action_id),
   FOREIGN KEY (organisation_id, client_id) REFERENCES nzi_console.clients(organisation_id, client_id) ON DELETE CASCADE,
-  FOREIGN KEY (organisation_id, job_id, client_id) REFERENCES nzi_console.jobs(organisation_id, job_id, client_id) ON DELETE CASCADE
+  FOREIGN KEY (organisation_id, job_id) REFERENCES nzi_console.jobs(organisation_id, job_id) ON DELETE CASCADE
 );
 CREATE INDEX portal_tracker_actions_job_idx ON nzi_console.portal_tracker_actions(organisation_id,client_id,job_id,lever_code);
 ALTER TABLE nzi_console.portal_tracker_actions ENABLE ROW LEVEL SECURITY;

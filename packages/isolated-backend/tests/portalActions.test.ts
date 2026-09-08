@@ -26,6 +26,8 @@ function pool() {
 describe("portal A2-lite action tracker", () => {
   it("is an isolated, tenant-RLS engagement store without emissions fields", () => {
     assert.match(migration, /CREATE TABLE nzi_console\.portal_tracker_actions/);
+    assert.match(migration, /FOREIGN KEY \(organisation_id, job_id\) REFERENCES nzi_console\.jobs\(organisation_id, job_id\)/);
+    assert.doesNotMatch(migration, /REFERENCES nzi_console\.jobs\(organisation_id, job_id, client_id\)/);
     assert.match(migration, /FORCE ROW LEVEL SECURITY/);
     assert.match(migration, /CREATE POLICY tenant_isolation/);
     assert.doesNotMatch(migration, /tco2e|emission_factor|projected_reduction/i);
