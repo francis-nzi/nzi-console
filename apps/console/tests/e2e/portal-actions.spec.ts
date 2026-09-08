@@ -43,7 +43,7 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
       await editor.getByLabel("Notes").fill("Edited by the client; still engagement data only");
       await editor.getByLabel("Completion").fill("60");
       await editor.getByRole("button", { name: "Save action" }).click();
-      await expect(page.getByRole("status")).toContainText("Action saved.");
+      await expect(page.locator(".nz-sr-status")).toContainText("Action saved.");
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page.locator(".nz-lever li", { hasText: `${title} edited` })).toContainText("60% complete");
 

@@ -16,7 +16,7 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 | **P2b** — accept-terms gate | 🟢 built (PR #115) |
 | **§0** — snapshot-sourcing gate + e2e | 🟢 built (PR #117) |
 | **A1** — client dashboard + charts | 🟢 built (PR #117) |
-| **A2-lite** — qualitative Spheres-of-Influence action tracker | 🟢 built; staging migration/flag acceptance pending |
+| **A2-lite** — qualitative Spheres-of-Influence action tracker | 🟢 built + live; automated staging gate 4/4, human Narrator/reduced-motion pass pending |
 | **2b** — insights / risk / SRS / geo / leaderboard / portfolio / files / category history | ⚪ deferred |
 
 ---
