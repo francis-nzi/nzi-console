@@ -18,7 +18,7 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
     const job = await discoverPortalJob(page.request);
     test.skip(!job, "portal user has no granted jobs on target");
     await page.goto(`/portal/jobs/${job!.id}/dashboard`, { waitUntil: "domcontentloaded" });
-    test.skip((await page.locator(".nz-action-tracker").count()) === 0, "portal-actions not enabled on target");
+    await expect(page.locator(".nz-action-tracker"), "portal-actions must be enabled on the staging target").toBeVisible();
 
     const baselineBefore = await (await page.request.get(`/api/portal/jobs/${job!.id}/dashboard`)).json() as { published?: boolean; total?: number; dataHash?: string };
     expect(baselineBefore.published, "A2 staging job must have an assured published baseline").toBe(true);
@@ -29,8 +29,10 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
 
     const title = `Acceptance action ${Date.now()}`;
     const createdResponse = await page.request.post(`/api/portal/jobs/${job!.id}/actions`, { headers: { origin: ORIGIN }, data: { leverCode: "C2.4", title, notes: "Temporary A2-lite staging proof", progressPercent: 20 } });
-    expect(createdResponse.status()).toBe(201);
-    const created = await createdResponse.json() as { id: string; version: number };
+    const createdBody = await createdResponse.json() as { id?: string; version?: number; code?: string; message?: string };
+    expect(createdResponse.status(), `action create failed: ${createdBody.code ?? "UNKNOWN"} · ${createdBody.message ?? "no message"}`).toBe(201);
+    expect(createdBody.id).toBeTruthy();
+    const created = { id: createdBody.id!, version: createdBody.version! };
     try {
       await page.reload({ waitUntil: "domcontentloaded" });
       const row = page.locator(".nz-lever li", { hasText: title });
@@ -61,7 +63,7 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
     const job = await discoverPortalJob(page.request);
     test.skip(!job, "portal user has no granted jobs on target");
     await page.goto(`/portal/jobs/${job!.id}/dashboard`, { waitUntil: "domcontentloaded" });
-    test.skip((await page.locator(".nz-action-tracker").count()) === 0, "portal-actions not enabled on target");
+    await expect(page.locator(".nz-action-tracker"), "portal-actions must be enabled on the staging target").toBeVisible();
     await scanWithBaseline(page, "portal-actions", ".nz-action-tracker");
     await expectNoHorizontalOverflow(page, "portal A2-lite tracker");
   });
