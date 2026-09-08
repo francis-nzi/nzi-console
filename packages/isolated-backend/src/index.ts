@@ -6,6 +6,7 @@ export * from "./auth";
 export * from "./credentials";
 export * from "./login";
 export * from "./portalTerms";
+export * from "./portalAnalytics";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";
