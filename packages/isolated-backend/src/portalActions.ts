@@ -42,7 +42,7 @@ export async function createPortalTrackerAction(pool: PoolLike, principal: Porta
   return withTenantWrite(pool, principal.organisationId, async (db) => {
     await requireGrant(db, principal, jobId);
     const { rows } = await db.query<Row>(`INSERT INTO nzi_console.portal_tracker_actions(organisation_id,action_id,client_id,job_id,lever_code,title,notes,progress_percent,created_by,updated_by,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$10) RETURNING action_id,lever_code,title,notes,progress_percent,version,updated_at`, [principal.organisationId, actionId, principal.clientId, jobId, value.leverCode, value.title, value.notes, value.progressPercent, principal.userId, now]);
-    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.create','portal_tracker_action',$4,$2,jsonb_build_object('jobId',$5,'leverCode',$6,'progressPercent',$7))`, [principal.organisationId, `audit-${actionId}`, principal.userId, actionId, jobId, value.leverCode, value.progressPercent]);
+    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.create','portal_tracker_action',$4,$2,$5::jsonb)`, [principal.organisationId, `audit-${actionId}`, principal.userId, actionId, JSON.stringify({ jobId, leverCode: value.leverCode, progressPercent: value.progressPercent })]);
     return map(rows[0]!);
   });
 }
@@ -53,7 +53,7 @@ export async function updatePortalTrackerAction(pool: PoolLike, principal: Porta
     await requireGrant(db, principal, jobId);
     const { rows } = await db.query<Row>(`UPDATE nzi_console.portal_tracker_actions SET lever_code=$5,title=$6,notes=$7,progress_percent=$8,version=version+1,updated_by=$9,updated_at=$10 WHERE action_id=$1 AND client_id=$2 AND job_id=$3 AND version=$4 RETURNING action_id,lever_code,title,notes,progress_percent,version,updated_at`, [actionId, principal.clientId, jobId, expectedVersion, value.leverCode, value.title, value.notes, value.progressPercent, principal.userId, now]);
     if (!rows[0]) throw new VersionConflictError();
-    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.update','portal_tracker_action',$4,$2,jsonb_build_object('jobId',$5,'leverCode',$6,'progressPercent',$7,'version',$8))`, [principal.organisationId, `audit-${randomUUID()}`, principal.userId, actionId, actionId, jobId, value.leverCode, value.progressPercent, rows[0].version]);
+    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.update','portal_tracker_action',$4,$2,$5::jsonb)`, [principal.organisationId, `audit-${randomUUID()}`, principal.userId, actionId, JSON.stringify({ jobId, leverCode: value.leverCode, progressPercent: value.progressPercent, version: rows[0].version })]);
     return map(rows[0]);
   });
 }
@@ -65,7 +65,7 @@ export async function deletePortalTrackerAction(pool: PoolLike, principal: Porta
     const { rows } = await db.query<{ action_id: string }>(`DELETE FROM nzi_console.portal_tracker_actions WHERE action_id=$1 AND client_id=$2 AND job_id=$3 AND version=$4 RETURNING action_id`, [actionId, principal.clientId, jobId, expectedVersion]);
     if (!rows[0]) throw new VersionConflictError();
     const auditId = randomUUID();
-    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.delete','portal_tracker_action',$4,$2,jsonb_build_object('jobId',$5))`, [principal.organisationId, `audit-${auditId}`, principal.userId, actionId, jobId]);
+    await db.query(`INSERT INTO nzi_console.audit_events(organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json) VALUES($1,$2,$3,'portal','portal.tracker.action.delete','portal_tracker_action',$4,$2,$5::jsonb)`, [principal.organisationId, `audit-${auditId}`, principal.userId, actionId, JSON.stringify({ jobId })]);
     return { actionId, deleted: true };
   });
 }
