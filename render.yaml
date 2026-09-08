@@ -33,7 +33,7 @@ services:
       #                         (ACCEPTANCE_UX1E_STAGE_SECTIONS.md) — for the e1
       #                         acceptance run; roll back if the human pass fails
       - key: NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2
-        value: spend,spend-import,portal-spend,commuting,vehicle,travel,client-factors,data-entry-accordion,job-stage-sections
+        value: spend,spend-import,portal-spend,commuting,vehicle,travel,client-factors,data-entry-accordion,job-stage-sections,data-assurance,entry-lean-capture,data-entry-fast-add
       # Report Studio (R-track) flags — own variable, build-inlined, flipped via
       # the Render dashboard + rebuild (see docs/DEPLOYMENT.md). Kept here for
       # continuity only. R1/R3/R4/R5 are live on isolated staging.

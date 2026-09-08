@@ -26,13 +26,19 @@ export function buildTemplateSearchIndex(factors: readonly FactorOption[]): Temp
   const results: TemplateSearchResult[] = [];
   for (const factor of factors) {
     for (const category of factor.categories) {
-      const candidates = category.scope === "3"
-        ? [{ code: category.scopeCode, name: category.label }]
+      const exact = emissionCategoryTaxonomy.find((entry) => entry.code === category.scopeCode);
+      // Some dataset factors are only classified to the top-level Scope 3
+      // bucket (`scopeCode: "3"`). That is not a valid row/category code and
+      // must not be posted to scope.row.create. Expand an unclassified factor
+      // across the controlled categories, just as we already do for Scope 1/2,
+      // so the consultant chooses explicitly rather than the UI guessing.
+      const candidates = exact
+        ? [{ code: exact.code, name: category.label }]
         : emissionCategoryTaxonomy.filter((entry) => entry.scope === category.scope).map((entry) => ({ code: entry.code, name: entry.name }));
       for (const candidate of candidates) {
         results.push({
           factor,
-          scope: category.scopeCode,
+          scope: category.scope === "3" ? candidate.code : category.scope,
           categoryCode: candidate.code,
           categoryLabel: candidate.name,
           searchText: `${factor.label} ${candidate.name} ${factor.activityUnit} ${factor.datasetName}`,
