@@ -95,9 +95,13 @@ export async function scanWithBaseline(page: Page, name: string, include?: strin
 export async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
   for (const width of [390, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 900 });
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow, `${label} @ ${width}px has ${overflow}px overflow`).toBeLessThanOrEqual(1);
+    const { overflow, offenders } = await page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+      offenders: [...document.querySelectorAll<HTMLElement>("body *")]
+        .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
+        .slice(0, 8)
+        .map((element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${[...element.classList].map((name) => `.${name}`).join("")} right=${Math.round(element.getBoundingClientRect().right)}`),
+    }));
+    expect(overflow, `${label} @ ${width}px has ${overflow}px overflow\n${offenders.join("\n")}`).toBeLessThanOrEqual(1);
   }
 }

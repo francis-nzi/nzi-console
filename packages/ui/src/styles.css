@@ -278,7 +278,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-portal-dash-target .bar i{display:block;height:100%;background:var(--emerald)}
 .nz-portal-dash-target.met b{color:var(--pine)}
 .nz-portal-dash-charts{display:grid;gap:16px}
-.nz-portal-dash-tables{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.nz-portal-dash-tables{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}.nz-portal-dash-tables>div{min-width:0;overflow-x:auto}
 .nz-portal-dash-tables h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--t1)}
 .nz-portal-dash-tables .nz-tbl tr.total td,.nz-portal-dash-tables .nz-tbl tr.cur td{font-weight:600}
 .nz-portal-dash-tables .nz-tbl tr.bl td{color:var(--t2)}
