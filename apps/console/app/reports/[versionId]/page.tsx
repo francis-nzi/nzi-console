@@ -196,4 +196,4 @@ function IntegrityBanner({chart,tokens,manifestValid}:{chart:ChartVerification|n
   </div>;
 }
 
-const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{${REPORT_PAGED_MEDIA_RULES}}`;
+const PRINT_CSS=`@page{size:A4 portrait;margin:14mm 12mm}@media print{${REPORT_PAGED_MEDIA_RULES}.report-view-toggle{display:none!important}}`;
