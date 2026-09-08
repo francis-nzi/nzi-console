@@ -52,8 +52,8 @@ Behind `report-edit` ON, on isolated staging, a staff user on a CRP job's Report
 
 - `packages/contracts/tests/reportTokens.test.ts` — +2 (`serializeReportSectionBody` + edit round-trip).
 - `packages/isolated-backend/tests/reportSections.test.ts` — +3 (`regenerateReportSection`).
-- `apps/console/tests/e2e/report-section-editor.spec.ts` — 2 tests. Skips until `report-edit` is live —
-  **harden it in the flip PR**.
+- `apps/console/tests/e2e/report-section-editor.spec.ts` — 2 tests. The deployed editor is a hard
+  precondition; a missing `report-edit` flag fails the gate.
 
 ## Pre-flip verification (Claude Code, this branch)
 
@@ -72,6 +72,10 @@ Append `report-edit` to `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` (with `report-tokens
 **not** require but the report *version* page does) in the Render dashboard + rebuild; add to `render.yaml`.
 Harden `report-section-editor.spec.ts`, run against deployed staging, record here + the human pass in
 `docs/STAGING_ACCEPTANCE_R4.md`.
+
+Automated staging acceptance completed on 8 September 2026 after a clear-cache rebuild: the hardened
+Playwright run passed **4/4** (two authenticated setup checks plus both R4 journeys). The human
+screen-reader, keyboard, reduced-motion and snapshot-freeze checks remain open.
 
 ## Rollback
 
