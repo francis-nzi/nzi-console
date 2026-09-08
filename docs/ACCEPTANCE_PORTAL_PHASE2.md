@@ -16,7 +16,7 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 | **P2b** — accept-terms gate | 🟢 built (PR #115) |
 | **§0** — snapshot-sourcing gate + e2e | 🟢 built (PR #117) |
 | **A1** — client dashboard + charts | 🟢 built (PR #117) |
-| **A2** — decarbonisation levers | ⚪ blocked on the lever-contract question |
+| **A2-lite** — qualitative Spheres-of-Influence action tracker | 🟢 built; staging migration/flag acceptance pending |
 | **2b** — insights / risk / SRS / geo / leaderboard / portfolio / files / category history | ⚪ deferred |
 
 ---
@@ -142,8 +142,9 @@ the rebuild had no terms handling at all.
 
 ## Phase 2a / 2b
 
-Behind a single build-time `NEXT_PUBLIC_*` `portal-analytics` flag (dashboard-authoritative, needs **Clear
-build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is green.
+Behind build-time, dashboard-authoritative `NEXT_PUBLIC_FEATURE_PORTAL` tokens (each needs **Clear build
+cache & deploy**): A1 uses `portal-analytics`; A2-lite independently adds `portal-actions` and depends on
+A1 for the assured baseline context. Both remain off in production until their own acceptance is green.
 
 ### Reconnaissance (08 Sep 2026) — before building 2a
 
@@ -162,22 +163,18 @@ build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is g
   24 levers; Futerra / Oxford Net Zero) — `services/report_actions.py` computes per-lever
   `action_count` / `completed_count` / `AVG(progress)` over tracked *actions* (name, description,
   category, progress %, target date). There is **no lever → tCO₂e-abatement model** anywhere in live.
-  The brief's A2 ("client selects levers … sees **modelled impact vs their assured baseline** …
-  presentation-time projection … what-if figures") describes a capability live does not have. **Flagged
-  to Francis — needs direction on A2 scope before building** (like-for-like action tracker vs. a new
-  projection model that needs a lever→abatement methodology).
+  The brief's original projection describes a capability live does not have. **Resolved by Francis on
+  8 Sep 2026: A2-lite** ports the qualitative tracker only; no lever-to-tCO₂e model or invented reduction
+  figure is permitted.
 
-A1 first (dashboard + charts, `@nzi/charts`, canonical scope palette, text equivalents, real
-empty-state); A2 after the A2-scope question is answered; 2b after 2a proves the snapshot-sourcing
-pattern. Same flag / e2e / hard-precondition discipline throughout.
+A1 first; A2-lite next; 2b after A2-lite proves the separate engagement-store boundary.
 
 ### §0 + A1 — built (PR #117)
 
-**The seam Francis asked for:** A1's endpoint is the assured-baseline source A2 will read from. It
-returns the published baseline at **per-scope AND per-category/site** granularity (not headline totals),
-so A1's dashboard aggregates client-side and A2's lever targeting gets the breakdown from the same
-contract. The projection compute (apply multipliers → re-summarise) is a separate endpoint added at A2
-time, off this same baseline.
+**The seam Francis asked for:** A1's endpoint is the assured-baseline source shown alongside A2-lite. It
+returns the published baseline at **per-scope AND per-category/site** granularity (not headline totals).
+A2-lite does not transform, derive from, or write back to that baseline; its progress values live in the
+separate engagement store.
 
 - **`@nzi/contracts/portalAnalytics.ts`** (pure) — `derivePortalBaseline(snapshot)` and
   `derivePortalTrendYear(...)` run the snapshot's `measurements` through the **same
@@ -218,3 +215,13 @@ time, off this same baseline.
 **Verification (§0 + A1):** `npm run typecheck` (all workspaces) — clean · `@nzi/console` build — green ·
 `@nzi/contracts` 81/81 · `@nzi/console` 127/127 · `@nzi/isolated-backend` 343/343. e2e runs on the next
 rendered-acceptance pass. No migration.
+
+### A2-lite — built; staging acceptance pending
+
+The live 3-sphere / 9-sub-sphere / 24-lever taxonomy is preserved verbatim. Client actions contain only
+lever, title, notes and 0–100 completion. They live in `portal_tracker_actions`, separate from every
+reported-emissions table. The assured total remains read-only above the tracker and comes from A1's
+published-snapshot `/dashboard` endpoint; tracker writes neither transform nor mutate it.
+
+Flag: `portal-actions` (requires `portal-analytics`). Migration: `0059_portal_action_tracker.sql`.
+Acceptance and rollout: `docs/ACCEPTANCE_PORTAL_A2_LITE.md`.

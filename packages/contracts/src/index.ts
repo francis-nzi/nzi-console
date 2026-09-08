@@ -41,6 +41,7 @@ export function hasData<T>(result: ScreenResult<T>): result is Extract<ScreenRes
 export * from "./commands";
 export * from "./dataAssurance";
 export * from "./portalAnalytics";
+export * from "./portalActions";
 export * from "./reportSections";
 export * from "./reportTokens";
 export * from "./reportAppendix";

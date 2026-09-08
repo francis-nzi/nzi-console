@@ -3,7 +3,7 @@
 // Render dashboard edit + Clear build cache & deploy. Unset = every flag OFF.
 //
 //   NEXT_PUBLIC_FEATURE_PORTAL=portal-analytics
-export type PortalFeature = "portal-analytics";
+export type PortalFeature = "portal-analytics" | "portal-actions";
 
 const enabled = (): Set<string> =>
   new Set(

@@ -163,7 +163,16 @@ passes its own rendered acceptance.
 
 ## Immediate next action
 
-Execute the combined **M1, M2, and M3 rendered acceptance pass**. The automated half is
-delivered (`docs/RENDERED_ACCEPTANCE_CHECKLIST.md`, `apps/console/tests/e2e/`). Remaining:
-run `npm run acceptance:provision` + `npm run test:e2e` against isolated staging and attach
-the report; then work the manual assistive-technology narration pass.
+Complete **Portal A2-lite** before starting Phase 2b:
+
+1. Merge the qualitative 24-lever action tracker behind `portal-actions`.
+2. Apply migration `0059_portal_action_tracker.sql` to isolated staging.
+3. Append `portal-actions` to the dashboard-authoritative `NEXT_PUBLIC_FEATURE_PORTAL`, clear the Render
+   build cache and deploy.
+4. Harden and run `portal-actions.spec.ts`; record the automated result and complete the human keyboard /
+   screen-reader pass in `docs/ACCEPTANCE_PORTAL_A2_LITE.md`.
+5. Then run one consolidated acceptance campaign for already-built flags (R3 → R4 → R5; DA4 → fast-add;
+   LCA independently) before beginning Phase 2b category history.
+
+The combined M1/M2/M3 assistive-technology pass remains open and should be batched with those flag
+acceptance sessions; it is acceptance debt, not a prerequisite for writing A2-lite.

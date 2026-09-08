@@ -143,7 +143,7 @@ rebuild, not a `render.yaml` merge. Full procedure in `docs/DEPLOYMENT.md` §"Fe
 | S3 | Sites-as-places + apportionment | NZC-042 | `sites` | new gate | migration 0035 | ⏳ **unblocked** (NZC-042 closed — factors not site-scoped); not yet started |
 | S4 | Row/drawer breadth (data_confidence, conversion memory, notes, column text) | NZC-044 | (folds into S1–S3) | within host slice | 0034–0036 | ⏳ partial |
 | UX1 | **One data-entry UX — scope→category accordion + shared capture component + site-as-context + progressive disclosure** (corrects the 31 Aug prototypes; absorbs S5's data-entry portion) | **NZC-046** | `data-entry-accordion` | `ACCEPTANCE_UX1_DATA_ENTRY_ACCORDION.md` · `STAGING_ACCEPTANCE_UX1.md` · `DATA_ENTRY_UX.md` | B2–B5, S1, S2 built | 🟢 accordion live on staging (PR #68); flip acceptance in progress |
-| UX1e | **Stage-as-section CRP workspace** — `/jobs/[jobId]` page-level IA to the `crp_v3` prototype: active stage expanded, prior a summary line, later a to-do card; Data Entry = the accordion only; command hero → focus strip. The reusable **NZC-024** module shell. Increments e1 (shell + Setup + Data Entry) → e2 (Factor Mapping + Review & QA surfaces) → e3 (Report & Publish + retire the legacy scroll). | NZC-038 / NZC-024 | `job-stage-sections` | `ACCEPTANCE_UX1E_STAGE_SECTIONS.md` | UX1 accordion live | 🟢 e1 built (PR TBD); e2/e3 ⏳ |
+| UX1e | **Stage-as-section CRP workspace** — reusable NZC-024 module shell. The original e2 Factor-mapping increment was superseded by DA2's four-stage lifecycle; Review & QA is now Data Assurance and Report & Publish carries the R-track editor. | NZC-038 / NZC-024 / NZC-057 | `job-stage-sections` | `ACCEPTANCE_UX1E_STAGE_SECTIONS.md` · `STAGING_ACCEPTANCE_DA3.md` | UX1 accordion | 🟢 built and live; human narration pass outstanding |
 | S5 | Stage-as-section for the **other** families' workspaces (CRP → UX1e; data-entry portion → UX1) | NZC-038 | layout | design acceptance | UX1e e1–e3 landed | ⏳ cross-cutting — replicates UX1e |
 | — | Standards (carbon emissions; dd/mm/yyyy) | NZC-039/040 | n/a | ride-along per slice | — | ⏳ per slice |
 | P4 | Retire legacy generic path + remove flags | — | remove | — | all adapters accepted | ⏳ Phase 4 |
@@ -175,9 +175,9 @@ proven. Read surfaces (below) may run **in parallel** with later data-entry slic
 
 | Order | Area(s) | Shape | Flag | Depends on | Status |
 |---|---|---|---|---|---|
-| M6.1 | Metrics, Insights | PORT (read on snapshot + SVG charts; Insights off PNGs) | `portal-metrics`, `portal-insights` | reviewed snapshot, @nzi/charts | ⏳ |
+| M6.1 | Assured dashboard | PORT (published snapshot + SVG charts) | `portal-analytics` | reviewed snapshot, @nzi/charts | 🟢 A1 built (PR #117); staging rendered acceptance pending |
 | M6.2 | Portfolio, Dashboard | PORT/FOLD (composite read views) | `portal-portfolio` | M6.1 | ⏳ |
-| M6.3 | Strategy / Actions | MODEL (new Actions + action-lever domain) | `portal-actions` | new domain model + NZC-047 open decision | ⏳ **largest** |
+| M6.3 | Strategy / Actions | A2-lite qualitative 24-lever tracker; no emissions projection | `portal-actions` | A1 assured baseline context | 🟢 built locally; migration/PR/staging acceptance pending |
 | M6.4 | SRS Readiness | MODEL (new readiness domain) | `portal-srs` | new domain model | ⏳ |
 | M6.5 | Risk, Governance, Files | FOLD (Governance extends M1; Files on upload + AV) | `portal-risk`,`portal-governance`,`portal-files` | NZC-046 upload/AV | ⏳ |
 

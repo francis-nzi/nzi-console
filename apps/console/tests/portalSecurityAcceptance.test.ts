@@ -26,7 +26,7 @@ it("binds an active portal session to one organisation, user and client",()=>{
   const auth=read("packages/isolated-backend/src/auth.ts");
   assert.match(auth,/s\.organisation_id=\$1 AND s\.session_id=\$2 AND s\.portal_user_id=\$3 AND s\.client_id=\$4/);
   assert.match(auth,/s\.revoked_at IS NULL AND s\.expires_at>now\(\) AND u\.status='active'/);
-  assert.match(auth,/\[session\.organisationId,session\.sessionId,session\.userId,session\.clientId\]/);
+  assert.match(auth,/\[session\.organisationId,session\.sessionId,session\.userId,session\.clientId(?:,|\])/);
 });
 
 it("enforces durable login throttling for password and MFA attempts",()=>{
