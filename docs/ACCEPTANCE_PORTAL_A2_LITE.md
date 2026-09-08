@@ -23,9 +23,21 @@
 8. Screen reader announces sphere/lever hierarchy, action title/notes and completion value; colour is not the only progress signal.
 9. Reduced motion and 390/768/1280/1920 layouts pass with no horizontal overflow.
 
-Automated gate: `apps/console/tests/e2e/portal-actions.spec.ts` (conditionally skips only until the flag is
-live; remove that flag skip in the flip PR). It creates, edits, reloads and removes a temporary action,
+Automated gate: `apps/console/tests/e2e/portal-actions.spec.ts` is a hard live precondition (no flag skip).
+It creates, edits, reloads and removes a temporary action,
 asserts the baseline total and data hash did not move, probes an ungranted job, runs axe and checks all four widths.
+
+## Staging result — 8 September 2026
+
+- `portal-analytics,portal-actions` confirmed in the dashboard-authoritative Render variable; migration
+  `0059` applied to the isolated staging database.
+- Render revision `ef898b0` live and `/api/health` green.
+- Playwright: **4/4 passed** (setup plus both A2 journeys) against
+  `https://nzi-pro-api-prod.onrender.com` — create/edit/reload/delete cleanup, assured total + data-hash
+  invariance, wrong-job denial, axe, and 390/768/1280/1920 widths.
+- Staging acceptance found and closed the audit JSONB binding failure and the inherited 720px mobile-table
+  overflow in PRs #122/#123.
+- **Human gate still open:** Narrator reading order/announcements and the OS reduced-motion sensory pass.
 
 ## Deployment
 
