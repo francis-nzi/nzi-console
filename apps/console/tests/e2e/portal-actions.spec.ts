@@ -38,10 +38,11 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
       const row = page.locator(".nz-lever li", { hasText: title });
       await expect(row).toContainText("20% complete");
       await row.getByRole("button", { name: "Edit action" }).click();
-      await row.getByLabel("Action title").fill(`${title} edited`);
-      await row.getByLabel("Notes").fill("Edited by the client; still engagement data only");
-      await row.getByLabel("Completion").fill("60");
-      await row.getByRole("button", { name: "Save action" }).click();
+      const editor = page.locator(".nz-lever li.editing");
+      await editor.getByLabel("Action title").fill(`${title} edited`);
+      await editor.getByLabel("Notes").fill("Edited by the client; still engagement data only");
+      await editor.getByLabel("Completion").fill("60");
+      await editor.getByRole("button", { name: "Save action" }).click();
       await expect(page.getByRole("status")).toContainText("Action saved.");
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page.locator(".nz-lever li", { hasText: `${title} edited` })).toContainText("60% complete");
