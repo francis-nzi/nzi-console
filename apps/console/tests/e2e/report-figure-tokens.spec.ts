@@ -5,9 +5,9 @@ import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // R3 — data-bound figure tokens (NZC-049; docs/ACCEPTANCE_R3_FIGURE_TOKENS.md).
-// Runs only when a staff account is provided AND `report-tokens` is live on the
-// target (NEXT_PUBLIC_FEATURE_REPORT_STUDIO). Hard-asserts the markers once the
-// section list is present — no conditional skip on a live flag.
+// Runs when a staff account is provided. `report-tokens` is a hard staging
+// precondition: a missing section list fails acceptance instead of silently
+// skipping the gate.
 
 async function openReportVersion(page: Page): Promise<{ errors: string[] }> {
   const report = await discoverReportVersion(page.request);
@@ -26,10 +26,10 @@ test.describe("R3 — data-bound report figure tokens", () => {
     const { errors } = await openReportVersion(page);
 
     const sections = page.locator(".report-sections .nz-report-section");
-    test.skip(
-      (await sections.count()) === 0,
-      "report-tokens not enabled on target (no .report-sections)",
-    );
+    await expect(
+      page.locator(".report-sections"),
+      "report-tokens must be live on the target",
+    ).toBeVisible();
 
     // The six-section CRP narrative, each with a source pill.
     expect(await sections.count()).toBe(6);
@@ -56,7 +56,10 @@ test.describe("R3 — data-bound report figure tokens", () => {
 
   test("the report surface with sections passes the axe baseline and holds the column", async ({ page }) => {
     await openReportVersion(page);
-    test.skip((await page.locator(".report-sections").count()) === 0, "report-tokens not enabled on target");
+    await expect(
+      page.locator(".report-sections"),
+      "report-tokens must be live on the target",
+    ).toBeVisible();
     await scanWithBaseline(page, "report-figure-tokens");
     await expectNoHorizontalOverflow(page, "report version with sections");
   });
