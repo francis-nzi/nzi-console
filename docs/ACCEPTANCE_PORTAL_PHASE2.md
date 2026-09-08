@@ -13,9 +13,9 @@ Sequence: **P1 / P2 → §0 e2e → A1 / A2 → 2b.**
 |---|---|
 | **P1** — inactivity auto-logout | 🟢 built (PR #114) |
 | **P2a** — MFA enforcement | ✅ **already enforced** — see findings; nothing to build |
-| **P2b** — accept-terms gate | 🟢 built (PR #115, held on the Supabase blocker) |
-| **§0** — snapshot-sourcing gate + e2e | 🟢 built (PR #116) |
-| **A1** — client dashboard + charts | 🟢 built (PR #116) |
+| **P2b** — accept-terms gate | 🟢 built (PR #115) |
+| **§0** — snapshot-sourcing gate + e2e | 🟢 built (PR #117) |
+| **A1** — client dashboard + charts | 🟢 built (PR #117) |
 | **A2** — decarbonisation levers | ⚪ blocked on the lever-contract question |
 | **2b** — insights / risk / SRS / geo / leaderboard / portfolio / files / category history | ⚪ deferred |
 
@@ -120,8 +120,11 @@ the rebuild had no terms handling at all.
   reload; "Decline & sign out" → `POST /logout` → `/portal/login?reason=terms-declined`. Inert when there
   is no session.
 - **`auth.setup.ts`** does NOT accept terms; **`provision-acceptance-accounts.ts`** deletes any
-  acceptance for the fixed portal user each run — so `portal-security.spec.ts` (which runs first) can
-  exercise the block, then records acceptance, clearing it for every later portal test.
+  acceptance for the fixed portal user each run — so `portal-analytics.spec.ts` (which sorts first among
+  the portal specs) exercises the block in its first test, then records acceptance, clearing it for every
+  later portal test. `portal-security.spec.ts` keeps the accept-endpoint guard tests.
+- **Migration 0058 applied + idempotency-verified against isolated staging** (`CREATE TABLE IF NOT
+  EXISTS` + `DROP POLICY IF EXISTS` — the apply was retried through a flaky pooler).
 
 **Gate (P2b)**
 
@@ -168,7 +171,7 @@ A1 first (dashboard + charts, `@nzi/charts`, canonical scope palette, text equiv
 empty-state); A2 after the A2-scope question is answered; 2b after 2a proves the snapshot-sourcing
 pattern. Same flag / e2e / hard-precondition discipline throughout.
 
-### §0 + A1 — built (PR #116)
+### §0 + A1 — built (PR #117)
 
 **The seam Francis asked for:** A1's endpoint is the assured-baseline source A2 will read from. It
 returns the published baseline at **per-scope AND per-category/site** granularity (not headline totals),
