@@ -40,6 +40,7 @@ export function contractFor<T>(key: ScreenKey): ScreenContract<T> { return scree
 export function hasData<T>(result: ScreenResult<T>): result is Extract<ScreenResult<T>, { state: "success" | "degraded" }> { return result.state === "success" || result.state === "degraded"; }
 export * from "./commands";
 export * from "./dataAssurance";
+export * from "./portalAnalytics";
 export * from "./reportSections";
 export * from "./reportTokens";
 export * from "./reportAppendix";

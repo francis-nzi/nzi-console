@@ -15,41 +15,23 @@ import { collectPageErrors } from "./lib/screen";
 
 const ORIGIN = new URL(process.env.STAGING_BASE_URL ?? "https://nzi-pro-api-prod.onrender.com").origin;
 
-test.describe("P2b — portal terms-of-access gate", () => {
+test.describe("P2b — portal terms-of-access gate (endpoint guards)", () => {
+  // The "terms outstanding → data blocked → accept → unblocked" path is the
+  // first test in portal-analytics.spec.ts — it runs first (alphabetical), so
+  // it owns exercising the block AND records acceptance for every later portal
+  // test. Here: the accept-terms endpoint's own guards, always runnable.
   test.skip(!portalAccount(), "ACCEPTANCE_PORTAL_* not set");
 
-  test("a user with terms outstanding is blocked from portal data until acceptance is recorded", async ({ page }) => {
+  test("/me exposes the terms flag; the accept endpoint only takes the current version", async ({ page }) => {
     await page.goto("/portal", { waitUntil: "domcontentloaded" });
-
-    const me = await (await page.request.get("/api/portal/auth/me")).json() as { mustAcceptTerms?: boolean; termsVersion?: string };
+    const me = await (await page.request.get("/api/portal/auth/me")).json() as { mustAcceptTerms?: unknown; termsVersion?: unknown };
     expect(typeof me.termsVersion, "/me exposes the current terms version").toBe("string");
+    expect(typeof me.mustAcceptTerms, "/me exposes the must-accept flag").toBe("boolean");
 
-    // Endpoint guard: only the current version is acceptable.
     const stale = await page.request.post("/api/portal/auth/accept-terms", { data: { version: "0000-stale" }, headers: { origin: ORIGIN } });
     expect(stale.status(), "a stale terms version is refused").toBe(409);
     const empty = await page.request.post("/api/portal/auth/accept-terms", { data: {}, headers: { origin: ORIGIN } });
     expect(empty.status(), "an empty terms version is refused").toBe(422);
-
-    test.skip(me.mustAcceptTerms !== true, "terms already accepted on this target — re-run `acceptance:provision` to exercise the block");
-
-    // Blocked: a data route 403s while terms are outstanding.
-    const blocked = await page.request.get("/api/portal/jobs");
-    expect(blocked.status(), "portal data is blocked until terms are accepted").toBe(403);
-    expect(((await blocked.json()) as { code?: string }).code).toBe("PORTAL_TERMS_REQUIRED");
-
-    // The blocking overlay is present and dialog-shaped.
-    const overlay = page.getByRole("dialog", { name: /Portal terms of access/i });
-    await expect(overlay).toBeVisible();
-    await expect(overlay.getByRole("button", { name: /Accept & continue/ })).toBeDisabled();
-
-    // Accept.
-    await overlay.getByRole("checkbox").check();
-    await overlay.getByRole("button", { name: /Accept & continue/ }).click();
-    await expect(page.getByRole("dialog", { name: /Portal terms of access/i })).toHaveCount(0, { timeout: 15_000 });
-
-    // Unblocked: the same data route now succeeds, and /me clears the flag.
-    await expect.poll(async () => (await page.request.get("/api/portal/jobs")).status()).toBe(200);
-    expect(((await (await page.request.get("/api/portal/auth/me")).json()) as { mustAcceptTerms?: boolean }).mustAcceptTerms).toBe(false);
   });
 });
 
