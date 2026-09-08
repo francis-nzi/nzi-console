@@ -43,6 +43,14 @@ describe("buildTemplateSearchIndex (NZC-062)", () => {
     assert.equal(index[0]!.categoryLabel, "Employee commuting");
   });
 
+  it("a top-level-only Scope 3 factor expands to controlled categories instead of posting invalid code 3", () => {
+    const f = factor({ scopes: ["3"], categories: [{ scope: "3", scopeCode: "3", label: "Value chain" }] });
+    const index = buildTemplateSearchIndex([f]);
+    assert.equal(index.length, 15);
+    assert.ok(index.every((result) => result.scope.startsWith("3.") && result.categoryCode === result.scope));
+    assert.ok(index.every((result) => result.categoryCode !== "3"));
+  });
+
   it("a Scope 1 factor expands to one candidate per Scope 1 taxonomy category — never guesses", () => {
     const f = factor({ scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }] });
     const index = buildTemplateSearchIndex([f]);

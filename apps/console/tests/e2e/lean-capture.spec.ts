@@ -50,10 +50,10 @@ async function openLeanCapture(page: Page): Promise<{ form: Locator; body: Locat
   const form = body!.locator("form.nz-ef");
   await expect(form).toBeVisible();
 
-  test.skip(
-    (await form.locator(".nz-ef-factor-review").count()) === 0,
-    "entry-lean-capture not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
+  await expect(
+    form.locator(".nz-ef-factor-review"),
+    "entry-lean-capture must be live on the target",
+  ).toBeVisible();
 
   return { form, body: body!, errors };
 }
@@ -77,7 +77,7 @@ test.describe("DA4 — lean capture + drawer refine", () => {
     await expect(form.getByLabel("Quality tier")).toHaveCount(0);
     await expect(form.getByLabel("Data confidence")).toHaveCount(0);
     await expect(form.locator("textarea.nz-notes")).toHaveCount(0);
-    await expect(form.getByText("Supporting documents")).toHaveCount(0);
+    await expect(form.locator(".nz-ef-dropzone")).toHaveCount(0);
     await expect(form.getByText(/set in the row's evidence panel after saving/i)).toBeVisible();
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
@@ -117,8 +117,10 @@ test.describe("DA4 — lean capture + drawer refine", () => {
     // refine fields — DA4 only removed them from capture, not from the row.
     const drawer = page.locator("aside.nz-drawer");
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByLabel("Quality")).toBeVisible();
+    await drawer.getByRole("button", { name: "Data quality" }).click();
+    await expect(drawer.getByLabel("Quality tier")).toBeVisible();
     await expect(drawer.getByLabel("Data confidence")).toBeVisible();
+    await drawer.getByRole("button", { name: "Evidence & provenance" }).click();
     await expect(drawer.getByText("Evidence notes")).toBeVisible();
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);

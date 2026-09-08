@@ -29,10 +29,6 @@ async function openFastAdd(page: Page): Promise<{ errors: string[]; panel: Locat
   await accordion.locator("button.nz-acc-h").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
 
   const panel = page.locator("#fast-add");
-  test.skip(
-    (await panel.count()) === 0,
-    "data-entry-fast-add not live on the target — harden this spec (remove the skip) as part of the flip PR",
-  );
   await expect(panel, "the fast-add panel must render directly below the site selector").toBeVisible();
 
   // Sits directly after the site selector and above the scope→category cards.
