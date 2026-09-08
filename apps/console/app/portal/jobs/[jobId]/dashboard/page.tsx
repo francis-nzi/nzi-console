@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { portalFeatureEnabled } from "../../../../lib/portalFlags";
 import { PortalDashboard } from "../PortalDashboard";
+import { PortalActionTrackerPanel } from "../PortalActionTracker";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
         <Link className="nz-btn" href={`/portal/jobs/${jobId}`}>Open the full report →</Link>
       </div>
       <PortalDashboard jobId={jobId} />
+      {portalFeatureEnabled("portal-actions") ? <PortalActionTrackerPanel jobId={jobId} /> : null}
     </main>
   );
 }

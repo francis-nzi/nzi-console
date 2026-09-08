@@ -81,18 +81,12 @@ The client's headline emissions view and the portal's landing analytics.
 - a11y: charts need text/table equivalents (Francis runs Narrator) — every figure on the dashboard must be
   reachable as text, not pixels only. Reuse the tablist/dialog patterns already hardened on the CRM side.
 
-### A2. Decarbonisation actions / levers  →  live `PortalActions` / `ActionLeverGrid` / `LeverSelect`
-The reduction-planning tool — the biggest engagement feature and the reason clients come back.
-- Client selects **levers** against their footprint and sees modelled impact vs their assured baseline.
-- **Baseline is the published snapshot** (§0). Lever modelling is a **presentation-time projection off the
-  assured baseline** — it must never write back into, or be confused with, actual reported figures. Keep
-  projected/what-if figures visually and structurally distinct from assured actuals (mirror the BL-pill /
-  provisional treatment used in Data Assurance).
-- Persist a client's selected scenario so it survives reload, but store it as a **scenario artefact**, not as
-  edits to emissions data.
-- Check the live `LeverSelect` / `ActionLeverGrid` for the lever catalogue and impact maths before
-  re-deriving them — reuse the live logic the way we did for the LCA engine, don't reinvent it. Flag any
-  place the live maths is unclear rather than guessing.
+### A2-lite. Spheres of Influence action tracker → live `PortalActions` / `ActionLeverGrid` / `LeverSelect`
+**Direction confirmed 8 Sep 2026:** port the live 24-lever taxonomy and client actions with completion %, but build no projection model. Live has no lever-to-tCO₂e maths and NZI has no assured reduction methodology.
+- Show the read-only assured baseline from `/dashboard` alongside the tracker as context.
+- Store lever, action and completion as separate client-managed engagement data, never as emissions data.
+- Label and structure completion percentages so they cannot be read as emissions reductions.
+- No write-back into, or derivation from, reported figures.
 
 **Flag:** put 2a behind a single `portal-analytics` flag (build-time `NEXT_PUBLIC_*`, dashboard-authoritative
 — remember it needs **Clear build cache & deploy** to take, like the others). Off in prod until the
@@ -129,8 +123,7 @@ same or a sibling flag, each with e2e:
       client with terms outstanding.
 - [ ] A1 dashboard renders from `@nzi/charts`, canonical scope palette, text equivalents for every figure,
       empty-state handled.
-- [ ] A2 levers model off the assured baseline as a projection; what-if figures never mutate reported data
-      and are visually distinct.
+- [ ] A2-lite preserves all 24 live levers and qualitative action completion; the assured baseline is read-only context and no projection or reported-figure mutation exists.
 - [ ] All 2a/2b surfaces behind `portal-analytics` (or sibling), off in prod until acceptance is met; hard
       precondition, no silent e2e skips.
 

@@ -3,7 +3,8 @@
 Track C (job-family modularization, NZC-024). Companion: `docs/ACCEPTANCE_LCA_MODULE_SLICE1.md`…`SLICE6.md`,
 `docs/REPORT_PRINTING_UX.md` / `docs/STAGING_ACCEPTANCE_R1.md` / `R5*` (the R-track machinery this reuses),
 NZC-039 (the "Product Carbon Footprint" term), NZC-051 (the frozen-snapshot rule). Flag: **`job-module-lca`**
-— live. **This is the last slice — with it, the LCA reference module L1–L7 is complete.**
+— built and carried in `render.yaml`, but the dashboard-authoritative staging flip is still pending per
+`docs/DEPLOYMENT.md`. **This is the last build slice — with it, L1–L7 is code-complete.**
 
 ## Scope
 
@@ -84,5 +85,5 @@ NZC-039 (the "Product Carbon Footprint" term), NZC-051 (the frozen-snapshot rule
 
 L1 Model Register · L2 Inventory · L3 Transport legs · L4 calc engine + review + snapshots · L5 Scenarios ·
 L6 Charts · L7 Report + PCF labelling — all merged behind `job-module-lca`, seeded end-to-end on jobs
-714/715. Next (NZC-024): prove it on the seeded job, then replicate the pattern to the Training and
+714/715. Next (NZC-024): flip and prove it on the seeded job, then replicate the pattern to the Training and
 Consultancy families and retire `FamilyWorkspace.tsx`.
