@@ -73,12 +73,19 @@ test.describe("R5b — Continuous / Page view · A4 toggle", () => {
     await expect(pages.first()).toBeVisible({ timeout: 20_000 });
     test.skip((await pages.count()) < 2, "this reviewed snapshot fits on a single A4 page — nothing to compare");
 
-    const cover = pages.nth(0);
-    await expect(cover.locator(".pagedjs_margin-bottom-right .pagedjs_margin-content")).toHaveText("");
-
-    const second = pages.nth(1);
-    await expect(second.locator(".pagedjs_margin-bottom-right .pagedjs_margin-content")).toContainText(/Page 2 of \d+/);
-    await expect(second.locator(".pagedjs_margin-top-center .pagedjs_margin-content")).toContainText(/Carbon Reduction Plan/);
+    const marginContent = await pages.evaluateAll((nodes) => nodes.slice(0, 2).map((node) => {
+      const top = node.querySelector<HTMLElement>(".pagedjs_margin-top-center .pagedjs_margin-content");
+      const right = node.querySelector<HTMLElement>(".pagedjs_margin-bottom-right .pagedjs_margin-content");
+      return {
+        page: node.getAttribute("data-page-number"),
+        top: top ? getComputedStyle(top, "::after").content : "",
+        right: right ? getComputedStyle(right, "::after").content : "",
+      };
+    }));
+    expect(marginContent[0]).toMatchObject({ page: "1", top: "none", right: "none" });
+    expect(marginContent[1]?.page).toBe("2");
+    expect(marginContent[1]?.top).toMatch(/Carbon Reduction Plan/);
+    expect(marginContent[1]?.right).toMatch(/Page.*counter\(page\).*counter\(pages\)/);
   });
 
   test("switching back to Continuous restores the normal report view", async ({ page }) => {
