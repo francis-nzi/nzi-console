@@ -5,8 +5,8 @@ import { collectPageErrors, expectHealthyScreen, expandJobStage } from "./lib/sc
 import { scanWithBaseline } from "./lib/axe";
 
 // R4 — in-place report section editor (NZC-048; docs/ACCEPTANCE_R4_SECTION_EDITOR.md).
-// Runs only when a staff account is provided AND `report-edit` is live on the
-// target. Harden (remove the flag skip) as part of the flip PR.
+// Runs when a staff account is provided. `report-edit` is a hard staging
+// precondition, so a missing editor fails instead of silently skipping.
 
 async function openReportPublishStage(page: Page): Promise<{ errors: string[] }> {
   const job = await discoverCrpJobAtStage(page.request, "Data entry");
@@ -26,7 +26,7 @@ test.describe("R4 — in-place report section editor", () => {
     const { errors } = await openReportPublishStage(page);
 
     const editor = page.locator(".nz-report-editor");
-    test.skip((await editor.count()) === 0, "report-edit not enabled on target (no .nz-report-editor)");
+    await expect(editor, "report-edit must be live on the target").toBeVisible();
 
     // Six sections, each with a source pill and Edit / Regenerate / Reset actions.
     const rows = editor.locator(".nz-report-section-row");
@@ -53,7 +53,10 @@ test.describe("R4 — in-place report section editor", () => {
 
   test("the editor passes the axe baseline", async ({ page }) => {
     await openReportPublishStage(page);
-    test.skip((await page.locator(".nz-report-editor").count()) === 0, "report-edit not enabled on target");
+    await expect(
+      page.locator(".nz-report-editor"),
+      "report-edit must be live on the target",
+    ).toBeVisible();
     await scanWithBaseline(page, "report-section-editor");
   });
 });
