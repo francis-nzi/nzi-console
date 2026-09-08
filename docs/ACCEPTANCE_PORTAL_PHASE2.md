@@ -140,8 +140,30 @@ the rebuild had no terms handling at all.
 ## Phase 2a / 2b
 
 Behind a single build-time `NEXT_PUBLIC_*` `portal-analytics` flag (dashboard-authoritative, needs **Clear
-build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is green. A1 (dashboard + charts,
-`@nzi/charts`, canonical scope palette, text equivalents, real empty-state) and A2 (levers as a
-presentation-time projection off the assured baseline, what-if visually distinct, scenario stored as an
-artefact not as data edits) first; 2b after 2a proves the snapshot-sourcing pattern. Same
-flag / e2e / hard-precondition discipline throughout.
+build cache & deploy**), off in prod until P1/P2 are merged and the §0 e2e is green.
+
+### Reconnaissance (08 Sep 2026) — before building 2a
+
+- **Live's portal dashboard is NOT snapshot-sourced.** `api/portal_routes.py::portal_job_overview` calls
+  `get_scope_totals(job_id)` / `get_emissions_by_category(job_id)` (live data), and there's a
+  `portal_live_report_data` endpoint mirroring the CRM *live* report. Only `portal_snapshot_data` reads the
+  frozen `job_report_versions.snapshot_json`. The rebuild's §0 rule means A1 must source **only** from the
+  published snapshot — a deliberate improvement on live, not a port.
+- **A1 chart data shapes (live `PortalDashboardCharts`, recharts):** `scopeData {name,value}[]`, `total`,
+  `trendData {year,total,scope1,scope2,scope3}[]`, `topCategoryData {category,emissions,percentage}[]`.
+  Rebuild renders these with **`@nzi/charts`** (SVG-first). Totals / scope / top-category from
+  `getCurrentPublishedCrpReport().snapshot.measurements`; the 5-year trend from the Data Assurance chain
+  (`resolveCrpReportingChain` already resolves the prior *published* snapshot per reporting year).
+- **⚠️ A2 — the live `LeverSelect` / `ActionLeverGrid` / `PortalActions` contain NO emissions-projection
+  maths.** They implement a qualitative **Spheres of Influence** framework (3 spheres → 9 sub-spheres →
+  24 levers; Futerra / Oxford Net Zero) — `services/report_actions.py` computes per-lever
+  `action_count` / `completed_count` / `AVG(progress)` over tracked *actions* (name, description,
+  category, progress %, target date). There is **no lever → tCO₂e-abatement model** anywhere in live.
+  The brief's A2 ("client selects levers … sees **modelled impact vs their assured baseline** …
+  presentation-time projection … what-if figures") describes a capability live does not have. **Flagged
+  to Francis — needs direction on A2 scope before building** (like-for-like action tracker vs. a new
+  projection model that needs a lever→abatement methodology).
+
+A1 first (dashboard + charts, `@nzi/charts`, canonical scope palette, text equivalents, real
+empty-state); A2 after the A2-scope question is answered; 2b after 2a proves the snapshot-sourcing
+pattern. Same flag / e2e / hard-precondition discipline throughout.
