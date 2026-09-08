@@ -50,9 +50,8 @@ report version:
 ## Automated suite
 
 - `packages/contracts/tests/reportTokens.test.ts` — 7 tests (gate #5).
-- `apps/console/tests/e2e/report-figure-tokens.spec.ts` — 2 tests (gate #1–#4, #6). Conditionally skips
-  until `report-tokens` is live on the target (`.report-sections` absent) — **harden this (remove the skip)
-  as part of the flip PR**, as was done for `report-print-safe` / `stage-sections`.
+- `apps/console/tests/e2e/report-figure-tokens.spec.ts` — 2 tests (gate #1–#4, #6). The
+  deployed section surface is a hard precondition; a missing `report-tokens` flag fails the gate.
 
 ## Pre-flip verification (Claude Code, this branch)
 
@@ -68,6 +67,11 @@ report version:
 Append `report-tokens` to `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` in the Render dashboard (+ rebuild); add it to
 `render.yaml`. Harden `report-figure-tokens.spec.ts`, run it against deployed staging, record here + the
 human pass, in `docs/STAGING_ACCEPTANCE_R3.md`.
+
+Automated staging acceptance completed on 8 September 2026: `report-tokens` was confirmed live,
+the hardened Playwright run passed **4/4** (two authenticated setup checks plus both R3 journeys),
+and `render.yaml` was brought back into line with the dashboard-authoritative value. The human
+screen-reader and print check remains open.
 
 ## Rollback
 
