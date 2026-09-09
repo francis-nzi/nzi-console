@@ -42,7 +42,12 @@ type GroupProps = { form: ClientFormState; onChange: (patch: Partial<ClientFormS
  */
 function Field({ label, name, errors, control, hint, span, required }: {
   label: string; name: string; errors: FieldErrors; hint?: string; span?: number; required?: boolean;
-  control: (a11y: { id: string; "aria-describedby": string | undefined; "aria-invalid": true | undefined; required?: boolean }) => React.ReactNode;
+  /** `invalid` is passed alongside the spreadable a11y props so the control can add
+   *  `bad` to its own base class — `nz-inp` and `nz-sel` do not share one. */
+  control: (
+    a11y: { id: string; "aria-describedby": string | undefined; "aria-invalid": true | undefined; required?: boolean },
+    invalid: boolean,
+  ) => React.ReactNode;
 }) {
   const id = `client-${name}`;
   const error = errors[name];
@@ -50,8 +55,8 @@ function Field({ label, name, errors, control, hint, span, required }: {
   return (
     <div className="nz-fl" style={{ margin: 0, ...(span ? { gridColumn: `span ${span}` } : {}) }}>
       <label htmlFor={id}>{label}{required ? <span className="req" aria-hidden="true">*</span> : null}</label>
-      {control({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined, required })}
-      {error ? <small className="nz-hint" id={`${id}-error`} role="alert" style={{ color: "var(--coral)" }}>{error}</small> : null}
+      {control({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined, required }, Boolean(error))}
+      {error ? <small className="nz-hint nz-field-error" id={`${id}-error`} role="alert">{error}</small> : null}
       {hint ? <small className="nz-hint" id={`${id}-hint`}>{hint}</small> : null}
     </div>
   );
@@ -60,8 +65,8 @@ function Field({ label, name, errors, control, hint, span, required }: {
 function Text({ form, onChange, errors, name, label, hint, span, type = "text", placeholder, required }: GroupProps & { name: keyof ClientFormState; label: string; hint?: string; span?: number; type?: string; placeholder?: string; required?: boolean }) {
   return (
     <Field label={label} name={String(name)} errors={errors} hint={hint} span={span} required={required}
-      control={(a11y) => (
-        <input {...a11y} className="nz-inp" type={type} placeholder={placeholder}
+      control={(a11y, invalid) => (
+        <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type={type} placeholder={placeholder}
           value={(form[name] as string | null) ?? ""}
           onChange={(event) => onChange({ [name]: event.target.value } as Partial<ClientFormState>)} />
       )} />
@@ -71,8 +76,8 @@ function Text({ form, onChange, errors, name, label, hint, span, type = "text", 
 function Num({ form, onChange, errors, name, label, hint, span, step, min, max, placeholder }: GroupProps & { name: keyof ClientFormState; label: string; hint?: string; span?: number; step?: string; min?: number; max?: number; placeholder?: string }) {
   return (
     <Field label={label} name={String(name)} errors={errors} hint={hint} span={span}
-      control={(a11y) => (
-        <input {...a11y} className="nz-inp" type="number" step={step} min={min} max={max} placeholder={placeholder}
+      control={(a11y, invalid) => (
+        <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type="number" step={step} min={min} max={max} placeholder={placeholder}
           value={(form[name] as number | null) ?? ""}
           onChange={(event) => onChange({ [name]: event.target.value === "" ? null : Number(event.target.value) } as Partial<ClientFormState>)} />
       )} />
@@ -106,8 +111,8 @@ export function DetailsGroup(props: GroupProps) {
         <Text {...props} name="owner" label="Client owner" required />
         <Text {...props} name="clientManager" label="Client manager" />
         <Field label="Relationship stage" name="status" errors={errors} hint="Controls portfolio health and job eligibility."
-          control={(a11y) => (
-            <select {...a11y} className="nz-sel" value={form.status} onChange={(event) => onChange({ status: event.target.value as ClientFormState["status"] })}>
+          control={(a11y, invalid) => (
+            <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.status} onChange={(event) => onChange({ status: event.target.value as ClientFormState["status"] })}>
               <option value="onboarding">Onboarding</option><option value="active">Active</option>
               <option value="at-risk">At risk</option><option value="prospect">Prospect</option>
             </select>
@@ -120,21 +125,21 @@ export function DetailsGroup(props: GroupProps) {
         <Text {...props} name="headquarters" label="Headquarters" />
         <Text {...props} name="location" label="Location" placeholder="City, country" required />
         <Field label="Financial year end" name="financialYearEndMonth" errors={errors}
-          control={(a11y) => (
-            <select {...a11y} className="nz-sel" value={form.financialYearEndMonth ?? ""} onChange={(event) => onChange({ financialYearEndMonth: event.target.value === "" ? null : Number(event.target.value) })}>
+          control={(a11y, invalid) => (
+            <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.financialYearEndMonth ?? ""} onChange={(event) => onChange({ financialYearEndMonth: event.target.value === "" ? null : Number(event.target.value) })}>
               <option value="">Not set</option>
               {MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
             </select>
           )} />
         <Field label="Data reporting frequency" name="dataReportingFrequency" errors={errors} hint="Controls which view opens first on the portal's Data Completeness tab. Monthly detail is always available as a drill-down either way."
-          control={(a11y) => (
-            <select {...a11y} className="nz-sel" value={form.dataReportingFrequency ?? "annual"} onChange={(event) => onChange({ dataReportingFrequency: event.target.value as ClientFormState["dataReportingFrequency"] })}>
+          control={(a11y, invalid) => (
+            <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.dataReportingFrequency ?? "annual"} onChange={(event) => onChange({ dataReportingFrequency: event.target.value as ClientFormState["dataReportingFrequency"] })}>
               {clientReportingFrequencies.map((entry) => <option key={entry} value={entry}>{FREQUENCY_LABEL[entry]}</option>)}
             </select>
           )} />
         <Field label="Currency" name="currency" errors={errors}
-          control={(a11y) => (
-            <select {...a11y} className="nz-sel" value={form.currency ?? "GBP"} onChange={(event) => onChange({ currency: event.target.value })}>
+          control={(a11y, invalid) => (
+            <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.currency ?? "GBP"} onChange={(event) => onChange({ currency: event.target.value })}>
               {CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
             </select>
           )} />
@@ -149,8 +154,8 @@ export function DetailsGroup(props: GroupProps) {
       ) : null}
       <div style={{ marginTop: 15 }}>
         <Field label="Company description" name="companyDescription" errors={errors}
-          control={(a11y) => (
-            <textarea {...a11y} className="nz-inp" rows={3} value={form.companyDescription ?? ""} placeholder="Brief description of the company…"
+          control={(a11y, invalid) => (
+            <textarea {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} rows={3} value={form.companyDescription ?? ""} placeholder="Brief description of the company…"
               onChange={(event) => onChange({ companyDescription: event.target.value })} />
           )} />
       </div>
@@ -175,9 +180,9 @@ export function TargetsGroup(props: GroupProps) {
         <legend>Baseline period (financial year)<small className="nz-hint">The benchmark reporting period. Subsequent annual jobs follow this structure.</small></legend>
         <div className="nz-client-create-grid">
           <Field label="Baseline period start" name="baselinePeriodStart" errors={errors}
-            control={(a11y) => <input {...a11y} className="nz-inp" type="date" value={form.baselinePeriodStart ?? ""} onChange={(event) => onChange({ baselinePeriodStart: event.target.value || null })} />} />
+            control={(a11y, invalid) => <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type="date" value={form.baselinePeriodStart ?? ""} onChange={(event) => onChange({ baselinePeriodStart: event.target.value || null })} />} />
           <Field label="Baseline period end" name="baselinePeriodEnd" errors={errors}
-            control={(a11y) => <input {...a11y} className="nz-inp" type="date" value={form.baselinePeriodEnd ?? ""} onChange={(event) => onChange({ baselinePeriodEnd: event.target.value || null })} />} />
+            control={(a11y, invalid) => <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type="date" value={form.baselinePeriodEnd ?? ""} onChange={(event) => onChange({ baselinePeriodEnd: event.target.value || null })} />} />
         </div>
       </fieldset>
       <fieldset className="nz-fieldset">
@@ -251,8 +256,8 @@ export function ComplianceGroup(props: GroupProps) {
       <div className="nz-client-create-grid">
         <Text {...props} name="parentCompany" label="Parent company / group name" placeholder="e.g. Acme Group plc" />
         <Field label="Group structure" name="groupStructure" errors={errors}
-          control={(a11y) => (
-            <select {...a11y} className="nz-sel" value={form.groupStructure ?? ""} onChange={(event) => onChange({ groupStructure: (event.target.value || null) as ClientFormState["groupStructure"] })}>
+          control={(a11y, invalid) => (
+            <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.groupStructure ?? ""} onChange={(event) => onChange({ groupStructure: (event.target.value || null) as ClientFormState["groupStructure"] })}>
               <option value="">Not specified</option>
               {clientGroupStructures.map((entry) => <option key={entry} value={entry}>{STRUCTURE_LABEL[entry]}</option>)}
             </select>
