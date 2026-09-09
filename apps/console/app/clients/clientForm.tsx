@@ -147,11 +147,13 @@ export function DetailsGroup(props: GroupProps) {
           <img src={form.logoUrl} alt={`${form.name || "Client"} logo`} />
         </div>
       ) : null}
-      <Field label="Company description" name="companyDescription" errors={errors}
-        control={(a11y) => (
-          <textarea {...a11y} className="nz-inp" rows={3} value={form.companyDescription ?? ""} placeholder="Brief description of the company…"
-            onChange={(event) => onChange({ companyDescription: event.target.value })} />
-        )} />
+      <div style={{ marginTop: 15 }}>
+        <Field label="Company description" name="companyDescription" errors={errors}
+          control={(a11y) => (
+            <textarea {...a11y} className="nz-inp" rows={3} value={form.companyDescription ?? ""} placeholder="Brief description of the company…"
+              onChange={(event) => onChange({ companyDescription: event.target.value })} />
+          )} />
+      </div>
       <div className="nz-client-create-grid" style={{ marginTop: 4 }}>
         <Text {...props} name="contactName" label="Primary contact" />
         <Text {...props} name="contactRole" label="Contact role" />

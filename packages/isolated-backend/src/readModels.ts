@@ -93,7 +93,12 @@ type JobRow = {
   owner_name: string; start_date: Date | string; due_date: Date | string; quote_id: string | null;
   progress_percent: number; detail_json: unknown; stage_history: JobStageEvent[] | null;
 };
-const dateOnly = (value: Date | string) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+// node-postgres materialises a SQL `date` as local midnight, so toISOString() shifts it
+// a day earlier wherever the server runs ahead of UTC (BST included). Read the local
+// components instead — a `date` carries no time or zone and must not acquire one.
+export const dateOnly = (value: Date | string) => value instanceof Date
+  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
+  : String(value).slice(0, 10);
 const footprint = (value: string | null) => value === null ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
 const percentage = (value: string | null) => value === null ? null : `${Number(value) > 0 ? "+" : "−"}${Math.abs(Number(value)).toFixed(1)}%`;
 const asDetail = (family: JobFamily, value: unknown): JobDetail => {
@@ -192,7 +197,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
 
 export async function listJobSites(db:Queryable,jobId:string):Promise<SiteOption[]>{const {rows}=await db.query<{site_id:string;name:string}>(`SELECT s.site_id,s.name FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.job_id=$1 ORDER BY lower(s.name),s.site_id`,[jobId]);return rows.map(row=>({id:row.site_id,name:row.name}));}
 export async function listJobPurchasedGoodsCategories(db:Queryable,jobId:string):Promise<PurchasedGoodsCategoryOption[]>{const {rows}=await db.query<{category_id:string;name:string}>(`SELECT c.category_id,c.name FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE j.job_id=$1 ORDER BY lower(c.name),c.category_id`,[jobId]);return rows.map(row=>({id:row.category_id,name:row.name}));}
-export async function listJobReportingMonths(db:Queryable,jobId:string):Promise<string[]>{const {rows}=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE job_id=$1`,[jobId]),row=rows[0];if(!row)return[];const dateOnly=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10),months:string[]=[],cursor=new Date(`${dateOnly(row.reporting_from).slice(0,7)}-01T00:00:00Z`),end=dateOnly(row.reporting_to).slice(0,7);while(cursor.toISOString().slice(0,7)<=end){months.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return months;}
+export async function listJobReportingMonths(db:Queryable,jobId:string):Promise<string[]>{const {rows}=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE job_id=$1`,[jobId]),row=rows[0];if(!row)return[];const months:string[]=[],cursor=new Date(`${dateOnly(row.reporting_from).slice(0,7)}-01T00:00:00Z`),end=dateOnly(row.reporting_to).slice(0,7);while(cursor.toISOString().slice(0,7)<=end){months.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return months;}
 
 const FACTOR_VERSION_MOVED_SQL=`(s.factor_source='dataset' AND s.dataset_id IS NOT NULL AND EXISTS(SELECT 1 FROM nzi_console.emission_factor_datasets d1 JOIN nzi_console.emission_factor_datasets d2 ON d2.organisation_id=d1.organisation_id AND d2.name=d1.name AND d2.dataset_id<>d1.dataset_id JOIN nzi_console.job_dataset_selections sel ON sel.organisation_id=d2.organisation_id AND sel.dataset_id=d2.dataset_id AND sel.job_id=s.job_id WHERE d1.organisation_id=s.organisation_id AND d1.dataset_id=s.dataset_id))`;
 export async function listJobEmissionSourceRegister(db:Queryable,jobId:string):Promise<{groups:EmissionSourceGroup[];sources:EmissionSource[];rollups:import("@nzi/contracts").EmissionGroupRollup[]}>{const groups=await db.query<{group_id:string;job_id:string;name:string;dataset_id:string|null;factor_id:string|null;factor_label:string|null;unit:string|null}>(`SELECT group_id,job_id,name,dataset_id,factor_id,factor_label,unit FROM nzi_console.job_emission_groups WHERE job_id=$1 ORDER BY lower(name),group_id`,[jobId]),
