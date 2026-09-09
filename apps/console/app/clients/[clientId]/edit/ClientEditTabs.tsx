@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell, TabPanel, Tabs, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, GatedButton, TabPanel, Tabs, TopBar, WorkspaceRail } from "@nzi/ui";
 import { patchBrowserCommand } from "@nzi/api-client";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
@@ -83,7 +83,7 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
           </div>
           <div className="nz-head-actions">
             <Link className="nz-btn" href={`/clients/${client.id}`}>Cancel</Link>
-            <button type="button" className="nz-btn pri" disabled={saving || !dirty} onClick={save}>{saving ? "Saving…" : "Save all"}</button>
+            <GatedButton className="nz-btn pri" blocked={!dirty || saving} blockedReason={!dirty ? "No unsaved changes" : undefined} onClick={save}>{saving ? "Saving…" : "Save all"}</GatedButton>
           </div>
         </div>
       </div>
@@ -98,7 +98,7 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
           <TabPanel id="compliance" idBase="client-edit" active={tab === "compliance"}><ComplianceGroup {...groupProps} /></TabPanel>
           {tab !== "sites" ? (
             <div className="nz-config-actions" style={{ marginTop: 20 }}>
-              <button type="button" className="nz-btn pri" disabled={saving || !dirty} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+              <GatedButton className="nz-btn pri" blocked={!dirty || saving} blockedReason={!dirty ? "No unsaved changes" : undefined} onClick={save}>{saving ? "Saving…" : "Save"}</GatedButton>
             </div>
           ) : null}
         </section>
