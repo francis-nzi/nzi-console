@@ -1,6 +1,6 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
 import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveReportSections } from "@nzi/contracts";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
@@ -10,11 +10,12 @@ export type DatasetRegistryItem={id:string;name:string;version:string;validFrom:
 export type DatasetRegistryIssue={id:string;severity:"warning"|"error";datasetId:string;jobNumber:string;message:string;state:"open"|"resolved"};
 export type StaffRoleReadModel={id:StaffRole;name:string;members:number;permissions:string[];restricted:string[]};
 export type ClientScreenReadModel = {
-  id: string; name: string; sector: string; location: string; status: ClientStatus; owner: string;
+  id: string; version: number; name: string; sector: string; location: string; status: ClientStatus; owner: string;
   memberSince: string; latestFootprint: string | null; yoy: string | null; completeness: number;
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   jobs: Array<{ number: string; year: number; status: string }>;
   sites: Array<{ id: string; name: string }>;
+  profile: ClientProfileFields;
 };
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";
@@ -36,12 +37,56 @@ export type JobScreenReadModel = {
 };
 
 type ClientRow = {
-  client_id: string; name: string; status: ClientStatus; sector: string; location: string; owner_name: string;
+  client_id: string; version: number; name: string; status: ClientStatus; sector: string; location: string; owner_name: string;
   member_since: number; latest_footprint_tco2e: string | null; yoy_percent: string | null;
   completeness_percent: number; next_report_due_label: string; contact_name: string; contact_role: string;
   contact_email: string; open_jobs: string; jobs: Array<{ number: string; year: number; status: string }> | null;
   sites: Array<{ id: string; name: string }> | null;
+  portfolio: string | null; client_manager: string | null; website: string | null; industry_sic: string | null;
+  company_registration: string | null; headquarters: string | null; financial_year_end_month: number | null;
+  data_reporting_frequency: ClientReportingFrequency; currency: string; logo_url: string | null;
+  company_description: string | null; referral: string | null;
+  net_zero_target_year: number | null; net_zero_target_reduction_pct: string | null;
+  baseline_period_start: Date | string | null; baseline_period_end: Date | string | null;
+  baseline_scope1_tco2e: string | null; baseline_scope2_tco2e: string | null;
+  baseline_scope3_tco2e: string | null; baseline_total_tco2e: string | null;
+  scope1_interim_year: number | null; scope1_interim_reduction_pct: string | null;
+  scope2_interim_year: number | null; scope2_interim_reduction_pct: string | null;
+  scope3_interim_year: number | null; scope3_interim_reduction_pct: string | null;
+  registered_address_line1: string | null; registered_address_line2: string | null; registered_city: string | null;
+  registered_region: string | null; registered_postcode: string | null; registered_country: string | null;
+  billing_same_as_registered: boolean; billing_company: string | null;
+  billing_address_line1: string | null; billing_address_line2: string | null; billing_city: string | null;
+  billing_region: string | null; billing_postcode: string | null; billing_country: string | null;
+  parent_company: string | null; group_structure: ClientGroupStructure | null;
+  reporting_frameworks: string[] | null; certifications: string[] | null; primary_scope3_categories: string[] | null;
 };
+const numeric = (value: string | null) => value === null ? null : Number(value);
+const clientProfile = (row: ClientRow): ClientProfileFields => ({
+  portfolio: row.portfolio, clientManager: row.client_manager, website: row.website, industrySic: row.industry_sic,
+  companyRegistration: row.company_registration, headquarters: row.headquarters,
+  financialYearEndMonth: row.financial_year_end_month, dataReportingFrequency: row.data_reporting_frequency,
+  currency: row.currency, logoUrl: row.logo_url, companyDescription: row.company_description, referral: row.referral,
+  contactName: row.contact_name, contactRole: row.contact_role, contactEmail: row.contact_email,
+  netZeroTargetYear: row.net_zero_target_year, netZeroTargetReductionPct: numeric(row.net_zero_target_reduction_pct),
+  baselinePeriodStart: row.baseline_period_start === null ? null : dateOnly(row.baseline_period_start),
+  baselinePeriodEnd: row.baseline_period_end === null ? null : dateOnly(row.baseline_period_end),
+  baselineScope1Tco2e: numeric(row.baseline_scope1_tco2e), baselineScope2Tco2e: numeric(row.baseline_scope2_tco2e),
+  baselineScope3Tco2e: numeric(row.baseline_scope3_tco2e), baselineTotalTco2e: numeric(row.baseline_total_tco2e),
+  scope1InterimYear: row.scope1_interim_year, scope1InterimReductionPct: numeric(row.scope1_interim_reduction_pct),
+  scope2InterimYear: row.scope2_interim_year, scope2InterimReductionPct: numeric(row.scope2_interim_reduction_pct),
+  scope3InterimYear: row.scope3_interim_year, scope3InterimReductionPct: numeric(row.scope3_interim_reduction_pct),
+  registeredAddressLine1: row.registered_address_line1, registeredAddressLine2: row.registered_address_line2,
+  registeredCity: row.registered_city, registeredRegion: row.registered_region,
+  registeredPostcode: row.registered_postcode, registeredCountry: row.registered_country,
+  billingSameAsRegistered: row.billing_same_as_registered, billingCompany: row.billing_company,
+  billingAddressLine1: row.billing_address_line1, billingAddressLine2: row.billing_address_line2,
+  billingCity: row.billing_city, billingRegion: row.billing_region,
+  billingPostcode: row.billing_postcode, billingCountry: row.billing_country,
+  parentCompany: row.parent_company, groupStructure: row.group_structure,
+  reportingFrameworks: row.reporting_frameworks ?? [], certifications: row.certifications ?? [],
+  primaryScope3Categories: row.primary_scope3_categories ?? [],
+});
 type JobRow = {
   job_id: string; version: number; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
   title: string; reporting_year: number | null; status: JobScreenReadModel["header"]["status"]; workflow_stage: string;
@@ -57,9 +102,20 @@ const asDetail = (family: JobFamily, value: unknown): JobDetail => {
 };
 
 export async function listClients(db: Queryable): Promise<ClientScreenReadModel[]> {
-  const { rows } = await db.query<ClientRow>(`SELECT c.client_id, c.name, c.status, c.sector, c.location, c.owner_name,
+  const { rows } = await db.query<ClientRow>(`SELECT c.client_id, c.version, c.name, c.status, c.sector, c.location, c.owner_name,
       c.member_since, c.latest_footprint_tco2e, c.yoy_percent, c.completeness_percent,
       c.next_report_due_label, c.contact_name, c.contact_role, c.contact_email,
+      c.portfolio, c.client_manager, c.website, c.industry_sic, c.company_registration, c.headquarters,
+      c.financial_year_end_month, c.data_reporting_frequency, c.currency, c.logo_url, c.company_description, c.referral,
+      c.net_zero_target_year, c.net_zero_target_reduction_pct, c.baseline_period_start, c.baseline_period_end,
+      c.baseline_scope1_tco2e, c.baseline_scope2_tco2e, c.baseline_scope3_tco2e, c.baseline_total_tco2e,
+      c.scope1_interim_year, c.scope1_interim_reduction_pct, c.scope2_interim_year, c.scope2_interim_reduction_pct,
+      c.scope3_interim_year, c.scope3_interim_reduction_pct,
+      c.registered_address_line1, c.registered_address_line2, c.registered_city, c.registered_region,
+      c.registered_postcode, c.registered_country,
+      c.billing_same_as_registered, c.billing_company, c.billing_address_line1, c.billing_address_line2,
+      c.billing_city, c.billing_region, c.billing_postcode, c.billing_country,
+      c.parent_company, c.group_structure, c.reporting_frameworks, c.certifications, c.primary_scope3_categories,
       count(j.job_id) FILTER (WHERE j.status IN ('draft','open','on-hold'))::text AS open_jobs,
       coalesce(jsonb_agg(jsonb_build_object('number', j.job_number, 'year', coalesce(j.reporting_year, extract(year from j.start_date)::int), 'status', j.workflow_stage)
         ORDER BY j.sequence DESC) FILTER (WHERE j.job_id IS NOT NULL), '[]'::jsonb) AS jobs
@@ -69,11 +125,12 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
     LEFT JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
     GROUP BY c.organisation_id, c.client_id
     ORDER BY lower(c.name), c.client_id`);
-  return rows.map((row) => ({ id: row.client_id, name: row.name, sector: row.sector, location: row.location,
+  return rows.map((row) => ({ id: row.client_id, version: row.version, name: row.name, sector: row.sector, location: row.location,
     status: row.status, owner: row.owner_name, memberSince: String(row.member_since),
     latestFootprint: footprint(row.latest_footprint_tco2e), yoy: percentage(row.yoy_percent),
     completeness: row.completeness_percent, openJobs: Number(row.open_jobs), nextReportDue: row.next_report_due_label,
-    contact: { name: row.contact_name, role: row.contact_role, email: row.contact_email }, jobs: row.jobs ?? [], sites: row.sites ?? [] }));
+    contact: { name: row.contact_name, role: row.contact_role, email: row.contact_email }, jobs: row.jobs ?? [], sites: row.sites ?? [],
+    profile: clientProfile(row) }));
 }
 
 export async function listAuditEvents(db:Queryable,limit=100):Promise<AuditEventReadModel[]>{const safeLimit=Math.min(Math.max(Math.trunc(limit),1),250),{rows}=await db.query<{audit_event_id:string;occurred_at:Date|string;actor_id:string;principal_type:AuditEventReadModel["principal"];organisation_id:string;action:string;entity_type:string;entity_id:string;correlation_id:string;reason:string|null;before_json:unknown;after_json:unknown}>(`SELECT audit_event_id,occurred_at,actor_id,principal_type,organisation_id,action,entity_type,entity_id,correlation_id,reason,before_json,after_json FROM nzi_console.audit_events ORDER BY occurred_at DESC,audit_event_id DESC LIMIT $1`,[safeLimit]);const display=(value:unknown)=>value==null?undefined:typeof value==="string"?value:JSON.stringify(value);return rows.map(row=>({id:row.audit_event_id,at:row.occurred_at instanceof Date?row.occurred_at.toISOString():String(row.occurred_at),actor:row.actor_id,principal:row.principal_type,organisation:row.organisation_id,action:row.action,entity:row.entity_type,entityId:row.entity_id,result:"allowed",severity:row.reason?"warning":"info",correlationId:row.correlation_id,...(display(row.before_json)?{before:display(row.before_json)}:{}),...(display(row.after_json)?{after:display(row.after_json)}:{}),...(row.reason?{reason:row.reason}:{})}));}
