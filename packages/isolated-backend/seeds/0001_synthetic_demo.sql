@@ -19,11 +19,11 @@ INSERT INTO clients (
   latest_footprint_tco2e, yoy_percent, completeness_percent, next_report_due_label,
   contact_name, contact_role, contact_email
 ) VALUES
-  ('demo-nzi-console', 'bushy-tails', 'Bushy Tails Ltd', 'active', 'Consumer goods', 'Manchester, UK', 'A. Shaw', 2023, 1842, -7.4, 92, '31 Mar 2027', 'Sustainability Team', 'Sustainability lead', 'bushy-tails@synthetic.invalid'),
-  ('demo-nzi-console', 'cedar-crane', 'Cedar & Crane Architects', 'active', 'Professional services', 'London, UK', 'A. Shaw', 2023, 412, -11.0, 96, '31 Jul 2027', 'Sustainability Team', 'ESG contact', 'cedar-crane@synthetic.invalid'),
-  ('demo-nzi-console', 'verdant-foods', 'Verdant Foods Co', 'active', 'Food & beverage', 'Bristol, UK', 'M. Osei', 2024, 9210, 1.2, 74, '30 Jun 2027', 'Sustainability Team', 'Operations contact', 'verdant-foods@synthetic.invalid'),
+  ('demo-nzi-console', 'bushy-tails', 'Bushy Tails Ltd', 'active', 'Consumer goods', 'Manchester, UK', 'A. Shaw', 2023, 1842, -7.4, 92, '31/03/2027', 'Sustainability Team', 'Sustainability lead', 'bushy-tails@synthetic.invalid'),
+  ('demo-nzi-console', 'cedar-crane', 'Cedar & Crane Architects', 'active', 'Professional services', 'London, UK', 'A. Shaw', 2023, 412, -11.0, 96, '31/07/2027', 'Sustainability Team', 'ESG contact', 'cedar-crane@synthetic.invalid'),
+  ('demo-nzi-console', 'verdant-foods', 'Verdant Foods Co', 'active', 'Food & beverage', 'Bristol, UK', 'M. Osei', 2024, 9210, 1.2, 74, '30/06/2027', 'Sustainability Team', 'Operations contact', 'verdant-foods@synthetic.invalid'),
   ('demo-nzi-console', 'quaymed-devices', 'Quaymed Devices', 'onboarding', 'Medical devices', 'Galway, IE', 'M. Osei', 2026, NULL, NULL, 34, 'Baseline in progress', 'Sustainability Team', 'Quality & ESG', 'quaymed-devices@synthetic.invalid'),
-  ('demo-nzi-console', 'harbourline-logistics', 'Harbourline Logistics', 'active', 'Transport & logistics', 'Rotterdam, NL', 'A. Shaw', 2022, 18400, -3.1, 88, '30 Apr 2027', 'Sustainability Team', 'HSE contact', 'harbourline@synthetic.invalid')
+  ('demo-nzi-console', 'harbourline-logistics', 'Harbourline Logistics', 'active', 'Transport & logistics', 'Rotterdam, NL', 'A. Shaw', 2022, 18400, -3.1, 88, '30/04/2027', 'Sustainability Team', 'HSE contact', 'harbourline@synthetic.invalid')
 ON CONFLICT (organisation_id, client_id) DO UPDATE
 SET name = EXCLUDED.name, status = EXCLUDED.status, sector = EXCLUDED.sector, location = EXCLUDED.location,
     owner_name = EXCLUDED.owner_name, member_since = EXCLUDED.member_since,

@@ -24,6 +24,7 @@ import { WorkflowStageControl } from "../WorkflowStageControl";
 import { LcaHotspotsBar, LcaModuleDonut, resolveLcaCharts, type ReviewedLcaSnapshot } from "@nzi/charts";
 import { fuzzyScore } from "../templateSearch";
 import { lcaBomTemplateCsv, parseLcaBomLines } from "./lcaBomImport";
+import { formatDate } from "../../lib/formatDate";
 
 /**
  * Map a frozen L4 `LcaResultSnapshot` (+ the current assessment header) to the
@@ -72,7 +73,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
         <div>
           <div className="nz-family-titleline"><span className="nz-eyebrow">{meta.label}</span><span className="nz-st est">{meta.code}</span></div>
           <h1>{header.number} — {header.title}</h1>
-          <div className="sub">{header.client} · owner: {header.owner} · due {header.dueDate}</div>
+          <div className="sub">{header.client} · owner: {header.owner} · due {formatDate(header.dueDate)}</div>
         </div>
         <span className="nz-status"><span className="d" />{header.workflowStage}</span>
       </div>
@@ -1002,7 +1003,7 @@ function AssessmentResults({ jobId, clientName, assessment, categories, notice }
           <b>{assessment.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })} tCO₂e</b>
           <span className="hint">
             {assessment.totalTco2e > 0 && `${perFu.toLocaleString("en-GB", { maximumFractionDigits: 4 })} tCO₂e per ${assessment.functionalUnitUnit} · `}
-            {assessment.lastCalculatedAt ? `last calculated ${new Date(assessment.lastCalculatedAt).toLocaleDateString("en-GB")}` : "not yet calculated"}
+            {assessment.lastCalculatedAt ? `last calculated ${formatDate(assessment.lastCalculatedAt)}` : "not yet calculated"}
           </span>
         </div>
         <span className={`nz-st ${review0.cls}`}>{review0.label}</span>

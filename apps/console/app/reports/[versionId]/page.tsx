@@ -6,6 +6,7 @@ import {reportFeatureEnabled} from "../../lib/reportFlags";
 import {PrintButton} from "./PrintButton";
 import {ReportPagedView} from "./ReportPagedView";
 import {REPORT_PAGED_MEDIA_RULES} from "./reportPrintRules";
+import { formatDateTime } from "../../lib/formatDate";
 
 export const dynamic="force-dynamic";
 
@@ -81,8 +82,8 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
         <dl>
           <div><dt>Reviewed snapshot</dt><dd>{snapshot.id}</dd></div>
           <div><dt>Data hash</dt><dd className="num">{version.dataHash}</dd></div>
-          <div><dt>Created by</dt><dd>{snapshot.createdBy} · {new Date(snapshot.createdAt).toLocaleString("en-GB")}</dd></div>
-          <div><dt>Publication</dt><dd>{version.publishedAt?new Date(version.publishedAt).toLocaleString("en-GB"):"Validated, not yet published"}</dd></div>
+          <div><dt>Created by</dt><dd>{snapshot.createdBy} · {formatDateTime(snapshot.createdAt)}</dd></div>
+          <div><dt>Publication</dt><dd>{version.publishedAt?formatDateTime(version.publishedAt):"Validated, not yet published"}</dd></div>
           <div><dt>Version status</dt><dd><span className={`nz-st ${version.status==="published"?"done":"est"}`}>{version.status}</span></dd></div>
         </dl>
       </section>

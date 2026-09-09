@@ -196,14 +196,11 @@ function Provenance({ data }: { data: ScopeDonutData }) {
 }
 
 export function formatDate(iso: string): string {
-  // Deterministic, locale-stable formatting (no Date.now()).
+  // dd/mm/yyyy, built from UTC components rather than toLocaleDateString so one
+  // spec renders identically to screen, PDF and portal regardless of host locale.
   const d = new Date(iso);
-  const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ];
-  const m = months[d.getUTCMonth()] ?? "";
-  return `${d.getUTCDate()} ${m} ${d.getUTCFullYear()}`;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
 
 const frameStyle: CSSProperties = {

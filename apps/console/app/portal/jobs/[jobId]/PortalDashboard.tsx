@@ -13,6 +13,7 @@ import { crpScopeCategoryLabel, portalTargetProgress, type PortalAssuredDashboar
 import { redirectIfPortalSessionEnded } from "../../portalSessionClient";
 import { isPortalAssuredDashboard } from "./portalAnalyticsValidation";
 import { isPublishedCrpReport } from "./publishedReportValidation";
+import { formatDate } from "../../../lib/formatDate";
 
 const fmt = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 const pct = (value: number) => `${(value * 100).toLocaleString("en-GB", { maximumFractionDigits: 0 })}%`;
@@ -90,7 +91,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
         <div>
           <span className="nz-eyebrow">Assured emissions · reporting year {dashboard.reportingYear}</span>
           <h2><b className="num">{fmt(dashboard.total)}</b> tCO₂e</h2>
-          <p>From your published report version {dashboard.reportVersionId} · evidence {dashboard.dataHash.slice(0, 15)}… · published {new Date(dashboard.publishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+          <p>From your published report version {dashboard.reportVersionId} · evidence {dashboard.dataHash.slice(0, 15)}… · published {formatDate(dashboard.publishedAt)}</p>
         </div>
         {dashboard.target ? (
           <div className={`nz-portal-dash-target${progress != null && progress >= 1 ? " met" : ""}`}>

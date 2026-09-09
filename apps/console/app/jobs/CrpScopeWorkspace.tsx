@@ -42,6 +42,7 @@ import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion"
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
+import { formatDateTime } from "../lib/formatDate";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -944,7 +945,7 @@ function Editor({
         </div>
 
         <div className="nz-sect">Activity history</div>
-        {historyState === "loading" ? <p className="muted" role="status">Loading immutable row history…</p> : historyState === "failed" ? <div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div> : history.length === 0 ? <p className="muted">No row events are recorded yet.</p> : <div>{history.map((event) => <div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_", " ")}</b><small>{new Date(event.at).toLocaleString("en-GB")} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
+        {historyState === "loading" ? <p className="muted" role="status">Loading immutable row history…</p> : historyState === "failed" ? <div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div> : history.length === 0 ? <p className="muted">No row events are recorded yet.</p> : <div>{history.map((event) => <div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_", " ")}</b><small>{formatDateTime(event.at)} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
 
         <div className="nz-sect">Reporting snapshot</div>
         <p className="muted" style={{ fontSize: 12 }}>Creates an immutable, content-addressed snapshot only when every enabled row passes QA.</p>
