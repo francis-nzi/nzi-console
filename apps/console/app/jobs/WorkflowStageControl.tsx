@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
+import { formatDateTime } from "../lib/formatDate";
 
 export function WorkflowStageControl({ job }: { job: FamilyJob }) {
   const router = useRouter();
@@ -40,7 +41,7 @@ export function WorkflowStageControl({ job }: { job: FamilyJob }) {
       </div>
       <details className="nz-history">
         <summary className="nz-history-head"><span className="nz-history-toggle" aria-hidden="true" /><div><div className="nz-sect">Stage history</div><span>Immutable transition record</span></div><b>{job.stageHistory.length}</b></summary>
-        {job.stageHistory.length === 0 ? <div className="nz-history-empty">No recorded transitions yet. The first stage change will appear here.</div> : <ol className="nz-stage-history">{job.stageHistory.map((event) => <li key={event.id}><i aria-hidden="true"/><div><b>{event.fromStage} → {event.toStage}</b>{event.note&&<p>{event.note}</p>}<span>{new Date(event.occurredAt).toLocaleString("en-GB")} · {event.actorId}</span></div></li>)}</ol>}
+        {job.stageHistory.length === 0 ? <div className="nz-history-empty">No recorded transitions yet. The first stage change will appear here.</div> : <ol className="nz-stage-history">{job.stageHistory.map((event) => <li key={event.id}><i aria-hidden="true"/><div><b>{event.fromStage} → {event.toStage}</b>{event.note&&<p>{event.note}</p>}<span>{formatDateTime(event.occurredAt)} · {event.actorId}</span></div></li>)}</ol>}
       </details>
     </div>
   </div>;

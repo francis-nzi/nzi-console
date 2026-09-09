@@ -6,6 +6,7 @@ import { jobModuleEnabled } from "../../../../lib/jobModuleFlags";
 import { PrintButton } from "../../../../reports/[versionId]/PrintButton";
 import { ReportPagedView } from "../../../../reports/[versionId]/ReportPagedView";
 import { REPORT_PAGED_MEDIA_RULES } from "../../../../reports/[versionId]/reportPrintRules";
+import { formatDateTime } from "../../../../lib/formatDate";
 
 export const dynamic = "force-dynamic";
 
@@ -155,7 +156,7 @@ function LcaReport({ report }: { report: LcaReportReadModel }) {
           <div><dt>Reviewed snapshot</dt><dd>{snapshot.id}</dd></div>
           <div><dt>Data hash</dt><dd className="num">{snapshot.dataHash}</dd></div>
           <div><dt>Assessment version</dt><dd>v{snapshot.assessmentVersion}</dd></div>
-          <div><dt>Calculated by</dt><dd>{report.calculatedBy} · {new Date(report.calculatedAt).toLocaleString("en-GB")}</dd></div>
+          <div><dt>Calculated by</dt><dd>{report.calculatedBy} · {formatDateTime(report.calculatedAt)}</dd></div>
           <div><dt>Standard</dt><dd>{standardNote}</dd></div>
         </dl>
       </section>

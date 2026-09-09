@@ -25,21 +25,21 @@ export const clients: Client[] = [
   {
     id: "bushy-tails", name: "Bushy Tails Ltd", sector: "Consumer goods", location: "Manchester, UK",
     status: "active", owner: "A. Shaw", memberSince: "2023", latestFootprint: "1,842 tCO₂e", yoy: "−7.4%",
-    completeness: 92, openJobs: 1, nextReportDue: "31 Mar 2025",
+    completeness: 92, openJobs: 1, nextReportDue: "31/03/2025",
     contact: { name: "Priya Nair", role: "Sustainability lead", email: "priya@example.com" },
     jobs: [{ number: "J000712", year: 2024, status: "Data entry" }, { number: "J000588", year: 2023, status: "Signed off" }],
   },
   {
     id: "harbourline", name: "Harbourline Logistics", sector: "Transport & logistics", location: "Rotterdam, NL",
     status: "active", owner: "A. Shaw", memberSince: "2022", latestFootprint: "18,400 tCO₂e", yoy: "−3.1%",
-    completeness: 88, openJobs: 2, nextReportDue: "30 Apr 2025",
+    completeness: 88, openJobs: 2, nextReportDue: "30/04/2025",
     contact: { name: "Tom De Vries", role: "HSE manager", email: "tom@example.com" },
     jobs: [{ number: "J000701", year: 2024, status: "Factor mapping" }, { number: "J000699", year: 2024, status: "Data entry" }],
   },
   {
     id: "verdant", name: "Verdant Foods Co", sector: "Food & beverage", location: "Bristol, UK",
     status: "active", owner: "M. Osei", memberSince: "2024", latestFootprint: "9,210 tCO₂e", yoy: "+1.2%",
-    completeness: 74, openJobs: 1, nextReportDue: "30 Jun 2025",
+    completeness: 74, openJobs: 1, nextReportDue: "30/06/2025",
     contact: { name: "Sarah Lund", role: "Operations director", email: "sarah@example.com" },
     jobs: [{ number: "J000733", year: 2024, status: "Scope defined" }],
   },
@@ -53,7 +53,7 @@ export const clients: Client[] = [
   {
     id: "cedar-cra", name: "Cedar & Crane Architects", sector: "Professional services", location: "London, UK",
     status: "active", owner: "A. Shaw", memberSince: "2023", latestFootprint: "412 tCO₂e", yoy: "−11.0%",
-    completeness: 96, openJobs: 0, nextReportDue: "31 Jul 2025",
+    completeness: 96, openJobs: 0, nextReportDue: "31/07/2025",
     contact: { name: "Elena Fischer", role: "Partner", email: "elena@example.com" },
     jobs: [{ number: "J000690", year: 2024, status: "Signed off" }],
   },
@@ -67,7 +67,7 @@ export const clients: Client[] = [
   {
     id: "solside", name: "Solside Retail Group", sector: "Retail", location: "Dublin, IE",
     status: "active", owner: "A. Shaw", memberSince: "2024", latestFootprint: "24,900 tCO₂e", yoy: "−2.0%",
-    completeness: 83, openJobs: 2, nextReportDue: "30 Sep 2025",
+    completeness: 83, openJobs: 2, nextReportDue: "30/09/2025",
     contact: { name: "Aoife Byrne", role: "Head of ESG", email: "aoife@example.com" },
     jobs: [{ number: "J000728", year: 2024, status: "Review & QA" }, { number: "J000729", year: 2024, status: "Data entry" }],
   },
