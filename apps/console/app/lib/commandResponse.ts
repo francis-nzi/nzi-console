@@ -23,7 +23,8 @@ export function commandFailure(error: unknown) {
   if (error instanceof AuthenticationError) return Response.json({ code: "AUTHENTICATION_REQUIRED", message: "Staff authentication is required." }, { status: 401 });
   if (error instanceof AuthorizationError) return Response.json({ code: "PERMISSION_DENIED", message: "Permission denied.", permission: error.permission }, { status: 403 });
   if (error instanceof CommandValidationError) return Response.json({ code: "VALIDATION_FAILED", message: "Command validation failed.", issues: error.issues }, { status: 422 });
-  if (error instanceof VersionConflictError) return Response.json({ code: "VERSION_CONFLICT", message: "The job changed; refresh before moving its stage." }, { status: 409 });
+  // Every versioned command shares this handler, so the message must not name one record type.
+  if (error instanceof VersionConflictError) return Response.json({ code: "VERSION_CONFLICT", message: "This record changed since you loaded it; refresh and try again." }, { status: 409 });
   if (error instanceof IdempotencyConflictError) return Response.json({ code: "IDEMPOTENCY_CONFLICT", message: error.message }, { status: 409 });
   // Unclassified failure: keep the client response generic, but log the cause so
   // it is diagnosable without a database probe.

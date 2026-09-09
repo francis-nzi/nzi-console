@@ -186,6 +186,8 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-inp2 .nz-inp{flex:1}
 .nz-inp2 .nz-sel{width:96px}
 .nz-hint{font-size:11px;color:var(--t3);margin-top:5px}
+/* <small> is inline, so its box adds no height to the field and the next block clips it. */
+.nz-fl>.nz-hint{display:block}
 .nz-hint.bad{color:#B23A2B}
 .nz-factorbox{border:1px dashed #E3B7AD;background:#FFF7F6;border-radius:9px;padding:11px;font-size:12px;color:#8A3A28}
 .nz-factorbox.matched{border:1px solid var(--line);background:var(--paper);color:var(--t1)}
@@ -397,7 +399,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
   .nz-portal-invite-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-portal-invite-form .nz-btn{align-self:end}.nz-invite-result{grid-template-columns:1fr auto}.nz-invite-result>div{grid-column:1/-1}
   .nz-control-grid{grid-template-columns:1fr}.nz-control-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-control-aside>section:first-child{grid-row:span 2}
   .nz-sales-gate{grid-template-columns:1fr}.nz-sales-gate ol{grid-template-columns:repeat(3,1fr)}
-  .nz-client-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-client-create-grid label[style*="span 2"]{grid-column:span 2!important}
+  .nz-client-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-client-create-grid label[style*="span 2"],.nz-client-create-grid .nz-fl[style*="span 2"]{grid-column:span 2!important}
   .nz-job-create-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.nz-job-create-grid label[style*="span 2"]{grid-column:span 2!important}
   .nz-workflow-control .nz-stepper{overflow-x:auto}.nz-workflow-control .nz-step{min-width:145px}.nz-workflow-actions{grid-template-columns:1fr}.nz-workflow-actions>div{justify-content:flex-end}
   .nz-access-brief{align-items:flex-start;flex-direction:column}.nz-access-control-list{justify-content:flex-start}
@@ -445,7 +447,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
   .nz-lca-readiness{align-items:flex-start;flex-direction:column}.nz-lca-readiness-score{width:100%;padding:14px 0 0;border-top:1px solid rgba(11,27,43,.12);border-left:0;text-align:left}
   .nz-sales-gate{padding:18px}.nz-sales-gate ol{grid-template-columns:1fr}
   .nz-audit-heading{align-items:flex-start;flex-direction:column}.nz-audit-count{align-self:stretch;justify-content:center}
-  .nz-client-create{padding:16px}.nz-client-create-head{align-items:flex-start;flex-direction:column}.nz-client-create-grid{grid-template-columns:1fr}.nz-client-create-grid label{grid-column:auto!important}
+  .nz-client-create{padding:16px}.nz-client-create-head{align-items:flex-start;flex-direction:column}.nz-client-create-grid{grid-template-columns:1fr}.nz-client-create-grid label,.nz-client-create-grid .nz-fl{grid-column:auto!important}
   .nz-job-create{padding:16px}.nz-job-create-head{align-items:flex-start;flex-direction:column}.nz-job-create-grid{grid-template-columns:1fr}.nz-job-create-grid label{grid-column:auto!important}
   .nz-workflow-control{padding:16px}.nz-workflow-heading{align-items:flex-start;flex-direction:column}.nz-workflow-actions>div{display:grid;grid-template-columns:1fr}.nz-workflow-actions .nz-btn{width:100%}
   .nz-screen-state{min-height:70vh;padding:18px}.nz-screen-state>section{padding:22px}.nz-degraded-state{margin:12px}
@@ -765,3 +767,33 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* DA3c — row approval in-stage + governed sign-off (NZC-060) */
 .nz-assurance-row-review{border-top:1px solid var(--line2);margin-top:14px}
 .nz-assurance-signoff{margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+
+/* Client identity parity — create wizard + edit tabs (NZC-064) */
+.nz-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
+.nz-tabs button{border:1px solid transparent;background:transparent;color:var(--t2);font:inherit;font-weight:600;font-size:13px;padding:8px 14px;border-radius:9px;cursor:pointer}
+.nz-tabs button:hover{background:var(--paper)}
+.nz-tabs button.on{background:var(--midnight);color:#fff}
+.nz-tabs button:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
+.nz-tabs+.nz-panel [role=tabpanel]:focus-visible{outline:2px solid var(--emerald);outline-offset:4px;border-radius:8px}
+
+.nz-wizard-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0 0 14px;padding:0}
+.nz-wizard-steps li{display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;color:var(--t3);font-size:12.5px;font-weight:600;background:var(--card)}
+.nz-wizard-steps li i{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--paper);color:var(--t2);font-style:normal;font-size:11px;font-weight:700}
+.nz-wizard-steps li.on{border-color:var(--emerald);color:var(--t1);background:var(--mint)}
+.nz-wizard-steps li.on i{background:var(--emerald);color:#fff}
+.nz-wizard-steps li.done{color:var(--pine)}
+.nz-wizard-steps li.done i{background:var(--pine);color:#fff}
+
+.nz-fieldset{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:16px 0 0}
+.nz-fieldset.accent{background:#FDF7EC;border-color:#F0DFC0}
+.nz-fieldset>legend,.nz-checkgroup>legend{font-weight:700;font-size:13.5px;padding:0 6px}
+.nz-fieldset>legend .nz-hint,.nz-checkgroup>legend .nz-hint{display:block;font-weight:500;padding-top:2px}
+.nz-checkgroup{border:0;padding:16px 0 0;margin:0}
+.nz-checkgroup>legend{padding:0 0 8px}
+.nz-checkcard{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:13px;cursor:pointer;background:var(--card)}
+.nz-checkcard:hover{background:var(--paper)}
+.nz-checkcard:focus-within{outline:2px solid var(--emerald);outline-offset:2px}
+.nz-checkcard input{accent-color:var(--emerald);flex:none}
+
+.nz-logo-preview{margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper)}
+.nz-logo-preview img{display:block;max-height:80px;margin-top:8px;object-fit:contain}

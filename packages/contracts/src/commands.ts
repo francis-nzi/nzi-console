@@ -6,6 +6,7 @@ import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 
 export type CommandKey =
   | "client.create"
+  | "client.update"
   | "job.create"
   | "job.stage.change"
   | "scope.row.create"
@@ -182,8 +183,50 @@ export type CommandOutcome<T = Record<string, unknown>> =
   | { state: "validation_failed"; issues: CommandIssue[]; correlationId: string }
   | { state: "failed"; code: string; message: string; retryable: boolean; correlationId: string };
 
+export type ClientReportingFrequency = "annual" | "quarterly" | "monthly";
+export type ClientGroupStructure = "standalone" | "subsidiary" | "parent" | "joint-venture";
+export const clientReportingFrequencies = ["annual", "quarterly", "monthly"] as const;
+export const clientGroupStructures = ["standalone", "subsidiary", "parent", "joint-venture"] as const;
+export const clientReportingFrameworks = ["SECR", "PPN 06/21", "GHG Protocol", "CDP", "TCFD", "SBTi", "ISO 14064", "ESOS", "CSRD", "Voluntary CRP"] as const;
+export const clientCertifications = ["ISO 14001", "ISO 50001", "B Corp", "SBTi pledge", "RE100", "Race to Zero", "PAS 2060", "Carbon Neutral certified"] as const;
+
+/** Firmographics and reporting settings — the live CRM's Details tab. */
+export type ClientDetailsFields = {
+  portfolio?: string | null; clientManager?: string | null; website?: string | null;
+  industrySic?: string | null; companyRegistration?: string | null; headquarters?: string | null;
+  financialYearEndMonth?: number | null; dataReportingFrequency?: ClientReportingFrequency;
+  currency?: string; logoUrl?: string | null; companyDescription?: string | null; referral?: string | null;
+  contactName?: string | null; contactRole?: string | null; contactEmail?: string | null;
+};
+/** The net-zero trajectory reporting and portal dashboards read (WORKFLOWS.md §2). */
+export type ClientTargetFields = {
+  netZeroTargetYear?: number | null; netZeroTargetReductionPct?: number | null;
+  baselinePeriodStart?: string | null; baselinePeriodEnd?: string | null;
+  baselineScope1Tco2e?: number | null; baselineScope2Tco2e?: number | null;
+  baselineScope3Tco2e?: number | null; baselineTotalTco2e?: number | null;
+  scope1InterimYear?: number | null; scope1InterimReductionPct?: number | null;
+  scope2InterimYear?: number | null; scope2InterimReductionPct?: number | null;
+  scope3InterimYear?: number | null; scope3InterimReductionPct?: number | null;
+};
+export type ClientAddressFields = {
+  registeredAddressLine1?: string | null; registeredAddressLine2?: string | null;
+  registeredCity?: string | null; registeredRegion?: string | null;
+  registeredPostcode?: string | null; registeredCountry?: string | null;
+  billingSameAsRegistered?: boolean; billingCompany?: string | null;
+  billingAddressLine1?: string | null; billingAddressLine2?: string | null;
+  billingCity?: string | null; billingRegion?: string | null;
+  billingPostcode?: string | null; billingCountry?: string | null;
+};
+export type ClientComplianceFields = {
+  parentCompany?: string | null; groupStructure?: ClientGroupStructure | null;
+  reportingFrameworks?: string[]; certifications?: string[]; primaryScope3Categories?: string[];
+};
+export type ClientProfileFields = ClientDetailsFields & ClientTargetFields & ClientAddressFields & ClientComplianceFields;
+export type ClientIdentityFields = { name: string; status: "active" | "onboarding" | "at-risk" | "prospect"; sector: string; location: string; owner: string };
+
 export type CommandInputMap = {
-  "client.create": { name: string; status: "active" | "onboarding" | "at-risk" | "prospect"; sector: string; location: string; owner: string };
+  "client.create": ClientIdentityFields & ClientProfileFields;
+  "client.update": { clientId: string; expectedVersion: number } & ClientIdentityFields & ClientProfileFields;
   "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; startDate: string; dueDate: string; reportingYear?: number };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
@@ -327,8 +370,61 @@ const lcaGapFillIssues = (input: LcaGapFillWriteFields): CommandIssue[] => {
 };
 const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIssue[] = monthlyActivityIssues(input.monthlyActivity); required(issues, "scope", input.scope); required(issues, "sourceLabel", input.sourceLabel); if (input.assetIdentifier != null && (typeof input.assetIdentifier !== "string" || input.assetIdentifier.trim().length > 240)) issues.push({field:"assetIdentifier",code:"INVALID",message:"ID / Reference must be text of 240 characters or fewer."}); if (input.applyPct != null && (typeof input.applyPct!=="number"||!Number.isFinite(input.applyPct)||input.applyPct<0||input.applyPct>100)) issues.push({field:"applyPct",code:"INVALID",message:"Apportionment must be between 0 and 100%."}); if (input.dataConfidence != null && !(["H","M","L"] as const).includes(input.dataConfidence)) issues.push({field:"dataConfidence",code:"INVALID",message:"Data confidence must be high, medium, or low."}); if (input.sourceQuantity != null && (typeof input.sourceQuantity!=="number"||!Number.isFinite(input.sourceQuantity)||input.sourceQuantity<0)) issues.push({field:"sourceQuantity",code:"INVALID",message:"As-entered quantity must be zero or greater."}); if ((input.sourceQuantity!=null)!==Boolean(text(input.sourceUnit))) issues.push({field:"sourceUnit",code:"PAIRED",message:"As-entered quantity and unit must be provided together."}); const factorSource=input.factorSource??"dataset";if(factorSource==="client"&&(!text(input.clientFactorId)||input.isCustomEntry!==true))issues.push({field:"clientFactorId",code:"REQUIRED",message:"A client factor row must identify its client factor."});if(factorSource==="dataset"&&(text(input.clientFactorId)||input.isCustomEntry===true))issues.push({field:"factorSource",code:"INCONSISTENT",message:"Dataset factors cannot carry client-factor identity."}); if (typeof input.scope === "string" && !crpScopeOptions.some((option) => option.value === input.scope)) issues.push({ field: "scope", code: "INVALID", message: "Select a controlled Scope 1, Scope 2, or Scope 3 category." }); if (input.quantity !== null && (typeof input.quantity !== "number" || !Number.isFinite(input.quantity) || input.quantity < 0)) issues.push({ field: "quantity", code: "INVALID", message: "Quantity must be zero or greater." }); if (input.overrideTco2e != null && (typeof input.overrideTco2e !== "number" || !Number.isFinite(input.overrideTco2e) || input.overrideTco2e < 0)) issues.push({ field: "overrideTco2e", code: "INVALID", message: "Override emissions must be zero or greater." }); if (input.overrideTco2e != null && !text(input.overrideReason)) issues.push({ field: "overrideReason", code: "REQUIRED", message: "Explain why the calculated result is being overridden." }); if (input.overrideTco2e == null && text(input.overrideReason)) issues.push({ field: "overrideReason", code: "ORPHANED", message: "Remove the override reason or enter an override value." }); if (input.factorId && !input.datasetId && factorSource!=="client") issues.push({ field: "datasetId", code: "REQUIRED", message: "A dataset factor must identify its dataset." }); if (input.categoryCode != null && input.categoryCode !== "") { const category = emissionCategoryTaxonomy.find((entry) => entry.code === input.categoryCode); if (!category) issues.push({ field: "categoryCode", code: "INVALID", message: "Category code is not in the emission taxonomy (NZC-046)." }); else if (typeof input.scope === "string" && category.scope !== input.scope.split(".")[0]) issues.push({ field: "categoryCode", code: "INCONSISTENT", message: "Category belongs to a different scope than the row." }); } return issues; };
 
+/** The Compliance tab's "Primary Scope 3 categories" are the canonical taxonomy codes, not a parallel list. */
+export const scope3CategoryCodes: readonly string[] = emissionCategoryTaxonomy.filter((entry) => entry.scope === "3").map((entry) => entry.code);
+
+const clientIdentityIssues = (input: ClientIdentityFields) => {
+  const issues: CommandIssue[] = [];
+  required(issues, "name", input.name); required(issues, "sector", input.sector);
+  required(issues, "location", input.location); required(issues, "owner", input.owner);
+  if (!oneOf(input.status, ["active", "onboarding", "at-risk", "prospect"] as const)) issues.push({ field: "status", code: "INVALID", message: "Client status is invalid." });
+  return issues;
+};
+
+const optionalYear = (issues: CommandIssue[], field: string, value: unknown) => { if (value == null) return; if (!Number.isInteger(value) || (value as number) < 2020 || (value as number) > 2100) issues.push({ field, code: "INVALID", message: "Target year must be a year between 2020 and 2100." }); };
+const optionalPercent = (issues: CommandIssue[], field: string, value: unknown) => { if (value == null) return; if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) issues.push({ field, code: "INVALID", message: "Reduction must be between 0 and 100%." }); };
+const optionalTonnes = (issues: CommandIssue[], field: string, value: unknown) => { if (value == null) return; if (typeof value !== "number" || !Number.isFinite(value) || value < 0) issues.push({ field, code: "INVALID", message: "Baseline emissions must be zero or greater." }); };
+const optionalMembers = (issues: CommandIssue[], field: string, value: unknown, allowed: readonly string[]) => {
+  if (value == null) return;
+  if (!Array.isArray(value)) { issues.push({ field, code: "INVALID", message: "Expected a list of selections." }); return; }
+  const unknownMember = value.find((entry) => !allowed.includes(entry as string));
+  if (unknownMember !== undefined) issues.push({ field, code: "INVALID", message: `"${String(unknownMember)}" is not a recognised option.` });
+  if (new Set(value).size !== value.length) issues.push({ field, code: "INVALID", message: "Selections must not repeat." });
+};
+
+const clientProfileIssues = (input: ClientProfileFields) => {
+  const issues: CommandIssue[] = [];
+  if (input.dataReportingFrequency != null && !oneOf(input.dataReportingFrequency, clientReportingFrequencies)) issues.push({ field: "dataReportingFrequency", code: "INVALID", message: "Reporting frequency must be annual, quarterly or monthly." });
+  if (input.currency != null && !/^[A-Z]{3}$/.test(input.currency)) issues.push({ field: "currency", code: "INVALID", message: "Currency must be a three-letter ISO 4217 code." });
+  if (input.financialYearEndMonth != null && (!Number.isInteger(input.financialYearEndMonth) || input.financialYearEndMonth < 1 || input.financialYearEndMonth > 12)) issues.push({ field: "financialYearEndMonth", code: "INVALID", message: "Financial year end must be a calendar month." });
+  if (text(input.website) && !/^https?:\/\/\S+$/i.test(input.website!.trim())) issues.push({ field: "website", code: "INVALID", message: "Website must start with http:// or https://." });
+  if (text(input.logoUrl) && !/^https?:\/\/\S+$/i.test(input.logoUrl!.trim())) issues.push({ field: "logoUrl", code: "INVALID", message: "Logo URL must start with http:// or https://." });
+  if (text(input.contactEmail) && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(input.contactEmail!.trim())) issues.push({ field: "contactEmail", code: "INVALID", message: "Enter a valid contact email address." });
+
+  optionalYear(issues, "netZeroTargetYear", input.netZeroTargetYear);
+  optionalPercent(issues, "netZeroTargetReductionPct", input.netZeroTargetReductionPct);
+  for (const scope of [1, 2, 3] as const) {
+    optionalYear(issues, `scope${scope}InterimYear`, input[`scope${scope}InterimYear`]);
+    optionalPercent(issues, `scope${scope}InterimReductionPct`, input[`scope${scope}InterimReductionPct`]);
+    optionalTonnes(issues, `baselineScope${scope}Tco2e`, input[`baselineScope${scope}Tco2e`]);
+  }
+  optionalTonnes(issues, "baselineTotalTco2e", input.baselineTotalTco2e);
+  for (const field of ["baselinePeriodStart", "baselinePeriodEnd"] as const) if (input[field] != null && !isoDate(input[field])) issues.push({ field, code: "INVALID", message: "Baseline period dates must use YYYY-MM-DD." });
+  if (isoDate(input.baselinePeriodStart) && isoDate(input.baselinePeriodEnd) && input.baselinePeriodEnd! <= input.baselinePeriodStart!) issues.push({ field: "baselinePeriodEnd", code: "INVALID_RANGE", message: "Baseline period end must fall after its start." });
+  // A net-zero target the trajectory cannot anchor is worse than no target at all.
+  if (input.netZeroTargetYear != null && input.netZeroTargetReductionPct == null) issues.push({ field: "netZeroTargetReductionPct", code: "PAIRED", message: "A net-zero target year needs its reduction percentage." });
+
+  if (input.groupStructure != null && !oneOf(input.groupStructure, clientGroupStructures)) issues.push({ field: "groupStructure", code: "INVALID", message: "Group structure is invalid." });
+  optionalMembers(issues, "reportingFrameworks", input.reportingFrameworks, clientReportingFrameworks);
+  optionalMembers(issues, "certifications", input.certifications, clientCertifications);
+  optionalMembers(issues, "primaryScope3Categories", input.primaryScope3Categories, scope3CategoryCodes);
+  if (input.billingSameAsRegistered != null && typeof input.billingSameAsRegistered !== "boolean") issues.push({ field: "billingSameAsRegistered", code: "INVALID", message: "Billing address flag must be true or false." });
+  return issues;
+};
+
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
-  "client.create": { key: "client.create", label: "Create client", permission: "clients.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "name", input.name); required(issues, "sector", input.sector); required(issues, "location", input.location); required(issues, "owner", input.owner); if (!oneOf(input.status, ["active", "onboarding", "at-risk", "prospect"] as const)) issues.push({ field: "status", code: "INVALID", message: "Client status is invalid." }); return issues; } },
+  "client.create": { key: "client.create", label: "Create client", permission: "clients.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)] },
+  "client.update": { key: "client.update", label: "Update client", permission: "clients.create", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "job.create": { key: "job.create", label: "Create job", permission: "jobs.create", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); if (!isoDate(input.startDate)) issues.push({ field: "startDate", code: "INVALID", message: "Start date must use YYYY-MM-DD." }); if (!isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Due date must use YYYY-MM-DD." }); if (isoDate(input.startDate) && isoDate(input.dueDate) && input.dueDate < input.startDate) issues.push({ field: "dueDate", code: "INVALID_RANGE", message: "Due date must not precede start date." }); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "jobs.stage.change", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "emissions.data.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },

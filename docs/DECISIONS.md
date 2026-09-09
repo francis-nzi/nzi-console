@@ -83,6 +83,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-061 | Entry unit set: `mi` and passenger-distance units (`passenger.km`, `passenger.mi`) added to the per-row entry unit list (bulk paths already carry `mi`). | Confirmed (4 Sep 2026) |
 | NZC-062 | Add rows from template: a fuzzy-matched search across the whole job factor library (every selected dataset + client factor, every scope/category) — the unscoped power-user path alongside the per-category smart-search. A pick stamps factor + scope + category + site into a fresh enabled `scope.row.create` row, quantity empty, pending; the search stays open for a multi-add run. | Confirmed (4 Sep 2026) |
 | NZC-063 | Reuse Previous Year Rows: previous-year rollforward generalised from the spend-only register (`job_emission_sources`) to every canonical row type, via a new `job_scope_rows.rolled_forward_from_row_id` self-reference. Select specific prior-job rows (not "roll everything"); factor + hierarchy + site copied in, quantity empty, pending; the same moved-factor / not-in-selection / already-rolled-forward lineage the spend mechanism already surfaces. | Confirmed (4 Sep 2026) |
+| NZC-064 | Client record reaches parity with the live CRM: Details / Targets / Address / Compliance carried onto `clients` (migration `0060`). **Wizard to add, tabs to edit** — `/clients/new` is a four-step wizard (only identity required), `/clients/[id]/edit` is the five-tab record. One atomic versioned `client.update` per save, not per-tab commands. **Sites stay job-scoped**; the client's Sites tab is a read-only roll-up. | Confirmed (9 Sep 2026) |
 
 ---
 
@@ -712,6 +713,35 @@ re-pinning the prior dataset selection (same NZC-030 continuity pattern) so the 
 resolvable. Presented as a panel beside the template search. Flag `data-entry-fast-add` (shared with NZC-062
 — split later only if the two need independent rollout).
 *Source: Francis, 4 Sep 2026.*
+
+### NZC-064 — Client record parity: wizard to add, tabs to edit [Confirmed 9 Sep 2026]
+The redesign's client record carried only five fields (name, sector, location, owner, status) and had **no
+edit path at all** — `client.create` was the only client-identity command. The live CRM's five tabs are
+carried forward onto `clients` (migration `0060`, additive and nullable): **Details** firmographics
+(portfolio, client manager, website, SIC, company registration, HQ, financial year end, data reporting
+frequency, currency, logo, description, referral, and the primary contact that was previously written as
+three permanently-empty strings); **Targets** — the net-zero trajectory reporting and portal dashboards read
+(`WORKFLOWS.md` §2): net-zero year/%, baseline period, historical baseline S1/S2/S3 + total, per-scope
+interim year/%; **Address** — registered/trading and billing; **Compliance** — parent/group, group structure,
+reporting frameworks, certifications, primary Scope 3 categories.
+
+**Wizard to add, tabs to edit.** `/clients/new` is a four-step wizard (Identity → Targets → Address →
+Compliance) so a new client does not land with everything blank the way the old inline form left it; only
+identity is required, later steps can be deferred. `/clients/[id]/edit` is the five-tab record, matching what
+consultants already know from live. Both surfaces render the *same* field-group components, so they cannot
+drift.
+
+**One atomic versioned command, not per-tab commands.** Saving from any tab sends the whole record through
+`client.update` with `expectedVersion`, bumping the single `clients.version` — one audit event per save, and a
+concurrent edit conflicts rather than being half-applied across four commands. Compliance selections draw
+**primary Scope 3 categories from the canonical `emissionCategoryTaxonomy`**, not a parallel list, per "one
+term one meaning"; they are advisory grounding for narrative and never derive a figure.
+
+**Sites stay job-scoped.** A site is created in the job workspace where it is first used (existing
+`site.create`, keyed on `jobId`); the client's Sites tab is a **read-only roll-up**. This diverges from live —
+which owns sites on the client with geocode, registered-office and effective-dated vacate — and defers those,
+so scope-row site FKs are untouched. Revisit if mid-period site closure becomes reporting-relevant.
+*Source: Francis, 9 Sep 2026 — reviewing client add/edit against the live system.*
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only

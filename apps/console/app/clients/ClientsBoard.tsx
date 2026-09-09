@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
 import { type Client, type ClientStatus, clientStatusMeta } from "@nzi/mock-data";
-import type { CommandInputMap } from "@nzi/contracts";
-import { postBrowserCommand } from "@nzi/api-client";
 import { NAV, USER } from "../lib/nav";
 
 type Filter = "all" | ClientStatus;
@@ -82,32 +81,12 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>(clients[0]?.id ?? "");
   const [filter, setFilter] = useState<Filter>("all");
-  const [creating, setCreating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
-  const submissionKey = useRef<string | null>(null);
-  const [draft, setDraft] = useState<CommandInputMap["client.create"]>({ name: "", status: "onboarding", sector: "", location: "", owner: "" });
-
-  async function createClient(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setNotice(null);
-    submissionKey.current ??= crypto.randomUUID();
-    const result = await postBrowserCommand<{ clientId: string; name: string }>("/api/isolated/commands/clients", draft, submissionKey.current);
-    setSaving(false);
-    if (result.state === "success") {
-      submissionKey.current = null; setSelectedId(result.data.clientId); setCreating(false);
-      setDraft({ name: "", status: "onboarding", sector: "", location: "", owner: "" });
-      setNotice({ kind: "ok", text: `${result.data.name} was created successfully.` }); router.refresh(); return;
-    }
-    if (result.state !== "failed" || !result.retryable) submissionKey.current = null;
-    setNotice({ kind: "warn", text: result.state === "validation_failed" ? result.issues[0]?.message ?? result.message : result.message });
-  }
-
   const rows = useMemo(
     () => (filter === "all" ? clients : clients.filter((c) => c.status === filter)),
     [clients, filter],
   );
 
-  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={<><b>Clients</b> <span className="muted">/</span> All organisations</>} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><button type="button" className="nz-btn pri" aria-expanded={creating} onClick={()=>setCreating(true)}>Add first client</button></div></section>{creating&&<form className="nz-panel nz-client-create nz-first-client" onSubmit={createClient}><div className="nz-client-create-head"><div><span className="nz-eyebrow">First governed relationship</span><b>Create client</b><div className="sub">Creates one tenant-scoped client and its initial audit event.</div></div><span className="nz-st est">Account pending</span></div><div className="nz-client-create-grid"><label className="nz-fl">Client name<input className="nz-inp" required value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label><label className="nz-fl">Account owner<input className="nz-inp" required value={draft.owner} onChange={e=>setDraft({...draft,owner:e.target.value})}/></label><label className="nz-fl">Sector<input className="nz-inp" required value={draft.sector} onChange={e=>setDraft({...draft,sector:e.target.value})}/></label><label className="nz-fl">Location<input className="nz-inp" required value={draft.location} onChange={e=>setDraft({...draft,location:e.target.value})}/></label></div><div className="nz-config-actions"><button type="button" className="nz-btn" disabled={saving} onClick={()=>setCreating(false)}>Cancel</button><button className="nz-btn pri" disabled={saving}>{saving?"Creating…":"Create first client"}</button></div></form>}</div></AppShell>;
+  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={<><b>Clients</b> <span className="muted">/</span> All organisations</>} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
 
   const selected = clients.find((c) => c.id === selectedId) ?? clients[0]!;
 
@@ -159,24 +138,12 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
             <div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>
             <div className="sub">Relationships, delivery health and reporting readiness across {clients.length} organisations</div>
           </div>
-          <button type="button" className="nz-btn pri" aria-expanded={creating} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ Add client"}</button>
+          <Link className="nz-btn pri" href="/clients/new">+ Add client</Link>
         </div>
       </div>
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
         <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{atRisk?`${atRisk} relationship${atRisk===1?"":"s"} need focused attention.`:"No relationships are currently marked at risk."}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
-        {notice && <div className={`nz-banner ${notice.kind}`} role="status"><div>{notice.text}</div></div>}
-        {creating && <form className="nz-panel nz-client-create" onSubmit={createClient}>
-          <div className="nz-client-create-head"><div><span className="nz-eyebrow">New governed relationship</span><b>Add client</b><div className="sub" style={{ marginTop: 4 }}>Creates one tenant-scoped client record and a traceable audit event. Contacts and reporting settings follow in the client workspace.</div></div><span className="nz-st est">Account pending</span></div>
-          <div className="nz-client-create-grid">
-            <label className="nz-fl" style={{ margin: 0 }}>Client name<input className="nz-inp" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
-            <label className="nz-fl" style={{ margin: 0 }}>Relationship stage<select className="nz-sel" value={draft.status} aria-describedby="client-status-help" onChange={(e) => setDraft({ ...draft, status: e.target.value as ClientStatus })}><option value="onboarding">Onboarding</option><option value="active">Active</option><option value="at-risk">At risk</option><option value="prospect">Prospect</option></select><small className="nz-hint" id="client-status-help">Controls portfolio health and job eligibility.</small></label>
-            <label className="nz-fl" style={{ margin: 0 }}>Account owner<input className="nz-inp" required value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} /></label>
-            <label className="nz-fl" style={{ margin: 0 }}>Sector<input className="nz-inp" required value={draft.sector} onChange={(e) => setDraft({ ...draft, sector: e.target.value })} /></label>
-            <label className="nz-fl" style={{ margin: 0, gridColumn: "span 2" }}>Location<input className="nz-inp" required placeholder="City, country" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} /></label>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button type="button" className="nz-btn" onClick={() => setCreating(false)} disabled={saving}>Cancel</button><button className="nz-btn pri" disabled={saving}>{saving ? "Creatingâ€¦" : "Create client"}</button></div>
-        </form>}
         <div className="nz-metrics">
           <div className="nz-metric"><div className="l">Clients</div><div className="v num">{clients.length}</div></div>
           <div className="nz-metric"><div className="l">Open jobs</div><div className="v num">{activeJobs}</div></div>

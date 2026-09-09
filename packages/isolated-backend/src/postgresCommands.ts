@@ -11,6 +11,7 @@ import {
   type CommandInputMap,
   type CommandKey,
   type CommandOutcome,
+  type ClientProfileFields,
   type ScopeQualityTier,
   type ScopeRowWriteFields,
   type WorkflowJobFamily,
@@ -186,10 +187,11 @@ export async function createClient(
     context,
     async (db) => {
       const clientId = randomUUID();
+      const profile = clientProfileValues(input);
       await db.query(
         `INSERT INTO nzi_console.clients
-      (organisation_id, client_id, name, status, sector, location, owner_name, member_since, completeness_percent, next_report_due_label, contact_name, contact_role, contact_email)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,extract(year from current_date)::int,0,'Not scheduled','','','')`,
+      (organisation_id, client_id, name, status, sector, location, owner_name, member_since, completeness_percent, next_report_due_label, ${CLIENT_PROFILE_COLUMNS.join(",")})
+      VALUES ($1,$2,$3,$4,$5,$6,$7,extract(year from current_date)::int,0,'Not scheduled',${profile.map((_, index) => `$${index + 8}`).join(",")})`,
         [
           context.organisationId,
           clientId,
@@ -198,6 +200,7 @@ export async function createClient(
           input.sector.trim(),
           input.location.trim(),
           input.owner.trim(),
+          ...profile,
         ],
       );
       return {
@@ -208,6 +211,90 @@ export async function createClient(
       };
     },
   );
+}
+
+/**
+ * Every editable client profile column, in one order shared by insert and update
+ * so the two statements cannot drift apart as the record grows.
+ */
+const CLIENT_PROFILE_COLUMNS = [
+  "contact_name", "contact_role", "contact_email",
+  "portfolio", "client_manager", "website", "industry_sic", "company_registration", "headquarters",
+  "financial_year_end_month", "data_reporting_frequency", "currency", "logo_url", "company_description", "referral",
+  "net_zero_target_year", "net_zero_target_reduction_pct", "baseline_period_start", "baseline_period_end",
+  "baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e",
+  "scope1_interim_year", "scope1_interim_reduction_pct", "scope2_interim_year", "scope2_interim_reduction_pct",
+  "scope3_interim_year", "scope3_interim_reduction_pct",
+  "registered_address_line1", "registered_address_line2", "registered_city", "registered_region", "registered_postcode", "registered_country",
+  "billing_same_as_registered", "billing_company",
+  "billing_address_line1", "billing_address_line2", "billing_city", "billing_region", "billing_postcode", "billing_country",
+  "parent_company", "group_structure", "reporting_frameworks", "certifications", "primary_scope3_categories",
+] as const;
+
+const trimmed = (value: string | null | undefined) => value?.trim() || null;
+
+function clientProfileValues(input: ClientProfileFields): unknown[] {
+  const values: unknown[] = [
+    trimmed(input.contactName) ?? "", trimmed(input.contactRole) ?? "", trimmed(input.contactEmail) ?? "",
+    trimmed(input.portfolio), trimmed(input.clientManager), trimmed(input.website), trimmed(input.industrySic),
+    trimmed(input.companyRegistration), trimmed(input.headquarters),
+    input.financialYearEndMonth ?? null, input.dataReportingFrequency ?? "annual", input.currency ?? "GBP",
+    trimmed(input.logoUrl), trimmed(input.companyDescription), trimmed(input.referral),
+    input.netZeroTargetYear ?? null, input.netZeroTargetReductionPct ?? null,
+    input.baselinePeriodStart ?? null, input.baselinePeriodEnd ?? null,
+    input.baselineScope1Tco2e ?? null, input.baselineScope2Tco2e ?? null,
+    input.baselineScope3Tco2e ?? null, input.baselineTotalTco2e ?? null,
+    input.scope1InterimYear ?? null, input.scope1InterimReductionPct ?? null,
+    input.scope2InterimYear ?? null, input.scope2InterimReductionPct ?? null,
+    input.scope3InterimYear ?? null, input.scope3InterimReductionPct ?? null,
+    trimmed(input.registeredAddressLine1), trimmed(input.registeredAddressLine2), trimmed(input.registeredCity),
+    trimmed(input.registeredRegion), trimmed(input.registeredPostcode), trimmed(input.registeredCountry),
+    input.billingSameAsRegistered ?? true, trimmed(input.billingCompany),
+    trimmed(input.billingAddressLine1), trimmed(input.billingAddressLine2), trimmed(input.billingCity),
+    trimmed(input.billingRegion), trimmed(input.billingPostcode), trimmed(input.billingCountry),
+    trimmed(input.parentCompany), input.groupStructure ?? null,
+    input.reportingFrameworks ?? [], input.certifications ?? [], input.primaryScope3Categories ?? [],
+  ];
+  if (values.length !== CLIENT_PROFILE_COLUMNS.length) throw new Error("Client profile column/value mismatch.");
+  return values;
+}
+
+export type UpdateClientResult = { clientId: string; name: string; version: number };
+export async function updateClient(
+  pool: PoolLike,
+  input: CommandInputMap["client.update"],
+  context: CommandContext,
+): Promise<StoredOutcome<UpdateClientResult>> {
+  return runPostgresCommand(pool, "client.update", input, context, async (db) => {
+    const profile = clientProfileValues(input);
+    const assignments = CLIENT_PROFILE_COLUMNS.map((column, index) => `${column}=$${index + 9}`).join(",");
+    const updated = await db.query<{ version: number }>(
+      `UPDATE nzi_console.clients
+         SET name=$4, status=$5, sector=$6, location=$7, owner_name=$8, ${assignments},
+             version=version+1, updated_at=now()
+       WHERE organisation_id=$1 AND client_id=$2 AND version=$3
+       RETURNING version`,
+      [
+        context.organisationId, input.clientId, input.expectedVersion,
+        input.name.trim(), input.status, input.sector.trim(), input.location.trim(), input.owner.trim(),
+        ...profile,
+      ],
+    );
+    if (!updated.rows[0]) {
+      const current = await db.query<{ version: number }>(
+        `SELECT version FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
+        [context.organisationId, input.clientId],
+      );
+      if (current.rows[0]) throw new VersionConflictError(input.expectedVersion, current.rows[0].version);
+      throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
+    }
+    return {
+      data: { clientId: input.clientId, name: input.name.trim(), version: updated.rows[0].version },
+      entityType: "client",
+      entityId: input.clientId,
+      topic: "client.updated",
+    };
+  });
 }
 
 export type CreateJobResult = {
