@@ -157,8 +157,10 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
         <thead><tr>
           <th>Scope</th><th>Category</th>
           {trend.years.map((year) => (
-            <th key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>
-              {year.year}{year.kind === "baseline" ? <span className="nz-bl-pill">BL</span> : year.kind === "current" ? <span className="nz-cur-pill">current</span> : null}
+            <th key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>
+              {year.year}
+              {year.year === trend.baselineYear ? <span className="nz-bl-pill">BL</span> : null}
+              {year.kind === "current" ? <span className="nz-cur-pill">current</span> : null}
             </th>
           ))}
           <th className="num">% vs BL</th><th>Integrity</th>
@@ -178,7 +180,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
                   <td>Scope {scope}</td>
                   <td>{category.label}</td>
                   {trend.years.map((year) => (
-                    <td key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{fmt(valueFor(year, category.scopeCode))}</td>
+                    <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{fmt(valueFor(year, category.scopeCode))}</td>
                   ))}
                   <td className={`num nz-pct ${tone}`}>{pct(change)}</td>
                   <td>{rowGaps.map((gap) => <span key={gap.key} className={`nz-gap-chip ${gap.flag}`} title={gap.detail}>{GAP_LABEL[gap.flag]}</span>)}</td>
@@ -186,7 +188,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
               })}
               <tr className="sub">
                 <td /><td>Scope {scope} subtotal</td>
-                {trend.years.map((year) => <td key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.source === "none" ? "—" : fmt(year.byScope[scope])}</td>)}
+                {trend.years.map((year) => <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.source === "none" ? "—" : fmt(year.byScope[scope])}</td>)}
                 <td className="num nz-pct">{pct(percentVsBaseline(current && current.source !== "none" ? current.byScope[scope] : null, baseline && baseline.source !== "none" ? baseline.byScope[scope] : null))}</td>
                 <td />
               </tr>
@@ -194,7 +196,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
           })}
           <tr className="total">
             <td /><td>All scopes total</td>
-            {trend.years.map((year) => <td key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{fmt(year.total)}</td>)}
+            {trend.years.map((year) => <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{fmt(year.total)}</td>)}
             <td className="num nz-pct">{pct(percentVsBaseline(current?.total ?? null, baseline?.total ?? null))}</td>
             <td />
           </tr>
@@ -269,11 +271,11 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
     <TabPanel id="intensity" idBase="assurance" active={tab === "intensity"} className="nz-assurance-scroll">
       <p className="sub">Normalised metric across the trend — the same totals against the job&rsquo;s reporting denominator.</p>
       <table className="nz-tbl">
-        <thead><tr><th>Metric</th>{trend.years.map((year) => <th key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.year}</th>)}</tr></thead>
+        <thead><tr><th>Metric</th>{trend.years.map((year) => <th key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.year}</th>)}</tr></thead>
         <tbody>
           <tr>
             <td>{current?.intensityUnit ?? "Emissions intensity"}</td>
-            {trend.years.map((year) => <td key={year.year} className={`num${year.kind === "baseline" ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.intensity == null ? "—" : year.intensity.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>)}
+            {trend.years.map((year) => <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.intensity == null ? "—" : year.intensity.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>)}
           </tr>
           {trend.years.every((year) => year.intensity == null) && <tr><td colSpan={trend.years.length + 1} className="nz-table-empty">No intensity target / reporting denominator set for this job.</td></tr>}
         </tbody>
