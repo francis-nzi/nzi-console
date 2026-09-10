@@ -12,7 +12,9 @@ import { crpScopeCategoryLabel } from "./commands";
 //
 //  - Baseline year  = the job's emissions target `baseline_year`
 //    (`job_emissions_targets`). No target ⇒ no baseline (trend shows current +
-//    priors only, no BL pill / % vs BL).
+//    priors only, no BL pill / % vs BL). A baseline at or after the current
+//    reporting year ⇒ the current year IS the baseline: one entry, no separate
+//    BL column and no comparison, since there is no earlier year to compare to.
 //  - Prior years    = the reviewed CRP snapshots for the SAME client_id with
 //    `job_family = 'crp'` and `reporting_year < current`, one per distinct year
 //    (latest `snapshot_version` wins — same rule the existing `annualComparison`
@@ -56,15 +58,23 @@ export function buildReportingChain(input: {
   const priorYearCount = input.priorYearCount ?? 3;
   const byYear = new Map(input.priorSnapshots.map((snap) => [snap.year, snap]));
 
+  // A baseline is the start of the measured record, so nothing at or before it
+  // belongs in the trend — priors are strictly between baseline and current.
   const priorYears = [...byYear.keys()]
-    .filter((year) => year < input.currentYear && year !== input.baselineYear)
+    .filter((year) => year < input.currentYear && (input.baselineYear == null || year > input.baselineYear))
     .sort((a, b) => b - a)
     .slice(0, priorYearCount)
     .sort((a, b) => a - b);
 
   const entries: ReportingChainEntry[] = [];
 
-  if (input.baselineYear != null) {
+  // When the client's baseline IS the year being reported (a first-year client, or
+  // one who has just rebased), there is no earlier year to compare against. Emitting
+  // a separate baseline entry here would duplicate the year — once as an empty "BL"
+  // column and once as the real figures — and invite a nonsense "% vs BL".
+  const baselineIsCurrentYear = input.baselineYear != null && input.baselineYear >= input.currentYear;
+
+  if (input.baselineYear != null && !baselineIsCurrentYear) {
     const snap = byYear.get(input.baselineYear) ?? null;
     entries.push({
       year: input.baselineYear,

@@ -26,6 +26,47 @@ describe("buildReportingChain (DA1 / NZC-059)", () => {
     assert.equal(chain.entries.at(-1)!.source, "live");
   });
 
+  it("collapses to one entry when the baseline IS the reporting year", () => {
+    // A client who has just rebased to the current year: there is no earlier year
+    // to compare against, so the year must not appear twice — once as an empty BL
+    // column and once as the real figures — the way the live platform renders it.
+    const chain = buildReportingChain({
+      jobId: "j", clientId: "c", currentYear: 2026, baselineYear: 2026,
+      priorSnapshots: [snap(2024), snap(2025)],
+      currentSnapshot: { snapshotId: "s-current", dataHash: "sha256:cur" },
+    });
+    assert.deepEqual(chain.entries.map((e) => [e.year, e.kind]), [[2026, "current"]]);
+    assert.equal(chain.entries.at(-1)!.source, "reviewed-snapshot");
+    assert.equal(chain.baselineYear, 2026);
+  });
+
+  it("drops prior years at or before the baseline", () => {
+    // The doc contract has always said priors sit *strictly between* baseline and
+    // current; the filter only excluded the baseline year itself, so earlier years
+    // leaked into the trend.
+    const chain = buildReportingChain({
+      jobId: "j", clientId: "c", currentYear: 2026, baselineYear: 2024,
+      priorSnapshots: [snap(2021), snap(2022), snap(2023), snap(2024), snap(2025)],
+      currentSnapshot: null,
+    });
+    assert.deepEqual(chain.entries.map((e) => [e.year, e.kind]), [
+      [2024, "baseline"], [2025, "prior"], [2026, "current"],
+    ]);
+  });
+
+  it("never emits the same year twice, whatever the baseline", () => {
+    for (const baselineYear of [null, 2020, 2024, 2025, 2026, 2027]) {
+      const chain = buildReportingChain({
+        jobId: "j", clientId: "c", currentYear: 2026, baselineYear,
+        priorSnapshots: [snap(2023), snap(2024), snap(2025)],
+        currentSnapshot: null,
+      });
+      const years = chain.entries.map((e) => e.year);
+      assert.equal(new Set(years).size, years.length, `duplicate year with baseline ${baselineYear}`);
+      assert.equal(chain.entries.filter((e) => e.kind === "current").length, 1, `missing current with baseline ${baselineYear}`);
+    }
+  });
+
   it("marks the current year reviewed-snapshot when the job has one", () => {
     const chain = buildReportingChain({
       jobId: "j", clientId: "c", currentYear: 2026, baselineYear: 2024,
