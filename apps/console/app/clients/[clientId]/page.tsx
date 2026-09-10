@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
-import { clientStatusMeta, jobFamilyMeta } from "@nzi/mock-data";
+import { clientFigureEvidence, clientSites, clientStatusMeta, documentHistory, financials, jobFamilyMeta } from "@nzi/mock-data";
 import type { ClientScreenReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
@@ -9,6 +9,9 @@ import { NAV, USER } from "../../lib/nav";
 import { formatDate } from "../../lib/formatDate";
 import { dataEntryAdapterEnabled } from "../../lib/featureFlags";
 import { ClientFactorsManager } from "../ClientFactorsManager";
+import { ClientFinancials } from "./ClientFinancials";
+import { ClientEvidenceSurface } from "./ClientEvidenceSurface";
+import { ClientSiteManager } from "./ClientSiteManager";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +44,12 @@ function ClientWorkspace({ client, jobs }: { client: ClientScreenReadModel; jobs
         <section className="nz-panel"><Head title="Engagements" right={<Link href={`/jobs?client=${client.id}`}>New job →</Link>} />{jobs.length === 0 ? <Empty text="No engagements have been created for this client." /> : <table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Stage</th><th>Progress</th><th>Owner</th><th>Due</th></tr></thead><tbody>{jobs.map((job) => <tr key={job.header.id}><td><Link href={`/jobs/${job.header.id}`} className="nz-table-link">{job.header.number}</Link><div className="muted">{job.header.title}</div></td><td><span className="nz-st need">{jobFamilyMeta[job.header.family].code}</span></td><td>{job.header.workflowStage}</td><td><Progress value={job.header.progressPct} /></td><td>{job.header.owner}</td><td className="num">{formatDate(job.header.dueDate)}</td></tr>)}</tbody></table>}</section>
         <section className="nz-panel"><Head title="Relationship activity" />{activity.length === 0 ? <Empty text="No workflow changes have been recorded for this client." /> : <div style={{ padding: "6px 16px 12px" }}>{activity.map((event) => <div className="nz-kv" key={event.id}><span className="k"><Link href={`/jobs/${event.jobId}`}>{event.jobNumber}</Link> · {event.fromStage} → {event.toStage}</span><span className="v">{formatDate(event.occurredAt)}</span></div>)}</div>}</section>
         <section className="nz-panel"><Head title="Reporting and assurance" /><div className="nz-client-signals"><Signal label="CRP engagements" value={String(crp.length)} tone="ok" /><Signal label="Review outstanding" value={String(reviewGaps)} tone={reviewGaps ? "warn" : "ok"} /><Signal label="Latest footprint" value={client.latestFootprint ?? "Not reported"} tone={client.latestFootprint ? "ok" : "warn"} /></div></section>
+        <ClientFinancials ledger={financials} history={documentHistory} />
+        <ClientEvidenceSurface evidence={clientFigureEvidence} />
         {dataEntryAdapterEnabled("client-factors") ? <ClientFactorsManager clientId={client.id} /> : null}
       </div><aside className="nz-client-aside">
         <section className="nz-panel"><Head title="Primary contact" /><div className="nz-client-contact"><b>{client.contact.name || "Not configured"}</b><div className="sub">{client.contact.role || "Role not configured"}</div>{client.contact.email ? <a href={`mailto:${client.contact.email}`}>{client.contact.email}</a> : null}</div></section>
-        <section className="nz-panel"><Head title="Operational sites" /><div style={{ padding: "6px 16px 12px" }}>{client.sites.length ? client.sites.map((site) => <Row key={site.id} label={site.name} value={site.id} />) : <span className="sub">No sites configured.</span>}</div></section>
+        <ClientSiteManager initialSites={clientSites} />
         <section className="nz-panel"><Head title="Account overview" /><div style={{ padding: "6px 16px 12px" }}><Row label="Member since" value={client.memberSince} /><Row label="Account owner" value={client.owner} /><Row label="Year-on-year" value={client.yoy ?? "Not available"} /><Row label="Data completeness" value={`${client.completeness}%`} /></div></section>
         <section className="nz-panel nz-client-experience"><div className="eyebrow">Client experience</div><h2>Portal and reports</h2><p>Manage account invitations and job-level access, then review published reports from the same evidence base.</p><div><Link href="/platform" className="nz-btn pri">Manage access</Link><Link href="/reports" className="nz-btn">Reports</Link></div></section>
       </aside></div>

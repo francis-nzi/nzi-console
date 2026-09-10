@@ -88,6 +88,8 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-066 | Issued reports stamp the baseline they were issued against (`baseline_id` + the figures used + `resolved_at`); a draft still resolves live. The dated record is the policy, the stamp is the reproducibility. | Confirmed (10 Sep 2026) |
 | NZC-067 | One `resolveBaseline()`; the rule "never look earlier than the baseline in force" lives in it and nowhere else. Replaces the live platform's eleven independent implementations. | Confirmed (10 Sep 2026) |
 | NZC-068 | Targets **pin** to the baseline record they were set against, with a governed **recalculate baseline** event (reason required, prior baseline retained, audit-logged) as the only way to re-base — matching GHG Protocol / SBTi base-year recalculation policy. | Confirmed (10 Sep 2026) |
+| NZC-070 | Sites are effective-dated places; reporting boundaries include any site in service during the reporting year, with no hard deletion | Confirmed (10 Sep 2026) |
+| NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only | Confirmed (10 Sep 2026) |
 
 ---
 

@@ -2,7 +2,8 @@ export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
 export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance";
 export type LcaModuleGroup = "product" | "transport" | "use" | "end_of_life" | "benefits";
-export type DataQuality = "Measured" | "Estimated" | "Spend-based" | "Survey";
+import type { ProvenanceSignature, QualityTier } from "@nzi/contracts";
+export type DataQuality = QualityTier;
 
 export type Provenance = {
   jobId: string;
@@ -14,6 +15,7 @@ export type Provenance = {
   tokensVersion: number;
   rendererVersion: number;
   quality?: DataQuality;
+  signature?: ProvenanceSignature;
 };
 
 export type ChartSpec = {

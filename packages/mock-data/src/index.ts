@@ -12,6 +12,8 @@ export * from "./fidelity";
 export * from "./lcaFidelity";
 export * from "./trainingFidelity";
 export * from "./consultancyFidelity";
+export * from "./commercial";
+export * from "./clientEvidence";
 
 export type RowStatus = "complete" | "needs" | "estimated";
 

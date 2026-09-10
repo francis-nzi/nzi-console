@@ -41,7 +41,7 @@ type CommandResult<T extends Record<string, unknown>> = {
   entityId: string;
   topic: string;
 };
-type StoredOutcome<T extends Record<string, unknown>> = Extract<
+export type StoredOutcome<T extends Record<string, unknown>> = Extract<
   CommandOutcome<T>,
   { state: "success" }
 >;

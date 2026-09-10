@@ -1,7 +1,8 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type {AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel } from "@nzi/contracts";
+import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, FigureEvidence, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ProvenanceSignature, QualityTier } from "@nzi/contracts";
 import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveReportSections } from "@nzi/contracts";
+import { resolveClientSiteBoundary } from "./siteBoundary";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -14,9 +15,49 @@ export type ClientScreenReadModel = {
   memberSince: string; latestFootprint: string | null; yoy: string | null; completeness: number;
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   jobs: Array<{ number: string; year: number; status: string }>;
-  sites: Array<{ id: string; name: string }>;
+  sites: Array<{ id: string; name: string; isRegisteredOffice?: boolean; inServiceFrom?: string; vacatedEffective?: string | null; status?: "in-service" | "vacated"; version?: number }>;
+  figures?: { latest: FigureEvidence; scopes: Array<FigureEvidence & { scope: "1" | "2" | "3" }>; intensity: FigureEvidence };
   profile: ClientProfileFields;
 };
+
+export type CommercialDocumentReadModel = { id: string; number: string; title: string; status: string; amount: number; currency: string; version: number; updatedAt: string; xero: { status: "synced" | "pending" | "failed" | "not_configured"; reference: string | null; lastSyncedAt: string | null } };
+export type FinancialsReadModel = { quotes: CommercialDocumentReadModel[]; invoices: CommercialDocumentReadModel[]; creditNotes: CommercialDocumentReadModel[]; xeroStatus: { state: "connected" | "degraded" | "not_configured"; label: string } };
+export type DocumentHistoryReadModel = { document: CommercialDocumentReadModel; events: Array<{ id: string; at: string; label: string; detail: string; actor: string; tone: "neutral" | "success" | "warning" }> };
+export type ClientEmissionsEvidenceReadModel = { latest: FigureEvidence; scopes: Array<FigureEvidence & { scope: "1" | "2" | "3" }>; intensity: FigureEvidence };
+
+export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadModel, intensity: { value: number; unit: string } | null = null): ClientEmissionsEvidenceReadModel {
+  const byScope = (["1", "2", "3"] as const).map((scope) => snapshot.measurements.filter((measurement) => measurement.scope === scope).reduce((sum, measurement) => sum + measurement.tco2e, 0));
+  const tiers = (["1", "2", "3"] as const).map((scope) => new Set(snapshot.measurements.filter((measurement) => measurement.scope === scope).map((measurement) => measurement.qualityTier)));
+  const quality = (values: Set<QualityTier>): QualityTier | "Mixed" => values.size === 1 ? [...values][0]! : "Mixed";
+  const factorSets = [...new Set(snapshot.measurements.map((measurement) => measurement.factorSet))];
+  const signature: ProvenanceSignature = { factorSet: factorSets.join(" · ") || "Not available", factorSetVersion: "reviewed-snapshot", dataHash: snapshot.dataHash, asAtDate: snapshot.createdAt, sourceRef: `Reviewed snapshot · ${snapshot.id}`, resolver: "reviewed-snapshot.resolve@1" };
+  const lineage = [{ title: "Reviewed snapshot", detail: `${snapshot.jobNumber} · version ${snapshot.version} · ${snapshot.createdBy}` }, { title: "Calculation", detail: `${snapshot.measurements.length} independently reviewed measurement rows aggregated by scope` }];
+  const makeFigure = (value: number, unit: string, scope: "1" | "2" | "3" | null): FigureEvidence => ({ value, unit, qualityTier: scope === null ? quality(new Set(snapshot.measurements.map((measurement) => measurement.qualityTier))) : quality(tiers[Number(scope) - 1]!), provenance: signature, lineage });
+  return { latest: makeFigure(byScope.reduce((sum, value) => sum + value, 0), "tCO2e", null), scopes: byScope.map((value, index) => ({ scope: (["1", "2", "3"] as const)[index]!, ...makeFigure(value, "tCO2e", (["1", "2", "3"] as const)[index]!) })), intensity: makeFigure(intensity?.value ?? 0, intensity?.unit ?? "tCO2e / reporting metric", null) };
+}
+
+export async function getClientFinancials(db: Queryable, clientId: string): Promise<FinancialsReadModel> {
+  const [quotes, invoices, creditNotes] = await Promise.all([
+    db.query<CommercialDocumentReadModel>(`SELECT q.quote_id AS id, 'Q' || lpad(q.quote_id, 6, '0') AS number, v.title, q.status, v.total AS amount, v.currency, q.current_version AS version, q.updated_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.quotes q JOIN nzi_console.quote_versions v ON (v.organisation_id,v.quote_id,v.version)=(q.organisation_id,q.quote_id,q.current_version) LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(q.organisation_id,'quote',q.quote_id) WHERE q.client_id=$1 AND q.active ORDER BY q.updated_at DESC`, [clientId]),
+    db.query<CommercialDocumentReadModel>(`SELECT invoice_id AS id, invoice_number AS number, invoice_number AS title, status, balance AS amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.invoices i LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(i.organisation_id,'invoice',i.invoice_id) WHERE i.client_id=$1 AND i.active ORDER BY i.created_at DESC`, [clientId]),
+    db.query<CommercialDocumentReadModel>(`SELECT credit_note_id AS id, credit_note_number AS number, credit_note_number AS title, status, amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.credit_notes c LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(c.organisation_id,'credit_note',c.credit_note_id) WHERE c.client_id=$1 AND c.active ORDER BY c.created_at DESC`, [clientId]),
+  ]);
+  const map = (row: CommercialDocumentReadModel) => ({ ...row, amount: Number(row.amount), updatedAt: String(row.updatedAt), xero: { status: row.xeroStatus, reference: row.xeroReference, lastSyncedAt: row.xeroLastSyncedAt } });
+  return { quotes: quotes.rows.map(map), invoices: invoices.rows.map(map), creditNotes: creditNotes.rows.map(map), xeroStatus: { state: "connected", label: "Xero connected" } };
+}
+
+export async function getCommercialDocumentHistory(db: Queryable, documentType: "quote" | "invoice" | "credit_note", documentId: string): Promise<DocumentHistoryReadModel | null> {
+  const source = documentType === "quote" ? "quotes" : documentType === "invoice" ? "invoices" : "credit_notes";
+  const idColumn = documentType === "quote" ? "quote_id" : documentType === "invoice" ? "invoice_id" : "credit_note_id";
+  const numberExpr = documentType === "quote" ? "d.quote_id" : documentType === "invoice" ? "d.invoice_number" : "d.credit_note_number";
+  const titleExpr = documentType === "quote" ? "v.title" : numberExpr;
+  const amountExpr = documentType === "quote" ? "v.total" : documentType === "invoice" ? "d.balance" : "d.amount";
+  const result = await db.query<{ id: string; number: string; title: string; status: string; amount: number; currency: string; version: number; updated_at: string; xero_status: "synced" | "pending" | "failed" | "not_configured"; external_ref: string | null; last_synced_at: string | null }>(`SELECT d.${idColumn} AS id, ${numberExpr} AS number, ${titleExpr} AS title, d.status, ${amountExpr} AS amount, d.currency, d.${documentType === "quote" ? "current_version" : "version"} AS version, d.${documentType === "quote" ? "updated_at" : "created_at"} AS updated_at, coalesce(x.sync_status,'not_configured') AS xero_status, x.external_ref, x.last_synced_at FROM nzi_console.${source} d LEFT JOIN nzi_console.quote_versions v ON ${documentType === "quote" ? "(v.organisation_id,v.quote_id,v.version)=(d.organisation_id,d.quote_id,d.current_version)" : "false"} LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(d.organisation_id,$1,d.${idColumn}) WHERE d.${idColumn}=$2 AND d.active`, [documentType, documentId]);
+  const row = result.rows[0];
+  if (!row) return null;
+  const events = await db.query<{ event_id: string; occurred_at: string; event_type: string; detail_json: Record<string, unknown>; actor_id: string }>(`SELECT event_id,occurred_at,event_type,detail_json,actor_id FROM nzi_console.commercial_document_events WHERE document_type=$1 AND document_id=$2 ORDER BY occurred_at DESC,event_id DESC`, [documentType, documentId]);
+  return { document: { id: row.id, number: row.number, title: row.title, status: row.status, amount: Number(row.amount), currency: row.currency, version: row.version, updatedAt: String(row.updated_at), xero: { status: row.xero_status, reference: row.external_ref, lastSyncedAt: row.last_synced_at } }, events: events.rows.map((item) => ({ id: item.event_id, at: String(item.occurred_at), label: item.event_type, detail: JSON.stringify(item.detail_json), actor: item.actor_id, tone: item.event_type.includes("paid") || item.event_type.includes("accepted") ? "success" : "neutral" })) };
+}
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";
 export type JobStageEvent = { id: string; fromStage: string; toStage: string; actorId: string; note?: string; occurredAt: string };
@@ -124,7 +165,7 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
       count(j.job_id) FILTER (WHERE j.status IN ('draft','open','on-hold'))::text AS open_jobs,
       coalesce(jsonb_agg(jsonb_build_object('number', j.job_number, 'year', coalesce(j.reporting_year, extract(year from j.start_date)::int), 'status', j.workflow_stage)
         ORDER BY j.sequence DESC) FILTER (WHERE j.job_id IS NOT NULL), '[]'::jsonb) AS jobs
-      ,coalesce((SELECT jsonb_agg(jsonb_build_object('id', s.site_id, 'name', s.name) ORDER BY lower(s.name), s.site_id)
+      ,coalesce((SELECT jsonb_agg(jsonb_build_object('id', s.site_id, 'name', s.name, 'isRegisteredOffice', s.is_registered_office, 'inServiceFrom', s.in_service_from, 'vacatedEffective', s.vacated_effective, 'status', CASE WHEN s.vacated_effective IS NULL THEN 'in-service' ELSE 'vacated' END, 'version', s.version) ORDER BY lower(s.name), s.site_id)
         FROM nzi_console.client_sites s WHERE (s.organisation_id,s.client_id)=(c.organisation_id,c.client_id)), '[]'::jsonb) AS sites
     FROM nzi_console.clients c
     LEFT JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
@@ -355,7 +396,7 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
   let liveMeasurements: AssuranceMeasurement[] = [];
   let liveIntensity: IntensityTargetReadModel | null = null;
   if (needsLive) {
-    const [rowResult, intensity] = await Promise.all([
+    const [rowResult, intensity, boundary] = await Promise.all([
       db.query<{ scope: string; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string | null }>(
         `SELECT split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.site_id, s.name AS site_label,
                 coalesce(r.override_tco2e, r.calculated_tco2e)::text AS tco2e
@@ -365,9 +406,12 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
         [jobId],
       ),
       getJobIntensityTarget(db, jobId),
+      resolveClientSiteBoundary(db, job.client_id, chain.currentYear),
     ]);
     liveIntensity = intensity;
+    const boundaryIds = new Set(boundary.map((site) => site.id));
     liveMeasurements = rowResult.rows
+      .filter((row) => row.site_id === null || boundaryIds.has(row.site_id))
       .filter((row): row is { scope: "1" | "2" | "3"; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string } =>
         row.tco2e !== null && (row.scope === "1" || row.scope === "2" || row.scope === "3"))
       .map((row) => ({ scope: row.scope, scopeCode: row.scope_code, siteId: row.site_id, siteLabel: row.site_label, tco2e: Number(row.tco2e) }));
