@@ -28,7 +28,11 @@ export type ClientEmissionsEvidenceReadModel = { latest: FigureEvidence; scopes:
 export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadModel, intensity: { value: number; unit: string } | null = null): ClientEmissionsEvidenceReadModel {
   const byScope = (["1", "2", "3"] as const).map((scope) => snapshot.measurements.filter((measurement) => measurement.scope === scope).reduce((sum, measurement) => sum + measurement.tco2e, 0));
   const tiers = (["1", "2", "3"] as const).map((scope) => new Set(snapshot.measurements.filter((measurement) => measurement.scope === scope).map((measurement) => measurement.qualityTier)));
-  const quality = (values: Set<QualityTier>): QualityTier | "Mixed" => values.size === 1 ? [...values][0]! : "Mixed";
+  const quality = (values: Set<string>): QualityTier | "Mixed" => {
+    if (values.size !== 1) return "Mixed";
+    const value = [...values][0];
+    return value === "measured" ? "Measured" : value === "estimated" ? "Estimated" : value === "spend-based" ? "Spend-based" : value === "survey" ? "Survey" : "Mixed";
+  };
   const factorSets = [...new Set(snapshot.measurements.map((measurement) => measurement.factorSet))];
   const signature: ProvenanceSignature = { factorSet: factorSets.join(" · ") || "Not available", factorSetVersion: "reviewed-snapshot", dataHash: snapshot.dataHash, asAtDate: snapshot.createdAt, sourceRef: `Reviewed snapshot · ${snapshot.id}`, resolver: "reviewed-snapshot.resolve@1" };
   const lineage = [{ title: "Reviewed snapshot", detail: `${snapshot.jobNumber} · version ${snapshot.version} · ${snapshot.createdBy}` }, { title: "Calculation", detail: `${snapshot.measurements.length} independently reviewed measurement rows aggregated by scope` }];
