@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -7,7 +7,8 @@ import { clientCertifications, clientGroupStructures, clientReportingFrameworks,
 
 const here = dirname(fileURLToPath(import.meta.url));
 const seed = readFileSync(resolve(here, "../seeds/0011_synthetic_client_profiles.sql"), "utf8");
-const migration = readFileSync(resolve(here, "../migrations/0060_client_identity_parity.sql"), "utf8");
+const migrationDir = resolve(here, "../migrations");
+const migrationSql = readdirSync(migrationDir).filter((f) => f.endsWith(".sql")).sort().map((f) => readFileSync(resolve(migrationDir, f), "utf8"));
 
 /** Every ARRAY[...] literal in the seed, by the column it is assigned to in the VALUES rows. */
 function arrayLiterals(): string[][] {
@@ -60,12 +61,17 @@ describe("synthetic client profile seed (NZC-064)", () => {
     for (const [, host] of seed.matchAll(/https?:\/\/([^\s'"/]+)/g)) assert.match(host ?? "", /\.invalid$/);
   });
 
-  it("seeds only columns the migration actually adds", () => {
-    const added = new Set([...migration.matchAll(/ADD COLUMN (\w+)/g)].map(([, column]) => column));
+  it("seeds only client columns that exist in the current schema", () => {
+    // 0061 (NZC-065) dropped the baseline columns 0060 had added, so checking against
+    // one migration is not enough — a seed must assign columns that are added and not
+    // since dropped.
+    const all = migrationSql.join("\n");
+    const added = new Set([...all.matchAll(/ADD COLUMN (\w+)/g)].map(([, column]) => column));
+    for (const [, column] of all.matchAll(/DROP COLUMN (\w+)/g)) added.delete(column);
     const setClause = seed.slice(seed.indexOf("UPDATE clients c SET"), seed.indexOf("FROM profile p"));
-    const assigned = [...setClause.matchAll(/(\w+) = p\.(\w+)/g)].filter(([, target, source]) => target === source).map(([, column]) => column);
-    assert.ok(assigned.length >= 40, `expected the seed to assign the profile columns, saw ${assigned.length}`);
+    const assigned = [...setClause.matchAll(/(\w+) = p\.(\w+)/g)].filter(([, t, src]) => t === src).map(([, c]) => c);
+    assert.ok(assigned.length >= 30, `expected the seed to assign the profile columns, saw ${assigned.length}`);
     const strays = assigned.filter((column) => !added.has(column));
-    assert.deepEqual(strays, [], `seed assigns columns migration 0060 does not add: ${strays.join(", ")}`);
+    assert.deepEqual(strays, [], `seed assigns columns no live migration provides: ${strays.join(", ")}`);
   });
 });

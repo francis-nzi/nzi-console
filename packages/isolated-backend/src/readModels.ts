@@ -47,9 +47,7 @@ type ClientRow = {
   data_reporting_frequency: ClientReportingFrequency; currency: string; logo_url: string | null;
   company_description: string | null; referral: string | null;
   net_zero_target_year: number | null; net_zero_target_reduction_pct: string | null;
-  baseline_period_start: Date | string | null; baseline_period_end: Date | string | null;
-  baseline_scope1_tco2e: string | null; baseline_scope2_tco2e: string | null;
-  baseline_scope3_tco2e: string | null; baseline_total_tco2e: string | null;
+  baseline_significance_threshold_pct: string | null;
   scope1_interim_year: number | null; scope1_interim_reduction_pct: string | null;
   scope2_interim_year: number | null; scope2_interim_reduction_pct: string | null;
   scope3_interim_year: number | null; scope3_interim_reduction_pct: string | null;
@@ -69,10 +67,7 @@ const clientProfile = (row: ClientRow): ClientProfileFields => ({
   currency: row.currency, logoUrl: row.logo_url, companyDescription: row.company_description, referral: row.referral,
   contactName: row.contact_name, contactRole: row.contact_role, contactEmail: row.contact_email,
   netZeroTargetYear: row.net_zero_target_year, netZeroTargetReductionPct: numeric(row.net_zero_target_reduction_pct),
-  baselinePeriodStart: row.baseline_period_start === null ? null : dateOnly(row.baseline_period_start),
-  baselinePeriodEnd: row.baseline_period_end === null ? null : dateOnly(row.baseline_period_end),
-  baselineScope1Tco2e: numeric(row.baseline_scope1_tco2e), baselineScope2Tco2e: numeric(row.baseline_scope2_tco2e),
-  baselineScope3Tco2e: numeric(row.baseline_scope3_tco2e), baselineTotalTco2e: numeric(row.baseline_total_tco2e),
+  baselineSignificanceThresholdPct: numeric(row.baseline_significance_threshold_pct),
   scope1InterimYear: row.scope1_interim_year, scope1InterimReductionPct: numeric(row.scope1_interim_reduction_pct),
   scope2InterimYear: row.scope2_interim_year, scope2InterimReductionPct: numeric(row.scope2_interim_reduction_pct),
   scope3InterimYear: row.scope3_interim_year, scope3InterimReductionPct: numeric(row.scope3_interim_reduction_pct),
@@ -112,8 +107,7 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
       c.next_report_due_label, c.contact_name, c.contact_role, c.contact_email,
       c.portfolio, c.client_manager, c.website, c.industry_sic, c.company_registration, c.headquarters,
       c.financial_year_end_month, c.data_reporting_frequency, c.currency, c.logo_url, c.company_description, c.referral,
-      c.net_zero_target_year, c.net_zero_target_reduction_pct, c.baseline_period_start, c.baseline_period_end,
-      c.baseline_scope1_tco2e, c.baseline_scope2_tco2e, c.baseline_scope3_tco2e, c.baseline_total_tco2e,
+      c.net_zero_target_year, c.net_zero_target_reduction_pct, c.baseline_significance_threshold_pct,
       c.scope1_interim_year, c.scope1_interim_reduction_pct, c.scope2_interim_year, c.scope2_interim_reduction_pct,
       c.scope3_interim_year, c.scope3_interim_reduction_pct,
       c.registered_address_line1, c.registered_address_line2, c.registered_city, c.registered_region,
