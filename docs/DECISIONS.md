@@ -84,9 +84,9 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-062 | Add rows from template: a fuzzy-matched search across the whole job factor library (every selected dataset + client factor, every scope/category) — the unscoped power-user path alongside the per-category smart-search. A pick stamps factor + scope + category + site into a fresh enabled `scope.row.create` row, quantity empty, pending; the search stays open for a multi-add run. | Confirmed (4 Sep 2026) |
 | NZC-063 | Reuse Previous Year Rows: previous-year rollforward generalised from the spend-only register (`job_emission_sources`) to every canonical row type, via a new `job_scope_rows.rolled_forward_from_row_id` self-reference. Select specific prior-job rows (not "roll everything"); factor + hierarchy + site copied in, quantity empty, pending; the same moved-factor / not-in-selection / already-rolled-forward lineage the spend mechanism already surfaces. | Confirmed (4 Sep 2026) |
 | NZC-064 | Client record reaches parity with the live CRM: Details / Targets / Address / Compliance carried onto `clients` (migration `0060`). **Wizard to add, tabs to edit** — `/clients/new` is a four-step wizard (only identity required), `/clients/[id]/edit` is the five-tab record. One atomic versioned `client.update` per save, not per-tab commands. **Sites stay job-scoped**; the client's Sites tab is a read-only roll-up. | Confirmed (9 Sep 2026) |
-| NZC-065 | The baseline is a dated record, not fields on the client: `client_baselines` (period, either a baseline job or typed scope figures, `kind`, `source`, reason, `effective_from`, `superseded_at`) replaces the mutable baseline fields on `clients`. Supersedes the baseline fields of NZC-064 only. | Proposed |
-| NZC-066 | Issued reports stamp the baseline they were issued against (`baseline_id` + the figures used + `resolved_at`); a draft still resolves live. The dated record is the policy, the stamp is the reproducibility. | Proposed |
-| NZC-067 | One `resolveBaseline()`; the rule "never look earlier than the baseline in force" lives in it and nowhere else. Replaces the live platform's eleven independent implementations. | Proposed |
+| NZC-065 | The baseline is a dated record, not fields on the client: `client_baselines` (period, either a baseline job or typed scope figures, `kind`, `source`, reason, `effective_from`, `superseded_at`) replaces the mutable baseline fields on `clients`. Supersedes the baseline fields of NZC-064 only. | Confirmed (10 Sep 2026) |
+| NZC-066 | Issued reports stamp the baseline they were issued against (`baseline_id` + the figures used + `resolved_at`); a draft still resolves live. The dated record is the policy, the stamp is the reproducibility. | Confirmed (10 Sep 2026) |
+| NZC-067 | One `resolveBaseline()`; the rule "never look earlier than the baseline in force" lives in it and nowhere else. Replaces the live platform's eleven independent implementations. | Confirmed (10 Sep 2026) |
 | NZC-068 | Targets **pin** to the baseline record they were set against, with a governed **recalculate baseline** event (reason required, prior baseline retained, audit-logged) as the only way to re-base — matching GHG Protocol / SBTi base-year recalculation policy. | Confirmed (10 Sep 2026) |
 
 ---
@@ -749,7 +749,7 @@ which owns sites on the client with geocode, registered-office and effective-dat
 so scope-row site FKs are untouched. Revisit if mid-period site closure becomes reporting-relevant.
 *Source: Francis, 9 Sep 2026 — reviewing client add/edit against the live system.*
 
-### NZC-065 — The baseline is a dated record, not fields on the client [Proposed 10 Sep 2026]
+### NZC-065 — The baseline is a dated record, not fields on the client [Confirmed 10 Sep 2026]
 NZC-064's Targets tab carries baseline period + historical S1/S2/S3 + total as **mutable fields on
 `clients`** (migration `0060`). That is the live platform's model — `clients.benchmark_*`, overwritten in
 place — with the split across four storage locations removed but the overwrite retained. `clients.version`
@@ -773,7 +773,7 @@ single atomic `client.update`.
 *Source: Francis, 10 Sep 2026 — re-baselining raised while fixing J000699 (Silent Sounds). See
 `MODEL_FIDELITY_BASELINE.md` §2, and `RE_BASELINING_DESIGN.md` in `nzi_pro_v7-POSTGRES`.*
 
-### NZC-066 — Issued reports stamp the baseline they were issued against [Proposed 10 Sep 2026]
+### NZC-066 — Issued reports stamp the baseline they were issued against [Confirmed 10 Sep 2026]
 A dated record resolved at render time is **not** reproducibility — it is a better thing to resolve against.
 Correct a mis-entered `client_baselines` row in 2027 and every historical report that resolves through it
 moves again.
@@ -789,7 +789,7 @@ both needed. This also gives the audit trail a base-year recalculation policy re
 was, when it changed, why, and what each issued report was measured against.
 *Source: as NZC-065. See `MODEL_FIDELITY_BASELINE.md` §4.*
 
-### NZC-067 — One baseline resolver; never look earlier than the baseline in force [Proposed 10 Sep 2026]
+### NZC-067 — One baseline resolver; never look earlier than the baseline in force [Confirmed 10 Sep 2026]
 The live platform has **eleven** independent implementations of "what is the baseline" — eight derivations of
 which *year*, four of them the same rule written out separately, plus three in the pathway charts; and four
 separate resolutions of which *job or figures*, two of which handle archived jobs differently. Two pathway
