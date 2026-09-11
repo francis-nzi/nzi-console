@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform" | "financials" | "documentHistory";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -34,8 +34,6 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   portal: { key: "portal", validate: record, isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   platform: { key: "platform", validate: (value) => rows(value, "services") && rows(value, "events") && rows(value, "roles"), isEmpty: (value) => record(value) && (value.services as unknown[]).length === 0 },
-  financials: { key: "financials", validate: (value) => rows(value, "quotes") && rows(value, "invoices") && rows(value, "creditNotes") && record(value) && "xeroStatus" in value, isEmpty: () => false },
-  documentHistory: { key: "documentHistory", validate: (value) => record(value) && record(value.document) && rows(value, "events"), isEmpty: () => false },
 };
 
 export function contractFor<T>(key: ScreenKey): ScreenContract<T> { return screenContracts[key] as ScreenContract<T>; }
