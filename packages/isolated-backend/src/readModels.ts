@@ -20,9 +20,6 @@ export type ClientScreenReadModel = {
   profile: ClientProfileFields;
 };
 
-export type CommercialDocumentReadModel = { id: string; number: string; title: string; status: string; amount: number; currency: string; version: number; updatedAt: string; xero: { status: "synced" | "pending" | "failed" | "not_configured"; reference: string | null; lastSyncedAt: string | null } };
-export type FinancialsReadModel = { quotes: CommercialDocumentReadModel[]; invoices: CommercialDocumentReadModel[]; creditNotes: CommercialDocumentReadModel[]; xeroStatus: { state: "connected" | "degraded" | "not_configured"; label: string } };
-export type DocumentHistoryReadModel = { document: CommercialDocumentReadModel; events: Array<{ id: string; at: string; label: string; detail: string; actor: string; tone: "neutral" | "success" | "warning" }> };
 export type ClientEmissionsEvidenceReadModel = { latest: FigureEvidence; scopes: Array<FigureEvidence & { scope: "1" | "2" | "3" }>; intensity: FigureEvidence };
 
 export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadModel, intensity: { value: number; unit: string } | null = null): ClientEmissionsEvidenceReadModel {
@@ -38,31 +35,6 @@ export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadMod
   const lineage = [{ title: "Reviewed snapshot", detail: `${snapshot.jobNumber} · version ${snapshot.version} · ${snapshot.createdBy}` }, { title: "Calculation", detail: `${snapshot.measurements.length} independently reviewed measurement rows aggregated by scope` }];
   const makeFigure = (value: number, unit: string, scope: "1" | "2" | "3" | null): FigureEvidence => ({ value, unit, qualityTier: scope === null ? quality(new Set(snapshot.measurements.map((measurement) => measurement.qualityTier))) : quality(tiers[Number(scope) - 1]!), provenance: signature, lineage });
   return { latest: makeFigure(byScope.reduce((sum, value) => sum + value, 0), "tCO2e", null), scopes: byScope.map((value, index) => ({ scope: (["1", "2", "3"] as const)[index]!, ...makeFigure(value, "tCO2e", (["1", "2", "3"] as const)[index]!) })), intensity: makeFigure(intensity?.value ?? 0, intensity?.unit ?? "tCO2e / reporting metric", null) };
-}
-
-type CommercialDocumentRow = Omit<CommercialDocumentReadModel, "xero"> & { xeroStatus: CommercialDocumentReadModel["xero"]["status"]; xeroReference: string | null; xeroLastSyncedAt: string | null };
-
-export async function getClientFinancials(db: Queryable, clientId: string): Promise<FinancialsReadModel> {
-  const [quotes, invoices, creditNotes] = await Promise.all([
-    db.query<CommercialDocumentRow>(`SELECT q.quote_id AS id, 'Q' || lpad(q.quote_id, 6, '0') AS number, v.title, q.status, v.total AS amount, v.currency, q.current_version AS version, q.updated_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.quotes q JOIN nzi_console.quote_versions v ON (v.organisation_id,v.quote_id,v.version)=(q.organisation_id,q.quote_id,q.current_version) LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(q.organisation_id,'quote',q.quote_id) WHERE q.client_id=$1 AND q.active ORDER BY q.updated_at DESC`, [clientId]),
-    db.query<CommercialDocumentRow>(`SELECT invoice_id AS id, invoice_number AS number, invoice_number AS title, status, balance AS amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.invoices i LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(i.organisation_id,'invoice',i.invoice_id) WHERE i.client_id=$1 AND i.active ORDER BY i.created_at DESC`, [clientId]),
-    db.query<CommercialDocumentRow>(`SELECT credit_note_id AS id, credit_note_number AS number, credit_note_number AS title, status, amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.credit_notes c LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(c.organisation_id,'credit_note',c.credit_note_id) WHERE c.client_id=$1 AND c.active ORDER BY c.created_at DESC`, [clientId]),
-  ]);
-  const map = ({ xeroStatus, xeroReference, xeroLastSyncedAt, ...row }: CommercialDocumentRow): CommercialDocumentReadModel => ({ ...row, amount: Number(row.amount), updatedAt: String(row.updatedAt), xero: { status: xeroStatus, reference: xeroReference, lastSyncedAt: xeroLastSyncedAt } });
-  return { quotes: quotes.rows.map(map), invoices: invoices.rows.map(map), creditNotes: creditNotes.rows.map(map), xeroStatus: { state: "connected", label: "Xero connected" } };
-}
-
-export async function getCommercialDocumentHistory(db: Queryable, documentType: "quote" | "invoice" | "credit_note", documentId: string): Promise<DocumentHistoryReadModel | null> {
-  const source = documentType === "quote" ? "quotes" : documentType === "invoice" ? "invoices" : "credit_notes";
-  const idColumn = documentType === "quote" ? "quote_id" : documentType === "invoice" ? "invoice_id" : "credit_note_id";
-  const numberExpr = documentType === "quote" ? "d.quote_id" : documentType === "invoice" ? "d.invoice_number" : "d.credit_note_number";
-  const titleExpr = documentType === "quote" ? "v.title" : numberExpr;
-  const amountExpr = documentType === "quote" ? "v.total" : documentType === "invoice" ? "d.balance" : "d.amount";
-  const result = await db.query<{ id: string; number: string; title: string; status: string; amount: number; currency: string; version: number; updated_at: string; xero_status: "synced" | "pending" | "failed" | "not_configured"; external_ref: string | null; last_synced_at: string | null }>(`SELECT d.${idColumn} AS id, ${numberExpr} AS number, ${titleExpr} AS title, d.status, ${amountExpr} AS amount, d.currency, d.${documentType === "quote" ? "current_version" : "version"} AS version, d.${documentType === "quote" ? "updated_at" : "created_at"} AS updated_at, coalesce(x.sync_status,'not_configured') AS xero_status, x.external_ref, x.last_synced_at FROM nzi_console.${source} d LEFT JOIN nzi_console.quote_versions v ON ${documentType === "quote" ? "(v.organisation_id,v.quote_id,v.version)=(d.organisation_id,d.quote_id,d.current_version)" : "false"} LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(d.organisation_id,$1,d.${idColumn}) WHERE d.${idColumn}=$2 AND d.active`, [documentType, documentId]);
-  const row = result.rows[0];
-  if (!row) return null;
-  const events = await db.query<{ event_id: string; occurred_at: string; event_type: string; detail_json: Record<string, unknown>; actor_id: string }>(`SELECT event_id,occurred_at,event_type,detail_json,actor_id FROM nzi_console.commercial_document_events WHERE document_type=$1 AND document_id=$2 ORDER BY occurred_at DESC,event_id DESC`, [documentType, documentId]);
-  return { document: { id: row.id, number: row.number, title: row.title, status: row.status, amount: Number(row.amount), currency: row.currency, version: row.version, updatedAt: String(row.updated_at), xero: { status: row.xero_status, reference: row.external_ref, lastSyncedAt: row.last_synced_at } }, events: events.rows.map((item) => ({ id: item.event_id, at: String(item.occurred_at), label: item.event_type, detail: JSON.stringify(item.detail_json), actor: item.actor_id, tone: item.event_type.includes("paid") || item.event_type.includes("accepted") ? "success" : "neutral" })) };
 }
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";

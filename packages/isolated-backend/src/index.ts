@@ -32,8 +32,6 @@ export * from "./portalDeliverables";
 export * from "./vehicleLookup";
 export * from "./siteLifecycle";
 export * from "./siteBoundary";
-export * from "./commercial";
-export * from "./xeroSync";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };
