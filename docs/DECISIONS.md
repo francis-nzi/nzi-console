@@ -88,7 +88,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-066 | Issued reports stamp the baseline they were issued against (`baseline_id` + the figures used + `resolved_at`); a draft still resolves live. The dated record is the policy, the stamp is the reproducibility. | Confirmed (10 Sep 2026) |
 | NZC-067 | One `resolveBaseline()`; the rule "never look earlier than the baseline in force" lives in it and nowhere else. Replaces the live platform's eleven independent implementations. | Confirmed (10 Sep 2026) |
 | NZC-068 | Targets **pin** to the baseline record they were set against, with a governed **recalculate baseline** event (reason required, prior baseline retained, audit-logged) as the only way to re-base — matching GHG Protocol / SBTi base-year recalculation policy. | Confirmed (10 Sep 2026) |
-| NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only. Implementation split to its own branch (`feat/commercial-ledger`), not merged. | Open — awaiting Francis |
+| NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only. Implementation parked on its own branch (`feat/commercial-ledger`, PR #140), not for merge. | **Held** — revisit in a dedicated quotes/invoices exercise |
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 | NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
@@ -868,14 +868,18 @@ Unblocks the Targets tab in `0060`. **Implementation depends on NZC-065** — ta
 open question 1 in `RE_BASELINING_DESIGN.md` on the live platform: answer once, apply to both.
 *Source: Francis, 10 Sep 2026.*
 
-### NZC-069 — Commercial ledger as source of record; Xero as projection [Open — awaiting Francis]
+### NZC-069 — Commercial ledger as source of record; Xero as projection [Held 11 Sep 2026]
+**Held — to be revisited in a dedicated quotes/invoices exercise. Not confirmed, and not for merge.**
+
 Proposed: the console's quotes / invoices / credit notes are the source of record and Xero is a downstream
-projection and payment-reconciliation source only. **Not confirmed.** An implementation (migration `0061`,
+projection and payment-reconciliation source only. An implementation (migration `0061`, since renumbered `0065`,
 `commercial.ts`, `xeroSync.ts`, the client Financials panel) landed on `main` in 10707af alongside the
 site and provenance work without sign-off, and reported a hard-coded "Xero connected" status. It has been
 split out to its own branch (`feat/commercial-ledger`) for separate review; Xero status there is derived
-from the real integration state and reads "Not connected" when there is none. It does not merge to `main` until this decision is confirmed and the feature review passes.
-*Source: Francis, 11 Sep 2026 — corrective pass on 10707af.*
+from the real integration state and reads "Not connected" when there is none. It is parked as PR #140 and
+does not merge to `main` until the quotes/invoices exercise confirms this decision and the feature has its own
+review (it is where the earlier build break and failing migration test came from).
+*Source: Francis, 11 Sep 2026 — corrective pass on 10707af; held the same day.*
 
 ### NZC-070 — Sites are effective-dated; the boundary follows the reporting period [Confirmed 11 Sep 2026]
 A site has an optional **in-service-from** date and an optional **vacated-effective** date, and is never
