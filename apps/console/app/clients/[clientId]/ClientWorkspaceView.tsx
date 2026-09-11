@@ -4,13 +4,14 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { AppShell, EvidenceDrawer, TabPanel, Tabs, TopBar, WorkspaceRail } from "@nzi/ui";
 import { CRP_RESOLVER_VERSION, EmissionsScopeDonut, RENDERER_VERSION, TOKENS_VERSION } from "@nzi/charts";
-import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
+import { siteLifecycleStatus, type FigureEvidence, type ScreenResult } from "@nzi/contracts";
 import { clientStatusMeta, jobFamilyMeta } from "@nzi/mock-data";
-import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
+import type { ClientWorkspaceReadModel, FinancialsReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { NAV, USER } from "../../lib/nav";
 import { formatDate } from "../../lib/formatDate";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { ClientFactorsManager } from "../ClientFactorsManager";
+import { ClientFinancials } from "./ClientFinancials";
 import { ClientSites } from "./ClientSites";
 import { EvidenceButton, FigureEvidenceBody, FigureStatus, TierBadge, formatFigure, fyLabel, tonnes } from "./FigureEvidence";
 
@@ -18,8 +19,8 @@ type EvidenceKey = "latest" | "yoy" | "scopes" | "intensity";
 const EVIDENCE_TITLE: Record<EvidenceKey, string> = { latest: "Latest emissions", yoy: "Year on year", scopes: "Scope split", intensity: "Intensity detail" };
 const TABS = [{ id: "overview", label: "Overview" }, { id: "carbon", label: "Carbon analytics" }] as const;
 
-export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled }: {
-  workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean;
+export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled, financials }: {
+  workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean; financials: ScreenResult<FinancialsReadModel>;
 }) {
   const { client, sites, evidence, reportingPeriods } = workspace;
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("overview");
@@ -76,6 +77,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           <section className="nz-panel"><CardHead eyebrow="Delivery" title="Active jobs & milestone progress" right={<Link className="nz-editlink" href={`/jobs?client=${client.id}`}>New job →</Link>} />{jobs.length === 0 ? <Empty text="No engagements have been created for this client." /> : <table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Stage</th><th>Progress</th><th>Owner</th><th>Due</th></tr></thead><tbody>{jobs.map((job) => <tr key={job.header.id}><td><Link href={`/jobs/${job.header.id}`} className="nz-table-link">{job.header.number}</Link><div className="muted">{job.header.title}</div></td><td><span className="nz-st need">{jobFamilyMeta[job.header.family].code}</span></td><td>{job.header.workflowStage}</td><td><Progress value={job.header.progressPct} /></td><td>{job.header.owner}</td><td className="num">{formatDate(job.header.dueDate)}</td></tr>)}</tbody></table>}</section>
           <section className="nz-panel"><CardHead eyebrow="Assurance" title="Reporting and assurance" /><div className="nz-client-signals"><Signal label="CRP engagements" value={String(crp.length)} tone="ok" /><Signal label="Rows awaiting review" value={String(reviewGaps)} tone={reviewGaps ? "warn" : "ok"} /></div></section>
           <section className="nz-panel"><CardHead eyebrow="Relationship" title="Activity" />{activity.length === 0 ? <Empty text="No workflow changes have been recorded for this client." /> : <div style={{ padding: "6px 16px 12px" }}>{activity.map((event) => <div className="nz-kv" key={event.id}><span className="k"><Link href={`/jobs/${event.jobId}`}>{event.jobNumber}</Link> · {event.fromStage} → {event.toStage}</span><span className="v">{formatDate(event.occurredAt)}</span></div>)}</div>}</section>
+          <ClientFinancials result={financials} />
           {factorsEnabled ? <ClientFactorsManager clientId={client.id} /> : null}
         </TabPanel>
         <TabPanel id="carbon" idBase="client-workspace" active={tab === "carbon"} className="nz-client-panel">

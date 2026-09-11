@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform" | "clientWorkspace";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform" | "clientWorkspace" | "financials" | "documentHistory";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -36,6 +36,8 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.
   clientWorkspace: { key: "clientWorkspace", validate: (value) => record(value) && rows(value, "sites") && rows(value, "reportingPeriods") && (value.client === null || (record(value.client) && record(value.evidence))), isEmpty: (value) => record(value) && value.client === null },
   platform: { key: "platform", validate: (value) => rows(value, "services") && rows(value, "events") && rows(value, "roles"), isEmpty: (value) => record(value) && (value.services as unknown[]).length === 0 },
+  financials: { key: "financials", validate: (value) => rows(value, "quotes") && rows(value, "invoices") && rows(value, "creditNotes") && record(value) && "xeroStatus" in value, isEmpty: () => false },
+  documentHistory: { key: "documentHistory", validate: (value) => record(value) && record(value.document) && rows(value, "events"), isEmpty: () => false },
 };
 
 export function contractFor<T>(key: ScreenKey): ScreenContract<T> { return screenContracts[key] as ScreenContract<T>; }
