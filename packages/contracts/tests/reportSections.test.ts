@@ -6,6 +6,7 @@ import {
   isCrpReportSectionKey,
   resolveReportSections,
   validateCommand,
+  commandGrantForRole,
 } from "../src/index";
 
 const context = {
@@ -14,6 +15,7 @@ const context = {
   principal: "staff" as const,
   idempotencyKey: "k",
   correlationId: "c",
+  grant: commandGrantForRole("admin", "org-a", "staff-a"),
 };
 
 describe("CRP report section catalogue (NZC-048)", () => {

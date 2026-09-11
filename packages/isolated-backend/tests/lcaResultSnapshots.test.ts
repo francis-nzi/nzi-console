@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, createLcaResultSnapshot, listLcaResultSnapshots, VersionConflictError, withTenantRead } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 function snapshotPool(opts: { found?: boolean; version?: number; reviewStatus?: "pending" | "approved" | "rejected"; existingHash?: string | null } = {}) {
   const { found = true, version = 4, reviewStatus = "approved", existingHash = null } = opts;
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("SELECT a.version,a.review_status FROM nzi_console.lca_assessments a JOIN")) return { rows: found ? [{ version, review_status: reviewStatus }] : [] };

@@ -1,3 +1,4 @@
+import { commandGrantForRole } from "@nzi/contracts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -6,7 +7,7 @@ import {
   updateLcaScenario, withTenantRead,
 } from "../src/index";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 describe("scenarioMultiplierFor (Track C / L5, §9)", () => {
   const rules = [
@@ -32,7 +33,7 @@ function scenarioPool(opts: { assessmentFound?: boolean; scenarioFound?: boolean
   const { assessmentFound = true, scenarioFound = true, existingMultiplier = false } = opts;
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_assessments a JOIN")) return { rows: assessmentFound ? [{ ok: 1 }] : [] };
@@ -91,7 +92,7 @@ describe("scenario multiplier rules (Track C / L5)", () => {
 describe("computeLcaScenarioResult (Track C / L5 — applies multipliers then re-summarises)", () => {
   function comparePool() {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type")) return { rows: [{ functional_unit_value: "1", confirmed_quantity: null, assessment_type: "product" }] };
         if (sql.includes("SELECT line_item_id,module_code,line_label,quantity::text,unit,factor_source,dataset_id,factor_id,client_factor_id,factor_value::text,factor_unit,is_placeholder,material_category_id,component_id")) {
           return { rows: [

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { approveLcaAssessment, CommandValidationError, rejectLcaAssessment, VersionConflictError } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 function assessmentPool(opts: { found?: boolean; version?: number } = {}) {
   const { found = true, version = 3 } = opts;
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_assessments a JOIN")) return { rows: found ? [{ version }] : [] };

@@ -8,7 +8,7 @@ import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 export const dynamic = "force-dynamic";
 
 // NZC-070 / NZC-071 — site lifecycle commands, one per action. Each is permission-
-// checked (emissions.data.edit), atomic, idempotent and audited by the command runner.
+// checked (site.manage), atomic, idempotent and audited by the command runner.
 type SiteCommand<K extends CommandKey> = { key: K; run: (pool: PoolLike, input: CommandInputMap[K], context: CommandContext) => Promise<unknown> };
 const actions = {
   edit: { key: "site.edit", run: editSite } as SiteCommand<"site.edit">,

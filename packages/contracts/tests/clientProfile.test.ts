@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clientReportingFrameworks, emissionCategoryTaxonomy, scope3CategoryCodes, validateCommand, type ClientProfileFields, type CommandContext, type CommandInputMap } from "../src/index";
+import { clientReportingFrameworks, emissionCategoryTaxonomy, scope3CategoryCodes, validateCommand, type ClientProfileFields, type CommandContext, type CommandInputMap, commandGrantForRole } from "../src/index";
 
-const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1" };
+const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1", grant: commandGrantForRole("admin", "org-nzi", "user-1") };
 const identity = { name: "8 Doors Distillery", status: "active", sector: "Food and Drink", location: "Wick, UK", owner: "D. Hawes" } as const;
 const create = (profile: ClientProfileFields = {}): CommandInputMap["client.create"] => ({ ...identity, ...profile });
 const fields = (input: ClientProfileFields) => validateCommand("client.create", create(input), context).map((issue) => issue.field);

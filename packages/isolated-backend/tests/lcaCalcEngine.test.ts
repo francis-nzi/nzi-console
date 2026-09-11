@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { calculateLcaAssessment, computeLcaAssessmentResult, VersionConflictError, withTenantRead } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 // A minimal but representative assessment: a mapped dataset-factor product
 // line (A1, kg), a manual-factor product line (A1), an unmapped line (A1), a
@@ -35,7 +36,7 @@ function calcPool(opts: { expectedVersion?: number; functionalUnitValue?: number
   const legState = new Map(LEGS.map((leg) => [leg.leg_id, { ...leg, calculated_kgco2e: null as string | null }]));
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.startsWith("SELECT version FROM nzi_console.lca_assessments a JOIN")) return { rows: [{ version: expectedVersion }] };

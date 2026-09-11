@@ -13,6 +13,9 @@ const effectiveDatedSitesMigration = readFileSync(resolve(here,"../migrations/00
 const siteBoundaryCorrectionsMigration = readFileSync(resolve(here, "../migrations/0063_site_boundary_corrections.sql"), "utf8");
 const siteFloorAreaMigration = readFileSync(resolve(here, "../migrations/0064_site_floor_area.sql"), "utf8");
 const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sql"), "utf8");
+const permissionMatrixMigration = readFileSync(resolve(here, "../migrations/0066_permission_matrix.sql"), "utf8");
+const clientContactsMigration = readFileSync(resolve(here, "../migrations/0067_client_contacts.sql"), "utf8");
+const clientLogoMigration = readFileSync(resolve(here, "../migrations/0068_client_logo.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
 const scopeEvidence = readFileSync(resolve(here, "../migrations/0008_scope_row_evidence_metadata.sql"), "utf8");
@@ -73,6 +76,50 @@ describe("isolated Postgres migrations", () => {
   it("allows the pooler principal to assume the RLS-bound runtime roles", () => { assert.match(membership, /GRANT nzi_console_app, nzi_console_worker TO CURRENT_USER/); });
   it("adds constrained screen fields through a migration rather than request-time DDL", () => { assert.match(screenFields, /completeness_percent integer CHECK/); assert.match(screenFields, /progress_percent integer CHECK/); assert.match(screenFields, /detail_json jsonb/); });
   it("constrains memberships to the agreed staff roles", () => { for (const role of ["administrator", "consultant", "reviewer", "finance", "methodology-data-admin", "read-only"]) assert.ok(staffRoles.includes(`'${role}'`)); });
+  it("replaces the roles with the five matrix roles, mapping retired ones by least privilege, default Viewer (0066, NZC-022)", () => {
+    for (const clause of [
+      "DROP CONSTRAINT memberships_role_id_check",
+      "WHEN 'administrator' THEN 'admin'", "WHEN 'read-only' THEN 'viewer'", "WHEN 'methodology-data-admin' THEN 'viewer'",
+      "CHECK (role_id IN ('admin','consultant','reviewer','finance','viewer'))",
+      "ALTER COLUMN role_id SET DEFAULT 'viewer'",
+    ]) assert.ok(permissionMatrixMigration.includes(clause), clause);
+  });
+  it("holds the role→capability matrix as versioned, read-only, migration-owned config (0066)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.staff_capability_matrix_versions", "CREATE TABLE nzi_console.staff_role_capabilities",
+      "PRIMARY KEY (matrix_version, role_id, capability)", "scope IN ('all','own_clients')",
+      "GRANT SELECT ON nzi_console.staff_capability_matrix_versions, nzi_console.staff_role_capabilities TO nzi_console_auth, nzi_console_app",
+      "REVOKE INSERT, UPDATE, DELETE ON nzi_console.staff_capability_matrix_versions, nzi_console.staff_role_capabilities",
+    ]) assert.ok(permissionMatrixMigration.includes(clause), clause);
+  });
+  it("records client ownership, independent snapshot approval and governed baseline changes (0066)", () => {
+    for (const clause of [
+      "ADD COLUMN owner_user_id text", "REFERENCES nzi_console.memberships (organisation_id, user_id)",
+      "CHECK (approved_by IS NULL OR approved_by <> created_by)", "GRANT UPDATE (approved_by, approved_at, approval_note) ON nzi_console.reviewed_crp_snapshots",
+      "CREATE TABLE nzi_console.baseline_change_events", "reason text NOT NULL CHECK (reason = trim(reason) AND reason <> '')",
+      "ALTER TABLE nzi_console.baseline_change_events FORCE ROW LEVEL SECURITY",
+      "REVOKE UPDATE, DELETE ON nzi_console.baseline_change_events",
+      "ALTER TABLE nzi_console.audit_events ADD COLUMN client_id text",
+    ]) assert.ok(permissionMatrixMigration.includes(clause), clause);
+  });
+  it("adds versioned, deactivate-never-delete client contacts with roles and one primary (0067)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_contacts",
+      "roles <@ ARRAY['report_signee','portal_candidate','invoice_recipient','training_attendee']::text[]",
+      "CREATE UNIQUE INDEX client_contacts_one_primary", "WHERE is_primary AND status = 'active'",
+      "CREATE TABLE nzi_console.client_contact_versions",
+      "REVOKE DELETE ON nzi_console.%I FROM PUBLIC, nzi_console_app, nzi_console_worker, nzi_console_auth",
+      "ADD COLUMN signee_contact_id text",
+    ]) assert.ok(clientContactsMigration.includes(clause), clause);
+    assert.ok(!/GRANT[^;]*DELETE[^;]*client_contact/.test(clientContactsMigration), "no delete grant");
+  });
+  it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_logo_assets", "content_type IN ('image/png','image/svg+xml')", "byte_size <= 262144",
+      "REVOKE UPDATE, DELETE ON nzi_console.client_logo_assets", "ADD COLUMN logo_asset_id text",
+      "ALTER TABLE nzi_console.report_versions ADD COLUMN client_logo_asset_id text",
+    ]) assert.ok(clientLogoMigration.includes(clause), clause);
+  });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });
   it("adds mandatory evidence metadata to the canonical scope-row model", () => { for (const field of ["quality_tier", "provenance_json", "lineage_json", "factor_version", "enabled", "updated_at"]) assert.ok(scopeEvidence.includes(field)); assert.match(scopeEvidence, /quality_tier IN \('measured','estimated','spend-based','survey'\)/); });

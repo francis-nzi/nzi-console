@@ -22,6 +22,14 @@ list (Registered / Vacated / Planned tags, in-service line, floor area, per-row 
 and the site drawer (registered office, in-service date + In service / Vacated, vacated effective
 date, floor area, governance note).
 
+Built (new in v9 — go-live hardening): the **Contacts** card with *Primary* and role badges (Signee /
+Portal / Billing / Training) and the contact drawer (full name, job title, email, phone, the five role
+checkboxes, *Remove* = deactivate, *Save contact*); the header **logo badge** (✎) opening the **Identity &
+profile** drawer — logo upload / remove with the monogram fallback, name, status, industry, SIC,
+reporting frequency, currency and the **Financial year end** month select with v9's hint; and the
+*Identity & profile* card. Report signees, portal candidates and the logo also reach the release
+control, the portal invite picker, the portal header and the published report.
+
 Deliberate differences: the evidence drawer uses the app shell's drawer slot rather than an overlay;
 dates are dd/mm/yyyy (NZC-040) not "Apr 2019"; a site can be *in service from before records*
 (NZC-070 NULL start); floor area is an effective-dated history (NZC-071), not one value.

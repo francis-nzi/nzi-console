@@ -41,7 +41,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-019 | LCA/PCF is a distinct family with its own inner model | Proposed |
 | NZC-020 | Isolated-backend data strategy (synthetic by default; vetted anonymised subset for restricted testing) | Confirmed (24 Aug 2026) |
 | NZC-021 | Reporting engine: rebuild natively in the isolated platform | Confirmed (24 Aug 2026) |
-| NZC-022 | Explicit role-based permission / SoD matrix, refined by workspace | Confirmed (24 Aug 2026) |
+| NZC-022 | Explicit role-based permission / SoD matrix — the matrix is [`PERMISSION_MATRIX.md`](PERMISSION_MATRIX.md) | Resolved (11 Sep 2026) |
 | NZC-023 | Xero/Stripe sandbox-only during redesign | Proposed |
 | NZC-024 | Separate job-family modules over a shared spine | Confirmed (1 Sep 2026) |
 | NZC-025 | Single shared job-numbering service · official `J000612` format · gapless | Confirmed (24 Aug 2026) |
@@ -262,7 +262,32 @@ downloads.
 
 *Confirmed by Francis, 24 Aug 2026. Unblocks: Reports workspace and the isolated reporting architecture.*
 
-### NZC-022 — Explicit permission / SoD matrix [Confirmed 24 Aug 2026]
+### NZC-022 — Explicit permission / SoD matrix [Resolved 11 Sep 2026 — see PERMISSION_MATRIX.md]
+**Resolved.** The matrix is [`PERMISSION_MATRIX.md`](PERMISSION_MATRIX.md): five staff roles — **Admin,
+Consultant, Reviewer, Finance, Viewer** (default Viewer) — and an exhaustive list of capability names. It
+supersedes the six-role list below (Administrator → Admin; Read-only and Methodology/Data administrator →
+Viewer, least privilege; dataset/factor management is Admin-only in the matrix). How it is enforced:
+
+- **One enum.** The capability names live in `@nzi/contracts` (`capabilities`), and every command names
+  one of them — typed, so an ad-hoc string cannot compile. The legacy strings (`emissions.data.edit`,
+  `reports.publish`, `financials.edit`…) are gone; a test fails if one reappears.
+- **Migration-owned, versioned config.** Role → capability rows are `staff_role_capabilities` (migration
+  0066, matrix version 1); a principal resolves its capabilities from the current version at sign-in. The
+  code copy (`ROLE_CAPABILITY_MATRIX`) is held equal to the migration rows by a test.
+- **Authoritative in the command layer.** The command runner refuses a command unless the principal's grant
+  holds its capability, the record is in the caller's tenant (`assert_client_access` /
+  `assert_job_access`), and an *own clients* grant is used on a client the caller owns
+  (`clients.owner_user_id`). The UI reads the same set (`/api/auth/me`) to gate controls.
+- **Separation of duties.** A reviewed snapshot is prepared by one person and approved (`snapshot.review`)
+  by another; a report is validated and published (`report.publish`) only from an approved snapshot and
+  never by its preparer. A scope row cannot be approved by whoever captured *or* calculated it.
+- **Governed re-baseline.** Changing an existing baseline (the client's, or a job target's) needs
+  `baseline.rebaseline` (Consultant: own clients), always a reason, and writes a `baseline_change_events`
+  row plus its own audit event, whatever the role.
+
+*The original confirmation (24 Aug 2026), kept for the record:*
+
+
 Adopt explicit roles for **Administrator, Consultant, Reviewer, Finance, Methodology/Data administrator,
 and Read-only** staff. **Portal user** remains a separate principal type with access limited to its own
 client, granted jobs and permitted data-entry buckets/windows.
@@ -898,7 +923,7 @@ never a partial sum and never zero. The typed `reportingDenominator` is deprecat
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
 for restricted migration/compatibility testing. NZC-021 resolved 24 Aug 2026: rebuild reporting natively
 in the isolated platform. NZC-022 resolved 24 Aug 2026: explicit roles and named permissions, with the
-detailed matrix refined per workspace. NZC-025 resolved 24 Aug 2026: official zero-padded `J` numbers over
+detailed matrix refined per workspace — and the matrix itself resolved 11 Sep 2026 as PERMISSION_MATRIX.md. NZC-025 resolved 24 Aug 2026: official zero-padded `J` numbers over
 one shared counter, with family stored separately; guaranteed gapless via assign-on-commit. NZC-026–029
 confirmed 24 Aug 2026: one derived, provenance-bearing SVG chart system across console, PDF and portal,
 with content identity and manifest validation as a hard publication gate. NZC-032–035 confirmed 28 Aug 2026: reporting-period-aligned monthly granularity with copy-to-all; scope-row hierarchy + report label; override-with-reason in the write path; and one shared data-entry framework across the portal and CRP. NZC-018 (spend categorisation) and the NZC-030 rollforward re-pin were confirmed the same day. NZC-036–037 confirmed 28 Aug 2026: a single bulk-upload standard (hardened Excel + in-browser paste grid + remembered CSV mapper) over one canonical download identity, and Company Vehicles replacing the Asset Register. NZC-038 confirmed 28 Aug 2026: a single stage-as-section workspace design language — named, numbered, colour-matched, collapsible sections with completed ones sinking to the bottom — applied site-wide including the client portal.)*

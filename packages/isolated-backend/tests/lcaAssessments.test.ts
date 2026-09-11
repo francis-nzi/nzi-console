@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, createLcaAssessment, listLcaAssessments, updateLcaAssessment, VersionConflictError, withTenantRead } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 const input = {
   jobId: "job-lca-1", assessmentType: "product" as const, name: "6L variant", sku: "SKU-6L",
@@ -13,7 +14,7 @@ const input = {
 function assessmentPool(opts: { jobFamily?: string | null; existingVersion?: number } = {}) {
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("SELECT job_family FROM")) return { rows: opts.jobFamily === undefined ? [{ job_family: "lca" }] : opts.jobFamily === null ? [] : [{ job_family: opts.jobFamily }] };
@@ -83,7 +84,7 @@ describe("updateLcaAssessment (Track C / NZC-055)", () => {
 describe("listLcaAssessments (Track C)", () => {
   it("maps a row, deriving isPcf from standard + boundary, attaches each assessment's own lines (never another's), scenarios stay empty (no command creates any yet)", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
         if (sql.includes("FROM nzi_console.lca_assessments a")) {
           return { rows: [

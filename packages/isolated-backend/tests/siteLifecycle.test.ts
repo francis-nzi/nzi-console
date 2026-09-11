@@ -1,6 +1,8 @@
+import { roleCapabilityGrants, type StaffRole } from "@nzi/contracts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AuthorizationError, CommandValidationError, VersionConflictError, authorizeCommand, createClientSite, editSite, reinstateSite, recordSiteFloorArea, rolePermissions, setRegisteredOffice, vacateSite } from "../src/index";
+import { AuthorizationError, CommandValidationError, VersionConflictError, authorizeCommand, createClientSite, editSite, reinstateSite, recordSiteFloorArea, setRegisteredOffice, vacateSite } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
 // NZC-070 / NZC-071 — the site lifecycle commands against an in-memory fake of the
 // client_sites rows they read and write. pg returns DATE columns as JS Dates, so the
@@ -14,7 +16,7 @@ function sitePool(initial: Array<Partial<Site> & { site_id: string }> = []) {
   const audits: string[] = [];
   const stored = new Map<string, { request_hash: string; outcome_json: Record<string, unknown> }>();
   const client = {
-    async query(sql: string, values: readonly unknown[] = []) {
+    async query(sql: string, values: readonly unknown[] = []) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (sql.includes("FROM nzi_console.command_idempotency")) { const hit = stored.get(String(values[1])); return { rows: hit ? [hit] : [] }; }
       if (sql.includes("INSERT INTO nzi_console.command_idempotency")) { stored.set(String(values[1]), { request_hash: String(values[3]), outcome_json: JSON.parse(String(values[4])) }); return { rows: [] }; }
       if (sql.includes("INSERT INTO nzi_console.audit_events")) { audits.push(String(values[4])); return { rows: [] }; }
@@ -50,7 +52,7 @@ function sitePool(initial: Array<Partial<Site> & { site_id: string }> = []) {
 }
 
 let key = 0;
-const context = () => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: `site-${++key}`, correlationId: `corr-${key}` });
+const context = () => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: `site-${++key}`, correlationId: `corr-${key}` });
 const rejectsWith = (promise: Promise<unknown>, code: string) => assert.rejects(promise, (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === code));
 
 describe("createClientSite — the one site.create (NZC-070)", () => {
@@ -142,11 +144,11 @@ describe("site lifecycle commands (NZC-070)", () => {
     await assert.rejects(editSite(state.pool, { siteId: "hq", name: "HQ", inServiceFrom: null, expectedVersion: 2 }, context()), VersionConflictError);
   });
 
-  it("gates every site mutation on emissions.data.edit", () => {
-    const principal = (role: keyof typeof rolePermissions) => ({ sessionId: "s", userId: "u", organisationId: "org-a", issuedAt: 0, expiresAt: 0, role, permissions: rolePermissions[role] });
+  it("gates every site mutation on site.manage (NZC-022)", () => {
+    const principal = (role: StaffRole) => ({ sessionId: "s", userId: "u", organisationId: "org-a", issuedAt: 0, expiresAt: 0, role, matrixVersion: 1, capabilities: roleCapabilityGrants(role) });
     for (const key of ["site.create", "site.edit", "site.registeredOffice", "site.vacate", "site.reinstate", "site.floorArea.record"] as const) {
       assert.doesNotThrow(() => authorizeCommand(principal("consultant"), key), key);
-      assert.throws(() => authorizeCommand(principal("read-only"), key), AuthorizationError, key);
+      assert.throws(() => authorizeCommand(principal("viewer"), key), AuthorizationError, key);
       assert.throws(() => authorizeCommand(principal("reviewer"), key), AuthorizationError, key);
     }
   });

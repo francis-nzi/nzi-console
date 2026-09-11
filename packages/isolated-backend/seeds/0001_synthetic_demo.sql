@@ -9,7 +9,7 @@ VALUES ('demo-nzi-console', 'NZI Console Synthetic Demonstrator')
 ON CONFLICT (organisation_id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO memberships (organisation_id, user_id, role_id, status)
-VALUES ('demo-nzi-console', 'demo-admin', 'administrator', 'active')
+VALUES ('demo-nzi-console', 'demo-admin', 'admin', 'active')
 ON CONFLICT (organisation_id, user_id) DO UPDATE
 SET role_id = EXCLUDED.role_id, status = EXCLUDED.status
 WHERE (memberships.role_id, memberships.status) IS DISTINCT FROM (EXCLUDED.role_id, EXCLUDED.status);

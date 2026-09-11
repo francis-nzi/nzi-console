@@ -109,8 +109,13 @@ function Legend({ title, about }: { title: string; about: React.ReactNode }) {
   return <legend>{title}<InfoTip label={title.toLowerCase()}>{about}</InfoTip></legend>;
 }
 
-export function DetailsGroup(props: GroupProps) {
-  const { form, onChange, errors } = props;
+/**
+ * `editing` — on an existing client the contacts (with their roles) and the logo are
+ * managed on the client record itself; the create form captures the first contact,
+ * which becomes the primary contact.
+ */
+export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?: string }) {
+  const { form, onChange, errors, editing, clientId } = props;
   return (
     <>
       <div className="nz-client-create-grid">
@@ -152,15 +157,7 @@ export function DetailsGroup(props: GroupProps) {
               {CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
             </select>
           )} />
-        <Text {...props} name="logoUrl" label="Logo URL" span={3} placeholder="https://…" hint="Used on reports and the client portal." />
       </div>
-      {form.logoUrl?.trim() ? (
-        <div className="nz-logo-preview">
-          <span className="nz-eyebrow">Logo preview</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={form.logoUrl} alt={`${form.name || "Client"} logo`} />
-        </div>
-      ) : null}
       <div style={{ marginTop: 15 }}>
         <Field label="Company description" name="companyDescription" errors={errors}
           control={(a11y, invalid) => (
@@ -168,11 +165,13 @@ export function DetailsGroup(props: GroupProps) {
               onChange={(event) => onChange({ companyDescription: event.target.value })} />
           )} />
       </div>
-      <div className="nz-client-create-grid" style={{ marginTop: 4 }}>
-        <Text {...props} name="contactName" label="Primary contact" />
-        <Text {...props} name="contactRole" label="Contact role" />
-        <Text {...props} name="contactEmail" label="Contact email" type="email" />
-      </div>
+      {editing
+        ? <p className="nz-hint" style={{ marginTop: 10 }}>Contacts — with their roles (report signee, portal candidate, invoice recipient, training attendee) — and the client logo are managed on {clientId ? <a href={`/clients/${encodeURIComponent(clientId)}`}>the client record</a> : "the client record"}.</p>
+        : <div className="nz-client-create-grid" style={{ marginTop: 4 }}>
+          <Text {...props} name="contactName" label="Primary contact" hint="Becomes the primary contact; add roles and more contacts on the client record." />
+          <Text {...props} name="contactRole" label="Contact role" />
+          <Text {...props} name="contactEmail" label="Contact email" type="email" />
+        </div>}
     </>
   );
 }

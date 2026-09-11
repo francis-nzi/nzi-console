@@ -1,4 +1,4 @@
-import {listAuditEvents,listStaffRoleGovernance,withTenantRead,type AuditEventReadModel,type StaffRoleReadModel} from "@nzi/isolated-backend";
+import {auditEventsFor,listStaffRoleGovernance,withTenantRead,type AuditEventReadModel,type StaffRoleReadModel} from "@nzi/isolated-backend";
 import type {ScreenResult} from "@nzi/contracts";
 import {headers} from "next/headers";
 import {isolatedPool} from "../lib/isolatedDatabase";
@@ -14,7 +14,7 @@ async function loadPlatformDirect():Promise<ScreenResult<PlatformPayload>>{
   const requestId=crypto.randomUUID(),receivedAt=new Date().toISOString(),meta={contract:"platform" as const,source:"api" as const,requestId,receivedAt};
   try{
     const incoming=await headers(),cookie=incoming.get("cookie")??"",base=process.env.NZI_ISOLATED_API_URL??"https://nzi-pro-api-prod.onrender.com",principal=await currentStaff(new Request(`${base.replace(/\/$/,"")}/platform`,{headers:{cookie}}));
-    const {roles,events}=await withTenantRead(isolatedPool(),principal.organisationId,async db=>({roles:await listStaffRoleGovernance(db),events:await listAuditEvents(db)})),checkedAt=new Date().toISOString(),services:PlatformPayload["services"]=[{id:"console",name:"Console web",area:"Application",state:"success",detail:"Authenticated application route is responding.",checkedAt},{id:"database",name:"Tenant database",area:"Data",state:"success",detail:"Tenant-scoped governance query completed under RLS.",checkedAt}];
+    const {roles,events}=await withTenantRead(isolatedPool(),principal.organisationId,async db=>({roles:await listStaffRoleGovernance(db),events:await auditEventsFor(db,principal)})),checkedAt=new Date().toISOString(),services:PlatformPayload["services"]=[{id:"console",name:"Console web",area:"Application",state:"success",detail:"Authenticated application route is responding.",checkedAt},{id:"database",name:"Tenant database",area:"Data",state:"success",detail:"Tenant-scoped governance query completed under RLS.",checkedAt}];
     return{state:"success",meta,data:{roles,services,events}};
   }catch{return{state:"failed",meta,error:{code:"PLATFORM_GOVERNANCE_FAILED",message:"The authenticated platform governance query could not be completed.",retryable:true,correlationId:requestId}}}
 }

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, createReviewedCrpSnapshot } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "reviewer-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "reviewer-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "reviewer-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 /**
  * A single-row CRP job that is fully QA-complete (calculation-approved,
@@ -37,7 +38,7 @@ function gatePool(opts: { mapped: boolean }) {
     monthly_activity_json: null,
   };
   const client = {
-    async query(sql: string, values: readonly unknown[] = []) {
+    async query(sql: string, values: readonly unknown[] = []) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.audit_events")) return { rows: [] };

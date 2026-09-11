@@ -1,10 +1,11 @@
+import { roleCapabilityGrants } from "@nzi/contracts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { assertSameOrigin, AuthenticationError, AuthorizationError, authorizeCommand, issuePortalSession,issueStaffSession, rolePermissions, verifyPortalSession,verifyStaffSession, type StaffPrincipal } from "../src/index";
+import { assertSameOrigin, AuthenticationError, AuthorizationError, authorizeCommand, issuePortalSession,issueStaffSession, verifyPortalSession,verifyStaffSession, type StaffPrincipal } from "../src/index";
 
 const secret = "a-dedicated-test-session-secret-that-is-long-enough";
 const session = { sessionId: "session-a", userId: "staff-a", organisationId: "org-a", issuedAt: 1_700_000_000, expiresAt: 1_700_003_600 };
-const principal = (role: StaffPrincipal["role"]): StaffPrincipal => ({ ...session, role, permissions: rolePermissions[role] });
+const principal = (role: StaffPrincipal["role"]): StaffPrincipal => ({ ...session, role, matrixVersion: 1, capabilities: roleCapabilityGrants(role) });
 
 describe("staff authentication and authorization", () => {
   it("verifies an untampered, unexpired signed session", () => {
@@ -19,12 +20,15 @@ describe("staff authentication and authorization", () => {
     assert.throws(() => issueStaffSession(session, "weak"), AuthenticationError);
   });
 
-  it("allows only named role permissions and keeps read-only mutation-free", () => {
+  it("allows only the matrix capabilities and keeps Viewer mutation-free (NZC-022)", () => {
     assert.doesNotThrow(() => authorizeCommand(principal("consultant"), "job.create"));
     assert.doesNotThrow(() => authorizeCommand(principal("consultant"), "scope.row.update"));
     assert.throws(() => authorizeCommand(principal("consultant"), "report.publish"), AuthorizationError);
-    assert.throws(() => authorizeCommand(principal("read-only"), "client.create"), AuthorizationError);
-    assert.doesNotThrow(() => authorizeCommand(principal("methodology-data-admin"), "dataset.override.add"));
+    assert.throws(() => authorizeCommand(principal("viewer"), "client.create"), AuthorizationError);
+    assert.doesNotThrow(() => authorizeCommand(principal("admin"), "dataset.override.add"));
+    assert.throws(() => authorizeCommand(principal("consultant"), "dataset.override.add"), AuthorizationError);
+    assert.doesNotThrow(() => authorizeCommand(principal("reviewer"), "report.publish"));
+    assert.throws(() => authorizeCommand(principal("finance"), "scope.row.update"), AuthorizationError);
   });
 
   it("requires the exact configured origin", () => {

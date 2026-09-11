@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, listScopeRowRollforwardPreview, rollforwardScopeRows, withTenantRead } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 describe("rollforwardScopeRows (NZC-063)", () => {
   it("copies factor + hierarchy + site forward as a fresh pending row, re-pinning the prior dataset", async () => {
     const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
     const client = {
-      async query(sql: string, values?: readonly unknown[]) {
+      async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         writes.push({ sql, values });
         if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
         if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] };
@@ -44,7 +45,7 @@ describe("rollforwardScopeRows (NZC-063)", () => {
 
   it("skips a row that has already been rolled forward into this job", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
         if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] };
         if (sql.includes("client_id=(SELECT client_id FROM")) return { rows: [{ job_number: "J000700", reporting_year: 2025 }] };
@@ -60,7 +61,7 @@ describe("rollforwardScopeRows (NZC-063)", () => {
 
   it("rejects an unknown or wrong-client prior job", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
         if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] };
         if (sql.includes("client_id=(SELECT client_id FROM")) return { rows: [] };
@@ -78,7 +79,7 @@ describe("rollforwardScopeRows (NZC-063)", () => {
 describe("listScopeRowRollforwardPreview (NZC-063)", () => {
   it("finds the prior CRP job for this client and flags a moved factor + already-rolled-forward row", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
         if (sql.includes("SELECT client_id,reporting_year,start_date FROM nzi_console.jobs")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01" }] };
         if (sql.includes("EXISTS(SELECT 1 FROM nzi_console.job_scope_rows r WHERE")) return { rows: [{ job_id: "job-2025", job_number: "J000700", reporting_year: 2025 }] };
@@ -105,7 +106,7 @@ describe("listScopeRowRollforwardPreview (NZC-063)", () => {
 
   it("returns no prior job when the client has no earlier CRP job with enabled rows", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
         if (sql.includes("SELECT client_id,reporting_year,start_date FROM nzi_console.jobs")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01" }] };
         return { rows: [] };

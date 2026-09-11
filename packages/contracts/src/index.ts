@@ -54,3 +54,4 @@ export * from "./trainingFamily";
 export * from "./consultancyFamily";
 export * from "./evidence";
 export * from "./siteBoundary";
+export * from "./permissions";

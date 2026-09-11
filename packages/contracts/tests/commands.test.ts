@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { commandDefinitions, emissionCategoryTaxonomy, isAllowedJobStageTransition, jobWorkflowStages, validateCommand, type CommandContext } from "../src/index";
-const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1" };
+import { commandDefinitions, emissionCategoryTaxonomy, isAllowedJobStageTransition, jobWorkflowStages, validateCommand, commandGrantForRole, type CommandContext } from "../src/index";
+const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1", grant: commandGrantForRole("admin", "org-nzi", "user-1") };
 describe("command contracts", () => {
   it("defines adjacent forward and backward transitions for every job family", () => {
     for (const [family, stages] of Object.entries(jobWorkflowStages)) {

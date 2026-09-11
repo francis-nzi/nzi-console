@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, createClient, updateClient, VersionConflictError } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, idempotencyKey: "client-1", correlationId: "corr-1" };
+const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "staff-a"), idempotencyKey: "client-1", correlationId: "corr-1" };
 const identity = { name: "8 Doors Distillery", status: "active" as const, sector: "Food and Drink", location: "Wick, UK", owner: "D. Hawes" };
 const profile = {
   portfolio: "NZN", website: "https://www.8doorsdistillery.com/", companyRegistration: "SC629354",
@@ -16,11 +17,13 @@ const profile = {
 type Call = { sql: string; values?: readonly unknown[] };
 const pool = (calls: Call[], updateRows: Array<{ version: number }>, currentRows: Array<{ version: number }> = []) => ({
   connect: async () => ({
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       calls.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("UPDATE nzi_console.clients")) return { rows: updateRows };
       if (sql.includes("SELECT version FROM nzi_console.clients")) return { rows: currentRows };
+      // The governed-field read before an update (FYE + baseline), matching the fixture profile so nothing is re-baselined.
+      if (sql.includes("financial_year_end_month, baseline_period_start")) return { rows: (currentRows.length ? currentRows : updateRows.map((row) => ({ version: row.version - 1 }))).map((row) => ({ financial_year_end_month: 12, baseline_period_start: "2022-08-01", baseline_period_end: "2023-07-31", baseline_scope1_tco2e: null, baseline_scope2_tco2e: null, baseline_scope3_tco2e: null, baseline_total_tco2e: null, ...row })) };
       return { rows: [] };
     },
     release() {},
@@ -50,8 +53,10 @@ describe("client profile persistence (NZC-064)", () => {
     assert.ok(insert!.values?.includes("annual"));
     assert.ok(insert!.values?.includes("GBP"));
     assert.ok(insert!.values?.includes(true));
+    // NZC-022 — the creating staff user owns the client.
+    assert.equal(insert!.values?.[7], "staff-a");
     // An unset contact reads as empty text, never null, so the read model stays string-typed.
-    assert.equal(insert!.values?.[7], "");
+    assert.equal(insert!.values?.[8], "");
   });
 
   it("bumps the version and guards the expected one on update", async () => {

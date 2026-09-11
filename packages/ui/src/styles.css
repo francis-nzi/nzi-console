@@ -801,8 +801,6 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-checkcard:focus-within{outline:2px solid var(--emerald);outline-offset:2px}
 .nz-checkcard input{accent-color:var(--emerald);flex:none}
 
-.nz-logo-preview{margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper)}
-.nz-logo-preview img{display:block;max-height:80px;margin-top:8px;object-fit:contain}
 
 /* Field-level validation message — semantic error colour, not the scope palette. */
 .nz-hint.nz-field-error{color:var(--danger)}
@@ -905,5 +903,32 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-seg label:focus-within{outline:2px solid var(--emerald);outline-offset:2px}
 .nz-floor-history{list-style:none;margin:6px 0 8px;padding:0;display:grid;gap:4px}
 .nz-floor-history li{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--line2)}
+/* client logo on client-facing surfaces — monogram fallback everywhere */
+.nz-portal-client{display:flex;align-items:center;gap:10px;margin-left:auto;margin-right:18px;font-size:13px}
+.nz-portal-client-mark{display:grid;width:34px;height:34px;flex:none;place-items:center;border-radius:9px;background:var(--mint);color:var(--pine);font-size:13px;font-weight:700}
+.nz-portal-client-mark.has-img,.report-client-mark.has-img{background:#fff;border:1px solid var(--line)}
+.nz-portal-client-mark img,.report-client-mark img{width:100%;height:100%;object-fit:contain;border-radius:inherit}
+.report-client{display:flex;align-items:center;gap:16px;margin-top:28px}
+.report-cover .report-client h1{margin:0 0 7px}
+.report-client p{margin:0;color:var(--t2);font-size:18px}
+.report-client-mark{display:grid;width:58px;height:58px;flex:none;place-items:center;border-radius:12px;background:var(--mint);color:var(--pine);font-size:20px;font-weight:700}
+.report-signee{margin:14px 0 0;color:var(--t2);font-size:13px}
+/* client workspace v9 — contact roles, client logo, identity drawer */
+.nz-tag.rr{color:#6B4E9B;background:#F1ECF9;border-color:#DECFF0}
+.nz-rolebadges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.nz-roles{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.nz-rolechk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--t1);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+.nz-rolechk input{accent-color:var(--emerald)}
+.nz-client-monogram.logo{position:relative;border:0;cursor:pointer;padding:0;font-family:inherit}
+.nz-client-monogram.logo:disabled{cursor:default}
+.nz-client-monogram.has-img{background:#fff;border:1px solid var(--line)}
+.nz-client-monogram img,.nz-identity-logo img{width:100%;height:100%;object-fit:contain;border-radius:inherit}
+.nz-client-monogram .logocam{position:absolute;right:-5px;bottom:-5px;width:19px;height:19px;border-radius:50%;background:#fff;color:var(--pine);border:1px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:700}
+.nz-client-monogram.logo:hover:not(:disabled) .logocam{background:var(--pine);color:#fff;border-color:var(--pine)}
+.nz-logorow{display:flex;align-items:center;gap:14px}
+.nz-identity-logo{display:grid;width:52px;height:52px;flex:none;place-items:center;border-radius:12px;background:var(--mint);color:var(--pine);font-size:18px;font-weight:700}
+.nz-identity-logo.has-img{background:#fff;border:1px solid var(--line)}
+.nz-three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.nz-btn.danger{color:var(--danger,#C23B22);border-color:#F0C4BC}
 @media (max-width:1200px){.nz-cw-grid{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:420px){.nz-two{grid-template-columns:1fr}}
+@media (max-width:420px){.nz-two,.nz-three{grid-template-columns:1fr}}
