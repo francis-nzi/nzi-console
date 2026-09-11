@@ -9,7 +9,7 @@ const schema = readFileSync(resolve(here, "../migrations/0001_core_schema.sql"),
 const security = readFileSync(resolve(here, "../migrations/0002_rls_and_roles.sql"), "utf8");
 const membership = readFileSync(resolve(here, "../migrations/0003_runtime_role_membership.sql"), "utf8");
 const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_screen_fields.sql"), "utf8");
-const commercialLedgerMigration = readFileSync(resolve(here, "../migrations/0061_commercial_ledger.sql"), "utf8");
+const commercialLedgerMigration = readFileSync(resolve(here, "../migrations/0065_commercial_ledger.sql"), "utf8");
 const effectiveDatedSitesMigration = readFileSync(resolve(here,"../migrations/0062_effective_dated_sites.sql"),"utf8");
 const siteBoundaryCorrectionsMigration = readFileSync(resolve(here, "../migrations/0063_site_boundary_corrections.sql"), "utf8");
 const siteFloorAreaMigration = readFileSync(resolve(here, "../migrations/0064_site_floor_area.sql"), "utf8");
@@ -232,7 +232,7 @@ describe("isolated Postgres migrations", () => {
       assert.ok(trainingEntitlementsMigration.includes(`ALTER TABLE nzi_console.${table} FORCE ROW LEVEL SECURITY`),table);
     }
   });
-  it("builds the console commercial ledger as an append-only, tenant-isolated source of record (0061)",()=>{
+  it("builds the console commercial ledger as an append-only, tenant-isolated source of record (0065)",()=>{
     for(const table of ["quotes","quote_versions","invoices","invoice_line_items","credit_notes","commercial_xero_links","commercial_document_events"])
       assert.ok(commercialLedgerMigration.includes(`CREATE TABLE nzi_console.${table}`),table);
     assert.match(commercialLedgerMigration,/status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft','sent','approved','accepted','converted'\)\)/);
