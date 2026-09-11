@@ -40,13 +40,15 @@ export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadMod
   return { latest: makeFigure(byScope.reduce((sum, value) => sum + value, 0), "tCO2e", null), scopes: byScope.map((value, index) => ({ scope: (["1", "2", "3"] as const)[index]!, ...makeFigure(value, "tCO2e", (["1", "2", "3"] as const)[index]!) })), intensity: makeFigure(intensity?.value ?? 0, intensity?.unit ?? "tCO2e / reporting metric", null) };
 }
 
+type CommercialDocumentRow = Omit<CommercialDocumentReadModel, "xero"> & { xeroStatus: CommercialDocumentReadModel["xero"]["status"]; xeroReference: string | null; xeroLastSyncedAt: string | null };
+
 export async function getClientFinancials(db: Queryable, clientId: string): Promise<FinancialsReadModel> {
   const [quotes, invoices, creditNotes] = await Promise.all([
-    db.query<CommercialDocumentReadModel>(`SELECT q.quote_id AS id, 'Q' || lpad(q.quote_id, 6, '0') AS number, v.title, q.status, v.total AS amount, v.currency, q.current_version AS version, q.updated_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.quotes q JOIN nzi_console.quote_versions v ON (v.organisation_id,v.quote_id,v.version)=(q.organisation_id,q.quote_id,q.current_version) LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(q.organisation_id,'quote',q.quote_id) WHERE q.client_id=$1 AND q.active ORDER BY q.updated_at DESC`, [clientId]),
-    db.query<CommercialDocumentReadModel>(`SELECT invoice_id AS id, invoice_number AS number, invoice_number AS title, status, balance AS amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.invoices i LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(i.organisation_id,'invoice',i.invoice_id) WHERE i.client_id=$1 AND i.active ORDER BY i.created_at DESC`, [clientId]),
-    db.query<CommercialDocumentReadModel>(`SELECT credit_note_id AS id, credit_note_number AS number, credit_note_number AS title, status, amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.credit_notes c LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(c.organisation_id,'credit_note',c.credit_note_id) WHERE c.client_id=$1 AND c.active ORDER BY c.created_at DESC`, [clientId]),
+    db.query<CommercialDocumentRow>(`SELECT q.quote_id AS id, 'Q' || lpad(q.quote_id, 6, '0') AS number, v.title, q.status, v.total AS amount, v.currency, q.current_version AS version, q.updated_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.quotes q JOIN nzi_console.quote_versions v ON (v.organisation_id,v.quote_id,v.version)=(q.organisation_id,q.quote_id,q.current_version) LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(q.organisation_id,'quote',q.quote_id) WHERE q.client_id=$1 AND q.active ORDER BY q.updated_at DESC`, [clientId]),
+    db.query<CommercialDocumentRow>(`SELECT invoice_id AS id, invoice_number AS number, invoice_number AS title, status, balance AS amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.invoices i LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(i.organisation_id,'invoice',i.invoice_id) WHERE i.client_id=$1 AND i.active ORDER BY i.created_at DESC`, [clientId]),
+    db.query<CommercialDocumentRow>(`SELECT credit_note_id AS id, credit_note_number AS number, credit_note_number AS title, status, amount, currency, version, created_at AS "updatedAt", coalesce(x.sync_status,'not_configured') AS "xeroStatus", x.external_ref AS "xeroReference", x.last_synced_at AS "xeroLastSyncedAt" FROM nzi_console.credit_notes c LEFT JOIN nzi_console.commercial_xero_links x ON (x.organisation_id,x.document_type,x.document_id)=(c.organisation_id,'credit_note',c.credit_note_id) WHERE c.client_id=$1 AND c.active ORDER BY c.created_at DESC`, [clientId]),
   ]);
-  const map = (row: CommercialDocumentReadModel) => ({ ...row, amount: Number(row.amount), updatedAt: String(row.updatedAt), xero: { status: row.xeroStatus, reference: row.xeroReference, lastSyncedAt: row.xeroLastSyncedAt } });
+  const map = ({ xeroStatus, xeroReference, xeroLastSyncedAt, ...row }: CommercialDocumentRow): CommercialDocumentReadModel => ({ ...row, amount: Number(row.amount), updatedAt: String(row.updatedAt), xero: { status: xeroStatus, reference: xeroReference, lastSyncedAt: xeroLastSyncedAt } });
   return { quotes: quotes.rows.map(map), invoices: invoices.rows.map(map), creditNotes: creditNotes.rows.map(map), xeroStatus: { state: "connected", label: "Xero connected" } };
 }
 
@@ -410,7 +412,7 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
         [jobId],
       ),
       getJobIntensityTarget(db, jobId),
-      resolveClientSiteBoundary(db, job.client_id, chain.currentYear),
+      resolveClientSiteBoundary(db, chain.clientId, chain.currentYear),
     ]);
     liveIntensity = intensity;
     const boundaryIds = new Set(boundary.map((site) => site.id));
