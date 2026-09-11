@@ -9,6 +9,8 @@ type Props = {
   width?: number;
   /** Render title + provenance footer around the figure (default true). */
   showChrome?: boolean;
+  /** Ring only — no side legend — for narrow cards that list the scopes themselves. */
+  ring?: boolean;
 };
 
 const VB_W = 760;
@@ -27,7 +29,8 @@ const GAP_DEG = (2 / R_MID) * (180 / Math.PI); // 2px surface gap between segmen
  * on a light surface: 2px surface gaps, a legend with values, a centre total and
  * native tooltips. Pure/stateless SVG — identical on screen and in print.
  */
-export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
+export function EmissionsScopeDonut({ data, width, showChrome = true, ring = false }: Props) {
+  const viewWidth = ring ? 2 * CX : VB_W;
   const segments = data.segments.filter((s) => s.value > 0);
   const total =
     data.total ?? segments.reduce((sum, s) => sum + s.value, 0);
@@ -54,9 +57,9 @@ export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
 
   const svg = (
     <svg
-      viewBox={`0 0 ${VB_W} ${VB_H}`}
+      viewBox={`0 0 ${viewWidth} ${VB_H}`}
       width={width ?? "100%"}
-      height={width ? (width * VB_H) / VB_W : undefined}
+      height={width ? (width * VB_H) / viewWidth : undefined}
       role="img"
       aria-labelledby={`${titleId} ${descId}`}
       style={{ display: "block", fontFamily: tokens.font }}
@@ -124,7 +127,7 @@ export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
       </g>
 
       {/* Legend + values (identity via swatch; text in ink tokens) */}
-      <g transform={`translate(${legendX} ${legendTop})`}>
+      {ring ? null : <g transform={`translate(${legendX} ${legendTop})`}>
         {segments.map((s, i) => {
           const color = scopeColor(s.scope);
           const y = i * rowH;
@@ -164,7 +167,7 @@ export function EmissionsScopeDonut({ data, width, showChrome = true }: Props) {
             </g>
           );
         })}
-      </g>
+      </g>}
     </svg>
   );
 

@@ -4,29 +4,52 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Drawer, GatedButton } from "@nzi/ui";
 import { postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel, type SiteLifecycleStatus } from "@nzi/contracts";
+import { siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
 import type { ClientReportingPeriod } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
- * NZC-070 / NZC-071 — the client's operational sites, backend-fed. Status is derived
- * from today against the dates; the boundary column is computed per row from the
- * resolver; every change goes through the site commands and persists.
+ * NZC-070 / NZC-071 — the client's operational sites (client workspace v8), backend-fed.
+ * Status is derived from today against the dates; each row's boundary statement comes
+ * from the resolver; every change goes through the site commands and persists.
  */
 
 type Notice = { kind: "ok" | "warn"; text: string } | null;
+type Dates = Pick<ClientSiteReadModel, "inServiceFrom" | "vacatedEffective">;
 
-export function statusText(status: SiteLifecycleStatus): string {
-  if (status.kind === "planned") return `Planned · starts ${formatDate(status.startsOn)}`;
-  if (status.kind === "vacated") return `Vacated ${formatDate(status.vacatedOn)}`;
-  return status.vacatesOn ? `In service (vacates ${formatDate(status.vacatesOn)})` : "In service";
+const area = (value: number) => `${value.toLocaleString("en-GB")} m²`;
+const areaToday = (site: ClientSiteReadModel, today: string) => siteFloorAreaForPeriod(site, { from: today, to: today });
+
+/** "in FY24 boundary, out from FY25" — which of the client's reporting periods this site falls in. */
+export function boundaryStatement(site: Dates, periods: readonly ClientReportingPeriod[]): string | null {
+  if (!periods.length) return null;
+  const membership = periods.map((period) => ({ label: period.label, inside: siteIsInReportingBoundary(site, period) }));
+  const ins = membership.filter((m) => m.inside);
+  if (ins.length === membership.length) return null;
+  if (!ins.length) return `not in the ${membership.map((m) => m.label).join(" or ")} boundary`;
+  const firstIn = membership.findIndex((m) => m.inside);
+  const lastIn = membership.map((m) => m.inside).lastIndexOf(true);
+  if (lastIn < membership.length - 1) return `in ${membership[lastIn]!.label} boundary, out from ${membership[lastIn + 1]!.label}`;
+  return `in boundary from ${membership[firstIn]!.label}`;
 }
 
-const serviceRange = (site: Pick<ClientSiteReadModel, "inServiceFrom" | "vacatedEffective">) =>
-  `${site.inServiceFrom ? formatDate(site.inServiceFrom) : "Before records"} → ${site.vacatedEffective ? formatDate(site.vacatedEffective) : "present"}`;
-
-const areaToday = (site: ClientSiteReadModel, today: string) => siteFloorAreaForPeriod(site, { from: today, to: today });
+function siteLine(site: ClientSiteReadModel, today: string, periods: readonly ClientReportingPeriod[]): string {
+  const status = siteLifecycleStatus(site, today);
+  const floor = areaToday(site, today);
+  const parts: string[] = [];
+  if (status.kind === "vacated") {
+    if (floor !== null || site.floorAreas.length) parts.push(area(site.floorAreas[site.floorAreas.length - 1]!.floorAreaM2));
+    parts.push(`vacated ${formatDate(status.vacatedOn)}`);
+  } else {
+    parts.push(status.kind === "planned" ? `Starts ${formatDate(status.startsOn)}` : site.inServiceFrom ? `In service from ${formatDate(site.inServiceFrom)}` : "In service from before records");
+    parts.push(floor === null ? "no floor area" : area(floor));
+    if (status.kind === "in-service" && status.vacatesOn) parts.push(`vacates ${formatDate(status.vacatesOn)}`);
+  }
+  const boundary = boundaryStatement(site, periods);
+  if (boundary) parts.push(boundary);
+  return parts.join(" · ");
+}
 
 export function ClientSites({ clientId, sites, reportingPeriods, today, access }: { clientId: string; sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess }) {
   const router = useRouter();
@@ -36,31 +59,27 @@ export function ClientSites({ clientId, sites, reportingPeriods, today, access }
   const blocked = access.state !== "allowed";
 
   return <section className="nz-panel">
-    <div className="nz-panel-head">
-      <div><div className="eyebrow">Client boundary</div><h2>Operational sites</h2></div>
-      <GatedButton className="nz-btn pri" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => { setNotice(null); setEditing({ site: null }); }}>Add site</GatedButton>
+    <div className="nz-card-h">
+      <span className="eyebrow">Operations</span><h2>Sites</h2><span className="sp" />
+      <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => { setNotice(null); setEditing({ site: null }); }}>＋ Add</GatedButton>
     </div>
     {notice ? <div className={`nz-banner ${notice.kind}`} role="status" style={{ margin: "12px 16px 0" }}>{notice.text}</div> : null}
-    {sites.length === 0
-      ? <p className="sub" style={{ padding: 16, margin: 0 }}>No sites configured for this client yet. Add one here, or from a CRP job&apos;s data entry.</p>
-      : <ul className="nz-site-list">{sites.map((site) => {
-        const status = siteLifecycleStatus(site, today);
-        const area = areaToday(site, today);
-        return <li key={site.id} className={status.kind === "vacated" ? "vacated" : undefined}>
-          <button type="button" className="nz-site-open" onClick={() => { setNotice(null); setEditing({ site }); }} aria-label={`Open site ${site.name}`}>
-            <span className="nz-site-name"><b>{site.name}</b>{site.isRegisteredOffice ? <span className="nz-st done">Registered office</span> : null}</span>
-            <span className="nz-site-meta">{serviceRange(site)} · <span className={`nz-site-status ${status.kind}`}>{statusText(status)}</span></span>
-            <span className="nz-site-meta">
-              {periods.map((period) => { const inside = siteIsInReportingBoundary(site, period); return <span key={period.jobId} className={`nz-boundary-chip ${inside ? "in" : "out"}`} title={`${period.jobNumber} · ${formatDate(period.from)} to ${formatDate(period.to)}`}>{period.label} {inside ? "in" : "out"}</span>; })}
-              <span className="muted">{area === null ? "No floor area" : `${area.toLocaleString("en-GB")} m²`}</span>
-            </span>
-          </button>
-        </li>;
-      })}</ul>}
-    <p className="nz-site-legend">{periods.length
-      ? "Boundary: a site is in a reporting period when it was in service on any day of it (NZC-070)."
-      : "Boundary chips appear once the client has a CRP reporting period."}</p>
-    <Drawer open={editing !== null} onClose={() => setEditing(null)} ariaLabel={editing?.site ? `Edit site ${editing.site.name}` : "Add a site"} className="nz-site-drawer">
+    <div className="nz-card-b">
+      {sites.length === 0
+        ? <p className="sub" style={{ margin: "8px 0" }}>No sites configured for this client yet. Add one here, or from a CRP job&apos;s data entry.</p>
+        : sites.map((site) => {
+          const status = siteLifecycleStatus(site, today);
+          return <div key={site.id} className={`nz-lrow${status.kind === "vacated" ? " off" : ""}`}>
+            <div className="ic" aria-hidden="true">⌂</div>
+            <div className="main">
+              <div className="nm">{site.name}{site.isRegisteredOffice ? <span className="nz-tag reg">Registered</span> : null}{status.kind === "vacated" ? <span className="nz-tag vac">Vacated</span> : null}{status.kind === "planned" ? <span className="nz-tag plan">Planned</span> : null}</div>
+              <div className="sub">{siteLine(site, today, periods)}</div>
+            </div>
+            <button type="button" className="nz-editlink" onClick={() => { setNotice(null); setEditing({ site }); }} aria-label={`Edit site ${site.name}`}>Edit</button>
+          </div>;
+        })}
+    </div>
+    <Drawer open={editing !== null} onClose={() => setEditing(null)} ariaLabel={editing?.site ? `Edit site ${editing.site.name}` : "Add a site"} className="nz-site-drawer" dismissOnOutsideClick>
       {editing ? <SiteForm key={editing.site?.id ?? "new"} clientId={clientId} site={editing.site} sites={sites} periods={periods} access={access}
         onClose={() => setEditing(null)}
         onSaved={(text) => { setEditing(null); setNotice({ kind: "ok", text }); router.refresh(); }}
@@ -92,7 +111,7 @@ function SiteForm({ clientId, site, sites, periods, access, onClose, onSaved, on
   const draftStart = beforeRecords ? null : inServiceFrom || null;
   const draftVacated = lifecycle === "vacated" ? vacatedEffective || null : null;
   const otherOffice = sites.find((item) => item.isRegisteredOffice && item.id !== site?.id);
-  const area = floorArea.trim() === "" ? null : Number(floorArea);
+  const floor = floorArea.trim() === "" ? null : Number(floorArea);
 
   const problem = (() => {
     if (!name.trim()) return "Give the site a name.";
@@ -100,24 +119,21 @@ function SiteForm({ clientId, site, sites, periods, access, onClose, onSaved, on
     if (lifecycle === "vacated" && registered) return site?.isRegisteredOffice ? "This site is the registered office. Mark another site as the registered office before vacating it." : "A vacated site cannot be the registered office.";
     if (lifecycle === "vacated" && !vacatedEffective) return "Vacating needs its effective date — the first day out of service.";
     if (draftStart && draftVacated && draftVacated <= draftStart) return "The vacated effective date must be after the in-service date.";
-    if (area !== null && !(Number.isFinite(area) && area > 0)) return "Floor area must be a number greater than zero.";
-    if (area !== null && floorFrom && draftVacated && floorFrom >= draftVacated) return "A floor area cannot take effect once the site is vacated.";
+    if (floor !== null && !(Number.isFinite(floor) && floor > 0)) return "Floor area must be a number greater than zero.";
+    if (floor !== null && floorFrom && draftVacated && floorFrom >= draftVacated) return "A floor area cannot take effect once the site is vacated.";
     return null;
   })();
-
-  const boundaryNote = periods.length && !(lifecycle === "vacated" && !draftVacated)
-    ? periods.map((period) => `${period.label} ${siteIsInReportingBoundary({ inServiceFrom: draftStart, vacatedEffective: draftVacated }, period) ? "in" : "out"}`).join(" · ")
-    : null;
+  const boundary = !(lifecycle === "vacated" && !draftVacated) ? boundaryStatement({ inServiceFrom: draftStart, vacatedEffective: draftVacated }, periods) : null;
 
   function steps(): Step[] {
-    if (!site) return [{ name: "create", path: `/api/isolated/clients/${encodeURIComponent(clientId)}/sites`, input: { name: name.trim(), inServiceFrom: draftStart, isRegisteredOffice: registered, floorAreaM2: area } }];
+    if (!site) return [{ name: "create", path: `/api/isolated/clients/${encodeURIComponent(clientId)}/sites`, input: { name: name.trim(), inServiceFrom: draftStart, isRegisteredOffice: registered, floorAreaM2: floor } }];
     const base = `/api/isolated/sites/${encodeURIComponent(site.id)}`;
     const out: Step[] = [];
     if (name.trim() !== site.name || draftStart !== site.inServiceFrom) out.push({ name: "edit", path: `${base}/edit`, input: { name: name.trim(), inServiceFrom: draftStart } });
     if (lifecycle === "in-service" && site.vacatedEffective !== null) out.push({ name: "reinstate", path: `${base}/reinstate`, input: {} });
     if (registered !== site.isRegisteredOffice) out.push({ name: "registered-office", path: `${base}/registered-office`, input: { isRegisteredOffice: registered } });
     if (lifecycle === "vacated" && draftVacated !== site.vacatedEffective) out.push({ name: "vacate", path: `${base}/vacate`, input: { effectiveDate: draftVacated } });
-    if (area !== null) out.push({ name: "floor-area", path: `${base}/floor-area`, input: { floorAreaM2: area, effectiveFrom: floorFrom || null } });
+    if (floor !== null) out.push({ name: "floor-area", path: `${base}/floor-area`, input: { floorAreaM2: floor, effectiveFrom: floorFrom || null } });
     return out;
   }
 
@@ -148,37 +164,43 @@ function SiteForm({ clientId, site, sites, periods, access, onClose, onSaved, on
   }
 
   const blockedReason = access.state !== "allowed" ? access.reason : problem;
-  return <div className="nz-site-drawer-body">
-    <div className="nz-site-drawer-h"><div><div className="eyebrow">Site boundary</div><h3>{site ? site.name : "New site"}</h3></div><button type="button" className="close" onClick={onClose} aria-label="Close site drawer">✕</button></div>
-    <label className="nz-fl">Site name<input className="nz-inp" value={name} onChange={(event) => setName(event.target.value)} /></label>
+  return <>
+    <div className="nz-dh"><div className="k">Operations</div><h3>{site ? site.name : "New site"}</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
+    <div className="nz-db">
+      <label className="nz-fl"><span>Site name<span className="nz-req">*</span></span><input className="nz-inp" value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="nz-check"><input type="checkbox" checked={registered} disabled={lifecycle === "vacated"} onChange={(event) => setRegistered(event.target.checked)} /> Registered office</label>
+      {registered && otherOffice && !site?.isRegisteredOffice ? <span className="nz-hint">Saving moves the registered office from {otherOffice.name} to this site — a client has one.</span> : null}
 
-    <div className="nz-fl"><span>In service from</span>
-      <input className="nz-inp" type="date" value={inServiceFrom} disabled={beforeRecords} onChange={(event) => setInServiceFrom(event.target.value)} aria-label="In service from" />
-      <label className="nz-check"><input type="checkbox" checked={beforeRecords} onChange={(event) => setBeforeRecords(event.target.checked)} /> In service from before records</label>
-    </div>
-
-    <label className="nz-check nz-fl"><input type="checkbox" checked={registered} disabled={lifecycle === "vacated"} onChange={(event) => setRegistered(event.target.checked)} /> Registered office</label>
-    {registered && otherOffice && !site?.isRegisteredOffice ? <p className="nz-figure-note">Saving moves the registered office from {otherOffice.name} to this site — a client has one.</p> : null}
-
-    {site ? <fieldset className="nz-fl nz-seg-field"><legend>Status</legend>
-      <div className="nz-seg" role="radiogroup" aria-label="Site status">
-        {(["in-service", "vacated"] as const).map((value) => <label key={value} className={lifecycle === value ? "on" : undefined}><input type="radio" name="site-status" value={value} checked={lifecycle === value} onChange={() => setLifecycle(value)} />{value === "in-service" ? "In service" : "Vacated"}</label>)}
+      <div className="nz-two" style={{ marginTop: 14 }}>
+        <div className="nz-fl"><span>In service from<span className="nz-req">*</span></span>
+          <input className="nz-inp" type="date" value={inServiceFrom} disabled={beforeRecords} onChange={(event) => setInServiceFrom(event.target.value)} aria-label="In service from" />
+          <label className="nz-check"><input type="checkbox" checked={beforeRecords} onChange={(event) => setBeforeRecords(event.target.checked)} /> From before records</label>
+        </div>
+        {site ? <div className="nz-fl"><span>Status</span>
+          <div className="nz-seg" role="radiogroup" aria-label="Site status">
+            {(["in-service", "vacated"] as const).map((value) => <label key={value} className={lifecycle === value ? "on" : undefined}><input type="radio" name="site-status" value={value} checked={lifecycle === value} onChange={() => setLifecycle(value)} />{value === "in-service" ? "In service" : "Vacated"}</label>)}
+          </div>
+        </div> : null}
       </div>
-    </fieldset> : null}
-    {lifecycle === "vacated" ? <label className="nz-fl">Vacated effective date — the first day out of service<input className="nz-inp" type="date" value={vacatedEffective} min={draftStart ?? undefined} onChange={(event) => setVacatedEffective(event.target.value)} /></label> : null}
-    {boundaryNote ? <div className="nz-banner ok" role="status">Reporting boundary with these dates: {boundaryNote}. A site stays in the boundary for any reporting period it was in service during.</div> : null}
+      {lifecycle === "vacated" ? <label className="nz-fl"><span>Vacated effective date<span className="nz-req">*</span></span><input className="nz-inp" type="date" value={vacatedEffective} min={draftStart ?? undefined} onChange={(event) => setVacatedEffective(event.target.value)} />
+        <span className="nz-hint">First day out of service. The site stays in the reporting boundary up to this date, then drops out. YoY and per-m² intensity use the boundary as at each reporting year.</span></label> : null}
+      {boundary ? <span className="nz-hint" role="status" style={{ marginBottom: 14 }}>With these dates the site is {boundary}.</span> : null}
 
-    <div className="nz-sect">Floor area (per-m² intensity)</div>
-    {site?.floorAreas.length ? <ul className="nz-floor-history">{site.floorAreas.map((record, index) => <li key={`${record.recordedAt}-${index}`}><span>{record.effectiveFrom ? `From ${formatDate(record.effectiveFrom)}` : "From the site's start"}</span><span className="num">{record.floorAreaM2.toLocaleString("en-GB")} m²</span></li>)}</ul> : <p className="nz-figure-note">No floor area recorded. Per-m² intensity is unavailable until every in-boundary site has one.</p>}
-    <div className="nz-inp2">
-      <label className="nz-fl" style={{ flex: 1 }}>{site ? "Record a new floor area (m²)" : "Floor area (m²)"}<input className="nz-inp" inputMode="decimal" value={floorArea} onChange={(event) => setFloorArea(event.target.value)} /></label>
-      {site ? <label className="nz-fl" style={{ flex: 1 }}>Effective from<input className="nz-inp" type="date" value={floorFrom} onChange={(event) => setFloorFrom(event.target.value)} /></label> : null}
+      <div className="nz-fl"><span>Floor area (m²)</span>
+        {site?.floorAreas.length ? <ul className="nz-floor-history">{site.floorAreas.map((record, index) => <li key={`${record.recordedAt}-${index}`}><span>{record.effectiveFrom ? `From ${formatDate(record.effectiveFrom)}` : "From the site's start"}</span><span className="num">{area(record.floorAreaM2)}</span></li>)}</ul> : null}
+        <div className="nz-two">
+          <input className="nz-inp num" inputMode="decimal" value={floorArea} placeholder={site?.floorAreas.length ? "New floor area" : "Floor area"} aria-label="Floor area (m²)" onChange={(event) => setFloorArea(event.target.value)} />
+          {site ? <input className="nz-inp" type="date" value={floorFrom} aria-label="Floor area effective from" title="Effective from (blank = from the site's start)" onChange={(event) => setFloorFrom(event.target.value)} /> : null}
+        </div>
+        <span className="nz-hint">Effective-dated — summed across the client&apos;s in-service sites to form the per-m² intensity denominator for each reporting year. Leave blank if unknown (per-m² then reads &ldquo;unavailable&rdquo; for years it can&apos;t be resolved).</span>
+      </div>
+
+      {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+      <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Sites are <b>effective-dated</b>, never hard-deleted. Vacating closes the site from a date; historical reporting years keep it, later years drop it.</span></div>
     </div>
-
-    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-    <div className="nz-site-drawer-actions">
+    <div className="nz-df">
+      <button type="button" className="nz-btn" onClick={onClose}>Cancel</button><span className="sp" />
       <GatedButton className="nz-btn pri" blocked={pending || blockedReason !== null} blockedReason={pending ? "Saving…" : blockedReason ?? undefined} reasonClassName="hint nz-gated-reason" onClick={() => void save()}>{pending ? "Saving…" : site ? "Save site" : "Add site"}</GatedButton>
-      <button type="button" className="nz-btn" onClick={onClose}>Cancel</button>
     </div>
-  </div>;
+  </>;
 }
