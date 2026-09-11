@@ -97,9 +97,6 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 
 ## Decisions
 
-### NZC-031 — Governed portal recovery [Confirmed 27 Aug 2026]
-Client portal password and MFA recovery remains a staff-governed workflow in the isolated staging environment. The platform has no verified outbound-email and reset-token delivery service, so it must not present a self-service flow that cannot securely deliver or complete recovery. The public recovery route never confirms account existence and directs the client to their established NZI adviser relationship. An authorised administrator verifies the client outside the portal, revokes existing access, and issues a new single-use enrolment link. Self-service recovery may replace this only after email ownership, token expiry/consumption, rate limiting, audit, and account-enumeration controls are implemented and verified.
-
 ### NZC-001 — Additive, isolated environment [Confirmed]
 NZI Console is a separate repo (`francis-nzi/nzi-console`) and Render service (`srv-d6o8snvgi27c73frfta0`),
 additive only. It does not modify the live `nzi_pro_v7-POSTGRES` platform, its production database, or the
@@ -390,6 +387,9 @@ reviewer approval. Existing calculated rows remain tied to their selected datase
 explicit recalculation. *Confirmed by Francis, 24 Aug 2026.*
 
 **Addendum — previous-year rollforward (28 Aug 2026, Francis).** Carried-forward rows **re-pin the prior year’s factor versions** so year-on-year reporting stays consistent and comparable; moving a rolled-forward row onto a newer factor version is an explicit, audited recalculation (per the base decision above), never automatic.
+
+### NZC-031 — Governed portal recovery [Confirmed 27 Aug 2026]
+Client portal password and MFA recovery remains a staff-governed workflow in the isolated staging environment. The platform has no verified outbound-email and reset-token delivery service, so it must not present a self-service flow that cannot securely deliver or complete recovery. The public recovery route never confirms account existence and directs the client to their established NZI adviser relationship. An authorised administrator verifies the client outside the portal, revokes existing access, and issues a new single-use enrolment link. Self-service recovery may replace this only after email ownership, token expiry/consumption, rate limiting, audit, and account-enumeration controls are implemented and verified.
 
 ### NZC-032 — Monthly activity granularity aligned to the reporting period [Confirmed 28 Aug 2026]
 The canonical scope row (and portal entry) stores an **optional 12-slot monthly activity vector** with an annual roll-up derived from it. The month slots **follow the job’s reporting period** (`crp_job_details` reporting-from/to) — a non-January start or a short/long first year shows exactly those months, not a fixed calendar year. Preserve the live convenience that a value entered for the first month can be **copied across all months** (and quick fill/clear), so annual-shaped data stays fast to enter. Monthly distribution feeds seasonality charts, mid-period site open/close and portal monthly capture. *Parity-critical; schema-level. Confirmed by Francis, 28 Aug 2026.*
