@@ -1,11 +1,12 @@
-<!-- NZI Console — Client Workspace prototype · v8 (2026-09-11)
+<!-- NZI Console — Client Workspace prototype · v9 (2026-09-11) — supersedes v8
      Reference design for the client redesign. Covers: area sub-nav + drawer editing,
      baseline & governed re-baseline, Carbon Analytics (YoY scope, multi-base intensity
      incl. All-indexed, pathway, donut, year picker), evidence/provenance drawers on
      figures, site effective-dating (registered office, vacate, floor area), Reporting
-     with per-report links, and the commercial ledger (quotes/invoices/credit notes with
-     history drawers; Xero shown as a mirror). Source of truth for the corrective build
-     brief in docs/CLIENT_WORKSPACE_BACKLOG.md. Live artifact republished per iteration. -->
+     with per-report links, the commercial ledger (quotes/invoices/credit notes with
+     history drawers; Xero shown as a mirror), and go-live hardening: contact roles
+     (signee/portal/billing/training), client logo upload, and financial-year-end month.
+     Source of truth for the build briefs in docs/CLIENT_WORKSPACE_BACKLOG.md. -->
 <title>Client Workspace</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,6 +73,14 @@ button{font-family:inherit}
 
 .chead{display:flex;align-items:center;gap:14px;padding:15px 22px 13px;border-bottom:1px solid var(--line)}
 .mono-badge{width:46px;height:46px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:17px;flex:0 0 auto}
+.mono-badge.logo{position:relative;border:0;cursor:pointer;padding:0}
+.mono-badge.logo .logocam{position:absolute;right:-5px;bottom:-5px;width:19px;height:19px;border-radius:50%;background:var(--panel);color:var(--accent);border:1px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:700}
+.mono-badge.logo:hover .logocam{background:var(--accent);color:#fff;border-color:var(--accent)}
+.logorow{display:flex;align-items:center;gap:14px}
+.roles{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.rolechk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+.rolebadges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tag.rr{color:var(--base);background:var(--base-bg);border-color:var(--base-line)}
 .chead h1{font-size:20px;font-weight:800;display:inline-flex;align-items:center;gap:9px}
 .chead .meta{color:var(--ink-2);font-size:12.5px;margin-top:2px}
 .chead .cid{font-family:var(--mono);font-size:11px;color:var(--faint)}
@@ -239,7 +248,7 @@ rect.seg{stroke:var(--panel);stroke-width:2}
   <div class="main">
     <div class="topbar"><div class="crumbs">Clients <span style="color:var(--faint)">/</span> <b>ABtec Computer Solutions Limited</b></div><div class="me">FD</div></div>
     <div class="chead">
-      <div class="mono-badge">AB</div>
+      <button class="mono-badge logo" onclick="openD('identity')" title="Upload client logo" aria-label="Client logo — upload">AB<span class="logocam" aria-hidden="true">✎</span></button>
       <div>
         <h1>ABtec Computer Solutions Limited <span class="pill ok"><i></i>Active</span></h1>
         <div class="meta">Information technology · London, UK · Account owner A. Shaw <span class="cid">· Client 243</span></div>
@@ -328,8 +337,8 @@ rect.seg{stroke:var(--panel);stroke-width:2}
 
             <div class="col">
               <section class="card collap"><div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Relationship</span><h2>Contacts</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();openD('contact')">＋ Add</button></div><div class="cbody"><div class="cb">
-                <div class="lrow"><div class="ic">◔</div><div><div class="nm">Dawn Fletcher</div><div class="sub">Operations director</div></div><div class="r"><span class="tag">Primary</span><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
-                <div class="lrow"><div class="ic">◔</div><div><div class="nm">Ian Beale</div><div class="sub">Finance manager</div></div><div class="r"><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
+                <div class="lrow"><div class="ic">◔</div><div style="flex:1;min-width:0"><div class="nm">Dawn Fletcher</div><div class="sub">Operations director</div><div class="rolebadges"><span class="tag">Primary</span><span class="tag rr">Signee</span></div></div><div class="r"><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
+                <div class="lrow"><div class="ic">◔</div><div style="flex:1;min-width:0"><div class="nm">Ian Beale</div><div class="sub">Finance manager</div><div class="rolebadges"><span class="tag rr">Billing</span></div></div><div class="r"><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
               </div></div></section>
               <section class="card collap"><div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Operations</span><h2>Sites</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();openD('site')">＋ Add</button></div><div class="cbody"><div class="cb">
                 <div class="lrow"><div class="ic">⌂</div><div style="flex:1;min-width:0"><div class="nm">London HQ <span class="tag reg">Registered</span></div><div class="sub">In service from Apr 2019 · 2,400 m²</div></div><div class="r"><span class="geotag on">geo</span><button class="editlink" onclick="openD('site')">Edit</button></div></div>
@@ -586,7 +595,16 @@ const DRAWERS={
     <div class="fl"><label>Reason<span class="req">*</span> — recorded on the baseline record + audit log</label><input class="inp" id="reason" placeholder="e.g. London HQ relocation — structural change"></div>
     <div class="gov"><span class="lk">🔒</span><span>This <b>supersedes</b> the current baseline (kept in history). Issued reports keep the baseline they <b>stamped</b>; trend and gap engine resolve against this record from <b>effective-from</b>.</span></div>`,
     foot:`<span class="gr" id="gr">Enter a reason to record the change.</span><span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" id="save" aria-disabled="true">Record baseline change</button>`},
-  contact:{k:"Relationship",t:"Contact",body:`<div class="two"><div class="fl"><label>Full name<span class="req">*</span></label><input class="inp" value="Dawn Fletcher"></div><div class="fl"><label>Role</label><input class="inp" value="Operations director"></div></div><div class="fl"><label>Email</label><input class="inp mono" value="dawn.fletcher@abtec.example"></div><div class="fl"><label>Phone</label><input class="inp" placeholder="Optional"></div><label class="lrow" style="border:0;padding:2px 0"><input type="checkbox" checked style="accent-color:var(--accent)"> <span>Primary contact</span></label>`,foot:`<span class="sp"></span><button class="btn sm" style="color:var(--danger);border-color:var(--danger-line)" onclick="closeD()">Remove</button><button class="btn pri" onclick="closeD()">Save contact</button>`},
+  contact:{k:"Relationship",t:"Contact",body:`<div class="two"><div class="fl"><label>Full name<span class="req">*</span></label><input class="inp" value="Dawn Fletcher"></div><div class="fl"><label>Job title</label><input class="inp" value="Operations director"></div></div><div class="fl"><label>Email</label><input class="inp mono" value="dawn.fletcher@abtec.example"></div><div class="fl"><label>Phone</label><input class="inp" placeholder="Optional"></div>
+    <div class="fl"><label>Roles <span class="hint" style="font-weight:500">— what this contact is used for downstream</span></label>
+      <div class="roles">
+        <label class="rolechk"><input type="checkbox" checked style="accent-color:var(--accent)"> Primary contact</label>
+        <label class="rolechk"><input type="checkbox" checked style="accent-color:var(--accent)"> Report signee</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Portal candidate</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Quote &amp; invoice recipient</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Training attendee</label>
+      </div>
+      <div class="hint">Signee appears on published reports; portal candidate can be invited to the portal; recipient receives commercial documents; attendee is eligible for training places.</div></div>`,foot:`<span class="sp"></span><button class="btn sm" style="color:var(--danger);border-color:var(--danger-line)" onclick="closeD()">Remove</button><button class="btn pri" onclick="closeD()">Save contact</button>`},
   site:{k:"Operations",t:"Site",body:`<div class="fl"><label>Site name<span class="req">*</span></label><input class="inp" value="London HQ"></div><div class="fl"><label>Reference</label><input class="inp mono" value="abtec-london"></div><div class="fl"><label>Address</label><input class="inp" value="10 Finsbury Sq, London EC2A"></div>
     <label class="lrow" style="border:0;padding:2px 0"><input type="checkbox" id="regoff" checked style="accent-color:var(--accent)"> <span>Registered office</span></label>
     <div class="two"><div class="fl"><label>In service from<span class="req">*</span></label><input class="inp" type="date" value="2019-04-01"></div><div class="fl"><label>Status</label><div class="seg" id="sitestatus"><button data-s="active" class="on">In service</button><button data-s="vacated">Vacated</button></div></div></div>
@@ -594,7 +612,10 @@ const DRAWERS={
     <div class="fl"><label>Floor area (m²)</label><input class="inp num" value="2400"><div class="hint">Effective-dated — summed across the client's in-service sites to form the per-m² intensity denominator for each reporting year. Leave blank if unknown (per-m² then reads "unavailable" for years it can't be resolved).</div></div>
     ${GEO(true)}
     <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Sites are <b>effective-dated</b>, never hard-deleted. Vacating closes the site from a date; historical reporting years keep it, later years drop it.</span></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save site</button>`},
-  identity:{k:"Company",t:"Identity & profile",body:`<div class="two"><div class="fl"><label>Client name<span class="req">*</span></label><input class="inp" value="ABtec Computer Solutions Limited"></div><div class="fl"><label>Status</label><select class="inp"><option>Active</option><option>Onboarding</option><option>At risk</option><option>Prospect</option></select></div></div><div class="two"><div class="fl"><label>Industry<span class="req">*</span></label><input class="inp" value="Information technology"></div><div class="fl"><label>SIC</label><input class="inp" value="62012"></div></div><div class="three"><div class="fl"><label>Reporting freq.</label><select class="inp"><option>Annual</option><option>Quarterly</option></select></div><div class="fl"><label>Currency</label><input class="inp" value="GBP"></div><div class="fl"><label>FY end</label><input class="inp" value="March"></div></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save profile</button>`},
+  identity:{k:"Company",t:"Identity & profile",body:`
+    <div class="fl"><label>Logo</label><div class="logorow"><span class="mono-badge" style="width:52px;height:52px">AB</span><div><button class="btn sm" type="button">⭱ Upload logo</button> <button class="btn sm" type="button" style="color:var(--danger);border-color:var(--danger-line)">Remove</button><div class="hint" style="margin-top:6px">PNG or SVG. Appears on the client record, the portal and published reports. Falls back to the monogram if none.</div></div></div></div>
+    <div class="two"><div class="fl"><label>Client name<span class="req">*</span></label><input class="inp" value="ABtec Computer Solutions Limited"></div><div class="fl"><label>Status</label><select class="inp"><option>Active</option><option>Onboarding</option><option>At risk</option><option>Prospect</option></select></div></div><div class="two"><div class="fl"><label>Industry<span class="req">*</span></label><input class="inp" value="Information technology"></div><div class="fl"><label>SIC</label><input class="inp" value="62012"></div></div><div class="three"><div class="fl"><label>Reporting freq.</label><select class="inp"><option>Annual</option><option>Quarterly</option></select></div><div class="fl"><label>Currency</label><input class="inp" value="GBP"></div><div class="fl"><label>Financial year end<span class="req">*</span></label><select class="inp"><option>January</option><option>February</option><option selected>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option>September</option><option>October</option><option>November</option><option>December</option></select></div></div>
+    <div class="hint">The financial year end sets each reporting year's period and drives reporting-year eligibility (the 300–400 day rule) — so it must be correct before a job is issued.</div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save profile</button>`},
   address:{k:"Invoicing",t:"Registered address",body:`<div class="fl"><label>Registered / trading address</label><input class="inp" value="10 Finsbury Square"></div><div class="two"><div class="fl"><label>City</label><input class="inp" value="London"></div><div class="fl"><label>Postcode</label><input class="inp" value="EC2A 1AB"></div></div>${GEO(true)}<label class="lrow" style="border:0;padding:2px 0"><input type="checkbox" checked style="accent-color:var(--accent)"> <span>Billing same as registered</span></label>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save address</button>`},
   compliance:{k:"Obligations",t:"Compliance",body:`<div class="fl"><label>Group structure</label><select class="inp"><option>Standalone</option><option>Subsidiary</option><option>Parent company</option></select></div><div class="fl"><label>Reporting frameworks</label><input class="inp" value="SECR"></div><div class="fl"><label>Certifications</label><input class="inp" value="ISO 14001"></div><div class="fl"><label>Primary Scope 3 categories</label><input class="inp" value="Cat 1, Cat 4, Cat 6"></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save compliance</button>`},
   factor:{k:"Reference data",t:"Client factors",body:`<div class="hint">Client-specific, EPD-backed factors reusable across this client's jobs — same versioning + evidence lineage as dataset factors.</div><div class="lrow"><div><div class="nm">Recycled board — supplier EPD</div><div class="sub mono">0.412 kgCO₂e/kg · v2</div></div><div class="r"><button class="editlink">Edit</button></div></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">＋ New client factor</button>`},
