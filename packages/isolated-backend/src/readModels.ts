@@ -1,8 +1,10 @@
 import type { Queryable } from "./postgres";
 import {rolePermissions,type StaffRole} from "./auth";
-import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, FigureEvidence, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ProvenanceSignature, QualityTier } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveReportSections } from "@nzi/contracts";
-import { resolveClientSiteBoundary } from "./siteBoundary";
+import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, computeAssuranceGaps, crpScopeCategoryLabel, resolveClientEmissionsEvidence, resolveReportSections } from "@nzi/contracts";
+import { dateOnly } from "./dates";
+import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
+export { dateOnly } from "./dates";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -15,27 +17,10 @@ export type ClientScreenReadModel = {
   memberSince: string; latestFootprint: string | null; yoy: string | null; completeness: number;
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   jobs: Array<{ number: string; year: number; status: string }>;
-  sites: Array<{ id: string; name: string; isRegisteredOffice?: boolean; inServiceFrom?: string; vacatedEffective?: string | null; status?: "in-service" | "vacated"; version?: number }>;
-  figures?: { latest: FigureEvidence; scopes: Array<FigureEvidence & { scope: "1" | "2" | "3" }>; intensity: FigureEvidence };
+  sites: Array<{ id: string; name: string; isRegisteredOffice: boolean; inServiceFrom: string | null; vacatedEffective: string | null; version: number }>;
   profile: ClientProfileFields;
 };
 
-export type ClientEmissionsEvidenceReadModel = { latest: FigureEvidence; scopes: Array<FigureEvidence & { scope: "1" | "2" | "3" }>; intensity: FigureEvidence };
-
-export function resolveClientFigureEvidence(snapshot: ReviewedCrpSnapshotReadModel, intensity: { value: number; unit: string } | null = null): ClientEmissionsEvidenceReadModel {
-  const byScope = (["1", "2", "3"] as const).map((scope) => snapshot.measurements.filter((measurement) => measurement.scope === scope).reduce((sum, measurement) => sum + measurement.tco2e, 0));
-  const tiers = (["1", "2", "3"] as const).map((scope) => new Set(snapshot.measurements.filter((measurement) => measurement.scope === scope).map((measurement) => measurement.qualityTier)));
-  const quality = (values: Set<string>): QualityTier | "Mixed" => {
-    if (values.size !== 1) return "Mixed";
-    const value = [...values][0];
-    return value === "measured" ? "Measured" : value === "estimated" ? "Estimated" : value === "spend-based" ? "Spend-based" : value === "survey" ? "Survey" : "Mixed";
-  };
-  const factorSets = [...new Set(snapshot.measurements.map((measurement) => measurement.factorSet))];
-  const signature: ProvenanceSignature = { factorSet: factorSets.join(" · ") || "Not available", factorSetVersion: "reviewed-snapshot", dataHash: snapshot.dataHash, asAtDate: snapshot.createdAt, sourceRef: `Reviewed snapshot · ${snapshot.id}`, resolver: "reviewed-snapshot.resolve@1" };
-  const lineage = [{ title: "Reviewed snapshot", detail: `${snapshot.jobNumber} · version ${snapshot.version} · ${snapshot.createdBy}` }, { title: "Calculation", detail: `${snapshot.measurements.length} independently reviewed measurement rows aggregated by scope` }];
-  const makeFigure = (value: number, unit: string, scope: "1" | "2" | "3" | null): FigureEvidence => ({ value, unit, qualityTier: scope === null ? quality(new Set(snapshot.measurements.map((measurement) => measurement.qualityTier))) : quality(tiers[Number(scope) - 1]!), provenance: signature, lineage });
-  return { latest: makeFigure(byScope.reduce((sum, value) => sum + value, 0), "tCO2e", null), scopes: byScope.map((value, index) => ({ scope: (["1", "2", "3"] as const)[index]!, ...makeFigure(value, "tCO2e", (["1", "2", "3"] as const)[index]!) })), intensity: makeFigure(intensity?.value ?? 0, intensity?.unit ?? "tCO2e / reporting metric", null) };
-}
 
 export type JobFamily = "crp" | "consultancy" | "lca" | "pcf" | "training";
 export type JobStageEvent = { id: string; fromStage: string; toStage: string; actorId: string; note?: string; occurredAt: string };
@@ -60,7 +45,7 @@ type ClientRow = {
   member_since: number; latest_footprint_tco2e: string | null; yoy_percent: string | null;
   completeness_percent: number; next_report_due_label: string; contact_name: string; contact_role: string;
   contact_email: string; open_jobs: string; jobs: Array<{ number: string; year: number; status: string }> | null;
-  sites: Array<{ id: string; name: string }> | null;
+  sites: ClientScreenReadModel["sites"] | null;
   portfolio: string | null; client_manager: string | null; website: string | null; industry_sic: string | null;
   company_registration: string | null; headquarters: string | null; financial_year_end_month: number | null;
   data_reporting_frequency: ClientReportingFrequency; currency: string; logo_url: string | null;
@@ -112,12 +97,6 @@ type JobRow = {
   owner_name: string; start_date: Date | string; due_date: Date | string; quote_id: string | null;
   progress_percent: number; detail_json: unknown; stage_history: JobStageEvent[] | null;
 };
-// node-postgres materialises a SQL `date` as local midnight, so toISOString() shifts it
-// a day earlier wherever the server runs ahead of UTC (BST included). Read the local
-// components instead — a `date` carries no time or zone and must not acquire one.
-export const dateOnly = (value: Date | string) => value instanceof Date
-  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
-  : String(value).slice(0, 10);
 const footprint = (value: string | null) => value === null ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
 const percentage = (value: string | null) => value === null ? null : `${Number(value) > 0 ? "+" : "−"}${Math.abs(Number(value)).toFixed(1)}%`;
 const asDetail = (family: JobFamily, value: unknown): JobDetail => {
@@ -125,7 +104,7 @@ const asDetail = (family: JobFamily, value: unknown): JobDetail => {
   return value as JobDetail;
 };
 
-export async function listClients(db: Queryable): Promise<ClientScreenReadModel[]> {
+export async function listClients(db: Queryable, clientId?: string): Promise<ClientScreenReadModel[]> {
   const { rows } = await db.query<ClientRow>(`SELECT c.client_id, c.version, c.name, c.status, c.sector, c.location, c.owner_name,
       c.member_since, c.latest_footprint_tco2e, c.yoy_percent, c.completeness_percent,
       c.next_report_due_label, c.contact_name, c.contact_role, c.contact_email,
@@ -143,18 +122,54 @@ export async function listClients(db: Queryable): Promise<ClientScreenReadModel[
       count(j.job_id) FILTER (WHERE j.status IN ('draft','open','on-hold'))::text AS open_jobs,
       coalesce(jsonb_agg(jsonb_build_object('number', j.job_number, 'year', coalesce(j.reporting_year, extract(year from j.start_date)::int), 'status', j.workflow_stage)
         ORDER BY j.sequence DESC) FILTER (WHERE j.job_id IS NOT NULL), '[]'::jsonb) AS jobs
-      ,coalesce((SELECT jsonb_agg(jsonb_build_object('id', s.site_id, 'name', s.name, 'isRegisteredOffice', s.is_registered_office, 'inServiceFrom', s.in_service_from, 'vacatedEffective', s.vacated_effective, 'status', CASE WHEN s.vacated_effective IS NULL THEN 'in-service' ELSE 'vacated' END, 'version', s.version) ORDER BY lower(s.name), s.site_id)
-        FROM nzi_console.client_sites s WHERE (s.organisation_id,s.client_id)=(c.organisation_id,c.client_id)), '[]'::jsonb) AS sites
+      ,coalesce((SELECT jsonb_agg(jsonb_build_object('id', s.site_id, 'name', s.name, 'isRegisteredOffice', s.is_registered_office, 'inServiceFrom', s.in_service_from, 'vacatedEffective', s.vacated_effective, 'version', s.version) ORDER BY lower(s.name), s.site_id)
+        FROM nzi_console.client_sites s WHERE (s.organisation_id,s.client_id)=(c.organisation_id,c.client_id) AND s.archived=false), '[]'::jsonb) AS sites
     FROM nzi_console.clients c
     LEFT JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
+    ${clientId ? "WHERE c.client_id=$1" : ""}
     GROUP BY c.organisation_id, c.client_id
-    ORDER BY lower(c.name), c.client_id`);
+    ORDER BY lower(c.name), c.client_id`, clientId ? [clientId] : []);
   return rows.map((row) => ({ id: row.client_id, version: row.version, name: row.name, sector: row.sector, location: row.location,
     status: row.status, owner: row.owner_name, memberSince: String(row.member_since),
     latestFootprint: footprint(row.latest_footprint_tco2e), yoy: percentage(row.yoy_percent),
     completeness: row.completeness_percent, openJobs: Number(row.open_jobs), nextReportDue: row.next_report_due_label,
     contact: { name: row.contact_name, role: row.contact_role, email: row.contact_email }, jobs: row.jobs ?? [], sites: row.sites ?? [],
     profile: clientProfile(row) }));
+}
+
+export type ClientReportingPeriod = { jobId: string; jobNumber: string; label: string; from: string; to: string };
+export type ClientWorkspaceReadModel = {
+  client: ClientScreenReadModel;
+  sites: ClientSiteReadModel[];
+  evidence: ClientEmissionsEvidence;
+  /** The client's recent CRP reporting periods, newest first — the boundary column reads these. */
+  reportingPeriods: ClientReportingPeriod[];
+};
+
+const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
+
+/**
+ * One client's workspace: its record, its sites, and figures resolved from its own
+ * latest reviewed snapshot (the prior year's for YoY) — never a shared fixture.
+ */
+export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
+  const [client] = await listClients(db, clientId);
+  if (!client) return null;
+  const [sites, snapshots, periods] = await Promise.all([
+    listClientSites(db, clientId),
+    db.query<SnapshotRow>(`SELECT DISTINCT ON ((s.payload_json->>'reportingYear')::integer) s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
+    db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
+  ]);
+  const [current, prior] = snapshots.rows.map(mapSnapshotRow);
+  return {
+    client,
+    sites,
+    evidence: resolveClientEmissionsEvidence({ current: current ?? null, prior: prior ?? null }),
+    reportingPeriods: periods.rows.map((row) => {
+      const from = dateOnly(row.reporting_from ?? row.start_date);
+      return { jobId: row.job_id, jobNumber: row.job_number, label: `FY${String(row.reporting_year ?? Number(from.slice(0, 4))).slice(-2)}`, from, to: dateOnly(row.reporting_to ?? row.due_date) };
+    }),
+  };
 }
 
 export async function listAuditEvents(db:Queryable,limit=100):Promise<AuditEventReadModel[]>{const safeLimit=Math.min(Math.max(Math.trunc(limit),1),250),{rows}=await db.query<{audit_event_id:string;occurred_at:Date|string;actor_id:string;principal_type:AuditEventReadModel["principal"];organisation_id:string;action:string;entity_type:string;entity_id:string;correlation_id:string;reason:string|null;before_json:unknown;after_json:unknown}>(`SELECT audit_event_id,occurred_at,actor_id,principal_type,organisation_id,action,entity_type,entity_id,correlation_id,reason,before_json,after_json FROM nzi_console.audit_events ORDER BY occurred_at DESC,audit_event_id DESC LIMIT $1`,[safeLimit]);const display=(value:unknown)=>value==null?undefined:typeof value==="string"?value:JSON.stringify(value);return rows.map(row=>({id:row.audit_event_id,at:row.occurred_at instanceof Date?row.occurred_at.toISOString():String(row.occurred_at),actor:row.actor_id,principal:row.principal_type,organisation:row.organisation_id,action:row.action,entity:row.entity_type,entityId:row.entity_id,result:"allowed",severity:row.reason?"warning":"info",correlationId:row.correlation_id,...(display(row.before_json)?{before:display(row.before_json)}:{}),...(display(row.after_json)?{after:display(row.after_json)}:{}),...(row.reason?{reason:row.reason}:{})}));}
@@ -286,11 +301,11 @@ export async function getScopeQaReadiness(db:Queryable,jobId:string):Promise<Sco
 type TargetRow={job_id:string;baseline_year:number;baseline_tco2e:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
 const mapTarget=(row:TargetRow):EmissionsTargetReadModel=>({jobId:row.job_id,baselineYear:row.baseline_year,baselineTco2e:Number(row.baseline_tco2e),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
 export async function getJobEmissionsTarget(db:Queryable,jobId:string):Promise<EmissionsTargetReadModel|null>{const {rows}=await db.query<TargetRow>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapTarget(rows[0]):null;}
-type IntensityRow={job_id:string;metric:IntensityTargetReadModel["metric"];denominator_unit:string;reporting_denominator:string;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
-const mapIntensity=(row:IntensityRow):IntensityTargetReadModel=>({jobId:row.job_id,metric:row.metric,denominatorUnit:row.denominator_unit,reportingDenominator:Number(row.reporting_denominator),baselineYear:row.baseline_year,baselineIntensity:Number(row.baseline_intensity),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
-export async function getJobIntensityTarget(db:Queryable,jobId:string):Promise<IntensityTargetReadModel|null>{const {rows}=await db.query<IntensityRow>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapIntensity(rows[0]):null;}
+type IntensityRow={job_id:string;metric:IntensityTargetReadModel["metric"];denominator_unit:string;reporting_denominator:string|null;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
+const mapIntensity=(row:IntensityRow):IntensityTargetReadModel=>({jobId:row.job_id,metric:row.metric,denominatorUnit:row.denominator_unit,reportingDenominator:row.reporting_denominator===null?null:Number(row.reporting_denominator),baselineYear:row.baseline_year,baselineIntensity:Number(row.baseline_intensity),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
+export async function getJobIntensityTarget(db:Queryable,jobId:string):Promise<IntensityTargetReadModel|null>{const {rows}=await db.query<IntensityRow>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE job_id=$1`,[jobId]);if(!rows[0])return null;const boundary=await resolveJobSiteBoundary(db,jobId);return boundary?withResolvedDenominator(mapIntensity(rows[0]),boundary):mapIntensity(rows[0]);}
 
-type SnapshotRow={snapshot_id:string;job_id:string;snapshot_version:number;job_version:number;data_hash:string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:EmissionsTargetReadModel|null;intensityTarget?:IntensityTargetReadModel|null;annualComparison?:ReviewedCrpSnapshotReadModel["annualComparison"];sections?:ReportSectionReadModel[];gapResolutions?:ReviewedCrpSnapshotReadModel["gapResolutions"];measurements:ReviewedCrpSnapshotReadModel["measurements"]};created_by:string;created_at:Date|string};
+type SnapshotRow={snapshot_id:string;job_id:string;snapshot_version:number;job_version:number;data_hash:string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:EmissionsTargetReadModel|null;intensityTarget?:IntensityTargetReadModel|null;annualComparison?:ReviewedCrpSnapshotReadModel["annualComparison"];sections?:ReportSectionReadModel[];gapResolutions?:ReviewedCrpSnapshotReadModel["gapResolutions"];provenance?:SnapshotProvenanceStamp|null;measurements:ReviewedCrpSnapshotReadModel["measurements"]};created_by:string;created_at:Date|string};
 
 /** R2 (NZC-048) — the working editable report sections for a job, in report order. */
 type ReportSectionRow={section_key:string;content_source:ReportSectionReadModel["contentSource"];body_html:string;version:number;updated_by:string;updated_at:Date|string};
@@ -348,7 +363,7 @@ export async function listGapResolutions(db: Queryable, jobId: string): Promise<
 }
 
 const assuranceIntensity = (target: IntensityTargetReadModel | null | undefined) =>
-  target && target.reportingDenominator > 0 ? { reportingDenominator: target.reportingDenominator, denominatorUnit: target.denominatorUnit } : null;
+  target && target.reportingDenominator !== null && target.reportingDenominator > 0 ? { reportingDenominator: target.reportingDenominator, denominatorUnit: target.denominatorUnit } : null;
 
 /**
  * DA1b (NZC-059) — the multi-year emissions trend: the reporting chain with each
@@ -359,6 +374,8 @@ const assuranceIntensity = (target: IntensityTargetReadModel | null | undefined)
 export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promise<AssuranceTrend | null> {
   const chain = await resolveCrpReportingChain(db, jobId);
   if (!chain) return null;
+  const boundary = await resolveJobSiteBoundary(db, jobId);
+  if (!boundary) return null;
 
   const snapshotIds = chain.entries.filter((entry) => entry.snapshotId).map((entry) => entry.snapshotId!);
   const payloadById = new Map<string, SnapshotRow["payload_json"]>();
@@ -374,7 +391,7 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
   let liveMeasurements: AssuranceMeasurement[] = [];
   let liveIntensity: IntensityTargetReadModel | null = null;
   if (needsLive) {
-    const [rowResult, intensity, boundary] = await Promise.all([
+    const [rowResult, intensity] = await Promise.all([
       db.query<{ scope: string; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string | null }>(
         `SELECT split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.site_id, s.name AS site_label,
                 coalesce(r.override_tco2e, r.calculated_tco2e)::text AS tco2e
@@ -384,12 +401,10 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
         [jobId],
       ),
       getJobIntensityTarget(db, jobId),
-      resolveClientSiteBoundary(db, chain.clientId, chain.currentYear),
     ]);
     liveIntensity = intensity;
-    const boundaryIds = new Set(boundary.map((site) => site.id));
     liveMeasurements = rowResult.rows
-      .filter((row) => row.site_id === null || boundaryIds.has(row.site_id))
+      .filter((row) => rowIsInBoundary(row.site_id, boundary))
       .filter((row): row is { scope: "1" | "2" | "3"; scope_code: string | null; site_id: string | null; site_label: string | null; tco2e: string } =>
         row.tco2e !== null && (row.scope === "1" || row.scope === "2" || row.scope === "3"))
       .map((row) => ({ scope: row.scope, scopeCode: row.scope_code, siteId: row.site_id, siteLabel: row.site_label, tco2e: Number(row.tco2e) }));
@@ -417,6 +432,8 @@ export async function resolveAssuranceTrend(db: Queryable, jobId: string): Promi
 export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<AssuranceScreen | null> {
   const trend = await resolveAssuranceTrend(db, jobId);
   if (!trend) return null;
+  const boundary = await resolveJobSiteBoundary(db, jobId);
+  if (!boundary) return null;
   const [rowResult, resolutions] = await Promise.all([
     db.query<{ scope_row_id: string; version: number; scope: string; scope_code: string | null; source_label: string; site_id: string | null; site_label: string | null; quantity: string | null; unit: string | null; factor_id: string | null; factor_label: string | null; factor_source: string | null; client_factor_id: string | null; quality_tier: ScopeQualityTier | null; data_confidence: string | null; review_status: string; reviewer_note: string | null; calculated_tco2e: string | null; override_tco2e: string | null; enabled: boolean; monthly_activity_json: Array<{ quantity: number | null }> | null }>(
       `SELECT r.scope_row_id, r.version, split_part(r.scope,'.',1) AS scope, r.scope AS scope_code, r.source_label, r.site_id, s.name AS site_label,
@@ -443,8 +460,10 @@ export async function getAssuranceScreen(db: Queryable, jobId: string): Promise<
     tco2e: row.override_tco2e !== null ? Number(row.override_tco2e) : row.calculated_tco2e !== null ? Number(row.calculated_tco2e) : null,
     enabled: row.enabled,
     hasMonthlyActivity: Array.isArray(row.monthly_activity_json) && row.monthly_activity_json.some((slot) => slot.quantity !== null && slot.quantity !== undefined),
+    siteLabel: row.site_label,
+    inBoundary: rowIsInBoundary(row.site_id, boundary),
   }));
-  const gaps = computeAssuranceGaps({ trend, currentRows, resolutions });
+  const gaps = computeAssuranceGaps({ trend, currentRows, resolutions, boundarySiteIds: boundary.inBoundaryIds });
   const auditRows: AssuranceAuditRow[] = rowResult.rows.filter((row) => row.enabled).map((row) => ({
     rowId: row.scope_row_id,
     version: Number(row.version),
@@ -469,14 +488,17 @@ export async function getReportSectionsEditorScreen(db:Queryable,jobId:string):P
   const job=jobResult.rows[0];
   if(!job||job.job_family!=="crp")return null;
   const reportingYear=job.reporting_year??Number((job.start_date instanceof Date?job.start_date.toISOString():String(job.start_date)).slice(0,4));
+  const boundary=await resolveJobSiteBoundary(db,jobId);
+  if(!boundary)return null;
   const [sections,rowResult,target,intensity]=await Promise.all([
     listReportSections(db,jobId),
-    db.query<{scope:string;tco2e:string|null}>(`SELECT split_part(scope,'.',1) AS scope,coalesce(override_tco2e,calculated_tco2e)::text AS tco2e FROM nzi_console.job_scope_rows WHERE job_id=$1 AND enabled=true`,[jobId]),
+    db.query<{scope:string;site_id:string|null;tco2e:string|null}>(`SELECT split_part(scope,'.',1) AS scope,site_id,coalesce(override_tco2e,calculated_tco2e)::text AS tco2e FROM nzi_console.job_scope_rows WHERE job_id=$1 AND enabled=true`,[jobId]),
     getJobEmissionsTarget(db,jobId),
     getJobIntensityTarget(db,jobId),
   ]);
   const measurements=rowResult.rows
-    .filter((row):row is {scope:"1"|"2"|"3";tco2e:string}=>row.tco2e!==null&&(row.scope==="1"||row.scope==="2"||row.scope==="3"))
+    .filter(row=>rowIsInBoundary(row.site_id,boundary))
+    .filter((row):row is {scope:"1"|"2"|"3";site_id:string|null;tco2e:string}=>row.tco2e!==null&&(row.scope==="1"||row.scope==="2"||row.scope==="3"))
     .map(row=>({scope:row.scope,tco2e:Number(row.tco2e)}));
   return {
     jobId,jobNumber:job.job_number,reportingYear,sections,
@@ -488,12 +510,12 @@ export async function getReportSectionsEditorScreen(db:Queryable,jobId:string):P
     },
   };
 }
-export async function listReviewedCrpSnapshots(db:Queryable,jobId:string):Promise<ReviewedCrpSnapshotReadModel[]>{const {rows}=await db.query<SnapshotRow>(`SELECT snapshot_id,job_id,snapshot_version,job_version,data_hash,payload_json,created_by,created_at FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC`,[jobId]);return rows.map(row=>({id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements}));}
+export async function listReviewedCrpSnapshots(db:Queryable,jobId:string):Promise<ReviewedCrpSnapshotReadModel[]>{const {rows}=await db.query<SnapshotRow>(`SELECT snapshot_id,job_id,snapshot_version,job_version,data_hash,payload_json,created_by,created_at FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC`,[jobId]);return rows.map(row=>({id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],provenance:row.payload_json.provenance??null,measurements:row.payload_json.measurements}));}
 
 type PublishedReportRow=SnapshotRow&{report_version_id:string;manifest_version:number;report_data_hash:string;published_at:Date|string};
 type ReportVersionDetailRow=SnapshotRow&{report_version_id:string;status:CrpReportVersionReadModel["status"];manifest_version:number;report_data_hash:string;published_at:Date|string|null};
-export async function getCrpReportVersion(db:Queryable,reportVersionId:string):Promise<CrpReportVersionReadModel|null>{const {rows}=await db.query<ReportVersionDetailRow>(`SELECT r.report_version_id,r.status,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.report_version_id=$1 AND r.status IN ('validated','published','superseded') AND j.job_family='crp'`,[reportVersionId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Report version evidence hash does not match its reviewed snapshot.");return{reportVersionId:row.report_version_id,status:row.status,manifestVersion:row.manifest_version,publishedAt:row.published_at==null?null:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot:{id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements}};}
-export async function getCurrentPublishedCrpReport(db:Queryable,jobId:string):Promise<PublishedCrpReportReadModel|null>{const {rows}=await db.query<PublishedReportRow>(`SELECT r.report_version_id,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.job_id=$1 AND r.status='published' AND j.job_family='crp'`,[jobId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Published report evidence hash does not match its reviewed snapshot.");const snapshot:ReviewedCrpSnapshotReadModel={id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],measurements:row.payload_json.measurements};return{reportVersionId:row.report_version_id,manifestVersion:row.manifest_version,publishedAt:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot};}
+export async function getCrpReportVersion(db:Queryable,reportVersionId:string):Promise<CrpReportVersionReadModel|null>{const {rows}=await db.query<ReportVersionDetailRow>(`SELECT r.report_version_id,r.status,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.report_version_id=$1 AND r.status IN ('validated','published','superseded') AND j.job_family='crp'`,[reportVersionId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Report version evidence hash does not match its reviewed snapshot.");return{reportVersionId:row.report_version_id,status:row.status,manifestVersion:row.manifest_version,publishedAt:row.published_at==null?null:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot:{id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],provenance:row.payload_json.provenance??null,measurements:row.payload_json.measurements}};}
+export async function getCurrentPublishedCrpReport(db:Queryable,jobId:string):Promise<PublishedCrpReportReadModel|null>{const {rows}=await db.query<PublishedReportRow>(`SELECT r.report_version_id,r.manifest_version,r.data_hash AS report_data_hash,r.published_at,s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at FROM nzi_console.report_versions r JOIN nzi_console.reviewed_crp_snapshots s ON (s.organisation_id,s.snapshot_id)=(r.organisation_id,r.reviewed_snapshot_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) WHERE r.job_id=$1 AND r.status='published' AND j.job_family='crp'`,[jobId]);const row=rows[0];if(!row)return null;if(row.report_data_hash!==row.data_hash)throw new Error("Published report evidence hash does not match its reviewed snapshot.");const snapshot:ReviewedCrpSnapshotReadModel={id:row.snapshot_id,jobId:row.job_id,jobNumber:row.payload_json.jobNumber,client:row.payload_json.client,reportingYear:row.payload_json.reportingYear,version:row.snapshot_version,jobVersion:row.job_version,createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at),createdBy:row.created_by,dataHash:row.data_hash,target:row.payload_json.target??null,intensityTarget:row.payload_json.intensityTarget??null,annualComparison:row.payload_json.annualComparison??[],sections:row.payload_json.sections??resolveReportSections([]),gapResolutions:row.payload_json.gapResolutions??[],provenance:row.payload_json.provenance??null,measurements:row.payload_json.measurements};return{reportVersionId:row.report_version_id,manifestVersion:row.manifest_version,publishedAt:row.published_at instanceof Date?row.published_at.toISOString():String(row.published_at),dataHash:row.report_data_hash,snapshot};}
 export async function getGrantedPublishedCrpReport(db:Queryable,input:{portalUserId:string;clientId:string;jobId:string}):Promise<PublishedCrpReportReadModel|null>{const granted=await db.query(`SELECT 1 FROM nzi_console.portal_access_grants g JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id,j.client_id)=(g.organisation_id,g.job_id,g.client_id) WHERE g.portal_user_id=$1 AND g.client_id=$2 AND g.job_id=$3 AND g.revoked_at IS NULL`,[input.portalUserId,input.clientId,input.jobId]);if(!granted.rows[0])return null;return getCurrentPublishedCrpReport(db,input.jobId);}
 
 export async function listDatasetRegistry(db:Queryable):Promise<{datasets:DatasetRegistryItem[];issues:DatasetRegistryIssue[]}>{const datasets=await db.query<{dataset_id:string;name:string;version:string;valid_from:string;valid_to:string;country_code:string;status:DatasetRegistryItem["status"];source_name:string;licence:string;synthetic:boolean;factor_count:string;job_count:string;scopes:string[];spend_count:string;activity_count:string}>(`SELECT d.dataset_id,d.name,d.version,d.valid_from::text,d.valid_to::text,d.country_code,d.status,d.source_name,d.licence,d.synthetic,count(DISTINCT f.factor_id)::text AS factor_count,count(DISTINCT s.job_id)::text AS job_count,coalesce(array_agg(DISTINCT scope) FILTER (WHERE scope IN ('1','2','3')),'{}') AS scopes,count(DISTINCT f.factor_id) FILTER (WHERE upper(f.activity_unit) IN ('GBP','USD','EUR'))::text AS spend_count,count(DISTINCT f.factor_id) FILTER (WHERE upper(f.activity_unit) NOT IN ('GBP','USD','EUR'))::text AS activity_count FROM nzi_console.emission_factor_datasets d LEFT JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(d.organisation_id,d.dataset_id) LEFT JOIN LATERAL unnest(f.scopes) scope ON true LEFT JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(d.organisation_id,d.dataset_id) GROUP BY d.organisation_id,d.dataset_id ORDER BY d.valid_from DESC,d.name,d.version`),warnings=await db.query<{dataset_id:string;job_number:string;warning:string}>(`SELECT s.dataset_id,j.job_number,w.warning FROM nzi_console.job_dataset_selections s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) CROSS JOIN LATERAL jsonb_array_elements_text(s.warnings_json) w(warning) ORDER BY s.selected_at DESC`);return{datasets:datasets.rows.map(row=>{const spend=Number(row.spend_count),activity=Number(row.activity_count);return{id:row.dataset_id,name:row.name,version:row.version,validFrom:row.valid_from,validTo:row.valid_to,country:row.country_code,scopes:row.scopes as Array<"1"|"2"|"3">,method:spend&&activity?"mixed":spend?"spend":"activity",source:row.source_name,analysisType:"published-source",year:Number(row.valid_from.slice(0,4)),licence:row.licence,status:row.status,factorCount:Number(row.factor_count),usedByJobs:Number(row.job_count),synthetic:row.synthetic}}),issues:warnings.rows.map((row,index)=>({id:`${row.dataset_id}:${row.job_number}:${index}`,severity:"warning",datasetId:row.dataset_id,jobNumber:row.job_number,message:row.warning,state:"open"}))};}

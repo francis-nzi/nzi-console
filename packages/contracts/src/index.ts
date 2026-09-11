@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform" | "clientWorkspace";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -33,6 +33,8 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   lcaReport: { key: "lcaReport", validate: (value) => record(value) && ("report" in value), isEmpty: () => false },
   portal: { key: "portal", validate: record, isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
+  // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.
+  clientWorkspace: { key: "clientWorkspace", validate: (value) => record(value) && rows(value, "sites") && rows(value, "reportingPeriods") && (value.client === null || (record(value.client) && record(value.evidence))), isEmpty: (value) => record(value) && value.client === null },
   platform: { key: "platform", validate: (value) => rows(value, "services") && rows(value, "events") && rows(value, "roles"), isEmpty: (value) => record(value) && (value.services as unknown[]).length === 0 },
 };
 
@@ -51,3 +53,4 @@ export * from "./jobFamilies";
 export * from "./trainingFamily";
 export * from "./consultancyFamily";
 export * from "./evidence";
+export * from "./siteBoundary";

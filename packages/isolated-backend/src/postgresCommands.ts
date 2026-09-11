@@ -6,6 +6,7 @@ import {
   type ReportSectionTemplate,
   crpScopeCategoryPath,
   isAllowedJobStageTransition,
+  reportingPeriodForYear,
   validateCommand,
   type CommandContext,
   type CommandInputMap,
@@ -14,12 +15,14 @@ import {
   type ClientProfileFields,
   type ScopeQualityTier,
   type ScopeRowWriteFields,
+  type SnapshotProvenanceStamp,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
+import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantWrite } from "./postgres";
 
@@ -375,12 +378,18 @@ export async function createJob(
       ],
     );
     if (input.family === "crp") {
-      const reportingFrom = input.reportingYear
-        ? `${input.reportingYear}-01-01`
-        : input.startDate;
-      const reportingTo = input.reportingYear
-        ? `${input.reportingYear}-12-31`
-        : input.dueDate;
+      // NZC-070 — a labelled reporting year is the client's financial year, not 1 Jan–31 Dec.
+      const financialYearEnd = input.reportingYear
+        ? (await db.query<{ financial_year_end_month: number | null }>(
+            `SELECT financial_year_end_month FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
+            [context.organisationId, input.clientId],
+          )).rows[0]?.financial_year_end_month ?? null
+        : null;
+      const period = input.reportingYear
+        ? reportingPeriodForYear(input.reportingYear, financialYearEnd)
+        : { from: input.startDate, to: input.dueDate };
+      const reportingFrom = period.from;
+      const reportingTo = period.to;
       await db.query(
         `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
         [context.organisationId, jobId, reportingFrom, reportingTo],
@@ -582,7 +591,6 @@ async function resolveMonthlyActivity(db:Queryable,organisationId:string,jobId:s
 async function resolveSourceMonthlyActivity(db:Queryable,organisationId:string,jobId:string,quantity:number|null,slots:CommandInputMap["emission.source.activity.update"]["monthlyActivity"]){if(!slots.length)return{slots,quantity};const config=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,[organisationId,jobId]),row=config.rows[0],dateOnly=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);if(!row)throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISSING",message:"Configure the CRP reporting period before entering monthly activity."}]);const expected=reportingMonths(dateOnly(row.reporting_from),dateOnly(row.reporting_to)),actual=slots.map(slot=>slot.month);if(expected.length!==actual.length||expected.some((month,index)=>month!==actual[index]))throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISMATCH",message:"Monthly source activity must contain each reporting-period month once, in order."}]);const populated=slots.filter(slot=>slot.quantity!==null);return{slots,quantity:populated.length?populated.reduce((sum,slot)=>sum+(slot.quantity??0),0):null};}
 async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);}
 
-export async function createClientSite(pool:PoolLike,input:CommandInputMap["site.create"],context:CommandContext):Promise<StoredOutcome<{siteId:string;name:string}>>{return runPostgresCommand(pool,"site.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),siteId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by) VALUES ($1,$2,$3,$4,$5)`,[context.organisationId,siteId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That client site already exists."}]);throw error;}return{data:{siteId,name},entityType:"client_site",entityId:siteId,topic:"client.site.created"};});}
 
 async function requirePurchasedGoodsCategory(db:Queryable,organisationId:string,jobId:string,scope:string,categoryId:string|null){if(!categoryId)return;if(scope!=="3.1")throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"WRONG_SCOPE",message:"Purchased-goods categories apply only to Scope 3.1 rows."}]);const found=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[organisationId,jobId,categoryId]);if(!found.rows[0])throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"NOT_FOUND",message:"Purchased-goods category was not found for this client."}]);}
 export async function createPurchasedGoodsCategory(pool:PoolLike,input:CommandInputMap["purchased.goods.category.create"],context:CommandContext):Promise<StoredOutcome<{categoryId:string;name:string}>>{return runPostgresCommand(pool,"purchased.goods.category.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),categoryId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.purchased_goods_categories(organisation_id,category_id,client_id,name,created_by) VALUES($1,$2,$3,$4,$5)`,[context.organisationId,categoryId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That purchased-goods category already exists."}]);throw error;}return{data:{categoryId,name},entityType:"purchased_goods_category",entityId:categoryId,topic:"purchased.goods.category.created"};});}
@@ -1502,8 +1510,8 @@ export async function createReviewedCrpSnapshot(
       }>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
       const targetRow=targetResult.rows[0];
       const target=targetRow?{jobId:targetRow.job_id,baselineYear:targetRow.baseline_year,baselineTco2e:Number(targetRow.baseline_tco2e),interimYear:targetRow.interim_year,interimReductionPercent:Number(targetRow.interim_reduction_percent),netZeroYear:targetRow.net_zero_year,version:targetRow.version,updatedAt:targetRow.updated_at instanceof Date?targetRow.updated_at.toISOString():String(targetRow.updated_at),updatedBy:targetRow.updated_by}:null;
-      const intensityResult=await db.query<{job_id:string;metric:"turnover"|"employee"|"floor-area";denominator_unit:string;reporting_denominator:string;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string}>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
-      const intensityRow=intensityResult.rows[0],intensityTarget=intensityRow?{jobId:intensityRow.job_id,metric:intensityRow.metric,denominatorUnit:intensityRow.denominator_unit,reportingDenominator:Number(intensityRow.reporting_denominator),baselineYear:intensityRow.baseline_year,baselineIntensity:Number(intensityRow.baseline_intensity),interimYear:intensityRow.interim_year,interimReductionPercent:Number(intensityRow.interim_reduction_percent),netZeroYear:intensityRow.net_zero_year,version:intensityRow.version,updatedAt:intensityRow.updated_at instanceof Date?intensityRow.updated_at.toISOString():String(intensityRow.updated_at),updatedBy:intensityRow.updated_by}:null;
+      const intensityResult=await db.query<{job_id:string;metric:"turnover"|"employee"|"floor-area";denominator_unit:string;reporting_denominator:string|null;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string}>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
+      const intensityRow=intensityResult.rows[0],intensityTarget=intensityRow?{jobId:intensityRow.job_id,metric:intensityRow.metric,denominatorUnit:intensityRow.denominator_unit,reportingDenominator:intensityRow.reporting_denominator===null?null:Number(intensityRow.reporting_denominator),baselineYear:intensityRow.baseline_year,baselineIntensity:Number(intensityRow.baseline_intensity),interimYear:intensityRow.interim_year,interimReductionPercent:Number(intensityRow.interim_reduction_percent),netZeroYear:intensityRow.net_zero_year,version:intensityRow.version,updatedAt:intensityRow.updated_at instanceof Date?intensityRow.updated_at.toISOString():String(intensityRow.updated_at),updatedBy:intensityRow.updated_by}:null;
       const rowResult = await db.query<{
         scope_row_id: string;
         version: number;
@@ -1530,17 +1538,34 @@ export async function createReviewedCrpSnapshot(
         review_status: string;
         reviewed_by: string | null;
         enabled: boolean;
+        dataset_id: string | null;
+        dataset_name: string | null;
+        dataset_version: string | null;
+        client_factor_label: string | null;
+        client_factor_version: string | null;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
-      const enabled = rowResult.rows.filter((row) => row.enabled);
+      // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site
+      // outside it is excluded here and raised as an out_of_boundary gap (checked below),
+      // so the live trend and this snapshot read the same boundary and cannot disagree.
+      const boundary = await resolveJobSiteBoundary(db, input.jobId);
+      if (!boundary)
+        throw new CommandValidationError([
+          { field: "jobId", code: "NOT_FOUND", message: "Job was not found." },
+        ]);
+      const enabledRows = rowResult.rows.filter((row) => row.enabled);
+      const enabled = enabledRows.filter((row) => rowIsInBoundary(row.site_id, boundary));
+      const excludedRowIds = enabledRows
+        .filter((row) => !rowIsInBoundary(row.site_id, boundary))
+        .map((row) => row.scope_row_id);
       if (enabled.length === 0)
         throw new CommandValidationError([
           {
             field: "jobId",
             code: "NO_ENABLED_ROWS",
-            message: "At least one enabled scope row is required.",
+            message: "At least one enabled scope row inside the reporting boundary is required.",
           },
         ]);
       const incomplete = enabled.filter(
@@ -1583,6 +1608,24 @@ export async function createReviewedCrpSnapshot(
       const scopeValues=(measurements:Array<{scope:string;tco2e:number}>)=>(["1","2","3"] as const).map(scope=>({scope,value:measurements.filter(row=>row.scope===scope).reduce((sum,row)=>sum+Number(row.tco2e),0)}));
       const currentMeasurements=enabled.map(row=>({scope:row.scope.split(".")[0]!,tco2e:Number(row.override_tco2e??row.calculated_tco2e)}));
       const annualComparison=[...historicalResult.rows.map(row=>({year:row.reporting_year,sourceSnapshotId:row.snapshot_id,sourceDataHash:row.data_hash,values:scopeValues(row.measurements)})),{year:reportingYear,sourceSnapshotId:"current",sourceDataHash:"current",values:scopeValues(currentMeasurements)}];
+      // NZC-066 — stamp the factor sets actually applied, so a figure's signature is read,
+      // never reconstructed. Deterministic (no clock), so identical data still hashes alike.
+      const factorSets = new Map<string, SnapshotProvenanceStamp["factorSets"][number]>();
+      for (const row of enabled) {
+        if (row.factor_source === "client" && row.client_factor_id) {
+          const raw = row.factor_version ?? row.client_factor_version;
+          if (raw) factorSets.set(`client:${row.client_factor_id}:${raw}`, { source: "client", id: row.client_factor_id, name: `Client factor · ${row.client_factor_label ?? row.factor_label ?? row.client_factor_id}`, version: raw.startsWith("v") ? raw : `v${raw}` });
+        } else if (row.dataset_id && row.dataset_name) {
+          const version = row.factor_version ?? row.dataset_version;
+          if (version) factorSets.set(`dataset:${row.dataset_id}:${version}`, { source: "dataset", id: row.dataset_id, name: row.dataset_name, version });
+        }
+      }
+      const provenance: SnapshotProvenanceStamp = {
+        resolver: "crp.snapshot.issue@2",
+        reportingPeriod: boundary.period,
+        factorSets: [...factorSets.values()].sort((a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id) || a.version.localeCompare(b.version)),
+        boundary: { siteIds: [...boundary.inBoundaryIds].sort(), excludedRowIds },
+      };
       const payload = {
         jobId: input.jobId,
         jobNumber: job.job_number,
@@ -1590,7 +1633,8 @@ export async function createReviewedCrpSnapshot(
         reportingYear,
         jobVersion: job.version,
         target,
-        intensityTarget,
+        intensityTarget: withResolvedDenominator(intensityTarget, boundary),
+        provenance,
         annualComparison,
         sections: await listReportSections(db, input.jobId),
         gapResolutions: await listGapResolutions(db, input.jobId),

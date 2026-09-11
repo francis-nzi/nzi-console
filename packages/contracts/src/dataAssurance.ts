@@ -188,7 +188,8 @@ export function percentVsBaseline(currentTotal: number | null, baselineTotal: nu
 
 // ── DA1c · integrity gap engine (NZC-060) ──────────────────────────────────
 
-export type AssuranceGapFlag = "yoy_movement" | "completeness" | "zero_blank" | "unmapped";
+/** NZC-060 flag types, plus NZC-070 `out_of_boundary`: a row at a site outside the reporting boundary. */
+export type AssuranceGapFlag = "yoy_movement" | "completeness" | "zero_blank" | "unmapped" | "out_of_boundary";
 
 /** A current-year row as the working scope rows / live figures carry it. */
 export type AssuranceCurrentRow = {
@@ -203,6 +204,9 @@ export type AssuranceCurrentRow = {
   tco2e: number | null;
   enabled: boolean;
   hasMonthlyActivity: boolean;
+  siteLabel?: string | null;
+  /** NZC-070 — false when the row's site is outside the job's reporting boundary. Absent = in. */
+  inBoundary?: boolean;
 };
 
 export type GapResolution = { gapKey: string; version: number; reason: string; resolvedBy: string; resolvedAt: string };
@@ -261,6 +265,8 @@ export function computeAssuranceGaps(input: {
   trend: AssuranceTrend;
   currentRows: readonly AssuranceCurrentRow[];
   resolutions: readonly GapResolution[];
+  /** NZC-070 — the sites in this period's boundary. A site that has left it is expected to have no data, so it raises no completeness gap. */
+  boundarySiteIds?: ReadonlySet<string> | null;
 }): AssuranceGaps {
   const resolvedByKey = new Map(input.resolutions.map((resolution) => [resolution.gapKey, resolution]));
   const gaps: AssuranceGap[] = [];
@@ -282,7 +288,17 @@ export function computeAssuranceGaps(input: {
     });
   };
 
-  const enabled = input.currentRows.filter((row) => row.enabled);
+  // (5) out of boundary (NZC-070) — excluded from the figures, so raised here rather than dropped
+  //     silently; such a row is not also checked as if it counted.
+  for (const row of input.currentRows) {
+    if (row.enabled && row.inBoundary === false) {
+      const site = row.siteLabel?.trim() || "its site";
+      add("out_of_boundary", `out_of_boundary:${row.rowId}`, row.sourceLabel,
+        `${site} is not in service during this reporting period, so this row is excluded from the figures. Correct the site dates, move the row to an in-boundary site, or disable it.`,
+        { scopeRowId: row.rowId, scopeCode: row.scopeCode, siteId: row.siteId });
+    }
+  }
+  const enabled = input.currentRows.filter((row) => row.enabled && row.inBoundary !== false);
   const currentYear = input.trend.years.find((year) => year.kind === "current");
   const priorWithData = [...input.trend.years]
     .reverse()
@@ -317,6 +333,7 @@ export function computeAssuranceGaps(input: {
     const currentSite = new Map(currentYear.bySite.map((site) => [site.siteId ?? "__unallocated__", site.tco2e]));
     for (const site of priorWithData.bySite) {
       const key = site.siteId ?? "__unallocated__";
+      if (site.siteId !== null && input.boundarySiteIds && !input.boundarySiteIds.has(site.siteId)) continue;
       if (site.tco2e > 0 && !((currentSite.get(key) ?? 0) > 0)) {
         add("completeness", `completeness:site:${key}`, site.label,
           `${site.label} had data in ${priorWithData.year} but nothing in ${currentYear.year}.`,

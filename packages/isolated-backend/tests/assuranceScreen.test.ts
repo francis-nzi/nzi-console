@@ -3,8 +3,13 @@ import { describe, it } from "node:test";
 import { getAssuranceScreen, withTenantRead } from "../src/index";
 
 // A CRP job at 2026 with a 2022 baseline target, one 2025 prior snapshot, and
-// live current-year rows (no current snapshot).
-function screenPool() {
+// live current-year rows (no current snapshot). `depot` adds a row at a site vacated
+// before the 2026 reporting period (NZC-070).
+const HQ = { site_id: "hq", name: "HQ", is_registered_office: true, in_service_from: null, vacated_effective: null, version: 1 };
+const DEPOT = { site_id: "depot", name: "Trafford depot", is_registered_office: false, in_service_from: "2020-01-01", vacated_effective: "2025-07-01", version: 2 };
+function screenPool(opts: { depot?: boolean } = {}) {
+  const depotLive = opts.depot ? [{ scope: "1", scope_code: "1.natural-gas", site_id: "depot", site_label: "Trafford depot", tco2e: "500" }] : [];
+  const depotRow = opts.depot ? [{ scope_row_id: "r-depot", scope: "1", scope_code: "1.natural-gas", version: 1, source_label: "Depot gas", site_id: "depot", site_label: "Trafford depot", quantity: "9000", unit: "kWh", factor_id: "f3", factor_label: "Gas", factor_source: "dataset", client_factor_id: null, quality_tier: "measured", data_confidence: "H", review_status: "approved", reviewer_note: null, calculated_tco2e: "500", override_tco2e: null, enabled: true, monthly_activity_json: null }] : [];
   const priorPayload = {
     reportingYear: 2025, intensityTarget: { reportingDenominator: 50, denominatorUnit: "FTE" },
     measurements: [
@@ -25,6 +30,7 @@ function screenPool() {
         return { rows: [
           { scope: "3", scope_code: "3.7", site_id: null, site_label: null, tco2e: "80" },
           { scope: "2", scope_code: "2", site_id: "hq", site_label: "HQ", tco2e: "0" },
+          ...depotLive,
         ] };
       }
       // getAssuranceScreen's row query (currentRows for the gap engine + auditRows)
@@ -33,9 +39,13 @@ function screenPool() {
           { scope: "3", scope_code: "3.7", version: 2, source_label: "Commuting survey", site_id: null, site_label: null, quantity: "4000", unit: "passenger.km", factor_id: "f1", factor_label: "Car - petrol", factor_source: "dataset", client_factor_id: null, quality_tier: "estimated", data_confidence: "M", review_status: "approved", reviewer_note: null, calculated_tco2e: "80", override_tco2e: null, enabled: true, monthly_activity_json: null },
           { scope: "3", scope_code: "3.1", version: 1, source_label: "Waste water", site_id: null, site_label: null, quantity: "1200", unit: "m3", factor_id: null, factor_label: null, factor_source: "dataset", client_factor_id: null, quality_tier: null, data_confidence: null, review_status: "pending", reviewer_note: null, calculated_tco2e: null, override_tco2e: null, enabled: true, monthly_activity_json: null },
           { scope: "2", scope_code: "2", version: 3, source_label: "Old grid row", site_id: "hq", site_label: "HQ", quantity: null, unit: null, factor_id: "f2", factor_label: "Grid", factor_source: "dataset", client_factor_id: null, quality_tier: "measured", data_confidence: "H", review_status: "approved", reviewer_note: null, calculated_tco2e: "0", override_tco2e: null, enabled: true, monthly_activity_json: null },
+          ...depotRow,
         ] };
       }
       if (sql.includes("FROM nzi_console.gap_resolutions") && sql.includes("SELECT gap_key")) return { rows: [] };
+      // NZC-070 — the job's reporting period and its client's sites
+      if (sql.includes("LEFT JOIN nzi_console.job_emissions_config")) return { rows: [{ client_id: "client-a", reporting_from: "2026-01-01", reporting_to: "2026-12-31", start_date: "2026-01-01", due_date: "2026-12-31" }] };
+      if (sql.includes("FROM nzi_console.client_sites WHERE client_id")) return { rows: [HQ, DEPOT] };
       if (sql.includes("job_intensity_targets")) return { rows: [{ job_id: "job-a", metric: "employee", denominator_unit: "FTE", reporting_denominator: "50", baseline_year: 2022, baseline_intensity: "2", interim_year: 2030, interim_reduction_percent: "50", net_zero_year: 2045, version: 1, updated_by: "u", updated_at: "x" }] };
       return { rows: [] };
     },
@@ -71,6 +81,16 @@ describe("getAssuranceScreen (DA3a)", () => {
     assert.equal(wasteWater.factorLabel, null);
     assert.equal(wasteWater.category, "Purchased goods and services");
     assert.equal(wasteWater.siteLabel, "Unallocated");
+  });
+
+  it("excludes a row at a site outside the period's boundary from the live figures and raises it as a gap (NZC-070)", async () => {
+    const screen = await withTenantRead(screenPool({ depot: true }), "org-a", (db) => getAssuranceScreen(db, "job-a"));
+    const current = screen!.trend.years.find((y) => y.kind === "current")!;
+    assert.equal(current.total, 80); // the 500 t at the depot (vacated 01/07/2025) is not in 2026
+    const gap = screen!.gaps.gaps.find((g) => g.scopeRowId === "r-depot")!;
+    assert.equal(gap.flag, "out_of_boundary");
+    assert.equal(gap.resolved, false);
+    assert.ok(!screen!.gaps.gaps.some((g) => g.scopeRowId === "r-depot" && g.flag !== "out_of_boundary"));
   });
 
   it("returns null for a non-CRP job", async () => {

@@ -8,6 +8,7 @@ import { patchBrowserCommand } from "@nzi/api-client";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import { NAV, USER } from "../../../lib/nav";
+import { formatDate } from "../../../lib/formatDate";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, normaliseClientForm, type ClientFormState, type FieldErrors } from "../../clientForm";
 
 const TABS = [
@@ -116,8 +117,8 @@ function tabForField(field: string | undefined): string | undefined {
 }
 
 /**
- * Sites stay job-scoped (a site is created in the job workspace where it is first
- * used); this is the client-level roll-up of what those jobs have created.
+ * A read-only roll-up here; site lifecycle (registered office, in-service and
+ * vacated dates, floor area) is managed on the client workspace (NZC-070).
  */
 function SitesPanel({ client }: { client: ClientScreenReadModel }) {
   return (
@@ -126,16 +127,16 @@ function SitesPanel({ client }: { client: ClientScreenReadModel }) {
         <div>
           <span className="nz-eyebrow">Operational footprint</span>
           <b>Sites ({client.sites.length})</b>
-          <div className="sub">Sites are created in the job workspace where they are first used, so every site stays tied to the engagement that measures it.</div>
+          <div className="sub">Sites are effective-dated and never deleted. Add sites, set the registered office, vacate or reinstate them, and record floor area from the client workspace — or add one from a job&apos;s emissions rows.</div>
         </div>
       </div>
       {client.sites.length === 0
-        ? <p className="sub" style={{ padding: "12px 0" }}>No sites have been created for this client yet. Open a job and add a site from its emissions rows.</p>
-        : <table className="nz-tbl"><thead><tr><th>Site</th><th>Reference</th></tr></thead><tbody>
-            {client.sites.map((site) => <tr key={site.id}><td>{site.name}</td><td className="muted">{site.id}</td></tr>)}
+        ? <p className="sub" style={{ padding: "12px 0" }}>No sites have been created for this client yet.</p>
+        : <table className="nz-tbl"><thead><tr><th>Site</th><th>In service</th></tr></thead><tbody>
+            {client.sites.map((site) => <tr key={site.id}><td>{site.name}{site.isRegisteredOffice ? " · registered office" : ""}</td><td className="muted">{site.inServiceFrom ? formatDate(site.inServiceFrom) : "Before records"} → {site.vacatedEffective ? formatDate(site.vacatedEffective) : "present"}</td></tr>)}
           </tbody></table>}
       <div className="nz-config-actions" style={{ marginTop: 16 }}>
-        <Link className="nz-btn" href={`/jobs?client=${client.id}`}>Open jobs to add a site</Link>
+        <Link className="nz-btn" href={`/clients/${client.id}`}>Manage sites on the client workspace</Link>
       </div>
     </div>
   );

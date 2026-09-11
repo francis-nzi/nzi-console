@@ -58,8 +58,8 @@ it("B. one source apportioned across two sites, with a mid-year site closure", (
   const closedSite: ClientSite = {
     id: "site-depot", organisationId: "org-nzi", clientId: "client-acme", name: "Depot",
     addressLines: ["7 Dock Rd"], postcode: "AB3 4EF", latitude: 53.4, longitude: -2.2,
-    geocodeSource: "os", geocodePrecision: "rooftop", activeFrom: "2020-01-01",
-    vacatedDate: "2026-07-01", archived: false, createdBy: "consultant", createdAt: "2026-01-01",
+    geocodeSource: "os", geocodePrecision: "rooftop", inServiceFrom: "2020-01-01",
+    vacatedEffective: "2026-07-01", archived: false, createdBy: "consultant", createdAt: "2026-01-01",
   };
   const hqRow = baseRow({
     id: "row-elec-hq", scope: "2", sourceLabel: "Grid electricity", reportLabel: "Electricity",
@@ -76,7 +76,7 @@ it("B. one source apportioned across two sites, with a mid-year site closure", (
   assert.deepEqual(roundTrip(closedSite), closedSite);
   assert.deepEqual(roundTrip(depotRow), depotRow);
   assert.equal((hqRow.applyPct ?? 0) + (depotRow.applyPct ?? 0), 100);
-  assert.equal(closedSite.vacatedDate, "2026-07-01");
+  assert.equal(closedSite.vacatedEffective, "2026-07-01");
   assert.ok(depotRow.monthlyActivity.slice(6).every((slot) => slot.quantity === null));
 });
 

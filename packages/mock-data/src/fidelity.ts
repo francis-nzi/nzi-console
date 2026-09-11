@@ -47,13 +47,13 @@ export const scopeRowWithClientFactor: ScopeRowReadModel = baseRow({
 export const siteHeadOffice: ClientSite = {
   id: "site-hq", organisationId: "demo-nzi-console", clientId: "bushy-tails", name: "Head office",
   addressLines: ["1 Kennel Way"], postcode: "AB1 2CD", latitude: 51.5, longitude: -0.1,
-  geocodeSource: "os", geocodePrecision: "rooftop", activeFrom: "2020-01-01", vacatedDate: null,
+  geocodeSource: "os", geocodePrecision: "rooftop", inServiceFrom: "2020-01-01", vacatedEffective: null,
   archived: false, createdBy: "A. Shaw", createdAt: "2026-01-01",
 };
 export const siteDepotVacated: ClientSite = {
   id: "site-depot", organisationId: "demo-nzi-console", clientId: "bushy-tails", name: "Depot",
   addressLines: ["7 Dock Rd"], postcode: "AB3 4EF", latitude: 53.4, longitude: -2.2,
-  geocodeSource: "os", geocodePrecision: "rooftop", activeFrom: "2020-01-01", vacatedDate: "2026-07-01",
+  geocodeSource: "os", geocodePrecision: "rooftop", inServiceFrom: "2020-01-01", vacatedEffective: "2026-07-01",
   archived: false, createdBy: "A. Shaw", createdAt: "2026-01-01",
 };
 export const apportionedElectricityRows: ScopeRowReadModel[] = [

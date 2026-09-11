@@ -34,7 +34,7 @@ export type ReportSectionEditorScreen = {
     reportingYear: number;
     measurements: Array<{ scope: "1" | "2" | "3"; tco2e: number }>;
     target: { baselineYear: number; baselineTco2e: number; interimYear: number; interimReductionPercent: number; netZeroYear: number } | null;
-    intensityTarget: { denominatorUnit: string; reportingDenominator: number } | null;
+    intensityTarget: { denominatorUnit: string; reportingDenominator: number | null } | null;
   };
 };
 
