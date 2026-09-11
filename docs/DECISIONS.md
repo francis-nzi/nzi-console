@@ -88,8 +88,9 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-066 | Issued reports stamp the baseline they were issued against (`baseline_id` + the figures used + `resolved_at`); a draft still resolves live. The dated record is the policy, the stamp is the reproducibility. | Confirmed (10 Sep 2026) |
 | NZC-067 | One `resolveBaseline()`; the rule "never look earlier than the baseline in force" lives in it and nowhere else. Replaces the live platform's eleven independent implementations. | Confirmed (10 Sep 2026) |
 | NZC-068 | Targets **pin** to the baseline record they were set against, with a governed **recalculate baseline** event (reason required, prior baseline retained, audit-logged) as the only way to re-base — matching GHG Protocol / SBTi base-year recalculation policy. | Confirmed (10 Sep 2026) |
-| NZC-070 | Sites are effective-dated places; reporting boundaries include any site in service during the reporting year, with no hard deletion | Confirmed (10 Sep 2026) |
-| NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only | Confirmed (10 Sep 2026) |
+| NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only. Implementation split to its own branch (`feat/commercial-ledger`), not merged. | Open — awaiting Francis |
+| NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
+| NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 
 ---
 
@@ -840,6 +841,58 @@ Unblocks the Targets tab in `0060`. **Implementation depends on NZC-065** — ta
 `client_baselines` record, which does not exist until that decision is confirmed and built. Same answer as
 open question 1 in `RE_BASELINING_DESIGN.md` on the live platform: answer once, apply to both.
 *Source: Francis, 10 Sep 2026.*
+
+### NZC-069 — Commercial ledger as source of record; Xero as projection [Open — awaiting Francis]
+Proposed: the console's quotes / invoices / credit notes are the source of record and Xero is a downstream
+projection and payment-reconciliation source only. **Not confirmed.** An implementation (migration `0061`,
+`commercial.ts`, `xeroSync.ts`, the client Financials panel) landed on `main` in 10707af alongside the
+site and provenance work without sign-off, and reported a hard-coded "Xero connected" status. It has been
+split out to its own branch (`feat/commercial-ledger`) for separate review; Xero status there is derived
+from the real integration state and reads "Not connected" when there is none. It does not merge to `main` until this decision is confirmed and the feature review passes.
+*Source: Francis, 11 Sep 2026 — corrective pass on 10707af.*
+
+### NZC-070 — Sites are effective-dated; the boundary follows the reporting period [Confirmed 11 Sep 2026]
+A site has an optional **in-service-from** date and an optional **vacated-effective** date, and is never
+hard-deleted. `vacated_effective` is the **first day out of service**. `in_service_from` **NULL** is an open
+lower bound — "in service from before records" — and is what every pre-existing site carries (migration
+`0063` undoes `0062`'s default of the migration date; never a guessed job date). A site created from a job
+defaults to that job's reporting-period start; a site created from the client workspace states its date.
+
+**The boundary is resolved against the job's reporting period** — the financial year stored as
+`job_emissions_config.reporting_from`/`reporting_to` — not 1 Jan–31 Dec. The integer `reporting_year` is a
+label only: a new job labelled *Y* for a client whose financial year ends in month *M* runs from the first
+day of month *M+1* of *Y* to the last day of month *M* of *Y+1* (a December year end gives the calendar
+year), so FY24 with a March year end is 01/04/2024–31/03/2025. Existing jobs keep their stored period —
+it is never re-guessed. A site is in the boundary for a period when
+`(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`,
+so a site vacated effective 01/04/2025 is in FY24 (to 31/03/2025) and out of FY25.
+
+**One resolver** (`resolveSiteBoundary`, `@nzi/contracts`) is the sole consumer for the NZC-059 trend, the
+NZC-060 gap engine, snapshot issue, report roll-ups, charts and the NZC-071 per-m² denominator, so the live
+trend and a reviewed snapshot cannot disagree. A scope row at a site **outside** the boundary is excluded from
+the figures and raised as a fifth gap type, **out of boundary** — never dropped silently.
+
+**Registered office:** at most one per client (enforced by a partial unique index); a vacated site cannot be
+the registered office, and vacating the registered office is blocked until it is reassigned. **Status** is
+derived from today against the dates — *Planned* (future start), *In service* (with "vacates dd/mm/yyyy" for
+a future vacate), *Vacated* — never stored.
+
+Amends NZC-064's "sites stay job-scoped / read-only roll-up": sites are still created where first used and
+scope-row site FKs are untouched, but the client workspace now manages site lifecycle, which is exactly the
+"mid-period site closure becomes reporting-relevant" trigger NZC-064 named.
+*Source: Francis, 11 Sep 2026 — corrective pass on the site effective-dating brief.*
+
+### NZC-071 — Site floor area is effective-dated; it is the per-m² denominator [Confirmed 11 Sep 2026]
+The per-m² intensity denominator was a single number typed onto the job's intensity target, so it could not
+follow the site boundary: vacate a site and the emissions fall while the floor area does not. Floor area is
+now an **effective-dated, append-only** record per site (`client_site_floor_areas`: `floor_area_m2`,
+`effective_from`, who/when); a site's floor area for a period is the record in force at the period end.
+
+The **per-m² denominator = the sum of the in-boundary sites' floor area** for the job's reporting period
+(NZC-070). If **any** in-boundary site has no floor area in force, per-m² intensity is **unavailable** —
+never a partial sum and never zero. The typed `reportingDenominator` is deprecated for the floor-area metric
+(turnover and headcount still use it).
+*Source: Francis, 11 Sep 2026.*
 
 *(NZC-008 resolved 24 Aug 2026: `job_scope_rows` is canonical; `crp_scope_entries` is legacy migration
 input. NZC-020 resolved 24 Aug 2026: synthetic by default, with a vetted anonymised subset permitted only
