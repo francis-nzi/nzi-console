@@ -42,6 +42,9 @@ function gatePool(opts: { mapped: boolean }) {
       if (sql.includes("INSERT INTO nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.audit_events")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.transactional_outbox")) return { rows: [] };
+      // NZC-070 — the job's reporting period and its client's sites
+      if (sql.includes("LEFT JOIN nzi_console.job_emissions_config")) return { rows: [{client_id:"client-a",reporting_from:"2026-01-01",reporting_to:"2026-12-31",start_date:"2026-01-01",due_date:"2026-12-31"}] };
+      if (sql.includes("FROM nzi_console.client_sites WHERE client_id")) return { rows: [] };
       // createReviewedCrpSnapshot's own queries
       if (sql.includes("SELECT j.version")) return { rows: [{ version: 5, job_family: "crp", job_number: "J000717", client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", client_name: "Gate Client" }] };
       if (sql.includes("FROM nzi_console.job_emissions_targets")) return { rows: [] };

@@ -707,6 +707,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-gap-chip.zero_blank{background:#FDEDE9;border-color:#F3C9BF;color:#A5341C}
 .nz-gap-chip.completeness{background:#F0ECFB;border-color:#DAD0F4;color:#5a3fb0}
 .nz-gap-chip.unmapped{background:#EEF2F4;border-color:#D9E1E5;color:#41525c}
+.nz-gap-chip.out_of_boundary{background:#E8F1F8;border-color:#C6DAEA;color:#1F4E73}
 .nz-gap-chip+.nz-gap-chip{margin-left:4px}
 .nz-assurance-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
 .nz-assurance-tabs button{border:1px solid transparent;background:transparent;color:var(--t2);font:inherit;font-weight:600;font-size:12.5px;padding:7px 12px;border-radius:9px;cursor:pointer}
@@ -753,6 +754,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-assurance-gap.zero_blank{border-left-color:#C23B22}
 .nz-assurance-gap.completeness{border-left-color:#6B4CC7}
 .nz-assurance-gap.unmapped{border-left-color:#51636F}
+.nz-assurance-gap.out_of_boundary{border-left-color:#2F6E9E}
 .nz-assurance-gap .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
 .nz-assurance-gap .where{font-weight:650}
 .nz-assurance-gap .why{color:var(--t2);line-height:1.4}
@@ -804,3 +806,76 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 
 /* Field-level validation message — semantic error colour, not the scope palette. */
 .nz-hint.nz-field-error{color:var(--danger)}
+
+/* ── Client workspace: figure evidence (NZC-005) and effective-dated sites (NZC-070/071) ── */
+.nz-client-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:-4px}
+.nz-client-tabs button{border:0;background:transparent;font:inherit;font-size:13px;font-weight:650;color:var(--t2);padding:9px 12px;border-bottom:2px solid transparent;cursor:pointer}
+.nz-client-tabs button.on{color:var(--t1);border-bottom-color:var(--emerald)}
+.nz-client-panel{display:grid;gap:16px}
+.nz-client-panel[hidden]{display:none}
+/* Data-quality tier badges — colour follows the tier, never the scope identity */
+.nz-tier{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
+.nz-tier.measured{background:var(--mint);color:var(--pine)}
+.nz-tier.estimated{background:#E6F1FB;color:#185FA5}
+.nz-tier.spend-based{background:#FFF4DC;color:#8A6410}
+.nz-tier.survey{background:#EEF1F4;color:#3D4A57}
+.nz-tier.mixed{background:#fff;color:var(--t2);border-color:var(--line)}
+.nz-tier.none{background:var(--paper);color:var(--t3);border-color:var(--line2)}
+.nz-figure-card{border:1px solid var(--line);border-radius:10px;padding:13px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.nz-figure-card.unavailable{background:var(--paper)}
+.nz-figure-value{font-size:19px;font-weight:650;line-height:1.2}
+.nz-figure-card.unavailable .nz-figure-value{color:var(--t3);font-size:16px}
+.nz-figure-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:auto}
+.nz-figure-flag{font-size:11px;font-weight:600;color:#7A5808}
+.nz-figure-note{font-size:11.5px;color:var(--t2);margin:0;line-height:1.45}
+.nz-evidence-link{margin-left:auto;border:0;background:transparent;font:inherit;font-size:12px;font-weight:650;color:var(--pine);cursor:pointer;padding:2px 4px;border-radius:6px}
+.nz-evidence-link:hover{background:var(--mint)}
+.nz-figure-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:12px;padding:16px}
+.nz-scope-rows{display:grid;gap:4px}
+.nz-scope-row>span{white-space:nowrap}
+.nz-scope-row{display:grid;grid-template-columns:10px auto 1fr auto;align-items:center;gap:6px;font-size:12px}
+.nz-scope-row .num{text-align:right}
+.nz-scope-dot{width:8px;height:8px;border-radius:50%}
+.nz-scope-dot.s1{background:var(--s1)}.nz-scope-dot.s2{background:var(--s2)}.nz-scope-dot.s3{background:var(--s3)}
+.nz-evidence-body .nz-btn{margin-top:14px;display:inline-flex}
+.nz-evidence-hero{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0 12px;border-bottom:1px solid var(--line2);margin-bottom:10px}
+.nz-evidence-hero .num{font-size:24px;font-weight:700}
+.nz-evidence-scope .nz-kv .v{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.nz-tier-mix{list-style:none;margin:4px 0 8px;padding:0 0 0 12px;display:grid;gap:4px}
+.nz-tier-mix li{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+.nz-kv .v.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;overflow-wrap:anywhere}
+/* Sites */
+.nz-panel-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.nz-panel-head h2{font-size:15px;margin:3px 0 0}
+.nz-panel-head>:last-child{margin-left:auto}
+.nz-site-list{list-style:none;margin:0;padding:6px 8px}
+.nz-site-list li{border-bottom:1px solid var(--line2)}
+.nz-site-list li:last-child{border-bottom:0}
+.nz-site-list li.vacated{background:#F2F4F3}
+.nz-site-list li.vacated .nz-site-name b{color:var(--t3)}
+.nz-site-open{display:grid;gap:4px;width:100%;text-align:left;border:0;background:transparent;font:inherit;color:inherit;padding:9px 8px;cursor:pointer;border-radius:8px}
+.nz-site-open:hover{background:var(--paper)}
+.nz-site-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nz-site-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;color:var(--t2)}
+.nz-site-status.planned{color:#185FA5;font-weight:600}
+.nz-site-status.vacated{color:var(--t3);font-weight:600}
+.nz-boundary-chip{font-size:10.5px;font-weight:650;padding:1px 7px;border-radius:20px;border:1px solid var(--line2)}
+.nz-boundary-chip.in{background:var(--mint);color:var(--pine);border-color:#BEE7D3}
+.nz-boundary-chip.out{background:#fff;color:var(--t3)}
+.nz-site-legend{font-size:11px;color:var(--t3);margin:0;padding:0 16px 12px}
+.nz-site-drawer{position:fixed;top:0;right:0;height:100vh;width:min(420px,94vw);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(11,27,43,.14);overflow-y:auto;z-index:40}
+.nz-site-drawer-body{padding:0 18px 22px}
+.nz-site-drawer-h{display:flex;justify-content:space-between;align-items:flex-start;margin:0 -18px 6px;padding:12px 18px;border-bottom:1px solid var(--line2);background:var(--paper)}
+.nz-site-drawer-h h3{margin:3px 0 0;font-size:15px}
+.nz-site-drawer-h .close{border:0;background:transparent;font-size:17px;line-height:1;color:var(--t3);cursor:pointer;padding:2px 6px;border-radius:8px}
+.nz-site-drawer-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.nz-check{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:var(--t1);margin-top:7px}
+.nz-seg-field{border:0;padding:0}
+.nz-seg-field legend{font-size:11px;font-weight:600;color:var(--t2);margin-bottom:5px;padding:0}
+.nz-seg{display:flex;gap:4px}
+.nz-seg label{flex:1;display:flex;justify-content:center;align-items:center;border:1px solid var(--line);border-radius:8px;padding:7px 8px;font-size:12px;font-weight:650;color:var(--t2);cursor:pointer}
+.nz-seg label.on{background:var(--midnight);color:#fff;border-color:var(--midnight)}
+.nz-seg input{position:absolute;opacity:0;pointer-events:none}
+.nz-seg label:focus-within{outline:2px solid var(--emerald);outline-offset:2px}
+.nz-floor-history{list-style:none;margin:0 0 6px;padding:0;display:grid;gap:4px}
+.nz-floor-history li{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line2)}

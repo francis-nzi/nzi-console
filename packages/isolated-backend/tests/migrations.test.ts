@@ -10,6 +10,8 @@ const security = readFileSync(resolve(here, "../migrations/0002_rls_and_roles.sq
 const membership = readFileSync(resolve(here, "../migrations/0003_runtime_role_membership.sql"), "utf8");
 const screenFields = readFileSync(resolve(here, "../migrations/0004_client_job_screen_fields.sql"), "utf8");
 const effectiveDatedSitesMigration = readFileSync(resolve(here,"../migrations/0062_effective_dated_sites.sql"),"utf8");
+const siteBoundaryCorrectionsMigration = readFileSync(resolve(here, "../migrations/0063_site_boundary_corrections.sql"), "utf8");
+const siteFloorAreaMigration = readFileSync(resolve(here, "../migrations/0064_site_floor_area.sql"), "utf8");
 const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -236,5 +238,29 @@ describe("isolated Postgres migrations", () => {
     assert.match(effectiveDatedSitesMigration,/ADD COLUMN version integer NOT NULL DEFAULT 1/);
     assert.match(effectiveDatedSitesMigration,/client_sites_one_registered_office/);
     assert.match(effectiveDatedSitesMigration,/client_sites_effective_dates/);
+  });
+  it("undoes 0062's migration-date start, keeps one lifecycle pair and guards the registered office (0063, NZC-070)",()=>{
+    for (const clause of [
+      "ALTER COLUMN in_service_from DROP DEFAULT",
+      "ALTER COLUMN in_service_from DROP NOT NULL",
+      "UPDATE nzi_console.client_sites SET in_service_from = active_from;",
+      "DROP COLUMN active_from",
+      "DROP COLUMN vacated_date",
+      "CHECK (NOT (is_registered_office AND vacated_effective IS NOT NULL))",
+      "CHECK (flag_type IN ('yoy_movement','completeness','zero_blank','unmapped','out_of_boundary'))",
+    ]) assert.ok(siteBoundaryCorrectionsMigration.includes(clause), clause);
+    const statements = siteBoundaryCorrectionsMigration.split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+    assert.ok(!/current_date/i.test(statements), "never the migration date");
+  });
+  it("adds append-only, tenant-isolated, effective-dated site floor area and retires the typed floor-area denominator (0064, NZC-071)",()=>{
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_site_floor_areas",
+      "effective_from date,",
+      "floor_area_m2 numeric(14,2) NOT NULL CHECK (floor_area_m2 > 0)",
+      "ALTER TABLE nzi_console.client_site_floor_areas FORCE ROW LEVEL SECURITY",
+      "GRANT SELECT, INSERT ON nzi_console.client_site_floor_areas TO nzi_console_app;",
+      "CHECK (metric = 'floor-area' OR reporting_denominator IS NOT NULL)",
+    ]) assert.ok(siteFloorAreaMigration.includes(clause), clause);
+    assert.ok(!/GRANT[^;]*(UPDATE|DELETE)[^;]*client_site_floor_areas/.test(siteFloorAreaMigration), "append-only");
   });
 });

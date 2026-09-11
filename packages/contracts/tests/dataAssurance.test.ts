@@ -229,4 +229,23 @@ describe("computeAssuranceGaps (DA1c / NZC-060) — all four flag types", () => 
     // row-level flags still fire
     assert.ok(result.gaps.some((g) => g.flag === "zero_blank"));
   });
+
+  it("raises a row at a site outside the reporting boundary as a gap, not a silent drop (NZC-070)", () => {
+    const outside: AssuranceCurrentRow = { rowId: "r-depot", scope: "1", scopeCode: "1.natural-gas", sourceLabel: "Depot gas", siteId: "depot", siteLabel: "Trafford depot", quantity: 0, hasFactor: false, tco2e: null, enabled: true, hasMonthlyActivity: false, inBoundary: false };
+    const result = computeAssuranceGaps({ trend, currentRows: [...rows, outside], resolutions: [] });
+    const gaps = result.gaps.filter((g) => g.scopeRowId === "r-depot");
+    assert.deepEqual(gaps.map((g) => g.flag), ["out_of_boundary"]); // not also checked as if it counted
+    assert.equal(gaps[0]!.key, "out_of_boundary:r-depot");
+    assert.match(gaps[0]!.detail, /Trafford depot/);
+    assert.equal(gaps[0]!.resolved, false);
+  });
+
+  it("raises no completeness gap for a site that has left the boundary (NZC-070)", () => {
+    const withSite = (siteId: string) => aggregateAssuranceYear({ year: 2025, kind: "prior", source: "reviewed-snapshot", measurements: [{ scope: "1" as const, scopeCode: "1.natural-gas", siteId, siteLabel: siteId, tco2e: 50 }] });
+    const emptyCurrent = aggregateAssuranceYear({ year: 2026, kind: "current", source: "live", measurements: [{ scope: "1" as const, scopeCode: "1.natural-gas", siteId: "hq", tco2e: 50 }] });
+    const vacatedTrend: AssuranceTrend = { ...trend, years: [withSite("old-depot"), emptyCurrent] };
+    const siteGap = (boundarySiteIds?: Set<string>) => computeAssuranceGaps({ trend: vacatedTrend, currentRows: [], resolutions: [], boundarySiteIds }).gaps.filter((g) => g.key === "completeness:site:old-depot");
+    assert.equal(siteGap().length, 1);
+    assert.equal(siteGap(new Set(["hq"])).length, 0);
+  });
 });

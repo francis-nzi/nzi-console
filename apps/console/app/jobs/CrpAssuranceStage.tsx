@@ -39,7 +39,7 @@ const TAB_ITEMS: readonly TabDescriptor[] = [
 ];
 
 const GAP_LABEL: Record<AssuranceGap["flag"], string> = {
-  yoy_movement: "YoY", completeness: "missing", zero_blank: "zero", unmapped: "unmapped",
+  yoy_movement: "YoY", completeness: "missing", zero_blank: "zero", unmapped: "unmapped", out_of_boundary: "out of boundary",
 };
 const fmt = (value: number | null): string =>
   value == null ? "—" : value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -143,7 +143,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
         ? <><b>Data integrity check passed</b><span>Complete, consistent and fully costed across the trend.{gaps.resolvedCount ? ` ${gaps.resolvedCount} resolved with a reason.` : ""}</span></>
         : <><b>{openGaps} gap{openGaps === 1 ? "" : "s"} to resolve</b><span>Complete, consistent and fully costed across the trend before this stage can be signed off.</span></>}
       {gaps.gaps.length > 0 && <span className="nz-assurance-chips">
-        {(["yoy_movement", "zero_blank", "completeness", "unmapped"] as const).map((flag) => {
+        {(["yoy_movement", "zero_blank", "completeness", "unmapped", "out_of_boundary"] as const).map((flag) => {
           const n = gaps.gaps.filter((gap) => gap.flag === flag && !gap.resolved).length;
           return n ? <span key={flag} className={`nz-gap-chip ${flag}`}>{n} {GAP_LABEL[flag]}</span> : null;
         })}
@@ -469,7 +469,7 @@ function GapCard({ jobId, gap, onSelectRow, onResolved }: { jobId: string; gap: 
   }
 
   return <li className={`nz-assurance-gap ${gap.flag}`}>
-    <div className="top"><span className="where">{gap.label}</span><span className={`nz-gap-chip ${gap.flag}`}>{gap.flag.replace("_", " ")}</span></div>
+    <div className="top"><span className="where">{gap.label}</span><span className={`nz-gap-chip ${gap.flag}`}>{gap.flag.replaceAll("_", " ")}</span></div>
     <div className="why">{gap.detail}</div>
     <div className="acts">
       {gap.scopeRowId && <button className="lnk pri" onClick={() => onSelectRow(gap.scopeRowId)}>Go to row</button>}

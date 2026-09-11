@@ -57,7 +57,7 @@ const measurementsFor = (rows: ReviewedCrpSnapshotReadModel["measurements"]) =>
   }));
 
 const intensityInput = (target: ReviewedCrpSnapshotReadModel["intensityTarget"]) =>
-  target && target.reportingDenominator > 0
+  target && target.reportingDenominator !== null && target.reportingDenominator > 0
     ? { reportingDenominator: target.reportingDenominator, denominatorUnit: target.denominatorUnit }
     : null;
 

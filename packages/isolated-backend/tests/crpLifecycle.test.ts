@@ -15,6 +15,9 @@ function lifecyclePool(options:{incomplete?:boolean;startEmpty?:boolean}={}){
     if(sql.includes("INSERT INTO nzi_console.audit_events")){audits.push(String(values[4]));return{rows:[]};}
     if(sql.includes("INSERT INTO nzi_console.transactional_outbox")){outbox.push(String(values[2]));return{rows:[]};}
     if(sql.includes("allocate_job_sequence"))return{rows:[{sequence:717}]};
+    // NZC-070 — the job's reporting period and its client's sites (none: every row is unallocated)
+    if(sql.includes("LEFT JOIN nzi_console.job_emissions_config"))return{rows:[{client_id:"client-a",reporting_from:"2026-01-01",reporting_to:"2026-12-31",start_date:"2026-01-01",due_date:"2026-12-31"}]};
+    if(sql.includes("FROM nzi_console.client_sites WHERE client_id"))return{rows:[]};
     if(sql.includes("INSERT INTO nzi_console.jobs")){jobId=String(values[1]);return{rows:[{job_number:"J000717"}]};}
     if(sql.includes("SELECT job_family FROM"))return{rows:[{job_family:"crp"}]};
     if(sql.includes("SELECT 1 FROM nzi_console.purchased_goods_categories"))return{rows:[{}]};

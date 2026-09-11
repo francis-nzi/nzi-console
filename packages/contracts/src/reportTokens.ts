@@ -64,7 +64,8 @@ export type ReportTokenFigures = {
   reportingYear: number;
   measurements: ReadonlyArray<{ scope: "1" | "2" | "3"; tco2e: number }>;
   target: { baselineYear: number; baselineTco2e: number; interimYear: number; interimReductionPercent: number; netZeroYear: number } | null;
-  intensityTarget: { denominatorUnit: string; reportingDenominator: number } | null;
+  /** `reportingDenominator` null = unresolved (a floor-area metric missing a site floor area, NZC-071). */
+  intensityTarget: { denominatorUnit: string; reportingDenominator: number | null } | null;
 };
 type TokenSnapshot = ReportTokenFigures;
 
@@ -98,8 +99,10 @@ export function resolveReportToken(key: string, snapshot: TokenSnapshot): Resolv
     case "netZeroYear": return snapshot.target ? bound(String(snapshot.target.netZeroYear), "Net zero target year.") : unresolved("No reduction target is set for this job.");
     case "intensityValue": {
       const it = snapshot.intensityTarget;
-      if (!it || !(it.reportingDenominator > 0)) return unresolved("No intensity target / reporting denominator is set for this job.");
-      return bound((total / it.reportingDenominator).toLocaleString("en-GB", { maximumFractionDigits: 2 }), "Reviewed total divided by the reporting denominator.");
+      if (!it) return unresolved("No intensity target is set for this job.");
+      const denominator = it.reportingDenominator;
+      if (denominator === null || !(denominator > 0)) return unresolved("The reporting denominator is unavailable — set it on the job, or record every in-boundary site's floor area for a per-m² metric.");
+      return bound((total / denominator).toLocaleString("en-GB", { maximumFractionDigits: 2 }), "Reviewed total divided by the reporting denominator.");
     }
     case "intensityUnit": {
       const it = snapshot.intensityTarget;
