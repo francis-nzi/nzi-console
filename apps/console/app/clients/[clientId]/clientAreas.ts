@@ -22,8 +22,14 @@ export const CLIENT_AREA_LABELS: Record<ClientAreaId, string> = {
   profile: "Company Profile", financials: "Financials", ai: "AI Profile",
 };
 
-/** Areas this phase renders from live data. */
-export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>(["overview", "analytics"]);
+/**
+ * Areas that render from live data. Phase 2 adds the areas that have real records behind
+ * them; Tasks, Notes and AI Profile have no store yet, SRS Readiness is held back for its
+ * redesign, and Financials is held by NZC-069 — each says so in its own words.
+ */
+export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>([
+  "overview", "analytics", "reporting", "profile", "comms", "files", "ai",
+]);
 
 const ICONS: Record<ClientAreaId, string> = {
   overview: "▦", analytics: "▤", reporting: "▥", actions: "⚡", srs: "◎",

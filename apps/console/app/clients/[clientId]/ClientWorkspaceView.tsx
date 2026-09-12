@@ -10,7 +10,11 @@ import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated
 import { NAV, USER } from "../../lib/nav";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
+import { AiProfileArea } from "./AiProfileArea";
 import { AnalyticsArea } from "./AnalyticsArea";
+import { CommsArea, FilesArea } from "./CommsFilesAreas";
+import { ProfileArea } from "./ProfileArea";
+import { ReportingArea } from "./ReportingArea";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
@@ -90,7 +94,10 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
 
   return <AppShell
     rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}
-    areas={<ClientWorkspaceNav groups={clientAreaGroups({ tasks: null, analytics: history.length || null })} activeId={area} onSelect={selectArea} />}
+    areas={<ClientWorkspaceNav groups={clientAreaGroups({
+      analytics: history.length || null, reporting: workspace.reports.length || null,
+      comms: workspace.messages.length || null, files: workspace.files.length || null,
+    })} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
     {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
     <TopBar searchPlaceholder="Search this client…" crumbs={crumbTrail(clientCrumbs(client))} />
@@ -130,6 +137,11 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           </aside>
         </div>
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} />
+        : area === "reporting" ? <ReportingArea workspace={workspace} />
+        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
+        : area === "comms" ? <CommsArea workspace={workspace} />
+        : area === "files" ? <FilesArea workspace={workspace} />
+        : area === "ai" ? <AiProfileArea workspace={workspace} />
         : area === "financials" ? <FinancialsHeldArea />
         : <UnavailableArea area={area} clientId={client.id} />}
     </div>
