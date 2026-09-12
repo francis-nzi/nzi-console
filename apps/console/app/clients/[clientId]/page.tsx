@@ -8,7 +8,7 @@ import { ClientWorkspaceView } from "./ClientWorkspaceView";
 export const dynamic = "force-dynamic";
 
 /** Offline (fixture mode) there is no client data; the page says so rather than showing a stand-in client. */
-const NO_CLIENT = { client: null, sites: [], evidence: null, reportingPeriods: [], contacts: [] };
+const NO_CLIENT = { client: null, sites: [], evidence: null, reportingPeriods: [], contacts: [], targets: null, actuals: [] };
 const londonToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
 
 export default async function ClientPage({ params }: { params: Promise<{ clientId: string }> }) {

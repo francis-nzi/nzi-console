@@ -23,6 +23,7 @@ export type CommandKey =
   | "client.contact.create"
   | "client.contact.update"
   | "client.contact.deactivate"
+  | "client.targets.set"
   | "client.logo.set"
   | "client.logo.remove"
   | "report.section.edit"
@@ -263,6 +264,20 @@ export const clientContactRoleLabels: Record<ClientContactRole, string> = {
 export type ClientContactWriteFields = { fullName: string; jobTitle?: string | null; email?: string | null; phone?: string | null; isPrimary: boolean; roles: ClientContactRole[] };
 export type ClientContactReadModel = { id: string; clientId: string; fullName: string; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean; roles: ClientContactRole[]; status: "active" | "inactive"; version: number; updatedAt: string; updatedBy: string };
 
+/** A milestone is a year and the reduction committed to by then; both or neither. */
+export type TargetMilestoneFields = { year: number | null; pct: number | null };
+export type ForwardTargetWriteFields = {
+  nearTerm: TargetMilestoneFields;
+  netZero: TargetMilestoneFields;
+  scope1: TargetMilestoneFields;
+  scope2: TargetMilestoneFields;
+  scope3: TargetMilestoneFields;
+};
+export const forwardTargetFields = ["nearTerm", "netZero", "scope1", "scope2", "scope3"] as const;
+export const forwardTargetLabels: Record<(typeof forwardTargetFields)[number], string> = {
+  nearTerm: "Near-term target", netZero: "Net-zero target", scope1: "Scope 1 target", scope2: "Scope 2 target", scope3: "Scope 3 target",
+};
+
 /** PNG or SVG, as the identity drawer says. Staging storage only — never committed to the repo. */
 export const clientLogoContentTypes = ["image/png", "image/svg+xml"] as const;
 export type ClientLogoContentType = (typeof clientLogoContentTypes)[number];
@@ -289,6 +304,12 @@ export type CommandInputMap = {
   "client.contact.update": { contactId: string; expectedVersion: number } & ClientContactWriteFields;
   /** Deactivate, never delete. */
   "client.contact.deactivate": { contactId: string; expectedVersion: number };
+  /**
+   * NZC-072 — the forward commitment. The benchmark is not here: it is read from the
+   * baseline in force and stamped onto the version. `restateAgainstBenchmark` is the
+   * explicit acknowledgement needed when the benchmark has moved since the last version.
+   */
+  "client.targets.set": { clientId: string; expectedVersion: number; restateAgainstBenchmark?: boolean } & ForwardTargetWriteFields;
   "client.logo.set": { clientId: string; fileName: string; contentType: ClientLogoContentType; dataBase64: string };
   "client.logo.remove": { clientId: string };
   "report.section.edit": { jobId: string; sectionKey: string; bodyHtml: string; expectedVersion: number; contentSource?: "ai" | "client-edited" };
@@ -486,6 +507,26 @@ const clientProfileIssues = (input: ClientProfileFields) => {
   return issues;
 };
 
+const targetMilestoneIssues = (issues: CommandIssue[], field: string, milestone: TargetMilestoneFields | undefined) => {
+  const year = milestone?.year ?? null, pct = milestone?.pct ?? null;
+  if (year === null && pct === null) return;
+  if ((year === null) !== (pct === null)) { issues.push({ field, code: "PAIRED", message: "A target needs both its year and its reduction." }); return; }
+  if (!Number.isInteger(year) || year! < 2000 || year! > 2100) issues.push({ field: `${field}.year`, code: "INVALID", message: "Target year must be a year between 2000 and 2100." });
+  if (typeof pct !== "number" || !Number.isFinite(pct) || pct < 0 || pct > 100) issues.push({ field: `${field}.pct`, code: "INVALID", message: "Reduction must be between 0 and 100%." });
+};
+
+const forwardTargetIssues = (input: ForwardTargetWriteFields) => {
+  const issues: CommandIssue[] = [];
+  for (const field of forwardTargetFields) targetMilestoneIssues(issues, field, input[field]);
+  const near = input.nearTerm, netZero = input.netZero;
+  if (issues.length === 0 && near?.year != null && netZero?.year != null) {
+    // Net zero is the further, deeper commitment — the pathway would otherwise turn back on itself.
+    if (netZero.year < near.year) issues.push({ field: "netZero.year", code: "ORDER", message: "The net-zero year cannot come before the near-term year." });
+    else if ((netZero.pct ?? 0) < (near.pct ?? 0)) issues.push({ field: "netZero.pct", code: "ORDER", message: "The net-zero reduction cannot be smaller than the near-term one." });
+  }
+  return issues;
+};
+
 const clientContactIssues = (input: ClientContactWriteFields) => {
   const issues: CommandIssue[] = [];
   required(issues, "fullName", input.fullName);
@@ -514,6 +555,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
   "client.logo.remove": { key: "client.logo.remove", label: "Remove client logo", permission: "client.edit", reasonRequired: false, transaction: "client pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "client_logo_removed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },
   "report.section.edit": { key:"report.section.edit",label:"Edit report section",permission:"report.edit",reasonRequired:false,transaction:"versioned report section + section history + audit + outbox",auditAction:"report_section_edited",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sectionKey",input.sectionKey);if(text(input.sectionKey)&&!isCrpReportSectionKey(input.sectionKey))issues.push({field:"sectionKey",code:"INVALID",message:"Unknown report section."});issues.push(...reportSectionBodyIssues(input.bodyHtml));if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});if(input.contentSource!=null&&!oneOf(input.contentSource,["ai","client-edited"] as const))issues.push({field:"contentSource",code:"INVALID",message:"Content source must be ai or client-edited."});return issues;} },

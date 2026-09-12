@@ -41,6 +41,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.contact.create": client,
   "client.contact.update": (input) => ({ kind: "contact", id: input.contactId }),
   "client.contact.deactivate": (input) => ({ kind: "contact", id: input.contactId }),
+  "client.targets.set": client,
   "client.logo.set": client,
   "client.logo.remove": client,
   "report.section.edit": job,

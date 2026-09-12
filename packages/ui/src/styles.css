@@ -913,6 +913,11 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .report-client p{margin:0;color:var(--t2);font-size:18px}
 .report-client-mark{display:grid;width:58px;height:58px;flex:none;place-items:center;border-radius:12px;background:var(--mint);color:var(--pine);font-size:20px;font-weight:700}
 .report-signee{margin:14px 0 0;color:var(--t2);font-size:13px}
+/* client workspace v10 — forward targets on the Baseline & targets card */
+.nz-tgt{display:flex;gap:7px;flex-wrap:wrap;margin:7px 0 0}
+.nz-tgtchip{font-size:12px;color:var(--t2);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
+.nz-tgtchip b{color:var(--t1);font-weight:650}
+.nz-scopetgts{font-size:12px;color:var(--t2);margin-top:6px}
 /* client workspace v9 — contact roles, client logo, identity drawer */
 .nz-tag.rr{color:#6B4E9B;background:#F1ECF9;border-color:#DECFF0}
 .nz-rolebadges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}

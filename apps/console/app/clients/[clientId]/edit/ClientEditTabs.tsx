@@ -99,7 +99,7 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
         <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel="Client record sections" idBase="client-edit" className="nz-tabs" />
         <section className="nz-panel" style={{ padding: 20 }}>
           <TabPanel id="details" idBase="client-edit" active={tab === "details"}><DetailsGroup {...groupProps} editing clientId={client.id} /></TabPanel>
-          <TabPanel id="targets" idBase="client-edit" active={tab === "targets"}><TargetsGroup {...groupProps} /></TabPanel>
+          <TabPanel id="targets" idBase="client-edit" active={tab === "targets"}><TargetsGroup {...groupProps} clientId={client.id} /></TabPanel>
           <TabPanel id="address" idBase="client-edit" active={tab === "address"}><AddressGroup {...groupProps} /></TabPanel>
           <TabPanel id="sites" idBase="client-edit" active={tab === "sites"}><SitesPanel client={client} /></TabPanel>
           <TabPanel id="compliance" idBase="client-edit" active={tab === "compliance"}><ComplianceGroup {...groupProps} /></TabPanel>

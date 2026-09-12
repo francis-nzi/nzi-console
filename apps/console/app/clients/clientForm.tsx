@@ -176,14 +176,13 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
   );
 }
 
-export function TargetsGroup(props: GroupProps) {
+export function TargetsGroup(props: GroupProps & { clientId?: string }) {
   const { form, onChange, errors } = props;
   return (
     <>
-      <div className="nz-client-create-grid">
-        <Num {...props} name="netZeroTargetYear" label="Net zero target year" placeholder="2045" />
-        <Num {...props} name="netZeroTargetReductionPct" label="Net zero target reduction %" step="any" min={0} max={100} placeholder="90" hint="Default 90% in line with Net Zero requirements." />
-      </div>
+      <p className="nz-hint" style={{ margin: "0 0 12px" }}>Reduction <b>targets</b> — near-term, net-zero and per-scope — live on the client record&apos;s
+        <b> Baseline &amp; targets</b> card{props.clientId ? <> (<a href={`/clients/${encodeURIComponent(props.clientId)}`}>open the client</a>)</> : null}. They are
+        measured against the baseline below, which is why the baseline is set here and the targets are not.</p>
       <fieldset className="nz-fieldset accent">
         <Legend title="Baseline period (financial year)" about="The benchmark reporting period. Subsequent annual jobs follow this structure." />
         <div className="nz-client-create-grid">
@@ -200,17 +199,6 @@ export function TargetsGroup(props: GroupProps) {
           <Num {...props} name="baselineScope2Tco2e" label="Baseline Scope 2" step="any" min={0} placeholder="456.7" />
           <Num {...props} name="baselineScope3Tco2e" label="Baseline Scope 3" step="any" min={0} placeholder="789.0" />
           <Num {...props} name="baselineTotalTco2e" label="Baseline total" step="any" min={0} placeholder="1369.1" />
-        </div>
-      </fieldset>
-      <fieldset className="nz-fieldset">
-        <Legend title="Interim targets" about="Scope 1, 2 and 3 interim target years and reduction percentages." />
-        <div className="nz-client-create-grid">
-          {([1, 2, 3] as const).map((scope) => (
-            <div key={scope} style={{ display: "contents" }}>
-              <Num {...props} name={`scope${scope}InterimYear` as keyof ClientFormState} label={`Scope ${scope} interim target year`} placeholder="2035" />
-              <Num {...props} name={`scope${scope}InterimReductionPct` as keyof ClientFormState} label={`Scope ${scope} interim reduction %`} step="any" min={0} max={100} placeholder="50" />
-            </div>
-          ))}
         </div>
       </fieldset>
     </>

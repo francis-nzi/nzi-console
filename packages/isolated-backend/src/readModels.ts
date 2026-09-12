@@ -1,6 +1,7 @@
 import type { Queryable } from "./postgres";
 import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
+import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, resolveClientEmissionsEvidence, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel } from "@nzi/contracts";
 import { dateOnly } from "./dates";
@@ -159,6 +160,10 @@ export type ClientWorkspaceReadModel = {
   reportingPeriods: ClientReportingPeriod[];
   /** Active contacts, primary first. */
   contacts: ClientContactReadModel[];
+  /** NZC-072 — the forward targets, the benchmark they are measured against, and the pathway and gap derived from both. */
+  targets: ClientTargetsReadModel;
+  /** One assured total per reporting year — the actual line on the pathway. */
+  actuals: TargetActual[];
 };
 
 const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
@@ -176,7 +181,19 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
     listClientContacts(db, clientId),
   ]);
-  const [current, prior] = reportingYearSnapshots(snapshots.rows).map(mapSnapshotRow);
+  const reportingYears = reportingYearSnapshots(snapshots.rows);
+  const [current, prior] = reportingYears.map(mapSnapshotRow);
+  // Every year that has an assured snapshot, oldest first — what the pathway plots as actual
+  // and what the gap engine measures against the target line.
+  const actuals: TargetActual[] = reportingYears
+    .map((row) => ({
+      year: Number(row.payload_json.reportingYear),
+      tco2e: (row.payload_json.measurements ?? []).reduce((total, measurement) => total + Number(measurement.tco2e), 0),
+      snapshotId: row.snapshot_id,
+      jobNumber: row.payload_json.jobNumber,
+    }))
+    .sort((a, b) => a.year - b.year);
+  const targets = await getClientTargets(db, clientId, { benchmarkInForce: await getBenchmarkInForce(db, clientId), actuals });
   return {
     client,
     sites,
@@ -186,6 +203,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
       return { jobId: row.job_id, jobNumber: row.job_number, label: `FY${String(row.reporting_year ?? Number(from.slice(0, 4))).slice(-2)}`, from, to, days: reportingPeriodDays(from, to), eligible: isEligibleReportingYear(from, to) };
     }),
     contacts,
+    targets,
+    actuals,
   };
 }
 

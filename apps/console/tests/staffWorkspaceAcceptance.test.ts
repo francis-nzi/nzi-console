@@ -8,9 +8,23 @@ const read=(path:string)=>readFileSync(join(root,path),"utf8");
 const routes=["apps/console/app/clients/page.tsx","apps/console/app/clients/[clientId]/page.tsx","apps/console/app/jobs/page.tsx","apps/console/app/jobs/[jobId]/page.tsx","apps/console/app/datasets/page.tsx","apps/console/app/reports/page.tsx","apps/console/app/reports/[versionId]/page.tsx","apps/console/app/platform/page.tsx"];
 
 // The client page renders through these; they carry its empty states and must not reach for stand-in data.
-const clientWorkspace=["apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx","apps/console/app/clients/[clientId]/ClientSites.tsx","apps/console/app/clients/[clientId]/FigureEvidence.tsx","apps/console/app/clients/[clientId]/ClientContacts.tsx","apps/console/app/clients/[clientId]/ClientIdentity.tsx"];
+const clientWorkspace=["apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx","apps/console/app/clients/[clientId]/ClientSites.tsx","apps/console/app/clients/[clientId]/FigureEvidence.tsx","apps/console/app/clients/[clientId]/ClientContacts.tsx","apps/console/app/clients/[clientId]/ClientIdentity.tsx","apps/console/app/clients/[clientId]/ClientTargets.tsx","apps/console/app/clients/[clientId]/ClientPathway.tsx"];
 
 describe("staff workspace acceptance contracts",()=>{
+  it("edits the forward targets in the drawer, gated on target.edit, with the benchmark read-only (client workspace v10)",()=>{
+    const source=read("apps/console/app/clients/[clientId]/ClientTargets.tsx");
+    for(const token of ["Reduction targets","Near-term target","Net-zero target","Per-scope targets","Benchmark year","Read from the baseline in force","No targets set","Save targets","/targets"])assert.ok(source.includes(token),token);
+    assert.ok(read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx").includes('useEditAccess("target.edit"'),"target.edit");
+    // The benchmark is never typed here — it is shown disabled and read from the baseline.
+    assert.match(source,/value=\{`FY\$\{benchmark\.year\}[^`]*`\} disabled readOnly/);
+  });
+  it("draws the pathway from the target model rather than fixed points (client workspace v10)",()=>{
+    const source=read("apps/console/app/clients/[clientId]/ClientPathway.tsx");
+    assert.ok(source.includes("targets.trajectory.map"),"the target line comes from the model");
+    assert.ok(source.includes("actuals.map"),"actual comes from the assured years");
+    assert.doesNotMatch(source,/target:\s*\[\s*\{\s*year:\s*\d{4}/,"no hard-coded target points");
+    assert.ok(source.includes("targets.latestGap"),"the gap shown is the one the engine measured");
+  });
   it("gates each client-workspace control on the capability its command enforces (NZC-022)",()=>{const view=read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");for(const capability of ["site.manage","contact.manage","client.edit"])assert.ok(view.includes(`useEditAccess(\"${capability}\"`),capability);assert.doesNotMatch(read("apps/console/app/lib/useEditAccess.ts"),/permissions?.includes/);});
   it("shows contact role badges and the v9 role checkboxes, removing by deactivation (client workspace v9)",()=>{const source=read("apps/console/app/clients/[clientId]/ClientContacts.tsx");for(const token of ["nz-rolebadges","nz-tag rr","Primary","nz-rolechk","Primary contact","/deactivate","Save contact","Signee appears on published reports"])assert.ok(source.includes(token),token);});
   it("edits the financial year end as a month and uploads the logo with a monogram fallback (client workspace v9)",()=>{const source=read("apps/console/app/clients/[clientId]/ClientIdentity.tsx");for(const token of ["Financial year end","MONTHS.map","300–400 day rule","⭱ Upload logo","clientLogoContentTypes","monogram(client.name)","onError"])assert.ok(source.includes(token),token);assert.ok(read("apps/console/app/lib/LogoMark.tsx").includes("monogramOf(name)"));for(const surface of ["apps/console/app/portal/PortalHome.tsx","apps/console/app/reports/[versionId]/page.tsx","apps/console/app/portal/jobs/[jobId]/print/page.tsx"])assert.ok(read(surface).includes("<LogoMark"),surface);});

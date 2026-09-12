@@ -16,6 +16,7 @@ const staffRoles = readFileSync(resolve(here, "../migrations/0005_staff_roles.sq
 const permissionMatrixMigration = readFileSync(resolve(here, "../migrations/0066_permission_matrix.sql"), "utf8");
 const clientContactsMigration = readFileSync(resolve(here, "../migrations/0067_client_contacts.sql"), "utf8");
 const clientLogoMigration = readFileSync(resolve(here, "../migrations/0068_client_logo.sql"), "utf8");
+const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
 const scopeEvidence = readFileSync(resolve(here, "../migrations/0008_scope_row_evidence_metadata.sql"), "utf8");
@@ -112,6 +113,27 @@ describe("isolated Postgres migrations", () => {
       "ADD COLUMN signee_contact_id text",
     ]) assert.ok(clientContactsMigration.includes(clause), clause);
     assert.ok(!/GRANT[^;]*DELETE[^;]*client_contact/.test(clientContactsMigration), "no delete grant");
+  });
+  it("holds the forward targets as their own versioned, append-only record, distinct from the baseline (0069, NZC-072)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_targets",
+      "PRIMARY KEY (organisation_id, client_id, version)",
+      "benchmark_year integer NOT NULL", "benchmark_total_tco2e numeric(14,3) NOT NULL",
+      "GRANT SELECT, INSERT ON nzi_console.client_targets TO nzi_console_app",
+      "REVOKE UPDATE, DELETE ON nzi_console.client_targets",
+      "ALTER TABLE nzi_console.client_targets FORCE ROW LEVEL SECURITY",
+    ]) assert.ok(clientTargetsMigration.includes(clause), clause);
+  });
+  it("keeps a target honest: paired year and percentage, after the benchmark, net zero last, restatement reasoned (0069)", () => {
+    for (const clause of [
+      "CONSTRAINT client_targets_near_term_pair CHECK ((near_term_year IS NULL) = (near_term_pct IS NULL))",
+      "CONSTRAINT client_targets_after_benchmark",
+      "CONSTRAINT client_targets_net_zero_after_near_term",
+      "CONSTRAINT client_targets_restatement_reason CHECK (NOT restated_benchmark OR reason IS NOT NULL)",
+    ]) assert.ok(clientTargetsMigration.includes(clause), clause);
+    // The benchmark is read from the baseline, so a client without one is left for the editor to ask about.
+    assert.match(clientTargetsMigration, /WHERE c\.baseline_period_start IS NOT NULL/);
+    assert.ok(!/UPDATE nzi_console\.clients/.test(clientTargetsMigration), "the legacy columns are left as history, not rewritten");
   });
   it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
     for (const clause of [
