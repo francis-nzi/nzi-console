@@ -40,9 +40,14 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
   return <>
     <SetupProgress workspace={workspace} jobs={jobs} />
 
-    {/* Pinned: what is being delivered now. */}
-    <section className="nz-panel">
-      <CardHead eyebrow="Delivery" title="Active jobs & milestone progress" right={<Link className="nz-editlink" href={clientJobsHref(client.id)}>New job →</Link>} />
+    {/* Every Overview card is collapsible and only this one opens by default
+        (DESIGN_CONVENTIONS §3.2): what is being delivered now is what you came to see. */}
+    <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" defaultOpen
+      title={<><span className="eyebrow">Delivery</span><h2>Active jobs &amp; milestone progress</h2></>}
+      count={openJobs.length ? `${openJobs.length} open` : jobs.length ? "None open" : null}>
+      <div className="nz-card-b" style={{ paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>
+        <Link className="nz-editlink" href={clientJobsHref(client.id)}>New job →</Link>
+      </div>
       {jobs.length === 0
         ? <Empty text="No engagements have been created for this client." />
         : <table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Stage</th><th>Progress</th><th>Owner</th><th>Due</th></tr></thead><tbody>
@@ -60,7 +65,7 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
         <Signal label="Rows awaiting review" value={String(reviewGaps)} tone={reviewGaps ? "warn" : "ok"} />
         <Signal label="Open jobs" value={String(openJobs.length)} tone="ok" />
       </div></div>
-    </section>
+    </Collapsible>
 
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Assurance</span><h2>Emissions history</h2></>} count={history.length ? `${history.length} assured year${history.length === 1 ? "" : "s"}` : "None yet"}>
       {history.length === 0
@@ -86,15 +91,16 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
       </div>
     </Collapsible>
 
-    <section className="nz-panel">
-      <CardHead eyebrow="Relationship" title="Activity" />
+    <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
+      title={<><span className="eyebrow">Relationship</span><h2>Activity</h2></>}
+      count={activity.length ? String(activity.length) : "None yet"}>
       {activity.length === 0
         ? <Empty text="No workflow changes have been recorded for this client." />
         : <div style={{ padding: "6px 16px 12px" }}>{activity.map((event) => <div className="nz-kv" key={event.id}>
           <span className="k"><Link href={`/jobs/${event.jobId}`}>{event.jobNumber}</Link> · {event.fromStage} → {event.toStage}</span>
           <span className="v">{formatDate(event.occurredAt)}</span>
         </div>)}</div>}
-    </section>
+    </Collapsible>
   </>;
 }
 

@@ -12,6 +12,7 @@ export type DrawerRequest =
   | { kind: "compliance" }
   | { kind: "factors" }
   | { kind: "portal" }
+  | { kind: "intensity-metrics" }
   | { kind: "contact"; contact: ClientContactReadModel | null }
   | { kind: "site"; site: ClientSiteReadModel | null };
 
@@ -24,6 +25,7 @@ export const drawerLabel = (request: DrawerRequest): string => {
     case "compliance": return "Compliance";
     case "factors": return "Client factors";
     case "portal": return "Portal access";
+    case "intensity-metrics": return "Intensity metrics";
     case "contact": return request.contact ? `Edit contact ${request.contact.fullName}` : "Add a contact";
     case "site": return request.site ? `Edit site ${request.site.name}` : "Add a site";
   }

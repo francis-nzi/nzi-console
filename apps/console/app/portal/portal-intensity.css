@@ -1,0 +1,47 @@
+/* Client portal · emissions intensity.
+   Co-located page CSS, the same pattern as the published-report print sheet
+   (`portal/jobs/[jobId]/print/print.css`). It adds only what the intensity page needs on
+   top of the portal's shared `@nzi/ui` classes (nz-portal-shell / -state / -section-head),
+   and it defines no colour of its own: every value is a brand token from styles.css, so
+   the tile, the sparkline and the chart cannot drift from the rest of the portal. */
+
+.nz-pi-lead { margin: 12px 0 20px; max-width: 70ch; color: var(--t2); font-size: 13.5px; line-height: 1.6; }
+.nz-pi-assured { display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; padding: 3px 11px; border: 1px solid #BCE3CE; border-radius: 20px; background: var(--mint); color: var(--pine); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+
+.nz-pi-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.nz-pi-tile { display: flex; flex-direction: column; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.nz-pi-tile-top { display: flex; align-items: center; gap: 10px; }
+.nz-pi-tile-top .ic { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--t2); }
+.nz-pi-tile-top .nm { font-size: 12.5px; font-weight: 600; color: var(--t2); }
+.nz-pi-big { margin-top: 10px; font-size: 27px; font-weight: 700; letter-spacing: -.01em; color: var(--t1); font-variant-numeric: tabular-nums; }
+.nz-pi-big .u { margin-left: 5px; font-size: 11.5px; font-weight: 500; color: var(--t3); letter-spacing: 0; }
+.nz-pi-delta { margin-top: 3px; font-size: 12px; font-weight: 600; }
+.nz-pi-delta.down { color: var(--pine); }
+.nz-pi-delta.up { color: var(--danger); }
+.nz-pi-delta.flat { color: var(--t3); }
+.nz-pi-note { margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: var(--t3); }
+.nz-pi-na { margin-top: 10px; font-size: 15px; font-weight: 600; color: var(--t3); }
+.nz-pi-spark { margin-top: 10px; min-height: 34px; }
+
+.nz-pi-card { border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden; }
+.nz-pi-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line2); }
+.nz-pi-card-head h2 { margin: 0; font-size: 16px; }
+.nz-pi-card-head .sp { flex: 1 1 auto; }
+.nz-pi-card-head select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--t1); font-family: inherit; font-size: 13px; }
+.nz-pi-chart { padding: 14px 12px 6px; }
+.nz-pi-chart svg { display: block; width: 100%; height: auto; }
+.nz-pi-chart-note { margin: 0; padding: 0 16px 14px; color: var(--t2); font-size: 12px; line-height: 1.55; }
+.nz-pi-years { display: grid; gap: 2px; padding: 2px 16px 14px; }
+.nz-pi-years > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line2); font-size: 12.5px; }
+.nz-pi-years > div:last-child { border-bottom: 0; }
+.nz-pi-years .k { color: var(--t2); font-weight: 600; }
+.nz-pi-years .v { color: var(--t1); font-variant-numeric: tabular-nums; }
+.nz-pi-years .v.na { color: var(--t3); font-weight: 500; }
+.nz-pi-foot { padding: 12px 16px; border-top: 1px solid var(--line2); background: var(--paper); color: var(--t3); font-size: 11.5px; line-height: 1.6; }
+.nz-pi-foot b { color: var(--t2); }
+.nz-pi-evidence { margin: 12px 0 0; color: var(--t3); font-size: 11px; }
+
+@media (max-width: 720px) {
+  .nz-pi-tiles { grid-template-columns: 1fr; }
+  .nz-pi-card-head { align-items: flex-start; flex-direction: column; }
+}

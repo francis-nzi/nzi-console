@@ -57,3 +57,4 @@ export * from "./siteBoundary";
 export * from "./permissions";
 export * from "./targets";
 export * from "./srsReadiness";
+export * from "./intensityMetrics";

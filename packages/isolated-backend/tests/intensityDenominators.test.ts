@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveIntensityBases } from "../src/readModels";
-import type { ClientSiteReadModel, IntensityTargetReadModel } from "@nzi/contracts";
+import { resolveYearDenominators } from "../src/readModels";
+import { resolveIntensity, type ClientSiteReadModel, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 
 /**
- * Multi-base intensity (client workspace v10). Each basis is formed from its own
- * denominator or it is unavailable *with its reason*. The rule that matters: a missing
- * denominator is never replaced by a different one, because that would silently change
- * what the figure means.
+ * Intensity denominators, now that the metric set is defined by the client rather than
+ * hard-coded. The rule that matters is unchanged: a metric with nothing recorded reads
+ * unavailable, and a denominator is never borrowed from another metric or another year.
  */
 
 const period = { from: "2024-01-01", to: "2024-12-31" };
@@ -16,72 +15,94 @@ const site = (id: string, floorAreaM2: number | null, over: Partial<ClientSiteRe
   floorAreas: floorAreaM2 === null ? [] : [{ effectiveFrom: null, floorAreaM2, recordedBy: "tester", recordedAt: "2024-01-01T00:00:00Z" }],
   ...over,
 });
-
-const target = (over: Partial<IntensityTargetReadModel>): IntensityTargetReadModel => ({
-  jobId: "job-a", metric: "turnover", denominatorUnit: "£m", reportingDenominator: 40,
-  baselineYear: 2023, baselineIntensity: 48, interimYear: 2030, interimReductionPercent: 50, netZeroYear: 2045,
-  version: 1, updatedAt: "2024-01-01T00:00:00Z", updatedBy: "tester", ...over,
+const metric = (key: string, over: Partial<IntensityMetricDefinition> = {}): IntensityMetricDefinition => ({
+  key, version: 1, label: key === "employees" ? "Employees" : key === "turnover" ? "Turnover" : "Floor area",
+  unitWording: key === "turnover" ? "£m" : key === "floor-area" ? "m²" : "employee",
+  divider: 1, iconKey: "metric", isStandard: key !== "floor-area",
+  valueSource: key === "floor-area" ? "site-floor-area" : "entered", active: true, ordering: 1, ...over,
 });
+const value = (metricKey: string, recorded: number | null, reportingYear = 2024): IntensityMetricValue =>
+  ({ metricKey, reportingYear, periodKey: "year", value: recorded, overridesResolved: false, note: "", version: 1 });
 
-describe("resolveIntensityBases", () => {
-  it("forms each basis only from its own denominator", () => {
-    const bases = resolveIntensityBases({ totalTco2e: 1600, intensityTarget: target({ metric: "turnover", reportingDenominator: 40 }), sites: [site("a", 3200)], period });
-    assert.equal(bases.turnover.state, "resolved");
-    if (bases.turnover.state === "resolved") {
-      assert.equal(bases.turnover.value, 40); // 1600 tCO₂e / £40m
-      assert.equal(bases.turnover.unit, "tCO₂e / £m");
-      assert.equal(bases.turnover.source, "job-business-metric");
-    }
-    // Floor area resolves from the client's own sites even though the job chose turnover.
-    assert.equal(bases["floor-area"].state, "resolved");
-    if (bases["floor-area"].state === "resolved") {
-      assert.equal(bases["floor-area"].value, 500); // 1600 t = 1,600,000 kg / 3200 m²
-      assert.equal(bases["floor-area"].unit, "kgCO₂e / m²");
-      assert.equal(bases["floor-area"].source, "site-floor-area");
-    }
-    // Employees was never recorded — it says so, it does not borrow turnover.
-    assert.equal(bases.employee.state, "unavailable");
-    if (bases.employee.state === "unavailable") assert.match(bases.employee.reason, /did not record employees/);
+describe("intensity denominators", () => {
+  it("takes the value the job recorded for that metric and year", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("employees"), metric("turnover")],
+      values: [value("employees", 240), value("turnover", 40)],
+      reportingYear: 2024, sites: [], period,
+    });
+    assert.deepEqual(resolved.employees, { value: 240, source: "recorded" });
+    assert.deepEqual(resolved.turnover, { value: 40, source: "recorded" });
   });
 
-  it("sums floor area across the in-service sites for the period", () => {
-    const bases = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: null, sites: [site("a", 2000), site("b", 3000)], period });
-    assert.equal(bases["floor-area"].state, "resolved");
-    if (bases["floor-area"].state === "resolved") assert.equal(bases["floor-area"].denominator, 5000);
+  it("says nothing was recorded rather than inventing a denominator", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("employees")], values: [], reportingYear: 2024, sites: [], period,
+    });
+    assert.equal(resolved.employees!.value, null);
+    assert.equal(resolved.employees!.source, "none");
   });
 
-  it("refuses a partial floor area rather than under-counting the denominator", () => {
-    // One site has no floor area recorded: summing the rest would inflate the intensity.
-    const bases = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: null, sites: [site("a", 2000), site("b", null)], period });
-    assert.equal(bases["floor-area"].state, "unavailable");
-    if (bases["floor-area"].state === "unavailable") assert.match(bases["floor-area"].reason, /No floor area is recorded for Site b/);
+  it("does not read another year's value", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("employees")], values: [value("employees", 240, 2023)],
+      reportingYear: 2024, sites: [], period,
+    });
+    assert.equal(resolved.employees!.value, null);
+  });
+
+  it("sums a site-derived metric across the in-service sites for the period", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("floor-area")], values: [], reportingYear: 2024,
+      sites: [site("a", 2000), site("b", 3000)], period,
+    });
+    assert.deepEqual(resolved["floor-area"], { value: 5000, source: "site-floor-area" });
+  });
+
+  it("refuses a partial floor area rather than under-counting the boundary", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("floor-area")], values: [], reportingYear: 2024,
+      sites: [site("a", 2000), site("b", null)], period,
+    });
+    assert.equal(resolved["floor-area"]!.value, null);
+    assert.match(resolved["floor-area"]!.reason!, /No floor area is recorded for Site b/);
+  });
+
+  it("keeps a vacated site out of a later year's denominator", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("floor-area")], values: [], reportingYear: 2024,
+      sites: [site("a", 2000), site("b", 3000, { vacatedEffective: "2023-06-30" })], period,
+    });
+    assert.equal(resolved["floor-area"]!.value, 2000);
+  });
+
+  it("lets a recorded value override what the sites resolve to", () => {
+    const resolved = resolveYearDenominators({
+      definitions: [metric("floor-area")], values: [value("floor-area", 9000)],
+      reportingYear: 2024, sites: [site("a", 2000)], period,
+    });
+    assert.deepEqual(resolved["floor-area"], { value: 9000, source: "recorded" });
   });
 
   it("says the boundary is unknown when the year has no period", () => {
-    const bases = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: null, sites: [site("a", 2000)], period: null });
-    assert.equal(bases["floor-area"].state, "unavailable");
-    if (bases["floor-area"].state === "unavailable") assert.match(bases["floor-area"].reason, /no reporting period/);
+    const resolved = resolveYearDenominators({
+      definitions: [metric("floor-area")], values: [], reportingYear: 2024, sites: [site("a", 2000)], period: null,
+    });
+    assert.equal(resolved["floor-area"]!.value, null);
+    assert.match(resolved["floor-area"]!.reason!, /no reporting period/);
   });
 
-  it("reports every basis as unavailable when the year has no assured total — never zero", () => {
-    const bases = resolveIntensityBases({ totalTco2e: null, intensityTarget: target({}), sites: [site("a", 2000)], period });
-    for (const key of ["turnover", "employee", "floor-area"] as const) {
-      assert.equal(bases[key].state, "unavailable", key);
-      if (bases[key].state === "unavailable") assert.match(bases[key].reason, /No assured total/);
+  it("computes the intensity with the metric's own divider, and refuses to divide by nothing", () => {
+    const perThousand = metric("employees", { divider: 1000 });
+    const resolved = resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 240 });
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state === "resolved") {
+      assert.ok(Math.abs(resolved.value - 6666.67) < 0.01, "1,600 tCO₂e per 1,000 of 240 employees");
+      assert.equal(resolved.unit, "tCO₂e per 1,000 employees");
     }
-  });
-
-  it("treats a zero or missing denominator as unavailable rather than dividing by it", () => {
-    const zero = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: target({ metric: "employee", reportingDenominator: 0, denominatorUnit: "FTE" }), sites: [], period });
-    assert.equal(zero.employee.state, "unavailable");
-    const missing = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: target({ metric: "employee", reportingDenominator: null, denominatorUnit: "FTE" }), sites: [], period });
-    assert.equal(missing.employee.state, "unavailable");
-  });
-
-  it("keeps a vacated site out of the floor-area denominator for later years", () => {
-    const vacated = site("b", 3000, { vacatedEffective: "2023-06-30" });
-    const bases = resolveIntensityBases({ totalTco2e: 1000, intensityTarget: null, sites: [site("a", 2000), vacated], period });
-    assert.equal(bases["floor-area"].state, "resolved");
-    if (bases["floor-area"].state === "resolved") assert.equal(bases["floor-area"].denominator, 2000);
+    // A year with no assured total, and a zero denominator, are both unavailable — never 0.
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: null, value: 240 }).state, "unavailable");
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 0 }).state, "unavailable");
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: null }).state, "unavailable");
   });
 });
