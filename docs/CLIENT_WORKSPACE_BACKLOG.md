@@ -54,7 +54,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 |---|---|---|---|
 | Baseline record + re-baseline/recalculate governed drawer + history timeline | `MODEL_FIDELITY_BASELINE.md`, `client_baselines` | Built | — |
 | Significance threshold on recalculation (NZC-068) | decision | Built (design) | — |
-| **Forward target model**: net-zero year, interim year, per-scope target year+pct, benchmark year — feeds the pathway | `clients` target fields | Partial | Go-live |
+| **Forward target model**: net-zero year, interim year, per-scope target year+pct, benchmark year — feeds the pathway | `clients` target fields | Prototype ✓ · impl To build | Go-live |
 
 ## E. Carbon Analytics
 

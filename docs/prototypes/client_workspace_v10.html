@@ -1,4 +1,8 @@
-<!-- NZI Console — Client Workspace prototype · v9 (2026-09-11) — supersedes v8
+<!-- NZI Console — Client Workspace prototype · v10 (2026-09-12) — supersedes v9
+     Adds the forward target model: Baseline & targets card separates the baseline (past
+     anchor, via Re-baseline) from forward targets (near-term / net-zero / per-scope, via
+     Edit); the reduction pathway is derived from the target model, not hard-coded.
+     -- prior --
      Reference design for the client redesign. Covers: area sub-nav + drawer editing,
      baseline & governed re-baseline, Carbon Analytics (YoY scope, multi-base intensity
      incl. All-indexed, pathway, donut, year picker), evidence/provenance drawers on
@@ -178,6 +182,7 @@ table.tbl tr:last-child td{border-bottom:0}
 .vsbl{font-size:24px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums}
 .tgt{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
 .tgtchip{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:2px 9px;color:var(--ink-2)}.tgtchip b{color:var(--ink)}
+.scopetgts{font-size:11.5px;color:var(--muted);margin-top:7px}
 .tl{padding:4px 16px 14px}.tl .th{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 8px}
 .ev{display:grid;grid-template-columns:16px 1fr auto;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line-2)}.ev:last-child{border-bottom:0}
 .ev .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;border:2px solid var(--base);background:var(--panel)}.ev.now .dot{background:var(--base)}
@@ -325,7 +330,10 @@ rect.seg{stroke:var(--panel);stroke-width:2}
                 <div class="cbody">
                   <div class="blcur">
                     <div class="blbox"><div class="bt">Baseline in force <span class="pill ok" style="font-size:10px;padding:1px 7px"><i></i>Declared</span></div><div class="blperiod">FY2023 · 1 Apr 2023 – 31 Mar 2024</div><div class="blsrc">From job <a class="jlink" href="#">J000227</a> · effective FY2023</div><div class="figs"><div class="fig"><span class="s1">Scope 1</span><b>120</b></div><div class="fig"><span class="s2">Scope 2</span><b>480</b></div><div class="fig"><span class="s3">Scope 3</span><b>1,242</b></div><div class="fig">Total<b>1,842</b></div></div></div>
-                    <div class="blbox"><div class="bt">Progress vs baseline</div><div class="vsbl">−7.4%</div><div class="blsrc">FY2024 total 1,706 tCO₂e</div><div class="bt" style="margin-top:11px">Targets</div><div class="tgt"><span class="tgtchip">Net zero <b>2045</b></span><span class="tgtchip">Reduction <b>−90%</b></span><span class="tgtchip">Interim <b>2030</b></span></div></div>
+                    <div class="blbox"><div class="bt">Progress vs baseline</div><div class="vsbl">−7.4%</div><div class="blsrc">FY2024 total 1,706 tCO₂e</div>
+                      <div class="bt" style="margin-top:11px;display:flex;align-items:center">Targets <span class="blsrc" style="font-weight:500;margin-left:6px">vs FY2023 benchmark</span><span class="sp" style="flex:1"></span><button class="editlink" onclick="openD('targets')">Edit</button></div>
+                      <div class="tgt"><span class="tgtchip">Near-term <b>2030 · −50%</b></span><span class="tgtchip">Net zero <b>2045 · −90%</b></span></div>
+                      <div class="scopetgts">S1 −80% by 2040 · S2 −100% by 2030 · S3 −90% by 2045</div></div>
                   </div>
                   <div class="tl"><div class="th">Baseline history</div>
                     <div class="ev now"><span class="dot"></span><div><span class="ea">Recalculation<span class="ek recalc">recalculation</span></span><div class="er">London HQ relocation — structural change above the 5% threshold. Base year restated, targets held.</div></div><div class="ed">10 Sep 2026<br>F. Doherty</div></div>
@@ -528,19 +536,26 @@ function intensityAll(el,w,h){
     const last=idx[idx.length-1];g+=`<text class="val" x="${xf(YEARS.length-1)+5}" y="${yf(last)+3}" text-anchor="start" style="fill:${c}">${last.toFixed(0)}</text>`;});
   el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Emissions intensity — all bases indexed to baseline">${g}</svg>`;
 }
+/* forward target model — drives the pathway + the Baseline & targets card. Editable via the targets drawer. */
+const TARGETS={benchmarkYear:"FY23",baseTotal:1842,interim:{year:"FY30",pct:50},netzero:{year:"FY45",pct:90},
+  scopes:[["Scope 1","FY40",80],["Scope 2","FY30",100],["Scope 3","FY45",90]]};
 function pathway(el,w,h){
-  const pad={t:16,r:14,b:22,l:38}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=2100;
-  const yrs=["FY20","FY21","FY22","FY23","FY24","FY30","FY45"], step=iw/(yrs.length-1);
+  const T=TARGETS, pad={t:16,r:16,b:22,l:38}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=2100;
+  const yrs=["FY20","FY21","FY22","FY23","FY24",T.interim.year,T.netzero.year], step=iw/(yrs.length-1);
   const xf=i=>pad.l+step*i, yf=v=>pad.t+ih-(v/max*ih);
-  const actual=[2088,2010,1955,1842,1706], target=[[3,1842],[5,921],[6,184]]; let g="";
+  const actual=[2088,2010,1955,1842,1706];
+  const bi=yrs.indexOf(T.benchmarkYear), ii=yrs.indexOf(T.interim.year), ni=yrs.length-1;
+  const iv=Math.round(T.baseTotal*(1-T.interim.pct/100)), nv=Math.round(T.baseTotal*(1-T.netzero.pct/100));
+  const target=[[bi,T.baseTotal],[ii,iv],[ni,nv]]; let g="";
   [0,700,1400,2100].forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-6}" y="${yy+3}" text-anchor="end">${t}</text>`;});
-  yrs.forEach((yy,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${yy}</text>`);
+  yrs.forEach((yy,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${yy}${i===bi?" ◆":""}</text>`);
+  if(bi>=0)g+=`<line class="bl-marker" x1="${xf(bi)}" y1="${pad.t}" x2="${xf(bi)}" y2="${pad.t+ih}"/>`;
   g+=`<polyline points="${target.map(([i,v])=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--base)" stroke-width="2" stroke-dasharray="4 4"/>`;
-  target.forEach(([i,v])=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--base)"/>`);
-  g+=`<text class="axis" x="${xf(5)}" y="${yf(921)-8}" text-anchor="middle" style="fill:var(--base)">−50%</text><text class="axis" x="${w-pad.r}" y="${yf(184)-8}" text-anchor="end" style="fill:var(--base)">net zero</text>`;
+  target.forEach(([i,v])=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--base)"><title>${yrs[i]}: ${v} tCO₂e</title></circle>`);
+  g+=`<text class="axis" x="${xf(ii)}" y="${yf(iv)-8}" text-anchor="middle" style="fill:var(--base)">−${T.interim.pct}%</text><text class="axis" x="${w-pad.r}" y="${yf(nv)-8}" text-anchor="end" style="fill:var(--base)">net zero 20${T.netzero.year.slice(2)}</text>`;
   g+=`<polyline points="${actual.map((v,i)=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
   actual.forEach((v,i)=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--accent)"><title>${yrs[i]}: ${v}</title></circle>`);
-  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Reduction pathway">${g}</svg>`;
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Reduction pathway to net zero, actual vs target">${g}</svg>`;
 }
 function donutFor(yr){
   const d=YEARS.find(x=>x.y===yr); const tot=d.s1+d.s2+d.s3; const cx=90,cy=90,r=64,sw=26; let a=-Math.PI/2,g="";
@@ -595,6 +610,18 @@ const DRAWERS={
     <div class="fl"><label>Reason<span class="req">*</span> — recorded on the baseline record + audit log</label><input class="inp" id="reason" placeholder="e.g. London HQ relocation — structural change"></div>
     <div class="gov"><span class="lk">🔒</span><span>This <b>supersedes</b> the current baseline (kept in history). Issued reports keep the baseline they <b>stamped</b>; trend and gap engine resolve against this record from <b>effective-from</b>.</span></div>`,
     foot:`<span class="gr" id="gr">Enter a reason to record the change.</span><span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" id="save" aria-disabled="true">Record baseline change</button>`},
+  targets:{k:"Baseline & targets",t:"Reduction targets",body:`
+    <div class="hint">The forward commitment. These drive the reduction pathway and the gap engine. The <b>baseline</b> (the past anchor) is set separately via Re-baseline — change it there, not here.</div>
+    <div class="fl"><label>Benchmark year</label><input class="inp" value="FY2023 · 1,842 tCO₂e" disabled><div class="hint">Comes from the baseline in force (job J000227). Targets are measured as reductions against this.</div></div>
+    <div class="bt" style="margin:4px 0 2px">Near-term target</div>
+    <div class="two"><div class="fl"><label>Target year<span class="req">*</span></label><input class="inp" value="2030"></div><div class="fl"><label>Reduction vs benchmark<span class="req">*</span></label><input class="inp" value="50%"></div></div>
+    <div class="bt" style="margin:8px 0 2px">Net-zero target</div>
+    <div class="two"><div class="fl"><label>Net-zero year<span class="req">*</span></label><input class="inp" value="2045"></div><div class="fl"><label>Reduction at net zero</label><input class="inp" value="90%"><div class="hint">Residual 10% addressed via removals.</div></div></div>
+    <div class="bt" style="margin:8px 0 4px">Per-scope targets</div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s1)">Scope 1</span> by</label><input class="inp" value="2040"></div><div class="fl"><label>%</label><input class="inp" value="80%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">metered fuel, fleet</span></div></div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s2-ink)">Scope 2</span> by</label><input class="inp" value="2030"></div><div class="fl"><label>%</label><input class="inp" value="100%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">renewable electricity</span></div></div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s3)">Scope 3</span> by</label><input class="inp" value="2045"></div><div class="fl"><label>%</label><input class="inp" value="90%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">value chain</span></div></div>
+    <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Targets are versioned and audited. When a re-baseline restates the benchmark, targets are held by default and only restated as an explicit, recorded choice (NZC-068).</span></div>`,foot:`<span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" onclick="closeD()">Save targets</button>`},
   contact:{k:"Relationship",t:"Contact",body:`<div class="two"><div class="fl"><label>Full name<span class="req">*</span></label><input class="inp" value="Dawn Fletcher"></div><div class="fl"><label>Job title</label><input class="inp" value="Operations director"></div></div><div class="fl"><label>Email</label><input class="inp mono" value="dawn.fletcher@abtec.example"></div><div class="fl"><label>Phone</label><input class="inp" placeholder="Optional"></div>
     <div class="fl"><label>Roles <span class="hint" style="font-weight:500">— what this contact is used for downstream</span></label>
       <div class="roles">
