@@ -9,6 +9,7 @@ import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { NAV, USER } from "../../lib/nav";
 import { useEditAccess } from "../../lib/useEditAccess";
+import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
 import { AnalyticsArea } from "./AnalyticsArea";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { ContactForm } from "./ClientContacts";
@@ -16,7 +17,7 @@ import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
 import { AddressForm, ComplianceForm, FactorsDrawerBody, PortalDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
 import { SiteForm } from "./ClientSites";
 import { TargetsForm } from "./ClientTargets";
-import { CLIENT_AREA_LABELS, clientAreaGroups, isClientAreaId, type ClientAreaId } from "./clientAreas";
+import { clientAreaGroups, isClientAreaId, type ClientAreaId } from "./clientAreas";
 import { drawerLabel, type DrawerRequest } from "./clientDrawers";
 import { MetricEvidence, Metric, OverviewArea, OverviewAside } from "./OverviewArea";
 import { FigureEvidenceBody, formatFigure, fyLabel } from "./FigureEvidence";
@@ -91,7 +92,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}
     areas={<ClientWorkspaceNav groups={clientAreaGroups({ tasks: null, analytics: history.length || null })} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
-    <TopBar searchPlaceholder="Search this client…" crumbs={<><Link href="/clients">Clients</Link><span className="muted">/</span><b>{client.name}</b><span className="muted">/</span><span>{CLIENT_AREA_LABELS[area]}</span></>} />
+    {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
+    <TopBar searchPlaceholder="Search this client…" crumbs={crumbTrail(clientCrumbs(client))} />
     <div className="nz-head"><div className="nz-client-head">
       <ClientLogoBadge client={client} onOpen={() => openDrawer({ kind: "identity" })} />
       <div className="nz-client-identity">
@@ -102,7 +104,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         {/* No "Edit client" here: the record is edited one thing at a time, in its own
             drawer, from the surface that shows it (v10). */}
         <button type="button" className="nz-btn" onClick={() => openDrawer({ kind: "portal" })}>Portal access</button>
-        <Link className="nz-btn pri" href={`/jobs?client=${client.id}`}>Create job</Link>
+        <Link className="nz-btn pri" href={clientJobsHref(client.id)}>Create job</Link>
       </div>
     </div></div>
 

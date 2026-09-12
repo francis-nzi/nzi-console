@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
 import { type Client, type ClientStatus, clientStatusMeta } from "@nzi/mock-data";
 import { NAV, USER } from "../lib/nav";
+import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 
 type Filter = "all" | ClientStatus;
 
@@ -86,7 +87,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
     [clients, filter],
   );
 
-  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={<><b>Clients</b> <span className="muted">/</span> All organisations</>} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
+  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
 
   const selected = clients.find((c) => c.id === selectedId) ?? clients[0]!;
 
@@ -129,7 +130,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
     <AppShell rail={rail} drawer={drawer}>
       <TopBar
         searchPlaceholder="Search clients…"
-        crumbs={<><b>Clients</b> <span className="muted">/</span> All organisations</>}
+        crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))}
       />
 
       <div className="nz-head">

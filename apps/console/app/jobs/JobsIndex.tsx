@@ -5,22 +5,35 @@ import { useRouter } from "next/navigation";
 import { jobWorkflowStages, type CommandInputMap } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type Client, type FamilyJob, type JobFamily } from "@nzi/mock-data";
+import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { formatDate } from "../lib/formatDate";
+import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 
 type Filter = "all" | JobFamily;
 const initialStage: Record<JobFamily, string> = { crp: jobWorkflowStages.crp[0], consultancy: jobWorkflowStages.consultancy[0], lca: jobWorkflowStages.lca[0], pcf: jobWorkflowStages.pcf[0], training: jobWorkflowStages.training[0] };
 
-export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Client[] }) {
+export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: FamilyJob[]; clients: Client[]; clientId?: string | null }) {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
+  // `?client=` scopes the portfolio to one client — the route the client trail's "Jobs"
+  // crumb points at. The client's name is resolved from the record, or from the jobs
+  // themselves when the client list is degraded; it is never invented.
+  const scopedClient = clientId === null ? null : {
+    id: clientId,
+    name: clients.find((client) => client.id === clientId)?.name
+      ?? allJobs.find((job) => job.header.clientId === clientId)?.header.client
+      ?? null,
+  };
+  const jobs = scopedClient === null ? allJobs : allJobs.filter((job) => job.header.clientId === scopedClient.id);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
   const submissionKey = useRef<string | null>(null);
   const eligibleClients = clients.filter((client) => client.status !== "prospect");
-  const firstClient = eligibleClients[0]?.id ?? "";
+  // Creating from a client's own jobs list starts on that client.
+  const firstClient = (scopedClient && eligibleClients.some((client) => client.id === scopedClient.id) ? scopedClient.id : eligibleClients[0]?.id) ?? "";
   const [draft, setDraft] = useState<CommandInputMap["job.create"]>({ clientId: firstClient, family: "crp", title: "", workflowStage: initialStage.crp, owner: "", startDate: "", dueDate: "", reportingYear: new Date().getUTCFullYear() });
   const rows = useMemo(() => filter === "all" ? jobs : jobs.filter((job) => job.header.family === filter), [filter, jobs]);
   const filters: Filter[] = ["all", "crp", "consultancy", "lca", "pcf", "training"];
@@ -41,8 +54,14 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
   }
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
-    <TopBar searchPlaceholder="Search jobs, clients…" crumbs={<><b>Jobs</b> <span className="muted">/</span> All families</>} />
-    <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Delivery portfolio</div><h1>Engagements</h1><div className="sub">Every client engagement, workflow and deadline in one governed portfolio</div></div><button type="button" className="nz-btn pri" disabled={eligibleClients.length===0} title={eligibleClients.length===0?"Create or onboard a client before opening an engagement.":undefined} aria-expanded={creating} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ New engagement"}</button></div></div>
+    <TopBar searchPlaceholder="Search jobs, clients…" crumbs={crumbTrail(scopedClient
+      ? [{ label: "Clients", href: "/clients" },
+         { label: scopedClient.name ?? "This client", href: `/clients/${encodeURIComponent(scopedClient.id)}` },
+         { label: "Jobs", href: clientJobsHref(scopedClient.id), current: true }]
+      : workspaceCrumbs("Jobs", "/jobs"))} />
+    <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Delivery portfolio</div><h1>Engagements</h1><div className="sub">{scopedClient
+      ? <>Engagements for {scopedClient.name ?? "this client"} · <Link href="/jobs" className="nz-table-link">show every client</Link></>
+      : "Every client engagement, workflow and deadline in one governed portfolio"}</div></div><button type="button" className="nz-btn pri" disabled={eligibleClients.length===0} title={eligibleClients.length===0?"Create or onboard a client before opening an engagement.":undefined} aria-expanded={creating} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ New engagement"}</button></div></div>
     <div className="nz-body" style={{ paddingTop: 16 }}>
       <section className="nz-ops-hero"><div><span className="nz-eyebrow light">NZI delivery command</span><h2>{jobs.length===0?"No delivery engagements are recorded.":dueSoon?`${dueSoon} engagement${dueSoon===1?"":"s"} approaching a delivery milestone.`:"The evidenced portfolio has no immediate milestones."}</h2><p>{jobs.length===0?"Portfolio health, ownership and workflow assurance remain unavailable until the first governed engagement is created.":"Official job numbering, family-specific workflows and accountable ownership create one dependable operational view."}</p></div><div className="nz-ops-trust"><span><i>{jobs.length?"✓":"·"}</i> Official numbering</span><span><i>{jobs.length?"✓":"·"}</i> Named ownership</span><span><i>{jobs.length?"✓":"·"}</i> Audited workflow</span></div></section>
       <div className="nz-metrics"><Metric label="Active engagements" value={String(jobs.length)} note="Across all service families"/><Metric label="Carbon reporting" value={String(activeCrp)} note="CRP engagements"/><Metric label="Average progress" value={jobs.length?`${averageProgress}%`:"Not available"} note={jobs.length?"Portfolio completion":"No engagement evidence"}/><Metric label="Due within 30 days" value={String(dueSoon)} note={jobs.length?(dueSoon?"Requires delivery focus":"No immediate deadlines"):"No engagements scheduled"}/></div>
@@ -63,7 +82,7 @@ export function JobsIndex({ jobs, clients }: { jobs: FamilyJob[]; clients: Clien
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button type="button" className="nz-btn" disabled={saving} onClick={() => setCreating(false)}>Cancel</button><button className="nz-btn pri" disabled={saving || !draft.clientId}>{saving ? "Creating…" : "Create and assign number"}</button></div>
       </form>}
       <div className="nz-toolbar" style={{ padding: "0 0 12px" }}><div className="nz-filters">{filters.map((id) => <button type="button" aria-pressed={filter===id} key={id} className={filter === id ? "on" : undefined} onClick={() => setFilter(id)}>{id === "all" ? `All ${jobs.length}` : jobFamilyMeta[id].code}</button>)}</div></div>
-      <div className="nz-panel nz-engagement-table"><table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Client</th><th>Title</th><th>Stage</th><th>Due</th><th>Owner</th><th className="num">Progress</th></tr></thead><tbody>{rows.map(({ header }) => <tr key={header.id} className="row"><td><a href={`/jobs/${header.id}`} className="nz-table-link">{header.number}</a></td><td><span className="nz-st est">{jobFamilyMeta[header.family].code}</span></td><td>{header.client}</td><td>{header.title}</td><td>{header.workflowStage}</td><td>{formatDate(header.dueDate)}</td><td>{header.owner}</td><td><span className="nz-job-progress"><i><span style={{width:`${header.progressPct}%`}}/></i><b className="num">{header.progressPct}%</b></span></td></tr>)}</tbody></table>{rows.length===0&&<div className="nz-engagement-empty"><b>{jobs.length===0?"No engagements yet":"No engagements match this family"}</b><span>{jobs.length===0?"Create the first governed engagement after an eligible client exists.":"Choose another family filter to return to active delivery work."}</span></div>}</div>
+      <div className="nz-panel nz-engagement-table"><table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Client</th><th>Title</th><th>Stage</th><th>Due</th><th>Owner</th><th className="num">Progress</th></tr></thead><tbody>{rows.map(({ header }) => <tr key={header.id} className="row"><td><a href={`/jobs/${header.id}`} className="nz-table-link">{header.number}</a></td><td><span className="nz-st est">{jobFamilyMeta[header.family].code}</span></td><td>{header.client}</td><td>{header.title}</td><td>{header.workflowStage}</td><td>{formatDate(header.dueDate)}</td><td>{header.owner}</td><td><span className="nz-job-progress"><i><span style={{width:`${header.progressPct}%`}}/></i><b className="num">{header.progressPct}%</b></span></td></tr>)}</tbody></table>{rows.length===0&&<div className="nz-engagement-empty"><b>{jobs.length!==0?"No engagements match this family":scopedClient?"No engagements for this client yet":"No engagements yet"}</b><span>{jobs.length!==0?"Choose another family filter to return to active delivery work.":scopedClient?"This client has no delivery engagements on record.":"Create the first governed engagement after an eligible client exists."}</span></div>}</div>
     </div>
   </AppShell>;
 }

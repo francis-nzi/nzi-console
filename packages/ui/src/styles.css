@@ -45,6 +45,14 @@ a{color:inherit}
 .nz-topbar{display:flex;align-items:center;gap:14px;padding:13px 24px;background:var(--card);border-bottom:1px solid var(--line)}
 .nz-crumbs{font-size:12.5px;color:var(--t3)}
 .nz-crumbs b{color:var(--t1);font-weight:600}
+/* breadcrumb trail — every crumb is a link, the current one is simply the emphasised one */
+.nz-crumblist{display:flex;align-items:center;flex-wrap:wrap;gap:0;list-style:none;margin:0;padding:0}
+.nz-crumblist li{display:flex;align-items:center;min-width:0}
+.nz-crumbsep{color:var(--t3);margin:0 6px;opacity:.7}
+a.nz-crumb{color:var(--t3);text-decoration:none;border-radius:5px;padding:1px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+a.nz-crumb:hover{color:var(--pine);text-decoration:underline}
+a.nz-crumb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a.nz-crumb.current{color:var(--t1);font-weight:600}
 .nz-search{margin-left:auto;position:relative;width:270px}
 .nz-search input{width:100%;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--paper);padding:0 12px 0 34px;font-family:inherit;font-size:13px;color:var(--t1)}
 .nz-search input::placeholder{color:var(--t3)}

@@ -37,6 +37,7 @@ export type NavItem = { id: string; label: string; icon: IconName; href: string;
 export type NavSection = { heading: string; items: NavItem[] };
 
 export { ClientWorkspaceNav } from "./ClientWorkspaceNav";
+export { Breadcrumbs, type Crumb } from "./Breadcrumbs";
 export type { ClientAreaGroup, ClientAreaItem } from "./ClientWorkspaceNav";
 
 export function AppShell({ rail, areas, drawer, children }: { rail: ReactNode; /** An optional second nav column (the client workspace areas). */ areas?: ReactNode; drawer?: ReactNode; children: ReactNode }) {
