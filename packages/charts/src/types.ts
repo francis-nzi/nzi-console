@@ -1,6 +1,6 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "intensity_bases_indexed" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance";
+export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "intensity_bases_indexed" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance" | "srs_pillar_radar" | "srs_maturity_bullets" | "srs_gap_heatmap" | "srs_readiness_trend";
 export type LcaModuleGroup = "product" | "transport" | "use" | "end_of_life" | "benefits";
 import type { ProvenanceSignature, QualityTier } from "@nzi/contracts";
 export type DataQuality = QualityTier;
@@ -66,4 +66,22 @@ export type LcaHotspot = { id: string; label: string; group: LcaModuleGroup; val
 export type LcaHotspotsBarData = ChartEnvelope & { hotspots: LcaHotspot[]; functionalUnit: string };
 export type TrainingAttendanceValue = { id: string; label: string; invited: number; attended: number; completed: number };
 export type TrainingAttendanceData = ChartEnvelope & { cohorts: TrainingAttendanceValue[] };
-export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | IntensityBasesIndexedData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | LcaModuleDonutData | LcaHotspotsBarData | TrainingAttendanceData;
+
+/**
+ * SRS readiness (Aotearoa NZ Climate Standards / sustainability reporting readiness).
+ * Maturity is an ordinal level 0–`maxLevel` (0 not started → 4 assured), never a
+ * quantity — so it is drawn on the sequential `tokens.srs.maturity` ramp. The scope
+ * palette is reserved for GHG scope identity and never appears on these charts.
+ */
+export type SrsStandardKey = "S1" | "S2";
+export type SrsPillarSeries = { key: SrsStandardKey; label: string; values: number[] };
+export type SrsPillarRadarData = ChartEnvelope & { pillars: string[]; series: SrsPillarSeries[]; target: number[]; maxLevel: number };
+export type SrsMaturityRow = { label: string; value: number; valueLabel: string; comparison: number | null; target: number };
+export type SrsMaturityBulletsData = ChartEnvelope & { rows: SrsMaturityRow[]; maxLevel: number };
+export type SrsGapRow = { label: string; value: number; target: number };
+export type SrsGapGroup = { label: string; rows: SrsGapRow[] };
+export type SrsGapHeatmapData = ChartEnvelope & { levels: string[]; groups: SrsGapGroup[] };
+export type SrsReadinessPoint = { label: string; value: number };
+export type SrsReadinessTrendData = ChartEnvelope & { points: SrsReadinessPoint[] };
+
+export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | IntensityBasesIndexedData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | LcaModuleDonutData | LcaHotspotsBarData | TrainingAttendanceData | SrsPillarRadarData | SrsMaturityBulletsData | SrsGapHeatmapData | SrsReadinessTrendData;

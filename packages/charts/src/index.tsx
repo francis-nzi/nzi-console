@@ -14,9 +14,13 @@ export { LcaStageBar } from "./LcaStageBar";
 export { LcaModuleDonut } from "./LcaModuleDonut";
 export { LcaHotspotsBar } from "./LcaHotspotsBar";
 export { TrainingAttendance } from "./TrainingAttendance";
+export { SrsPillarRadar } from "./SrsPillarRadar";
+export { SrsMaturityBullets } from "./SrsMaturityBullets";
+export { SrsGapHeatmap } from "./SrsGapHeatmap";
+export { SrsReadinessTrend } from "./SrsReadinessTrend";
 
 export * from "./types";
-export { tokens, TOKENS_VERSION, scopeColor, siteColor, moduleGroupColor, readableInkOn } from "./tokens";
+export { tokens, TOKENS_VERSION, scopeColor, siteColor, moduleGroupColor, readableInkOn, srsMaturityColor, srsMaturityInk } from "./tokens";
 export { RENDERER_VERSION, chartAssetKey } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";

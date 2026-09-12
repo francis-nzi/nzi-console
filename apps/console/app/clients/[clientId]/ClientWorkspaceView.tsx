@@ -15,6 +15,10 @@ import { AnalyticsArea } from "./AnalyticsArea";
 import { CommsArea, FilesArea } from "./CommsFilesAreas";
 import { ProfileArea } from "./ProfileArea";
 import { ReportingArea } from "./ReportingArea";
+import { SrsArea } from "./SrsArea";
+import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
+import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
+import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
@@ -46,6 +50,9 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const [area, setArea] = useState<ClientAreaId>(isClientAreaId(initialArea) ? initialArea : "overview");
   const [evidenceKey, setEvidenceKey] = useState<EvidenceKey | null>(null);
   const [drawer, setDrawer] = useState<DrawerRequest | null>(null);
+  // The SRS drawers carry their own payloads (an assessment, a requirement), so they have
+  // their own request type — still one host, still one drawer open at a time.
+  const [srsDrawer, setSrsDrawer] = useState<SrsDrawerRequest | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   // NZC-022 — each control reads the capability its own command enforces.
@@ -54,6 +61,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     contact: useEditAccess("contact.manage", writeEnabled),
     client: useEditAccess("client.edit", writeEnabled, client.ownerUserId),
     target: useEditAccess("target.edit", writeEnabled),
+    srs: useEditAccess("srs.manage", writeEnabled),
   };
 
   const meta = clientStatusMeta[client.status];
@@ -79,9 +87,25 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     </EvidenceDrawer>;
   })() : undefined;
 
-  const openDrawer = (request: DrawerRequest) => { setNotice(null); setDrawer(request); };
+  const openDrawer = (request: DrawerRequest) => { setNotice(null); setSrsDrawer(null); setDrawer(request); };
   const closeDrawer = () => setDrawer(null);
   const saved = (text: string) => { setDrawer(null); setNotice(text); router.refresh(); };
+
+  // "Continue assessment" lands on the first requirement still unanswered — the guided path.
+  const openSrsDrawer = (request: SrsDrawerRequest) => {
+    setNotice(null);
+    setDrawer(null);
+    if (request.kind !== "srs-assess") { setSrsDrawer(request); return; }
+    const framework = workspace.srs.framework;
+    if (!framework) return;
+    const answered = new Set(request.assessment.items.filter((item) => item.maturity !== null).map((item) => item.requirementId));
+    const ordered = orderedRequirements(framework);
+    const requirement = ordered.find((entry) => !answered.has(entry.id)) ?? ordered[0];
+    if (!requirement) return;
+    setSrsDrawer({ kind: "srs-item", assessment: request.assessment, requirement, item: request.assessment.items.find((item) => item.requirementId === requirement.id) ?? null });
+  };
+  const closeSrsDrawer = () => setSrsDrawer(null);
+  const srsSaved = (text: string) => { setNotice(text); router.refresh(); };
   const selectArea = (next: string) => {
     if (!isClientAreaId(next)) return;
     setArea(next);
@@ -138,6 +162,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         </div>
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
+        : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} />
         : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
         : area === "comms" ? <CommsArea workspace={workspace} />
         : area === "files" ? <FilesArea workspace={workspace} />
@@ -156,6 +181,15 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "portal" ? <PortalDrawerBody client={client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "contact" ? <ContactForm key={drawer.contact?.id ?? "new-contact"} clientId={client.id} contact={drawer.contact} access={access.contact} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "site" ? <SiteForm key={drawer.site?.id ?? "new-site"} clientId={client.id} site={drawer.site} sites={sites} periods={[...workspace.reportingPeriods].reverse()} access={access.site} onClose={closeDrawer} onSaved={saved} onPartial={() => router.refresh()} /> : null}
+    </Drawer>
+
+    <Drawer open={srsDrawer !== null} onClose={closeSrsDrawer} ariaLabel={srsDrawer ? srsDrawerLabel(srsDrawer) : "SRS drawer"} className="nz-site-drawer" dismissOnOutsideClick>
+      {srsDrawer?.kind === "srs-start" && workspace.srs.framework
+        ? <SrsStartForm clientId={client.id} framework={workspace.srs.framework} access={access.srs} onClose={closeSrsDrawer} onSaved={(text: string) => { closeSrsDrawer(); srsSaved(text); }} /> : null}
+      {srsDrawer?.kind === "srs-item" && workspace.srs.framework
+        ? <SrsItemForm key={srsDrawer.requirement.id} framework={workspace.srs.framework} assessment={srsDrawer.assessment}
+          requirement={srsDrawer.requirement} item={srsDrawer.item} access={access.srs} onClose={closeSrsDrawer} onSaved={srsSaved}
+          onNext={(requirement: SrsRequirement) => setSrsDrawer({ kind: "srs-item", assessment: srsDrawer.assessment, requirement, item: srsDrawer.assessment.items.find((item) => item.requirementId === requirement.id) ?? null })} /> : null}
     </Drawer>
   </AppShell>;
 }

@@ -28,7 +28,7 @@ export const CLIENT_AREA_LABELS: Record<ClientAreaId, string> = {
  * redesign, and Financials is held by NZC-069 — each says so in its own words.
  */
 export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>([
-  "overview", "analytics", "reporting", "profile", "comms", "files", "ai",
+  "overview", "analytics", "reporting", "srs", "profile", "comms", "files", "ai",
 ]);
 
 const ICONS: Record<ClientAreaId, string> = {

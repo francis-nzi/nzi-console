@@ -13,19 +13,13 @@ const area = (name: string) => read(`apps/console/app/clients/[clientId]/${name}
 describe("client workspace phase 2 areas", () => {
   it("marks as built only the areas that have a record behind them", () => {
     const areas = area("clientAreas.ts");
-    for (const built of ["overview", "analytics", "reporting", "profile", "comms", "files", "ai"]) {
+    for (const built of ["overview", "analytics", "reporting", "srs", "profile", "comms", "files", "ai"]) {
       assert.match(areas, new RegExp(`"${built}"`), built);
     }
     const builtSet = /BUILT_AREAS[^=]*=[\s\S]*?\]\)/.exec(areas)?.[0] ?? "";
-    for (const notBuilt of ["tasks", "notes", "srs", "financials"]) {
+    for (const notBuilt of ["tasks", "notes", "actions", "financials"]) {
       assert.ok(!builtSet.includes(`"${notBuilt}"`), `${notBuilt} must not be marked built`);
     }
-  });
-
-  it("holds SRS Readiness back deliberately rather than building it to a superseded design", () => {
-    const states = area("ClientAreaStates.tsx");
-    assert.match(states, /srs:[\s\S]*?redesign/, "the SRS state names the redesign");
-    assert.doesNotMatch(states, /srs:[^}]*next phase of this rebuild/, "it no longer claims this phase will build it");
   });
 
   it("says plainly that tasks and notes have no store, rather than showing an empty list", () => {

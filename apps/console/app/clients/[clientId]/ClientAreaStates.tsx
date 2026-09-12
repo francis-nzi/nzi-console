@@ -11,9 +11,6 @@ import { CLIENT_AREA_LABELS, type ClientAreaId } from "./clientAreas";
 
 const NOT_YET: Partial<Record<ClientAreaId, { what: string; when: string }>> = {
   actions: { what: "the client's decarbonisation plan, assembled from the action-lever catalogue", when: "the action-lever library, which is its own piece of work and in progress now." },
-  // Deliberately not built in this phase: the area is being redesigned, so building it to
-  // the current placeholder would mean shipping a screen that is already superseded.
-  srs: { what: "the SRS readiness summary", when: "its redesign, which is in progress — it is held back from this phase on purpose rather than built to a superseded design." },
   // No table, no route, no commands — nothing to wire. Saying so beats an empty list that
   // reads as "this client has no tasks" when the truth is that tasks are not built.
   tasks: { what: "client-scoped tasks with an owner and a due date", when: "a task store — there is no tasks table, route or command in this platform yet, so nothing can be shown." },

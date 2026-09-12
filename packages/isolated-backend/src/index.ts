@@ -35,6 +35,7 @@ export * from "./siteBoundary";
 export * from "./access";
 export * from "./clientContacts";
 export { mapClientContact, normaliseContactRoles } from "./clientContactRecords";
+export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, resolveNziFacts, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";
 export * from "./clientTargets";
