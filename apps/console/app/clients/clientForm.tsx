@@ -185,24 +185,10 @@ export function TargetsGroup(props: GroupProps) {
         <Num {...props} name="netZeroTargetYear" label="Net zero target year" placeholder="2045" />
         <Num {...props} name="netZeroTargetReductionPct" label="Net zero target reduction %" step="any" min={0} max={100} placeholder="90" hint="Default 90% in line with Net Zero requirements." />
       </div>
-      <fieldset className="nz-fieldset accent">
-        <Legend title="Baseline period (financial year)" about="The benchmark reporting period. Subsequent annual jobs follow this structure." />
-        <div className="nz-client-create-grid">
-          <Field label="Baseline period start" name="baselinePeriodStart" errors={errors}
-            control={(a11y, invalid) => <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type="date" value={form.baselinePeriodStart ?? ""} onChange={(event) => onChange({ baselinePeriodStart: event.target.value || null })} />} />
-          <Field label="Baseline period end" name="baselinePeriodEnd" errors={errors}
-            control={(a11y, invalid) => <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type="date" value={form.baselinePeriodEnd ?? ""} onChange={(event) => onChange({ baselinePeriodEnd: event.target.value || null })} />} />
-        </div>
-      </fieldset>
-      <fieldset className="nz-fieldset">
-        <Legend title="Historical baseline emissions" about="Third-party benchmark values so reports can compare against the client’s own baseline." />
-        <div className="nz-client-create-grid">
-          <Num {...props} name="baselineScope1Tco2e" label="Baseline Scope 1" step="any" min={0} placeholder="123.4" />
-          <Num {...props} name="baselineScope2Tco2e" label="Baseline Scope 2" step="any" min={0} placeholder="456.7" />
-          <Num {...props} name="baselineScope3Tco2e" label="Baseline Scope 3" step="any" min={0} placeholder="789.0" />
-          <Num {...props} name="baselineTotalTco2e" label="Baseline total" step="any" min={0} placeholder="1369.1" />
-        </div>
-      </fieldset>
+      <div className="nz-client-create-grid">
+        <Num {...props} name="baselineSignificanceThresholdPct" label="Recalculation threshold %" step="any" min={0} max={100} placeholder="5"
+          hint="Structural change above this triggers a base-year recalculation." />
+      </div>
       <fieldset className="nz-fieldset">
         <Legend title="Interim targets" about="Scope 1, 2 and 3 interim target years and reduction percentages." />
         <div className="nz-client-create-grid">

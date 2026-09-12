@@ -224,8 +224,7 @@ const CLIENT_PROFILE_COLUMNS = [
   "contact_name", "contact_role", "contact_email",
   "portfolio", "client_manager", "website", "industry_sic", "company_registration", "headquarters",
   "financial_year_end_month", "data_reporting_frequency", "currency", "logo_url", "company_description", "referral",
-  "net_zero_target_year", "net_zero_target_reduction_pct", "baseline_period_start", "baseline_period_end",
-  "baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e",
+  "net_zero_target_year", "net_zero_target_reduction_pct", "baseline_significance_threshold_pct",
   "scope1_interim_year", "scope1_interim_reduction_pct", "scope2_interim_year", "scope2_interim_reduction_pct",
   "scope3_interim_year", "scope3_interim_reduction_pct",
   "registered_address_line1", "registered_address_line2", "registered_city", "registered_region", "registered_postcode", "registered_country",
@@ -244,9 +243,7 @@ function clientProfileValues(input: ClientProfileFields): unknown[] {
     input.financialYearEndMonth ?? null, input.dataReportingFrequency ?? "annual", input.currency ?? "GBP",
     trimmed(input.logoUrl), trimmed(input.companyDescription), trimmed(input.referral),
     input.netZeroTargetYear ?? null, input.netZeroTargetReductionPct ?? null,
-    input.baselinePeriodStart ?? null, input.baselinePeriodEnd ?? null,
-    input.baselineScope1Tco2e ?? null, input.baselineScope2Tco2e ?? null,
-    input.baselineScope3Tco2e ?? null, input.baselineTotalTco2e ?? null,
+    input.baselineSignificanceThresholdPct ?? null,
     input.scope1InterimYear ?? null, input.scope1InterimReductionPct ?? null,
     input.scope2InterimYear ?? null, input.scope2InterimReductionPct ?? null,
     input.scope3InterimYear ?? null, input.scope3InterimReductionPct ?? null,
@@ -1895,6 +1892,91 @@ export async function resolveAssuranceGap(
       entityType: "gap_resolution",
       entityId: resolutionId,
       topic: "assurance.gap.resolved",
+    };
+  });
+}
+
+/**
+ * NZC-065/068 — `client_baselines` is append-only. A baseline is never overwritten:
+ * setting one inserts a record, and re-basing inserts another while stamping
+ * `superseded_at` on the one it replaces. That is what lets a report issued years ago
+ * still resolve the baseline it was measured against, and what gives a base-year
+ * recalculation policy the audit trail it requires.
+ */
+export type ClientBaselineResult = { baselineId: string; clientId: string; kind: "initial" | "rebaseline" | "recalculation" };
+
+async function insertClientBaseline(
+  db: Queryable,
+  organisationId: string,
+  input: CommandInputMap["client.baseline.set"],
+  kind: ClientBaselineResult["kind"],
+  reason: string | null,
+  actorId: string,
+): Promise<string> {
+  const baselineId = randomUUID();
+  const figures = input.figures ?? null;
+  await db.query(
+    `INSERT INTO nzi_console.client_baselines
+       (organisation_id, baseline_id, client_id, period_start, period_end, baseline_job_id,
+        scope1_tco2e, scope2_tco2e, scope3_tco2e, total_tco2e, kind, source, reason, set_by, effective_from)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [
+      organisationId, baselineId, input.clientId, input.periodStart, input.periodEnd,
+      input.baselineJobId?.trim() || null,
+      figures?.scope1 ?? null, figures?.scope2 ?? null, figures?.scope3 ?? null, figures?.total ?? null,
+      kind, input.source, reason, actorId, input.effectiveFrom,
+    ],
+  );
+  return baselineId;
+}
+
+export async function setClientBaseline(
+  pool: PoolLike,
+  input: CommandInputMap["client.baseline.set"],
+  context: CommandContext,
+): Promise<StoredOutcome<ClientBaselineResult>> {
+  return runPostgresCommand(pool, "client.baseline.set", input, context, async (db) => {
+    const existing = await db.query<{ baseline_id: string }>(
+      `SELECT baseline_id FROM nzi_console.client_baselines
+       WHERE organisation_id=$1 AND client_id=$2 AND superseded_at IS NULL`,
+      [context.organisationId, input.clientId],
+    );
+    // An initial baseline is only initial once; a second one is a re-basing and must
+    // go through the governed path so it carries a reason and supersedes explicitly.
+    if (existing.rows[0]) {
+      throw new CommandValidationError([{ field: "clientId", code: "ALREADY_SET", message: "This client already has a baseline. Use recalculate baseline to re-base it." }]);
+    }
+    const baselineId = await insertClientBaseline(db, context.organisationId, input, "initial", null, context.actorId);
+    return {
+      data: { baselineId, clientId: input.clientId, kind: "initial" as const },
+      entityType: "client_baseline",
+      entityId: baselineId,
+      topic: "client.baseline.set",
+    };
+  });
+}
+
+export async function recalculateClientBaseline(
+  pool: PoolLike,
+  input: CommandInputMap["client.baseline.recalculate"],
+  context: CommandContext,
+): Promise<StoredOutcome<ClientBaselineResult>> {
+  return runPostgresCommand(pool, "client.baseline.recalculate", input, context, async (db) => {
+    const superseded = await db.query<{ baseline_id: string }>(
+      `UPDATE nzi_console.client_baselines SET superseded_at=now()
+       WHERE organisation_id=$1 AND client_id=$2 AND baseline_id=$3 AND superseded_at IS NULL
+       RETURNING baseline_id`,
+      [context.organisationId, input.clientId, input.supersedesBaselineId],
+    );
+    if (!superseded.rows[0]) {
+      throw new CommandValidationError([{ field: "supersedesBaselineId", code: "NOT_FOUND", message: "The baseline being replaced was not found, or has already been superseded." }]);
+    }
+    const baselineId = await insertClientBaseline(db, context.organisationId, input, input.kind, context.reason?.trim() ?? null, context.actorId);
+    return {
+      data: { baselineId, clientId: input.clientId, kind: input.kind },
+      entityType: "client_baseline",
+      entityId: baselineId,
+      topic: "client.baseline.recalculated",
     };
   });
 }

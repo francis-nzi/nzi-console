@@ -22,17 +22,23 @@ describe("client profile contract (NZC-064)", () => {
     assert.deepEqual(fields({ netZeroTargetYear: 2045, netZeroTargetReductionPct: 90 }), []);
   });
 
-  it("bounds target years, reductions and baseline emissions", () => {
+  it("bounds target years and reductions", () => {
     assert.deepEqual(fields({ netZeroTargetYear: 1990, netZeroTargetReductionPct: 90 }), ["netZeroTargetYear"]);
     assert.deepEqual(fields({ scope1InterimReductionPct: 140 }), ["scope1InterimReductionPct"]);
-    assert.deepEqual(fields({ baselineScope3Tco2e: -1 }), ["baselineScope3Tco2e"]);
     assert.deepEqual(fields({ scope2InterimYear: 2035, scope2InterimReductionPct: 50 }), []);
   });
 
-  it("requires a baseline period to end after it starts", () => {
-    assert.deepEqual(fields({ baselinePeriodStart: "2022-08-01", baselinePeriodEnd: "2022-08-01" }), ["baselinePeriodEnd"]);
-    assert.deepEqual(fields({ baselinePeriodStart: "2022-08-01", baselinePeriodEnd: "2023-07-31" }), []);
-    assert.deepEqual(fields({ baselinePeriodStart: "01/08/2022" }), ["baselinePeriodStart"]);
+  it("bounds the base-year recalculation significance threshold", () => {
+    assert.deepEqual(fields({ baselineSignificanceThresholdPct: 0 }), ["baselineSignificanceThresholdPct"]);
+    assert.deepEqual(fields({ baselineSignificanceThresholdPct: 101 }), ["baselineSignificanceThresholdPct"]);
+    assert.deepEqual(fields({ baselineSignificanceThresholdPct: 5 }), []);
+  });
+
+  it("no longer accepts baseline figures on a client save (NZC-065)", () => {
+    // The baseline is a dated `client_baselines` record set through `client.baseline.*`.
+    // A client save carrying baseline fields must not silently persist them.
+    const stray = { baselinePeriodStart: "2022-08-01", baselineTotalTco2e: 1234 } as never;
+    assert.deepEqual(validateCommand("client.create", { ...create(), ...(stray as object) }, context), []);
   });
 
   it("validates reporting settings, URLs and contact email", () => {

@@ -8,6 +8,8 @@ import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 export type CommandKey =
   | "client.create"
   | "client.update"
+  | "client.baseline.set"
+  | "client.baseline.recalculate"
   | "job.create"
   | "job.stage.change"
   | "scope.row.create"
@@ -209,10 +211,13 @@ export type ClientDetailsFields = {
 };
 /** The net-zero trajectory reporting and portal dashboards read (WORKFLOWS.md §2). */
 export type ClientTargetFields = {
+  // The baseline itself is NOT here: NZC-065 made it a dated `client_baselines`
+  // record rather than mutable client fields, so re-basing cannot retroactively
+  // restate every report a client has ever had. Targets pin to the record they were
+  // set against (NZC-068); re-basing is a governed `client.baseline.recalculate`.
   netZeroTargetYear?: number | null; netZeroTargetReductionPct?: number | null;
-  baselinePeriodStart?: string | null; baselinePeriodEnd?: string | null;
-  baselineScope1Tco2e?: number | null; baselineScope2Tco2e?: number | null;
-  baselineScope3Tco2e?: number | null; baselineTotalTco2e?: number | null;
+  /** A base-year recalculation policy has to state a significance threshold. */
+  baselineSignificanceThresholdPct?: number | null;
   scope1InterimYear?: number | null; scope1InterimReductionPct?: number | null;
   scope2InterimYear?: number | null; scope2InterimReductionPct?: number | null;
   scope3InterimYear?: number | null; scope3InterimReductionPct?: number | null;
@@ -231,11 +236,25 @@ export type ClientComplianceFields = {
   reportingFrameworks?: string[]; certifications?: string[]; primaryScope3Categories?: string[];
 };
 export type ClientProfileFields = ClientDetailsFields & ClientTargetFields & ClientAddressFields & ClientComplianceFields;
+/** Shared shape of a `client_baselines` write (NZC-065). Either a baseline job or typed figures. */
+export type ClientBaselineWriteFields = {
+  clientId: string;
+  periodStart: string;
+  periodEnd: string;
+  baselineJobId?: string | null;
+  figures?: { scope1: number; scope2: number; scope3: number; total: number } | null;
+  source: "assured" | "declared";
+  /** The first reporting period this record governs — not when it was entered. */
+  effectiveFrom: string;
+};
+
 export type ClientIdentityFields = { name: string; status: "active" | "onboarding" | "at-risk" | "prospect"; sector: string; location: string; owner: string };
 
 export type CommandInputMap = {
   "client.create": ClientIdentityFields & ClientProfileFields;
   "client.update": { clientId: string; expectedVersion: number } & ClientIdentityFields & ClientProfileFields;
+  "client.baseline.set": ClientBaselineWriteFields;
+  "client.baseline.recalculate": ClientBaselineWriteFields & { kind: "rebaseline" | "recalculation"; supersedesBaselineId: string };
   "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; startDate: string; dueDate: string; reportingYear?: number };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
@@ -424,11 +443,10 @@ const clientProfileIssues = (input: ClientProfileFields) => {
   for (const scope of [1, 2, 3] as const) {
     optionalYear(issues, `scope${scope}InterimYear`, input[`scope${scope}InterimYear`]);
     optionalPercent(issues, `scope${scope}InterimReductionPct`, input[`scope${scope}InterimReductionPct`]);
-    optionalTonnes(issues, `baselineScope${scope}Tco2e`, input[`baselineScope${scope}Tco2e`]);
   }
-  optionalTonnes(issues, "baselineTotalTco2e", input.baselineTotalTco2e);
-  for (const field of ["baselinePeriodStart", "baselinePeriodEnd"] as const) if (input[field] != null && !isoDate(input[field])) issues.push({ field, code: "INVALID", message: "Baseline period dates must use YYYY-MM-DD." });
-  if (isoDate(input.baselinePeriodStart) && isoDate(input.baselinePeriodEnd) && input.baselinePeriodEnd! <= input.baselinePeriodStart!) issues.push({ field: "baselinePeriodEnd", code: "INVALID_RANGE", message: "Baseline period end must fall after its start." });
+  // The baseline period and figures moved to `client_baselines` (NZC-065) and are set
+  // through `client.baseline.*`, never through a client save.
+  if (input.baselineSignificanceThresholdPct != null && (typeof input.baselineSignificanceThresholdPct !== "number" || !Number.isFinite(input.baselineSignificanceThresholdPct) || input.baselineSignificanceThresholdPct <= 0 || input.baselineSignificanceThresholdPct > 100)) issues.push({ field: "baselineSignificanceThresholdPct", code: "INVALID", message: "The recalculation significance threshold must be above 0 and at most 100%." });
   // A net-zero target the trajectory cannot anchor is worse than no target at all.
   if (input.netZeroTargetYear != null && input.netZeroTargetReductionPct == null) issues.push({ field: "netZeroTargetReductionPct", code: "PAIRED", message: "A net-zero target year needs its reduction percentage." });
 
@@ -440,9 +458,38 @@ const clientProfileIssues = (input: ClientProfileFields) => {
   return issues;
 };
 
+const clientBaselineIssues = (input: ClientBaselineWriteFields) => {
+  const issues: CommandIssue[] = [];
+  required(issues, "clientId", input.clientId);
+  for (const field of ["periodStart", "periodEnd", "effectiveFrom"] as const) {
+    if (!isoDate(input[field])) issues.push({ field, code: "INVALID", message: "Dates must use YYYY-MM-DD." });
+  }
+  if (isoDate(input.periodStart) && isoDate(input.periodEnd) && input.periodEnd <= input.periodStart) {
+    issues.push({ field: "periodEnd", code: "INVALID_RANGE", message: "The baseline period must end after it starts." });
+  }
+  if (!oneOf(input.source, ["assured", "declared"] as const)) issues.push({ field: "source", code: "INVALID", message: "Baseline source must be assured or declared." });
+  // A baseline must be *something* the resolver can use: a job to resolve, or figures.
+  const hasJob = text(input.baselineJobId);
+  const figures = input.figures ?? null;
+  if (!hasJob && figures === null) issues.push({ field: "figures", code: "REQUIRED", message: "A baseline needs either a baseline job or typed scope figures." });
+  if (figures !== null) {
+    for (const key of ["scope1", "scope2", "scope3", "total"] as const) {
+      const value = figures[key];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) issues.push({ field: `figures.${key}`, code: "INVALID", message: "Baseline figures must be zero or greater." });
+    }
+  }
+  if (hasJob && figures !== null) issues.push({ field: "baselineJobId", code: "INCONSISTENT", message: "A baseline is either a job or typed figures, not both." });
+  return issues;
+};
+
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.create": { key: "client.create", label: "Create client", permission: "clients.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)] },
   "client.update": { key: "client.update", label: "Update client", permission: "clients.create", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "client.baseline.set": { key: "client.baseline.set", label: "Set client baseline", permission: "clients.create", reasonRequired: false, transaction: "client baseline + audit + outbox + idempotency", auditAction: "client_baseline_set", validate: (input, context) => [...baseIssues(context, false), ...clientBaselineIssues(input)] },
+  // NZC-068: re-basing is a governed act — a reason is required, the prior record is
+  // retained, and the change is audit-logged. GHG Protocol treats recalculating a base
+  // year after a structural change as a disclosable act, not a silent edit.
+  "client.baseline.recalculate": { key: "client.baseline.recalculate", label: "Recalculate client baseline", permission: "clients.create", reasonRequired: true, transaction: "superseded prior + new client baseline + audit + outbox + idempotency", auditAction: "client_baseline_recalculated", validate: (input, context) => { const issues = [...baseIssues(context, true), ...clientBaselineIssues(input)]; required(issues, "supersedesBaselineId", input.supersedesBaselineId); if (!oneOf(input.kind, ["rebaseline", "recalculation"] as const)) issues.push({ field: "kind", code: "INVALID", message: "Kind must be rebaseline or recalculation." }); return issues; } },
   "job.create": { key: "job.create", label: "Create job", permission: "jobs.create", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); if (!isoDate(input.startDate)) issues.push({ field: "startDate", code: "INVALID", message: "Start date must use YYYY-MM-DD." }); if (!isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Due date must use YYYY-MM-DD." }); if (isoDate(input.startDate) && isoDate(input.dueDate) && input.dueDate < input.startDate) issues.push({ field: "dueDate", code: "INVALID_RANGE", message: "Due date must not precede start date." }); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "jobs.stage.change", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "emissions.data.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
