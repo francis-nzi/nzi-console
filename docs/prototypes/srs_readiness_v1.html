@@ -1,0 +1,221 @@
+<!-- NZI Console — SRS Readiness dashboard prototype · v1 (2026-09-12)
+     UK SRS readiness as a demo/sales asset. S2 (climate) led, S1 (general) alongside; four
+     ISSB/TCFD pillars; 5-step maturity ladder (Not started→Assured); consultant-led;
+     framework Admin-versioned; benchmark slot future-proofed (lights up when peer data
+     exists). Output graphics: overall header, pillar radar (S1 vs S2), maturity bullets,
+     gap heatmap, evidence coverage, trend, roadmap, + the assessment register. Status/
+     sequential palette (never the scope palette); print-safe. -->
+<title>SRS Readiness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;
+  --line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;--base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --ok:#0B7A46;--warn:#B4690E;--warn-bg:#FBF1DE;--danger:#C23B22;
+  /* maturity ramp: 0 not started -> 4 assured */
+  --m0:#E4E9E5;--m1:#CDEBD9;--m2:#8FD3AE;--m3:#2E9E68;--m4:#0B6B41;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;--ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;--line:#25302A;--line-2:#1E2723;
+  --accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;--warn:#E0A24A;--warn-bg:#2A2113;
+  --m0:#2A332E;--m1:#1E4030;--m2:#2E6B49;--m3:#39A971;--m4:#7FE3AE;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+.top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 24px;font-size:13px}
+.crumbs a{color:var(--muted);text-decoration:none}.crumbs a:hover{color:var(--accent)}.crumbs b{color:var(--ink)}.crumbs .sep{color:var(--faint);margin:0 6px}
+.wrap{max-width:1120px;margin:0 auto;padding:22px 24px 64px}
+.hh{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.hh .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.hh h1{font-size:22px;margin:2px 0 0}.hh .sub{font-size:13px;color:var(--muted)}
+.hero{display:flex;align-items:center;gap:22px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:14px 0 16px;flex-wrap:wrap}
+.hero .score{font-size:40px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.hero .lvl{font-size:13px;font-weight:700;color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--m2);border-radius:20px;padding:3px 12px;display:inline-block;margin-top:6px}
+.hero .m{font-size:12px;color:var(--muted)}
+.hero .divi{width:1px;align-self:stretch;background:var(--line)}
+.hero .ev b{font-size:20px;font-weight:800}
+.grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:16px}
+.ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-2)}
+.ch .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ch h2{font-size:15px;margin:0}.sp{flex:1}.hint{font-size:12px;color:var(--muted)}
+.cb{padding:14px 16px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);padding:0 16px 8px}
+.legend .sw{width:18px;height:3px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:5px}
+.bul{margin:2px 0 12px}
+.bul .lab{display:flex;font-size:12.5px;margin-bottom:5px}.bul .lab b{font-weight:600}.bul .lab .lv{margin-left:auto;color:var(--muted)}
+.track{position:relative;height:12px;background:var(--panel-3);border-radius:20px;overflow:visible}
+.track .fill{height:100%;border-radius:20px;background:var(--m3)}
+.track .tgt{position:absolute;top:-3px;width:2px;height:18px;background:var(--ink);opacity:.55}
+.track .s1{position:absolute;top:50%;transform:translate(-50%,-50%);width:9px;height:9px;border-radius:50%;background:var(--base);border:2px solid var(--panel)}
+.hm{display:grid;grid-template-columns:1fr repeat(5,26px);gap:4px;align-items:center;font-size:11.5px}
+.hm .hlab{color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;text-align:center}
+.hm .req{padding:3px 0;color:var(--ink-2)}
+.hm .cell{height:22px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-weight:700}
+.hm .grp{grid-column:1/-1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:8px}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line-2)}.kv:last-child{border:0}.kv .v{font-weight:600}
+.rm{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line-2)}.rm:last-child{border:0}
+.rm .dot{width:9px;height:9px;border-radius:50%;background:var(--warn);margin-top:5px;flex:0 0 auto}
+.rm .nm{font-weight:600;font-size:12.5px}.rm .sub{font-size:11.5px;color:var(--muted)}.rm .d{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.future{background:var(--panel-2);border:1px dashed var(--line);border-radius:10px;padding:12px 13px;font-size:12px;color:var(--muted)}
+.future b{color:var(--ink-2)}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--line)}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.mtag{font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 7px}
+.gapa{font-size:11.5px;color:var(--accent-d);font-weight:600}
+.tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2);background:var(--panel-3);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.tag.s2{color:var(--accent-d);background:var(--accent-bg);border-color:var(--m2)}.tag.s1{color:var(--base);background:var(--base-bg);border-color:var(--base-line)}
+.axis{font-size:10px;fill:var(--muted)}
+.btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:8px 13px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.consult{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--base);background:var(--base-bg);border:1px solid var(--base-line);border-radius:20px;padding:2px 10px}
+.maps{font-size:11.5px;color:var(--faint);padding:0 16px 14px}
+</style>
+
+<div class="top"><div class="crumbs"><a href="#">Clients</a><span class="sep">/</span><a href="#">ABtec Computer Solutions Limited</a><span class="sep">/</span><b>SRS Readiness</b></div></div>
+
+<div class="wrap">
+  <div class="hh">
+    <div style="flex:1">
+      <div class="eyebrow">Disclosure</div>
+      <h1>UK SRS Readiness</h1>
+      <div class="sub">ABtec Computer Solutions Limited · assessed FY2024 · <span class="consult">◔ Consultant-led · A. Shaw</span></div>
+    </div>
+    <button class="btn">Export statement</button>
+    <button class="btn pri">Continue assessment</button>
+  </div>
+
+  <div class="hero">
+    <div><div class="score">62<span style="font-size:20px;color:var(--muted)">%</span></div><span class="lvl">● Established</span></div>
+    <div class="divi"></div>
+    <div class="ev"><div class="m">Evidence coverage</div><b>48 / 61</b> <span class="m">requirements evidenced</span></div>
+    <div class="divi"></div>
+    <div class="ev"><div class="m">Standards assessed</div><b>S2</b> <span class="m">climate · led</span> &nbsp; <b>S1</b> <span class="m">general</span></div>
+    <div class="divi"></div>
+    <div class="ev"><div class="m">Target</div><b>SRS-ready</b> <span class="m">by Q4 2026</span></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <section class="card">
+        <div class="ch"><span class="eyebrow">Maturity</span><h2>Readiness by pillar</h2><span class="sp"></span><span class="hint">0 → Assured</span></div>
+        <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>S2 · Climate</span><span><span class="sw" style="background:var(--base)"></span>S1 · General</span><span><span class="sw" style="background:var(--ink);opacity:.55"></span>Target</span></div>
+        <div class="cb" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:center">
+          <div id="radar"></div>
+          <div style="flex:1;min-width:230px" id="bullets"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="ch"><span class="eyebrow">Gaps</span><h2>Requirement heatmap</h2><span class="sp"></span><span class="hint">S2 climate shown</span></div>
+        <div class="cb"><div class="hm" id="heat"></div></div>
+        <p class="maps">Each cell is a requirement's maturity on the 5-step ladder. Cells below target become actions in the roadmap.</p>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <div class="ch"><span class="eyebrow">Confidence</span><h2>Evidence &amp; trend</h2></div>
+        <div class="cb">
+          <div class="kv"><span>Requirements evidenced</span><span class="v">48 / 61 · 79%</span></div>
+          <div class="kv"><span>Governance</span><span class="v">9 / 10</span></div>
+          <div class="kv"><span>Metrics &amp; targets</span><span class="v">18 / 18</span></div>
+          <div class="kv"><span>Strategy</span><span class="v">11 / 18 <span style="color:var(--warn)">gaps</span></span></div>
+          <div style="margin-top:10px"><div class="hint" style="margin-bottom:4px">Overall readiness over time</div><div id="trend"></div></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="ch"><span class="eyebrow">Roadmap</span><h2>Path to SRS-ready</h2><span class="sp"></span><span class="hint">gaps → actions</span></div>
+        <div class="cb">
+          <div class="rm"><span class="dot"></span><div><div class="nm">Board-level climate oversight in ToR</div><div class="sub">Governance · S2 · → action · owner D. Fletcher</div></div><span class="d">Q3 2026</span></div>
+          <div class="rm"><span class="dot"></span><div><div class="nm">Climate scenario analysis (2 scenarios)</div><div class="sub">Strategy · S2 · → action · owner A. Shaw</div></div><span class="d">Q4 2026</span></div>
+          <div class="rm"><span class="dot"></span><div><div class="nm">Transition plan disclosure</div><div class="sub">Strategy · S2 · → action</div></div><span class="d">Q4 2026</span></div>
+          <div class="rm"><span class="dot"></span><div><div class="nm">Integrate climate into enterprise risk register</div><div class="sub">Risk management · S2 · → action</div></div><span class="d">Q3 2026</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="ch"><span class="eyebrow">Benchmark</span><h2>Sector comparison</h2><span class="sp"></span><span class="tag">Future</span></div>
+        <div class="cb"><div class="future">Sector &amp; peer benchmarking is <b>built into the model</b> (sector tagging + percentile slot) and will populate once a defensible peer dataset is available — no invented comparisons. Until then the demo leads on the radar and roadmap.</div></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Assessment</span><h2>Requirement register</h2><span class="sp"></span><span class="hint">consultant-led · framework Admin-versioned (UK SRS)</span></div>
+    <table class="tbl"><thead><tr><th>Requirement</th><th>Std</th><th>Pillar</th><th>Maturity</th><th>Evidence</th><th>Gap → action</th></tr></thead><tbody id="reg"></tbody></table>
+    <p class="maps">Framework (standards · pillars · requirements · weights · maturity definitions) is Admin-managed and versioned, so the tool tracks UK SRS as it changes (e.g. the 2027 mandatory rules) without a code change. Assessment is consultant-led for now; the portal shows readiness read-only.</p>
+  </section>
+</div>
+
+<script>
+const LVL=["Not started","Developing","Established","Advanced","Assured"];
+const MC=["var(--m0)","var(--m1)","var(--m2)","var(--m3)","var(--m4)"];
+const MTX=["var(--ink-2)","var(--accent-d)","var(--accent-d)","#fff","#fff"];
+const PILLARS=["Governance","Strategy","Risk management","Metrics & targets"];
+const S2=[3,2,2,4], S1=[2,1,2,3], TGT=[3,3,3,4];
+
+/* radar */
+(function(){const w=280,h=250,cx=140,cy=122,R=80,max=4,N=PILLARS.length;
+  const pt=(i,r)=>{const a=-Math.PI/2+i/N*2*Math.PI;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];};
+  const LBL=["Governance","Strategy","Risk mgmt","Metrics"];
+  let g="";
+  for(let ring=1;ring<=max;ring++){let p=[];for(let i=0;i<N;i++)p.push(pt(i,R*ring/max).join(","));g+=`<polygon points="${p.join(" ")}" fill="none" stroke="var(--line)"/>`;}
+  for(let i=0;i<N;i++){const[x,y]=pt(i,R);g+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--line)"/>`;
+    const[lx,ly]=pt(i,R+16);const anc=i===1?"start":i===3?"end":"middle";g+=`<text class="axis" x="${lx}" y="${ly}" text-anchor="${anc}" dominant-baseline="middle">${LBL[i]}</text>`;}
+  const poly=(vals,col,fill)=>{let p=vals.map((v,i)=>pt(i,R*v/max).join(",")).join(" ");return `<polygon points="${p}" fill="${col}" fill-opacity="${fill}" stroke="${col}" stroke-width="2"/>`+vals.map((v,i)=>{const[x,y]=pt(i,R*v/max);return `<circle cx="${x}" cy="${y}" r="3" fill="${col}"/>`;}).join("");};
+  g+=poly(S1,"var(--base)",.10)+poly(S2,"var(--accent)",.14);
+  document.getElementById("radar").innerHTML=`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Readiness radar by pillar, S1 vs S2">${g}</svg>`;
+})();
+
+/* bullets */
+document.getElementById("bullets").innerHTML=PILLARS.map((p,i)=>`
+  <div class="bul"><div class="lab"><b>${p}</b><span class="lv">${LVL[S2[i]]}</span></div>
+    <div class="track"><div class="fill" style="width:${S2[i]/4*100}%;background:${MC[S2[i]]}"></div>
+      <div class="tgt" style="left:${TGT[i]/4*100}%" title="target"></div>
+      <div class="s1" style="left:${S1[i]/4*100}%" title="S1 ${LVL[S1[i]]}"></div></div></div>`).join("");
+
+/* heatmap — S2 requirements by pillar */
+const REQS=[
+  ["Governance","Board oversight of climate",3],["Governance","Management's role",3],
+  ["Strategy","Material climate risks & opportunities",3],["Strategy","Effects on strategy & model",2],["Strategy","Scenario analysis / resilience",1],["Strategy","Transition plan",1],
+  ["Risk management","Risk identification process",2],["Risk management","Integration into ERM",2],
+  ["Metrics & targets","Scope 1 & 2 GHG",4],["Metrics & targets","Scope 3 GHG",4],["Metrics & targets","Climate targets",4],["Metrics & targets","Cross-industry metrics",3],
+];
+(function(){let h=`<div class="hlab"></div>`+LVL.map((l,i)=>`<div class="hlab">${["NS","Dev","Est","Adv","Ass"][i]}</div>`).join("");
+  let cur="";REQS.forEach(([pil,req,m])=>{if(pil!==cur){h+=`<div class="grp">${pil}</div>`;cur=pil;}
+    h+=`<div class="req">${req}</div>`+[0,1,2,3,4].map(i=>`<div class="cell" style="background:${i<=m?MC[m]:'var(--panel-3)'};color:${i===m?MTX[m]:'transparent'}">${i===m?'●':''}</div>`).join("");});
+  document.getElementById("heat").innerHTML=h;})();
+
+/* trend */
+(function(){const vals=[38,49,55,62],w=250,h=52,pad=6,max=100,step=(w-pad*2)/(vals.length-1);
+  const xf=i=>pad+step*i,yf=v=>h-pad-(v/max*(h-pad*2));
+  let g=`<polyline points="${vals.map((v,i)=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  vals.forEach((v,i)=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3" fill="var(--accent)"/>`);
+  g+=`<text class="axis" x="${xf(vals.length-1)}" y="${yf(vals[vals.length-1])-6}" text-anchor="end">62%</text>`;
+  document.getElementById("trend").innerHTML=`<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`;})();
+
+/* register */
+const REG=[
+  ["Board oversight of climate","S2","Governance",3,"ToR extract","—"],
+  ["Scenario analysis / resilience","S2","Strategy",1,"none","Run 2 scenarios → A. Shaw"],
+  ["Transition plan","S2","Strategy",1,"none","Draft transition plan"],
+  ["Integration into ERM","S2","Risk management",2,"Risk register","Add climate to ERM"],
+  ["Scope 1 & 2 GHG","S2","Metrics & targets",4,"Assured footprint","—"],
+  ["Scope 3 GHG","S2","Metrics & targets",4,"Assured footprint","—"],
+  ["Governance of sustainability (general)","S1","Governance",2,"Note","Formalise oversight"],
+];
+document.getElementById("reg").innerHTML=REG.map(([r,s,p,m,ev,gap])=>`<tr>
+  <td>${r}</td><td><span class="tag ${s.toLowerCase()}">${s}</span></td><td>${p}</td>
+  <td><span class="mtag" style="background:${MC[m]};color:${MTX[m]}">${LVL[m]}</span></td>
+  <td class="${ev==='none'?'':''}" style="color:${ev==='none'?'var(--warn)':'var(--ink-2)'}">${ev}</td>
+  <td>${gap==='—'?'<span style="color:var(--faint)">—</span>':`<span class="gapa">${gap} →</span>`}</td></tr>`).join("");
+</script>

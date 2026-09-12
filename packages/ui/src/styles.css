@@ -824,6 +824,39 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-cw-vhead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .nz-cw-vhead h2{margin:2px 0 0;font-size:19px}
 .nz-cw-vsub{font-size:12.5px;color:var(--t2);margin:0;max-width:720px}
+/* SRS readiness — the hero, the roadmap rows, the maturity chips and the ladder.
+   Maturity uses its own sequential ramp; the scope palette stays reserved for scopes. */
+.nz-srs-hero{display:flex;gap:22px;flex-wrap:wrap;align-items:center;padding:18px 22px;margin-bottom:16px}
+.nz-srs-score .v{font-size:40px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.nz-srs-score .v small{font-size:20px;color:var(--t3);margin-left:2px}
+.nz-srs-score .nz-st{margin-top:6px}
+.nz-srs-stat{min-width:150px}
+.nz-srs-stat .l{font-size:12px;color:var(--t3)}
+.nz-srs-stat .v{font-size:20px;font-weight:800;margin-top:2px}
+.nz-srs-stat .sub{font-size:11.5px;color:var(--t3);margin-top:2px}
+.nz-srs-std{display:inline-flex;gap:5px;align-items:baseline;font-size:13px;margin-right:12px}
+.nz-srs-radar{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:center}
+.nz-srs-rm{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line2)}
+.nz-srs-rm:last-of-type{border-bottom:0}
+.nz-srs-rm .dot{width:9px;height:9px;border-radius:50%;background:#B4690E;margin-top:5px;flex:0 0 auto}
+.nz-srs-rm .nm{font-size:12.5px;font-weight:600}
+.nz-srs-rm .sub{font-size:11.5px;color:var(--t3)}
+.nz-srs-rm .d{margin-left:auto;font-size:11px;color:var(--t3);white-space:nowrap}
+.nz-srs-future{background:var(--paper);border:1px dashed var(--line);border-radius:10px;padding:12px 13px;font-size:12px;color:var(--t3)}
+.nz-srs-future b{color:var(--t1)}
+.nz-srs-mtag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 7px}
+.nz-srs-mtag.m0{background:#E4E9E5;color:#3C4A43}
+.nz-srs-mtag.m1{background:#CDEBD9;color:#095C35}
+.nz-srs-mtag.m2{background:#8FD3AE;color:#095C35}
+.nz-srs-mtag.m3{background:#2E9E68;color:#fff}
+.nz-srs-mtag.m4{background:#0B6B41;color:#fff}
+.nz-srs-gap{font-size:11.5px;font-weight:600;color:var(--pine)}
+.nz-srs-ladder{display:grid;gap:6px;margin:6px 0 4px}
+.nz-srs-rung{display:grid;grid-template-columns:auto 1fr;gap:4px 9px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:8px 11px;cursor:pointer}
+.nz-srs-rung.on{border-color:var(--pine);background:var(--mint)}
+.nz-srs-rung input{grid-row:span 2;accent-color:var(--pine)}
+.nz-srs-rung b{font-size:12.5px}
+.nz-srs-rung span{font-size:11.5px;color:var(--t3)}
 /* the view-level reporting-year picker, and the basis picker in a card header */
 .nz-cw-yearpick{margin:0;gap:3px}
 .nz-cw-yearpick>span{text-align:right}

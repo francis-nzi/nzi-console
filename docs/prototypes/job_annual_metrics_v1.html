@@ -1,0 +1,131 @@
+<!-- NZI Console — Job · Annual metrics capture prototype · v1 (2026-09-12)
+     The JOB side of the intensity-metrics workflow: metrics are DEFINED on the client
+     (Employees + Turnover standard + additionals, each with unit + Per-N divider + icon);
+     here the annual VALUES are recorded per reporting year, and intensity is computed
+     (emissions x divider / value). Site-derived metrics (floor area) auto-resolve with an
+     override. Designed so a time dimension can be added through the job later. -->
+<title>Job · Annual metrics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;
+  --line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;
+  --ok:#0B7A46;--ok-bg:#E6F4EC;--ok-line:#BCE3CE;
+  --warn:#B4690E;--warn-bg:#FBF1DE;--warn-line:#EAD6AC;
+  --danger:#C23B22;--danger-bg:#FBEBE7;--danger-line:#F0CABF;
+  --base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;
+  --ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;
+  --line:#25302A;--line-2:#1E2723;--accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;
+  --ok:#39B47B;--ok-bg:#12271C;--ok-line:#1F4030;--warn:#E0A24A;--warn-bg:#2A2113;--warn-line:#4A3A1C;
+  --danger:#E4735C;--danger-bg:#2C1713;--danger-line:#4A241C;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+.top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;align-items:center;gap:10px;font-size:13px}
+.crumbs a{color:var(--muted);text-decoration:none}.crumbs a:hover{color:var(--accent);text-decoration:underline}
+.crumbs b{color:var(--ink)}.crumbs .sep{color:var(--faint);margin:0 6px}
+.wrap{max-width:920px;margin:0 auto;padding:22px 24px 60px}
+.jhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.jhead .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.jhead h1{font-size:22px;margin:2px 0 0}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid var(--line);color:var(--ink-2)}
+.pill.ok{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}.pill.ok i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-2)}
+.ch .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ch h2{font-size:15px;margin:0}.sp{flex:1}
+.hint{font-size:12px;color:var(--muted)}
+.sub{font-size:12.5px;color:var(--muted)}
+.cb{padding:12px 16px}
+.basis{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 13px;margin:0 16px 14px;font-size:13px}
+.basis b{color:var(--ink);font-variant-numeric:tabular-nums}
+.evid{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--base);background:var(--base-bg);border:1px solid var(--base-line);border-radius:20px;padding:1px 8px;cursor:pointer;line-height:1.6}
+.mtable{width:100%;border-collapse:collapse}
+.mtable th{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+.mtable td{padding:10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.mtable tr:last-child td{border-bottom:0}
+.mname{display:flex;align-items:center;gap:10px}
+.micon{width:30px;height:30px;border-radius:8px;background:var(--panel-3);display:grid;place-items:center;font-size:15px;flex:0 0 auto}
+.mn{font-weight:600}.mn .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line);border-radius:5px;padding:1px 6px;margin-left:6px}
+.mn .tag.auto{color:var(--base);background:var(--base-bg);border-color:var(--base-line)}
+.inp{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--panel);color:var(--ink);width:100%}
+.inp.num{text-align:right;font-variant-numeric:tabular-nums}
+.selN{font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--panel);color:var(--ink)}
+.intens{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.intens .u{font-weight:500;color:var(--muted);font-size:11.5px}
+.auto-val{font-variant-numeric:tabular-nums;font-weight:600}
+.foot{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line-2);background:var(--panel-2)}
+.btn{font-family:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:8px 13px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:6px 10px;font-size:12px}
+.gov{display:flex;gap:8px;font-size:11.5px;color:var(--ink-2);background:var(--base-bg);border:1px solid var(--base-line);border-radius:9px;padding:10px 12px;margin:14px 16px}.gov .lk{color:var(--base)}
+.timerow td{background:repeating-linear-gradient(135deg,transparent,transparent 8px,var(--panel-2) 8px,var(--panel-2) 16px);color:var(--muted)}
+.yrsel{font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:var(--panel);color:var(--ink)}
+.mapsline{font-size:11.5px;color:var(--faint);padding:0 16px 14px}
+</style>
+
+<div class="top"><div class="crumbs"><a href="#">Clients</a><span class="sep">/</span><a href="#">ABtec Computer Solutions Limited</a><span class="sep">/</span><a href="#">Jobs</a><span class="sep">/</span><a href="#">J000702</a><span class="sep">/</span><b>Annual metrics</b></div></div>
+
+<div class="wrap">
+  <div class="jhead">
+    <div style="flex:1">
+      <div class="eyebrow">Carbon Reduction Plan · 2024 · CRP</div>
+      <h1>J000702 — Annual metrics</h1>
+      <div class="sub">ABtec Computer Solutions Limited · reporting year <b>FY2024</b> (1 Apr 2023 – 31 Mar 2024)</div>
+    </div>
+    <div class="fl" style="display:flex;flex-direction:column;gap:3px;align-items:flex-end"><label class="hint">Reporting year</label>
+      <select class="yrsel"><option>FY2024</option><option>FY2023</option><option>FY2022</option></select></div>
+  </div>
+
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Carbon</span><h2>Annual metrics</h2><span class="sp"></span><a class="evid" href="#">◈ Evidence</a></div>
+    <div class="basis"><span>Assured emissions this year</span><b>1,706 tCO₂e</b><span class="hint">— the numerator for every intensity below</span><span class="sp"></span><span class="hint">resolved from the reviewed snapshot</span></div>
+
+    <table class="mtable">
+      <thead><tr><th>Metric</th><th>Source</th><th style="width:150px">Value this year</th><th style="width:130px">Divider</th><th style="text-align:right">Intensity</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="mname"><span class="micon">👥</span><span class="mn">Employees <span class="tag">Standard</span></span></div></td>
+          <td class="sub">Entered</td>
+          <td><input class="inp num" value="240"></td>
+          <td><select class="selN"><option selected>Per 1</option><option>Per 10</option><option>Per 100</option></select></td>
+          <td style="text-align:right"><span class="intens">7.11 <span class="u">tCO₂e / employee</span></span></td>
+        </tr>
+        <tr>
+          <td><div class="mname"><span class="micon">£</span><span class="mn">Turnover <span class="tag">Standard</span></span></div></td>
+          <td class="sub">Entered</td>
+          <td><input class="inp num" value="40,000,000"></td>
+          <td><select class="selN"><option>Per 1,000</option><option>Per 100,000</option><option selected>Per 1,000,000</option></select></td>
+          <td style="text-align:right"><span class="intens">42.7 <span class="u">tCO₂e / £M</span></span></td>
+        </tr>
+        <tr>
+          <td><div class="mname"><span class="micon">🏢</span><span class="mn">Floor area <span class="tag auto">From sites</span></span></div></td>
+          <td class="sub">Auto · in-service sites <a class="evid" href="#" style="margin-left:4px">override</a></td>
+          <td><span class="auto-val">3,600 m²</span></td>
+          <td><select class="selN"><option selected>Per 1</option><option>Per 100</option><option>Per 1,000</option></select></td>
+          <td style="text-align:right"><span class="intens">474 <span class="u">kgCO₂e / m²</span></span></td>
+        </tr>
+        <tr class="timerow">
+          <td><div class="mname"><span class="micon">⏱</span><span class="mn" style="color:var(--muted)">Time recorded on this job</span></div></td>
+          <td class="sub">—</td>
+          <td colspan="3" class="sub" style="text-align:right">Coming with system-wide time — recordable through the job here</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="mapsline">Metrics are defined on the client (Carbon Analytics → Manage metrics). This job records the annual values; intensity = assured emissions × divider ÷ value. Add-metric happens on the client, not here.</p>
+
+    <div class="gov"><span class="lk">🔒</span><span>Values are captured per reporting year and versioned; each writes an audit event. Employees &amp; Turnover are the standard pair; floor area resolves from the client's in-service sites for this year (override if the job needs a different basis). These figures feed the client YoY, the portal and the report.</span></div>
+
+    <div class="foot"><button class="btn sm">＋ Add value from client set</button><span class="sp"></span><button class="btn">Cancel</button><button class="btn pri">Save annual metrics</button></div>
+  </section>
+</div>

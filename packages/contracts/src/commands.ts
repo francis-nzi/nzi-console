@@ -24,6 +24,9 @@ export type CommandKey =
   | "client.contact.update"
   | "client.contact.deactivate"
   | "client.targets.set"
+  | "srs.assessment.start"
+  | "srs.assessment.item.set"
+  | "srs.assessment.complete"
   | "client.logo.set"
   | "client.logo.remove"
   | "report.section.edit"
@@ -310,6 +313,15 @@ export type CommandInputMap = {
    * explicit acknowledgement needed when the benchmark has moved since the last version.
    */
   "client.targets.set": { clientId: string; expectedVersion: number; restateAgainstBenchmark?: boolean } & ForwardTargetWriteFields;
+  /** Open a dated assessment, stamped with the framework version in force. */
+  "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
+  /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
+  "srs.assessment.item.set": {
+    assessmentId: string; requirementId: string; maturity: number | null;
+    evidenceKind?: "document" | "data" | "note" | null; evidenceRef?: string | null; evidenceNote?: string;
+    owner?: string; dueDate?: string | null; linkedActionId?: string | null; expectedVersion: number;
+  };
+  "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
   "client.logo.set": { clientId: string; fileName: string; contentType: ClientLogoContentType; dataBase64: string };
   "client.logo.remove": { clientId: string };
   "report.section.edit": { jobId: string; sectionKey: string; bodyHtml: string; expectedVersion: number; contentSource?: "ai" | "client-edited" };
@@ -555,6 +567,20 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "srs.assessment.start": { key: "srs.assessment.start", label: "Start an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment stamped with the active framework version + optional NZI pre-fill + audit + outbox + idempotency", auditAction: "srs_assessment_started", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); if (!isoDate(input.assessedOn)) issues.push({ field: "assessedOn", code: "INVALID", message: "Assessment date must use YYYY-MM-DD." }); return issues; } },
+  "srs.assessment.item.set": { key: "srs.assessment.item.set", label: "Answer an SRS requirement", permission: "srs.manage", reasonRequired: false, transaction: "assessment item upsert + audit + outbox + idempotency", auditAction: "srs_assessment_item_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    required(issues, "requirementId", input.requirementId);
+    if (input.maturity !== null && !(Number.isInteger(input.maturity) && input.maturity >= 0 && input.maturity <= 4)) issues.push({ field: "maturity", code: "INVALID", message: "Maturity is a step on the five-point ladder, 0 to 4." });
+    if (input.evidenceKind != null && !oneOf(input.evidenceKind, ["document", "data", "note"] as const)) issues.push({ field: "evidenceKind", code: "INVALID", message: "Evidence is a document, a data reference or a note." });
+    // Evidence that names nothing is not evidence.
+    if (input.evidenceKind != null && !text(input.evidenceRef) && !text(input.evidenceNote)) issues.push({ field: "evidenceNote", code: "REQUIRED", message: "Evidence needs a reference or a note." });
+    if (input.dueDate != null && !isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Due date must use YYYY-MM-DD." });
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
   "client.logo.remove": { key: "client.logo.remove", label: "Remove client logo", permission: "client.edit", reasonRequired: false, transaction: "client pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "client_logo_removed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },

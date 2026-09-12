@@ -1,0 +1,111 @@
+<!-- NZI Console — Client Portal · Emissions intensity view · v1 (2026-09-12)
+     The client-facing surface for intensity metrics. Same client-defined metric set
+     (Employees + Turnover standard + additionals), same icons, same Per-N divider, same
+     figures as the staff console and the report — read from one resolver. Cleaner and more
+     explanatory than the staff console; assured figures only; no editing. -->
+<title>Client Portal · Intensity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;
+  --line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;
+  --ok:#0B7A46;--ok-bg:#E6F4EC;--ok-line:#BCE3CE;
+  --warn:#B4690E;--warn-bg:#FBF1DE;--warn-line:#EAD6AC;
+  --danger:#C23B22;--base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --midnight:#0B1B2B;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;
+  --ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;--line:#25302A;--line-2:#1E2723;
+  --accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;--ok:#39B47B;--ok-line:#1F4030;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+.pbar{background:var(--midnight);color:#EAF2ED;padding:11px 24px;display:flex;align-items:center;gap:14px}
+.pbar .brand{font-weight:800;letter-spacing:.02em}.pbar .brand span{opacity:.6;font-weight:500;font-size:12px;margin-left:6px}
+.pbar .sp{flex:1}
+.pbar .who{display:flex;align-items:center;gap:8px;font-size:13px;opacity:.9}
+.pbar .av{width:28px;height:28px;border-radius:50%;background:#2A3A46;display:grid;place-items:center;font-size:11px;font-weight:700}
+.subbar{background:var(--panel);border-bottom:1px solid var(--line);padding:0 24px;display:flex;align-items:center;gap:4px}
+.tab{padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;text-decoration:none}
+.tab.on{color:var(--accent-d);border-bottom-color:var(--accent)}
+.wrap{max-width:1000px;margin:0 auto;padding:24px 24px 60px}
+.clienthead{display:flex;align-items:center;gap:13px;margin-bottom:6px}
+.logo{width:44px;height:44px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:16px}
+.clienthead h1{font-size:21px;margin:0}
+.clienthead .sub{font-size:13px;color:var(--muted)}
+.lead{font-size:14.5px;color:var(--ink-2);margin:14px 0 20px;max-width:70ch}
+.assured{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line);border-radius:20px;padding:3px 11px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+@media(max-width:720px){.tiles{grid-template-columns:1fr}}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.tile .top{display:flex;align-items:center;gap:10px}
+.tile .ic{width:36px;height:36px;border-radius:10px;background:var(--panel-3);display:grid;place-items:center;font-size:18px}
+.tile .nm{font-size:13px;font-weight:600;color:var(--ink-2)}
+.tile .big{font-size:28px;font-weight:800;letter-spacing:-.01em;margin-top:10px;font-variant-numeric:tabular-nums}
+.tile .u{font-size:12px;color:var(--muted);font-weight:500;margin-left:4px}
+.tile .delta{font-size:12.5px;font-weight:600;margin-top:2px}
+.tile .delta.dn{color:var(--ok)}.tile .delta.up{color:var(--danger)}
+.tile .spark{margin-top:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ch{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line-2)}
+.ch h2{font-size:16px;margin:0}.sp{flex:1}
+.selm{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel);color:var(--ink)}
+.chartwrap{padding:14px 12px 4px}
+.axis{font-size:10.5px;fill:var(--muted)}.gl{stroke:var(--line-2)}.val{font-size:11px;font-weight:700;fill:var(--ink)}
+.foot{padding:12px 16px;border-top:1px solid var(--line-2);font-size:12px;color:var(--muted);background:var(--panel-2)}
+.foot b{color:var(--ink-2)}
+</style>
+
+<div class="pbar"><div class="brand">NZI Pro<span>Client portal</span></div><div class="sp"></div><div class="who"><span>Dawn Fletcher</span><span class="av">DF</span></div></div>
+<div class="subbar">
+  <a class="tab" href="#">Dashboard</a><a class="tab" href="#">Emissions</a><a class="tab on" href="#">Intensity</a><a class="tab" href="#">Reports</a><a class="tab" href="#">Actions</a><a class="tab" href="#">Data entry</a>
+</div>
+
+<div class="wrap">
+  <div class="clienthead"><div class="logo">AB</div><div><h1>Emissions intensity</h1><div class="sub">ABtec Computer Solutions Limited · reporting year FY2024</div></div></div>
+  <p class="lead">How your emissions compare against the measures that matter to your business. <span class="assured">✓ Assured figures</span> — every number is drawn from your published, verified footprint.</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <div class="ch"><h2>Intensity over time</h2><span class="sp"></span>
+      <select class="selm" id="sel"><option value="fte">👥 per employee</option><option value="rev">£ per £M turnover</option><option value="m2">🏢 per m² floor area</option></select></div>
+    <div class="chartwrap" id="chart"></div>
+    <div class="foot">Intensity = your assured emissions divided by the measure shown. Measures and their icons are set with your NZI consultant; the values are recorded each reporting year. <b>Lower is better.</b></div>
+  </section>
+</div>
+
+<script>
+const YEARS=[{y:"FY20",s1:138,s2:520,s3:1430,rev:36.5,fte:210,m2:3200},{y:"FY21",s1:132,s2:505,s3:1373,rev:37.2,fte:218,m2:3200},{y:"FY22",s1:126,s2:495,s3:1334,rev:37.8,fte:225,m2:3400},{y:"FY23",s1:120,s2:480,s3:1242,rev:38.3,fte:232,m2:3400},{y:"FY24",s1:110,s2:452,s3:1144,rev:40.0,fte:240,m2:3600}];
+YEARS.forEach(d=>d.tot=d.s1+d.s2+d.s3);
+const M={
+  fte:{icon:"👥",nm:"Per employee",unit:"tCO₂e / employee",max:12,ticks:[0,4,8,12],val:d=>d.tot/d.fte,fmt:v=>v.toFixed(2)},
+  rev:{icon:"£",nm:"Per £M turnover",unit:"tCO₂e / £M",max:60,ticks:[0,20,40,60],val:d=>d.tot/d.rev,fmt:v=>v.toFixed(1)},
+  m2:{icon:"🏢",nm:"Per m² floor area",unit:"kgCO₂e / m²",max:800,ticks:[0,200,400,600,800],val:d=>d.tot*1000/d.m2,fmt:v=>Math.round(v)}};
+function spark(vals,w,h,col){const max=Math.max(...vals)*1.1,min=Math.min(...vals)*0.9,rng=max-min||1,step=w/(vals.length-1);
+  const pts=vals.map((v,i)=>`${i*step},${h-(v-min)/rng*h}`).join(" ");
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"/><circle cx="${w}" cy="${h-(vals[vals.length-1]-min)/rng*h}" r="3" fill="${col}"/></svg>`;}
+function tiles(){document.getElementById("tiles").innerHTML=Object.entries(M).map(([k,m])=>{
+  const vals=YEARS.map(m.val),cur=vals[vals.length-1],prev=vals[vals.length-2],ch=(cur-prev)/prev*100;
+  const dn=ch<=0;
+  return `<div class="tile"><div class="top"><span class="ic">${m.icon}</span><span class="nm">${m.nm}</span></div>
+    <div class="big">${m.fmt(cur)}<span class="u">${m.unit}</span></div>
+    <div class="delta ${dn?"dn":"up"}">${dn?"▼":"▲"} ${Math.abs(ch).toFixed(1)}% vs FY23</div>
+    <div class="spark">${spark(vals,150,34,dn?"var(--accent)":"var(--danger)")}</div></div>`;}).join("");}
+function chart(k){const m=M[k],w=940,h=250,pad={t:18,r:16,b:26,l:44},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b,step=iw/(YEARS.length-1);
+  const xf=i=>pad.l+step*i,yf=v=>pad.t+ih-(v/m.max*ih);let g="";
+  m.ticks.forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-8}" y="${yy+3}" text-anchor="end">${t}</text>`;});
+  YEARS.forEach((d,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-8}" text-anchor="middle">${d.y}</text>`);
+  const pts=YEARS.map((d,i)=>`${xf(i)},${yf(m.val(d))}`).join(" ");
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  YEARS.forEach((d,i)=>{const v=m.val(d);g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="4" fill="var(--accent)"/><text class="val" x="${xf(i)}" y="${yf(v)-9}" text-anchor="middle">${m.fmt(v)}</text>`;});
+  document.getElementById("chart").innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="${m.nm} over time"><text class="axis" x="${pad.l}" y="12">${m.unit}</text>${g}</svg>`;}
+tiles();chart("fte");
+document.getElementById("sel").onchange=e=>chart(e.target.value);
+</script>

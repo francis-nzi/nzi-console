@@ -32,12 +32,48 @@ export const tokens = {
     "3": "#0BA75E", // Scope 3 — emerald
   } as Record<string, string>,
   site: ["#0BA75E", "#2F7E8D", "#6B6FB3", "#D28B36", "#8A5A7B", "#51605A"],
+  // SRS readiness — a sequential maturity ramp (0 not started → 4 assured) plus the two
+  // standard series. Deliberately not the scope palette: scope identity means scope.
+  srs: {
+    maturity: ["#E4E9E5", "#CDEBD9", "#8FD3AE", "#2E9E68", "#0B6B41"],
+    /** Text that stays legible on each maturity fill. */
+    maturityInk: ["#3C4A43", "#095C35", "#095C35", "#FFFFFF", "#FFFFFF"],
+    s2: "#0B7A4B",   // climate — the brand pine, the led standard
+    s1: "#6B4E9B",   // general — a categorical partner hue, not a scope colour
+    target: "#14201A",
+    warn: "#B4690E",
+  },
   font:
     "var(--font-inter, Inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
 } as const;
 
-/** Bump whenever a visual token changes. It participates in asset identity. */
+/**
+ * Bump whenever a visual token changes. It participates in asset identity.
+ *
+ * NOT bumped for the `srs` block above: it is purely additive — no existing chart's
+ * appearance changes, so every already-published asset identity stays valid.
+ */
 export const TOKENS_VERSION = 1;
+
+/**
+ * SRS maturity fill for a level 0–4, and the ink that stays legible on it.
+ * Clamped: a level outside the ramp resolves to its nearest end rather than
+ * rendering as `undefined` (which would print as an unstyled black fill).
+ */
+export function srsMaturityColor(level: number): string {
+  const ramp = tokens.srs.maturity;
+  return ramp[clampLevel(level, ramp.length)] ?? ramp[0];
+}
+
+export function srsMaturityInk(level: number): string {
+  const ramp = tokens.srs.maturityInk;
+  return ramp[clampLevel(level, ramp.length)] ?? ramp[0];
+}
+
+function clampLevel(level: number, length: number): number {
+  const rounded = Math.round(Number.isFinite(level) ? level : 0);
+  return Math.max(0, Math.min(length - 1, rounded));
+}
 
 /**
  * Resolve a scope's colour from its key. A sub-scope like "3.4" resolves on its
