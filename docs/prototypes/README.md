@@ -44,12 +44,18 @@ Deliberate differences: the evidence drawer uses the app shell's drawer slot rat
 dates are dd/mm/yyyy (NZC-040) not "Apr 2019"; a site can be *in service from before records*
 (NZC-070 NULL start); floor area is an effective-dated history (NZC-071), not one value.
 
-Not built yet: the area sub-nav and its areas (Reporting, Actions, SRS Readiness, Tasks, Notes, Files,
-Communications, Company Profile, Financials, AI Profile); client setup progress; the Emissions history,
-YoY-by-scope and multi-base intensity charts, and the reporting-year picker; the **baseline half** of the
-Baseline & targets card — the baseline in force, its figures and the history timeline — which needs
-`client_baselines` (#137); site reference / address / geolocation; Financial status and outstanding
-balance (commercial ledger, NZC-069 Held, #140).
+Built (from the shell rebuild, #146): the **client area sub-nav** (CLIENT · MANAGE · RECORD) and the
+v10 shell it drives; **client setup progress**; Carbon analytics — Emissions history, YoY by scope, the
+scope donut behind the **reporting-year picker**, **multi-base intensity** (revenue / FTE / m² and all
+bases indexed) and the target-derived reduction pathway; drawer-based record editing throughout, with
+the separate `/edit` page retired. The **breadcrumb trail** (#147) reads Clients / Client / Jobs /
+Job No / Area, every crumb a link.
+
+Not built yet: the **content** of the Phase 2 areas (Reporting, Actions, SRS Readiness, Tasks, Notes,
+Files, Communications, Company Profile, AI Profile) — they render truthful "not available yet" states;
+the **baseline half** of the Baseline & targets card — the baseline in force, its figures and the
+history timeline — which needs `client_baselines` (#137); site reference / address / geolocation;
+Financial status and outstanding balance (commercial ledger, NZC-069 Held, #140).
 
 ## report_v3 — the four fixes it demonstrates
 - Print-safe charts (deterministic inline SVG, canonical @nzi/charts palette: S1 coral / S2 amber / S3 emerald).
