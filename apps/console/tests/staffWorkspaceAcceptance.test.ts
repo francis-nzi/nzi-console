@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import {existsSync, readFileSync} from "node:fs";
-import {join} from "node:path";
 import {describe,it} from "node:test";
 
-const root=process.cwd();
-const read=(path:string)=>readFileSync(join(root,path),"utf8");
+// Resolved from this file, not the shell's cwd — the suite has to pass whether it is run
+// from the repo root or from the package (which is how `npm test -w @nzi/console` runs it).
+const read=(path:string)=>readFileSync(new URL(`../../../${path}`,import.meta.url),"utf8");
+const exists=(path:string)=>existsSync(new URL(`../../../${path}`,import.meta.url));
 const routes=["apps/console/app/clients/page.tsx","apps/console/app/clients/[clientId]/page.tsx","apps/console/app/jobs/page.tsx","apps/console/app/jobs/[jobId]/page.tsx","apps/console/app/datasets/page.tsx","apps/console/app/reports/page.tsx","apps/console/app/reports/[versionId]/page.tsx","apps/console/app/platform/page.tsx"];
 
 // The client page renders through these; they carry its empty states and must not reach for stand-in data.
@@ -26,7 +27,7 @@ describe("staff workspace acceptance contracts",()=>{
     for(const card of ["ClientContacts.tsx","ClientSites.tsx","ClientTargets.tsx","ClientIdentity.tsx"]){
       assert.doesNotMatch(read(`apps/console/app/clients/[clientId]/${card}`),/<Drawer\b/,`${card} still owns a drawer`);
     }
-    assert.ok(!existsSync(join(root,"apps/console/app/clients/[clientId]/edit/page.tsx")),"the /edit route is gone");
+    assert.ok(!exists("apps/console/app/clients/[clientId]/edit/page.tsx"),"the /edit route is gone");
     assert.doesNotMatch(read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx"),/\/edit/,"nothing links to the retired edit page");
   });
   it("tells the truth about areas that are not built, and holds the commercial ledger",()=>{

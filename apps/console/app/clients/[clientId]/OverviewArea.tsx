@@ -7,6 +7,7 @@ import { siteLifecycleStatus } from "@nzi/contracts";
 import { jobFamilyMeta } from "@nzi/mock-data";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
+import { clientJobsHref } from "../../lib/crumbs";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { ClientContacts } from "./ClientContacts";
 import { ClientSites } from "./ClientSites";
@@ -41,7 +42,7 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
 
     {/* Pinned: what is being delivered now. */}
     <section className="nz-panel">
-      <CardHead eyebrow="Delivery" title="Active jobs & milestone progress" right={<Link className="nz-editlink" href={`/jobs?client=${client.id}`}>New job →</Link>} />
+      <CardHead eyebrow="Delivery" title="Active jobs & milestone progress" right={<Link className="nz-editlink" href={clientJobsHref(client.id)}>New job →</Link>} />
       {jobs.length === 0
         ? <Empty text="No engagements have been created for this client." />
         : <table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Stage</th><th>Progress</th><th>Owner</th><th>Due</th></tr></thead><tbody>

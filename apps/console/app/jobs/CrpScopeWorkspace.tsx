@@ -26,6 +26,7 @@ import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
+import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
@@ -406,11 +407,7 @@ export function CrpScopeWorkspace({
     >
       <TopBar
         searchPlaceholder="Search sources, factors…"
-        crumbs={
-          <>
-            Jobs / <b>{job.header.number}</b> / Scope rows
-          </>
-        }
+        crumbs={crumbTrail(jobCrumbs(job.header, { label: "Scope rows" }))}
       />
       <div className="nz-head">
         <div className="nz-job-titleline">

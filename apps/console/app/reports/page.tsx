@@ -2,12 +2,13 @@ import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { crpProfessionalManifest } from "@nzi/charts";
 import { NAV, USER } from "../lib/nav";
+import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import {ReportReviewInbox} from "./ReportReviewInbox";
 import {LiveReportRegister} from "./LiveReportRegister";
 
 export default function ReportsPage() {
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" user={USER} />}>
-    <TopBar searchPlaceholder="Search reports, jobs, clients…" crumbs={<><b>Reports</b> <span className="muted">/</span> Versions</>} />
+    <TopBar searchPlaceholder="Search reports, jobs, clients…" crumbs={crumbTrail(workspaceCrumbs("Reports", "/reports"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Assured reporting</div><h1>Publication studio</h1><div className="sub">Create, assure and release decision-grade carbon reports</div></div><Link className="nz-btn pri" href="/report-preview">Prepare report version</Link></div></div>
     <div className="nz-body" style={{ paddingTop: 18 }}>
       <section className="nz-report-hero"><div><span className="nz-eyebrow light">One governed publishing system</span><h2>From reviewed evidence to a board-ready report.</h2><p>Every publication is assembled from an immutable snapshot, validated against the shared chart manifest and released as an exact, traceable version.</p></div><div className="nz-report-flow"><span><i>1</i>Freeze evidence</span><b>→</b><span><i>2</i>Validate output</span><b>→</b><span><i>3</i>Release to client</span></div></section>

@@ -1,5 +1,6 @@
 import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
+import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { ChartProof } from "./ChartProof";
 import { loadFixtureScreen } from "@nzi/api-client";
 import { ScreenState } from "../lib/ScreenState";
@@ -29,11 +30,7 @@ export default function ChartsPage() {
     <AppShell rail={rail}>
       <TopBar
         searchPlaceholder="Search charts…"
-        crumbs={
-          <>
-            Emissions <span className="muted">/</span> <b>Chart library</b>
-          </>
-        }
+        crumbs={crumbTrail(workspaceCrumbs("Emissions", "/charts", { label: "Chart library", href: "/charts" }))}
       />
       <div className="nz-head">
         <span className="nz-eyebrow">Emissions intelligence</span><h1>Visual evidence studio</h1>
