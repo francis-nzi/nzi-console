@@ -36,11 +36,16 @@ export function Icon({ name }: { name: IconName }) {
 export type NavItem = { id: string; label: string; icon: IconName; href: string; count?: number };
 export type NavSection = { heading: string; items: NavItem[] };
 
-export function AppShell({ rail, drawer, children }: { rail: ReactNode; drawer?: ReactNode; children: ReactNode }) {
+export { ClientWorkspaceNav } from "./ClientWorkspaceNav";
+export type { ClientAreaGroup, ClientAreaItem } from "./ClientWorkspaceNav";
+
+export function AppShell({ rail, areas, drawer, children }: { rail: ReactNode; /** An optional second nav column (the client workspace areas). */ areas?: ReactNode; drawer?: ReactNode; children: ReactNode }) {
+  const columns = [drawer ? "nz-app" : "nz-app no-drawer", areas ? "with-areas" : null].filter(Boolean).join(" ");
   return (
-    <div className={drawer ? "nz-app" : "nz-app no-drawer"}>
+    <div className={columns}>
       <a className="nz-skip-link" href="#nzi-main-content">Skip to main content</a>
       {rail}
+      {areas}
       <main className="nz-main" id="nzi-main-content" tabIndex={-1}>{children}</main>
       {drawer}
     </div>

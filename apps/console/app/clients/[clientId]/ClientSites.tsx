@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Drawer, GatedButton } from "@nzi/ui";
+import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
 import type { ClientReportingPeriod } from "@nzi/isolated-backend";
@@ -51,19 +51,16 @@ function siteLine(site: ClientSiteReadModel, today: string, periods: readonly Cl
   return parts.join(" · ");
 }
 
-export function ClientSites({ clientId, sites, reportingPeriods, today, access }: { clientId: string; sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess }) {
-  const router = useRouter();
-  const [editing, setEditing] = useState<{ site: ClientSiteReadModel | null } | null>(null);
-  const [notice, setNotice] = useState<Notice>(null);
+/** The card. The site drawer lives in the workspace's drawer host. */
+export function ClientSites({ sites, reportingPeriods, today, access, onEdit }: { sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess; onEdit: (site: ClientSiteReadModel | null) => void }) {
   const periods = [...reportingPeriods].reverse();
   const blocked = access.state !== "allowed";
 
   return <section className="nz-panel">
     <div className="nz-card-h">
       <span className="eyebrow">Operations</span><h2>Sites</h2><span className="sp" />
-      <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => { setNotice(null); setEditing({ site: null }); }}>＋ Add</GatedButton>
+      <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => onEdit(null)}>＋ Add</GatedButton>
     </div>
-    {notice ? <div className={`nz-banner ${notice.kind}`} role="status" style={{ margin: "12px 16px 0" }}>{notice.text}</div> : null}
     <div className="nz-card-b">
       {sites.length === 0
         ? <p className="sub" style={{ margin: "8px 0" }}>No sites configured for this client yet. Add one here, or from a CRP job&apos;s data entry.</p>
@@ -75,16 +72,10 @@ export function ClientSites({ clientId, sites, reportingPeriods, today, access }
               <div className="nm">{site.name}{site.isRegisteredOffice ? <span className="nz-tag reg">Registered</span> : null}{status.kind === "vacated" ? <span className="nz-tag vac">Vacated</span> : null}{status.kind === "planned" ? <span className="nz-tag plan">Planned</span> : null}</div>
               <div className="sub">{siteLine(site, today, periods)}</div>
             </div>
-            <button type="button" className="nz-editlink" onClick={() => { setNotice(null); setEditing({ site }); }} aria-label={`Edit site ${site.name}`}>Edit</button>
+            <button type="button" className="nz-editlink" onClick={() => onEdit(site)} aria-label={`Edit site ${site.name}`}>Edit</button>
           </div>;
         })}
     </div>
-    <Drawer open={editing !== null} onClose={() => setEditing(null)} ariaLabel={editing?.site ? `Edit site ${editing.site.name}` : "Add a site"} className="nz-site-drawer" dismissOnOutsideClick>
-      {editing ? <SiteForm key={editing.site?.id ?? "new"} clientId={clientId} site={editing.site} sites={sites} periods={periods} access={access}
-        onClose={() => setEditing(null)}
-        onSaved={(text) => { setEditing(null); setNotice({ kind: "ok", text }); router.refresh(); }}
-        onPartial={() => router.refresh()} /> : null}
-    </Drawer>
   </section>;
 }
 
@@ -92,7 +83,7 @@ type Step = { name: string; path: string; input: Record<string, unknown> };
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 
-function SiteForm({ clientId, site, sites, periods, access, onClose, onSaved, onPartial }: {
+export function SiteForm({ clientId, site, sites, periods, access, onClose, onSaved, onPartial }: {
   clientId: string; site: ClientSiteReadModel | null; sites: ClientSiteReadModel[]; periods: ClientReportingPeriod[]; access: EditAccess;
   onClose: () => void; onSaved: (text: string) => void; onPartial: () => void;
 }) {

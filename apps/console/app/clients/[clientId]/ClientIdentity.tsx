@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Drawer, GatedButton } from "@nzi/ui";
+import { GatedButton } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { CLIENT_LOGO_MAX_BYTES, clientLogoContentTypes, clientReportingFrequencies, reportingPeriodForYear, type ClientLogoContentType, type ClientReportingFrequency } from "@nzi/contracts";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
@@ -64,13 +64,7 @@ export function ClientProfileCard({ client, onEdit }: { client: ClientScreenRead
 }
 function Kv({ label, value }: { label: string; value: string }) { return <div className="nz-kv"><span className="k">{label}</span><span className="v">{value}</span></div>; }
 
-export function IdentityDrawer({ open, client, access, onClose }: { open: boolean; client: ClientScreenReadModel; access: EditAccess; onClose: () => void }) {
-  return <Drawer open={open} onClose={onClose} ariaLabel="Identity and profile" className="nz-site-drawer" dismissOnOutsideClick>
-    {open ? <IdentityForm key={client.id} client={client} access={access} onClose={onClose} /> : null}
-  </Drawer>;
-}
-
-function IdentityForm({ client, access, onClose }: { client: ClientScreenReadModel; access: EditAccess; onClose: () => void }) {
+export function IdentityForm({ client, access, onClose }: { client: ClientScreenReadModel; access: EditAccess; onClose: () => void }) {
   const router = useRouter();
   const profile = client.profile;
   const [name, setName] = useState(client.name);

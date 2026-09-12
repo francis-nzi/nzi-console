@@ -1,8 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Drawer, GatedButton } from "@nzi/ui";
+import { GatedButton } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { clientContactRoleLabels, clientContactRoles, type ClientContactReadModel, type ClientContactRole } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -19,22 +18,18 @@ export const contactRoleBadges: Record<ClientContactRole, string> = {
   report_signee: "Signee", portal_candidate: "Portal", invoice_recipient: "Billing", training_attendee: "Training",
 };
 
-type Notice = { kind: "ok" | "warn"; text: string } | null;
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 
-export function ClientContacts({ clientId, contacts, access }: { clientId: string; contacts: ClientContactReadModel[]; access: EditAccess }) {
-  const router = useRouter();
-  const [editing, setEditing] = useState<{ contact: ClientContactReadModel | null } | null>(null);
-  const [notice, setNotice] = useState<Notice>(null);
+/** The card. Editing happens in the workspace's drawer host, not here. */
+export function ClientContacts({ contacts, access, onEdit }: { contacts: ClientContactReadModel[]; access: EditAccess; onEdit: (contact: ClientContactReadModel | null) => void }) {
   const blocked = access.state !== "allowed";
 
   return <section className="nz-panel">
     <div className="nz-card-h">
       <span className="eyebrow">Relationship</span><h2>Contacts</h2><span className="sp" />
-      <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => { setNotice(null); setEditing({ contact: null }); }}>＋ Add</GatedButton>
+      <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => onEdit(null)}>＋ Add</GatedButton>
     </div>
-    {notice ? <div className={`nz-banner ${notice.kind}`} role="status" style={{ margin: "12px 16px 0" }}>{notice.text}</div> : null}
     <div className="nz-card-b">
       {contacts.length === 0
         ? <p className="sub" style={{ margin: "8px 0" }}>No contacts yet. Add the people this client works through — and mark who signs reports, who can use the portal and who receives invoices.</p>
@@ -48,18 +43,13 @@ export function ClientContacts({ clientId, contacts, access }: { clientId: strin
               {contact.roles.map((role) => <span key={role} className="nz-tag rr" title={clientContactRoleLabels[role]}>{contactRoleBadges[role]}</span>)}
             </div> : null}
           </div>
-          <button type="button" className="nz-editlink" onClick={() => { setNotice(null); setEditing({ contact }); }} aria-label={`Edit contact ${contact.fullName}`}>Edit</button>
+          <button type="button" className="nz-editlink" onClick={() => onEdit(contact)} aria-label={`Edit contact ${contact.fullName}`}>Edit</button>
         </div>)}
     </div>
-    <Drawer open={editing !== null} onClose={() => setEditing(null)} ariaLabel={editing?.contact ? `Edit contact ${editing.contact.fullName}` : "Add a contact"} className="nz-site-drawer" dismissOnOutsideClick>
-      {editing ? <ContactForm key={editing.contact?.id ?? "new"} clientId={clientId} contact={editing.contact} access={access}
-        onClose={() => setEditing(null)}
-        onSaved={(text) => { setEditing(null); setNotice({ kind: "ok", text }); router.refresh(); }} /> : null}
-    </Drawer>
   </section>;
 }
 
-function ContactForm({ clientId, contact, access, onClose, onSaved }: {
+export function ContactForm({ clientId, contact, access, onClose, onSaved }: {
   clientId: string; contact: ClientContactReadModel | null; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [fullName, setFullName] = useState(contact?.fullName ?? "");

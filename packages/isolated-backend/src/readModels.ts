@@ -3,7 +3,7 @@ import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, resolveClientEmissionsEvidence, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, resolveClientEmissionsEvidence, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature } from "@nzi/contracts";
 import { dateOnly } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 export { dateOnly } from "./dates";
@@ -152,6 +152,27 @@ export async function listClients(db: Queryable, clientId?: string): Promise<Cli
 
 /** `eligible` — the period is 300–400 days (NZC-067), so the job can stand for a reporting year. */
 export type ClientReportingPeriod = { jobId: string; jobNumber: string; label: string; from: string; to: string; days: number; eligible: boolean };
+
+/**
+ * One reporting year as the client workspace v10 analytics read it: the assured total and
+ * its scope split with tiers, the intensity the job recorded, and the year's own
+ * provenance. Resolved through `resolveClientEmissionsEvidence` — the same resolver the
+ * headline figures use, so a year in the history and the headline cannot disagree.
+ */
+export type ClientYearFigure = {
+  year: number;
+  jobId: string;
+  jobNumber: string;
+  snapshotId: string;
+  snapshotVersion: number;
+  totalTco2e: number | null;
+  scopes: Array<{ scope: "1" | "2" | "3"; tco2e: number | null; qualityTier: FigureTier | null }>;
+  /** null when the snapshot was issued before stamping, or the stamp was backfilled — never a gate. */
+  provenance: ProvenanceSignature | null;
+  intensity: { state: "resolved" | "unavailable"; metric: string | null; unit: string; value: number | null; note: string | null };
+  issuedAt: string;
+  issuedBy: string;
+};
 export type ClientWorkspaceReadModel = {
   client: ClientScreenReadModel;
   sites: ClientSiteReadModel[];
@@ -164,6 +185,8 @@ export type ClientWorkspaceReadModel = {
   targets: ClientTargetsReadModel;
   /** One assured total per reporting year — the actual line on the pathway. */
   actuals: TargetActual[];
+  /** Every assured reporting year, newest first — the analytics area's series. */
+  history: ClientYearFigure[];
 };
 
 const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
@@ -194,6 +217,23 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     }))
     .sort((a, b) => a.year - b.year);
   const targets = await getClientTargets(db, clientId, { benchmarkInForce: await getBenchmarkInForce(db, clientId), actuals });
+  // Each year resolved through the same resolver as the headline figures, newest first.
+  const history: ClientYearFigure[] = reportingYears.map((row) => {
+    const snapshot = mapSnapshotRow(row);
+    const figures = resolveClientEmissionsEvidence({ current: snapshot, prior: null });
+    return {
+      year: snapshot.reportingYear, jobId: snapshot.jobId, jobNumber: snapshot.jobNumber,
+      snapshotId: snapshot.id, snapshotVersion: snapshot.version,
+      totalTco2e: figures.latest.value,
+      scopes: figures.scopes.map((scope) => ({ scope: scope.scope, tco2e: scope.value, qualityTier: scope.qualityTier })),
+      provenance: figures.latest.provenance,
+      intensity: {
+        state: figures.intensity.state, metric: snapshot.intensityTarget?.metric ?? null,
+        unit: figures.intensity.unit, value: figures.intensity.value, note: figures.intensity.note,
+      },
+      issuedAt: snapshot.createdAt, issuedBy: snapshot.createdBy,
+    };
+  });
   return {
     client,
     sites,
@@ -205,6 +245,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     contacts,
     targets,
     actuals,
+    history,
   };
 }
 

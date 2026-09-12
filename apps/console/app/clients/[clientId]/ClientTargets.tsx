@@ -1,8 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Drawer, GatedButton } from "@nzi/ui";
+import { GatedButton } from "@nzi/ui";
 import { putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import { forwardTargetFields, type ForwardTargetModel, type TargetBenchmark, type TargetMilestone, type TargetScope } from "@nzi/contracts";
 import type { ClientTargetsReadModel } from "@nzi/isolated-backend";
@@ -15,7 +14,6 @@ import type { EditAccess } from "../../lib/useEditAccess";
  * says "No targets set" — never zeros.
  */
 
-type Notice = { kind: "ok" | "warn"; text: string } | null;
 type Draft = Record<(typeof forwardTargetFields)[number], { year: string; pct: string }>;
 
 const SCOPE_LABEL: Record<TargetScope, string> = { "1": "Scope 1", "2": "Scope 2", "3": "Scope 3" };
@@ -33,24 +31,21 @@ const draftFrom = (model: ForwardTargetModel | null): Draft => {
   };
 };
 
-export function ClientTargets({ clientId, targets, access }: { clientId: string; targets: ClientTargetsReadModel; access: EditAccess }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState<Notice>(null);
+/** The card. The Reduction targets drawer lives in the workspace's drawer host. */
+export function ClientTargets({ targets, access, onEdit, hideHead = false }: { targets: ClientTargetsReadModel; access: EditAccess; onEdit: () => void; hideHead?: boolean }) {
   const benchmark = targets.benchmark ?? targets.benchmarkInForce;
   const model = targets.model;
   const scopeLine = (["1", "2", "3"] as const)
     .map((scope) => { const milestone = model?.scopes[scope]; return milestone ? `${SCOPE_LABEL[scope].replace("Scope ", "S")} ${pct(milestone.pct)} by ${milestone.year}` : null; })
     .filter(Boolean).join(" · ");
 
-  return <section className="nz-panel">
-    <div className="nz-card-h">
-      <span className="eyebrow">Commitment</span><h2>Baseline &amp; targets</h2><span className="sp" />
-      <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !targets.benchmarkInForce}
+  const editButton = <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !targets.benchmarkInForce}
         blockedReason={access.state === "allowed" ? (targets.benchmarkInForce ? undefined : "Set the client's baseline before its targets.") : access.reason}
-        reasonClassName="hint nz-gated-reason" onClick={() => { setNotice(null); setOpen(true); }}>Edit</GatedButton>
-    </div>
-    {notice ? <div className={`nz-banner ${notice.kind}`} role="status" style={{ margin: "12px 16px 0" }}>{notice.text}</div> : null}
+        reasonClassName="hint nz-gated-reason" onClick={onEdit}>Edit</GatedButton>;
+  return <section className={hideHead ? "nz-panel bare" : "nz-panel"}>
+    {hideHead
+      ? <div className="nz-card-b" style={{ paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>{editButton}</div>
+      : <div className="nz-card-h"><span className="eyebrow">Commitment</span><h2>Baseline &amp; targets</h2><span className="sp" />{editButton}</div>}
     <div className="nz-card-b">
       <div className="nz-kv"><span className="k">Baseline in force</span><span className="v">{targets.benchmarkInForce
         ? <>{FY(targets.benchmarkInForce.year)} · {tonnes(targets.benchmarkInForce.totalTco2e)}</>
@@ -79,15 +74,10 @@ export function ClientTargets({ clientId, targets, access }: { clientId: string;
         </div>
         : null}
     </div>
-    <Drawer open={open} onClose={() => setOpen(false)} ariaLabel="Reduction targets" className="nz-site-drawer" dismissOnOutsideClick>
-      {open ? <TargetsForm clientId={clientId} targets={targets} access={access}
-        onClose={() => setOpen(false)}
-        onSaved={(text) => { setOpen(false); setNotice({ kind: "ok", text }); router.refresh(); }} /> : null}
-    </Drawer>
   </section>;
 }
 
-function TargetsForm({ clientId, targets, access, onClose, onSaved }: {
+export function TargetsForm({ clientId, targets, access, onClose, onSaved }: {
   clientId: string; targets: ClientTargetsReadModel; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(draftFrom(targets.model));
