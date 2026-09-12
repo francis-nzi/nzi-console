@@ -18,8 +18,10 @@ users migrating from the live system · `Stage 2` = deferrable.
   yet applied to staging).
 - **In flight next (both PR-gated, carry migrations):** intensity metrics, then the
   action-lever library.
-- **Held / not started:** report (R-track) design; the print-safe **icon-set decision**
-  (gates the report + intensity metric icons); commercial ledger (NZC-069 held).
+- **Designed + briefed, impl to build:** report (R-track) — prototype `report_v1.html` +
+  `_handoff_REPORT_brief.md`; the **print-safe icon-set decision is settled** (curated inline
+  SVG, in DESIGN_CONVENTIONS §10) which also unblocks the intensity/action report icons.
+- **Held:** commercial ledger (NZC-069 held).
 
 Prototype it reconciles against: Client Workspace artifact (v5).
 

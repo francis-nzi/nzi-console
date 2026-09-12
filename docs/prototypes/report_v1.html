@@ -1,0 +1,241 @@
+<!-- NZI Console — Report (R-track) prototype · v1 (2026-09-13)
+     The client-facing deliverable: the composition of footprint, intensity, targets/pathway,
+     the decarbonisation plan and the SRS readiness statement into a print/portal report.
+     Deliberately a single light "paper" look (print/PDF target). Demonstrates the print-safe
+     curated line-icon set (inline SVG, currentColor — NOT emoji), figures derived from the
+     assured snapshot, provenance carried through. Pagination/PDF is the R5 track. -->
+<title>NZI Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --paper:#FFFFFF;--ground:#E9EDEA;--ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#93A099;
+  --line:#E1E7E2;--line-2:#EEF2EF;--panel-2:#F6F9F7;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;--pine:#0B7A4B;--midnight:#0B1B2B;
+  --s1:#FF5C48;--s2:#FFC24B;--s2-ink:#B4690E;--s3:#0BA75E;--base:#6B4E9B;
+  --ok:#0B7A46;--warn:#B4690E;
+  --m0:#E4E9E5;--m1:#CDEBD9;--m2:#8FD3AE;--m3:#2E9E68;--m4:#0B6B41;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:13.5px;line-height:1.5}
+.doc{max-width:840px;margin:0 auto;padding:24px 0 60px}
+.page{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:46px 52px;margin-bottom:20px;box-shadow:0 1px 4px rgba(11,27,43,.05)}
+.pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line-2);margin-top:34px;padding-top:12px;font-size:10.5px;color:var(--faint)}
+h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:19px;margin:0 0 3px}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-d)}
+.sechd{border-bottom:2px solid var(--accent);padding-bottom:8px;margin-bottom:18px;display:flex;align-items:baseline;gap:10px}
+.sechd .n{font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+.lede{font-size:14.5px;color:var(--ink-2);max-width:64ch}
+.muted{color:var(--muted)}.sub{font-size:12px;color:var(--muted)}
+/* cover */
+.cover{min-height:560px;display:flex;flex-direction:column;background:linear-gradient(160deg,var(--midnight),#123);color:#EAF2ED;border:0}
+.cover .top{display:flex;align-items:center;gap:12px}
+.cover .logo{width:42px;height:42px;border-radius:10px;background:var(--accent);display:grid;place-items:center;font-weight:800;color:#fff}
+.cover .brand{font-weight:800}.cover .brand span{opacity:.6;font-weight:500;font-size:12px}
+.cover .mid{margin-top:auto}
+.cover h1{color:#fff;font-size:38px}
+.cover .client{font-size:20px;font-weight:600;margin-top:10px}
+.cover .meta{opacity:.75;margin-top:6px}
+.cover .assured{display:inline-flex;align-items:center;gap:7px;margin-top:22px;font-size:12.5px;font-weight:600;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:5px 13px}
+.cover .assured svg{width:15px;height:15px;flex:0 0 auto}
+/* stat row */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:16px 0}
+.stat{background:var(--paper);padding:14px 16px}
+.stat .v{font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--muted);margin-top:2px}
+.stat .d{font-size:11.5px;font-weight:600;margin-top:3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:7px 8px;border-bottom:1px solid var(--line-2)}
+.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.sw{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:middle}
+.imrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2)}
+.imrow:last-child{border:0}
+.im-ic{width:34px;height:34px;border-radius:9px;background:var(--panel-2);display:grid;place-items:center;color:var(--accent-d);flex:0 0 auto}
+.im-ic svg{width:19px;height:19px}
+.imrow .nm{font-weight:600}.imrow .u{font-size:11.5px;color:var(--muted)}
+.imrow .val{margin-left:auto;text-align:right}.imrow .val b{font-size:16px;font-variant-numeric:tabular-nums}
+.sphere{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-d);margin:14px 0 4px}
+.act{display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--line-2)}
+.act .ai{width:28px;height:28px;border-radius:8px;background:var(--panel-2);display:grid;place-items:center;color:var(--accent-d)}.act .ai svg{width:16px;height:16px}
+.act .st{margin-left:auto;font-size:11px;font-weight:600}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.mat{border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.mat .p{font-weight:600;font-size:12.5px}.mat .lv{font-size:11.5px;color:var(--muted)}
+.dots{display:flex;gap:3px;margin-top:6px}.dots i{width:100%;height:6px;border-radius:3px;background:var(--m0)}
+.callout{background:var(--accent-bg);border:1px solid var(--m2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--accent-d)}
+.prov{font-size:11px;color:var(--muted);border-top:1px solid var(--line-2);margin-top:14px;padding-top:10px}
+.prov b{color:var(--ink-2)}
+.axis{font-size:10px;fill:var(--muted)}.gl{stroke:var(--line-2)}.val{font-size:10.5px;font-weight:700;fill:var(--ink)}
+.toc{columns:2;column-gap:40px;font-size:13px}
+.toc div{padding:5px 0;border-bottom:1px solid var(--line-2);break-inside:avoid;display:flex}
+.toc .n{color:var(--accent);font-weight:700;width:24px}
+</style>
+
+<div class="doc" id="doc"></div>
+
+<script>
+/* ---- curated print-safe line-icon set (inline SVG, currentColor, ~2px) ---- */
+const I={
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M22 21v-1a5 5 0 0 0-3-4.5"/></svg>',
+  gbp:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5a3.5 3.5 0 0 0-6 2.5V19"/><path d="M8 12h6"/><path d="M7 19h10"/></svg>',
+  building:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  truck:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h11v9H2z"/><path d="M13 10h4l3 3v3h-7z"/><circle cx="6" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg>',
+  leaf:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-9 7-15 16-15 0 9-6 16-16 15z"/><path d="M9 15c2-3 5-5 8-6"/></svg>',
+  handshake:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2 4-4"/><path d="M3 9l4-4 5 3 5-3 4 4-5 5-2-2-3 2z"/></svg>',
+  recycle:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l2-3 2 3"/><path d="M9 2v7"/><path d="M17 9l3 1-1 3"/><path d="M4 14l-1 3 3 1"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>'};
+
+const LVL=["Not started","Developing","Established","Advanced","Assured"];
+const MC=["var(--m0)","var(--m1)","var(--m2)","var(--m3)","var(--m4)"];
+
+/* ---- charts ---- */
+function donut(el){const d={s1:110,s2:452,s3:1144},tot=1706,cx=78,cy=78,r=56,sw=22;let a=-Math.PI/2,g="";
+  [["s1","var(--s1)"],["s2","var(--s2)"],["s3","var(--s3)"]].forEach(([k,c])=>{const f=d[k]/tot,a2=a+f*2*Math.PI,lg=f>.5?1:0;
+    g+=`<path d="M ${cx+r*Math.cos(a)} ${cy+r*Math.sin(a)} A ${r} ${r} 0 ${lg} 1 ${cx+r*Math.cos(a2)} ${cy+r*Math.sin(a2)}" fill="none" stroke="${c}" stroke-width="${sw}"/>`;a=a2;});
+  g+=`<text x="${cx}" y="${cy-2}" text-anchor="middle" class="val" style="font-size:17px">1,706</text><text x="${cx}" y="${cy+13}" text-anchor="middle" class="axis">tCO₂e</text>`;
+  return `<svg width="156" height="156" viewBox="0 0 156 156">${g}</svg>`;}
+function pathway(el){const w=360,h=150,pad={t:12,r:30,b:22,l:32},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b,max=2100;
+  const yrs=["FY20","FY22","FY24","FY30","FY45"],step=iw/(yrs.length-1),xf=i=>pad.l+step*i,yf=v=>pad.t+ih-(v/max*ih);
+  const act=[[0,2088],[1,1955],[2,1706]],tgt=[[2,1706],[3,921],[4,184]];let g="";
+  [0,700,1400,2100].forEach(t=>{const y=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${y}" x2="${w-pad.r}" y2="${y}"/><text class="axis" x="${pad.l-5}" y="${y+3}" text-anchor="end">${t}</text>`;});
+  yrs.forEach((yy,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${yy}</text>`);
+  g+=`<polyline points="${tgt.map(([i,v])=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--base)" stroke-width="2" stroke-dasharray="4 4"/>`;
+  g+=`<polyline points="${act.map(([i,v])=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  act.concat(tgt).forEach(([i,v],k)=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3" fill="${k<3?'var(--accent)':'var(--base)'}"/>`);
+  g+=`<text class="axis" x="${w-pad.r}" y="${yf(184)-6}" text-anchor="end" style="fill:var(--base)">net zero 2045</text>`;
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`;}
+function radar(){const w=260,h=196,cx=130,cy=94,R=62,max=4,P=["Governance","Strategy","Risk","Metrics"],S2=[3,2,2,4],S1=[2,1,2,3];
+  const pt=(i,r)=>{const a=-Math.PI/2+i/4*2*Math.PI;return[cx+r*Math.cos(a),cy+r*Math.sin(a)];};let g="";
+  for(let ring=1;ring<=4;ring++){let p=[];for(let i=0;i<4;i++)p.push(pt(i,R*ring/max).join(","));g+=`<polygon points="${p.join(" ")}" fill="none" stroke="var(--line)"/>`;}
+  for(let i=0;i<4;i++){const[x,y]=pt(i,R);g+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--line)"/>`;const[lx,ly]=pt(i,R+9);const an=i===1?"start":i===3?"end":"middle";g+=`<text class="axis" x="${lx}" y="${ly}" text-anchor="${an}" dominant-baseline="middle">${P[i]}</text>`;}
+  const poly=(v,c,f)=>`<polygon points="${v.map((x,i)=>pt(i,R*x/max).join(",")).join(" ")}" fill="${c}" fill-opacity="${f}" stroke="${c}" stroke-width="2"/>`;
+  g+=poly(S1,"var(--base)",.10)+poly(S2,"var(--accent)",.14);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`;}
+
+/* ---- pages ---- */
+const pages=[];
+pages.push(`<section class="page cover">
+  <div class="top"><div class="logo">N</div><div class="brand">NZI Pro<br><span>Insights Platform</span></div></div>
+  <div class="mid"><div class="eyebrow" style="color:#8FE3B8">Carbon Reduction Plan · FY2024</div>
+    <h1>Carbon Reduction Plan</h1>
+    <div class="client">ABtec Computer Solutions Limited</div>
+    <div class="meta">Reporting year 1 Apr 2023 – 31 Mar 2024 · prepared by NZI · A. Shaw</div>
+    <div class="assured">${I.check.replace('19','16')} Assured · reviewed snapshot · DEFRA/BEIS 2024 v1.2</div>
+  </div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">01</span><div><div class="eyebrow">Overview</div><h2>Executive summary</h2></div></div>
+  <p class="lede">ABtec's FY2024 assured footprint is <b>1,706 tCO₂e</b>, down <b>7.4%</b> against the FY2023 baseline. Emissions intensity fell across every measure, the reduction plan is under way across all three spheres of influence, and UK SRS readiness stands at <b>Established (62%)</b> with a defined path to ready by Q4 2026.</p>
+  <div class="stats">
+    <div class="stat"><div class="v">1,706<span class="sub"> tCO₂e</span></div><div class="l">Total emissions FY24</div><div class="d" style="color:var(--ok)">▼ 7.4% vs baseline</div></div>
+    <div class="stat"><div class="v">7.11</div><div class="l">tCO₂e per employee</div><div class="d" style="color:var(--ok)">▼ 10.5%</div></div>
+    <div class="stat"><div class="v">8</div><div class="l">Reduction actions</div><div class="d muted">3 in progress</div></div>
+    <div class="stat"><div class="v">62%</div><div class="l">UK SRS readiness</div><div class="d muted">Established</div></div>
+  </div>
+  <div class="callout">${I.leaf} &nbsp;On the current trajectory ABtec is broadly tracking its near-term target (−50% by 2030); the largest remaining opportunity is Scope 3 value-chain emissions (67% of the footprint).</div>
+  <div class="pf"><span>ABtec Computer Solutions Limited · Carbon Reduction Plan FY2024</span><span>2</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">02</span><div><div class="eyebrow">Footprint</div><h2>Emissions by scope</h2></div></div>
+  <div class="grid2">
+    <div style="text-align:center">${donut()}
+      <table class="tbl" style="margin-top:10px"><tbody>
+        <tr><td><span class="sw" style="background:var(--s1)"></span>Scope 1</td><td class="num">110</td><td class="num muted">6%</td></tr>
+        <tr><td><span class="sw" style="background:var(--s2)"></span>Scope 2</td><td class="num">452</td><td class="num muted">26%</td></tr>
+        <tr><td><span class="sw" style="background:var(--s3)"></span>Scope 3</td><td class="num">1,144</td><td class="num muted">67%</td></tr>
+        <tr><td><b>Total</b></td><td class="num"><b>1,706</b></td><td></td></tr></tbody></table></div>
+    <div>
+      <div class="eyebrow" style="color:var(--muted)">Year on year</div>
+      <table class="tbl" style="margin-top:6px"><thead><tr><th>Year</th><th class="num">Total</th><th class="num">vs prior</th></tr></thead><tbody>
+        <tr><td>FY2022</td><td class="num">1,955</td><td class="num muted">—</td></tr>
+        <tr><td>FY2023 ◆ baseline</td><td class="num">1,842</td><td class="num" style="color:var(--ok)">−5.8%</td></tr>
+        <tr><td>FY2024</td><td class="num">1,706</td><td class="num" style="color:var(--ok)">−7.4%</td></tr>
+      </tbody></table>
+      <div class="callout" style="margin-top:14px;background:var(--panel-2);border-color:var(--line);color:var(--ink-2)">Scope 3 is the priority: categories 1 (purchased goods), 4 and 6 make up the majority of the value-chain total.</div>
+    </div>
+  </div>
+  <div class="prov"><b>Provenance.</b> Factor set DEFRA/BEIS 2024 v1.2 · data hash sha256:9f3a…c17b · as-at 31 Mar 2025 · source reviewed snapshot J000702. Quality tiers: Scope 1 &amp; 2 measured; Scope 3 estimated &amp; spend-based. Figures are derived from the assured snapshot, not captured.</div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024</span><span>3</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">03</span><div><div class="eyebrow">Performance</div><h2>Emissions intensity</h2></div></div>
+  <p class="sub">Emissions against the measures that matter to the business — lower is better. Each measure is set with the client; values are recorded each reporting year.</p>
+  <div class="imrow"><div class="im-ic">${I.people}</div><div><div class="nm">Per employee</div><div class="u">240 employees</div></div><div class="val"><b>7.11</b> <span class="u">tCO₂e/employee</span><div class="u" style="color:var(--ok)">▼ 10.5% vs baseline</div></div></div>
+  <div class="imrow"><div class="im-ic">${I.gbp}</div><div><div class="nm">Per £M turnover</div><div class="u">£40.0M turnover</div></div><div class="val"><b>42.7</b> <span class="u">tCO₂e/£M</span><div class="u" style="color:var(--ok)">▼ 11.3% vs baseline</div></div></div>
+  <div class="imrow"><div class="im-ic">${I.building}</div><div><div class="nm">Per m² floor area</div><div class="u">3,600 m² · in-service sites</div></div><div class="val"><b>474</b> <span class="u">kgCO₂e/m²</span><div class="u" style="color:var(--ok)">▼ 12.5% vs baseline</div></div></div>
+  <div class="prov">Denominators: employees &amp; turnover from the job's annual metrics; floor area summed from the client's in-service sites for the year. Icons are part of each measure's definition and appear in the portal and here.</div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024</span><span>4</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">04</span><div><div class="eyebrow">Trajectory</div><h2>Targets &amp; reduction pathway</h2></div></div>
+  <div class="grid2">
+    <div>${pathway()}</div>
+    <div>
+      <table class="tbl"><tbody>
+        <tr><td>Benchmark year</td><td class="num">FY2023 · 1,842</td></tr>
+        <tr><td>Near-term target</td><td class="num">2030 · −50%</td></tr>
+        <tr><td>Net zero</td><td class="num">2045 · −90%</td></tr>
+        <tr><td>Scope 1</td><td class="num">−80% by 2040</td></tr>
+        <tr><td>Scope 2</td><td class="num">−100% by 2030</td></tr>
+        <tr><td>Scope 3</td><td class="num">−90% by 2045</td></tr>
+      </tbody></table>
+      <div class="sub" style="margin-top:8px">Actual (solid) vs the target pathway (dashed), anchored on the FY2023 baseline; net zero carries a 10% residual addressed by removals.</div>
+    </div>
+  </div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024</span><span>5</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">05</span><div><div class="eyebrow">Plan</div><h2>Decarbonisation actions</h2></div></div>
+  <div class="sphere">Direct control · own operations</div>
+  <div class="act"><div class="ai">${I.bolt}</div><div><div class="nm">Switch London HQ to a renewable tariff</div><div class="u">Scope 2 · Energy</div></div><span class="st" style="color:var(--warn)">In progress · 60%</span></div>
+  <div class="act"><div class="ai">${I.truck}</div><div><div class="nm">Fleet transition to EV</div><div class="u">Scope 1 · Transport</div></div><span class="st muted">Planned</span></div>
+  <div class="sphere">Supply chain · procurement</div>
+  <div class="act"><div class="ai">${I.handshake}</div><div><div class="nm">Supplier engagement programme — top 20 by spend</div><div class="u">Scope 3 · Cat 1</div></div><span class="st" style="color:var(--warn)">In progress · 40%</span></div>
+  <div class="sphere">Influence · customers &amp; industry</div>
+  <div class="act"><div class="ai">${I.recycle}</div><div><div class="nm">Customer product take-back scheme</div><div class="u">Scope 3 · Cat 12</div></div><span class="st muted">Planned</span></div>
+  <div class="prov">Qualitative plan tracked against the assured baseline; levers assigned from the NZI catalogue and grouped by sphere of influence.</div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024</span><span>6</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">06</span><div><div class="eyebrow">Disclosure</div><h2>UK SRS readiness statement</h2></div></div>
+  <div class="grid2">
+    <div style="text-align:center">${radar()}<div class="sub" style="margin-top:4px"><span class="sw" style="background:var(--accent)"></span>S2 Climate &nbsp; <span class="sw" style="background:var(--base)"></span>S1 General</div></div>
+    <div>
+      <p class="sub">Assessed against UK SRS S2 (climate), led, with S1 (general) alongside — four pillars, 5-step maturity ladder. Overall <b>Established (62%)</b>, 48 of 61 requirements evidenced.</p>
+      <div class="mgrid" id="mg"></div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:16px">Path to SRS-ready by Q4 2026: board-level climate oversight, climate scenario analysis, a transition plan, and climate integrated into the enterprise risk register.</div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024</span><span>7</span></div>
+</section>`);
+
+pages.push(`<section class="page">
+  <div class="sechd"><span class="n">07</span><div><div class="eyebrow">Basis</div><h2>Methodology &amp; provenance</h2></div></div>
+  <table class="tbl"><tbody>
+    <tr><td>Standard</td><td>GHG Protocol · UK SRS S2 aligned</td></tr>
+    <tr><td>Factor set</td><td>DEFRA/BEIS 2024 v1.2</td></tr>
+    <tr><td>Reporting boundary</td><td>Operational control · in-service sites for FY2024</td></tr>
+    <tr><td>Data quality</td><td>Scope 1 &amp; 2 measured · Scope 3 estimated &amp; spend-based</td></tr>
+    <tr><td>Assurance basis</td><td>Reviewed snapshot (internal review); not third-party assured</td></tr>
+    <tr><td>As-at date</td><td>31 Mar 2025</td></tr>
+  </tbody></table>
+  <div class="prov" style="border:0;margin-top:16px">Every figure in this report is derived from the client's assured, reviewed snapshot and carries its factor set, version, data hash and as-at date. Charts are generated from the data, never captured as images, and render identically on screen, in the portal and in this document.</div>
+  <div class="pf"><span>ABtec · Carbon Reduction Plan FY2024 · Generated ${new Date().toLocaleDateString('en-GB')}</span><span>8</span></div>
+</section>`);
+
+document.getElementById("doc").innerHTML=pages.join("");
+/* maturity mini-cards */
+const MP=[["Governance",3],["Strategy",2],["Risk management",2],["Metrics & targets",4]];
+document.getElementById("mg").innerHTML=MP.map(([p,m])=>`<div class="mat"><div class="p">${p}</div><div class="lv">${LVL[m]}</div><div class="dots">${[0,1,2,3,4].map(i=>`<i style="background:${i<=m?MC[m]:'var(--m0)'}"></i>`).join("")}</div></div>`).join("");
+</script>
