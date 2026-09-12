@@ -22,9 +22,9 @@ export type ClientScreenReadModel = {
 };
 
 
-// NZC-069 (Open — awaiting Francis) — the commercial ledger read models.
+// NZC-069 (HELD — for a dedicated quotes/invoices exercise; not for merge) — the commercial ledger read models.
 export type CommercialDocumentReadModel = { id: string; number: string; title: string; status: string; amount: number; currency: string; version: number; updatedAt: string; xero: { status: "synced" | "pending" | "failed" | "not_configured"; reference: string | null; lastSyncedAt: string | null } };
-export type FinancialsReadModel = { quotes: CommercialDocumentReadModel[]; invoices: CommercialDocumentReadModel[]; creditNotes: CommercialDocumentReadModel[]; xeroStatus: { state: "connected" | "degraded" | "not_configured"; label: string } };
+export type FinancialsReadModel = { quotes: CommercialDocumentReadModel[]; invoices: CommercialDocumentReadModel[]; creditNotes: CommercialDocumentReadModel[]; xeroStatus: { state: "connected" | "awaiting_sync" | "degraded" | "not_configured"; label: string } };
 export type DocumentHistoryReadModel = { document: CommercialDocumentReadModel; events: Array<{ id: string; at: string; label: string; detail: string; actor: string; tone: "neutral" | "success" | "warning" }> };
 
 type CommercialDocumentRow = Omit<CommercialDocumentReadModel, "xero"> & { xeroStatus: CommercialDocumentReadModel["xero"]["status"]; xeroReference: string | null; xeroLastSyncedAt: string | null };
@@ -32,12 +32,20 @@ type CommercialDocumentRow = Omit<CommercialDocumentReadModel, "xero"> & { xeroS
 /** Whether a Xero connection is configured for this organisation. None exists yet, so the route passes what the environment says. */
 export type XeroIntegrationState = { configured: boolean };
 
-/** NZC-069 (Open) — the ledger's Xero status, derived from the integration and the documents' own sync state. */
+/**
+ * NZC-069 (Held) — the ledger's Xero status, derived, never assumed (truth before
+ * availability). No integration → "Not connected". A failed sync → degraded. A
+ * configured tenant is not yet evidence of a working connection: "Connected" needs at
+ * least one document actually synced, with its sync time; until then it reads
+ * "awaiting first sync". The ledger itself is the source of record either way.
+ */
 export function deriveXeroStatus(integration: XeroIntegrationState, documents: ReadonlyArray<Pick<CommercialDocumentReadModel, "xero">>): FinancialsReadModel["xeroStatus"] {
   if (!integration.configured) return { state: "not_configured", label: "Not connected" };
   const failed = documents.filter((document) => document.xero.status === "failed").length;
   if (failed) return { state: "degraded", label: `Degraded · ${failed} document${failed === 1 ? "" : "s"} failed to sync` };
   const pending = documents.filter((document) => document.xero.status === "pending" || document.xero.status === "not_configured").length;
+  const synced = documents.some((document) => document.xero.status === "synced" && document.xero.lastSyncedAt !== null);
+  if (!synced) return { state: "awaiting_sync", label: pending ? `Configured · awaiting first sync (${pending} pending)` : "Configured · awaiting first sync" };
   return { state: "connected", label: pending ? `Connected · ${pending} awaiting sync` : "Connected" };
 }
 

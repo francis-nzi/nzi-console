@@ -7,15 +7,16 @@ import type { CommercialDocumentReadModel, DocumentHistoryReadModel, FinancialsR
 import { formatDate, formatDateTime } from "../../lib/formatDate";
 
 /**
- * NZC-069 (Open — awaiting Francis) — this client's commercial ledger, read from its
- * own records; Xero is a downstream projection whose status is derived, never assumed.
+ * NZC-069 (HELD — for a dedicated quotes/invoices exercise; not for merge) — this
+ * client's commercial ledger, read from its own records; Xero is a downstream
+ * projection whose status is derived, never assumed.
  */
 
 const statusLabel: Record<string, string> = { draft: "Draft", sent: "Sent", approved: "Approved", accepted: "Accepted", converted: "Converted", overdue: "Overdue", paid: "Paid", issued: "Issued", applied: "Applied" };
 const statusClass: Record<string, string> = { draft: "need", sent: "est", approved: "need", accepted: "done", converted: "done", overdue: "nof", paid: "done", issued: "est", applied: "done" };
 const xeroLabel: Record<CommercialDocumentReadModel["xero"]["status"], string> = { synced: "Synced", pending: "Awaiting sync", failed: "Sync failed", not_configured: "Not connected" };
 const xeroClass: Record<CommercialDocumentReadModel["xero"]["status"], string> = { synced: "done", pending: "est", failed: "nof", not_configured: "need" };
-const ledgerXeroClass: Record<FinancialsReadModel["xeroStatus"]["state"], string> = { connected: "done", degraded: "nof", not_configured: "need" };
+const ledgerXeroClass: Record<FinancialsReadModel["xeroStatus"]["state"], string> = { connected: "done", awaiting_sync: "est", degraded: "nof", not_configured: "need" };
 const typeRows = [{ label: "Quotes", type: "quote" }, { label: "Invoices", type: "invoice" }, { label: "Credit notes", type: "credit_note" }] as const;
 type DocumentType = (typeof typeRows)[number]["type"];
 
@@ -63,21 +64,24 @@ export function ClientFinancials({ result }: { result: ScreenResult<FinancialsRe
         <td className="muted">{formatDate(row.updatedAt)}</td>
         <td><button type="button" className="nz-table-link" onClick={() => void openHistory(row)}>View history →</button></td>
       </tr>)}</tbody></table>}
-    <Drawer open={selected !== null} onClose={() => setSelected(null)} ariaLabel={selected ? `${selected.document.number} history` : "Document history"} className="nz-site-drawer">
-      {selected ? <div className="nz-site-drawer-body">
-        <div className="nz-site-drawer-h"><div><div className="eyebrow">Document history</div><h3>{selected.document.number}</h3><div className="sub">{selected.document.title}</div></div><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close document history">✕</button></div>
+    <Drawer open={selected !== null} onClose={() => setSelected(null)} ariaLabel={selected ? `${selected.document.number} history` : "Document history"} className="nz-site-drawer" dismissOnOutsideClick>
+      {selected ? <>
+        <div className="nz-dh"><div className="k">Document history</div><h3>{selected.document.number}</h3><div className="sub">{selected.document.title}</div><button type="button" className="x" onClick={() => setSelected(null)} aria-label="Close document history">×</button></div>
+        <div className="nz-db">
         <div className="nz-kv"><span className="k">Console record</span><span className="v">v{selected.document.version} · {statusLabel[selected.document.status] ?? selected.document.status}</span></div>
         <div className="nz-kv"><span className="k">Xero projection</span><span className="v">{xeroLabel[selected.document.xero.status]}{selected.document.xero.reference ? ` · ${selected.document.xero.reference}` : ""}</span></div>
         {selected.state === "loading" ? <p className="sub" role="status">Loading history…</p> : null}
         {selected.state === "failed" ? <div className="nz-banner warn" role="alert">{selected.message}</div> : null}
         {selected.state === "loaded" ? (selected.history.events.length === 0
           ? <p className="sub">No events have been recorded for this document.</p>
-          : <div className="tl" style={{ marginTop: 18 }}>{selected.history.events.map((event) => <div className="ev" key={event.id}><div className="eyebrow">{formatDateTime(event.at)}</div><b>{event.label}</b><p className="sub" style={{ margin: "4px 0" }}>{event.detail}</p><small className="muted">{event.actor}</small></div>)}</div>) : null}
-      </div> : null}
+          : <div className="nz-history">{selected.history.events.map((event) => <div className="nz-history-ev" key={event.id}><div className="eyebrow">{formatDateTime(event.at)}</div><b>{event.label}</b><p className="sub" style={{ margin: "4px 0" }}>{event.detail}</p><small className="muted">{event.actor}</small></div>)}</div>) : null}
+        </div>
+        <div className="nz-df"><span className="sp" /><button type="button" className="nz-btn pri" onClick={() => setSelected(null)}>Close</button></div>
+      </> : null}
     </Drawer>
   </section>;
 }
 
 function Head({ right }: { right?: React.ReactNode }) {
-  return <div className="nz-panel-head"><div><div className="eyebrow">Commercial ledger</div><h2>Financials</h2></div>{right}</div>;
+  return <div className="nz-card-h"><span className="eyebrow">Commercial ledger</span><h2>Financials</h2><span className="sp" />{right}</div>;
 }
