@@ -3,7 +3,7 @@ import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, resolveClientEmissionsEvidence, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod } from "@nzi/contracts";
 import { dateOnly } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 export { dateOnly } from "./dates";
@@ -152,6 +152,84 @@ export async function listClients(db: Queryable, clientId?: string): Promise<Cli
 
 /** `eligible` — the period is 300–400 days (NZC-067), so the job can stand for a reporting year. */
 export type ClientReportingPeriod = { jobId: string; jobNumber: string; label: string; from: string; to: string; days: number; eligible: boolean };
+
+/**
+ * One reporting year as the client workspace v10 analytics read it: the assured total and
+ * its scope split with tiers, the intensity the job recorded, and the year's own
+ * provenance. Resolved through `resolveClientEmissionsEvidence` — the same resolver the
+ * headline figures use, so a year in the history and the headline cannot disagree.
+ */
+export type ClientYearFigure = {
+  year: number;
+  jobId: string;
+  jobNumber: string;
+  snapshotId: string;
+  snapshotVersion: number;
+  totalTco2e: number | null;
+  scopes: Array<{ scope: "1" | "2" | "3"; tco2e: number | null; qualityTier: FigureTier | null }>;
+  /** null when the snapshot was issued before stamping, or the stamp was backfilled — never a gate. */
+  provenance: ProvenanceSignature | null;
+  intensity: { state: "resolved" | "unavailable"; metric: string | null; unit: string; value: number | null; note: string | null };
+  /** Every intensity basis this year's own data supports — an absent denominator says so rather than borrowing another basis. */
+  bases: Record<IntensityBasisKey, ClientIntensityBasis>;
+  issuedAt: string;
+  issuedBy: string;
+};
+
+/** The three normalisation bases the client workspace offers. One term, one meaning. */
+export type IntensityBasisKey = "turnover" | "employee" | "floor-area";
+export type ClientIntensityBasis =
+  | { state: "resolved"; value: number; unit: string; denominator: number; denominatorLabel: string; denominatorUnit: string; source: "job-business-metric" | "site-floor-area" }
+  | { state: "unavailable"; reason: string };
+
+const BASIS_LABEL: Record<IntensityBasisKey, string> = { turnover: "Turnover", employee: "Employees", "floor-area": "Floor area" };
+
+/**
+ * One reporting year's intensity on every basis. Turnover and employees come from the
+ * business metric the job recorded; floor area is summed from the client's in-service
+ * sites for that year's period (effective-dated), so it resolves even when the job chose
+ * another basis. A basis without a denominator reads unavailable **with its reason** — it
+ * is never estimated from a different denominator.
+ */
+export function resolveIntensityBases(input: {
+  totalTco2e: number | null;
+  intensityTarget: IntensityTargetReadModel | null | undefined;
+  sites: readonly ClientSiteReadModel[];
+  period: ReportingPeriod | null;
+}): Record<IntensityBasisKey, ClientIntensityBasis> {
+  const { totalTco2e, intensityTarget, sites, period } = input;
+  const keys: IntensityBasisKey[] = ["turnover", "employee", "floor-area"];
+  if (totalTco2e === null) {
+    return Object.fromEntries(keys.map((key) => [key, { state: "unavailable", reason: "No assured total is resolved for this year, so no intensity can be formed." }])) as Record<IntensityBasisKey, ClientIntensityBasis>;
+  }
+  const jobDenominator = (key: IntensityBasisKey) =>
+    intensityTarget && intensityTarget.metric === key && intensityTarget.reportingDenominator !== null && intensityTarget.reportingDenominator > 0
+      ? intensityTarget : null;
+
+  const businessBasis = (key: "turnover" | "employee", fallbackUnit: string): ClientIntensityBasis => {
+    const target = jobDenominator(key);
+    if (!target) return { state: "unavailable", reason: `This year's job did not record ${key === "turnover" ? "turnover" : "employees"} as a business metric, so there is no denominator for this basis.` };
+    const denominatorUnit = target.denominatorUnit?.trim() || fallbackUnit;
+    return { state: "resolved", value: totalTco2e / target.reportingDenominator!, unit: `tCO₂e / ${denominatorUnit}`, denominator: target.reportingDenominator!, denominatorLabel: BASIS_LABEL[key], denominatorUnit, source: "job-business-metric" };
+  };
+
+  // Floor area: the job's frozen denominator if it recorded one, else the client's
+  // effective-dated sites for the period. Expressed in kg to keep the figure readable.
+  const floorArea = ((): ClientIntensityBasis => {
+    type Resolved = { m2: number; source: "job-business-metric" | "site-floor-area" };
+    const target = jobDenominator("floor-area");
+    const squareMetres: Resolved | { reason: string } = target
+      ? { m2: target.reportingDenominator!, source: "job-business-metric" }
+      : period
+        ? (() => { const resolved = resolveFloorAreaDenominator(sites, period); return resolved.state === "resolved" ? { m2: resolved.floorAreaM2, source: "site-floor-area" as const } : { reason: resolved.reason }; })()
+        : { reason: "This year has no reporting period on record, so the in-service site boundary cannot be resolved." };
+    if (!("m2" in squareMetres)) return { state: "unavailable", reason: squareMetres.reason };
+    if (squareMetres.m2 <= 0) return { state: "unavailable", reason: "The in-service sites for this year sum to no floor area." };
+    return { state: "resolved", value: (totalTco2e * 1000) / squareMetres.m2, unit: "kgCO₂e / m²", denominator: squareMetres.m2, denominatorLabel: BASIS_LABEL["floor-area"], denominatorUnit: "m²", source: squareMetres.source };
+  })();
+
+  return { turnover: businessBasis("turnover", "£m"), employee: businessBasis("employee", "FTE"), "floor-area": floorArea };
+}
 export type ClientWorkspaceReadModel = {
   client: ClientScreenReadModel;
   sites: ClientSiteReadModel[];
@@ -164,6 +242,8 @@ export type ClientWorkspaceReadModel = {
   targets: ClientTargetsReadModel;
   /** One assured total per reporting year — the actual line on the pathway. */
   actuals: TargetActual[];
+  /** Every assured reporting year, newest first — the analytics area's series. */
+  history: ClientYearFigure[];
 };
 
 const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
@@ -194,6 +274,31 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     }))
     .sort((a, b) => a.year - b.year);
   const targets = await getClientTargets(db, clientId, { benchmarkInForce: await getBenchmarkInForce(db, clientId), actuals });
+  // Each year resolved through the same resolver as the headline figures, newest first.
+  const history: ClientYearFigure[] = reportingYears.map((row) => {
+    const snapshot = mapSnapshotRow(row);
+    const figures = resolveClientEmissionsEvidence({ current: snapshot, prior: null });
+    // The year's period: what the job recorded, else the period the client's financial
+    // year end implies for that reporting year (NZC-067). Null only when neither exists.
+    const period: ReportingPeriod | null = row.reporting_from && row.reporting_to
+      ? { from: dateOnly(row.reporting_from), to: dateOnly(row.reporting_to) }
+      : client.profile.financialYearEndMonth
+        ? reportingPeriodForYear(snapshot.reportingYear, client.profile.financialYearEndMonth)
+        : null;
+    return {
+      year: snapshot.reportingYear, jobId: snapshot.jobId, jobNumber: snapshot.jobNumber,
+      snapshotId: snapshot.id, snapshotVersion: snapshot.version,
+      totalTco2e: figures.latest.value,
+      scopes: figures.scopes.map((scope) => ({ scope: scope.scope, tco2e: scope.value, qualityTier: scope.qualityTier })),
+      provenance: figures.latest.provenance,
+      intensity: {
+        state: figures.intensity.state, metric: snapshot.intensityTarget?.metric ?? null,
+        unit: figures.intensity.unit, value: figures.intensity.value, note: figures.intensity.note,
+      },
+      bases: resolveIntensityBases({ totalTco2e: figures.latest.value, intensityTarget: snapshot.intensityTarget, sites, period }),
+      issuedAt: snapshot.createdAt, issuedBy: snapshot.createdBy,
+    };
+  });
   return {
     client,
     sites,
@@ -205,6 +310,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     contacts,
     targets,
     actuals,
+    history,
   };
 }
 

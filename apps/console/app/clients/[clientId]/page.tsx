@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 const NO_CLIENT = { client: null, sites: [], evidence: null, reportingPeriods: [], contacts: [], targets: null, actuals: [] };
 const londonToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
 
-export default async function ClientPage({ params }: { params: Promise<{ clientId: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ clientId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { clientId } = await params;
+  const area = (await searchParams).area;
   const [workspaceResult, jobResult] = await Promise.all([
     loadScreen<ClientWorkspaceReadModel>("clientWorkspace", NO_CLIENT, `clients/${encodeURIComponent(clientId)}/workspace`),
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
@@ -25,6 +26,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
     today={today}
     writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}
     factorsEnabled={dataEntryAdapterEnabled("client-factors")}
+    initialArea={typeof area === "string" ? area : undefined}
   />;
   // No jobs anywhere is a real, empty engagements list — not a reason to blank the client.
   return <ScreenState result={workspaceResult}>{(workspace) => jobResult.state === "empty"
