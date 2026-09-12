@@ -1,0 +1,841 @@
+<!-- NZI Console — Client Workspace prototype · v12 (2026-09-12) — supersedes v11
+     Adds the action-lever library: the Actions area is now the client's decarbonisation
+     plan grouped by Sphere of Influence (summary + status + progress), with an
+     "Add from library" drawer to assign reduction levers from the Admin-managed catalogue.
+     Qualitative (A2-lite); quantified lever impact is Stage 2.
+     -- prior --
+     Adds: all Overview cards collapsible (only Active jobs open by default); intensity
+     metrics reworked to a client-defined set (Employees + Turnover standard + additionals)
+     with per-metric icons and a Per-N divider, managed via a Carbon Analytics drawer —
+     icons carry to the YoY chart (and are specified to reach the portal + report); annual
+     values are recorded on the job.
+     -- prior --
+     Adds the forward target model: Baseline & targets card separates the baseline (past
+     anchor, via Re-baseline) from forward targets (near-term / net-zero / per-scope, via
+     Edit); the reduction pathway is derived from the target model, not hard-coded.
+     -- prior --
+     Reference design for the client redesign. Covers: area sub-nav + drawer editing,
+     baseline & governed re-baseline, Carbon Analytics (YoY scope, multi-base intensity
+     incl. All-indexed, pathway, donut, year picker), evidence/provenance drawers on
+     figures, site effective-dating (registered office, vacate, floor area), Reporting
+     with per-report links, the commercial ledger (quotes/invoices/credit notes with
+     history drawers; Xero shown as a mirror), and go-live hardening: contact roles
+     (signee/portal/billing/training), client logo upload, and financial-year-end month.
+     Source of truth for the build briefs in docs/CLIENT_WORKSPACE_BACKLOG.md. -->
+<title>Client Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2; --panel:#FFFFFF; --panel-2:#F7FAF8; --panel-3:#EEF3EF;
+  --ink:#14201A; --ink-2:#3C4A43; --muted:#65746C; --faint:#8A968E;
+  --line:#E1E7E2; --line-2:#EDF1ED;
+  --accent:#0B7A46; --accent-d:#095C35; --accent-bg:#E6F4EC;
+  --ok:#0B7A46; --ok-bg:#E6F4EC; --ok-line:#BCE3CE;
+  --warn:#B4690E; --warn-bg:#FBF1DE; --warn-line:#EAD6AC;
+  --danger:#C23B22; --danger-bg:#FBEBE7; --danger-line:#F0CABF;
+  --base:#6B4E9B; --base-bg:#F1ECF9; --base-line:#DECFF0;
+  --s1:#FF5C48; --s2:#FFC24B; --s2-ink:#B4690E; --s3:#0BA75E;
+  --grid:#E7ECE8;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512; --panel:#141C18; --panel-2:#111814; --panel-3:#182019;
+  --ink:#E8EFEA; --ink-2:#AFBCB4; --muted:#7E8D84; --faint:#66756C;
+  --line:#26302B; --line-2:#1E2723;
+  --accent:#37C07E; --accent-d:#59CE93; --accent-bg:#122A1E;
+  --ok:#37C07E; --ok-bg:#122A1E; --ok-line:#1F4632;
+  --warn:#E0A24A; --warn-bg:#2C2311; --warn-line:#4A3A17;
+  --danger:#E56A4E; --danger-bg:#2E1712; --danger-line:#4C271E;
+  --base:#B79AE0; --base-bg:#221A30; --base-line:#3B2E52;
+  --s2:#FFC24B; --s2-ink:#E0A24A; --grid:#26302B;
+}}
+:root[data-theme="dark"]{
+  --ground:#0E1512; --panel:#141C18; --panel-2:#111814; --panel-3:#182019;
+  --ink:#E8EFEA; --ink-2:#AFBCB4; --muted:#7E8D84; --faint:#66756C;
+  --line:#26302B; --line-2:#1E2723;
+  --accent:#37C07E; --accent-d:#59CE93; --accent-bg:#122A1E;
+  --ok:#37C07E; --ok-bg:#122A1E; --ok-line:#1F4632;
+  --warn:#E0A24A; --warn-bg:#2C2311; --warn-line:#4A3A17;
+  --danger:#E56A4E; --danger-bg:#2E1712; --danger-line:#4C271E;
+  --base:#B79AE0; --base-bg:#221A30; --base-line:#3B2E52;
+  --s2:#FFC24B; --s2-ink:#E0A24A; --grid:#26302B;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.015em}
+button{font-family:inherit}
+.mono{font-family:var(--mono)}.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.app{display:grid;grid-template-columns:58px 1fr;height:100vh;min-height:640px}
+.rail{background:var(--panel-2);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 0}
+.rail .logo{width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px;margin-bottom:10px}
+.rail a{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--muted);text-decoration:none;font-size:16px}
+.rail a.on{background:var(--accent-bg);color:var(--accent-d)}
+.rail .sp{flex:1}
+
+.main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.topbar{display:flex;align-items:center;gap:12px;padding:11px 22px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.crumbs{font-size:12.5px;color:var(--muted)}.crumbs b{color:var(--ink)}
+.topbar .me{margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+
+.chead{display:flex;align-items:center;gap:14px;padding:15px 22px 13px;border-bottom:1px solid var(--line)}
+.mono-badge{width:46px;height:46px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:17px;flex:0 0 auto}
+.mono-badge.logo{position:relative;border:0;cursor:pointer;padding:0}
+.mono-badge.logo .logocam{position:absolute;right:-5px;bottom:-5px;width:19px;height:19px;border-radius:50%;background:var(--panel);color:var(--accent);border:1px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:700}
+.mono-badge.logo:hover .logocam{background:var(--accent);color:#fff;border-color:var(--accent)}
+.logorow{display:flex;align-items:center;gap:14px}
+.roles{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.rolechk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+.rolebadges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tag.rr{color:var(--base);background:var(--base-bg);border-color:var(--base-line)}
+.mrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-2)}
+.micon{width:30px;height:30px;border-radius:8px;background:var(--panel-3);display:grid;place-items:center;font-size:15px;flex:0 0 auto}
+.mmeta{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.mname{font-weight:600;font-size:13px;white-space:nowrap}
+.inp.sm{padding:5px 8px;font-size:12px}
+.iconpick{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.ip{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;font-size:15px;cursor:pointer;background:var(--panel)}
+.ip:hover{border-color:var(--accent)}
+.ip.sug{border-color:var(--accent);background:var(--accent-bg)}
+.asum{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.asumc{flex:1;min-width:110px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.asumc b{display:block;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.asumc span{font-size:12px;color:var(--muted)}
+.arow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line-2)}.arow:last-child{border-bottom:0}
+.arow .aic{width:32px;height:32px;border-radius:9px;background:var(--panel-3);display:grid;place-items:center;font-size:14px;flex:0 0 auto}
+.arow .amid{flex:1;min-width:0}.arow .nm{font-weight:600;font-size:13px}
+.astat{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.aprog{width:110px;height:6px;background:var(--panel-3);border-radius:20px;overflow:hidden}.aprog span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.pill.prog{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+.pill.plan{color:var(--muted);background:var(--panel-3)}
+.filt{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.filt button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);border-radius:20px;padding:3px 11px;cursor:pointer}
+.filt button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.libitem{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line-2)}.libitem:last-child{border-bottom:0}
+.libitem .lm{flex:1;min-width:0}.libitem .nm{font-weight:600;font-size:13px}
+.chead h1{font-size:20px;font-weight:800;display:inline-flex;align-items:center;gap:9px}
+.chead .meta{color:var(--ink-2);font-size:12.5px;margin-top:2px}
+.chead .cid{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.chead .acts{margin-left:auto;display:flex;gap:9px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;border:1px solid;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:50%}
+.pill.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)} .pill.ok i{background:var(--ok)}
+.pill.base{background:var(--base-bg);border-color:var(--base-line);color:var(--base)} .pill.base i{background:var(--base);border-radius:1px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{background:var(--panel-3)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}.btn.pri:hover{background:var(--accent-d)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+
+.body{flex:1;display:grid;grid-template-columns:206px 1fr;min-height:0}
+.subnav{border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:12px 10px}
+.subnav .grp{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);padding:12px 8px 5px}
+.subnav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--ink-2);font-size:13px;font-weight:500;padding:7px 9px;border-radius:8px}
+.subnav button:hover{background:var(--panel-3);color:var(--ink)}
+.subnav button.on{background:var(--accent-bg);color:var(--accent-d);font-weight:600}
+.subnav button .ic{width:15px;text-align:center;font-size:13px;opacity:.85;flex:0 0 auto}
+.subnav button .ct{margin-left:auto;font-size:10px;font-weight:700;color:var(--muted)}
+.content{overflow-y:auto;padding:20px 24px 60px}
+.view{display:none}.view.on{display:block}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.vh{font-size:19px;font-weight:800;margin:3px 0 3px}
+.vsub{color:var(--ink-2);font-size:13px;max-width:80ch;margin-bottom:16px}
+
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.metric .v{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.metric .l{font-size:11.5px;color:var(--muted);margin-top:4px}
+.metric .d{font-size:11px;color:var(--faint)}.metric .d.ok{color:var(--ok)}
+
+/* setup progress strip */
+.setup{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.setup .top{display:flex;align-items:center;gap:12px}
+.setup .lab{font-size:12px;font-weight:700;color:var(--ink-2)}
+.setup .pctn{font-size:12px;font-weight:700;color:var(--accent-d);font-variant-numeric:tabular-nums}
+.setup .bar{flex:1;height:8px;border-radius:20px;background:var(--panel-3);overflow:hidden;border:1px solid var(--line)}
+.setup .bar>span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.setup .toggle{font-size:12px;font-weight:600;color:var(--muted);background:none;border:0;cursor:pointer}
+.setup .steps{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.setup .step{display:flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:20px;padding:3px 10px;color:var(--ink-2)}
+.setup .step.done{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}
+.setup .step .m{font-weight:800}
+.setup .step.todo{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);cursor:pointer}
+
+.grid2{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.card .ch{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line-2)}
+.card .ch h2{font-size:14px;font-weight:700}
+.card .ch .sp{flex:1}.card .ch .eyebrow{font-size:10px}
+.editlink{font-size:12px;font-weight:600;color:var(--accent-d);background:none;border:0;cursor:pointer}.editlink:hover{text-decoration:underline}
+.cb{padding:8px 16px 14px}
+/* collapsible */
+.card.collap>.ch{cursor:pointer}
+.card .chev{color:var(--muted);font-size:12px;transition:transform .15s;margin-left:2px}
+.card.collapsed .chev{transform:rotate(-90deg)}
+.card.collapsed .cbody{display:none}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line-2);font-size:13px}
+.kv:last-child{border-bottom:0}.kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
+.lrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2)}
+.lrow:last-child{border-bottom:0}
+.lrow .ic{width:32px;height:32px;border-radius:9px;background:var(--panel-3);display:grid;place-items:center;color:var(--muted);font-size:14px;flex:0 0 auto}
+.lrow .nm{font-weight:600;font-size:13px}.lrow .sub{font-size:12px;color:var(--muted)}
+.lrow .r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line);border-radius:5px;padding:1px 6px}
+.geotag{font-size:10px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.geotag.on{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}
+.tag.reg{color:#1F6FEB;background:#EAF1FE;border-color:#C7DBFB}
+.tag.vac{color:var(--muted);background:var(--panel-3);border-color:var(--line)}
+.lrow.off .nm,.lrow.off .sub{color:var(--faint)}
+.evid{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--base);background:var(--base-bg);border:1px solid var(--base-line);border-radius:20px;padding:1px 8px;cursor:pointer;vertical-align:middle;line-height:1.6}
+.evid:hover{background:var(--panel);border-color:var(--base)}
+.tierbadge{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:5px;padding:2px 8px}
+.tier-ok{color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line)}
+.tier-est{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line)}
+.provfig{font-size:26px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+table.tbl th{text-align:left;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:8px 16px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+table.tbl td{padding:10px 16px;border-bottom:1px solid var(--line-2)}
+table.tbl tr:last-child td{border-bottom:0}
+.jlink{color:var(--accent-d);font-weight:600;text-decoration:none}
+
+.hero .ch{background:var(--base-bg);border-bottom-color:var(--base-line)}
+.blcur{display:grid;grid-template-columns:1.1fr 1fr;gap:14px;padding:14px 16px}
+.blbox{border:1px solid var(--line);border-radius:11px;padding:12px}
+.blbox .bt{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.blperiod{font-size:14.5px;font-weight:700}.blsrc{font-size:12px;color:var(--muted);margin-top:2px}
+.figs{display:flex;gap:14px;margin-top:9px}
+.fig{font-size:11.5px;color:var(--muted)}.fig b{display:block;font-size:14px;color:var(--ink)}
+.fig .s1{color:var(--s1)}.fig .s2{color:var(--s2-ink)}.fig .s3{color:var(--s3)}
+.vsbl{font-size:24px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums}
+.tgt{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.tgtchip{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:2px 9px;color:var(--ink-2)}.tgtchip b{color:var(--ink)}
+.scopetgts{font-size:11.5px;color:var(--muted);margin-top:7px}
+.tl{padding:4px 16px 14px}.tl .th{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 8px}
+.ev{display:grid;grid-template-columns:16px 1fr auto;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line-2)}.ev:last-child{border-bottom:0}
+.ev .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;border:2px solid var(--base);background:var(--panel)}.ev.now .dot{background:var(--base)}
+.ev .ea{font-size:12.5px;font-weight:600}
+.ev .ek{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:5px;margin-left:6px}
+.ek.initial{color:var(--muted);background:var(--panel-3);border:1px solid var(--line)}
+.ek.recalc{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line)}
+.ev .er{font-size:11.5px;color:var(--muted);margin-top:2px}.ev .ed{font-size:11px;color:var(--faint);text-align:right;white-space:nowrap}
+
+.xero{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 13px;margin-bottom:14px}
+.xero b{color:var(--ink)}
+.dotx{width:8px;height:8px;border-radius:50%;background:var(--faint)}.dotx.ok{background:var(--ok)}
+.xc{font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
+.xc.ok{color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line);border-radius:5px;padding:1px 7px}
+.chart-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);padding:2px 16px 10px}
+.chart-legend .li{display:flex;align-items:center;gap:6px}
+.chart-legend .sw{width:11px;height:11px;border-radius:3px}
+.chartwrap{padding:6px 12px 14px;overflow-x:auto}
+svg .axis{fill:var(--muted);font-size:10px;font-family:var(--font)}
+svg .val{fill:var(--ink);font-size:10px;font-weight:600;font-family:var(--font);font-variant-numeric:tabular-nums}
+svg .gl{stroke:var(--grid);stroke-width:1}
+svg .bl-marker{stroke:var(--base);stroke-width:1.5;stroke-dasharray:3 3}
+rect.seg{stroke:var(--panel);stroke-width:2}
+.yearsel{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 9px;font-size:12.5px;color:var(--ink);font-weight:600}
+.placeholder{padding:26px;text-align:center;color:var(--faint);font-size:13px;background:var(--panel-2);border:1px dashed var(--line);border-radius:12px}
+.placeholder b{color:var(--ink-2);display:block;font-size:13.5px;margin-bottom:4px}
+.maps{font-size:11.5px;color:var(--muted);margin-top:9px}
+
+.scrim{position:fixed;inset:0;background:rgba(10,20,15,.34);opacity:0;pointer-events:none;transition:opacity .16s;z-index:30}
+.scrim.show{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(470px,96vw);background:var(--panel);border-left:1px solid var(--line);box-shadow:-12px 0 36px rgba(0,0,0,.22);transform:translateX(100%);transition:transform .18s ease;z-index:31;display:flex;flex-direction:column}
+.drawer.show{transform:none}
+.dh{padding:16px 20px 14px;border-bottom:1px solid var(--line);position:relative}
+.dh .k{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.dh h2{font-size:17px;font-weight:700;margin-top:3px}.dh .x{position:absolute;top:14px;right:16px;border:0;background:none;font-size:22px;color:var(--muted);cursor:pointer}
+.db{padding:16px 20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px}
+.fl{display:flex;flex-direction:column;gap:4px}.fl label{font-size:11.5px;font-weight:600;color:var(--ink-2)}.fl label .req{color:var(--danger);margin-left:2px}
+.inp{border:1px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:13px;width:100%}
+.inp:focus{background:var(--panel);border-color:var(--accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.hint{font-size:11.5px;color:var(--muted)}
+.seg{display:inline-flex;background:var(--panel-3);border:1px solid var(--line);border-radius:9px;padding:3px;width:100%}
+.seg button{flex:1;border:0;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);padding:8px;border-radius:7px;line-height:1.25}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.kindnote{font-size:11.5px;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:9px 11px}.kindnote b{color:var(--ink)}
+.gov{display:flex;gap:8px;font-size:11.5px;color:var(--ink-2);background:var(--base-bg);border:1px solid var(--base-line);border-radius:9px;padding:10px 12px}.gov .lk{color:var(--base)}
+.geo{border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+.geo .gr2{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600}
+.geo .body{margin-top:10px;display:flex;flex-direction:column;gap:9px}
+.linkbtn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--accent-d);text-decoration:none}
+.df{border-top:1px solid var(--line);padding:14px 20px;background:var(--panel-2)}.dfa{display:flex;gap:9px;align-items:center}.dfa .sp{flex:1}
+.gr{font-size:11px;color:var(--muted)}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}.blcur{grid-template-columns:1fr}.body{grid-template-columns:1fr}.subnav{display:none}}
+</style>
+
+<div class="app">
+  <nav class="rail" aria-label="Workspaces">
+    <div class="logo">N</div>
+    <a href="#" title="Control Room">◱</a>
+    <a href="#" class="on" title="Clients" aria-current="page">◔</a>
+    <a href="#" title="Jobs">◵</a>
+    <a href="#" title="Emissions">▤</a>
+    <a href="#" title="Datasets & factors">▦</a>
+    <a href="#" title="Reports">▥</a>
+    <span class="sp"></span><a href="#" title="Admin">⚙</a>
+  </nav>
+
+  <div class="main">
+    <div class="topbar"><div class="crumbs">Clients <span style="color:var(--faint)">/</span> <b>ABtec Computer Solutions Limited</b></div><div class="me">FD</div></div>
+    <div class="chead">
+      <button class="mono-badge logo" onclick="openD('identity')" title="Upload client logo" aria-label="Client logo — upload">AB<span class="logocam" aria-hidden="true">✎</span></button>
+      <div>
+        <h1>ABtec Computer Solutions Limited <span class="pill ok"><i></i>Active</span></h1>
+        <div class="meta">Information technology · London, UK · Account owner A. Shaw <span class="cid">· Client 243</span></div>
+      </div>
+      <div class="acts"><button class="btn" onclick="openD('portal')">Portal access</button><button class="btn pri">＋ Create job</button></div>
+    </div>
+
+    <div class="body">
+      <nav class="subnav" aria-label="Client areas">
+        <div class="grp">Client</div>
+        <button class="na on" data-v="overview"><span class="ic">▦</span>Overview</button>
+        <button class="na" data-v="analytics"><span class="ic">▤</span>Carbon Analytics</button>
+        <button class="na" data-v="reporting"><span class="ic">▥</span>Reporting</button>
+        <button class="na" data-v="actions"><span class="ic">⚡</span>Actions</button>
+        <button class="na" data-v="srs"><span class="ic">◎</span>SRS Readiness</button>
+        <div class="grp">Manage</div>
+        <button class="na" data-v="tasks"><span class="ic">☑</span>Tasks<span class="ct">0</span></button>
+        <button class="na" data-v="notes"><span class="ic">✎</span>Notes</button>
+        <button class="na" data-v="files"><span class="ic">🗂</span>Files</button>
+        <button class="na" data-v="comms"><span class="ic">✉</span>Communications</button>
+        <div class="grp">Record</div>
+        <button class="na" data-v="profile"><span class="ic">🏢</span>Company Profile</button>
+        <button class="na" data-v="financials"><span class="ic">£</span>Financials</button>
+        <button class="na" data-v="ai"><span class="ic">✦</span>AI Profile</button>
+      </nav>
+
+      <div class="content">
+        <!-- ============ OVERVIEW ============ -->
+        <div class="view on" data-v="overview">
+          <div class="metrics">
+            <div class="metric"><div class="v num">3</div><div class="l">Open jobs</div><div class="d">7 total engagements</div></div>
+            <div class="metric"><div class="v num">1,706<span style="font-size:11px;color:var(--muted)"> tCO₂e</span></div><div class="l">Latest emissions · FY2024 <span class="evid" onclick="openProv('emissions')" title="Show provenance & lineage">◈ Evidence</span></div><div class="d ok">−7.4% vs baseline</div></div>
+            <div class="metric"><div class="v num">92<span style="font-size:12px">%</span></div><div class="l">Data completeness</div><div class="d">across engagements</div></div>
+            <div class="metric"><div class="v num">£4,200</div><div class="l">Outstanding balance</div><div class="d">1 invoice overdue</div></div>
+          </div>
+
+          <!-- setup progress -->
+          <div class="setup">
+            <div class="top"><span class="lab">Client setup</span><div class="bar"><span style="width:83%"></span></div><span class="pctn">83%</span><button class="toggle" id="setupToggle">Show steps ▾</button></div>
+            <div class="steps" id="setupSteps" hidden>
+              <span class="step done"><span class="m">✓</span> Profile</span>
+              <span class="step done"><span class="m">✓</span> Baseline</span>
+              <span class="step done"><span class="m">✓</span> Targets</span>
+              <span class="step done"><span class="m">✓</span> Contacts</span>
+              <span class="step done"><span class="m">✓</span> Sites</span>
+              <span class="step todo" onclick="openD('portal')"><span class="m">•</span> Invite portal users</span>
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div class="col">
+              <!-- Active jobs — collapsible, OPEN by default (the only one) -->
+              <section class="card collap">
+                <div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Delivery</span><h2>Active jobs &amp; milestone progress</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation()">New job →</button></div>
+                <div class="cbody">
+                <table class="tbl"><thead><tr><th>Job</th><th>Type</th><th>Stage</th><th>Owner</th><th>Due</th></tr></thead><tbody>
+                  <tr><td><a class="jlink" href="#">J000702</a></td><td>Carbon Reduction Plan — Report Only</td><td>Reporting</td><td>A. Shaw</td><td>31/03/2026</td></tr>
+                  <tr><td><a class="jlink" href="#">J000446</a></td><td>Carbon Reduction Plan — Report Only</td><td>Data entry</td><td>A. Shaw</td><td>—</td></tr>
+                  <tr><td><a class="jlink" href="#">J000227</a></td><td>Carbon Reduction Plan — Report Only</td><td>Published</td><td>A. Shaw</td><td>—</td></tr>
+                </tbody></table>
+                </div>
+              </section>
+
+              <!-- Activity — collapsible, collapsed by default -->
+              <section class="card collap collapsed">
+                <div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Relationship</span><h2>Activity</h2><span class="sp"></span></div>
+                <div class="cbody"><div class="cb">
+                  <div class="kv"><span class="k"><a class="jlink" href="#">J000702</a> · Data entry → Setup</span><span class="v">07/09/2026</span></div>
+                  <div class="kv"><span class="k"><a class="jlink" href="#">J000702</a> · Review & QA → Data entry</span><span class="v">06/09/2026</span></div>
+                  <div class="kv"><span class="k"><a class="jlink" href="#">J000227</a> · Published</span><span class="v">18/04/2024</span></div>
+                </div></div>
+              </section>
+
+              <!-- Emissions history — collapsible, collapsed -->
+              <section class="card collap collapsed">
+                <div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Carbon</span><h2>Emissions history</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();show('analytics')">Full analytics →</button></div>
+                <div class="cbody">
+                  <div class="chart-legend"><span class="li"><span class="sw" style="background:var(--s1)"></span>Scope 1</span><span class="li"><span class="sw" style="background:var(--s2)"></span>Scope 2</span><span class="li"><span class="sw" style="background:var(--s3)"></span>Scope 3</span><span class="li"><span class="sw" style="background:var(--base)"></span>Baseline year</span></div>
+                  <div class="chartwrap" id="ovchart"></div>
+                </div>
+              </section>
+
+              <!-- Baseline & targets — collapsible, collapsed -->
+              <section class="card hero collap collapsed">
+                <div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="pill base"><i></i>Baseline &amp; targets</span><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();openD('rebaseline')">⇄ Re-baseline / recalculate</button></div>
+                <div class="cbody">
+                  <div class="blcur">
+                    <div class="blbox"><div class="bt">Baseline in force <span class="pill ok" style="font-size:10px;padding:1px 7px"><i></i>Declared</span></div><div class="blperiod">FY2023 · 1 Apr 2023 – 31 Mar 2024</div><div class="blsrc">From job <a class="jlink" href="#">J000227</a> · effective FY2023</div><div class="figs"><div class="fig"><span class="s1">Scope 1</span><b>120</b></div><div class="fig"><span class="s2">Scope 2</span><b>480</b></div><div class="fig"><span class="s3">Scope 3</span><b>1,242</b></div><div class="fig">Total<b>1,842</b></div></div></div>
+                    <div class="blbox"><div class="bt">Progress vs baseline</div><div class="vsbl">−7.4%</div><div class="blsrc">FY2024 total 1,706 tCO₂e</div>
+                      <div class="bt" style="margin-top:11px;display:flex;align-items:center">Targets <span class="blsrc" style="font-weight:500;margin-left:6px">vs FY2023 benchmark</span><span class="sp" style="flex:1"></span><button class="editlink" onclick="openD('targets')">Edit</button></div>
+                      <div class="tgt"><span class="tgtchip">Near-term <b>2030 · −50%</b></span><span class="tgtchip">Net zero <b>2045 · −90%</b></span></div>
+                      <div class="scopetgts">S1 −80% by 2040 · S2 −100% by 2030 · S3 −90% by 2045</div></div>
+                  </div>
+                  <div class="tl"><div class="th">Baseline history</div>
+                    <div class="ev now"><span class="dot"></span><div><span class="ea">Recalculation<span class="ek recalc">recalculation</span></span><div class="er">London HQ relocation — structural change above the 5% threshold. Base year restated, targets held.</div></div><div class="ed">10 Sep 2026<br>F. Doherty</div></div>
+                    <div class="ev"><span class="dot"></span><div><span class="ea">Initial baseline set<span class="ek initial">initial</span></span><div class="er">FY2023 declared from J000227.</div></div><div class="ed">14 Feb 2024<br>A. Shaw</div></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="col">
+              <section class="card collap"><div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Relationship</span><h2>Contacts</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();openD('contact')">＋ Add</button></div><div class="cbody"><div class="cb">
+                <div class="lrow"><div class="ic">◔</div><div style="flex:1;min-width:0"><div class="nm">Dawn Fletcher</div><div class="sub">Operations director</div><div class="rolebadges"><span class="tag">Primary</span><span class="tag rr">Signee</span></div></div><div class="r"><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
+                <div class="lrow"><div class="ic">◔</div><div style="flex:1;min-width:0"><div class="nm">Ian Beale</div><div class="sub">Finance manager</div><div class="rolebadges"><span class="tag rr">Billing</span></div></div><div class="r"><button class="editlink" onclick="openD('contact')">Edit</button></div></div>
+              </div></div></section>
+              <section class="card collap"><div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Operations</span><h2>Sites</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();openD('site')">＋ Add</button></div><div class="cbody"><div class="cb">
+                <div class="lrow"><div class="ic">⌂</div><div style="flex:1;min-width:0"><div class="nm">London HQ <span class="tag reg">Registered</span></div><div class="sub">In service from Apr 2019 · 2,400 m²</div></div><div class="r"><span class="geotag on">geo</span><button class="editlink" onclick="openD('site')">Edit</button></div></div>
+                <div class="lrow"><div class="ic">⌂</div><div style="flex:1;min-width:0"><div class="nm">Reading office</div><div class="sub">In service from Jul 2021 · 1,200 m²</div></div><div class="r"><span class="geotag">no geo</span><button class="editlink" onclick="openD('site')">Edit</button></div></div>
+                <div class="lrow off"><div class="ic">⌂</div><div style="flex:1;min-width:0"><div class="nm">Manchester depot <span class="tag vac">Vacated</span></div><div class="sub">800 m² · vacated 31 Mar 2023 · in FY23 boundary, out from FY24</div></div><div class="r"><button class="editlink" onclick="openD('site')">Edit</button></div></div>
+              </div></div></section>
+              <section class="card collap collapsed"><div class="ch" onclick="tog(this)"><span class="chev">▾</span><span class="eyebrow">Billing</span><h2>Financial status</h2><span class="sp"></span><button class="editlink" onclick="event.stopPropagation();show('financials')">Details →</button></div><div class="cbody"><div class="cb">
+                <div class="kv"><span class="k">Outstanding balance</span><span class="v" style="color:var(--danger)">£4,200</span></div>
+                <div class="kv"><span class="k">Open quotes</span><span class="v">1 · £6,500</span></div>
+                <div class="kv"><span class="k">Payment terms</span><span class="v">30 days</span></div>
+              </div></div></section>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ CARBON ANALYTICS ============ -->
+        <div class="view" data-v="analytics">
+          <div style="display:flex;align-items:flex-end;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+            <div><div class="eyebrow">Carbon</div><h2 class="vh" style="margin-bottom:0">Carbon analytics</h2></div>
+            <span style="flex:1"></span>
+            <div class="fl" style="gap:3px"><label style="text-align:right">Reporting year</label>
+              <select class="yearsel" id="yearSel"><option value="FY24">FY2024</option><option value="FY23">FY2023</option><option value="FY22">FY2022</option><option value="FY21">FY2021</option><option value="FY20">FY2020</option></select></div>
+          </div>
+          <p class="vsub">Emissions history, scope split, reduction pathway and intensity — every figure resolved from the client's assured, published snapshots via <span class="mono">@nzi/charts</span>.</p>
+          <div class="grid2">
+            <div class="col">
+              <section class="card">
+                <div class="ch"><span class="eyebrow">Year on year</span><h2>Emissions by scope</h2><span class="sp"></span><span class="hint">tCO₂e</span></div>
+                <div class="chart-legend"><span class="li"><span class="sw" style="background:var(--s1)"></span>Scope 1</span><span class="li"><span class="sw" style="background:var(--s2)"></span>Scope 2</span><span class="li"><span class="sw" style="background:var(--s3)"></span>Scope 3</span><span class="li"><span class="sw" style="background:var(--base)"></span>Baseline (FY2023)</span></div>
+                <div class="chartwrap" id="yoychart"></div>
+              </section>
+              <section class="card">
+                <div class="ch"><span class="eyebrow">Year on year</span><h2>Emissions intensity</h2><span class="sp"></span>
+                  <button class="editlink" onclick="openD('metrics')" style="margin-right:8px">⚙ Manage metrics</button>
+                  <select class="yearsel" id="metricSel" style="margin-right:8px"><option value="fte">👥 per employee</option><option value="rev">£ per £M turnover</option><option value="m2">🏢 per m² floor area</option><option value="all">All metrics (indexed)</option></select>
+                  <span class="hint" id="intUnit">tCO₂e / employee</span></div>
+                <div class="chart-legend" id="intLegend" hidden></div>
+                <div class="chartwrap" id="intchart"></div>
+              </section>
+              <section class="card">
+                <div class="ch"><span class="eyebrow">Trajectory</span><h2>Reduction pathway to net zero</h2><span class="sp"></span><span class="hint">total tCO₂e vs target</span></div>
+                <div class="chart-legend"><span class="li"><span class="sw" style="background:var(--accent)"></span>Actual</span><span class="li"><span class="sw" style="background:var(--base)"></span>Target pathway</span></div>
+                <div class="chartwrap" id="pathchart"></div>
+              </section>
+            </div>
+            <div class="col">
+              <section class="card">
+                <div class="ch"><span class="eyebrow" id="donutYr">FY2024</span><h2>Scope split</h2><span class="sp"></span><span class="evid" onclick="openProv('split')" title="Show provenance & lineage">◈ Evidence</span></div>
+                <div class="chartwrap" id="donut" style="display:flex;justify-content:center"></div>
+                <div class="cb" style="padding-top:0" id="splitkv"></div>
+              </section>
+              <section class="card">
+                <div class="ch"><span class="eyebrow" id="intYr">FY2024</span><h2>Intensity detail</h2><span class="sp"></span><span class="evid" onclick="openProv('intensity')" title="Show provenance & lineage">◈ Evidence</span></div>
+                <div class="cb"><div class="kv"><span class="k" id="intMetricK">Intensity · per employee</span><span class="v" id="intVal">7.11 tCO₂e/emp</span></div><div class="kv"><span class="k">vs baseline</span><span class="v" id="intVs" style="color:var(--ok)">−10.5%</span></div><div class="kv"><span class="k" id="intDenK">Employees</span><span class="v" id="intRev">240</span></div></div>
+                <p class="maps" style="margin:0 14px 12px">Metrics are defined on the client (Employees &amp; Turnover standard, plus any additionals) — the annual values are recorded on each job. Each metric's icon carries through to this YoY, the client portal and the report. <a class="jlink" href="#" onclick="openD('metrics');return false">Manage metrics →</a></p>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ other areas ============ -->
+        <div class="view" data-v="reporting"><div class="eyebrow">Deliverables</div><h2 class="vh">Reporting</h2><p class="vsub">Published reports and in-progress report versions for this client. Each report opens on its reviewed snapshot.</p>
+          <section class="card"><table class="tbl"><thead><tr><th>Report</th><th>Job</th><th>Version</th><th>Status</th><th>Issued</th><th></th></tr></thead><tbody>
+            <tr><td><a class="jlink" href="#">Carbon Reduction Plan 2024</a></td><td><a class="jlink" href="#">J000702</a></td><td class="mono">v0.3 draft</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Draft</span></td><td>—</td><td style="text-align:right"><a class="jlink" href="#">Open draft →</a></td></tr>
+            <tr><td><a class="jlink" href="#">Carbon Reduction Plan 2023</a></td><td><a class="jlink" href="#">J000227</a></td><td class="mono">v2 · final</td><td><span class="pill base" style="padding:1px 8px"><i></i>Published</span></td><td>18/04/2024</td><td style="text-align:right"><a class="jlink" href="#">Open report →</a> · <a class="jlink" href="#">PDF</a></td></tr>
+            <tr><td><a class="jlink" href="#">Carbon Reduction Plan 2022</a></td><td><a class="jlink" href="#">J000119</a></td><td class="mono">v1 · final</td><td><span class="pill base" style="padding:1px 8px"><i></i>Published</span></td><td>02/05/2023</td><td style="text-align:right"><a class="jlink" href="#">Open report →</a> · <a class="jlink" href="#">PDF</a></td></tr>
+          </tbody></table></section>
+          <p class="maps">Runs on the Report Studio (R-track); opening a report goes to the reviewed-snapshot report view. A published report is version-pinned and immutable; superseded versions stay openable for audit.</p></div>
+
+        <div class="view" data-v="actions">
+          <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:6px">
+            <div><div class="eyebrow">Engagement</div><h2 class="vh" style="margin-bottom:0">Decarbonisation actions</h2></div>
+            <span style="flex:1"></span>
+            <button class="btn pri sm" onclick="openD('library')">＋ Add from library</button>
+          </div>
+          <p class="vsub">The client's reduction plan — Spheres-of-Influence levers assigned from the catalogue, tracked against the assured baseline.</p>
+          <div class="asum">
+            <div class="asumc"><b>8</b><span>Actions</span></div>
+            <div class="asumc"><b>3</b><span>In progress</span></div>
+            <div class="asumc"><b>2</b><span>Complete</span></div>
+            <div class="asumc"><b>3</b><span>Planned</span></div>
+          </div>
+
+          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Direct control · own operations</h2><span class="sp"></span><span class="hint">Scope 1 &amp; 2</span></div><div class="cb">
+            <div class="arow"><div class="aic">⚡</div><div class="amid"><div class="nm">Switch London HQ to a renewable tariff</div><div class="sub"><span class="tag">Scope 2</span> Energy · A. Shaw · due Q2 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:60%"></span></div></div></div>
+            <div class="arow"><div class="aic">🚚</div><div class="amid"><div class="nm">Fleet transition to EV</div><div class="sub"><span class="tag">Scope 1</span> Transport · A. Shaw · target 2027</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:15%"></span></div></div></div>
+            <div class="arow"><div class="aic">💡</div><div class="amid"><div class="nm">LED + building-management upgrade, London HQ</div><div class="sub"><span class="tag">Scope 2</span> Energy efficiency · complete Jan 2026</div></div><div class="astat"><span class="pill ok" style="padding:1px 8px"><i></i>Complete</span><div class="aprog"><span style="width:100%"></span></div></div></div>
+          </div></section>
+
+          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Supply chain · procurement</h2><span class="sp"></span><span class="hint">Scope 3 upstream</span></div><div class="cb">
+            <div class="arow"><div class="aic">🤝</div><div class="amid"><div class="nm">Supplier engagement programme — top 20 by spend</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Procurement · due Q4 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:40%"></span></div></div></div>
+            <div class="arow"><div class="aic">✈</div><div class="amid"><div class="nm">Business-travel policy — rail-first</div><div class="sub"><span class="tag">Scope 3</span> Cat 6 · Travel · due Q1 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:55%"></span></div></div></div>
+            <div class="arow"><div class="aic">📦</div><div class="amid"><div class="nm">Switch to recycled-content packaging</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Materials · planned</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:5%"></span></div></div></div>
+          </div></section>
+
+          <section class="card"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Influence · customers &amp; industry</h2><span class="sp"></span><span class="hint">Scope 3 downstream</span></div><div class="cb">
+            <div class="arow"><div class="aic">♻</div><div class="amid"><div class="nm">Customer product take-back scheme</div><div class="sub"><span class="tag">Scope 3</span> Cat 12 · Circularity · planned</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:0%"></span></div></div></div>
+            <div class="arow"><div class="aic">📜</div><div class="amid"><div class="nm">Publish supplier code of conduct</div><div class="sub">Governance · complete Nov 2025</div></div><div class="astat"><span class="pill ok" style="padding:1px 8px"><i></i>Complete</span><div class="aprog"><span style="width:100%"></span></div></div></div>
+          </div></section>
+          <p class="maps">Qualitative tracker (A2-lite); the lever catalogue is Admin-managed and assigned here. Quantified impact projection (each lever's modelled tCO₂e) is planned — Stage 2.</p></div>
+
+        <div class="view" data-v="srs"><div class="eyebrow">Disclosure</div><h2 class="vh">SRS Readiness</h2><p class="vsub">UK Sustainability Reporting Standards readiness for this client.</p>
+          <section class="card"><div class="cb"><div class="kv"><span class="k">Overall readiness</span><span class="v">62%</span></div><div class="kv"><span class="k">Governance</span><span class="v">On track</span></div><div class="kv"><span class="k">Metrics &amp; targets</span><span class="v" style="color:var(--warn)">Gaps</span></div></div></section>
+          <p class="maps">Reads the SRS readiness domain (Admin → SRS readiness defines the framework; portal M6.4 surfaces it to the client).</p></div>
+
+        <div class="view" data-v="tasks"><div class="eyebrow">Manage</div><h2 class="vh">Tasks</h2><div class="placeholder"><b>No open tasks</b>Client-scoped to-dos and reminders. Add a task, assign an owner and due date.</div></div>
+        <div class="view" data-v="notes"><div class="eyebrow">Manage</div><h2 class="vh">Notes</h2><div class="placeholder"><b>Relationship notes</b>Dated, attributable notes on the client relationship, kept out of the audit-critical record.</div></div>
+        <div class="view" data-v="files"><div class="eyebrow">Manage</div><h2 class="vh">Files</h2><div class="placeholder"><b>Client document store</b>Evidence, contracts and shared files (upload + AV scan). Ties into the portal Files area.</div></div>
+        <div class="view" data-v="comms"><div class="eyebrow">Manage</div><h2 class="vh">Communications</h2><div class="placeholder"><b>Communication log</b>Emails and messages with the client. Broadcasts are composed in Admin → Broadcasting.</div></div>
+
+        <!-- COMPANY PROFILE -->
+        <div class="view" data-v="profile"><div class="eyebrow">Record</div><h2 class="vh">Company profile</h2><p class="vsub">The client record. Every part edits in place through a drawer — no separate edit page.</p>
+          <div class="grid2"><div class="col">
+            <section class="card"><div class="ch"><span class="eyebrow">Company</span><h2>Identity &amp; profile</h2><span class="sp"></span><button class="editlink" onclick="openD('identity')">Edit</button></div><div class="cb">
+              <div class="kv"><span class="k">Industry</span><span class="v">Information technology</span></div><div class="kv"><span class="k">SIC</span><span class="v">62012</span></div><div class="kv"><span class="k">Website</span><span class="v">abtec.example</span></div><div class="kv"><span class="k">Reporting frequency</span><span class="v">Annual</span></div><div class="kv"><span class="k">Currency</span><span class="v">GBP</span></div><div class="kv"><span class="k">Financial year end</span><span class="v">March</span></div></div></section>
+            <section class="card"><div class="ch"><span class="eyebrow">Obligations</span><h2>Compliance</h2><span class="sp"></span><button class="editlink" onclick="openD('compliance')">Edit</button></div><div class="cb">
+              <div class="kv"><span class="k">Group structure</span><span class="v">Standalone</span></div><div class="kv"><span class="k">Frameworks</span><span class="v">SECR</span></div><div class="kv"><span class="k">Certifications</span><span class="v">ISO 14001</span></div><div class="kv"><span class="k">Primary Scope 3</span><span class="v">Cat 1 · 4 · 6</span></div></div></section>
+          </div><div class="col">
+            <section class="card"><div class="ch"><span class="eyebrow">Invoicing</span><h2>Addresses</h2><span class="sp"></span><button class="editlink" onclick="openD('address')">Edit</button></div><div class="cb"><div class="kv"><span class="k">Registered</span><span class="v" style="text-align:right">10 Finsbury Sq,<br>London EC2A</span></div><div class="kv"><span class="k">Geocode</span><span class="v">51.5209, −0.0857</span></div><div class="kv"><span class="k">Billing</span><span class="v">Same as registered</span></div></div></section>
+            <section class="card"><div class="ch"><span class="eyebrow">Reference data</span><h2>Client factors</h2><span class="sp"></span><button class="editlink" onclick="openD('factor')">Manage</button></div><div class="cb"><div class="kv"><span class="k">Custom factors</span><span class="v">2 active</span></div></div></section>
+          </div></div></div>
+
+        <!-- FINANCIALS: quotes + invoices + credit notes — full history held here; Xero mirrors -->
+        <div class="view" data-v="financials"><div class="eyebrow">Record</div><h2 class="vh">Financials</h2><p class="vsub">The full history of every quote, invoice and credit note is held here as the source of record. Xero mirrors the accounting side only.</p>
+          <div class="xero"><span class="dotx ok"></span><b>Xero</b> connected · last sync 2h ago · account owner A. Shaw <span class="sp"></span><a class="jlink" href="#">Sync now</a> · <a class="jlink" href="#">Reconcile</a></div>
+          <div class="metrics" style="grid-template-columns:repeat(4,1fr)"><div class="metric"><div class="v num" style="color:var(--danger)">£4,200</div><div class="l">Outstanding</div><div class="d">1 overdue</div></div><div class="metric"><div class="v num">£6,500</div><div class="l">Open quotes</div><div class="d">1 awaiting acceptance</div></div><div class="metric"><div class="v num">£38,600</div><div class="l">Lifetime billed</div><div class="d">14 invoices</div></div><div class="metric"><div class="v num">30 days</div><div class="l">Payment terms</div></div></div>
+
+          <section class="card" style="margin-bottom:16px"><div class="ch"><span class="eyebrow">Sales</span><h2>Quotes</h2><span class="sp"></span><button class="editlink">＋ New quote</button></div><table class="tbl"><thead><tr><th>Quote</th><th>For</th><th>Version</th><th>Amount</th><th>Status</th><th>Xero</th><th></th></tr></thead><tbody>
+            <tr><td class="mono">Q-2041</td><td>CRP 2025 — Full service</td><td class="mono">v2</td><td>£6,500</td><td><span class="pill" style="color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg);padding:1px 8px"><i style="background:var(--warn)"></i>Sent</span></td><td><span class="xc">—</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('Q-2041');return false">View history →</a></td></tr>
+            <tr><td class="mono">Q-1990</td><td>CRP 2024 — Report only</td><td class="mono">v1</td><td>£4,200</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Accepted</span></td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('Q-1990');return false">View history →</a></td></tr>
+            <tr><td class="mono">Q-1780</td><td>CRP 2023 — Report only</td><td class="mono">v2</td><td>£3,900</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Accepted</span></td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('Q-1780');return false">View history →</a></td></tr>
+          </tbody></table></section>
+
+          <section class="card" style="margin-bottom:16px"><div class="ch"><span class="eyebrow">Billing</span><h2>Invoices</h2><span class="sp"></span><button class="editlink">＋ New invoice</button></div><table class="tbl"><thead><tr><th>Invoice</th><th>Job</th><th>Amount</th><th>Status</th><th>Issued</th><th>Xero</th><th></th></tr></thead><tbody>
+            <tr><td class="mono">INV-1042</td><td><a class="jlink" href="#">J000702</a></td><td>£4,200</td><td><span class="pill" style="color:var(--danger);border-color:var(--danger-line);background:var(--danger-bg);padding:1px 8px"><i style="background:var(--danger)"></i>Overdue</span></td><td>01/07/2026</td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('INV-1042');return false">View history →</a></td></tr>
+            <tr><td class="mono">INV-0988</td><td><a class="jlink" href="#">J000446</a></td><td>£3,600</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Paid</span></td><td>12/04/2026</td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('INV-0988');return false">View history →</a></td></tr>
+            <tr><td class="mono">INV-0902</td><td><a class="jlink" href="#">J000227</a></td><td>£3,900</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Paid</span></td><td>02/05/2025</td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('INV-0902');return false">View history →</a></td></tr>
+          </tbody></table></section>
+
+          <section class="card"><div class="ch"><span class="eyebrow">Adjustments</span><h2>Credit notes</h2><span class="sp"></span><button class="editlink">＋ New credit note</button></div><table class="tbl"><thead><tr><th>Credit note</th><th>Against</th><th>Amount</th><th>Status</th><th>Issued</th><th>Xero</th><th></th></tr></thead><tbody>
+            <tr><td class="mono">CN-0102</td><td><a class="jlink" href="#">INV-1042</a></td><td>−£600</td><td><span class="pill ok" style="padding:1px 8px"><i></i>Applied</span></td><td>20/08/2026</td><td><span class="xc ok">Synced</span></td><td style="text-align:right"><a class="jlink" href="#" onclick="openDoc('CN-0102');return false">View history →</a></td></tr>
+            <tr><td colspan="7" class="muted" style="padding:10px 12px">No other credit notes for this client.</td></tr>
+          </tbody></table></section>
+          <p class="maps">Quote/invoice/credit-note creation goes through the canonical commercial services; Xero is a downstream projection (never the source of record). Every document is versioned and every state change is an audit event.</p></div>
+
+        <div class="view" data-v="ai"><div class="eyebrow">Record</div><h2 class="vh">AI Profile</h2><p class="vsub">The grounded context used for AI-assisted narrative — advisory only, never a source of measured figures.</p><div class="placeholder"><b>Client AI context</b>Company description, sector context and material Scope 3 categories that ground report-narrative generation. Editable, versioned, and clearly separated from the evidence base.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeD()"></div>
+<aside class="drawer" id="drawer" aria-label="Edit panel" aria-hidden="true"><div id="dcontent"></div></aside>
+
+<script>
+function show(v){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.dataset.v===v));document.querySelectorAll(".subnav .na").forEach(b=>b.classList.toggle("on",b.dataset.v===v));document.querySelector(".content").scrollTo({top:0});}
+document.querySelectorAll(".subnav .na").forEach(b=>b.onclick=()=>show(b.dataset.v));
+function tog(ch){ch.closest(".card").classList.toggle("collapsed");}
+const st=document.getElementById("setupToggle"),ss=document.getElementById("setupSteps");
+st.onclick=()=>{const open=ss.hidden;ss.hidden=!open;st.textContent=open?"Hide steps ▴":"Show steps ▾";};
+
+/* charts */
+const YEARS=[{y:"FY20",s1:138,s2:520,s3:1430,rev:36.5,fte:210,m2:3200},{y:"FY21",s1:132,s2:505,s3:1373,rev:37.2,fte:218,m2:3200},{y:"FY22",s1:126,s2:495,s3:1334,rev:37.8,fte:225,m2:3400},{y:"FY23",s1:120,s2:480,s3:1242,rev:38.3,fte:232,m2:3400,bl:true},{y:"FY24",s1:110,s2:452,s3:1144,rev:40.0,fte:240,m2:3600}];
+YEARS.forEach(d=>d.tot=d.s1+d.s2+d.s3);
+const SC=[["s1","var(--s1)","Scope 1"],["s2","var(--s2)","Scope 2"],["s3","var(--s3)","Scope 3"]];
+/* intensity is multi-metric: each base has its own denominator, unit and scale */
+/* Intensity metrics are DEFINED on the client (label + unit + Per-N divider + icon), and
+   their annual values are RECORDED on the job. Employees + Turnover are standard; any
+   number of additionals can be added. Icons carry to the client YoY, the portal and the report. */
+const METRICS={
+  fte:{sel:"per employee",unit:"tCO₂e / employee",short:"tCO₂e/emp",icon:"👥",std:true,max:12,ticks:[0,4,8,12],val:d=>d.tot/d.fte,fmt:v=>v.toFixed(2),denK:"Employees",den:d=>d.fte.toLocaleString()},
+  rev:{sel:"per £M turnover",unit:"tCO₂e / £M",short:"tCO₂e/£M",icon:"£",std:true,max:60,ticks:[0,20,40,60],val:d=>d.tot/d.rev,fmt:v=>v.toFixed(1),denK:"Turnover",den:d=>"£"+d.rev.toFixed(1)+"M"},
+  m2:{sel:"per m² floor area",unit:"kgCO₂e / m²",short:"kgCO₂e/m²",icon:"🏢",std:false,max:800,ticks:[0,200,400,600,800],val:d=>d.tot*1000/d.m2,fmt:v=>Math.round(v),denK:"Floor area",den:d=>d.m2.toLocaleString()+" m²"}};
+/* the bases plotted together must share one axis — so index each to the baseline year = 100 */
+const IBASES=[["fte","var(--base)","👥 Employees","5 4"],["rev","var(--accent)","£ Turnover","0"],["m2","#1F6FEB","🏢 Floor area","1 4"]];
+let METRIC="fte";
+function stacked(el,w,h){
+  const pad={t:16,r:12,b:22,l:38}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=2100, step=iw/YEARS.length, bw=Math.min(54,step*0.62);
+  const yf=v=>pad.t+ih-(v/max*ih); let g="";
+  [0,700,1400,2100].forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-6}" y="${yy+3}" text-anchor="end">${t}</text>`;});
+  YEARS.forEach((d,i)=>{const cx=pad.l+step*i+step/2,x=cx-bw/2;let yb=pad.t+ih;const tot=d.s1+d.s2+d.s3;
+    [["s3","var(--s3)"],["s2","var(--s2)"],["s1","var(--s1)"]].forEach(([k,c])=>{const hh=d[k]/max*ih;yb-=hh;g+=`<rect class="seg" x="${x}" y="${yb}" width="${bw}" height="${hh}" rx="2" fill="${c}"><title>${d.y} ${k.toUpperCase()}: ${d[k]}</title></rect>`;});
+    g+=`<text class="val" x="${cx}" y="${yb-5}" text-anchor="middle">${tot.toLocaleString()}</text><text class="axis" x="${cx}" y="${h-7}" text-anchor="middle">${d.y}${d.bl?" ◆":""}</text>`;
+    if(d.bl)g+=`<line class="bl-marker" x1="${cx}" y1="${pad.t}" x2="${cx}" y2="${pad.t+ih}"/>`;});
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Emissions by scope">${g}</svg>`;
+}
+function intensity(el,w,h){
+  const leg=document.getElementById("intLegend");
+  if(METRIC==="all"){intensityAll(el,w,h);leg.hidden=false;
+    leg.innerHTML=IBASES.map(([k,c,lab,dash])=>`<span class="li"><svg width="20" height="8" style="vertical-align:middle"><line x1="0" y1="4" x2="20" y2="4" stroke="${c}" stroke-width="2.4" stroke-dasharray="${dash==="0"?"":dash.replace(/(\d)/g,m=>m*2)}"/></svg> ${lab}</span>`).join("");
+    document.getElementById("intUnit").textContent="indexed · baseline FY23 = 100";return;}
+  leg.hidden=true;
+  const m=METRICS[METRIC]; const pad={t:16,r:14,b:22,l:44}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=m.max, step=iw/(YEARS.length-1);
+  const xf=i=>pad.l+step*i, yf=v=>pad.t+ih-(v/max*ih); let g="";
+  m.ticks.forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-6}" y="${yy+3}" text-anchor="end">${t}</text>`;});
+  YEARS.forEach((d,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${d.y}${d.bl?" ◆":""}</text>`);
+  let pts=YEARS.map((d,i)=>`${xf(i)},${yf(m.val(d))}`).join(" ");
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  YEARS.forEach((d,i)=>{const v=m.val(d);g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--accent)"><title>${d.y}: ${m.fmt(v)} ${m.short}</title></circle><text class="val" x="${xf(i)}" y="${yf(v)-8}" text-anchor="middle">${m.fmt(v)}</text>`;if(d.bl)g+=`<line class="bl-marker" x1="${xf(i)}" y1="${pad.t}" x2="${xf(i)}" y2="${pad.t+ih}"/>`;});
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Emissions intensity year on year">${g}</svg>`;
+  document.getElementById("intUnit").textContent=m.unit;
+}
+function intensityAll(el,w,h){
+  const bl=YEARS.find(x=>x.bl); const pad={t:16,r:40,b:22,l:40}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=140, step=iw/(YEARS.length-1);
+  const xf=i=>pad.l+step*i, yf=v=>pad.t+ih-(v/max*ih); let g="";
+  [0,40,80,120].forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-6}" y="${yy+3}" text-anchor="end">${t}</text>`;});
+  const y100=yf(100);g+=`<line x1="${pad.l}" y1="${y100}" x2="${w-pad.r}" y2="${y100}" stroke="var(--faint)" stroke-width="1" stroke-dasharray="2 3"/><text class="axis" x="${w-pad.r+3}" y="${y100+3}" style="fill:var(--faint)">100</text>`;
+  YEARS.forEach((d,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${d.y}${d.bl?" ◆":""}</text>`);
+  if(bl){const bx=xf(YEARS.indexOf(bl));g+=`<line class="bl-marker" x1="${bx}" y1="${pad.t}" x2="${bx}" y2="${pad.t+ih}"/>`;}
+  IBASES.forEach(([k,c,lab,dash])=>{const m=METRICS[k],base=m.val(bl);
+    const idx=YEARS.map(d=>m.val(d)/base*100);
+    const pts=idx.map((v,i)=>`${xf(i)},${yf(v)}`).join(" ");
+    const da=dash==="0"?"":dash.replace(/(\d)/g,mm=>mm*2);
+    g+=`<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2.4" stroke-dasharray="${da}"/>`;
+    idx.forEach((v,i)=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3" fill="${c}"><title>${YEARS[i].y} ${lab}: index ${v.toFixed(0)}</title></circle>`);
+    const last=idx[idx.length-1];g+=`<text class="val" x="${xf(YEARS.length-1)+5}" y="${yf(last)+3}" text-anchor="start" style="fill:${c}">${last.toFixed(0)}</text>`;});
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Emissions intensity — all bases indexed to baseline">${g}</svg>`;
+}
+/* forward target model — drives the pathway + the Baseline & targets card. Editable via the targets drawer. */
+const TARGETS={benchmarkYear:"FY23",baseTotal:1842,interim:{year:"FY30",pct:50},netzero:{year:"FY45",pct:90},
+  scopes:[["Scope 1","FY40",80],["Scope 2","FY30",100],["Scope 3","FY45",90]]};
+function pathway(el,w,h){
+  const T=TARGETS, pad={t:16,r:16,b:22,l:38}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b, max=2100;
+  const yrs=["FY20","FY21","FY22","FY23","FY24",T.interim.year,T.netzero.year], step=iw/(yrs.length-1);
+  const xf=i=>pad.l+step*i, yf=v=>pad.t+ih-(v/max*ih);
+  const actual=[2088,2010,1955,1842,1706];
+  const bi=yrs.indexOf(T.benchmarkYear), ii=yrs.indexOf(T.interim.year), ni=yrs.length-1;
+  const iv=Math.round(T.baseTotal*(1-T.interim.pct/100)), nv=Math.round(T.baseTotal*(1-T.netzero.pct/100));
+  const target=[[bi,T.baseTotal],[ii,iv],[ni,nv]]; let g="";
+  [0,700,1400,2100].forEach(t=>{const yy=yf(t);g+=`<line class="gl" x1="${pad.l}" y1="${yy}" x2="${w-pad.r}" y2="${yy}"/><text class="axis" x="${pad.l-6}" y="${yy+3}" text-anchor="end">${t}</text>`;});
+  yrs.forEach((yy,i)=>g+=`<text class="axis" x="${xf(i)}" y="${h-7}" text-anchor="middle">${yy}${i===bi?" ◆":""}</text>`);
+  if(bi>=0)g+=`<line class="bl-marker" x1="${xf(bi)}" y1="${pad.t}" x2="${xf(bi)}" y2="${pad.t+ih}"/>`;
+  g+=`<polyline points="${target.map(([i,v])=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--base)" stroke-width="2" stroke-dasharray="4 4"/>`;
+  target.forEach(([i,v])=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--base)"><title>${yrs[i]}: ${v} tCO₂e</title></circle>`);
+  g+=`<text class="axis" x="${xf(ii)}" y="${yf(iv)-8}" text-anchor="middle" style="fill:var(--base)">−${T.interim.pct}%</text><text class="axis" x="${w-pad.r}" y="${yf(nv)-8}" text-anchor="end" style="fill:var(--base)">net zero 20${T.netzero.year.slice(2)}</text>`;
+  g+=`<polyline points="${actual.map((v,i)=>`${xf(i)},${yf(v)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  actual.forEach((v,i)=>g+=`<circle cx="${xf(i)}" cy="${yf(v)}" r="3.5" fill="var(--accent)"><title>${yrs[i]}: ${v}</title></circle>`);
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto" role="img" aria-label="Reduction pathway to net zero, actual vs target">${g}</svg>`;
+}
+function donutFor(yr){
+  const d=YEARS.find(x=>x.y===yr); const tot=d.s1+d.s2+d.s3; const cx=90,cy=90,r=64,sw=26; let a=-Math.PI/2,g="";
+  SC.forEach(([k,c])=>{const frac=d[k]/tot,a2=a+frac*2*Math.PI,large=frac>0.5?1:0;
+    const x1=cx+r*Math.cos(a),y1=cy+r*Math.sin(a),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    g+=`<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${c}" stroke-width="${sw}"><title>${k.toUpperCase()}: ${d[k]}</title></path>`;a=a2;});
+  g+=`<text x="${cx}" y="${cy-3}" text-anchor="middle" class="val" style="font-size:20px">${tot.toLocaleString()}</text><text x="${cx}" y="${cy+14}" text-anchor="middle" class="axis">tCO₂e ${yr}</text>`;
+  document.getElementById("donut").innerHTML=`<svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Scope split ${yr}">${g}</svg>`;
+  document.getElementById("splitkv").innerHTML=SC.map(([k,c,lab])=>`<div class="kv"><span class="k"><span style="color:${c}">■</span> ${lab}</span><span class="v">${d[k].toLocaleString()} · ${Math.round(d[k]/tot*100)}%</span></div>`).join("");
+  document.getElementById("donutYr").textContent="FY20".replace("20",yr.slice(2))&&"FY"+yr.slice(2);
+  intensityDetail(d);
+}
+function intensityDetail(d){
+  const blYr=YEARS.find(x=>x.bl);
+  document.getElementById("intYr").textContent="FY"+d.y.slice(2);
+  if(METRIC==="all"){
+    document.getElementById("intMetricK").textContent="Intensity · all metrics";
+    document.getElementById("intVal").textContent=IBASES.map(([k])=>METRICS[k].icon+METRICS[k].fmt(METRICS[k].val(d))).join("  ");
+    document.getElementById("intDenK").textContent="vs baseline (index)";
+    document.getElementById("intRev").textContent=IBASES.map(([k,,lab])=>lab.slice(0,3)+" "+(METRICS[k].val(d)/METRICS[k].val(blYr)*100).toFixed(0)).join(" · ");
+    document.getElementById("intVs").textContent="see chart"; document.getElementById("intVs").style.color="var(--muted)";
+    return;}
+  const m=METRICS[METRIC];
+  document.getElementById("intMetricK").textContent=m.icon+" Intensity · "+m.sel;
+  document.getElementById("intVal").textContent=m.fmt(m.val(d))+" "+m.short;
+  document.getElementById("intDenK").textContent=m.icon+" "+m.denK;
+  document.getElementById("intRev").textContent=m.den(d);
+  const vs=((m.val(d)-m.val(blYr))/m.val(blYr)*100);
+  const el=document.getElementById("intVs"); el.textContent=(vs>0?"+":"")+vs.toFixed(1)+"%"; el.style.color=vs<=0?"var(--ok)":"var(--danger)";
+}
+stacked(document.getElementById("ovchart"),620,190);
+stacked(document.getElementById("yoychart"),640,230);
+intensity(document.getElementById("intchart"),640,190);
+pathway(document.getElementById("pathchart"),640,210);
+donutFor("FY24");
+document.getElementById("yearSel").onchange=e=>donutFor(e.target.value);
+document.getElementById("metricSel").onchange=e=>{METRIC=e.target.value;intensity(document.getElementById("intchart"),640,190);intensityDetail(YEARS.find(x=>x.y===document.getElementById("yearSel").value));};
+
+/* ---- drawers ---- */
+const GEO=(reveal)=>`<div class="geo"><label class="gr2"><input type="checkbox" id="geochk" ${reveal?"checked":""} style="accent-color:var(--accent)"> Add geolocation (lat / long)</label><div class="body" id="geobody" ${reveal?"":"hidden"}><div class="two"><div class="fl"><label>Latitude</label><input class="inp mono" value="${reveal?"51.5209":""}" placeholder="51.5209"></div><div class="fl"><label>Longitude</label><input class="inp mono" value="${reveal?"-0.0857":""}" placeholder="-0.0857"></div></div><button class="btn sm" type="button">◎ Look up from address</button><div class="hint">Optional — used for the LCA transport/geospatial features. Leave off if not needed.</div></div></div>`;
+const DRAWERS={
+  rebaseline:{k:"Baseline & targets",t:"Re-baseline or recalculate",body:`
+    <div class="fl"><label>What are you doing?</label><div class="seg" id="kind"><button data-k="rebaseline" class="on">Re-baseline<br><span style="font-weight:500;color:var(--muted)">new base year</span></button><button data-k="recalculation">Recalculation<br><span style="font-weight:500;color:var(--muted)">restate current base year</span></button></div></div>
+    <div class="kindnote" id="kindnote"><b>Re-baseline</b> — the client adopts a different reporting year as its baseline going forward. GHG Protocol treats this as a new base year; targets may need restating.</div>
+    <div class="two"><div class="fl"><label>Baseline period start<span class="req">*</span></label><input class="inp" type="date" value="2024-04-01"></div><div class="fl"><label>Baseline period end<span class="req">*</span></label><input class="inp" type="date" value="2025-03-31"></div></div>
+    <div class="fl"><label>Baseline figures from</label><div class="seg" id="src"><button data-s="job" class="on">A baseline job</button><button data-s="typed">Typed figures</button></div></div>
+    <div id="srcjob" class="fl"><label>Baseline job</label><select class="inp"><option>J000702 · CRP 2024 (FY2024)</option><option>J000227 · CRP 2023 (FY2023)</option></select><div class="hint">The resolver reads this job's assured total.</div></div>
+    <div id="srctyped" class="three" hidden><div class="fl"><label>Scope 1</label><input class="inp num"></div><div class="fl"><label>Scope 2</label><input class="inp num"></div><div class="fl"><label>Scope 3</label><input class="inp num"></div></div>
+    <div class="fl"><label>Effective from<span class="req">*</span> <span class="hint">— first reporting period governed</span></label><input class="inp" value="FY2025 (1 Apr 2025 onward)"></div>
+    <div class="fl" id="thresholdfl" hidden><label>Significance threshold</label><input class="inp" value="5%"></div>
+    <div class="fl"><label>Targets on re-baseline</label><div class="seg" id="tgtmode"><button data-t="hold" class="on">Hold targets</button><button data-t="restate">Restate targets</button></div><div class="hint">NZC-068: pin by default; restate is an explicit, recorded choice.</div></div>
+    <div class="fl"><label>Reason<span class="req">*</span> — recorded on the baseline record + audit log</label><input class="inp" id="reason" placeholder="e.g. London HQ relocation — structural change"></div>
+    <div class="gov"><span class="lk">🔒</span><span>This <b>supersedes</b> the current baseline (kept in history). Issued reports keep the baseline they <b>stamped</b>; trend and gap engine resolve against this record from <b>effective-from</b>.</span></div>`,
+    foot:`<span class="gr" id="gr">Enter a reason to record the change.</span><span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" id="save" aria-disabled="true">Record baseline change</button>`},
+  targets:{k:"Baseline & targets",t:"Reduction targets",body:`
+    <div class="hint">The forward commitment. These drive the reduction pathway and the gap engine. The <b>baseline</b> (the past anchor) is set separately via Re-baseline — change it there, not here.</div>
+    <div class="fl"><label>Benchmark year</label><input class="inp" value="FY2023 · 1,842 tCO₂e" disabled><div class="hint">Comes from the baseline in force (job J000227). Targets are measured as reductions against this.</div></div>
+    <div class="bt" style="margin:4px 0 2px">Near-term target</div>
+    <div class="two"><div class="fl"><label>Target year<span class="req">*</span></label><input class="inp" value="2030"></div><div class="fl"><label>Reduction vs benchmark<span class="req">*</span></label><input class="inp" value="50%"></div></div>
+    <div class="bt" style="margin:8px 0 2px">Net-zero target</div>
+    <div class="two"><div class="fl"><label>Net-zero year<span class="req">*</span></label><input class="inp" value="2045"></div><div class="fl"><label>Reduction at net zero</label><input class="inp" value="90%"><div class="hint">Residual 10% addressed via removals.</div></div></div>
+    <div class="bt" style="margin:8px 0 4px">Per-scope targets</div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s1)">Scope 1</span> by</label><input class="inp" value="2040"></div><div class="fl"><label>%</label><input class="inp" value="80%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">metered fuel, fleet</span></div></div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s2-ink)">Scope 2</span> by</label><input class="inp" value="2030"></div><div class="fl"><label>%</label><input class="inp" value="100%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">renewable electricity</span></div></div>
+    <div class="three"><div class="fl"><label><span style="color:var(--s3)">Scope 3</span> by</label><input class="inp" value="2045"></div><div class="fl"><label>%</label><input class="inp" value="90%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">value chain</span></div></div>
+    <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Targets are versioned and audited. When a re-baseline restates the benchmark, targets are held by default and only restated as an explicit, recorded choice (NZC-068).</span></div>`,foot:`<span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" onclick="closeD()">Save targets</button>`},
+  library:{k:"Engagement",t:"Add actions from the library",body:`
+    <div class="hint">Assign reduction actions (levers) from the NZI catalogue to this client's plan. The catalogue is Admin-managed; assigned actions are tracked per client and grouped by sphere of influence.</div>
+    <div class="filt"><button class="on">All</button><button>Scope 1</button><button>Scope 2</button><button>Scope 3</button><button>Governance</button></div>
+    <div class="libitem"><span class="aic">☀</span><div class="lm"><div class="nm">On-site solar PV generation</div><div class="sub"><span class="tag">Scope 2</span> Energy · Direct control</div></div><button class="btn sm">＋ Add</button></div>
+    <div class="libitem"><span class="aic">♨</span><div class="lm"><div class="nm">Heat-pump conversion</div><div class="sub"><span class="tag">Scope 1</span> Heating · Direct control</div></div><button class="btn sm">＋ Add</button></div>
+    <div class="libitem"><span class="aic">🚚</span><div class="lm"><div class="nm">Green fleet / EV transition</div><div class="sub"><span class="tag">Scope 1</span> Transport · Direct control</div></div><span class="tag" style="color:var(--muted);background:var(--panel-3);border-color:var(--line)">Added</span></div>
+    <div class="libitem"><span class="aic">🤝</span><div class="lm"><div class="nm">Supplier engagement programme</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Supply chain</div></div><span class="tag" style="color:var(--muted);background:var(--panel-3);border-color:var(--line)">Added</span></div>
+    <div class="libitem"><span class="aic">📝</span><div class="lm"><div class="nm">Sustainable procurement policy</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Supply chain</div></div><button class="btn sm">＋ Add</button></div>
+    <div class="libitem"><span class="aic">🚌</span><div class="lm"><div class="nm">Employee commuting survey &amp; plan</div><div class="sub"><span class="tag">Scope 3</span> Cat 7 · Influence</div></div><button class="btn sm">＋ Add</button></div>
+    <div class="libitem"><span class="aic">🗑</span><div class="lm"><div class="nm">Waste reduction &amp; recycling</div><div class="sub"><span class="tag">Scope 3</span> Cat 5 · Direct control</div></div><button class="btn sm">＋ Add</button></div>
+    <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Actions are qualitative (A2-lite) today; a lever's modelled impact (projected tCO₂e) is Stage 2. Removing an assigned action deactivates it, keeping it in the client's history.</span></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Done</button>`},
+  metrics:{k:"Carbon · reference data",t:"Intensity metrics",body:`
+    <div class="hint">Define the intensity metrics for this client. <b>Employees</b> and <b>Turnover</b> are standard; add any additionals the client needs. Each metric's icon and its <b>per-N</b> divider carry through to the YoY chart, the client portal and the report. The <b>annual values</b> are recorded on each job.</div>
+    <div class="bt" style="margin:8px 0 2px">Standard</div>
+    <div class="mrow"><span class="micon">👥</span><div class="mmeta"><span class="mname">Employees</span><span class="tag">Standard</span><input class="inp sm" value="employee" style="max-width:120px"></div><select class="inp sm" style="max-width:120px"><option selected>Per 1</option><option>Per 10</option><option>Per 100</option><option>Per 1,000</option></select></div>
+    <div class="mrow"><span class="micon">£</span><div class="mmeta"><span class="mname">Turnover</span><span class="tag">Standard</span><input class="inp sm" value="turnover" style="max-width:120px"></div><select class="inp sm" style="max-width:150px"><option>Per 1,000</option><option>Per 100,000</option><option selected>Per 1,000,000</option></select></div>
+    <div class="bt" style="margin:12px 0 2px">Additional</div>
+    <div class="mrow"><span class="micon">🏢</span><div class="mmeta"><span class="mname">Floor area</span><input class="inp sm" value="m²" style="max-width:120px"></div><select class="inp sm" style="max-width:120px"><option selected>Per 1</option><option>Per 100</option><option>Per 1,000</option></select><button class="editlink" style="color:var(--danger)">Remove</button></div>
+    <div class="bt" style="margin:12px 0 4px">Add a metric</div>
+    <div class="fl"><label>Metric name</label><input class="inp" placeholder="e.g. Fleet vehicles · Water use · Units produced"></div>
+    <div class="two"><div class="fl"><label>Unit wording</label><input class="inp" placeholder="e.g. vehicle · m³ · unit"></div><div class="fl"><label>Divider</label><select class="inp"><option>Per 1</option><option>Per 10</option><option>Per 100</option><option>Per 1,000</option><option>Per 10,000</option><option>Per 100,000</option><option>Per 1,000,000</option></select></div></div>
+    <div class="fl"><label>Icon <span class="hint" style="font-weight:500">— suggested from the name; tap to override</span></label><div class="iconpick"><span class="ip sug" title="suggested">🚚</span><span class="ip">👥</span><span class="ip">£</span><span class="ip">🏢</span><span class="ip">⚡</span><span class="ip">💧</span><span class="ip">📦</span><span class="ip">🏭</span><span class="ip">✈</span><span class="ip">🧰</span></div></div>
+    <button class="btn sm" type="button" style="margin-top:10px">＋ Add metric</button>
+    <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Metrics are versioned; the divider and icon are part of the definition. Removing a metric deactivates it (kept for historical reports), never hard-deleted. Annual values are captured per reporting year on the job.</span></div>`,foot:`<span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" onclick="closeD()">Save metrics</button>`},
+  contact:{k:"Relationship",t:"Contact",body:`<div class="two"><div class="fl"><label>Full name<span class="req">*</span></label><input class="inp" value="Dawn Fletcher"></div><div class="fl"><label>Job title</label><input class="inp" value="Operations director"></div></div><div class="fl"><label>Email</label><input class="inp mono" value="dawn.fletcher@abtec.example"></div><div class="fl"><label>Phone</label><input class="inp" placeholder="Optional"></div>
+    <div class="fl"><label>Roles <span class="hint" style="font-weight:500">— what this contact is used for downstream</span></label>
+      <div class="roles">
+        <label class="rolechk"><input type="checkbox" checked style="accent-color:var(--accent)"> Primary contact</label>
+        <label class="rolechk"><input type="checkbox" checked style="accent-color:var(--accent)"> Report signee</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Portal candidate</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Quote &amp; invoice recipient</label>
+        <label class="rolechk"><input type="checkbox" style="accent-color:var(--accent)"> Training attendee</label>
+      </div>
+      <div class="hint">Signee appears on published reports; portal candidate can be invited to the portal; recipient receives commercial documents; attendee is eligible for training places.</div></div>`,foot:`<span class="sp"></span><button class="btn sm" style="color:var(--danger);border-color:var(--danger-line)" onclick="closeD()">Remove</button><button class="btn pri" onclick="closeD()">Save contact</button>`},
+  site:{k:"Operations",t:"Site",body:`<div class="fl"><label>Site name<span class="req">*</span></label><input class="inp" value="London HQ"></div><div class="fl"><label>Reference</label><input class="inp mono" value="abtec-london"></div><div class="fl"><label>Address</label><input class="inp" value="10 Finsbury Sq, London EC2A"></div>
+    <label class="lrow" style="border:0;padding:2px 0"><input type="checkbox" id="regoff" checked style="accent-color:var(--accent)"> <span>Registered office</span></label>
+    <div class="two"><div class="fl"><label>In service from<span class="req">*</span></label><input class="inp" type="date" value="2019-04-01"></div><div class="fl"><label>Status</label><div class="seg" id="sitestatus"><button data-s="active" class="on">In service</button><button data-s="vacated">Vacated</button></div></div></div>
+    <div class="fl" id="vacfl" hidden><label>Vacated effective date<span class="req">*</span></label><input class="inp" type="date"><div class="hint">First day out of service. The site stays in the reporting boundary up to this date, then drops out. YoY and per-m² intensity use the boundary as at each reporting year.</div></div>
+    <div class="fl"><label>Floor area (m²)</label><input class="inp num" value="2400"><div class="hint">Effective-dated — summed across the client's in-service sites to form the per-m² intensity denominator for each reporting year. Leave blank if unknown (per-m² then reads "unavailable" for years it can't be resolved).</div></div>
+    ${GEO(true)}
+    <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Sites are <b>effective-dated</b>, never hard-deleted. Vacating closes the site from a date; historical reporting years keep it, later years drop it.</span></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save site</button>`},
+  identity:{k:"Company",t:"Identity & profile",body:`
+    <div class="fl"><label>Logo</label><div class="logorow"><span class="mono-badge" style="width:52px;height:52px">AB</span><div><button class="btn sm" type="button">⭱ Upload logo</button> <button class="btn sm" type="button" style="color:var(--danger);border-color:var(--danger-line)">Remove</button><div class="hint" style="margin-top:6px">PNG or SVG. Appears on the client record, the portal and published reports. Falls back to the monogram if none.</div></div></div></div>
+    <div class="two"><div class="fl"><label>Client name<span class="req">*</span></label><input class="inp" value="ABtec Computer Solutions Limited"></div><div class="fl"><label>Status</label><select class="inp"><option>Active</option><option>Onboarding</option><option>At risk</option><option>Prospect</option></select></div></div><div class="two"><div class="fl"><label>Industry<span class="req">*</span></label><input class="inp" value="Information technology"></div><div class="fl"><label>SIC</label><input class="inp" value="62012"></div></div><div class="three"><div class="fl"><label>Reporting freq.</label><select class="inp"><option>Annual</option><option>Quarterly</option></select></div><div class="fl"><label>Currency</label><input class="inp" value="GBP"></div><div class="fl"><label>Financial year end<span class="req">*</span></label><select class="inp"><option>January</option><option>February</option><option selected>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option>September</option><option>October</option><option>November</option><option>December</option></select></div></div>
+    <div class="hint">The financial year end sets each reporting year's period and drives reporting-year eligibility (the 300–400 day rule) — so it must be correct before a job is issued.</div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save profile</button>`},
+  address:{k:"Invoicing",t:"Registered address",body:`<div class="fl"><label>Registered / trading address</label><input class="inp" value="10 Finsbury Square"></div><div class="two"><div class="fl"><label>City</label><input class="inp" value="London"></div><div class="fl"><label>Postcode</label><input class="inp" value="EC2A 1AB"></div></div>${GEO(true)}<label class="lrow" style="border:0;padding:2px 0"><input type="checkbox" checked style="accent-color:var(--accent)"> <span>Billing same as registered</span></label>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save address</button>`},
+  compliance:{k:"Obligations",t:"Compliance",body:`<div class="fl"><label>Group structure</label><select class="inp"><option>Standalone</option><option>Subsidiary</option><option>Parent company</option></select></div><div class="fl"><label>Reporting frameworks</label><input class="inp" value="SECR"></div><div class="fl"><label>Certifications</label><input class="inp" value="ISO 14001"></div><div class="fl"><label>Primary Scope 3 categories</label><input class="inp" value="Cat 1, Cat 4, Cat 6"></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Save compliance</button>`},
+  factor:{k:"Reference data",t:"Client factors",body:`<div class="hint">Client-specific, EPD-backed factors reusable across this client's jobs — same versioning + evidence lineage as dataset factors.</div><div class="lrow"><div><div class="nm">Recycled board — supplier EPD</div><div class="sub mono">0.412 kgCO₂e/kg · v2</div></div><div class="r"><button class="editlink">Edit</button></div></div>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">＋ New client factor</button>`},
+  portal:{k:"Client experience",t:"Portal access",body:`<div class="hint">Invite client users and grant job-level access.</div><div class="kv"><span class="k">Portal users</span><span class="v">2 active</span></div><div class="kv"><span class="k">Data-entry buckets</span><span class="v">3 granted</span></div><div class="kv"><span class="k">Published reports visible</span><span class="v">1</span></div><a class="linkbtn" href="#" style="margin-top:8px">↗ Open this client's portal</a>`,foot:`<span class="sp"></span><button class="btn pri" onclick="closeD()">Manage access &amp; invites</button>`}
+};
+/* commercial documents — full versioned history is the source of record; Xero mirrors */
+const EK={sent:"color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line)",ok:"color:var(--accent-d);background:var(--accent-bg);border:1px solid var(--ok-line)",neutral:"color:var(--muted);background:var(--panel-3);border:1px solid var(--line)",money:"color:#1F6FEB;background:#EAF1FE;border:1px solid #C7DBFB",bad:"color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-line)"};
+const DOCS={
+  "Q-2041":{type:"Quote",k:"Sales · quote",t:"Q-2041 · CRP 2025 — Full service",rows:[["For","CRP 2025 — Full service"],["Current version","v2 (revised)"],["Amount","£6,500"],["Valid until","30/11/2026"],["Owner","A. Shaw"],["Xero","Not synced — syncs on acceptance"]],ev:[
+    {a:"Sent → v2",badge:"Sent",bs:EK.sent,r:"Emailed to Dawn Fletcher.",d:"18/08/2026",now:true},
+    {a:"Revised v1 → v2",badge:"Draft",bs:EK.neutral,r:"Scope widened to include Scope 3 screening; v1 superseded, kept in history.",d:"18/08/2026"},
+    {a:"Sent → v1",badge:"Sent",bs:EK.sent,r:"Emailed to Dawn Fletcher.",d:"02/08/2026"},
+    {a:"Created → v1",badge:"Draft",bs:EK.neutral,r:"Raised by A. Shaw.",d:"01/08/2026"}]},
+  "Q-1990":{type:"Quote",k:"Sales · quote",t:"Q-1990 · CRP 2024 — Report only",rows:[["For","CRP 2024 — Report only"],["Current version","v1"],["Amount","£4,200"],["Accepted","14/06/2026"],["Converted to","J000702"],["Xero","Synced — quote #Q-1990"]],ev:[
+    {a:"Converted to job J000702",badge:"Job",bs:EK.ok,r:"Accepted quote created the CRP engagement.",d:"14/06/2026",now:true},
+    {a:"Accepted by client",badge:"Accepted",bs:EK.ok,r:"Accepted by Ian Beale (finance manager).",d:"14/06/2026"},
+    {a:"Approved internally",badge:"Approved",bs:EK.ok,r:"Approved by A. Shaw.",d:"09/06/2026"},
+    {a:"Sent → v1",badge:"Sent",bs:EK.sent,r:"Emailed to the client.",d:"05/06/2026"},
+    {a:"Created → v1",badge:"Draft",bs:EK.neutral,d:"04/06/2026"}]},
+  "Q-1780":{type:"Quote",k:"Sales · quote",t:"Q-1780 · CRP 2023 — Report only",rows:[["For","CRP 2023 — Report only"],["Current version","v2"],["Amount","£3,900"],["Accepted","28/04/2025"],["Converted to","J000227"],["Xero","Synced"]],ev:[
+    {a:"Accepted → converted to J000227",badge:"Accepted",bs:EK.ok,d:"28/04/2025",now:true},
+    {a:"Revised → v2",badge:"Sent",bs:EK.sent,r:"Price adjusted after scope call.",d:"20/04/2025"},
+    {a:"Sent → v1",badge:"Sent",bs:EK.sent,d:"12/04/2025"},
+    {a:"Created → v1",badge:"Draft",bs:EK.neutral,d:"11/04/2025"}]},
+  "INV-1042":{type:"Invoice",k:"Billing · invoice",t:"INV-1042 · J000702",rows:[["Job","J000702"],["Amount","£4,200"],["Net of credit","£3,600 (CN-0102 −£600)"],["Status","Overdue — £3,600 outstanding"],["Terms","30 days"],["Due","31/07/2026"],["Xero","Synced — invoice #INV-1042"]],ev:[
+    {a:"Credit note CN-0102 applied",badge:"−£600",bs:EK.money,r:"Partial credit for de-scoped training place.",d:"20/08/2026",now:true},
+    {a:"Reminder sent",badge:"Sent",bs:EK.sent,d:"05/08/2026"},
+    {a:"Overdue",badge:"Overdue",bs:EK.bad,r:"Payment not received by the due date.",d:"01/08/2026"},
+    {a:"Sent to client",badge:"Sent",bs:EK.sent,r:"Emailed with PDF; pushed to Xero.",d:"01/07/2026"},
+    {a:"Raised from template",badge:"Draft",bs:EK.neutral,r:"CRP report-only line items applied.",d:"30/06/2026"}]},
+  "INV-0988":{type:"Invoice",k:"Billing · invoice",t:"INV-0988 · J000446",rows:[["Job","J000446"],["Amount","£3,600"],["Paid","28/04/2026"],["Method","Bank transfer"],["Xero","Synced — reconciled"]],ev:[
+    {a:"Paid — reconciled from Xero",badge:"Paid",bs:EK.ok,r:"Payment matched in Xero and reflected here.",d:"28/04/2026",now:true},
+    {a:"Sent to client",badge:"Sent",bs:EK.sent,d:"12/04/2026"},
+    {a:"Raised from template",badge:"Draft",bs:EK.neutral,d:"11/04/2026"}]},
+  "INV-0902":{type:"Invoice",k:"Billing · invoice",t:"INV-0902 · J000227",rows:[["Job","J000227"],["Amount","£3,900"],["Paid","20/05/2025"],["Xero","Synced — reconciled"]],ev:[
+    {a:"Paid — reconciled from Xero",badge:"Paid",bs:EK.ok,d:"20/05/2025",now:true},
+    {a:"Sent to client",badge:"Sent",bs:EK.sent,d:"02/05/2025"},
+    {a:"Raised from template",badge:"Draft",bs:EK.neutral,d:"01/05/2025"}]},
+  "CN-0102":{type:"Credit note",k:"Adjustments · credit note",t:"CN-0102 · against INV-1042",rows:[["Against","INV-1042"],["Amount","−£600"],["Reason","De-scoped training place"],["Applied","20/08/2026"],["Xero","Synced — credit #CN-0102"]],ev:[
+    {a:"Applied to INV-1042",badge:"Applied",bs:EK.ok,r:"Reduced the invoice balance by £600.",d:"20/08/2026",now:true},
+    {a:"Emailed to client",badge:"Sent",bs:EK.sent,d:"20/08/2026"},
+    {a:"Issued",badge:"Draft",bs:EK.neutral,r:"Raised by A. Shaw; approved by finance.",d:"19/08/2026"}]}};
+function openDoc(id){const d=DOCS[id];const c=document.getElementById("dcontent");
+  const meta=d.rows.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v" style="text-align:right">${v}</span></div>`).join("");
+  const ev=d.ev.map(e=>`<div class="ev ${e.now?"now":""}"><span class="dot"></span><div><div class="ea">${e.a}${e.badge?` <span class="ek" style="${e.bs};border-radius:5px;padding:1px 6px">${e.badge}</span>`:""}</div>${e.r?`<div class="er">${e.r}</div>`:""}</div><div class="ed">${e.d}</div></div>`).join("");
+  c.innerHTML=`<div class="dh"><button class="x" onclick="closeD()" aria-label="Close">×</button><div class="k">${d.k}</div><h2>${d.t}</h2></div>
+    <div class="db"><div class="cb" style="padding:2px 0 10px">${meta}</div><div class="tl"><div class="th">Full history — held here</div>${ev}</div>
+    <div class="gov"><span class="lk">🔒</span><span>This ${d.type.toLowerCase()}'s full versioned history is the <b>source of record</b> in the console. Xero mirrors the accounting side; it is never the source of truth for the document trail.</span></div></div>
+    <div class="df"><div class="dfa"><button class="btn sm" onclick="closeD()">✉ Email</button><button class="btn sm" onclick="closeD()">⭳ PDF</button><span class="sp"></span><button class="btn pri" onclick="closeD()">Close</button></div></div>`;
+  showDrawer();}
+function showDrawer(){document.getElementById("scrim").classList.add("show");const dr=document.getElementById("drawer");dr.classList.add("show");dr.setAttribute("aria-hidden","false");}
+/* evidence-drawer-first: every figure's provenance + lineage one click away. Derived from data, never captured. */
+const PROV={
+  emissions:{k:"Evidence · emissions",t:"Latest emissions",fig:"1,706 tCO₂e",sub:"FY2024 · all scopes, all sites",tier:["Measured","tier-ok"],
+    rows:[["Factor set","DEFRA / BEIS 2024, v1.2"],["Data hash","sha256:9f3a…c17b"],["As-at date","31 Mar 2025"],["Source","Reviewed snapshot · J000702 (CRP 2024)"],["Resolver","resolveBaseline() · FY2024 issue-time stamp"]],
+    lineage:"Sum of reviewed scope rows (activity data × emission factor) rolled up across Scope 1–3 and 2 operational sites. Figure is derived from the assured snapshot — never captured as an image or re-keyed."},
+  split:{k:"Evidence · scope split",t:"Scope split",fig:"1,706 tCO₂e",sub:"FY2024 · S1 110 · S2 452 · S3 1,144",tier:["Mixed tiers","tier-est"],
+    rows:[["Scope 1","110 · Measured (metered fuel & fleet)"],["Scope 2","452 · Measured (supplier invoices, location-based)"],["Scope 3","1,144 · Estimated & Spend-based (Cat 1, 4, 6)"],["Factor set","DEFRA / BEIS 2024, v1.2"],["As-at date","31 Mar 2025"]],
+    lineage:"Each scope is a roll-up of its reviewed rows with per-row quality tiers. Scope 3 mixes measured, estimated and spend-based rows — open a row in the job to see its individual factor and tier."},
+  intensity:{k:"Evidence · intensity",t:"Emissions intensity",fig:"42.7 tCO₂e/£M",sub:"FY2024 · per £M revenue",tier:["Derived","tier-ok"],
+    rows:[["Numerator","1,706 tCO₂e (reviewed snapshot)"],["Denominator","£40.0M turnover (job business metrics)"],["Denominator source","J000702 · declared turnover"],["As-at date","31 Mar 2025"]],
+    lineage:"Intensity = assured emissions ÷ the reporting-year business metric captured on the job. Changing the base (FTE, floor area) swaps the denominator only; the numerator stays the assured total."}};
+function openProv(id){const d=PROV[id];const c=document.getElementById("dcontent");
+  const rows=d.rows.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono" style="text-align:right">${v}</span></div>`).join("");
+  c.innerHTML=`<div class="dh"><button class="x" onclick="closeD()" aria-label="Close">×</button><div class="k">${d.k}</div><h2>${d.t}</h2></div>
+    <div class="db">
+      <div style="display:flex;align-items:center;gap:12px;margin:2px 0 14px"><span class="provfig">${d.fig}</span><span class="tierbadge ${d.tier[1]}">${d.tier[0]}</span></div>
+      <div class="sub" style="margin:-8px 0 12px">${d.sub}</div>
+      <div class="th" style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px">Provenance signature</div>
+      <div class="cb" style="padding:0 0 12px">${rows}</div>
+      <div class="th" style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px">Calculation lineage</div>
+      <p class="sub" style="margin:0 0 12px">${d.lineage}</p>
+      <div class="gov"><span class="lk">🔒</span><span>Every figure carries its factor set, version, data hash and as-at date. Numbers are <b>derived from the assured snapshot</b>, never captured — the same figure renders identically to screen, PDF and portal.</span></div></div>
+    <div class="df"><div class="dfa"><button class="btn sm" onclick="closeD()">Open source snapshot →</button><span class="sp"></span><button class="btn pri" onclick="closeD()">Close</button></div></div>`;
+  showDrawer();}
+function openD(kind){const d=DRAWERS[kind];const c=document.getElementById("dcontent");
+  c.innerHTML=`<div class="dh"><button class="x" onclick="closeD()" aria-label="Close">×</button><div class="k">${d.k}</div><h2>${d.t}</h2></div><div class="db">${d.body}</div><div class="df"><div class="dfa">${d.foot}</div></div>`;
+  document.getElementById("scrim").classList.add("show");const dr=document.getElementById("drawer");dr.classList.add("show");dr.setAttribute("aria-hidden","false");
+  const gc=document.getElementById("geochk");if(gc)gc.onchange=()=>document.getElementById("geobody").hidden=!gc.checked;
+  if(kind==="rebaseline")wireReb();
+  if(kind==="site")wireSite();}
+function wireSite(){const ss=document.getElementById("sitestatus"),vf=document.getElementById("vacfl");if(!ss)return;
+  ss.querySelectorAll("button").forEach(b=>b.onclick=()=>{ss.querySelectorAll("button").forEach(x=>x.classList.remove("on"));b.classList.add("on");vf.hidden=b.dataset.s!=="vacated";});}
+function closeD(){document.getElementById("scrim").classList.remove("show");const dr=document.getElementById("drawer");dr.classList.remove("show");dr.setAttribute("aria-hidden","true");}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeD();});
+function wireReb(){
+  const kind=document.getElementById("kind"),note=document.getElementById("kindnote"),thr=document.getElementById("thresholdfl");
+  kind.querySelectorAll("button").forEach(b=>b.onclick=()=>{kind.querySelectorAll("button").forEach(x=>x.classList.remove("on"));b.classList.add("on");const rc=b.dataset.k==="recalculation";note.innerHTML=rc?"<b>Recalculation</b> — the same base year is restated after a structural change above the significance threshold. Targets held; base figures move.":"<b>Re-baseline</b> — the client adopts a different reporting year as its baseline going forward. GHG Protocol treats this as a new base year; targets may need restating.";thr.hidden=!rc;});
+  const src=document.getElementById("src"),sj=document.getElementById("srcjob"),stp=document.getElementById("srctyped");
+  src.querySelectorAll("button").forEach(b=>b.onclick=()=>{src.querySelectorAll("button").forEach(x=>x.classList.remove("on"));b.classList.add("on");const typed=b.dataset.s==="typed";sj.hidden=typed;stp.hidden=!typed;});
+  const tm=document.getElementById("tgtmode");tm.querySelectorAll("button").forEach(b=>b.onclick=()=>{tm.querySelectorAll("button").forEach(x=>x.classList.remove("on"));b.classList.add("on");});
+  const reason=document.getElementById("reason"),save=document.getElementById("save"),gr=document.getElementById("gr");
+  reason.addEventListener("input",()=>{const ok=reason.value.trim().length>0;save.setAttribute("aria-disabled",ok?"false":"true");gr.hidden=ok;});
+}
+</script>
