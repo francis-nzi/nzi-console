@@ -905,5 +905,9 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-seg label:focus-within{outline:2px solid var(--emerald);outline-offset:2px}
 .nz-floor-history{list-style:none;margin:6px 0 8px;padding:0;display:grid;gap:4px}
 .nz-floor-history li{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--line2)}
+/* commercial document history (NZC-069, held) — a vertical timeline */
+.nz-history{margin-top:18px;border-left:2px solid var(--line);padding-left:14px;display:grid;gap:14px}
+.nz-history-ev{position:relative}
+.nz-history-ev::before{content:"";position:absolute;left:-20px;top:4px;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--emerald)}
 @media (max-width:1200px){.nz-cw-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:420px){.nz-two{grid-template-columns:1fr}}
