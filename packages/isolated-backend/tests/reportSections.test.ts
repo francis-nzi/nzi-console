@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { crpReportSectionTemplate, crpReportSectionCatalogue } from "@nzi/contracts";
 import { CommandValidationError, VersionConflictError, editReportSection, regenerateReportSection, resetReportSection } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, idempotencyKey: "sec-1", correlationId: "corr-sec-1" };
+const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "staff-a"), idempotencyKey: "sec-1", correlationId: "corr-sec-1" };
 
 /** Mock pool that answers the SQL `editReportSection` / `resetReportSection` issue. */
 function sectionPool(opts: { jobFamily?: string; currentVersion?: number } = {}) {
@@ -12,7 +13,7 @@ function sectionPool(opts: { jobFamily?: string; currentVersion?: number } = {})
   let outboxCount = 0;
   let stored: { request_hash: string; outcome_json: Record<string, unknown> } | undefined;
   const client = {
-    async query(sql: string, values: readonly unknown[] = []) {
+    async query(sql: string, values: readonly unknown[] = []) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: stored ? [stored] : [] };
       if (sql.includes("SELECT job_family FROM nzi_console.jobs")) return { rows: opts.jobFamily === undefined ? [{ job_family: "crp" }] : opts.jobFamily === null ? [] : [{ job_family: opts.jobFamily }] };
       if (sql.includes("SELECT version FROM nzi_console.report_sections")) return { rows: opts.currentVersion ? [{ version: opts.currentVersion }] : [] };

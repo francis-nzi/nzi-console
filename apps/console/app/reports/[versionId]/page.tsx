@@ -7,6 +7,7 @@ import {PrintButton} from "./PrintButton";
 import {ReportPagedView} from "./ReportPagedView";
 import {REPORT_PAGED_MEDIA_RULES} from "./reportPrintRules";
 import { formatDateTime } from "../../lib/formatDate";
+import { LogoMark } from "../../lib/LogoMark";
 
 export const dynamic="force-dynamic";
 
@@ -60,8 +61,12 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
           <div><b>NZI Pro</b><span>Verified carbon report</span></div>
           <div className="report-version"><b>{version.reportVersionId}</b><span>Manifest v{version.manifestVersion}</span></div>
         </div>
-        <h1>{snapshot.reportingYear} Carbon Reduction Plan</h1>
-        <p>{snapshot.client} · {snapshot.jobNumber}</p>
+        <div className="report-client">
+          {/* The logo frozen onto this version at validation; the monogram when there is none. */}
+          <LogoMark src={version.clientLogoAssetId?`/api/isolated/logo-assets/${encodeURIComponent(version.clientLogoAssetId)}`:null} name={snapshot.client} className="report-client-mark"/>
+          <div><h1>{snapshot.reportingYear} Carbon Reduction Plan</h1><p>{snapshot.client} · {snapshot.jobNumber}</p></div>
+        </div>
+        {version.signee?<p className="report-signee">Signed off for {snapshot.client} by <b>{version.signee.name}</b>{version.signee.jobTitle?`, ${version.signee.jobTitle}`:""}</p>:null}
       </header>
       <section className="report-summary">
         <h2>Reviewed footprint</h2>

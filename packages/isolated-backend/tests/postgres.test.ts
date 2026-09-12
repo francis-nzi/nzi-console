@@ -16,7 +16,7 @@ describe("isolated Postgres adapter", () => {
 
   it("sets the runtime role and tenant context inside a read-only transaction", async () => {
     const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
-    const client = { query: async (sql: string, values?: readonly unknown[]) => { calls.push({ sql, values }); return { rows: [] }; }, release: () => undefined };
+    const client = { query: async (sql: string, values?: readonly unknown[]) => {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]}; calls.push({ sql, values }); return { rows: [] }; }, release: () => undefined };
     const pool = { connect: async () => client };
     await withTenantRead(pool as never, "org-a", async () => "ok");
     assert.deepEqual(calls.map((call) => call.sql), ["BEGIN READ ONLY", "SET LOCAL ROLE nzi_console_app", "SELECT set_config('app.organisation_id', $1, true)", "COMMIT"]);
@@ -25,7 +25,7 @@ describe("isolated Postgres adapter", () => {
 
   it("maps canonical scope-row evidence without treating missing calculation as zero", async () => {
     let sql = "";
-    const db = { query: async (statement: string) => { sql = statement; return { rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Purchased goods", quantity: "1250.5", unit: "GBP", dataset_id: "dataset-a", factor_id: "factor-a", factor_version: "2026 v1", factor_label: "Synthetic factor", quality_tier: "spend-based", calculated_tco2e: null, override_tco2e: null, override_reason: null, review_status: "pending", version: 3, enabled: true, category_code: "3.1", provenance_json: { source: "synthetic" }, lineage_json: [{ title: "Captured", detail: "Synthetic" }] }] }; } } as Queryable;
+    const db = { query: async (statement: string) => {if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]}; sql = statement; return { rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Purchased goods", quantity: "1250.5", unit: "GBP", dataset_id: "dataset-a", factor_id: "factor-a", factor_version: "2026 v1", factor_label: "Synthetic factor", quality_tier: "spend-based", calculated_tco2e: null, override_tco2e: null, override_reason: null, review_status: "pending", version: 3, enabled: true, category_code: "3.1", provenance_json: { source: "synthetic" }, lineage_json: [{ title: "Captured", detail: "Synthetic" }] }] }; } } as Queryable;
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.quantity, 1250.5); assert.equal(row.calculatedTco2e, null); assert.equal(row.qualityTier, "spend-based"); assert.equal(row.version, 3);
     assert.equal(row.categoryCode, "3.1"); assert.ok(sql.includes("r.category_code"));
@@ -33,14 +33,14 @@ describe("isolated Postgres adapter", () => {
 
   it("flags a scope row pinned to an older client factor version (S2)", async () => {
     let sql = "";
-    const db = { query: async (statement: string) => { sql = statement; return { rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Widget", quantity: "10", unit: "unit", dataset_id: null, factor_id: null, factor_version: "v1", factor_label: "Supplier EPD", quality_tier: "measured", calculated_tco2e: "2.4", override_tco2e: null, override_reason: null, review_status: "approved", version: 4, enabled: true, factor_source: "client", client_factor_id: "cf-a", is_custom_entry: true, client_factor_version_moved: true, provenance_json: {}, lineage_json: [] }] }; } } as Queryable;
+    const db = { query: async (statement: string) => {if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]}; sql = statement; return { rows: [{ scope_row_id: "row-a", job_id: "job-a", scope: "3.1", source_label: "Widget", quantity: "10", unit: "unit", dataset_id: null, factor_id: null, factor_version: "v1", factor_label: "Supplier EPD", quality_tier: "measured", calculated_tco2e: "2.4", override_tco2e: null, override_reason: null, review_status: "approved", version: 4, enabled: true, factor_source: "client", client_factor_id: "cf-a", is_custom_entry: true, client_factor_version_moved: true, provenance_json: {}, lineage_json: [] }] }; } } as Queryable;
     const row = (await listScopeRows(db, "job-a"))[0]!;
     assert.equal(row.clientFactorVersionMoved, true);
     assert.ok(sql.includes("'v'||cf.version::text <> coalesce(r.factor_version,'')"));
   });
 
   it("lists the CRM applicable-category completeness view — all 15 Scope 3 when Scope 3 is included (NZC-046/UX1a)", async () => {
-    const db = { query: async (statement: string) => {
+    const db = { query: async (statement: string) => {if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (statement.includes("SELECT DISTINCT scope FROM")) return { rows: [{ scope: "1" }, { scope: "3" }] };
       if (statement.includes("coalesce(nullif(category_code")) return { rows: [{ code: "3.1", entry_count: "2", tco2e: "686.3", complete_count: "1" }, { code: "1.natural-gas", entry_count: "1", tco2e: "17.6", complete_count: "1" }] };
       return { rows: [] };
@@ -64,7 +64,7 @@ describe("isolated Postgres adapter", () => {
 
   it("lists only the client's authorised categories for the portal audience (NZC-046/UX1a)", async () => {
     let grantSql = "";
-    const db = { query: async (statement: string) => {
+    const db = { query: async (statement: string) => {if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (statement.includes("SELECT DISTINCT scope FROM")) return { rows: [{ scope: "3" }] };
       if (statement.includes("coalesce(nullif(category_code")) return { rows: [] };
       if (statement.includes("FROM nzi_console.portal_data_entry_bucket_grants b")) { grantSql = statement; return { rows: [{ code: "3.1" }, { code: "3.6" }] }; }
@@ -78,12 +78,12 @@ describe("isolated Postgres adapter", () => {
 
   it("maps governed datasets, provenance usage and explicit selection warnings",async()=>{let call=0;const db={query:async()=>({rows:call++===0?[{dataset_id:"dataset-a",name:"Published factors",version:"2026",valid_from:"2026-01-01",valid_to:"2026-12-31",country_code:"GB",status:"active",source_name:"Publisher",licence:"OGL",synthetic:false,factor_count:"2",job_count:"1",scopes:["1","2"],spend_count:"0",activity_count:"2"}]:[{dataset_id:"dataset-a",job_number:"J000612",warning:"Manual geography exception."}]})} as Queryable,result=await listDatasetRegistry(db);assert.equal(result.datasets[0]?.factorCount,2);assert.deepEqual(result.datasets[0]?.scopes,["1","2"]);assert.equal(result.issues[0]?.jobNumber,"J000612");});
 
-  it("lists eligible client factors alongside selected dataset factors",async()=>{let sql="";const db={query:async(statement:string)=>{sql=statement;return{rows:[{dataset_id:null,dataset_name:"Client factors",dataset_version:"v2",factor_id:"cf-a",label:"Supplier EPD",activity_unit:"unit",kgco2e_per_unit:"12.4",scopes:["3.1"],selection_source:"client",factor_source:"client",client_factor_id:"cf-a",evidence_hash:"sha256:epd",synthetic:false,warnings_json:[]}]}}} as Queryable;const factors=await listJobFactorOptions(db,"job-a");assert.equal(factors[0]?.factorSource,"client");assert.deepEqual(factors[0]?.scopes,["3.1"]);assert.equal(factors[0]?.clientFactorId,"cf-a");assert.equal(factors[0]?.evidenceHash,"sha256:epd");assert.ok(sql.includes("cf.job_id IS NULL OR cf.job_id=j.job_id"));
+  it("lists eligible client factors alongside selected dataset factors",async()=>{let sql="";const db={query:async(statement:string)=>{if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};sql=statement;return{rows:[{dataset_id:null,dataset_name:"Client factors",dataset_version:"v2",factor_id:"cf-a",label:"Supplier EPD",activity_unit:"unit",kgco2e_per_unit:"12.4",scopes:["3.1"],selection_source:"client",factor_source:"client",client_factor_id:"cf-a",evidence_hash:"sha256:epd",synthetic:false,warnings_json:[]}]}}} as Queryable;const factors=await listJobFactorOptions(db,"job-a");assert.equal(factors[0]?.factorSource,"client");assert.deepEqual(factors[0]?.scopes,["3.1"]);assert.equal(factors[0]?.clientFactorId,"cf-a");assert.equal(factors[0]?.evidenceHash,"sha256:epd");assert.ok(sql.includes("cf.job_id IS NULL OR cf.job_id=j.job_id"));
     // UNION ALL branches must agree on column types: the dataset branch's numeric factor value is cast to text to match the client branch (Postgres rejects numeric∪text).
     assert.ok(sql.includes("f.kgco2e_per_unit::text"),"dataset factor value must be cast to text for the UNION");
     assert.ok(sql.includes("cf.kgco2e_per_unit::text"),"client factor value must be cast to text for the UNION");});
 
-  it("derives staff governance from live membership counts and enforced permissions",async()=>{const db={query:async()=>({rows:[{role_id:"reviewer",members:"3"}]})} as Queryable,roles=await listStaffRoleGovernance(db),reviewer=roles.find(role=>role.id==="reviewer");assert.equal(reviewer?.members,3);assert.ok(reviewer?.permissions.includes("reports.publish"));assert.ok(reviewer?.restricted.includes("finance.manage"));});
+  it("derives staff governance from live membership counts and the current permission-matrix rows (NZC-022)",async()=>{const db={query:async(sql:string)=>sql.includes("staff_role_capabilities")?{rows:[{matrix_version:1,role_id:"reviewer",capability:"report.publish",scope:"all"},{matrix_version:1,role_id:"consultant",capability:"portal.admin",scope:"own_clients"}]}:{rows:[{role_id:"reviewer",members:"3"}]}} as Queryable,roles=await listStaffRoleGovernance(db),reviewer=roles.find(role=>role.id==="reviewer"),consultant=roles.find(role=>role.id==="consultant");assert.deepEqual(roles.map(role=>role.id),["admin","consultant","reviewer","finance","viewer"]);assert.equal(reviewer?.members,3);assert.equal(reviewer?.matrixVersion,1);assert.ok(reviewer?.permissions.includes("report.publish"));assert.ok(reviewer?.restricted.includes("finance.manage"));assert.ok(consultant?.permissions.includes("portal.admin (own)"));});
 
   it("loads the current published report from its matching frozen snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",manifest_version:1,report_data_hash:"sha256:abc",published_at:"2026-08-25T18:00:00Z",snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable;const report=await getCurrentPublishedCrpReport(db,"job-a");assert.equal(report?.snapshot.jobNumber,"J000612");assert.equal(report?.reportVersionId,"report-a");});
   it("loads one immutable staff report version from its exact matching snapshot",async()=>{const db={query:async()=>({rows:[{report_version_id:"report-a",status:"validated",manifest_version:1,report_data_hash:"sha256:abc",published_at:null,snapshot_id:"snapshot-a",job_id:"job-a",snapshot_version:2,job_version:8,data_hash:"sha256:abc",payload_json:{jobNumber:"J000612",client:"Synthetic Client",reportingYear:2026,measurements:[]},created_by:"reviewer-a",created_at:"2026-08-25T17:00:00Z"}]})} as Queryable,report=await getCrpReportVersion(db,"report-a");assert.equal(report?.status,"validated");assert.equal(report?.publishedAt,null);assert.equal(report?.snapshot.id,"snapshot-a");});
@@ -99,7 +99,7 @@ describe("isolated Postgres adapter", () => {
   it("rolls back and releases the connection when a read fails", async () => {
     const calls: string[] = [];
     let released = false;
-    const client = { query: async (sql: string) => { calls.push(sql); return { rows: [] }; }, release: () => { released = true; } };
+    const client = { query: async (sql: string) => {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]}; calls.push(sql); return { rows: [] }; }, release: () => { released = true; } };
     const pool = { connect: async () => client };
     await assert.rejects(() => withTenantRead(pool as never, "org-a", async () => { throw new Error("forced"); }));
     assert.equal(calls.at(-1), "ROLLBACK");

@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CommandValidationError, VersionConflictError, resolveAssuranceGap } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 
-const context = { organisationId: "org-a", actorId: "reviewer-a", principal: "staff" as const, idempotencyKey: "gap-1", correlationId: "corr-gap-1" };
+const context = { organisationId: "org-a", actorId: "reviewer-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "reviewer-a"), idempotencyKey: "gap-1", correlationId: "corr-gap-1" };
 
 function gapPool(opts: { jobFamily?: string; existingVersion?: number } = {}) {
   const writes: Array<{ sql: string; values: readonly unknown[] }> = [];
   let auditCount = 0;
   let stored: { request_hash: string; outcome_json: Record<string, unknown> } | undefined;
   const client = {
-    async query(sql: string, values: readonly unknown[] = []) {
+    async query(sql: string, values: readonly unknown[] = []) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: stored ? [stored] : [] };
       if (sql.includes("SELECT job_family FROM nzi_console.jobs")) return { rows: opts.jobFamily === undefined || opts.jobFamily === "crp" ? [{ job_family: "crp" }] : opts.jobFamily === null ? [] : [{ job_family: opts.jobFamily }] };
       if (sql.includes("SELECT resolution_id, version FROM nzi_console.gap_resolutions")) return { rows: opts.existingVersion ? [{ resolution_id: "existing-id", version: opts.existingVersion }] : [] };

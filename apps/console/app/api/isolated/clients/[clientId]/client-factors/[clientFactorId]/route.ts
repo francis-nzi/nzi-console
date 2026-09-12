@@ -7,7 +7,7 @@ import { isolatedPool } from "../../../../../../lib/isolatedDatabase";
 export const dynamic = "force-dynamic";
 
 // S2 — a versioned edit (PATCH) and archive/un-archive (POST) of one client
-// factor. Both map to `datasets.override` via the command registry.
+// factor. Both map to `clientfactor.manage` via the command registry (NZC-022).
 export async function PATCH(request: Request, { params }: { params: Promise<{ clientFactorId: string }> }) {
   try {
     const principal = await requireCommandPrincipal(request, "client.factor.update");

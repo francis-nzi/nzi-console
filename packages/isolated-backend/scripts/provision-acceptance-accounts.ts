@@ -87,11 +87,11 @@ async function main(): Promise<void> {
     try {
       await client.query("BEGIN");
 
-      // --- Staff principal: membership (administrator) + credential ---
+      // --- Staff principal: membership (admin) + credential ---
       await client.query(
         `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status)
-         VALUES ($1, $2, 'administrator', 'active')
-         ON CONFLICT (organisation_id, user_id) DO UPDATE SET role_id = 'administrator', status = 'active'`,
+         VALUES ($1, $2, 'admin', 'active')
+         ON CONFLICT (organisation_id, user_id) DO UPDATE SET role_id = 'admin', status = 'active'`,
         [ORG, STAFF_USER_ID],
       );
       await client.query(

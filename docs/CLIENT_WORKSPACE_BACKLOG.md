@@ -43,8 +43,9 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 |---|---|---|---|
 | Site add/edit via drawer | `/clients/{id}/sites` | Built | — |
 | Geocode (optional lat/long + lookup) | `services/geocoding.py` | Built | — |
-| **Mark registered office** | NZC-070 / `client_sites` | Built | Go-live |
-| **Vacate site (effective-dated close)** — changes reporting boundary & per-m² denominator | NZC-070 / `client_sites` (effective-dated) | Built | Go-live |
+| **Mark registered office** | `client_sites` | Prototype ✓ · impl Partial | Go-live |
+| **Vacate site (effective-dated close)** — changes reporting boundary & per-m² denominator | `client_sites` (effective-dated) | Prototype ✓ · impl Partial (boundary bugs) | Go-live |
+| **Site floor area (effective-dated)** — the real per-m² denominator | new decision (NZC-###) | Prototype ✓ · impl To build | Go-live |
 | Sites map view | portal `sites-geo` | To build | Should |
 
 ## D. Baseline & targets
@@ -63,7 +64,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Scope split donut + reporting-year picker | `job_report` | Built | — |
 | Emissions intensity — multi-base (revenue / FTE / m²) + **All (indexed)** | job business metrics | Built | — |
 | Reduction pathway to net zero | `@nzi/charts` | Built | — |
-| **Evidence/provenance drawer per figure** (factor set + version + data hash + as-at) | NZC-005 / figure evidence contract | Built | Go-live |
+| **Evidence/provenance drawer per figure** (factor set + version + data hash + as-at) | evidence-drawer-first principle | Prototype ✓ · impl Partial (not wired; provenance invented) | Go-live |
 | **Distinct empty / loading / degraded / failed states** (never failed-as-zero) | fail-open fix | To build | Go-live |
 | Extensible intensity-base registry (add more denominators) | — | To build | Should |
 
@@ -128,12 +129,12 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
-| Quotes table + **full versioned history drawer** | `/clients/{id}/quotes` | Built (prototype) | — |
-| **Quote lifecycle**: create · approve · accept · revise (versioned) · email | `quotes` routes | Built (prototype) | Should |
-| Invoices table + **history drawer** | `jobs/{id}/line-items` | Built (prototype) | — |
-| Invoice line-items + templates (`apply-template`, `create-invoice`) | invoice routes | Built (prototype) | Should |
-| **Credit notes** (at invoice/job/client level) | `credit_notes_routes` | Built (prototype) | Should |
-| Xero projection boundary (what lives here vs Xero) | BD brief | **Decided**: console is source-of-record; Xero mirrors | — |
+| Quotes table + **full versioned history drawer** | `/clients/{id}/quotes` | Prototype ✓ · impl under review (NZC-069) | — |
+| **Quote lifecycle**: create · approve · accept · revise (versioned) · email | `quotes` routes | Prototype ✓ · impl under review | Should |
+| Invoices table + **history drawer** | `jobs/{id}/line-items` | Prototype ✓ · impl under review | Should |
+| Invoice line-items + templates (`apply-template`, `create-invoice`) | invoice routes | Prototype ✓ · impl under review | Should |
+| **Credit notes** (at invoice/job/client level) | `credit_notes_routes` | Prototype ✓ · impl under review | Should |
+| Xero projection boundary (what lives here vs Xero) | BD brief | **Decided**: console is source-of-record; Xero mirrors. ⚠️ impl hard-codes `xeroStatus:"connected"` — must be derived (truth-before-availability) | — |
 
 ## M. Portal (client access administration)
 
@@ -157,7 +158,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 
 | Item | Source | Status | Tier |
 |---|---|---|---|
-| Evidence-drawer-first provenance on every number | NZC-005 / figure evidence contract | Built | Go-live |
+| Evidence-drawer-first provenance on every number | ARCHITECTURE / conventions | To build | Go-live |
 | Permission matrix / role gating (Financials, portal admin, re-baseline) | NZC-022 (open) | To build | Go-live |
 | Distinct empty / loading / degraded / failed states | fail-open fix | To build | Go-live |
 | Audit trail on every client mutation (permission-checked command + audit event) | governed spine | To build | Go-live |
@@ -168,8 +169,8 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 
 ## Go-live shortlist (the blocking set)
 
-1. ~~Evidence/provenance drawer on figures (E)~~ — **prototyped**
-2. ~~Site effective-dating: registered office + vacate (C)~~ — **prototyped**
+1. Evidence/provenance drawer on figures (E) — prototyped; **impl Partial** (see audit — not wired, provenance invented, no real states)
+2. Site effective-dating: registered office + vacate (C) — prototyped; **impl Partial** (see audit — page not wired, boundary bugs, floor area missing)
 3. Forward target model feeding the pathway (D)
 4. Contact roles (B)
 5. Permission gating (cross-cutting)
@@ -178,5 +179,43 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 8. Portal user administration (M)
 9. Logo + year-end month (A)
 
-The two layout-changing items (1, 2) are in the prototype. Commercial history (L) is also
-prototyped and has a build brief. Remaining go-live items 3–9 are still to design/build.
+Items 1 and 2 have prototypes and a first (rejected) implementation; a **corrective build
+brief** is in flight — see the audit for the gap list. Commercial history (L) is prototyped
+but its implementation is **under review** (bundled into the same commit; false Xero status).
+Remaining go-live items 3–9 are still to design/build.
+
+### Decisions taken during the corrective pass
+- **Reporting-period basis = financial year.** The site boundary and every figure resolve
+  against the job's reporting period via `resolveBaseline()`, never the calendar year.
+- **Legacy site backfill:** existing/legacy sites get `in_service_from = NULL` (open lower
+  bound = "in service from before records"), never the migration date and never a guessed
+  earliest-job date. New sites default to the job's reporting-period start, editable.
+- **Site floor area** (new decision): effective-dated `floor_area_m2` per site; the per-m²
+  denominator = sum of in-boundary sites' floor area for the reporting year; a site missing
+  floor area makes per-m² "unavailable" for that year, never a wrong number.
+- **Vacate meaning:** `vacated_effective` = first day OUT of service; boundary uses strict `>`.
+- **One registered office per client**, enforced; a vacated site can't be registered;
+  vacating a registered office blocks until reassigned.
+
+### Round 2 — gaps found in the second review (decisions + work)
+- **Historical snapshots keep provenance without re-issue.** *(Confirmed.)* A published
+  report is immutable, so existing snapshots are NOT re-issued. Backfill a provenance stamp
+  marked `source = migrated_unverified` (the NZC-065 pattern) recording the factor set /
+  version / hash / as-at that was in effect; new issues carry a real, resolved stamp.
+  **The published PDF must remain retrievable regardless of provenance-stamp status** — a
+  missing or `migrated_unverified` stamp never blocks access to the issued PDF.
+- **Commercial ledger / Xero (NZC-069): HELD** — to be picked up in a dedicated
+  quotes/invoices exercise. Split onto its own branch with honest Xero status now; do not
+  merge until revisited.
+- **NZC-066 completion:** every report issue records the baseline it was issued against
+  (baseline-ref stamped at issue time); existing issues backfilled `migrated_unverified`
+  where derivable, else flagged. Currently missing.
+- **/clients list must resolve, not seed.** The list shows the resolved latest-issued
+  emissions + as-at from the snapshot, or "Not reported" — never a seeded footprint/YoY.
+- **Job running total = in-boundary total.** Out-of-boundary rows are excluded from the
+  headline total and surfaced as gaps with a visible "N rows excluded — resolve"
+  affordance; they are never silently counted (truth before availability).
+- **Unknown client = HTTP 404.** `notFound()` must not be swallowed to a 200 by the new
+  loading state.
+- **Permission names belong in the matrix.** `finance.manage` (and any others) must be
+  defined in the NZC-022 permission matrix, not invented ad hoc — NZC-022 is still open.

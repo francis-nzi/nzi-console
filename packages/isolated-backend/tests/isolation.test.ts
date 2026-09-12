@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { IsolatedStore, runIsolatedCommand, type TenantRecord } from "../src/index";
+import { commandGrantForRole } from "@nzi/contracts";
 type JobRecord = TenantRecord & { title: string };
-const context = { organisationId: "org-a", actorId: "user-a", principal: "staff" as const, idempotencyKey: "idem-1", correlationId: "corr-1" };
+const context = { organisationId: "org-a", actorId: "user-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "user-a"), idempotencyKey: "idem-1", correlationId: "corr-1" };
 describe("isolated backend boundary", () => {
   it("prevents cross-tenant reads", async () => { const store = new IsolatedStore(); await store.transaction(async (unit) => { unit.repository<JobRecord>("org-a").insert({ id: "job-1", organisationId: "org-a", version: 1, title: "A" }); return null; }); await store.transaction(async (unit) => { assert.equal(unit.repository<JobRecord>("org-b").get("job-1"), undefined); return null; }); });
   it("rolls back records, audit and outbox on forced failure", async () => { const store = new IsolatedStore(); const result = await runIsolatedCommand(store, "job.stage.change", context, async (unit) => { unit.repository<JobRecord>("org-a").insert({ id: "job-1", organisationId: "org-a", version: 1, title: "Draft" }); throw new Error("forced failure"); }); assert.equal(result.state, "failed"); const state = store.snapshot(); assert.equal(state.records.size, 0); assert.equal(state.audits.length, 0); assert.equal(state.outbox.length, 0); });

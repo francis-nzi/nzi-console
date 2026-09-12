@@ -1,3 +1,4 @@
+import { capabilities, roleCapabilityGrants, roleLabels, staffRoles as contractStaffRoles, type StaffRole as ContractStaffRole } from "@nzi/contracts";
 export type HealthState = "success" | "degraded" | "failed" | "loading" | "empty";
 export type AuditSeverity = "info" | "warning" | "critical";
 
@@ -26,14 +27,16 @@ export const auditEvents: AuditEvent[] = [
   { id: "aud-905", at: "25 Aug 2026, 13:58:47", actor: "F. Doherty", principal: "staff", organisation: "NZI", action: "dataset.manual_add", entity: "DatasetResolution", entityId: "J000712-S3", result: "allowed", severity: "warning", correlationId: "req-81c10", reason: "Client-specific supplier factor required" },
 ];
 
-export const staffRoles: StaffRole[] = [
-  { id: "administrator", name: "Administrator", members: 2, permissions: ["All workspaces", "Manage users and roles", "Manage datasets", "Emergency override with reason"], restricted: [] },
-  { id: "consultant", name: "Consultant", members: 7, permissions: ["View and edit assigned clients/jobs", "Enter and map data", "Draft reports", "Create sales activity"], restricted: ["Publish reports", "Manage users", "Change platform settings"] },
-  { id: "reviewer", name: "Reviewer", members: 3, permissions: ["Review all jobs", "Approve overrides", "Publish reports", "Release to portal"], restricted: ["Manage users", "Edit financials"] },
-  { id: "finance", name: "Finance", members: 2, permissions: ["View clients and jobs", "Manage quotes/invoices", "View commercial reporting"], restricted: ["Edit emissions", "Publish reports", "Manage datasets"] },
-  { id: "methodology-data-admin", name: "Methodology / Data administrator", members: 1, permissions: ["Manage factor datasets", "Apply reasoned dataset overrides", "Review methodology changes"], restricted: ["Publish reports", "Edit financials", "Manage users"] },
-  { id: "read-only", name: "Read-only", members: 4, permissions: ["View permitted staff workspaces"], restricted: ["All mutations", "Portal impersonation"] },
-];
+/** NZC-022 — the five matrix roles, derived from the one code copy of PERMISSION_MATRIX.md (illustrative member counts). */
+const illustrativeMembers: Record<ContractStaffRole, number> = { admin: 2, consultant: 7, reviewer: 3, finance: 2, viewer: 4 };
+export const staffRoles: StaffRole[] = contractStaffRoles.map((role) => {
+  const held = roleCapabilityGrants(role);
+  return {
+    id: role, name: roleLabels[role], members: illustrativeMembers[role],
+    permissions: held.map((grant) => grant.scope === "own_clients" ? `${grant.capability} (own)` : grant.capability),
+    restricted: capabilities.filter((name) => !held.some((grant) => grant.capability === name)),
+  };
+});
 
 export function platformSummary(services: PlatformService[]) {
   return {

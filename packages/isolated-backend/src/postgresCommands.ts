@@ -22,6 +22,8 @@ import { getAssuranceScreen, listGapResolutions, listReportSections } from "./re
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
+import { insertClientContact } from "./clientContactRecords";
+import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantWrite } from "./postgres";
@@ -43,6 +45,9 @@ type CommandResult<T extends Record<string, unknown>> = {
   entityType: string;
   entityId: string;
   topic: string;
+  /** The changed fields' prior values, for the audit event's before_json. */
+  before?: Record<string, unknown>;
+  governedEvents?: Array<{ action: string; entityType: string; entityId: string; before: Record<string, unknown>; after: Record<string, unknown> }>;
 };
 export type StoredOutcome<T extends Record<string, unknown>> = Extract<
   CommandOutcome<T>,
@@ -69,7 +74,7 @@ export function runPostgresCommand(
   key:"emission.source.sync",
   input:CommandInputMap["emission.source.sync"],
   context:CommandContext,
-  handler:(db:Queryable)=>Promise<CommandResult<{rowId:string;sourceId:string;created:boolean;version:number}>>,
+  handler:(db:Queryable,access:ClientAccess|null)=>Promise<CommandResult<{rowId:string;sourceId:string;created:boolean;version:number}>>,
 ):Promise<StoredOutcome<{rowId:string;sourceId:string;created:boolean;version:number}>>;
 export function runPostgresCommand<
   K extends CommandKey,
@@ -79,14 +84,14 @@ export function runPostgresCommand<
   key: K,
   input: CommandInputMap[K],
   context: CommandContext,
-  handler: (db: Queryable) => Promise<CommandResult<T>>,
+  handler: (db: Queryable, access: ClientAccess | null) => Promise<CommandResult<T>>,
 ): Promise<StoredOutcome<T>>;
 export async function runPostgresCommand(
   pool:PoolLike,
   key:CommandKey,
   input:CommandInputMap[CommandKey],
   context:CommandContext,
-  handler:(db:Queryable)=>Promise<CommandResult<Record<string,unknown>>>,
+  handler:(db:Queryable,access:ClientAccess|null)=>Promise<CommandResult<Record<string,unknown>>>,
 ):Promise<StoredOutcome<Record<string,unknown>>> {
   return withTenantWrite(pool, context.organisationId, (db) =>
     runPostgresCommandInTransaction(db, key, input, context, handler),
@@ -101,10 +106,12 @@ export async function runPostgresCommandInTransaction<
   key: K,
   input: CommandInputMap[K],
   context: CommandContext,
-  handler: (db: Queryable) => Promise<CommandResult<T>>,
+  handler: (db: Queryable, access: ClientAccess | null) => Promise<CommandResult<T>>,
 ): Promise<StoredOutcome<T>> {
   const issues = validateCommand(key, input, context);
   if (issues.length) throw new CommandValidationError(issues);
+  // NZC-022 — capability, tenant and own-client scope, before anything is read or replayed.
+  const access = await authorizeCommandInTransaction(db, key, input, context);
   const hash = requestHash(key, input);
   await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
     `${context.organisationId}:${context.idempotencyKey}`,
@@ -122,8 +129,9 @@ export async function runPostgresCommandInTransaction<
       throw new IdempotencyConflictError();
     return { ...replay.rows[0].outcome_json, replayed: true };
   }
-  const result = await handler(db);
+  const result = await handler(db, access);
   const auditEventId = randomUUID();
+  const auditClientId = access?.clientId ?? (typeof result.data.clientId === "string" ? result.data.clientId : null);
   const outcome: StoredOutcome<T> = {
     state: "success",
     data: result.data,
@@ -133,8 +141,8 @@ export async function runPostgresCommandInTransaction<
   };
   await db.query(
     `INSERT INTO nzi_console.audit_events
-    (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+    (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json, before_json, client_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12)`,
     [
       context.organisationId,
       auditEventId,
@@ -146,8 +154,20 @@ export async function runPostgresCommandInTransaction<
       context.correlationId,
       context.reason ?? null,
       JSON.stringify(result.data),
+      result.before === undefined ? null : JSON.stringify(result.before),
+      auditClientId,
     ],
   );
+  // Governed acts (a re-baseline) write a second, dedicated audit event alongside the command's own.
+  for (const governed of result.governedEvents ?? []) {
+    await db.query(
+      `INSERT INTO nzi_console.audit_events
+      (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json, before_json, client_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12)`,
+      [context.organisationId, randomUUID(), context.actorId, context.principal, governed.action, governed.entityType, governed.entityId,
+        context.correlationId, context.reason ?? null, JSON.stringify(governed.after), JSON.stringify(governed.before), auditClientId],
+    );
+  }
   await db.query(
     `INSERT INTO nzi_console.transactional_outbox
     (organisation_id, outbox_id, topic, payload_json, correlation_id) VALUES ($1,$2,$3,$4::jsonb,$5)`,
@@ -191,10 +211,11 @@ export async function createClient(
     async (db) => {
       const clientId = randomUUID();
       const profile = clientProfileValues(input);
+      // NZC-022 "own clients" — the creating staff user owns the client.
       await db.query(
         `INSERT INTO nzi_console.clients
-      (organisation_id, client_id, name, status, sector, location, owner_name, member_since, completeness_percent, next_report_due_label, ${CLIENT_PROFILE_COLUMNS.join(",")})
-      VALUES ($1,$2,$3,$4,$5,$6,$7,extract(year from current_date)::int,0,'Not scheduled',${profile.map((_, index) => `$${index + 8}`).join(",")})`,
+      (organisation_id, client_id, name, status, sector, location, owner_name, owner_user_id, member_since, completeness_percent, next_report_due_label, ${CLIENT_PROFILE_COLUMNS.join(",")})
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,extract(year from current_date)::int,0,'Not scheduled',${profile.map((_, index) => `$${index + 9}`).join(",")})`,
         [
           context.organisationId,
           clientId,
@@ -203,9 +224,17 @@ export async function createClient(
           input.sector.trim(),
           input.location.trim(),
           input.owner.trim(),
+          context.actorId,
           ...profile,
         ],
       );
+      // The contact captured on the create form becomes the client's primary contact.
+      const contactName = input.contactName?.trim();
+      if (contactName) {
+        await insertClientContact(db, context, clientId, {
+          fullName: contactName, jobTitle: input.contactRole ?? null, email: input.contactEmail ?? null, phone: null, isPrimary: true, roles: [],
+        });
+      }
       return {
         data: { clientId, name: input.name.trim(), status: input.status },
         entityType: "client",
@@ -268,7 +297,26 @@ export async function updateClient(
   input: CommandInputMap["client.update"],
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
-  return runPostgresCommand(pool, "client.update", input, context, async (db) => {
+  return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
+    const prior = await db.query<ClientGovernedRow>(
+      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
+      [context.organisationId, input.clientId],
+    );
+    const before = prior.rows[0];
+    if (!before) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
+    if (before.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, before.version);
+    const governed = clientGovernedChanges(before, input);
+    // NZC-068 / PERMISSION_MATRIX ⚑ — a baseline change is a re-baseline: its own
+    // capability (own clients for a Consultant), always a reason, always a governed event.
+    if (governed.baseline) {
+      requireConditionalCapability(context, "baseline.rebaseline", access);
+      if (!context.reason?.trim()) throw new CommandValidationError([{ field: "reason", code: "REASON_REQUIRED", message: "A re-baseline needs a reason." }]);
+      await db.query(
+        `INSERT INTO nzi_console.baseline_change_events (organisation_id, change_id, client_id, job_id, subject, reason, before_json, after_json, changed_by, correlation_id)
+         VALUES ($1,$2,$3,NULL,'client_baseline',$4,$5::jsonb,$6::jsonb,$7,$8)`,
+        [context.organisationId, randomUUID(), input.clientId, context.reason.trim(), JSON.stringify(governed.baseline.before), JSON.stringify(governed.baseline.after), context.actorId, context.correlationId],
+      );
+    }
     const profile = clientProfileValues(input);
     const assignments = CLIENT_PROFILE_COLUMNS.map((column, index) => `${column}=$${index + 9}`).join(",");
     const updated = await db.query<{ version: number }>(
@@ -292,12 +340,51 @@ export async function updateClient(
       throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
     }
     return {
-      data: { clientId: input.clientId, name: input.name.trim(), version: updated.rows[0].version },
+      data: { clientId: input.clientId, name: input.name.trim(), version: updated.rows[0].version, ...(governed.changed.length ? { changed: governed.after } : {}) },
+      ...(governed.changed.length ? { before: governed.before } : {}),
       entityType: "client",
       entityId: input.clientId,
       topic: "client.updated",
+      ...(governed.baseline ? { governedEvents: [{ action: "client_rebaselined", entityType: "client", entityId: input.clientId, before: governed.baseline.before, after: governed.baseline.after }] } : {}),
     };
   });
+}
+
+const CLIENT_BASELINE_COLUMNS = ["baseline_period_start", "baseline_period_end", "baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e"] as const;
+type ClientGovernedRow = { version: number; financial_year_end_month: number | null } & Record<(typeof CLIENT_BASELINE_COLUMNS)[number], Date | string | number | null>;
+const baselineFieldColumns = [
+  ["baselinePeriodStart", "baseline_period_start"], ["baselinePeriodEnd", "baseline_period_end"],
+  ["baselineScope1Tco2e", "baseline_scope1_tco2e"], ["baselineScope2Tco2e", "baseline_scope2_tco2e"],
+  ["baselineScope3Tco2e", "baseline_scope3_tco2e"], ["baselineTotalTco2e", "baseline_total_tco2e"],
+] as const;
+const comparable = (value: Date | string | number | null | undefined): string | number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "number") return value;
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : Number(value);
+};
+
+/**
+ * The governed fields a client.update changes: the financial year end (audited with
+ * its prior value — it sets every future reporting year's period) and the baseline
+ * (a re-baseline). Unchanged fields are not reported, so a full-record save that
+ * leaves them alone is an ordinary edit.
+ */
+function clientGovernedChanges(row: ClientGovernedRow, input: CommandInputMap["client.update"]) {
+  const before: Record<string, unknown> = {}, after: Record<string, unknown> = {}, changed: string[] = [];
+  const nextFye = input.financialYearEndMonth ?? null;
+  if ((row.financial_year_end_month ?? null) !== nextFye) {
+    before.financialYearEndMonth = row.financial_year_end_month ?? null; after.financialYearEndMonth = nextFye; changed.push("financialYearEndMonth");
+  }
+  const baselineBefore: Record<string, unknown> = {}, baselineAfter: Record<string, unknown> = {};
+  for (const [field, column] of baselineFieldColumns) {
+    const was = comparable(row[column]), next = comparable(input[field] ?? null);
+    if (was !== next) { baselineBefore[field] = was; baselineAfter[field] = next; before[field] = was; after[field] = next; changed.push(field); }
+  }
+  // Setting a baseline for the first time is the initial baseline — an ordinary audited
+  // edit. Changing one that exists is the governed act.
+  const hadBaseline = baselineFieldColumns.some(([, column]) => comparable(row[column]) !== null);
+  return { before, after, changed, baseline: hadBaseline && Object.keys(baselineAfter).length ? { before: baselineBefore, after: baselineAfter } : null };
 }
 
 export type CreateJobResult = {
@@ -1034,8 +1121,9 @@ export async function calculateScopeRow(
         override_tco2e: string | null;
         override_reason: string | null;
         monthly_activity_json:Array<{month:string;quantity:number|null}>;
+        provenance_json?: Record<string, unknown> | null;
       }>(
-        `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+        `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
         [context.organisationId, input.jobId, input.rowId],
       );
       const row = found.rows[0];
@@ -1131,6 +1219,8 @@ export async function calculateScopeRow(
           : [{ title: "Calculated result overridden", detail: `${row.override_tco2e} tCO₂e · ${row.override_reason}` }]),
       ];
       const provenance = {
+        // Separation of duties needs both preparers: who captured the row survives its calculation.
+        capturedBy: row.provenance_json?.capturedBy ?? null,
         calculatedBy: context.actorId,
         calculatedAt: new Date().toISOString(),
         datasetId: row.dataset_id,
@@ -1347,15 +1437,15 @@ async function reviewScopeRow<
             message: "Set the data-quality tier before approval.",
           },
         ]);
-      const editor =
-        row.provenance_json?.calculatedBy ?? row.provenance_json?.capturedBy;
-      if (editor === context.actorId)
+      // Neither preparer — whoever captured the row nor whoever calculated it — may approve it.
+      const preparers = [row.provenance_json?.capturedBy, row.provenance_json?.calculatedBy].filter((id) => typeof id === "string");
+      if (preparers.includes(context.actorId))
         throw new CommandValidationError([
           {
             field: "rowIds",
             code: "INDEPENDENT_REVIEW_REQUIRED",
             message:
-              "The most recent editor or calculator cannot approve this row.",
+              "Whoever captured or calculated this row cannot approve it.",
           },
         ]);
     }
@@ -1424,14 +1514,17 @@ export async function upsertEmissionsTarget(
     "emissions.target.upsert",
     input,
     context,
-    async (db) => {
+    async (db, access) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
-      const current = await db.query<{ version: number }>(
-        `SELECT version FROM nzi_console.job_emissions_targets WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,
+      const current = await db.query<{ version: number; baseline_year: number; baseline_tco2e: string }>(
+        `SELECT version,baseline_year,baseline_tco2e FROM nzi_console.job_emissions_targets WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,
         [context.organisationId, input.jobId],
       );
       const version = current.rows[0]?.version ?? 0;
       if (version !== input.expectedVersion) throw new VersionConflictError();
+      const governed = await governJobBaselineChange(db, context, access, "job_emissions_target", input.jobId,
+        current.rows[0] ? { baselineYear: current.rows[0].baseline_year, baselineTco2e: Number(current.rows[0].baseline_tco2e) } : null,
+        { baselineYear: input.baselineYear, baselineTco2e: input.baselineTco2e });
       const saved = await db.query<{ version: number }>(
         `INSERT INTO nzi_console.job_emissions_targets (organisation_id,job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8) ON CONFLICT (organisation_id,job_id) DO UPDATE SET baseline_year=EXCLUDED.baseline_year,baseline_tco2e=EXCLUDED.baseline_tco2e,interim_year=EXCLUDED.interim_year,interim_reduction_percent=EXCLUDED.interim_reduction_percent,net_zero_year=EXCLUDED.net_zero_year,version=job_emissions_targets.version+1,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING version`,
         [
@@ -1450,15 +1543,107 @@ export async function upsertEmissionsTarget(
         entityType: "job_emissions_target",
         entityId: input.jobId,
         topic: "emissions.target.saved",
+        ...(governed ? { before: governed.before, governedEvents: [governed] } : {}),
       };
     },
   );
 }
-export async function upsertIntensityTarget(pool:PoolLike,input:CommandInputMap["emissions.intensity.upsert"],context:CommandContext):Promise<StoredOutcome<{jobId:string;version:number}>>{return runPostgresCommand(pool,"emissions.intensity.upsert",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const current=await db.query<{version:number}>(`SELECT version FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,[context.organisationId,input.jobId]);if((current.rows[0]?.version??0)!==input.expectedVersion)throw new VersionConflictError();const saved=await db.query<{version:number}>(`INSERT INTO nzi_console.job_intensity_targets (organisation_id,job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11) ON CONFLICT(organisation_id,job_id) DO UPDATE SET metric=EXCLUDED.metric,denominator_unit=EXCLUDED.denominator_unit,reporting_denominator=EXCLUDED.reporting_denominator,baseline_year=EXCLUDED.baseline_year,baseline_intensity=EXCLUDED.baseline_intensity,interim_year=EXCLUDED.interim_year,interim_reduction_percent=EXCLUDED.interim_reduction_percent,net_zero_year=EXCLUDED.net_zero_year,version=job_intensity_targets.version+1,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING version`,[context.organisationId,input.jobId,input.metric,input.denominatorUnit.trim(),input.reportingDenominator,input.baselineYear,input.baselineIntensity,input.interimYear,input.interimReductionPercent,input.netZeroYear,context.actorId]);return{data:{jobId:input.jobId,version:saved.rows[0]!.version},entityType:"job_intensity_target",entityId:input.jobId,topic:"emissions.intensity.saved"};});}
+export async function upsertIntensityTarget(pool:PoolLike,input:CommandInputMap["emissions.intensity.upsert"],context:CommandContext):Promise<StoredOutcome<{jobId:string;version:number}>>{
+  return runPostgresCommand(pool,"emissions.intensity.upsert",input,context,async (db,access)=>{
+    await requireCrpJob(db,context.organisationId,input.jobId);
+    const current=await db.query<{version:number;baseline_year:number;baseline_intensity:string}>(`SELECT version,baseline_year,baseline_intensity FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,[context.organisationId,input.jobId]);
+    if((current.rows[0]?.version??0)!==input.expectedVersion)throw new VersionConflictError();
+    const governed=await governJobBaselineChange(db,context,access,"job_intensity_target",input.jobId,
+      current.rows[0]?{baselineYear:current.rows[0].baseline_year,baselineIntensity:Number(current.rows[0].baseline_intensity)}:null,
+      {baselineYear:input.baselineYear,baselineIntensity:input.baselineIntensity});
+    const saved=await db.query<{version:number}>(`INSERT INTO nzi_console.job_intensity_targets (organisation_id,job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11) ON CONFLICT(organisation_id,job_id) DO UPDATE SET metric=EXCLUDED.metric,denominator_unit=EXCLUDED.denominator_unit,reporting_denominator=EXCLUDED.reporting_denominator,baseline_year=EXCLUDED.baseline_year,baseline_intensity=EXCLUDED.baseline_intensity,interim_year=EXCLUDED.interim_year,interim_reduction_percent=EXCLUDED.interim_reduction_percent,net_zero_year=EXCLUDED.net_zero_year,version=job_intensity_targets.version+1,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING version`,[context.organisationId,input.jobId,input.metric,input.denominatorUnit.trim(),input.reportingDenominator,input.baselineYear,input.baselineIntensity,input.interimYear,input.interimReductionPercent,input.netZeroYear,context.actorId]);
+    return{data:{jobId:input.jobId,version:saved.rows[0]!.version},entityType:"job_intensity_target",entityId:input.jobId,topic:"emissions.intensity.saved",...(governed?{before:governed.before,governedEvents:[governed]}:{})};
+  });
+}
 
-export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];measurements:Array<Record<string,unknown>>}}>(`SELECT job_id,data_hash,created_at,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);const snapshot=found.rows[0];if(!snapshot)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);const payload=snapshot.payload_json;const charts=resolveCrpCoreCharts({id:input.reviewedSnapshotId,jobId:snapshot.job_id,jobNumber:payload.jobNumber,client:payload.client,reportingYear:payload.reportingYear,generatedAt:snapshot.created_at instanceof Date?snapshot.created_at.toISOString():String(snapshot.created_at),dataHash:snapshot.data_hash,target:payload.target as never,intensityTarget:payload.intensityTarget as never,annualComparison:payload.annualComparison as never,measurements:payload.measurements as never});const validation=validateManifest(crpProfessionalManifest,charts,input.reviewedSnapshotId);if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));const reportVersionId=randomUUID();await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash) VALUES($1,$2,$3,'validated',$4,$5,$6)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash]);return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};});}
+/**
+ * A job target's baseline is a baseline too: once saved, changing its year or value is
+ * a re-baseline — baseline.rebaseline (own clients for a Consultant), a reason, and a
+ * governed event on the baseline record and in the audit log. The first save is not.
+ */
+async function governJobBaselineChange(db:Queryable,context:CommandContext,access:ClientAccess|null,subject:"job_emissions_target"|"job_intensity_target",jobId:string,before:Record<string,number>|null,after:Record<string,number>){
+  if(!before||Object.keys(after).every(key=>before[key]===after[key]))return null;
+  requireConditionalCapability(context,"baseline.rebaseline",access);
+  if(!context.reason?.trim())throw new CommandValidationError([{field:"reason",code:"REASON_REQUIRED",message:"Changing a saved baseline is a re-baseline and needs a reason."}]);
+  if(!access)throw new CommandValidationError([{field:"jobId",code:"NOT_FOUND",message:"Job was not found."}]);
+  await db.query(`INSERT INTO nzi_console.baseline_change_events (organisation_id,change_id,client_id,job_id,subject,reason,before_json,after_json,changed_by,correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10)`,[context.organisationId,randomUUID(),access.clientId,jobId,subject,context.reason.trim(),JSON.stringify(before),JSON.stringify(after),context.actorId,context.correlationId]);
+  return{action:subject==="job_emissions_target"?"job_target_rebaselined":"job_intensity_rebaselined",entityType:subject,entityId:jobId,before,after};
+}
 
-export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);const report=found.rows[0];if(!report)throw new CommandValidationError([{field:"reportVersionId",code:"NOT_FOUND",message:"Validated report version was not found."}]);if(report.status!==input.expectedStatus)throw new CommandValidationError([{field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report version may be published."}]);if(report.manifest_version!==input.manifestVersion||report.reviewed_snapshot_id!==input.reviewedSnapshotId)throw new CommandValidationError([{field:"reportVersionId",code:"EVIDENCE_MISMATCH",message:"The report version does not match the reviewed snapshot and manifest supplied."}]);await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND status='published'`,[context.organisationId,report.job_id]);const published=await db.query<{published_at:Date|string}>(`UPDATE nzi_console.report_versions SET status='published',published_at=now(),version=version+1 WHERE organisation_id=$1 AND report_version_id=$2 AND status='validated' RETURNING published_at`,[context.organisationId,input.reportVersionId]);if(!published.rows[0])throw new VersionConflictError();const publishedAt=published.rows[0].published_at instanceof Date?published.rows[0].published_at.toISOString():String(published.rows[0].published_at);return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};});}
+/**
+ * NZC-022 separation of duties — a report version is validated (and later published)
+ * only from an approved snapshot, and never by the snapshot's preparer.
+ */
+function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:string;approved_by:string|null}){
+  if(!snapshot.approved_by)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"SNAPSHOT_NOT_APPROVED",message:"The reviewed snapshot must be approved before a report is released from it."}]);
+  if(snapshot.created_by===context.actorId)throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
+}
+/** The signee is one of the client's active report-signee contacts, frozen onto the version so the published report reproduces exactly. */
+export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
+  if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);
+  const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];measurements:Array<Record<string,unknown>>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
+  const snapshot=found.rows[0];
+  if(!snapshot)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
+  requireReleasableSnapshot(context,snapshot);
+  const signee=input.signeeContactId?(await db.query<{contact_id:string;full_name:string;job_title:string|null}>(`SELECT k.contact_id,k.full_name,k.job_title FROM nzi_console.client_contacts k JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2 AND j.job_id=$3 AND k.status='active' AND 'report_signee'=ANY(k.roles)`,[context.organisationId,input.signeeContactId,snapshot.job_id])).rows[0]:null;
+  if(input.signeeContactId&&!signee)throw new CommandValidationError([{field:"signeeContactId",code:"SIGNEE_INVALID",message:"The signee must be one of this client's active report-signee contacts."}]);
+  const payload=snapshot.payload_json;
+  const charts=resolveCrpCoreCharts({id:input.reviewedSnapshotId,jobId:snapshot.job_id,jobNumber:payload.jobNumber,client:payload.client,reportingYear:payload.reportingYear,generatedAt:snapshot.created_at instanceof Date?snapshot.created_at.toISOString():String(snapshot.created_at),dataHash:snapshot.data_hash,target:payload.target as never,intensityTarget:payload.intensityTarget as never,annualComparison:payload.annualComparison as never,measurements:payload.measurements as never});
+  const validation=validateManifest(crpProfessionalManifest,charts,input.reviewedSnapshotId);
+  if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));
+  const reportVersionId=randomUUID();
+  await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3))`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null]);
+  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
+});}
+
+export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{
+  const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
+  const report=found.rows[0];
+  if(!report)throw new CommandValidationError([{field:"reportVersionId",code:"NOT_FOUND",message:"Validated report version was not found."}]);
+  if(report.status!==input.expectedStatus)throw new CommandValidationError([{field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report version may be published."}]);
+  if(report.manifest_version!==input.manifestVersion||report.reviewed_snapshot_id!==input.reviewedSnapshotId)throw new CommandValidationError([{field:"reportVersionId",code:"EVIDENCE_MISMATCH",message:"The report version does not match the reviewed snapshot and manifest supplied."}]);
+  // Checked again at publish: the snapshot is still approved, and the publisher is not its preparer.
+  const source=(await db.query<{created_by:string;approved_by:string|null}>(`SELECT created_by,approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,report.reviewed_snapshot_id])).rows[0];
+  if(!source)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
+  requireReleasableSnapshot(context,source);
+  await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND status='published'`,[context.organisationId,report.job_id]);
+  const published=await db.query<{published_at:Date|string}>(`UPDATE nzi_console.report_versions SET status='published',published_at=now(),published_by=$3,version=version+1 WHERE organisation_id=$1 AND report_version_id=$2 AND status='validated' RETURNING published_at`,[context.organisationId,input.reportVersionId,context.actorId]);
+  if(!published.rows[0])throw new VersionConflictError();
+  const publishedAt=published.rows[0].published_at instanceof Date?published.rows[0].published_at.toISOString():String(published.rows[0].published_at);
+  return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};
+});}
+
+export type ApproveReviewedSnapshotResult = { snapshotId: string; jobId: string; approvedBy: string; approvedAt: string };
+/** NZC-022 — snapshot.review, by anyone but the snapshot's preparer. Approval is one-shot. */
+export async function approveReviewedCrpSnapshot(pool: PoolLike, input: CommandInputMap["report.snapshot.approve"], context: CommandContext): Promise<StoredOutcome<ApproveReviewedSnapshotResult>> {
+  return runPostgresCommand(pool, "report.snapshot.approve", input, context, async (db) => {
+    const found = await db.query<{ job_id: string; created_by: string; approved_by: string | null }>(
+      `SELECT job_id,created_by,approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2 FOR UPDATE`,
+      [context.organisationId, input.reviewedSnapshotId],
+    );
+    const snapshot = found.rows[0];
+    if (!snapshot) throw new CommandValidationError([{ field: "reviewedSnapshotId", code: "NOT_FOUND", message: "Reviewed snapshot was not found." }]);
+    if (snapshot.approved_by) throw new CommandValidationError([{ field: "reviewedSnapshotId", code: "ALREADY_APPROVED", message: "This snapshot is already approved." }]);
+    if (snapshot.created_by === context.actorId) throw new SeparationOfDutiesError("snapshot.review", "You prepared this snapshot, so someone else must approve it.");
+    const approved = await db.query<{ approved_at: Date | string }>(
+      `UPDATE nzi_console.reviewed_crp_snapshots SET approved_by=$3,approved_at=now(),approval_note=$4 WHERE organisation_id=$1 AND snapshot_id=$2 AND approved_by IS NULL RETURNING approved_at`,
+      [context.organisationId, input.reviewedSnapshotId, context.actorId, input.note?.trim() || null],
+    );
+    if (!approved.rows[0]) throw new VersionConflictError();
+    const approvedAt = approved.rows[0].approved_at instanceof Date ? approved.rows[0].approved_at.toISOString() : String(approved.rows[0].approved_at);
+    return {
+      data: { snapshotId: input.reviewedSnapshotId, jobId: snapshot.job_id, approvedBy: context.actorId, approvedAt },
+      entityType: "reviewed_crp_snapshot",
+      entityId: input.reviewedSnapshotId,
+      topic: "report.snapshot.approved",
+    };
+  });
+}
 
 export type CreateReviewedSnapshotResult = {
   snapshotId: string;

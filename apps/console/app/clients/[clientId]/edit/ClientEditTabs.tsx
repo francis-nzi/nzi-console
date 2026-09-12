@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell, GatedButton, TabPanel, Tabs, TopBar, WorkspaceRail } from "@nzi/ui";
-import { patchBrowserCommand } from "@nzi/api-client";
+import { patchBrowserCommandWithReason } from "@nzi/api-client";
+import { clientBaselineFields, type ClientProfileFields } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import { NAV, USER } from "../../../lib/nav";
@@ -33,6 +34,9 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
   const [notice, setNotice] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
   const submissionKey = useRef<string | null>(null);
+  const [reason, setReason] = useState("");
+  // NZC-068 / NZC-022 — changing a baseline that exists is a re-baseline: it needs a reason (and baseline.rebaseline).
+  const rebaselining = isRebaseline(client.profile, normaliseClientForm(form));
 
   function change(patch: Partial<ClientFormState>) {
     setForm((current) => ({ ...current, ...patch }));
@@ -46,14 +50,15 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
   async function save() {
     setSaving(true); setNotice(null);
     submissionKey.current ??= crypto.randomUUID();
-    const result = await patchBrowserCommand<{ clientId: string; name: string; version: number }>(
+    const result = await patchBrowserCommandWithReason<{ clientId: string; name: string; version: number }>(
       `/api/isolated/commands/clients/${client.id}`,
       { ...normaliseClientForm(form), expectedVersion: version },
       submissionKey.current,
+      rebaselining ? reason : "",
     );
     setSaving(false);
     if (result.state === "success") {
-      submissionKey.current = null; setVersion(result.data.version); setErrors({}); setDirty(false);
+      submissionKey.current = null; setVersion(result.data.version); setErrors({}); setDirty(false); setReason("");
       setNotice({ kind: "ok", text: `${result.data.name} saved.` });
       router.refresh();
       return;
@@ -84,28 +89,36 @@ export function ClientEditTabs({ client }: { client: ClientScreenReadModel }) {
           </div>
           <div className="nz-head-actions">
             <Link className="nz-btn" href={`/clients/${client.id}`}>Cancel</Link>
-            <GatedButton className="nz-btn pri" blocked={!dirty || saving} blockedReason={!dirty ? "No unsaved changes" : undefined} onClick={save}>{saving ? "Saving…" : "Save all"}</GatedButton>
+            <GatedButton className="nz-btn pri" blocked={!dirty || saving || (rebaselining && !reason.trim())} blockedReason={!dirty ? "No unsaved changes" : rebaselining && !reason.trim() ? "Give a reason for the re-baseline" : undefined} onClick={save}>{saving ? "Saving…" : "Save all"}</GatedButton>
           </div>
         </div>
       </div>
       <div className="nz-body" style={{ paddingTop: 16 }}>
         {notice ? <div className={`nz-banner ${notice.kind}`} role="status"><div>{notice.text}</div></div> : null}
+        {rebaselining ? <div className="nz-banner warn" role="status"><div><b>This changes the client&apos;s baseline — a re-baseline.</b><div style={{ marginTop: 4 }}>It needs a reason, recorded on the baseline record and in the audit log. A Consultant can re-baseline only their own clients.</div><label className="nz-fl" style={{ marginTop: 8 }}><span>Reason for the re-baseline</span><input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Acquisition of Site B restated the base year" /></label></div></div> : null}
         <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel="Client record sections" idBase="client-edit" className="nz-tabs" />
         <section className="nz-panel" style={{ padding: 20 }}>
-          <TabPanel id="details" idBase="client-edit" active={tab === "details"}><DetailsGroup {...groupProps} /></TabPanel>
+          <TabPanel id="details" idBase="client-edit" active={tab === "details"}><DetailsGroup {...groupProps} editing clientId={client.id} /></TabPanel>
           <TabPanel id="targets" idBase="client-edit" active={tab === "targets"}><TargetsGroup {...groupProps} /></TabPanel>
           <TabPanel id="address" idBase="client-edit" active={tab === "address"}><AddressGroup {...groupProps} /></TabPanel>
           <TabPanel id="sites" idBase="client-edit" active={tab === "sites"}><SitesPanel client={client} /></TabPanel>
           <TabPanel id="compliance" idBase="client-edit" active={tab === "compliance"}><ComplianceGroup {...groupProps} /></TabPanel>
           {tab !== "sites" ? (
             <div className="nz-config-actions" style={{ marginTop: 20 }}>
-              <GatedButton className="nz-btn pri" blocked={!dirty || saving} blockedReason={!dirty ? "No unsaved changes" : undefined} onClick={save}>{saving ? "Saving…" : "Save"}</GatedButton>
+              <GatedButton className="nz-btn pri" blocked={!dirty || saving || (rebaselining && !reason.trim())} blockedReason={!dirty ? "No unsaved changes" : rebaselining && !reason.trim() ? "Give a reason for the re-baseline" : undefined} onClick={save}>{saving ? "Saving…" : "Save"}</GatedButton>
             </div>
           ) : null}
         </section>
       </div>
     </AppShell>
   );
+}
+
+/** A baseline existed and the form changes any baseline field. Setting the first baseline is not a re-baseline. */
+function isRebaseline(saved: ClientProfileFields, next: ClientProfileFields): boolean {
+  const value = (source: ClientProfileFields, field: (typeof clientBaselineFields)[number]) => source[field] ?? null;
+  const had = clientBaselineFields.some((field) => value(saved, field) !== null);
+  return had && clientBaselineFields.some((field) => String(value(saved, field)) !== String(value(next, field)));
 }
 
 function tabForField(field: string | undefined): string | undefined {

@@ -1,30 +1,20 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { CommandKey } from "@nzi/contracts";
-import { commandDefinitions } from "@nzi/contracts";
+import type { Capability, CapabilityGrant, CapabilityScope, CommandGrant, CommandKey, StaffRole } from "@nzi/contracts";
+import { commandDefinitions, grantFor, isCapability, isStaffRole } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
 import { withAuthTransaction } from "./postgres";
 
-export type StaffRole = "administrator" | "consultant" | "reviewer" | "finance" | "methodology-data-admin" | "read-only";
-export type StaffPermission =
-  | "clients.create" | "jobs.create" | "jobs.stage.change" | "emissions.review" | "reports.publish"
-  | "emissions.data.edit" | "datasets.override" | "portal.access.manage" | "sales.convert" | "finance.manage" | "staff.access.manage";
+export type { StaffRole };
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
 export type PortalSession = { principal:"portal";sessionId:string;userId:string;clientId:string;organisationId:string;issuedAt:number;expiresAt:number };
 export type PortalPrincipal=PortalSession&{displayName:string;email:string;idleLimitMinutes:number;termsVersion:string;mustAcceptTerms:boolean};
 export const PORTAL_IDLE_LIMIT_DEFAULT_MINUTES=30;
-export type StaffPrincipal = StaffSession & { role: StaffRole; permissions: readonly StaffPermission[] };
-
-export const rolePermissions: Record<StaffRole, readonly StaffPermission[]> = {
-  administrator: ["clients.create", "jobs.create", "jobs.stage.change", "emissions.data.edit", "emissions.review", "reports.publish", "datasets.override", "portal.access.manage", "sales.convert", "finance.manage", "staff.access.manage"],
-  consultant: ["clients.create", "jobs.create", "jobs.stage.change", "emissions.data.edit", "sales.convert"],
-  reviewer: ["jobs.stage.change", "emissions.review", "reports.publish", "portal.access.manage"],
-  finance: ["finance.manage"],
-  "methodology-data-admin": ["datasets.override"],
-  "read-only": [],
-};
+/** NZC-022 — the role and the capabilities it resolves to in the current permission-matrix version. */
+export type StaffPrincipal = StaffSession & { role: StaffRole; matrixVersion: number; capabilities: readonly CapabilityGrant[] };
 
 export class AuthenticationError extends Error { constructor(message = "Staff authentication is required.") { super(message); this.name = "AuthenticationError"; } }
-export class AuthorizationError extends Error { constructor(readonly permission: string) { super("Permission denied."); this.name = "AuthorizationError"; } }
+/** `permission` is the capability refused (a PERMISSION_MATRIX.md name), or `tenant` for a record outside the caller's organisation. */
+export class AuthorizationError extends Error { constructor(readonly permission: string, message = "Permission denied.") { super(message); this.name = "AuthorizationError"; } }
 
 const encode = (value: string) => Buffer.from(value).toString("base64url");
 const sign = (payload: string, secret: string) => createHmac("sha256", secret).update(payload).digest("base64url");
@@ -76,21 +66,51 @@ export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession
   });
 }
 
+/**
+ * The membership's role, then that role's rows in the current (highest) version of
+ * the migration-owned matrix. A role with no rows resolves to no capabilities —
+ * fail closed, never a default grant.
+ */
 export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSession): Promise<StaffPrincipal> {
   return withAuthTransaction(pool, "read", async (db: Queryable) => {
-    const result = await db.query<{ role_id: StaffRole }>(`SELECT m.role_id FROM nzi_console.staff_sessions s
+    const result = await db.query<{ role_id: string }>(`SELECT m.role_id FROM nzi_console.staff_sessions s
       JOIN nzi_console.memberships m ON (m.organisation_id, m.user_id) = (s.organisation_id, s.user_id)
       WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.user_id=$3 AND s.revoked_at IS NULL
         AND s.expires_at > now() AND m.status='active'`, [session.organisationId, session.sessionId, session.userId]);
     const role = result.rows[0]?.role_id;
-    if (!role || !(role in rolePermissions)) throw new AuthenticationError("No active staff membership exists.");
-    return { ...session, role, permissions: rolePermissions[role] };
+    if (!isStaffRole(role)) throw new AuthenticationError("No active staff membership exists.");
+    const matrix = await db.query<{ matrix_version: number; capability: string; scope: string }>(`SELECT r.matrix_version, r.capability, r.scope
+      FROM nzi_console.staff_role_capabilities r
+      WHERE r.role_id=$1 AND r.matrix_version=(SELECT max(matrix_version) FROM nzi_console.staff_capability_matrix_versions)
+      ORDER BY r.capability`, [role]);
+    return { ...session, role, ...capabilitiesFromRows(matrix.rows) };
   });
 }
 
+/** Rows naming a capability outside the enum are ignored (the enum is exhaustive), never widened. */
+export function capabilitiesFromRows(rows: ReadonlyArray<{ matrix_version: number; capability: string; scope: string }>): { matrixVersion: number; capabilities: CapabilityGrant[] } {
+  const capabilities = rows
+    .filter((row): row is { matrix_version: number; capability: Capability; scope: CapabilityScope } => isCapability(row.capability) && (row.scope === "all" || row.scope === "own_clients"))
+    .map((row) => ({ capability: row.capability, scope: row.scope }));
+  return { matrixVersion: rows[0]?.matrix_version ?? 0, capabilities };
+}
+
+/** The grant a command context carries — the resolved principal, nothing added. */
+export function commandGrant(principal: StaffPrincipal): CommandGrant {
+  return { organisationId: principal.organisationId, userId: principal.userId, role: principal.role, matrixVersion: principal.matrixVersion, capabilities: principal.capabilities };
+}
+
+export function principalHas(principal: Pick<StaffPrincipal, "capabilities">, capability: Capability): boolean {
+  return grantFor(principal.capabilities, capability) !== null;
+}
+
+/** A route-level pre-check that the role holds the capability at all; scope and tenant are checked again, authoritatively, in the command runner. */
+export function requireCapability(principal: Pick<StaffPrincipal, "capabilities">, capability: Capability): void {
+  if (!principalHas(principal, capability)) throw new AuthorizationError(capability);
+}
+
 export function authorizeCommand(principal: StaffPrincipal, key: CommandKey): void {
-  const permission = commandDefinitions[key].permission as StaffPermission;
-  if (!principal.permissions.includes(permission)) throw new AuthorizationError(permission);
+  requireCapability(principal, commandDefinitions[key].permission);
 }
 
 export function assertSameOrigin(origin: string | null, configuredBaseUrl: string | undefined): void {

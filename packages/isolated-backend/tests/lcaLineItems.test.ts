@@ -1,3 +1,4 @@
+import { commandGrantForRole } from "@nzi/contracts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -5,14 +6,14 @@ import {
   listLcaComponentsForJob, listLcaLineItems, listLcaMaterialCategories, updateLcaLineItem, withTenantRead,
 } from "../src/index";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 const line = { moduleCode: "A1" as const, lineLabel: "Cardboard box", quantity: 0.5, unit: "kg" };
 
 function lineItemPool(opts: { assessmentFound?: boolean; itemFound?: boolean } = { assessmentFound: true, itemFound: true }) {
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_assessments a JOIN")) return { rows: opts.assessmentFound === false ? [] : [{ ok: 1 }] };
@@ -96,7 +97,7 @@ describe("updateLcaLineItem / deleteLcaLineItem (Track C)", () => {
 describe("listLcaLineItems (Track C)", () => {
   it("maps a row including its factor unit and gap-fill flags", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.lca_line_items WHERE assessment_id=$1")) {
           return { rows: [{ line_item_id: "line-1", assessment_id: "assess-1", component_id: null, module_code: "A1", line_label: "Cardboard box", material_category_id: null, quantity: "0.5", unit: "kg", origin_country: null, energy_kwh: null, end_of_life_route: null, factor_source: "manual", dataset_id: null, factor_id: null, client_factor_id: null, factor_value: "0.8", factor_unit: "kgCO2e/kg", factor_label: "Manual estimate", factor_match_confidence: null, data_quality: "estimated", is_gap_filled: true, gap_fill_method: "category average", is_placeholder: false, transport_kgco2e: "0", calculated_kgco2e: "0.4", notes: "" }] };
         }
@@ -117,7 +118,7 @@ function gapFillPool(opts: { row?: { factor_source: string; is_placeholder: bool
   const { row = { factor_source: "unmapped", is_placeholder: false } } = opts;
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_assessments a JOIN")) return { rows: [{ ok: 1 }] };
@@ -168,7 +169,7 @@ describe("gapFillLcaLineItem (Track C / L4 — the LCA analogue of the Data Assu
 describe("listLcaComponentsForJob / listLcaMaterialCategories (Track C / NZC-053)", () => {
   it("returns client-scoped and global components alike", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.lca_components c")) {
           return { rows: [
             { component_id: "comp-global", client_id: null, component_code: "GLB-1", description: "Generic cardboard", material_category_id: "cat-1", material_category_label: "Paper & board", default_unit_mass: "0.4", default_unit: "kg", origin_country: "GB", supplier_name: null },
@@ -187,7 +188,7 @@ describe("listLcaComponentsForJob / listLcaMaterialCategories (Track C / NZC-053
 
   it("lists active material categories for the job's organisation", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.lca_material_categories mc")) return { rows: [{ material_category_id: "cat-1", name: "Paper & board" }] };
         return { rows: [] };
       },

@@ -11,6 +11,8 @@ import { NAV, USER } from "../../lib/nav";
 import { formatDate } from "../../lib/formatDate";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { ClientFactorsManager } from "../ClientFactorsManager";
+import { ClientContacts } from "./ClientContacts";
+import { ClientLogoBadge, ClientProfileCard, IdentityDrawer } from "./ClientIdentity";
 import { ClientSites } from "./ClientSites";
 import { EvidenceButton, FigureEvidenceBody, FigureStatus, TierBadge, formatFigure, fyLabel, tonnes } from "./FigureEvidence";
 
@@ -21,10 +23,14 @@ const TABS = [{ id: "overview", label: "Overview" }, { id: "carbon", label: "Car
 export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled }: {
   workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean;
 }) {
-  const { client, sites, evidence, reportingPeriods } = workspace;
+  const { client, sites, evidence, reportingPeriods, contacts } = workspace;
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("overview");
   const [selected, setSelected] = useState<EvidenceKey | null>(null);
-  const access = useEditAccess("emissions.data.edit", writeEnabled);
+  // NZC-022 — each control reads the capability its command enforces.
+  const siteAccess = useEditAccess("site.manage", writeEnabled);
+  const contactAccess = useEditAccess("contact.manage", writeEnabled);
+  const clientAccess = useEditAccess("client.edit", writeEnabled);
+  const [identityOpen, setIdentityOpen] = useState(false);
 
   const meta = clientStatusMeta[client.status];
   const open = jobs.filter((job) => ["draft", "open", "on-hold"].includes(job.header.status));
@@ -58,7 +64,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />} drawer={drawer}>
     <TopBar searchPlaceholder="Search this client…" crumbs={<><Link href="/clients">Clients</Link><span className="muted">/</span><b>{client.name}</b></>} />
-    <div className="nz-head"><div className="nz-client-head"><div className="nz-client-monogram">{client.name.split(/\s+/).slice(0, 2).map((word) => word[0]).join("")}</div><div className="nz-client-identity"><div><h1>{client.name}</h1><span className={`nz-st ${meta.cls}`}>{meta.label}</span></div><p className="sub">{client.sector} · {client.location} · Account owner {client.owner}</p></div><div className="nz-head-actions"><Link className="nz-btn" href={`/clients/${client.id}/edit`}>Edit client</Link><Link className="nz-btn" href="/platform">Portal access</Link><Link className="nz-btn pri" href={`/jobs?client=${client.id}`}>Create job</Link></div></div></div>
+    <div className="nz-head"><div className="nz-client-head"><ClientLogoBadge client={client} onOpen={() => setIdentityOpen(true)} /><div className="nz-client-identity"><div><h1>{client.name}</h1><span className={`nz-st ${meta.cls}`}>{meta.label}</span></div><p className="sub">{client.sector} · {client.location} · Account owner {client.owner}</p></div><div className="nz-head-actions"><Link className="nz-btn" href={`/clients/${client.id}/edit`}>Edit client</Link><Link className="nz-btn" href="/platform">Portal access</Link><Link className="nz-btn pri" href={`/jobs?client=${client.id}`}>Create job</Link></div></div></div>
     <div className="nz-body" style={{ paddingTop: 16 }}>
       <div className="nz-metrics">
         <Metric label="Open jobs" value={String(open.length)} note={`${jobs.length} total engagements`} />
@@ -125,12 +131,14 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           </div>
         </TabPanel>
       </div><aside className="nz-client-aside">
-        <section className="nz-panel"><CardHead eyebrow="Relationship" title="Primary contact" /><div className="nz-client-contact"><b>{client.contact.name || "Not configured"}</b><div className="sub">{client.contact.role || "Role not configured"}</div>{client.contact.email ? <a href={`mailto:${client.contact.email}`}>{client.contact.email}</a> : null}</div></section>
-        <ClientSites clientId={client.id} sites={sites} reportingPeriods={reportingPeriods} today={today} access={access} />
+        <ClientContacts clientId={client.id} contacts={contacts ?? []} access={contactAccess} />
+        <ClientSites clientId={client.id} sites={sites} reportingPeriods={reportingPeriods} today={today} access={siteAccess} />
+        <ClientProfileCard client={client} onEdit={() => setIdentityOpen(true)} />
         <section className="nz-panel"><CardHead eyebrow="Record" title="Account overview" /><div style={{ padding: "6px 16px 12px" }}><Row label="Member since" value={client.memberSince} /><Row label="Account owner" value={client.owner} /></div></section>
         <section className="nz-panel nz-client-experience"><div className="eyebrow">Client experience</div><h2>Portal and reports</h2><p>Manage account invitations and job-level access, then review published reports from the same evidence base.</p><div><Link href="/platform" className="nz-btn pri">Manage access</Link><Link href="/reports" className="nz-btn">Reports</Link></div></section>
       </aside></div>
     </div>
+    <IdentityDrawer open={identityOpen} client={client} access={clientAccess} onClose={() => setIdentityOpen(false)} />
   </AppShell>;
 }
 

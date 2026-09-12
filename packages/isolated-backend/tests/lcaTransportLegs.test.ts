@@ -1,3 +1,4 @@
+import { commandGrantForRole } from "@nzi/contracts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -5,7 +6,7 @@ import {
   listLcaTransportLegs, updateLcaTransportLeg, withTenantRead,
 } from "../src/index";
 
-const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}` });
+const context = (key: string) => ({ organisationId: "org-a", actorId: "consultant-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "consultant-a"), idempotencyKey: key, correlationId: `corr-${key}` });
 
 const leg = { fromLabel: "Ningbo plant, CN", toLabel: "Felixstowe port, UK", mode: "sea" as const, distanceKm: 19600 };
 
@@ -13,7 +14,7 @@ function legPool(opts: { lineItemModule?: string | null; legFound?: boolean } = 
   const { lineItemModule = "A4", legFound = true } = opts;
   const writes: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("FROM nzi_console.lca_line_items li")) return { rows: lineItemModule == null ? [] : [{ module_code: lineItemModule }] };
@@ -95,7 +96,7 @@ describe("updateLcaTransportLeg / deleteLcaTransportLeg (Track C / L3)", () => {
 describe("listLcaTransportLegs (Track C / L3)", () => {
   it("maps a row in leg order, including a null calculated_kgco2e (pending the L4 calc engine)", async () => {
     const client = {
-      async query(sql: string) {
+      async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.includes("FROM nzi_console.lca_transport_legs WHERE line_item_id=$1")) {
           return { rows: [{ leg_id: "leg-1", leg_order: 0, from_label: "Ningbo plant, CN", from_lat: "29.87", from_lng: "121.55", to_label: "Ningbo port, CN", to_lat: "29.95", to_lng: "121.85", mode: "road_hgv", distance_km: "42", distance_source: "geocoded", factor_source: "unmapped", dataset_id: null, factor_id: null, factor_value: null, calculated_kgco2e: null, notes: "" }] };
         }

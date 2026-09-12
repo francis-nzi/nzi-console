@@ -1,16 +1,18 @@
 import "server-only";
-import { AuthenticationError, AuthorizationError, CommandValidationError, IdempotencyConflictError, VersionConflictError } from "@nzi/isolated-backend";
+import { AuthenticationError, AuthorizationError, CommandValidationError, commandGrant, IdempotencyConflictError, VersionConflictError, type StaffPrincipal } from "@nzi/isolated-backend";
 import type { CommandContext } from "@nzi/contracts";
 import { WriteApiDisabledError } from "./commandAuth";
 
-export function commandContext(request: Request, identity: { organisationId: string; userId: string }): CommandContext {
+/** The command runs as the resolved principal: its tenant, its user, and its matrix grant (NZC-022). */
+export function commandContext(request: Request, principal: StaffPrincipal): CommandContext {
   return {
-    organisationId: identity.organisationId,
-    actorId: identity.userId,
+    organisationId: principal.organisationId,
+    actorId: principal.userId,
     principal: "staff",
     idempotencyKey: request.headers.get("idempotency-key")?.trim() ?? "",
     correlationId: request.headers.get("x-correlation-id")?.trim() || crypto.randomUUID(),
     reason: request.headers.get("x-command-reason")?.trim() || undefined,
+    grant: commandGrant(principal),
   };
 }
 
@@ -21,7 +23,8 @@ export function commandSuccess(outcome: { data: Record<string, unknown>; auditEv
 export function commandFailure(error: unknown) {
   if (error instanceof WriteApiDisabledError) return Response.json({ code: "WRITE_API_DISABLED", message: "Write operations are not enabled." }, { status: 503 });
   if (error instanceof AuthenticationError) return Response.json({ code: "AUTHENTICATION_REQUIRED", message: "Staff authentication is required." }, { status: 401 });
-  if (error instanceof AuthorizationError) return Response.json({ code: "PERMISSION_DENIED", message: "Permission denied.", permission: error.permission }, { status: 403 });
+  // The message names the rule (own clients, separation of duties, another tenant) without echoing data.
+  if (error instanceof AuthorizationError) return Response.json({ code: "PERMISSION_DENIED", message: error.message, permission: error.permission }, { status: 403 });
   if (error instanceof CommandValidationError) return Response.json({ code: "VALIDATION_FAILED", message: "Command validation failed.", issues: error.issues }, { status: 422 });
   // Every versioned command shares this handler, so the message must not name one record type.
   if (error instanceof VersionConflictError) return Response.json({ code: "VERSION_CONFLICT", message: "This record changed since you loaded it; refresh and try again." }, { status: 409 });
