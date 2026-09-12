@@ -790,6 +790,15 @@ historical percentages in the trend table.
 `client_baselines` is the **policy** record; the stamp is the **reproducibility**. They are two mechanisms,
 both needed. This also gives the audit trail a base-year recalculation policy requires: what the base year
 was, when it changed, why, and what each issued report was measured against.
+
+**Addendum — the stamp never gates the issued document (11 Sep 2026, Francis).** A published
+report and its PDF stay retrievable whatever the provenance stamp says, including when there is none.
+A snapshot issued before stamping, and one whose stamp was **backfilled**, both serve in full: the
+figures come from the frozen payload, not from the stamp. A backfill marks what it writes
+`source: "migrated_unverified"` — shown as context, never as assurance, and never as a reason to
+withhold. The one thing that still refuses retrieval is an **evidence-hash mismatch** between a report
+version and its snapshot, which says the two disagree about the figures themselves.
+
 *Source: as NZC-065. See `MODEL_FIDELITY_BASELINE.md` §4.*
 
 ### NZC-067 — One baseline resolver; never look earlier than the baseline in force [Confirmed 10 Sep 2026]
