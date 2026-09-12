@@ -12,6 +12,8 @@ import { formatDate } from "../../lib/formatDate";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { ClientFactorsManager } from "../ClientFactorsManager";
 import { ClientContacts } from "./ClientContacts";
+import { ClientPathway } from "./ClientPathway";
+import { ClientTargets } from "./ClientTargets";
 import { ClientLogoBadge, ClientProfileCard, IdentityDrawer } from "./ClientIdentity";
 import { ClientSites } from "./ClientSites";
 import { EvidenceButton, FigureEvidenceBody, FigureStatus, TierBadge, formatFigure, fyLabel, tonnes } from "./FigureEvidence";
@@ -23,13 +25,14 @@ const TABS = [{ id: "overview", label: "Overview" }, { id: "carbon", label: "Car
 export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled }: {
   workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean;
 }) {
-  const { client, sites, evidence, reportingPeriods, contacts } = workspace;
+  const { client, sites, evidence, reportingPeriods, contacts, targets, actuals } = workspace;
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("overview");
   const [selected, setSelected] = useState<EvidenceKey | null>(null);
   // NZC-022 — each control reads the capability its command enforces.
   const siteAccess = useEditAccess("site.manage", writeEnabled);
   const contactAccess = useEditAccess("contact.manage", writeEnabled);
   const clientAccess = useEditAccess("client.edit", writeEnabled);
+  const targetAccess = useEditAccess("target.edit", writeEnabled);
   const [identityOpen, setIdentityOpen] = useState(false);
 
   const meta = clientStatusMeta[client.status];
@@ -106,6 +109,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
                 </div>
                 {evidence.state === "empty" ? null : <p className="nz-maps">Scope 3 is often mixed: each scope is a roll-up of its reviewed rows with per-row tiers — open a row in the job to see its factor and tier.</p>}
               </section>
+              <ClientPathway client={{ id: client.id, name: client.name }} targets={targets} actuals={actuals ?? []} />
             </div>
             <div className="nz-cw-col">
               <section className="nz-panel">
@@ -131,6 +135,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           </div>
         </TabPanel>
       </div><aside className="nz-client-aside">
+        <ClientTargets clientId={client.id} targets={targets} access={targetAccess} />
         <ClientContacts clientId={client.id} contacts={contacts ?? []} access={contactAccess} />
         <ClientSites clientId={client.id} sites={sites} reportingPeriods={reportingPeriods} today={today} access={siteAccess} />
         <ClientProfileCard client={client} onEdit={() => setIdentityOpen(true)} />

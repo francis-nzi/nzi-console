@@ -91,6 +91,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-069 | Console commercial ledger is the source of record; Xero is a downstream projection and payment-reconciliation source only. Implementation split to its own branch (`feat/commercial-ledger`), not merged. | Open — awaiting Francis |
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
+| NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
 
 ---
 
@@ -932,3 +933,27 @@ The **Proposed** items (NZC-006, 007, 009, 011–019, 023) are recommendations r
 batch once reviewed. NZC-024 (job-family module separation) was confirmed 1 Sep 2026; NZC-026–029 (the
 graphics redesign) were confirmed 24 Aug 2026 — both direct responses to the two requirements raised on
 24 Aug 2026.
+### NZC-072 — Forward targets are their own record, and the pathway derives from them [Confirmed 12 Sep 2026]
+The **baseline** is the past anchor: tonnes, measured, restated only through a governed re-baseline
+(NZC-065/068). **Targets** are the forward commitment: a year and a percentage reduction *against that
+benchmark*. Live keeps both on the client row, which is why a base-year change silently restated what a
+client had committed to. They are separated here:
+
+- `client_targets` holds near-term, net-zero and per-scope (S1/S2/S3) year + %, **versioned and
+  append-only** — a change writes the next version and every one is audited.
+- The **benchmark is read, never typed**: it comes from the baseline in force and is **stamped** onto the
+  target version, so a target always says what it was measured against. `benchmark_year` is therefore not
+  an editable field.
+- The **reduction pathway** and the **target gap** are both computed from that model — the benchmark and
+  `benchmark × (1 − pct)` at each committed year — so the chart and the gap cannot tell different stories.
+  A 90% commitment ends at its 10% residual, not at zero.
+- A client with nothing set has **no targets**, not zeros: the card says so and no line is drawn.
+- **A re-baseline holds the targets** (NZC-068). They stay in force against the benchmark they were set
+  against and are flagged as standing on a superseded one. Moving them is `client.targets.set` with an
+  explicit restatement and a reason, audited as `client_targets_restated`.
+- Editing targets needs `target.edit` (PERMISSION_MATRIX.md); the baseline still moves only through
+  re-baseline.
+
+*Source: Francis, 12 Sep 2026 — the forward target model brief; design reference
+`docs/prototypes/client_workspace_v10.html`.*
+
