@@ -8,6 +8,7 @@ export { EmissionsByActivity } from "./EmissionsByActivity";
 export { ManifestChartSet, PrintSafeBadge } from "./ManifestChartSet";
 export { EmissionsSiteDonut } from "./EmissionsSiteDonut";
 export { IntensityPathway } from "./IntensityPathway";
+export { IntensityBasesIndexed, basisColour } from "./IntensityBasesIndexed";
 export { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
 export { LcaStageBar } from "./LcaStageBar";
 export { LcaModuleDonut } from "./LcaModuleDonut";

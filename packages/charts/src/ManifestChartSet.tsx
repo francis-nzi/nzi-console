@@ -5,6 +5,7 @@ import { ReductionPathway } from "./ReductionPathway";
 import { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 import { EmissionsSiteDonut } from "./EmissionsSiteDonut";
 import { IntensityPathway } from "./IntensityPathway";
+import { IntensityBasesIndexed } from "./IntensityBasesIndexed";
 import { PurchasedGoodsBreakdown } from "./PurchasedGoodsBreakdown";
 import { LcaStageBar } from "./LcaStageBar";
 import { LcaModuleDonut } from "./LcaModuleDonut";
@@ -12,7 +13,7 @@ import { LcaHotspotsBar } from "./LcaHotspotsBar";
 import { TrainingAttendance } from "./TrainingAttendance";
 import { validateManifest, type ReportManifest } from "./manifest";
 import { tokens } from "./tokens";
-import type { AnyChartData, EmissionsByActivityData, IntensityPathwayData, LcaHotspotsBarData, LcaModuleDonutData, LcaStageBarData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData, TrainingAttendanceData } from "./types";
+import type { AnyChartData, EmissionsByActivityData, IntensityBasesIndexedData, IntensityPathwayData, LcaHotspotsBarData, LcaModuleDonutData, LcaStageBarData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData, TrainingAttendanceData } from "./types";
 
 type Props = {
   manifest: ReportManifest;
@@ -56,6 +57,7 @@ function ChartFromManifest({ chart, printSafe = false }: { chart: AnyChartData; 
   else if (chart.spec.type === "emissions_by_activity") graphic=<EmissionsByActivity data={chart as EmissionsByActivityData} />;
   else if (chart.spec.type === "emissions_site_donut") graphic=<EmissionsSiteDonut data={chart as SiteDonutData} />;
   else if (chart.spec.type === "intensity_pathway") graphic=<IntensityPathway data={chart as IntensityPathwayData} />;
+  else if (chart.spec.type === "intensity_bases_indexed") graphic=<IntensityBasesIndexed data={chart as IntensityBasesIndexedData} />;
   else if (chart.spec.type === "purchased_goods_breakdown") graphic=<PurchasedGoodsBreakdown data={chart as PurchasedGoodsBreakdownData} />;
   else if (chart.spec.type === "lca_stage_bar") graphic=<LcaStageBar data={chart as LcaStageBarData}/>;
   else if (chart.spec.type === "lca_module_donut") graphic=<LcaModuleDonut data={chart as LcaModuleDonutData}/>;

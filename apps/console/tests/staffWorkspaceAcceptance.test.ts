@@ -40,6 +40,17 @@ describe("staff workspace acceptance contracts",()=>{
     for(const token of ["history","EmissionsScopeDonut","ScopeYearOnYearBar","ClientPathway","Reporting year"])assert.ok(analytics.includes(token),token);
     assert.doesNotMatch(analytics,/\bconst (actual|series|values)\s*=\s*\[\s*\d/,"no seeded series");
   });
+  it("offers intensity on every basis the client's own data supports, and says why one is missing (client workspace v10)",()=>{
+    const analytics=read("apps/console/app/clients/[clientId]/AnalyticsArea.tsx");
+    for(const token of ["Intensity basis","per £M revenue","per employee (FTE)","per m² floor area","All bases (indexed)","IntensityBasesIndexed","Intensity detail"])assert.ok(analytics.includes(token),token);
+    // A basis without a denominator reads unavailable with its reason — never borrowed from another basis.
+    assert.ok(analytics.includes("BasisReasons"),"the unavailable reason is surfaced");
+    assert.doesNotMatch(analytics,/reportingDenominator\s*\?\?\s*\d/,"no fallback denominator");
+  });
+  it("keeps the client record edited one thing at a time — no omnibus Edit client button",()=>{
+    const shell=read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
+    assert.doesNotMatch(shell,/>Edit client</,"the omnibus edit button is gone");
+  });
   it("edits the forward targets in the drawer, gated on target.edit, with the benchmark read-only (client workspace v10)",()=>{
     const source=read("apps/console/app/clients/[clientId]/ClientTargets.tsx");
     for(const token of ["Reduction targets","Near-term target","Net-zero target","Per-scope targets","Benchmark year","Read from the baseline in force","No targets set","Save targets","/targets"])assert.ok(source.includes(token),token);

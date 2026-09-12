@@ -816,6 +816,11 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-cw-vhead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .nz-cw-vhead h2{margin:2px 0 0;font-size:19px}
 .nz-cw-vsub{font-size:12.5px;color:var(--t2);margin:0;max-width:720px}
+/* the view-level reporting-year picker, and the basis picker in a card header */
+.nz-cw-yearpick{margin:0;gap:3px}
+.nz-cw-yearpick>span{text-align:right}
+.nz-card-h .nz-sel,.nz-cw-yearpick .nz-sel{font-size:12px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--t1)}
+.nz-card-h .hint{font-size:11px;color:var(--t3);white-space:nowrap}
 /* card header — eyebrow · title · actions */
 .nz-card-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
 .nz-card-h h2{font-size:14px;margin:0}

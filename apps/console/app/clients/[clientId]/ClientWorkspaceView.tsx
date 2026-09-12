@@ -99,7 +99,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         <p className="sub">{client.sector} · {client.location} · Account owner {client.owner}</p>
       </div>
       <div className="nz-head-actions">
-        <button type="button" className="nz-btn" onClick={() => openDrawer({ kind: "identity" })}>Edit client</button>
+        {/* No "Edit client" here: the record is edited one thing at a time, in its own
+            drawer, from the surface that shows it (v10). */}
         <button type="button" className="nz-btn" onClick={() => openDrawer({ kind: "portal" })}>Portal access</button>
         <Link className="nz-btn pri" href={`/jobs?client=${client.id}`}>Create job</Link>
       </div>
