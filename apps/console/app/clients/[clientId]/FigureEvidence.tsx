@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { isAssuredProvenance } from "@nzi/contracts";
 import type { FigureEvidence, FigureTier, ProvenanceSignature, ScopeFigureEvidence } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 
@@ -36,10 +37,12 @@ export function EvidenceButton({ label, onOpen }: { label: string; onOpen: () =>
   return <button type="button" className="nz-evidence-link" onClick={onOpen} aria-label={`Evidence for ${label}`} title="Show provenance & lineage">◈ Evidence</button>;
 }
 
-/** The figure's status line: its tier, and a flag when provenance can't be shown. */
+/** The figure's status line: its tier, and a flag when provenance is missing or was backfilled. */
 export function FigureStatus({ figure }: { figure: FigureEvidence }) {
   if (figure.state === "unavailable") return <span className="nz-tier none">Unavailable</span>;
-  return <><TierBadge tier={figure.qualityTier} />{figure.provenance ? null : <span className="nz-figure-flag">Provenance unavailable</span>}</>;
+  return <><TierBadge tier={figure.qualityTier} />{figure.provenance
+    ? isAssuredProvenance(figure.provenance) ? null : <span className="nz-figure-flag" title="Stamped after issue; context, not assurance.">Provenance migrated</span>
+    : <span className="nz-figure-flag">Provenance unavailable</span>}</>;
 }
 
 const SIGNATURE_LABELS: ReadonlyArray<[keyof ProvenanceSignature, string]> = [
@@ -78,7 +81,10 @@ export function FigureEvidenceBody({ figure, context, scopes }: { figure: Figure
         {scope.qualityTier === "Mixed" ? <TierMix tiers={scope.tiers} /> : null}
       </div>) : figure.qualityTier === "Mixed" ? <TierMix tiers={figure.tiers} /> : null}
       {provenance
-        ? SIGNATURE_LABELS.map(([key, label]) => <Kv key={key} label={label}>{key === "asAtDate" ? formatDate(provenance.asAtDate) : provenance[key]}</Kv>)
+        ? <>
+          {SIGNATURE_LABELS.map(([key, label]) => <Kv key={key} label={label}>{key === "asAtDate" ? formatDate(provenance.asAtDate) : provenance[key]}</Kv>)}
+          {isAssuredProvenance(provenance) ? null : <div className="nz-banner warn" role="status">{figure.note ?? "This stamp was reconstructed after issue — context, not assurance."}</div>}
+        </>
         : <div className="nz-banner warn" role="status">{figure.note ?? "Provenance unavailable for this figure."}</div>}
     </> : null}
 

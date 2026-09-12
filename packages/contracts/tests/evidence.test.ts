@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveClientEmissionsEvidence, type ReviewedCrpSnapshotReadModel, type SnapshotProvenanceStamp } from "../src/index";
+import { isAssuredProvenance, resolveClientEmissionsEvidence, type ReviewedCrpSnapshotReadModel, type SnapshotProvenanceStamp } from "../src/index";
 
 type Measurement = ReviewedCrpSnapshotReadModel["measurements"][number];
 const row = (rowId: string, scope: "1" | "2" | "3", tco2e: number, qualityTier: Measurement["qualityTier"]): Measurement =>
@@ -37,7 +37,7 @@ describe("client figure evidence (NZC-005)", () => {
     assert.deepEqual(latest.provenance, {
       factorSet: "Client factor · Recycled steel · Synthetic GB factors",
       factorSetVersion: "Client factor · Recycled steel v3 · Synthetic GB factors 2025.1",
-      dataHash: "sha256:abc", asAtDate: "2026-05-02", sourceRef: "J000724 · reviewed snapshot v2", resolver: "crp.snapshot.issue@2",
+      dataHash: "sha256:abc", asAtDate: "2026-05-02", sourceRef: "J000724 · reviewed snapshot v2", resolver: "crp.snapshot.issue@2", source: "issued",
     });
     assert.ok(latest.lineage.some((step) => step.detail.includes("1 out-of-boundary row excluded")));
   });
@@ -48,6 +48,26 @@ describe("client figure evidence (NZC-005)", () => {
     assert.equal(latest.value, 200);
     assert.match(latest.note ?? "", /Provenance unavailable/);
     assert.equal(scopes[0]!.provenance, null);
+  });
+
+  it("keeps a backfilled stamp honest — a signature, marked migrated, never withheld figures", () => {
+    const migrated = { ...stamp, source: "migrated_unverified" as const };
+    const { latest, scopes, intensity } = resolveClientEmissionsEvidence({ current: snapshot({ provenance: migrated, intensityTarget: null }), prior: null });
+    assert.equal(latest.state, "resolved");
+    assert.equal(latest.value, 200);
+    assert.equal(latest.provenance?.source, "migrated_unverified");
+    assert.equal(isAssuredProvenance(latest.provenance), false);
+    assert.match(latest.note ?? "", /migrated, not verified/i);
+    assert.ok(scopes.every((scope) => scope.state === "resolved"));
+    // Only the missing intensity metric makes a figure unavailable — never the stamp.
+    assert.match(intensity.note ?? "", /No intensity metric/);
+  });
+
+  it("treats a stamp without a source as issued (stamps written before the field existed)", () => {
+    const { latest } = resolveClientEmissionsEvidence({ current: snapshot(), prior: null });
+    assert.equal(latest.provenance?.source, "issued");
+    assert.equal(isAssuredProvenance(latest.provenance), true);
+    assert.equal(latest.note, null);
   });
 
   it("does not call an empty scope Mixed", () => {

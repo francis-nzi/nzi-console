@@ -22,7 +22,17 @@ export type ProvenanceSignature = {
   asAtDate: string;
   sourceRef: string;
   resolver: string;
+  /** Where the stamp came from — a backfilled one is never presented as issue-time evidence. */
+  source: ProvenanceStampSource;
 };
+
+/**
+ * `issued` — stamped when the snapshot was issued (NZC-066), the only assurance-grade
+ * signature. `migrated_unverified` — reconstructed after the fact for a snapshot issued
+ * before stamping: shown for context, never as assurance, and **never a gate**. An issued
+ * report and its PDF stay retrievable whatever the stamp says, including when there is none.
+ */
+export type ProvenanceStampSource = "issued" | "migrated_unverified";
 
 /**
  * Stamped onto a reviewed snapshot when it is issued (NZC-066) — the only source of a
@@ -30,6 +40,8 @@ export type ProvenanceSignature = {
  * as-at date is the snapshot's own issue time.
  */
 export type SnapshotProvenanceStamp = {
+  /** Absent on stamps written at issue; a backfill must set `migrated_unverified`. */
+  source?: ProvenanceStampSource;
   resolver: string;
   reportingPeriod: { from: string; to: string };
   factorSets: Array<{ source: "dataset" | "client"; id: string; name: string; version: string }>;
@@ -73,7 +85,16 @@ const TCO2E = "tCO₂e";
 const ddmmyyyy = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const tonnes = (value: number): string => `${value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${TCO2E}`;
 
-/** The signature, read from the issue-time stamp only. */
+/** Whether a figure's signature is issue-time evidence. A missing or migrated stamp is honest, not fatal. */
+export function isAssuredProvenance(signature: ProvenanceSignature | null): boolean {
+  return signature?.source === "issued";
+}
+
+/**
+ * The signature, read from the snapshot's stamp. A migrated (backfilled) stamp still
+ * yields a signature — marked as such — so the figure keeps its context; nothing here
+ * withholds a figure, and no retrieval path may refuse a report over it.
+ */
 export function provenanceFromSnapshot(snapshot: Snapshot): ProvenanceSignature | null {
   const stamp = snapshot.provenance;
   if (!stamp || stamp.factorSets.length === 0) return null;
@@ -85,6 +106,7 @@ export function provenanceFromSnapshot(snapshot: Snapshot): ProvenanceSignature 
     asAtDate: snapshot.createdAt.slice(0, 10),
     sourceRef: `${snapshot.jobNumber} · reviewed snapshot v${snapshot.version}`,
     resolver: stamp.resolver,
+    source: stamp.source ?? "issued",
   };
 }
 
@@ -121,7 +143,11 @@ export function resolveClientEmissionsEvidence(input: { current: Snapshot | null
   }
 
   const provenance = provenanceFromSnapshot(current);
-  const provenanceNote = provenance ? null : "Provenance unavailable: this snapshot was issued before factor-set versions were stamped. Re-issue it to stamp them.";
+  const provenanceNote = provenance === null
+    ? "Provenance unavailable: this snapshot was issued before factor-set versions were stamped. Re-issue it to stamp them."
+    : provenance.source === "migrated_unverified"
+      ? "Provenance migrated, not verified: this stamp was reconstructed after issue, so it is context rather than assurance. The issued report is unaffected."
+      : null;
   const source: FigureSource = { jobId: current.jobId, jobNumber: current.jobNumber, snapshotId: current.id, snapshotVersion: current.version, reportingYear: current.reportingYear };
   const rows = current.measurements;
   const excluded = current.provenance?.boundary.excludedRowIds.length ?? 0;

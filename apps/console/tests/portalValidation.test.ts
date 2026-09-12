@@ -31,3 +31,9 @@ test("rejects blank comments and invalid receipts",()=>{assert.equal(isPortalRep
 
 test("accepts a coherent portal identity and portfolio",()=>{assert.equal(isPortalIdentity({userId:"user-a",clientId:"client-a",displayName:"Synthetic User",email:"user@example.test"}),true);assert.equal(isPortalJobList([{id:"job-a",number:"J000712",title:"Synthetic CRP",reportingYear:2026,hasPublishedReport:true,approved:true,approvedAt:"2026-08-27T12:30:00.000Z",hasUnreadNziResponse:false}]),true)});
 test("rejects contradictory and duplicate portfolio states",()=>{const job={id:"job-a",number:"J000712",title:"Synthetic CRP",reportingYear:2026,hasPublishedReport:false,approved:true,approvedAt:"2026-08-27T12:30:00.000Z",hasUnreadNziResponse:false};assert.equal(isPortalJobList([job]),false);assert.equal(isPortalJobList([{...job,approved:false,approvedAt:null},{...job,approved:false,approvedAt:null}]),false)});
+
+// NZC-066 — the published report stays valid evidence whatever its provenance stamp
+// says. A snapshot issued before stamping, or one whose stamp was backfilled, must
+// still reach the portal: the stamp is context, never a gate on the issued document.
+test("accepts a published report with no provenance stamp",()=>{const value=clone(report);delete (value.snapshot as {provenance?:unknown}).provenance;assert.equal(isPublishedCrpReport(value,"job-a"),true)});
+test("accepts a published report whose stamp was backfilled",()=>{const value=clone(report);(value.snapshot as {provenance?:unknown}).provenance={source:"migrated_unverified",resolver:"crp.snapshot.backfill@1",reportingPeriod:{from:"2026-01-01",to:"2026-12-31"},factorSets:[{source:"dataset",id:"ds-1",name:"Synthetic factors",version:"v1"}],boundary:{siteIds:[],excludedRowIds:[]}};assert.equal(isPublishedCrpReport(value,"job-a"),true)});
