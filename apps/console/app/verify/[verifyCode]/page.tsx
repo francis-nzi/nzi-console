@@ -1,4 +1,8 @@
-import { verifyTrainingCertificate, type CertificateVerification } from "@nzi/isolated-backend";
+import { headers } from "next/headers";
+import {
+  claimVerifyAttempt, claimVerifyMiss, clientAddressFrom, verifyTrainingCertificate,
+  VERIFY_WINDOW_MINUTES, type CertificateVerification,
+} from "@nzi/isolated-backend";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { formatDate } from "../../lib/formatDate";
 
@@ -15,12 +19,26 @@ export const dynamic = "force-dynamic";
  *
  * A code that does not match says so plainly and identically whatever the reason, so the
  * page cannot be used to enumerate certificates or confirm a guessed name.
+ *
+ * The function bounds what one request reads; the rate limit bounds how many requests there
+ * are. Both are needed: the verify code is 40 bits, so the risk here was never a single
+ * disclosure, it was a caller sweeping the space to discover which codes are real — which
+ * would make possession of a code stop being evidence of anything.
  */
 export default async function VerifyCertificatePage({ params }: { params: Promise<{ verifyCode: string }> }) {
   const { verifyCode } = await params;
+  const pool = isolatedPool();
+  const address = clientAddressFrom((await headers()).get("x-forwarded-for"), Number(process.env.NZI_TRUSTED_PROXY_HOPS ?? 1));
+  const salt = process.env.NZI_VERIFY_RATE_SALT ?? "";
+
   let result: CertificateVerification;
   try {
-    result = await verifyTrainingCertificate(isolatedPool(), decodeURIComponent(verifyCode));
+    // Claimed before the lookup: the budget is spent on asking, not on being right.
+    if (!await claimVerifyAttempt(pool, address, salt)) return <LimitedCard />;
+    result = await verifyTrainingCertificate(pool, decodeURIComponent(verifyCode));
+    // A miss is the signal that separates a sweep from someone reading a certificate.
+    // Checked after the lookup, so the answer is withheld rather than the guess confirmed.
+    if (result.state === "not-found" && !await claimVerifyMiss(pool, address, salt)) return <LimitedCard />;
   } catch {
     // Truth before availability: a lookup that failed is not a certificate that is invalid.
     return <VerifyShell>
@@ -65,6 +83,27 @@ export default async function VerifyCertificatePage({ params }: { params: Promis
           This record is held by Net Zero International and confirms the training above. It shows only the
           training itself — no contact details, no employer, and nothing else this person has studied.
         </p>}
+    </div>
+  </VerifyShell>;
+}
+
+/**
+ * Shown when the budget is spent. It says the same thing whether the caller was sweeping or
+ * simply checking a lot of certificates, and says nothing about the code they just tried —
+ * a "slow down, that one was wrong" would hand back the very bit being rationed.
+ */
+function LimitedCard() {
+  return <VerifyShell>
+    <div className="nz-verify-card unavailable" role="alert">
+      <h1>Too many checks from here</h1>
+      <p>
+        Verification is limited to protect certificate holders. Please wait a few minutes and try again —
+        this says nothing about the certificate you were checking.
+      </p>
+      <p className="nz-verify-note">
+        The limit resets within {VERIFY_WINDOW_MINUTES} minutes. If you need to verify many certificates at
+        once, contact the NZI training team and they will help.
+      </p>
     </div>
   </VerifyShell>;
 }
