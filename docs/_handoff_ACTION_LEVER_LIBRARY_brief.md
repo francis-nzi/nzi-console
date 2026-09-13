@@ -1,10 +1,19 @@
 # Handoff brief — Action-lever library (the Actions area)
 
-Turn the qualitative A2-lite Actions tracker into the client's **decarbonisation plan**
-built from an Admin-managed **lever catalogue**. Go-live item. **Design reference:**
-`docs/prototypes/client_workspace_v12.html` (Actions area + the "Add from library" drawer).
-Branch + PR; typecheck AND build green; permission-gate per `docs/PERMISSION_MATRIX.md`
-(`actions.manage`); distinct empty/loading/failed states.
+Build the client's **decarbonisation plan** from an Admin-managed **lever catalogue**.
+Go-live item. **Design reference:** `docs/prototypes/client_workspace_v12.html` (Actions area
++ the "Add from library" drawer). Branch + PR; typecheck AND build green; permission-gate per
+`docs/PERMISSION_MATRIX.md` (`actions.manage`); distinct empty/loading/failed states.
+
+> **Naming (decided 13 Sep 2026):** the grouping field is **`control_level`** (values: direct
+> control / supply chain / influence), **not** `sphere_of_influence`. "Sphere(s) of Influence"
+> is reserved for the existing SBTi beyond-value-chain framework in `portalActions.ts`; this
+> operational-reduction concept is a different idea, and one-term-one-meaning is locked.
+>
+> **A2-lite conversion is a SEPARATE, deferred decision — do not migrate it here.** The new
+> plan and the existing flag-gated A2-lite portal tracker do not share a taxonomy, and
+> converting would migrate live portal data. That gets its own brief + review; leave the
+> A2-lite tracker untouched for now.
 
 Grounding: live `report_actions_routes`, `action_lever_framework` (migration 0064),
 `/clients/{id}/report-actions`, `action-lever-summary`. This is the "Plan" half of a CRP —
@@ -12,19 +21,20 @@ keep it distinct from the measurement (scope rows).
 
 ## Model
 🔴 1. `action_levers` (catalogue, Admin-managed, versioned, deactivate-not-delete): `key`,
-   `title`, `scope` (1/2/3/governance), `category`, `sphere_of_influence` (direct control /
-   supply chain / influence), `icon`, `active`. Seeded from the live catalogue.
+   `title`, `scope` (1/2/3/governance), `category`, `control_level` (direct control /
+   supply chain / influence — see naming note above), `icon`, `active`. Seeded from the live
+   catalogue.
 🔴 2. `client_actions` (assigned per client): reference to a catalogue lever (or a bespoke
    client action), `status` (planned / in-progress / complete), `owner`, `target_date`,
    `progress_pct`, `notes`, versioned + audited; deactivate-not-delete. **Qualitative only
    (A2-lite)** — no modelled tCO₂e yet (Stage 2, see below).
 
 ## UI (match v12)
-🟢 3. Actions area = the client's plan, grouped by **sphere of influence**, with a **lever
-   summary** (counts: total / in-progress / complete / planned) and per-action status pill +
-   progress bar + scope tag + owner + target date. Editing via a drawer; gated on
-   `actions.manage`.
-🟢 4. "**Add from library**" drawer: the catalogue, filterable by scope / sphere, each item
+🟢 3. Actions area = the client's plan, grouped by **control level** (display heading e.g.
+   "By level of control", not "Sphere of influence"), with a **lever summary** (counts: total /
+   in-progress / complete / planned) and per-action status pill + progress bar + scope tag +
+   owner + target date. Editing via a drawer; gated on `actions.manage`.
+🟢 4. "**Add from library**" drawer: the catalogue, filterable by scope / control level, each item
    Add / Added; assigning creates a `client_actions` row. Removing deactivates (kept in
    history). Bespoke (non-catalogue) actions can also be added.
 🟡 5. `action-lever-summary` read model feeding the summary strip and (later) the report's

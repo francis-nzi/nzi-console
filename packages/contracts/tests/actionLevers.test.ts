@@ -7,12 +7,12 @@ import {
 
 const lever = (id: string, over: Partial<ActionLever> = {}): ActionLever => ({
   id, key: id, title: id, description: "", scope: "2", category: "Energy",
-  sphere: "direct_control", iconKey: "energy", active: true, version: 1, modelledImpact: null, ...over,
+  controlLevel: "direct_control", iconKey: "energy", active: true, version: 1, modelledImpact: null, ...over,
 });
 
 const action = (id: string, over: Partial<ClientAction> = {}): ClientAction => ({
   id, clientId: "client-a", leverId: null, title: id, scope: "2", category: "Energy",
-  sphere: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
+  controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });
 
@@ -68,12 +68,12 @@ describe("the action-lever library", () => {
   });
 
   describe("grouping", () => {
-    it("groups by sphere in a fixed order and drops the empty ones", () => {
+    it("groups by level of control in a fixed order and drops the empty ones", () => {
       const groups = actionPlanGroups([
-        action("a", { sphere: "influence" }),
-        action("b", { sphere: "direct_control" }),
+        action("a", { controlLevel: "influence" }),
+        action("b", { controlLevel: "direct_control" }),
       ]);
-      assert.deepEqual(groups.map((group) => group.sphere), ["direct_control", "influence"]);
+      assert.deepEqual(groups.map((group) => group.controlLevel), ["direct_control", "influence"]);
       assert.equal(groups.length, 2, "supply_chain has nothing in it and is not shown");
     });
 

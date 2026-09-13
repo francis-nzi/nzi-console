@@ -21,19 +21,19 @@ export type ActionScope = (typeof actionScopes)[number];
  *
  * NOTE: this is NOT the SBTi "Spheres of Influence" framework in `portalActions.ts`, which
  * is about beyond-value-chain mitigation and uses A/B/C/D. Same words, different idea; see
- * the note on `actionSphereLabels`.
+ * the note on `actionControlLevelLabels`.
  */
-export const actionSpheres = ["direct_control", "supply_chain", "influence"] as const;
-export type ActionSphere = (typeof actionSpheres)[number];
+export const actionControlLevels = ["direct_control", "supply_chain", "influence"] as const;
+export type ActionControlLevel = (typeof actionControlLevels)[number];
 
-export const actionSphereLabels: Record<ActionSphere, string> = {
+export const actionControlLevelLabels: Record<ActionControlLevel, string> = {
   direct_control: "Direct control · own operations",
   supply_chain: "Supply chain · procurement",
   influence: "Influence · customers & industry",
 };
 
 /** What each grouping typically covers, said once so the three cards stay honest. */
-export const actionSphereScopeHint: Record<ActionSphere, string> = {
+export const actionControlLevelScopeHint: Record<ActionControlLevel, string> = {
   direct_control: "Scope 1 & 2",
   supply_chain: "Scope 3 upstream",
   influence: "Scope 3 downstream",
@@ -55,7 +55,7 @@ export type ActionLever = {
   description: string;
   scope: ActionScope;
   category: string;
-  sphere: ActionSphere;
+  controlLevel: ActionControlLevel;
   iconKey: string;
   active: boolean;
   version: number;
@@ -75,7 +75,7 @@ export type ClientAction = {
   title: string;
   scope: ActionScope;
   category: string;
-  sphere: ActionSphere;
+  controlLevel: ActionControlLevel;
   iconKey: string;
   status: ActionStatus;
   owner: string;
@@ -133,8 +133,8 @@ export function actionPlanSummary(actions: readonly ClientAction[]): ActionPlanS
   return summary;
 }
 
-export type ActionSphereGroup = {
-  sphere: ActionSphere;
+export type ActionControlLevelGroup = {
+  controlLevel: ActionControlLevel;
   label: string;
   scopeHint: string;
   actions: ClientAction[];
@@ -147,15 +147,15 @@ export type ActionSphereGroup = {
  * Within a group, the order is the order of work rather than of the alphabet — in progress
  * first (what is live), then planned (what is next), then complete (what is behind you).
  */
-export function actionPlanGroups(actions: readonly ClientAction[]): ActionSphereGroup[] {
+export function actionPlanGroups(actions: readonly ClientAction[]): ActionControlLevelGroup[] {
   const rank: Record<ActionStatus, number> = { in_progress: 0, planned: 1, complete: 2 };
-  return actionSpheres
-    .map((sphere) => ({
-      sphere,
-      label: actionSphereLabels[sphere],
-      scopeHint: actionSphereScopeHint[sphere],
+  return actionControlLevels
+    .map((controlLevel) => ({
+      controlLevel,
+      label: actionControlLevelLabels[controlLevel],
+      scopeHint: actionControlLevelScopeHint[controlLevel],
       actions: actions
-        .filter((action) => action.active && action.sphere === sphere)
+        .filter((action) => action.active && action.controlLevel === controlLevel)
         .sort((a, b) => rank[a.status] - rank[b.status] || a.title.localeCompare(b.title)),
     }))
     .filter((group) => group.actions.length > 0);
@@ -175,6 +175,6 @@ export function actionLibrary(levers: readonly ActionLever[], actions: readonly 
     .filter((lever) => lever.active || assigned.has(lever.id))
     .map((lever) => ({ lever, assigned: assigned.has(lever.id) }))
     .sort((a, b) =>
-      actionSpheres.indexOf(a.lever.sphere) - actionSpheres.indexOf(b.lever.sphere)
+      actionControlLevels.indexOf(a.lever.controlLevel) - actionControlLevels.indexOf(b.lever.controlLevel)
       || a.lever.title.localeCompare(b.lever.title));
 }

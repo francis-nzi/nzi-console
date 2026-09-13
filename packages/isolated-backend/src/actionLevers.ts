@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ActionLever, ActionScope, ActionSphere, ActionStatus, ClientAction, CommandContext, CommandInputMap } from "@nzi/contracts";
+import type { ActionLever, ActionScope, ActionControlLevel, ActionStatus, ClientAction, CommandContext, CommandInputMap } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -20,14 +20,14 @@ import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "
 
 type LeverRow = {
   lever_id: string; lever_key: string; title: string; description: string; scope: string;
-  category: string; sphere_of_influence: string; icon_key: string; active: boolean; version: number;
+  category: string; control_level: string; icon_key: string; active: boolean; version: number;
   modelled_tco2e_per_year: string | null; modelled_impact_basis: string | null;
 };
 
 const mapLever = (row: LeverRow): ActionLever => ({
   id: row.lever_id, key: row.lever_key, title: row.title, description: row.description,
   scope: row.scope as ActionScope, category: row.category,
-  sphere: row.sphere_of_influence as ActionSphere, iconKey: row.icon_key,
+  controlLevel: row.control_level as ActionControlLevel, iconKey: row.icon_key,
   active: row.active, version: row.version,
   // The pairing is enforced in the database too; reading it as a tuple means a figure can
   // never reach a screen without the basis that justifies it.
@@ -36,23 +36,23 @@ const mapLever = (row: LeverRow): ActionLever => ({
     : null,
 });
 
-const LEVER_COLUMNS = `lever_id, lever_key, title, description, scope, category, sphere_of_influence, icon_key,
+const LEVER_COLUMNS = `lever_id, lever_key, title, description, scope, category, control_level, icon_key,
   active, version, modelled_tco2e_per_year::text, modelled_impact_basis`;
 
 export async function listActionLevers(db: Queryable): Promise<ActionLever[]> {
   const result = await db.query<LeverRow>(
-    `SELECT ${LEVER_COLUMNS} FROM nzi_console.action_levers ORDER BY sphere_of_influence, lower(title)`);
+    `SELECT ${LEVER_COLUMNS} FROM nzi_console.action_levers ORDER BY control_level, lower(title)`);
   return result.rows.map(mapLever);
 }
 
 type ActionRow = {
   client_action_id: string; client_id: string; lever_id: string | null;
   bespoke_title: string | null; bespoke_scope: string | null; bespoke_category: string | null;
-  bespoke_sphere_of_influence: string | null; bespoke_icon_key: string | null;
+  bespoke_control_level: string | null; bespoke_icon_key: string | null;
   status: string; owner: string; target_date: Date | string | null; progress_pct: number;
   notes: string; active: boolean; version: number;
   lever_title: string | null; lever_scope: string | null; lever_category: string | null;
-  lever_sphere: string | null; lever_icon: string | null;
+  lever_control_level: string | null; lever_icon: string | null;
 };
 
 const dateOnly = (value: Date | string | null) =>
@@ -64,7 +64,7 @@ const mapAction = (row: ActionRow): ClientAction => ({
   title: row.lever_title ?? row.bespoke_title ?? "",
   scope: (row.lever_scope ?? row.bespoke_scope ?? "3") as ActionScope,
   category: row.lever_category ?? row.bespoke_category ?? "",
-  sphere: (row.lever_sphere ?? row.bespoke_sphere_of_influence ?? "direct_control") as ActionSphere,
+  controlLevel: (row.lever_control_level ?? row.bespoke_control_level ?? "direct_control") as ActionControlLevel,
   iconKey: row.lever_icon ?? row.bespoke_icon_key ?? "target",
   status: row.status as ActionStatus, owner: row.owner,
   targetDate: dateOnly(row.target_date), progressPct: row.progress_pct,
@@ -74,10 +74,10 @@ const mapAction = (row: ActionRow): ClientAction => ({
 export async function listClientActions(db: Queryable, clientId: string): Promise<ClientAction[]> {
   const result = await db.query<ActionRow>(
     `SELECT a.client_action_id, a.client_id, a.lever_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
-            a.bespoke_sphere_of_influence, a.bespoke_icon_key, a.status, a.owner, a.target_date, a.progress_pct,
+            a.bespoke_control_level, a.bespoke_icon_key, a.status, a.owner, a.target_date, a.progress_pct,
             a.notes, a.active, a.version,
             l.title AS lever_title, l.scope AS lever_scope, l.category AS lever_category,
-            l.sphere_of_influence AS lever_sphere, l.icon_key AS lever_icon
+            l.control_level AS lever_control_level, l.icon_key AS lever_icon
      FROM nzi_console.client_actions a
      LEFT JOIN nzi_console.action_levers l ON (l.organisation_id, l.lever_id) = (a.organisation_id, a.lever_id)
      WHERE a.client_id = $1
@@ -107,19 +107,19 @@ export function upsertActionLever(pool: PoolLike, input: CommandInputMap["action
       const leverId = `lever-${randomUUID()}`;
       await db.query(
         `INSERT INTO nzi_console.action_levers
-           (organisation_id, lever_id, lever_key, title, description, scope, category, sphere_of_influence, icon_key, created_by)
+           (organisation_id, lever_id, lever_key, title, description, scope, category, control_level, icon_key, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [context.organisationId, leverId, key, title, description, input.scope, category, input.sphere, input.iconKey, context.actorId]);
+        [context.organisationId, leverId, key, title, description, input.scope, category, input.controlLevel, input.iconKey, context.actorId]);
       const data: UpsertLeverResult = { leverId, version: 1, created: true };
       return {
         data,
         entityType: "action_lever", entityId: leverId, topic: "action.lever.upserted",
-        after: { key, title, scope: input.scope, sphere: input.sphere },
+        after: { key, title, scope: input.scope, controlLevel: input.controlLevel },
       };
     }
 
-    const current = await db.query<{ version: number; lever_key: string; title: string; scope: string; sphere_of_influence: string }>(
-      `SELECT version, lever_key, title, scope, sphere_of_influence FROM nzi_console.action_levers
+    const current = await db.query<{ version: number; lever_key: string; title: string; scope: string; control_level: string }>(
+      `SELECT version, lever_key, title, scope, control_level FROM nzi_console.action_levers
        WHERE organisation_id=$1 AND lever_id=$2 FOR UPDATE`,
       [context.organisationId, input.leverId]);
     const lever = current.rows[0];
@@ -128,16 +128,16 @@ export function upsertActionLever(pool: PoolLike, input: CommandInputMap["action
 
     const saved = await db.query<{ version: number }>(
       `UPDATE nzi_console.action_levers
-       SET lever_key=$3, title=$4, description=$5, scope=$6, category=$7, sphere_of_influence=$8, icon_key=$9,
+       SET lever_key=$3, title=$4, description=$5, scope=$6, category=$7, control_level=$8, icon_key=$9,
            version=version+1, updated_at=now(), updated_by=$10
        WHERE organisation_id=$1 AND lever_id=$2 RETURNING version`,
-      [context.organisationId, input.leverId, key, title, description, input.scope, category, input.sphere, input.iconKey, context.actorId]);
+      [context.organisationId, input.leverId, key, title, description, input.scope, category, input.controlLevel, input.iconKey, context.actorId]);
     const data: UpsertLeverResult = { leverId: input.leverId, version: saved.rows[0]!.version, created: false };
     return {
       data,
       entityType: "action_lever", entityId: input.leverId, topic: "action.lever.upserted",
-      before: { key: lever.lever_key, title: lever.title, scope: lever.scope, sphere: lever.sphere_of_influence },
-      after: { key, title, scope: input.scope, sphere: input.sphere },
+      before: { key: lever.lever_key, title: lever.title, scope: lever.scope, controlLevel: lever.control_level },
+      after: { key, title, scope: input.scope, controlLevel: input.controlLevel },
     };
   });
 }
@@ -221,10 +221,10 @@ export function assignClientAction(pool: PoolLike, input: CommandInputMap["clien
     await db.query(
       `INSERT INTO nzi_console.client_actions
          (organisation_id, client_action_id, client_id, bespoke_title, bespoke_scope, bespoke_category,
-          bespoke_sphere_of_influence, bespoke_icon_key, owner, target_date, notes, created_by)
+          bespoke_control_level, bespoke_icon_key, owner, target_date, notes, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [context.organisationId, clientActionId, input.clientId, bespoke.title.trim(), bespoke.scope,
-        bespoke.category?.trim() ?? "", bespoke.sphere, bespoke.iconKey ?? "target",
+        bespoke.category?.trim() ?? "", bespoke.controlLevel, bespoke.iconKey ?? "target",
         input.owner?.trim() ?? "", targetDate, input.notes?.trim() ?? "", context.actorId]);
     const data: AssignActionResult = { clientActionId, leverId: null };
     return {

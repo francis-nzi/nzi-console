@@ -1,6 +1,6 @@
 <!-- NZI Console — Client Workspace prototype · v12 (2026-09-12) — supersedes v11
      Adds the action-lever library: the Actions area is now the client's decarbonisation
-     plan grouped by Sphere of Influence (summary + status + progress), with an
+     plan grouped by level of control (summary + status + progress), with an
      "Add from library" drawer to assign reduction levers from the Admin-managed catalogue.
      Qualitative (A2-lite); quantified lever impact is Stage 2.
      -- prior --
@@ -470,7 +470,7 @@ rect.seg{stroke:var(--panel);stroke-width:2}
             <span style="flex:1"></span>
             <button class="btn pri sm" onclick="openD('library')">＋ Add from library</button>
           </div>
-          <p class="vsub">The client's reduction plan — Spheres-of-Influence levers assigned from the catalogue, tracked against the assured baseline.</p>
+          <p class="vsub">The client's reduction plan — levers assigned from the catalogue, tracked against the assured baseline.</p>
           <div class="asum">
             <div class="asumc"><b>8</b><span>Actions</span></div>
             <div class="asumc"><b>3</b><span>In progress</span></div>
@@ -478,19 +478,19 @@ rect.seg{stroke:var(--panel);stroke-width:2}
             <div class="asumc"><b>3</b><span>Planned</span></div>
           </div>
 
-          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Direct control · own operations</h2><span class="sp"></span><span class="hint">Scope 1 &amp; 2</span></div><div class="cb">
+          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Level of control</span><h2>Direct control · own operations</h2><span class="sp"></span><span class="hint">Scope 1 &amp; 2</span></div><div class="cb">
             <div class="arow"><div class="aic">⚡</div><div class="amid"><div class="nm">Switch London HQ to a renewable tariff</div><div class="sub"><span class="tag">Scope 2</span> Energy · A. Shaw · due Q2 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:60%"></span></div></div></div>
             <div class="arow"><div class="aic">🚚</div><div class="amid"><div class="nm">Fleet transition to EV</div><div class="sub"><span class="tag">Scope 1</span> Transport · A. Shaw · target 2027</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:15%"></span></div></div></div>
             <div class="arow"><div class="aic">💡</div><div class="amid"><div class="nm">LED + building-management upgrade, London HQ</div><div class="sub"><span class="tag">Scope 2</span> Energy efficiency · complete Jan 2026</div></div><div class="astat"><span class="pill ok" style="padding:1px 8px"><i></i>Complete</span><div class="aprog"><span style="width:100%"></span></div></div></div>
           </div></section>
 
-          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Supply chain · procurement</h2><span class="sp"></span><span class="hint">Scope 3 upstream</span></div><div class="cb">
+          <section class="card" style="margin-bottom:14px"><div class="ch"><span class="eyebrow">Level of control</span><h2>Supply chain · procurement</h2><span class="sp"></span><span class="hint">Scope 3 upstream</span></div><div class="cb">
             <div class="arow"><div class="aic">🤝</div><div class="amid"><div class="nm">Supplier engagement programme — top 20 by spend</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Procurement · due Q4 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:40%"></span></div></div></div>
             <div class="arow"><div class="aic">✈</div><div class="amid"><div class="nm">Business-travel policy — rail-first</div><div class="sub"><span class="tag">Scope 3</span> Cat 6 · Travel · due Q1 2026</div></div><div class="astat"><span class="pill prog" style="padding:1px 8px"><i style="background:var(--warn)"></i>In progress</span><div class="aprog"><span style="width:55%"></span></div></div></div>
             <div class="arow"><div class="aic">📦</div><div class="amid"><div class="nm">Switch to recycled-content packaging</div><div class="sub"><span class="tag">Scope 3</span> Cat 1 · Materials · planned</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:5%"></span></div></div></div>
           </div></section>
 
-          <section class="card"><div class="ch"><span class="eyebrow">Sphere of influence</span><h2>Influence · customers &amp; industry</h2><span class="sp"></span><span class="hint">Scope 3 downstream</span></div><div class="cb">
+          <section class="card"><div class="ch"><span class="eyebrow">Level of control</span><h2>Influence · customers &amp; industry</h2><span class="sp"></span><span class="hint">Scope 3 downstream</span></div><div class="cb">
             <div class="arow"><div class="aic">♻</div><div class="amid"><div class="nm">Customer product take-back scheme</div><div class="sub"><span class="tag">Scope 3</span> Cat 12 · Circularity · planned</div></div><div class="astat"><span class="pill plan" style="padding:1px 8px"><i style="background:var(--muted)"></i>Planned</span><div class="aprog"><span style="width:0%"></span></div></div></div>
             <div class="arow"><div class="aic">📜</div><div class="amid"><div class="nm">Publish supplier code of conduct</div><div class="sub">Governance · complete Nov 2025</div></div><div class="astat"><span class="pill ok" style="padding:1px 8px"><i></i>Complete</span><div class="aprog"><span style="width:100%"></span></div></div></div>
           </div></section>
@@ -700,7 +700,7 @@ const DRAWERS={
     <div class="three"><div class="fl"><label><span style="color:var(--s3)">Scope 3</span> by</label><input class="inp" value="2045"></div><div class="fl"><label>%</label><input class="inp" value="90%"></div><div class="fl"><label>&nbsp;</label><span class="hint" style="align-self:center">value chain</span></div></div>
     <div class="gov" style="margin-top:12px"><span class="lk">🔒</span><span>Targets are versioned and audited. When a re-baseline restates the benchmark, targets are held by default and only restated as an explicit, recorded choice (NZC-068).</span></div>`,foot:`<span class="sp"></span><button class="btn" onclick="closeD()">Cancel</button><button class="btn pri" onclick="closeD()">Save targets</button>`},
   library:{k:"Engagement",t:"Add actions from the library",body:`
-    <div class="hint">Assign reduction actions (levers) from the NZI catalogue to this client's plan. The catalogue is Admin-managed; assigned actions are tracked per client and grouped by sphere of influence.</div>
+    <div class="hint">Assign reduction actions (levers) from the NZI catalogue to this client's plan. The catalogue is Admin-managed; assigned actions are tracked per client and grouped by level of control.</div>
     <div class="filt"><button class="on">All</button><button>Scope 1</button><button>Scope 2</button><button>Scope 3</button><button>Governance</button></div>
     <div class="libitem"><span class="aic">☀</span><div class="lm"><div class="nm">On-site solar PV generation</div><div class="sub"><span class="tag">Scope 2</span> Energy · Direct control</div></div><button class="btn sm">＋ Add</button></div>
     <div class="libitem"><span class="aic">♨</span><div class="lm"><div class="nm">Heat-pump conversion</div><div class="sub"><span class="tag">Scope 1</span> Heating · Direct control</div></div><button class="btn sm">＋ Add</button></div>

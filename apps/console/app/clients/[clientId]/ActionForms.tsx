@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  actionProgressForStatus, actionScopeLabel, actionScopes, actionSphereLabels, actionSpheres,
+  actionProgressForStatus, actionScopeLabel, actionScopes, actionControlLevelLabels, actionControlLevels,
   actionStatusForProgress, actionStatuses, actionStatusLabels,
-  type ActionLibraryEntry, type ActionScope, type ActionSphere, type ActionStatus, type ClientAction,
+  type ActionLibraryEntry, type ActionScope, type ActionControlLevel, type ActionStatus, type ClientAction,
 } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -28,13 +28,13 @@ export function ActionLibraryForm({ clientId, library, access, onClose, onSaved,
   clientId: string; library: ActionLibraryEntry[]; access: EditAccess;
   onClose: () => void; onSaved: (text: string) => void; onBespoke: () => void;
 }) {
-  const [sphere, setSphere] = useState<ActionSphere | "all">("all");
+  const [controlLevel, setControlLevel] = useState<ActionControlLevel | "all">("all");
   const [scope, setScope] = useState<ActionScope | "all">("all");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const shown = library.filter((entry) =>
-    (sphere === "all" || entry.lever.sphere === sphere) && (scope === "all" || entry.lever.scope === scope));
+    (controlLevel === "all" || entry.lever.controlLevel === controlLevel) && (scope === "all" || entry.lever.scope === scope));
 
   async function add(entry: ActionLibraryEntry) {
     setPendingId(entry.lever.id);
@@ -49,13 +49,13 @@ export function ActionLibraryForm({ clientId, library, access, onClose, onSaved,
   return <div className="nz-drawer-form">
     <p className="sub">
       Assign reduction levers from the NZI catalogue to this client&rsquo;s plan. The catalogue is
-      Admin-managed; what you assign is tracked per client and grouped by sphere of influence.
+      Admin-managed; what you assign is tracked per client and grouped by how much of it the client controls.
     </p>
 
     <div className="nz-filters" style={{ marginBottom: 10 }}>
-      <button type="button" aria-pressed={sphere === "all"} className={sphere === "all" ? "on" : undefined} onClick={() => setSphere("all")}>All spheres</button>
-      {actionSpheres.map((value) => <button key={value} type="button" aria-pressed={sphere === value}
-        className={sphere === value ? "on" : undefined} onClick={() => setSphere(value)}>{actionSphereLabels[value].split(" · ")[0]}</button>)}
+      <button type="button" aria-pressed={controlLevel === "all"} className={controlLevel === "all" ? "on" : undefined} onClick={() => setControlLevel("all")}>All levels</button>
+      {actionControlLevels.map((value) => <button key={value} type="button" aria-pressed={controlLevel === value}
+        className={controlLevel === value ? "on" : undefined} onClick={() => setControlLevel(value)}>{actionControlLevelLabels[value].split(" · ")[0]}</button>)}
     </div>
     <div className="nz-filters" style={{ marginBottom: 12 }}>
       <button type="button" aria-pressed={scope === "all"} className={scope === "all" ? "on" : undefined} onClick={() => setScope("all")}>All scopes</button>
@@ -73,7 +73,7 @@ export function ActionLibraryForm({ clientId, library, access, onClose, onSaved,
           <div className="nm">{entry.lever.title}</div>
           <div className="sub">
             <span className="nz-tag">{actionScopeLabel(entry.lever.scope)}</span>
-            {` ${[entry.lever.category, actionSphereLabels[entry.lever.sphere].split(" · ")[0]].filter(Boolean).join(" · ")}`}
+            {` ${[entry.lever.category, actionControlLevelLabels[entry.lever.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
           </div>
           {/* A withdrawn lever is still shown while a client holds it, and says why it
               cannot be added again. */}
@@ -100,7 +100,7 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
 }) {
   const [title, setTitle] = useState("");
   const [scope, setScope] = useState<ActionScope>("3");
-  const [sphere, setSphere] = useState<ActionSphere>("direct_control");
+  const [controlLevel, setControlLevel] = useState<ActionControlLevel>("direct_control");
   const [category, setCategory] = useState("");
   const [owner, setOwner] = useState("");
   const [targetDate, setTargetDate] = useState("");
@@ -114,7 +114,7 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
     key.current ??= crypto.randomUUID();
     const result = await postBrowserCommand<{ clientActionId: string }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/actions`,
-      { bespoke: { title, scope, sphere, category }, owner, targetDate: targetDate || null, notes }, key.current);
+      { bespoke: { title, scope, controlLevel, category }, owner, targetDate: targetDate || null, notes }, key.current);
     setPending(false);
     if (result.state !== "success") { key.current = null; setError(errorText(result)); return; }
     key.current = null;
@@ -134,8 +134,8 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
           {actionScopes.map((value) => <option key={value} value={value}>{actionScopeLabel(value)}</option>)}
         </select></label>
       <label className="nz-fl"><span>How much do they control?</span>
-        <select className="nz-sel" value={sphere} onChange={(event) => setSphere(event.target.value as ActionSphere)}>
-          {actionSpheres.map((value) => <option key={value} value={value}>{actionSphereLabels[value]}</option>)}
+        <select className="nz-sel" value={controlLevel} onChange={(event) => setControlLevel(event.target.value as ActionControlLevel)}>
+          {actionControlLevels.map((value) => <option key={value} value={value}>{actionControlLevelLabels[value]}</option>)}
         </select></label>
     </div>
     <div className="nz-two">
