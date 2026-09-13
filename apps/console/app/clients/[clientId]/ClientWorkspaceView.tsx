@@ -17,6 +17,9 @@ import { ProfileArea } from "./ProfileArea";
 import { ReportingArea } from "./ReportingArea";
 import { IntensityMetricsDrawer } from "./IntensityMetricsDrawer";
 import { SrsArea } from "./SrsArea";
+import { ActionsArea } from "./ActionsArea";
+import { ActionBespokeForm, ActionEditForm, ActionLibraryForm } from "./ActionForms";
+import { actionDrawerLabel, type ActionDrawerRequest } from "./actionDrawers";
 import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
 import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
@@ -54,6 +57,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   // The SRS drawers carry their own payloads (an assessment, a requirement), so they have
   // their own request type — still one host, still one drawer open at a time.
   const [srsDrawer, setSrsDrawer] = useState<SrsDrawerRequest | null>(null);
+  const [actionDrawer, setActionDrawer] = useState<ActionDrawerRequest | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   // NZC-022 — each control reads the capability its own command enforces.
@@ -63,6 +67,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     client: useEditAccess("client.edit", writeEnabled, client.ownerUserId),
     target: useEditAccess("target.edit", writeEnabled),
     srs: useEditAccess("srs.manage", writeEnabled),
+    actions: useEditAccess("actions.manage", writeEnabled),
   };
 
   const meta = clientStatusMeta[client.status];
@@ -106,6 +111,9 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     setSrsDrawer({ kind: "srs-item", assessment: request.assessment, requirement, item: request.assessment.items.find((item) => item.requirementId === requirement.id) ?? null });
   };
   const closeSrsDrawer = () => setSrsDrawer(null);
+  const openActionDrawer = (request: ActionDrawerRequest) => { setNotice(null); setDrawer(null); setSrsDrawer(null); setActionDrawer(request); };
+  const closeActionDrawer = () => setActionDrawer(null);
+  const actionSaved = (text: string) => { setNotice(text); router.refresh(); };
   const srsSaved = (text: string) => { setNotice(text); router.refresh(); };
   const selectArea = (next: string) => {
     if (!isClientAreaId(next)) return;
@@ -163,6 +171,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         </div>
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
+        : area === "actions" ? <ActionsArea workspace={workspace} access={access.actions} onDrawer={openActionDrawer} />
         : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} />
         : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
         : area === "comms" ? <CommsArea workspace={workspace} />
@@ -192,6 +201,17 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         ? <SrsItemForm key={srsDrawer.requirement.id} framework={workspace.srs.framework} assessment={srsDrawer.assessment}
           requirement={srsDrawer.requirement} item={srsDrawer.item} access={access.srs} onClose={closeSrsDrawer} onSaved={srsSaved}
           onNext={(requirement: SrsRequirement) => setSrsDrawer({ kind: "srs-item", assessment: srsDrawer.assessment, requirement, item: srsDrawer.assessment.items.find((item) => item.requirementId === requirement.id) ?? null })} /> : null}
+    </Drawer>
+    <Drawer open={actionDrawer !== null} onClose={closeActionDrawer} ariaLabel={actionDrawer ? actionDrawerLabel(actionDrawer) : "Actions drawer"} className="nz-site-drawer" dismissOnOutsideClick>
+      {actionDrawer?.kind === "action-library"
+        ? <ActionLibraryForm clientId={client.id} library={actionDrawer.library} access={access.actions}
+          onClose={closeActionDrawer} onSaved={actionSaved} onBespoke={() => setActionDrawer({ kind: "action-bespoke" })} /> : null}
+      {actionDrawer?.kind === "action-bespoke"
+        ? <ActionBespokeForm clientId={client.id} access={access.actions} onClose={closeActionDrawer}
+          onSaved={(text: string) => { closeActionDrawer(); actionSaved(text); }} /> : null}
+      {actionDrawer?.kind === "action-edit"
+        ? <ActionEditForm key={actionDrawer.action.id} action={actionDrawer.action} access={access.actions}
+          onClose={closeActionDrawer} onSaved={(text: string) => { closeActionDrawer(); actionSaved(text); }} /> : null}
     </Drawer>
   </AppShell>;
 }

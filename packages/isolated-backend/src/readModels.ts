@@ -2,11 +2,12 @@ import type { Queryable } from "./postgres";
 import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
+import { listActionLevers, listClientActions } from "./actionLevers";
 import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type ActionLever, type ClientAction, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { dateOnly } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 export { dateOnly } from "./dates";
@@ -237,6 +238,12 @@ export type ClientWorkspaceReadModel = {
    * rendering an empty assessment.
    */
   srs: { framework: SrsFramework | null; assessments: SrsAssessment[] };
+  /**
+   * The decarbonisation plan: the Admin-managed catalogue, and what this client holds.
+   * Both travel together because the library drawer has to mark what is already assigned,
+   * and a plan whose levers were fetched separately could disagree with itself mid-render.
+   */
+  actions: { catalogue: ActionLever[]; plan: ClientAction[] };
   /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
   intensityMetrics: IntensityMetricDefinition[];
 };
@@ -250,7 +257,7 @@ const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id
 export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
   const [client] = await listClients(db, clientId);
   if (!client) return null;
-  const [sites, snapshots, periods, contacts, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues] = await Promise.all([
+  const [sites, snapshots, periods, contacts, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues, actionLevers, clientActions] = await Promise.all([
     listClientSites(db, clientId),
     db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
     db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
@@ -262,6 +269,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     listSrsAssessments(db, clientId),
     listClientIntensityMetrics(db, clientId),
     listClientIntensityValues(db, clientId),
+    listActionLevers(db),
+    listClientActions(db, clientId),
   ]);
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
@@ -317,6 +326,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     messages,
     files,
     srs: { framework: srsFramework, assessments: srsAssessments },
+    actions: { catalogue: actionLevers, plan: clientActions },
     intensityMetrics,
   };
 }

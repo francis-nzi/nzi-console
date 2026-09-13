@@ -47,6 +47,12 @@ export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssess
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";
 export * from "./clientTargets";
+export {
+  assignClientAction, deactivateActionLever, listActionLevers, listClientActions,
+  removeClientAction, updateClientAction, upsertActionLever,
+  type AssignActionResult, type DeactivateLeverResult, type RemoveActionResult,
+  type UpdateActionResult, type UpsertLeverResult,
+} from "./actionLevers";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };
