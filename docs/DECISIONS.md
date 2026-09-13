@@ -92,6 +92,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 | NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
+| NZC-073 | Training carries its own capabilities — `training.manage` (bookings, attendance, stage, certificate issuance) and `training.entitlement.manage` (moving a place's expiry) — held by Admin and Consultant, as peers of `actions.manage` / `srs.manage`. Run review stays `snapshot.review` (separation of duties); certificate issuance stays policy-gated on top of the capability. Matrix version 2. | Confirmed (13 Sep 2026) |
 
 ---
 
@@ -969,4 +970,33 @@ client had committed to. They are separated here:
 
 *Source: Francis, 12 Sep 2026 — the forward target model brief; design reference
 `docs/prototypes/client_workspace_v10.html`.*
+
+### NZC-073 — Training carries its own capabilities [Confirmed 13 Sep 2026]
+Training is a **module** in exactly the sense Actions and SRS Readiness are, and both of those
+already hold their own capability. Running it off the generic `job.manage` was the deviation, and
+it had two consequences worth naming: anyone who could manage a job could issue **NZI-branded
+verifiable certificates**, and moving a training place's expiry sat under `finance.manage`, so
+Finance could extend a place the delivering consultant could not.
+
+Two capabilities are added, held by **Admin and Consultant**, mirroring `actions.manage` /
+`srs.manage`:
+
+- **`training.manage`** — bookings, attendance, run stage transitions, certificate issuance.
+- **`training.entitlement.manage`** — moving a place's expiry off its job-end default. Extending
+  an already-granted place is an **operational concession, not a commercial re-sale**, so it
+  belongs with the delivering team; Finance keeps read visibility through `finance.view`. It is
+  treated like `baseline.rebaseline`: a **reason is required**, the change is audited, and it
+  clears the `default_from_job_end` flag so "moved" stays distinguishable from "default".
+
+Two things deliberately do **not** move. **Run review stays `snapshot.review`** — the consultant
+who delivers a course and issues its certificates must not also approve the reviewed run
+snapshot, the same separation of duties that governs every other reviewed unit. And **certificate
+issuance stays policy-gated on top of the capability**: attendance decides and consent holds. The
+capability says who may run the command; the policy still decides the outcome.
+
+This **supersedes the interim reuse** of `job.manage` (bookings/attendance/stage/certificates) and
+`finance.manage` (expiry) while the training backend was first wired up — no release shipped with
+those gates. The matrix moves to **version 2** (migration `0073`), and the capability pattern is
+widened to allow more than one dot, which `training.entitlement.manage` needs.
+*Source: Francis, 13 Sep 2026 — Training family brief; `docs/PERMISSION_MATRIX.md`.*
 

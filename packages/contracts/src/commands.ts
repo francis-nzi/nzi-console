@@ -612,7 +612,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
-  "training.booking.create": { key: "training.booking.create", label: "Book a trainee onto a run", permission: "job.manage", reasonRequired: false, transaction: "booking + atomic entitlement reserve + audit + outbox + idempotency", auditAction: "training_booking_created", validate: (input, context) => {
+  "training.booking.create": { key: "training.booking.create", label: "Book a trainee onto a run", permission: "training.manage", reasonRequired: false, transaction: "booking + atomic entitlement reserve + audit + outbox + idempotency", auditAction: "training_booking_created", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "courseRunId", input.courseRunId);
     // A booking belongs to a person, not to a typed-in name — that is the whole spine.
@@ -622,7 +622,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
-  "training.attendance.set": { key: "training.attendance.set", label: "Record attendance", permission: "job.manage", reasonRequired: false, transaction: "session attendance upsert + audit + outbox + idempotency", auditAction: "training_attendance_set", validate: (input, context) => {
+  "training.attendance.set": { key: "training.attendance.set", label: "Record attendance", permission: "training.manage", reasonRequired: false, transaction: "session attendance upsert + audit + outbox + idempotency", auditAction: "training_attendance_set", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "sessionId", input.sessionId);
     required(issues, "bookingId", input.bookingId);
@@ -634,13 +634,13 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
-  "training.certificate.issue": { key: "training.certificate.issue", label: "Issue eligible certificates", permission: "job.manage", reasonRequired: false, transaction: "policy check + content-hashed certificates + entitlement consume + audit + outbox + idempotency", auditAction: "training_certificates_issued", validate: (input, context) => {
+  "training.certificate.issue": { key: "training.certificate.issue", label: "Issue eligible certificates", permission: "training.manage", reasonRequired: false, transaction: "policy check + content-hashed certificates + entitlement consume + audit + outbox + idempotency", auditAction: "training_certificates_issued", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "courseRunId", input.courseRunId);
     if (!Number.isInteger(input.expectedRunVersion) || input.expectedRunVersion < 1) issues.push({ field: "expectedRunVersion", code: "INVALID", message: "Expected version must be one or greater." });
     return issues;
   } },
-  "training.entitlement.expiry.set": { key: "training.entitlement.expiry.set", label: "Move a training place's expiry", permission: "finance.manage", reasonRequired: true, transaction: "entitlement expiry + default flag cleared + audit + outbox + idempotency", auditAction: "training_entitlement_expiry_set", validate: (input, context) => {
+  "training.entitlement.expiry.set": { key: "training.entitlement.expiry.set", label: "Move a training place's expiry", permission: "training.entitlement.manage", reasonRequired: true, transaction: "entitlement expiry + default flag cleared + audit + outbox + idempotency", auditAction: "training_entitlement_expiry_set", validate: (input, context) => {
     const issues = baseIssues(context, true);
     required(issues, "entitlementId", input.entitlementId);
     // Moving a date somebody is relying on is a deliberate act, so it carries a reason.
@@ -648,7 +648,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.expiresAt !== null && !isoDate(input.expiresAt)) issues.push({ field: "expiresAt", code: "INVALID", message: "Expiry must use YYYY-MM-DD, or be cleared." });
     return issues;
   } },
-  "training.run.stage.set": { key: "training.run.stage.set", label: "Move the run's stage", permission: "job.manage", reasonRequired: false, transaction: "versioned run stage + audit + outbox + idempotency", auditAction: "training_run_stage_changed", validate: (input, context) => {
+  "training.run.stage.set": { key: "training.run.stage.set", label: "Move the run's stage", permission: "training.manage", reasonRequired: false, transaction: "versioned run stage + audit + outbox + idempotency", auditAction: "training_run_stage_changed", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "courseRunId", input.courseRunId);
     if (!isAllowedTrainingRunStageTransition(input.fromStage, input.toStage)) {
