@@ -1,0 +1,129 @@
+<!-- NZI Console — Client Portal · Projects across job families · v1 (2026-09-13)
+     How a client sees all their NZI work in one place: CRP, LCA, PCF, Training, Consultancy.
+     Only jobs released to the portal (review→send-to-portal) appear; assured/published content
+     only, no staff internals. Each family shows a client-appropriate summary + its own detail
+     view (LCA product result shown expanded as the pattern). Same NZI portal chrome, same
+     assured figures/resolvers/icons as the console. Print-safe line icons (currentColor). -->
+<title>Client Portal · Projects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;--line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;--base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --midnight:#0B1B2B;--ok:#0B7A46;--warn:#B4690E;--warn-bg:#FBF1DE;--warn-line:#EAD6AC;
+  --s1:#FF5C48;--s2:#FFC24B;--s3:#0BA75E;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;--ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;--line:#25302A;--line-2:#1E2723;
+  --accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;--warn:#E0A24A;--warn-bg:#2A2113;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+svg.i{width:18px;height:18px;vertical-align:middle}
+.pbar{background:var(--midnight);color:#EAF2ED;padding:11px 24px;display:flex;align-items:center;gap:14px}
+.pbar .brand{font-weight:800}.pbar .brand span{opacity:.6;font-weight:500;font-size:12px;margin-left:6px}
+.pbar .sp{flex:1}.pbar .who{display:flex;align-items:center;gap:8px;font-size:13px;opacity:.9}.pbar .av{width:28px;height:28px;border-radius:50%;background:#2A3A46;display:grid;place-items:center;font-size:11px;font-weight:700}
+.subbar{background:var(--panel);border-bottom:1px solid var(--line);padding:0 24px;display:flex;gap:4px;flex-wrap:wrap}
+.tab{padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;text-decoration:none}
+.tab.on{color:var(--accent-d);border-bottom-color:var(--accent)}
+.wrap{max-width:1000px;margin:0 auto;padding:24px 24px 64px}
+.chead{display:flex;align-items:center;gap:13px;margin-bottom:6px}
+.logo{width:44px;height:44px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:16px}
+.chead h1{font-size:21px;margin:0}.chead .sub{font-size:13px;color:var(--muted)}
+.lead{font-size:14.5px;color:var(--ink-2);margin:14px 0 18px;max-width:72ch}
+.filt{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.filt button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);border-radius:20px;padding:4px 12px;cursor:pointer}
+.filt button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.proj{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:13px;display:flex;gap:16px;align-items:flex-start}
+.proj .fic{width:42px;height:42px;border-radius:11px;background:var(--panel-3);display:grid;place-items:center;color:var(--accent-d);flex:0 0 auto}
+.proj .fic svg{width:22px;height:22px}
+.proj .body{flex:1;min-width:0}
+.fam{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:2px 7px;border:1px solid var(--line);color:var(--ink-2);background:var(--panel-3)}
+.fam.crp{color:var(--accent-d);background:var(--accent-bg);border-color:#BCE3CE}
+.fam.lca{color:#1F6F8B;background:#E9F3F8;border-color:#C7E0EC}
+.fam.pcf{color:#7A5CB0;background:var(--base-bg);border-color:var(--base-line)}
+.fam.trn{color:#B4690E;background:var(--warn-bg);border-color:var(--warn-line)}
+.fam.con{color:#3C6E57;background:#E8F1EC;border-color:#CFE3D8}
+.proj h3{font-size:15px;margin:6px 0 2px}
+.proj .meta{font-size:12.5px;color:var(--muted)}
+.proj .figs{display:flex;gap:20px;margin-top:10px;flex-wrap:wrap}
+.proj .fig .v{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.proj .fig .l{font-size:11px;color:var(--muted)}
+.proj .act{margin-left:auto;text-align:right;flex:0 0 auto;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.pill{font-size:11px;font-weight:600;border-radius:20px;padding:2px 10px;border:1px solid var(--line);color:var(--ink-2)}
+.pill.ok{color:var(--accent-d);background:var(--accent-bg);border-color:#BCE3CE}
+.pill.prog{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+.linkb{font-size:13px;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:9px;padding:8px 13px;cursor:pointer;text-decoration:none;display:inline-block}
+.linkb.g{background:var(--panel);color:var(--accent-d);border:1px solid var(--line)}
+.detail{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:20px 0}
+.dh{padding:15px 18px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px}
+.dh h2{font-size:16px;margin:0}.sp{flex:1}
+.db{padding:16px 18px}
+.assured{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--accent-d);background:var(--accent-bg);border:1px solid #BCE3CE;border-radius:20px;padding:2px 10px}
+.mb{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}
+.mb .bar{flex:1;height:12px;background:var(--panel-3);border-radius:20px;overflow:hidden}.mb .bar span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.mb .n{width:150px;color:var(--ink-2)}.mb .val{width:96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.hero2{display:flex;gap:26px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.hero2 .big{font-size:34px;font-weight:800;letter-spacing:-.01em}.hero2 .u{font-size:13px;color:var(--muted)}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line-2);padding:11px 18px;background:var(--panel-2)}
+</style>
+
+<div class="pbar"><div class="brand">NZI Pro<span>Client portal</span></div><div class="sp"></div><div class="who"><span>Dawn Fletcher</span><span class="av">DF</span></div></div>
+<div class="subbar">
+  <a class="tab" href="#">Dashboard</a><a class="tab on" href="#">Projects</a><a class="tab" href="#">Emissions</a><a class="tab" href="#">Intensity</a><a class="tab" href="#">Reports</a><a class="tab" href="#">Data entry</a>
+</div>
+
+<div class="wrap">
+  <div class="chead"><div class="logo">AB</div><div><h1>Your projects</h1><div class="sub">ABtec Computer Solutions Limited · everything NZI is delivering for you</div></div></div>
+  <p class="lead">Every piece of work NZI is doing with you, in one place. Each project shows what it is and where it's up to; open one for the detail. You only see work that has been shared with you.</p>
+
+  <div class="filt"><button class="on">All</button><button>Carbon Reduction</button><button>Product footprints</button><button>Training</button><button>Consultancy</button></div>
+  <div id="list"></div>
+
+  <!-- one family opened as the pattern: an LCA product result, client-facing -->
+  <div class="detail">
+    <div class="dh"><span class="fam lca">LCA</span><h2>Refillable bottle — 6 L variant</h2><span class="sp"></span><span class="assured">✓ Assured</span></div>
+    <div class="db">
+      <div class="hero2"><div><div class="big">12.4 <span class="u">kgCO₂e / unit</span></div><div class="u">Cradle-to-grave · EN 15804 · per 1 bottle</div></div>
+        <div><div class="u">Confirmed quantity</div><b>31.5 kg</b> <span class="u">product mass</span></div>
+        <div><div class="u">Standard</div><b>ISO 14040/44</b></div></div>
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px">Life-cycle module breakdown</div>
+      <div class="mb"><span class="n">A1–A3 Product</span><span class="bar"><span style="width:62%"></span></span><span class="val">7.7 kg · 62%</span></div>
+      <div class="mb"><span class="n">A4 Transport</span><span class="bar"><span style="width:14%"></span></span><span class="val">1.7 kg · 14%</span></div>
+      <div class="mb"><span class="n">B Use</span><span class="bar"><span style="width:9%"></span></span><span class="val">1.1 kg · 9%</span></div>
+      <div class="mb"><span class="n">C End-of-life</span><span class="bar"><span style="width:15%"></span></span><span class="val">1.9 kg · 15%</span></div>
+    </div>
+    <div class="foot">Assured result from the reviewed assessment snapshot · factor set DEFRA/BEIS 2024 v1.2 · as-at 31 Mar 2025. The largest hotspot is A1–A3 raw materials. <b>Download EPD-style summary (PDF)</b></div>
+  </div>
+</div>
+
+<script>
+const I={
+  crp:'<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-8 7-14 16-14 0 8-6 15-16 14z"/><path d="M9 15c2-3 5-5 8-6"/></svg>',
+  lca:'<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><rect x="8" y="7" width="8" height="12" rx="2"/><path d="M8 13h8"/></svg>',
+  pcf:'<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="1"/><path d="M4 8l8-5 8 5"/><path d="M9 20v-5h6v5"/></svg>',
+  trn:'<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-4 9 4-9 4z"/><path d="M7 10v5c0 1 2 3 5 3s5-2 5-3v-5"/></svg>',
+  con:'<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l1 4H8z"/><path d="M7 7h10l1 13H6z"/><path d="M10 12h4M10 16h4"/></svg>'};
+const PROJ=[
+  {f:"crp",fam:"Carbon Reduction Plan",ic:I.crp,t:"Carbon Reduction Plan 2024",meta:"Reporting year FY2024 · published 18 Apr 2024",
+    figs:[["1,706","tCO₂e total"],["−7.4%","vs baseline"]],status:["ok","Published"],act:"View report"},
+  {f:"lca",fam:"Product footprint (LCA)",ic:I.lca,t:"Refillable bottle — 6 L variant",meta:"Cradle-to-grave · EN 15804 · assured",
+    figs:[["12.4","kgCO₂e / unit"]],status:["ok","Published"],act:"View result"},
+  {f:"pcf",fam:"Product carbon footprint",ic:I.pcf,t:"Refillable bottle — 9 L variant",meta:"Cradle-to-gate · ISO 14067",
+    figs:[["8.1","kgCO₂e / unit"]],status:["ok","Published"],act:"View result"},
+  {f:"trn",fam:"Training",ic:I.trn,t:"Carbon literacy — cohort 2026",meta:"3 sessions · 18 attended · 16 certificates issued",
+    figs:[["16 / 18","certified"],["2","free places used"]],status:["ok","Complete"],act:"View record"},
+  {f:"con",fam:"Consultancy",ic:I.con,t:"Net-zero strategy support",meta:"Retainer · M. Osei",
+    figs:[["4 / 6","deliverables accepted"]],status:["prog","In progress"],act:"View"},
+];
+document.getElementById("list").innerHTML=PROJ.map(p=>`<div class="proj">
+  <div class="fic">${p.ic}</div>
+  <div class="body"><span class="fam ${p.f}">${p.fam}</span><h3>${p.t}</h3><div class="meta">${p.meta}</div>
+    <div class="figs">${p.figs.map(([v,l])=>`<div class="fig"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div></div>
+  <div class="act"><span class="pill ${p.status[0]}">${p.status[1]}</span><a class="linkb ${p.act==='View'?'g':''}" href="#">${p.act} →</a></div>
+</div>`).join("");
+</script>
