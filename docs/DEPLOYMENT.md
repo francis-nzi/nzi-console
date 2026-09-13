@@ -39,6 +39,8 @@ FuelCap services.
 | `NZI_TRAINEE_IDLE_LIMIT_MINUTES` | Optional. Idle auto-logout window for trainee sessions (server-enforced); default `30`. |
 | `NZI_TRAINEE_CONSENT_VERSION` | Optional. The consent wording currently in force; default `2026-09`. Stamped alongside a trainee's answer so a recorded consent always says what was agreed to — **bump this when the wording changes**, so old answers stay attached to the text they were given. |
 | `NEXT_PUBLIC_FEATURE_JOB_MODULES` | Comma-separated job-family module flags (`job-module-lca`, `job-module-training`). Own variable, parallel to the data-entry and report flag sets, flipped the same way (dashboard edit + **Clear build cache & deploy**). Unset = every module OFF and `FamilyWorkspace` serves that family. |
+| `NZI_VERIFY_RATE_SALT` | Random secret used to key the public verify endpoint's per-caller rate limit. Bucket keys are `sha256(salt:address)` so the counter works **without storing anyone's IP address**; an unsalted hash would be reversible, IPv4 being a small space. Changing it resets every live window (harmless). Unset = an empty salt, which still limits but no longer protects the addresses — set it. |
+| `NZI_TRUSTED_PROXY_HOPS` | Optional. How many of **our own** proxies sit in front of the app; default `1` (Render's load balancer). The real client is that many entries from the right of `X-Forwarded-For`, because each proxy *appends* what it saw and the leftmost entry is whatever the client chose to send. Raise this only if a proxy is added in front — setting it too high keys on a client-supplied value, too low collapses every caller into one bucket. |
 | `NZI_AUTH_ENABLED` | `true` |
 | `NZI_AUTH_REQUIRED` | `true` |
 | `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |

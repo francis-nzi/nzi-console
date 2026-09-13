@@ -11,6 +11,10 @@ export * from "./portalActions";
 export { getPortalClientIntensity, type PortalIntensityReadModel, type PortalIntensityYear } from "./portalIntensity";
 export { getPortalClientTraining, type PortalTrainingReadModel, type PortalTrainingRecord, type PortalTrainingSkillCell } from "./portalTraining";
 export { verifyTrainingCertificate, type CertificateVerification } from "./certificateVerification";
+export {
+  claimVerifyAttempt, claimVerifyMiss, clientAddressFrom, verifyBucketKey,
+  VERIFY_MISS_LIMIT, VERIFY_OVERALL_LIMIT, VERIFY_WINDOW_MINUTES,
+} from "./verifyRateLimit";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";

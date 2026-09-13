@@ -114,4 +114,22 @@ describe("public certificate verification", () => {
     assert.match(page, /Verification is temporarily unavailable/);
     assert.match(page, /not a statement about the certificate/);
   });
+
+  it("rate-limits the endpoint, because the function bounds reads and not requests", () => {
+    // A 40-bit code on an unauthenticated page: no single hit discloses anything it
+    // shouldn't, but an unlimited caller can discover which codes are real — which is
+    // precisely what holding one is meant to prove.
+    assert.match(page, /claimVerifyAttempt\(pool, address, salt\)/);
+    assert.match(page, /claimVerifyMiss\(pool, address, salt\)/);
+    // The overall budget is claimed BEFORE the lookup, so it is spent on asking.
+    assert.match(page, /if \(!await claimVerifyAttempt[\s\S]{0,200}verifyTrainingCertificate/);
+    // The refusal says nothing about the code that was tried.
+    assert.match(page, /this says nothing about the certificate you were checking/i);
+    assert.doesNotMatch(page, /that code was (wrong|invalid)/i);
+  });
+
+  it("derives the caller from the proxy's view, not the client's claim", () => {
+    assert.match(page, /clientAddressFrom\(\(await headers\(\)\)\.get\("x-forwarded-for"\)/);
+    assert.match(page, /NZI_TRUSTED_PROXY_HOPS/);
+  });
 });
