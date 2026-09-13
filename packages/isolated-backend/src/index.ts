@@ -36,6 +36,7 @@ export * from "./siteBoundary";
 export * from "./access";
 export * from "./clientContacts";
 export { mapClientContact, normaliseContactRoles } from "./clientContactRecords";
+export * from "./traineeAuth";
 export { getJobAnnualMetrics, type JobAnnualMetricsReadModel } from "./intensityMetricRecords";
 export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMetrics, listClientIntensityValues, listJobIntensityValues, setClientIntensityMetric, setJobIntensityValue } from "./intensityMetrics";
 export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, resolveNziFacts, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";

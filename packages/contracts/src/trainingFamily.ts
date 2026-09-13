@@ -185,8 +185,9 @@ export type TrainingRunView = {
  */
 export function trainingAttendanceForBooking(
   bookingId: string,
-  sessions: TrainingCourseSession[],
-  attendance: TrainingSessionAttendance[],
+  // Read-only: this computes, it never reorders or mutates what it is given.
+  sessions: readonly TrainingCourseSession[],
+  attendance: readonly TrainingSessionAttendance[],
 ): { attendedMinutes: number; scheduledMinutes: number; attendancePct: number } {
   const sessionMinutes = new Map(
     sessions.map((s) => [s.id, Math.round((s.sessionHours ?? 0) * 60)]),
