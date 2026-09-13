@@ -10,7 +10,7 @@ commercial, §10 CRM).
 **Tier:** `Go-live` = parity- or trust-critical, blocks go-live · `Should` = expected by
 users migrating from the live system · `Stage 2` = deferrable.
 
-## Build status snapshot (12 Sep 2026)
+## Build status snapshot (13 Sep 2026)
 - **Merged to `main` / live:** provenance (#144), site effective-dating + floor area,
   contact roles + logo + year-end, permission matrix, target model (#145), breadcrumbs,
   the shell rebuild Phase 1 (#146/#147) **and Phase 2** (`b696421`), and #143 (NZC-069 held).
@@ -22,6 +22,20 @@ users migrating from the live system · `Stage 2` = deferrable.
   `_handoff_REPORT_brief.md`; the **print-safe icon-set decision is settled** (curated inline
   SVG, in DESIGN_CONVENTIONS §10) which also unblocks the intensity/action report icons.
 - **Held:** commercial ledger (NZC-069 held).
+- **Job families:** shared spine + numbering done; models `0045`–`0050` done; LCA/PCF staff
+  module built (L1–L7). Remaining staff modules: Training, Consultancy (follow LCA pattern,
+  `MODEL_FIDELITY_JOB_FAMILIES.md` §7). **Client-portal family display** designed +
+  briefed — prototype `portal_projects_v1.html` + `_handoff_JOB_FAMILIES_PORTAL_brief.md`.
+- **Training family (largest):** designed + briefed — three surfaces + entitlements.
+  Prototypes `job_training_v1.html` (staff run: stage machine, sessions, booking register,
+  attendance, certificate issuance, entitlement places), `portal_trainee_v1.html` (new
+  `trainee_auth` realm — person-centric, portable), `portal_training_v1.html` (client-portal
+  training tab — staff record + places yet-to-take/expiry + skills matrix). Design note
+  `TRAINING_WORKFLOW_REVIEW.md` + brief `_handoff_TRAINING_brief.md`. **4 decisions open**
+  (person-centric identity, who books places, verifiable certificates now vs Stage 2, email
+  re-verification on leave). **All 4 decisions confirmed 13 Sep 2026:** person-centric identity;
+  consultant/CRM books places; verifiable certificates build now; re-verify email + drop former
+  employer's view of new personal details. Load-bearing: `trainees` record + `trainee_auth` first.
 
 Prototype it reconciles against: Client Workspace artifact (v5).
 

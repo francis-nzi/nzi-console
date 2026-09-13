@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { capabilities, commandDefinitions, commandGrantForRole, isCapability, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
+import { capabilities, commandDefinitions, commandGrantForRole, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
 import {
   approveScopeRow, AuthorizationError, capabilitiesFromRows, CommandValidationError, listAuditEvents, listPortalAccess, resolveStaffPrincipal,
   setPortalJobAccess, updateClient, upsertEmissionsTarget, type StaffPrincipal,
@@ -13,9 +13,16 @@ import { withAccess } from "./support/access";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const matrixMigration = readFileSync(resolve(here, "../migrations/0066_permission_matrix.sql"), "utf8");
+const matrixMigrationV2 = readFileSync(resolve(here, "../migrations/0073_training_capabilities.sql"), "utf8");
 
-/** The role→capability rows exactly as migration 0066 inserts them. */
-const migrationRows = [...matrixMigration.matchAll(/\(1, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)/g)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
+/**
+ * The role→capability rows for the matrix version the code is on. Each version is a whole
+ * migration of its own, so this follows PERMISSION_MATRIX_VERSION rather than pinning to
+ * the first one — otherwise the day the matrix moves, the test quietly checks history.
+ */
+const matrixSql = `${matrixMigration}\n${matrixMigrationV2}`;
+const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
+const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
 const context = (role: StaffRole, actorId: string, key: string, extra: { reason?: string; organisationId?: string } = {}) => ({
   organisationId: extra.organisationId ?? "org-a", actorId, principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}`,
@@ -41,7 +48,14 @@ const identity = { clientId: "client-a", expectedVersion: 3, name: "Synthetic Cl
 describe("the permission matrix (NZC-022)", () => {
   it("defines the capability enum exactly as PERMISSION_MATRIX.md enumerates it", () => {
     const doc = readFileSync(resolve(here, "../../../docs/PERMISSION_MATRIX.md"), "utf8");
-    const documented = new Set([...doc.matchAll(/`([a-z]+\.[a-z_]+)`/g)].map(([, name]) => name!).filter((name) => !["financials.edit", "domain.action"].includes(name)));
+    // Only the Matrix section enumerates capabilities. The preamble and the naming
+    // convention both mention dotted names that are not capabilities — a superseded
+    // spelling and a shape example — and scraping the whole file made the enum's
+    // ground truth depend on a hand-kept exclusion list.
+    const enumeration = /^## Matrix$([\s\S]*?)^## Naming convention$/m.exec(doc)?.[1];
+    assert.ok(enumeration, "PERMISSION_MATRIX.md must keep its Matrix section");
+    // A capability may carry more than one dot — training.entitlement.manage does.
+    const documented = new Set([...enumeration.matchAll(/`([a-z]+(?:\.[a-z_]+)+)`/g)].map(([, name]) => name!));
     assert.deepEqual([...capabilities].sort(), [...documented].sort());
   });
 

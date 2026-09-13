@@ -1,0 +1,270 @@
+<!-- NZI Console — Job · Training run (staff module) · v1 (2026-09-13)
+     The STAFF workspace over a training run. The run is the versioned, reviewed unit; the
+     reviewed snapshot freezes the attendance register + certificates for the family report and
+     the portals. Surfaces: run header + stage machine, sessions, the booking register (trainee
+     · employer · entitlement-funded? · attendance · consent · certificate), attendance capture,
+     certificate issuance (policy-driven off summed attendance), and the entitlements panel
+     (places granted by CRP jobs — used/remaining/expiry). Trainee is person-centric: each
+     booking references a trainee_id (portable across employers) + a frozen employer/funding
+     context. Theme-aware; print-safe inline line icons (NziIcon), not emoji. -->
+<title>Job · Training run</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;
+  --line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;
+  --ok:#0B7A46;--ok-bg:#E6F4EC;--ok-line:#BCE3CE;
+  --warn:#B4690E;--warn-bg:#FBF1DE;--warn-line:#EAD6AC;
+  --danger:#C23B22;--danger-bg:#FBEBE7;--danger-line:#F0CABF;
+  --base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --trn:#B4690E;--trn-bg:#FBF1DE;--trn-line:#EAD6AC;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;
+  --ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;
+  --line:#25302A;--line-2:#1E2723;--accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;
+  --ok:#39B47B;--ok-bg:#12271C;--ok-line:#1F4030;--warn:#E0A24A;--warn-bg:#2A2113;--warn-line:#4A3A1C;
+  --danger:#E4735C;--danger-bg:#2C1713;--danger-line:#4A241C;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;
+  --trn:#E0A24A;--trn-bg:#2A2113;--trn-line:#4A3A1C;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+svg.i{width:18px;height:18px;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
+.top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;align-items:center;gap:10px;font-size:13px}
+.crumbs a{color:var(--muted);text-decoration:none}.crumbs a:hover{color:var(--accent);text-decoration:underline}
+.crumbs b{color:var(--ink)}.crumbs .sep{color:var(--faint);margin:0 6px}
+.wrap{max-width:960px;margin:0 auto;padding:22px 24px 60px}
+.jhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.jhead .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.jhead h1{font-size:22px;margin:3px 0 2px}
+.jhead .sub{font-size:12.5px;color:var(--muted)}
+.fam{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:2px 7px;color:var(--trn);background:var(--trn-bg);border:1px solid var(--trn-line)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid var(--line);color:var(--ink-2)}
+.pill.ok{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}
+.pill.ok i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block}
+.pill.warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+.pill.base{color:var(--base);background:var(--base-bg);border-color:var(--base-line)}
+.pill.mut{color:var(--muted);background:var(--panel-3)}
+
+/* stage machine */
+.stage{display:flex;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;margin-bottom:18px;overflow-x:auto}
+.stage .st{flex:1;min-width:96px;text-align:center;font-size:11.5px;font-weight:600;color:var(--muted);padding:8px 6px;border-radius:8px;position:relative;white-space:nowrap}
+.stage .st .n{display:block;font-size:9px;color:var(--faint);font-weight:700}
+.stage .st.done{color:var(--accent-d)}
+.stage .st.now{background:var(--accent);color:#fff}.stage .st.now .n{color:#DFF5E9}
+.stage .st.done .n{color:var(--accent)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-2)}
+.ch .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ch h2{font-size:15px;margin:0}.sp{flex:1}
+.hint{font-size:12px;color:var(--muted)}
+.sub{font-size:12.5px;color:var(--muted)}
+.cb{padding:12px 16px}
+.kv{display:flex;flex-wrap:wrap;gap:18px 30px;padding:14px 16px}
+.kv .k{font-size:11px;color:var(--muted)}.kv .v{font-size:14px;font-weight:600;margin-top:1px}
+.kv .v.big{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+
+/* sessions */
+.sess{display:flex;align-items:center;gap:13px;padding:11px 16px;border-bottom:1px solid var(--line-2)}
+.sess:last-child{border-bottom:0}
+.sess .dt{width:52px;text-align:center;flex:0 0 auto}
+.sess .dt .d{font-size:19px;font-weight:800;line-height:1}.sess .dt .m{font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.sess .mid{flex:1;min-width:0}
+.sess .mid .t{font-weight:600}
+.sess .mid .meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+.sess .mid .meta span{display:inline-flex;align-items:center;gap:4px}
+.sess .att{text-align:right;flex:0 0 auto}
+.sess .att .v{font-weight:700;font-variant-numeric:tabular-nums}.sess .att .l{font-size:10.5px;color:var(--muted)}
+
+/* booking register */
+.mtable{width:100%;border-collapse:collapse}
+.mtable th{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+.mtable td{padding:10px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.mtable tr:last-child td{border-bottom:0}
+.mtable .r th{text-align:right}.mtable td.r{text-align:right}
+.person{display:flex;align-items:center;gap:9px}
+.av{width:30px;height:30px;border-radius:50%;background:var(--panel-3);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink-2);flex:0 0 auto}
+.pn{font-weight:600}.pn a{color:var(--accent-d);text-decoration:none}.pn a:hover{text-decoration:underline}
+.pe{font-size:11px;color:var(--faint)}
+.tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:5px;padding:1px 6px;white-space:nowrap}
+.tag.fund{color:var(--base);background:var(--base-bg);border:1px solid var(--base-line)}
+.tag.bill{color:var(--ink-2);background:var(--panel-3);border:1px solid var(--line)}
+.att-bar{display:flex;align-items:center;gap:8px}
+.att-bar .bar{width:64px;height:9px;background:var(--panel-3);border-radius:20px;overflow:hidden}
+.att-bar .bar span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.att-bar .pct{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;width:38px}
+.cert{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600}
+.cert.iss{color:var(--accent-d)}.cert.rdy{color:var(--warn)}.cert.no{color:var(--faint)}
+.consent{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}
+.consent.y{background:var(--ok)}.consent.n{background:var(--danger)}
+
+/* entitlements panel */
+.ent{display:flex;align-items:center;gap:14px;padding:13px 16px;border-bottom:1px solid var(--line-2)}
+.ent:last-child{border-bottom:0}
+.ent .eic{width:36px;height:36px;border-radius:9px;background:var(--base-bg);color:var(--base);display:grid;place-items:center;flex:0 0 auto}
+.ent .em{flex:1;min-width:0}
+.ent .em .t{font-weight:600}.ent .em .s{font-size:12px;color:var(--muted)}
+.ent .em .s a{color:var(--accent-d);text-decoration:none}.ent .em .s a:hover{text-decoration:underline}
+.places{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.dot{width:15px;height:15px;border-radius:4px;background:var(--panel-3);border:1px solid var(--line)}
+.dot.used{background:var(--accent);border-color:var(--accent)}
+.dot.resv{background:var(--warn);border-color:var(--warn)}
+.ent .rem{text-align:right;flex:0 0 auto}
+.ent .rem .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.ent .rem .l{font-size:10.5px;color:var(--muted)}
+.expiry{font-size:11.5px;font-weight:600}
+.expiry.warn{color:var(--warn)}.expiry.ok{color:var(--muted)}
+
+.foot{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line-2);background:var(--panel-2)}
+.btn{font-family:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:8px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:6px 10px;font-size:12px}
+.gov{display:flex;gap:9px;font-size:11.5px;color:var(--ink-2);background:var(--base-bg);border:1px solid var(--base-line);border-radius:10px;padding:11px 13px;margin:14px 0}
+.gov .i{color:var(--base);flex:0 0 auto}
+.evid{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--base);background:var(--base-bg);border:1px solid var(--base-line);border-radius:20px;padding:1px 8px;cursor:pointer;line-height:1.7;text-decoration:none}
+</style>
+
+<div class="top"><div class="crumbs"><a href="#">Clients</a><span class="sep">/</span><a href="#">ABtec Computer Solutions Limited</a><span class="sep">/</span><a href="#">Jobs</a><span class="sep">/</span><a href="#">J000714</a><span class="sep">/</span><b>Training run</b></div></div>
+
+<div class="wrap">
+  <div class="jhead">
+    <div style="flex:1">
+      <div class="eyebrow"><span class="fam">Training</span> &nbsp; Carbon Literacy · Level 1</div>
+      <h1>J000714 — Carbon Literacy, cohort Spring 2026</h1>
+      <div class="sub">ABtec Computer Solutions Limited · run window 3 Mar – 24 Mar 2026 · lead trainer M. Osei</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+      <span class="pill ok"><i></i> In delivery</span>
+      <span class="hint">Run v4 · draft</span>
+    </div>
+  </div>
+
+  <!-- stage machine -->
+  <div class="stage">
+    <div class="st done"><span class="n">1</span>Planned</div>
+    <div class="st done"><span class="n">2</span>Scheduled</div>
+    <div class="st now"><span class="n">3</span>In delivery</div>
+    <div class="st"><span class="n">4</span>Delivered</div>
+    <div class="st"><span class="n">5</span>Certified</div>
+    <div class="st"><span class="n">6</span>Reviewed</div>
+  </div>
+
+  <!-- run summary -->
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Run</span><h2>Overview</h2><span class="sp"></span><a class="evid" href="#">◈ Provenance</a></div>
+    <div class="kv">
+      <div><div class="k">Product</div><div class="v">Carbon Literacy — Level 1</div></div>
+      <div><div class="k">Delivery</div><div class="v">Hybrid · 3 sessions</div></div>
+      <div><div class="k">Booked</div><div class="v big">18 <span style="font-size:12px;font-weight:500;color:var(--muted)">/ 20 cap</span></div></div>
+      <div><div class="k">Entitlement-funded</div><div class="v big">12</div></div>
+      <div><div class="k">Certificates ready</div><div class="v big">14</div></div>
+      <div><div class="k">CPD hours</div><div class="v">6.0</div></div>
+    </div>
+  </section>
+
+  <!-- sessions -->
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Schedule</span><h2>Sessions</h2><span class="sp"></span><span class="hint">attendance captured per session</span></div>
+    <div class="sess">
+      <div class="dt"><div class="d">03</div><div class="m">Mar</div></div>
+      <div class="mid"><div class="t">Session 1 — Foundations</div>
+        <div class="meta"><span><svg class="i" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><path d="M16 3v4M8 3v4"/></svg> In person · NZI Studio, Leeds</span><span><svg class="i" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg> M. Osei</span></div>
+      </div>
+      <div class="att"><div class="v">18/18</div><div class="l">present</div></div>
+    </div>
+    <div class="sess">
+      <div class="dt"><div class="d">12</div><div class="m">Mar</div></div>
+      <div class="mid"><div class="t">Session 2 — Measurement &amp; scopes</div>
+        <div class="meta"><span><svg class="i" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> Online · Teams</span><span><svg class="i" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg> M. Osei</span></div>
+      </div>
+      <div class="att"><div class="v">17/18</div><div class="l">present</div></div>
+    </div>
+    <div class="sess">
+      <div class="dt"><div class="d">24</div><div class="m">Mar</div></div>
+      <div class="mid"><div class="t">Session 3 — Action planning &amp; assessment</div>
+        <div class="meta"><span><svg class="i" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><path d="M16 3v4M8 3v4"/></svg> In person · NZI Studio, Leeds</span><span class="pill mut" style="font-size:10px;padding:1px 8px">Upcoming</span></div>
+      </div>
+      <div class="att"><button class="btn sm">Capture attendance</button></div>
+    </div>
+  </section>
+
+  <!-- booking register -->
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Register</span><h2>Bookings</h2><span class="sp"></span>
+      <span class="hint">certificate issues automatically at ≥80% attendance across sessions</span></div>
+    <table class="mtable">
+      <thead><tr>
+        <th>Trainee</th><th>Employer</th><th>Funding</th><th style="width:120px">Attendance</th><th>Consent</th><th>Certificate</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="person"><span class="av">RP</span><div><div class="pn"><a href="#">Ravi Patel</a></div><div class="pe">r.patel@personal.example</div></div></div></td>
+          <td class="sub">ABtec</td>
+          <td><span class="tag fund">◱ Place · CRP J000702</span></td>
+          <td><div class="att-bar"><div class="bar"><span style="width:100%"></span></div><span class="pct">100%</span></div></td>
+          <td><span class="consent y"></span><span class="sub">Given</span></td>
+          <td><span class="cert iss"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/></svg> Issued</span></td>
+        </tr>
+        <tr>
+          <td><div class="person"><span class="av">JL</span><div><div class="pn"><a href="#">Jo Lin</a></div><div class="pe">jo.lin@personal.example</div></div></div></td>
+          <td class="sub">ABtec</td>
+          <td><span class="tag fund">◱ Place · CRP J000702</span></td>
+          <td><div class="att-bar"><div class="bar"><span style="width:100%"></span></div><span class="pct">100%</span></div></td>
+          <td><span class="consent y"></span><span class="sub">Given</span></td>
+          <td><span class="cert iss"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/></svg> Issued</span></td>
+        </tr>
+        <tr>
+          <td><div class="person"><span class="av">SD</span><div><div class="pn"><a href="#">Sara Doyle</a></div><div class="pe">sara.d@personal.example</div></div></div></td>
+          <td class="sub">ABtec</td>
+          <td><span class="tag bill">Billed · £250</span></td>
+          <td><div class="att-bar"><div class="bar"><span style="width:67%"></span></div><span class="pct">67%</span></div></td>
+          <td><span class="consent y"></span><span class="sub">Given</span></td>
+          <td><span class="cert no">Below threshold</span></td>
+        </tr>
+        <tr>
+          <td><div class="person"><span class="av">MK</span><div><div class="pn"><a href="#">Mo Khan</a></div><div class="pe">mo.khan@personal.example</div></div></div></td>
+          <td class="sub">Riverside Ltd <span class="tag bill" style="margin-left:4px">guest</span></td>
+          <td><span class="tag bill">Billed · £250</span></td>
+          <td><div class="att-bar"><div class="bar"><span style="width:100%"></span></div><span class="pct">100%</span></div></td>
+          <td><span class="consent n"></span><span class="sub" style="color:var(--danger)">Pending</span></td>
+          <td><span class="cert rdy"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/></svg> Ready — hold (consent)</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="foot"><button class="btn sm">＋ Add booking</button><button class="btn sm">Assign from entitlement</button><span class="sp"></span><button class="btn pri"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/></svg> Issue eligible certificates</button></div>
+  </section>
+
+  <!-- entitlements panel -->
+  <section class="card">
+    <div class="ch"><span class="eyebrow">Places</span><h2>Entitlements for this client</h2><span class="sp"></span>
+      <span class="hint">granted by CRP jobs · consumed by bookings above</span></div>
+    <div class="ent">
+      <div class="eic"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z"/><path d="M13 6v12" stroke-dasharray="2 2"/></svg></div>
+      <div class="em"><div class="t">Carbon Literacy — 5 places</div>
+        <div class="s">Granted by <a href="#">CRP J000702</a> · quote Q-2024-118 · <span class="expiry warn">expires 31 Mar 2026 <span class="sub">(job end · movable)</span></span></div>
+        <div class="places"><span class="dot used"></span><span class="dot used"></span><span class="dot resv"></span><span class="dot"></span><span class="dot"></span></div>
+      </div>
+      <div class="rem"><div class="v">2</div><div class="l">remaining</div></div>
+    </div>
+    <div class="ent">
+      <div class="eic"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z"/><path d="M13 6v12" stroke-dasharray="2 2"/></svg></div>
+      <div class="em"><div class="t">Awareness webinar — 10 places</div>
+        <div class="s">Granted by <a href="#">CRP J000702</a> · <span class="expiry ok">expires 30 Sep 2026</span></div>
+        <div class="places"><span class="dot used"></span><span class="dot used"></span><span class="dot used"></span><span class="dot used"></span><span class="dot used"></span><span class="dot used"></span><span class="dot used"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      </div>
+      <div class="rem"><div class="v">3</div><div class="l">remaining</div></div>
+    </div>
+    <div class="foot"><span class="hint"><span class="dot used" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></span> consumed &nbsp; <span class="dot resv" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></span> reserved &nbsp; <span class="dot" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></span> available</span><span class="sp"></span><span class="hint">expiry is CRM-movable in the backend</span></div>
+  </section>
+
+  <div class="gov"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>The <b>run</b> is the versioned, reviewed unit. Reviewing it freezes the attendance register and issued certificates into a content-addressed snapshot — the same snapshot the family report and both portals read (they recompute nothing). Certificates issue on policy (≥80% attendance) and are held where consent is pending. Every booking references a portable <b>trainee</b> record plus the employer/funding context frozen at booking; entitlement places consume atomically. Deactivate, never delete; every change writes an audit event.</span></div>
+</div>

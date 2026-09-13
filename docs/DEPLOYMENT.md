@@ -34,6 +34,11 @@ FuelCap services.
 | `NZI_PORTAL_IDLE_LIMIT_MINUTES` | Optional. Idle auto-logout window for portal sessions (server-enforced); default `30`. The client warning countdown reads this via `/api/portal/auth/me`. |
 | `NZI_PORTAL_TERMS_VERSION` | Optional. Current portal terms-of-access version; default `2026-v1`. `resolvePortalPrincipal` flags `mustAcceptTerms` until an acceptance row for this version exists — **bump this string to re-prompt every existing portal user** (update `portalTermsContent.ts` copy at the same time). Set to empty only to disable the gate. |
 | `NEXT_PUBLIC_FEATURE_PORTAL` | Comma-separated portal Phase 2 UI flags (`portal-analytics`, `portal-actions`). Build-time inlined, dashboard-authoritative — a flip is a dashboard edit + **Clear build cache & deploy**. `portal-actions` is the A2-lite qualitative tracker and depends on `portal-analytics` for its assured baseline context. Unset = every portal analytics surface OFF. |
+| `NZI_TRAINEE_AUTH_ENABLED` | Set to `true` when the trainee portal (the third identity realm) is enabled. Unset = the realm returns 503 and its pages are unreachable. |
+| `NZI_TRAINEE_SESSION_SECRET` | Dedicated random secret of at least 32 bytes. **Never reuse the staff or portal session secret** — the realms are separated by cookie *and* secret, and the middleware also checks the session's `principal`, so a shared secret would still not cross realms; it would just remove one of the two walls. |
+| `NZI_TRAINEE_IDLE_LIMIT_MINUTES` | Optional. Idle auto-logout window for trainee sessions (server-enforced); default `30`. |
+| `NZI_TRAINEE_CONSENT_VERSION` | Optional. The consent wording currently in force; default `2026-09`. Stamped alongside a trainee's answer so a recorded consent always says what was agreed to — **bump this when the wording changes**, so old answers stay attached to the text they were given. |
+| `NEXT_PUBLIC_FEATURE_JOB_MODULES` | Comma-separated job-family module flags (`job-module-lca`, `job-module-training`). Own variable, parallel to the data-entry and report flag sets, flipped the same way (dashboard edit + **Clear build cache & deploy**). Unset = every module OFF and `FamilyWorkspace` serves that family. |
 | `NZI_AUTH_ENABLED` | `true` |
 | `NZI_AUTH_REQUIRED` | `true` |
 | `NZI_CONSOLE_SESSION_SECRET` | Dedicated Render-only secret |

@@ -1,3 +1,4 @@
+import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
 import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
@@ -25,6 +26,12 @@ export type CommandKey =
   | "client.contact.update"
   | "client.contact.deactivate"
   | "client.targets.set"
+  | "training.booking.create"
+  | "training.attendance.set"
+  | "training.certificate.issue"
+  | "training.entitlement.expiry.set"
+  | "training.run.stage.set"
+  | "training.run.review"
   | "client.intensityMetric.set"
   | "client.intensityMetric.deactivate"
   | "job.intensityValue.set"
@@ -317,6 +324,29 @@ export type CommandInputMap = {
    * explicit acknowledgement needed when the benchmark has moved since the last version.
    */
   "client.targets.set": { clientId: string; expectedVersion: number; restateAgainstBenchmark?: boolean } & ForwardTargetWriteFields;
+  /**
+   * Book a person onto a run. `entitlementId` funds it from a place the client holds — the
+   * place is reserved atomically, so two consultants cannot spend the same one.
+   */
+  "training.booking.create": {
+    courseRunId: string; traineeId: string; employerClientId: string | null;
+    participantType: "external_individual" | "client_employee" | "internal" | "partner";
+    entitlementId?: string | null; billingStatus?: "pending" | "invoiced" | "paid" | "free_place" | "waived";
+    consentStatus?: "unknown" | "granted" | "declined"; notes?: string;
+  };
+  /** Mark one person present or absent at one session. Attendance percentage is derived, never typed. */
+  "training.attendance.set": {
+    sessionId: string; bookingId: string;
+    attendanceStatus: "booked" | "present" | "absent" | "excused";
+    attendanceMinutes?: number | null; notes?: string;
+  };
+  /** Issue every certificate the policy allows on this run; consent-pending ones stay held. */
+  "training.certificate.issue": { courseRunId: string; expectedRunVersion: number };
+  /** Move a place's expiry. The CRM can, and the change is audited and marked as no longer the default. */
+  "training.entitlement.expiry.set": { entitlementIds: string[]; expiresAt: string | null; reason: string };
+  "training.run.stage.set": { courseRunId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
+  /** Freeze the register and the issued certificates into a content-addressed snapshot. */
+  "training.run.review": { courseRunId: string; expectedVersion: number; note?: string };
   /** Define or redefine one of this client's intensity metrics — a new version each time. */
   "client.intensityMetric.set": {
     clientId: string; metricKey: string; label: string; unitWording: string; divider: number;
@@ -582,6 +612,62 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "training.booking.create": { key: "training.booking.create", label: "Book a trainee onto a run", permission: "training.manage", reasonRequired: false, transaction: "booking + atomic entitlement reserve + audit + outbox + idempotency", auditAction: "training_booking_created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "courseRunId", input.courseRunId);
+    // A booking belongs to a person, not to a typed-in name — that is the whole spine.
+    required(issues, "traineeId", input.traineeId);
+    if (!oneOf(input.participantType, ["external_individual", "client_employee", "internal", "partner"] as const)) {
+      issues.push({ field: "participantType", code: "INVALID", message: "Participant type is invalid." });
+    }
+    return issues;
+  } },
+  "training.attendance.set": { key: "training.attendance.set", label: "Record attendance", permission: "training.manage", reasonRequired: false, transaction: "session attendance upsert + audit + outbox + idempotency", auditAction: "training_attendance_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "sessionId", input.sessionId);
+    required(issues, "bookingId", input.bookingId);
+    if (!oneOf(input.attendanceStatus, ["booked", "present", "absent", "excused"] as const)) {
+      issues.push({ field: "attendanceStatus", code: "INVALID", message: "Attendance status is invalid." });
+    }
+    if (input.attendanceMinutes != null && !(Number.isInteger(input.attendanceMinutes) && input.attendanceMinutes >= 0)) {
+      issues.push({ field: "attendanceMinutes", code: "INVALID", message: "Attended minutes are zero or greater." });
+    }
+    return issues;
+  } },
+  "training.certificate.issue": { key: "training.certificate.issue", label: "Issue eligible certificates", permission: "training.manage", reasonRequired: false, transaction: "policy check + content-hashed certificates + entitlement consume + audit + outbox + idempotency", auditAction: "training_certificates_issued", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "courseRunId", input.courseRunId);
+    if (!Number.isInteger(input.expectedRunVersion) || input.expectedRunVersion < 1) issues.push({ field: "expectedRunVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
+  "training.entitlement.expiry.set": { key: "training.entitlement.expiry.set", label: "Move a training place's expiry", permission: "training.entitlement.manage", reasonRequired: true, transaction: "entitlement expiry + default flag cleared + audit + outbox + idempotency", auditAction: "training_entitlement_expiry_set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    // A grant's places share one date, so the grant is what moves — one act, one audit
+    // event, all-or-nothing. Moving three of ten is how a strip starts disagreeing with
+    // itself.
+    if (!Array.isArray(input.entitlementIds) || input.entitlementIds.length === 0) {
+      issues.push({ field: "entitlementIds", code: "REQUIRED", message: "Name at least one place to move." });
+    }
+    // Moving a date somebody is relying on is a deliberate act, so it carries a reason.
+    required(issues, "reason", input.reason);
+    if (input.expiresAt !== null && !isoDate(input.expiresAt)) issues.push({ field: "expiresAt", code: "INVALID", message: "Expiry must use YYYY-MM-DD, or be cleared." });
+    return issues;
+  } },
+  "training.run.stage.set": { key: "training.run.stage.set", label: "Move the run's stage", permission: "training.manage", reasonRequired: false, transaction: "versioned run stage + audit + outbox + idempotency", auditAction: "training_run_stage_changed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "courseRunId", input.courseRunId);
+    if (!isAllowedTrainingRunStageTransition(input.fromStage, input.toStage)) {
+      issues.push({ field: "toStage", code: "INVALID_TRANSITION", message: "A run moves one stage at a time." });
+    }
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
+  "training.run.review": { key: "training.run.review", label: "Review the run", permission: "snapshot.review", reasonRequired: false, transaction: "content-addressed run snapshot + review stamp + audit + outbox + idempotency", auditAction: "training_run_reviewed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "courseRunId", input.courseRunId);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
   "client.intensityMetric.set": { key: "client.intensityMetric.set", label: "Define an intensity metric", permission: "client.edit", reasonRequired: false, transaction: "versioned metric definition + audit + outbox + idempotency", auditAction: "client_intensity_metric_set", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "clientId", input.clientId);

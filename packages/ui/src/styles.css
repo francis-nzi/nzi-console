@@ -1036,3 +1036,154 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-btn.danger{color:var(--danger,#C23B22);border-color:#F0C4BC}
 @media (max-width:1200px){.nz-cw-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:420px){.nz-two,.nz-three{grid-template-columns:1fr}}
+
+/* ── Training module (job_training_v1) ───────────────────────────────────────
+   The run's own stage machine, its sessions, its register and the places strip.
+   The places dots use the neutral/status tokens, never --s1/--s2/--s3: those
+   carry GHG scope identity and a training place is not a scope. */
+.nz-run-stage{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px;margin-bottom:16px}
+.nz-run-step{display:grid;flex:1 1 96px;min-width:96px;gap:1px;padding:8px 6px;border-radius:8px;text-align:center;color:var(--t2);font-size:11.5px;font-weight:600;white-space:nowrap}
+.nz-run-step>b{color:var(--t3);font-size:9px;font-weight:700}
+.nz-run-step.done{color:var(--pine)}.nz-run-step.done>b{color:var(--emerald)}
+.nz-run-step.now{background:var(--emerald);color:#fff}.nz-run-step.now>b{color:var(--mint)}
+.nz-run-stage .sp{flex:0 0 8px}
+.nz-run-kv{display:flex;flex-wrap:wrap;gap:18px 30px}
+.nz-run-fact .k{color:var(--t2);font-size:11px}
+.nz-run-fact .v{margin-top:1px;font-size:14px;font-weight:600}
+.nz-run-fact .v.big{font-size:20px;font-weight:800}
+.nz-run-fact .v small{color:var(--t2);font-size:11px;font-weight:500}
+.nz-run-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
+
+.nz-session{display:flex;align-items:center;gap:13px;padding:11px 16px;border-bottom:1px solid var(--line2)}
+.nz-session:last-child{border-bottom:0}
+.nz-session-date{flex:0 0 auto;width:52px;text-align:center}
+.nz-session-date>b{display:block;font-size:19px;font-weight:800;line-height:1}
+.nz-session-date>span{color:var(--t2);font-size:10px;font-weight:700;text-transform:uppercase}
+.nz-session-main{flex:1;min-width:0}
+.nz-session-main .nm{font-weight:600}
+.nz-session-main .sub{margin-top:2px}
+.nz-session-att{flex:0 0 auto;text-align:right}
+.nz-session-att>b{font-weight:700;font-variant-numeric:tabular-nums}
+.nz-session-att>span{display:block;color:var(--t2);font-size:10.5px}
+
+.nz-att{display:inline-flex;align-items:center;gap:8px}
+.nz-att>i{display:block;width:64px;height:9px;overflow:hidden;border-radius:20px;background:var(--paper);border:1px solid var(--line)}
+.nz-att>i>span{display:block;height:100%;border-radius:20px;background:var(--emerald)}
+.nz-att>b{width:38px;font-size:12px;font-weight:600}
+
+.nz-ent{display:flex;align-items:center;gap:14px;padding:13px 16px;border-bottom:1px solid var(--line2)}
+.nz-ent:last-child{border-bottom:0}
+.nz-ent-icon{display:grid;width:36px;height:36px;flex:0 0 auto;place-items:center;border-radius:9px;background:var(--mint);color:var(--pine)}
+.nz-ent-main{flex:1;min-width:0}
+.nz-ent-main .nm{font-weight:600}
+.nz-ent-rem{flex:0 0 auto;text-align:right}
+.nz-ent-rem .v{font-size:20px;font-weight:800}
+.nz-ent-rem .l{color:var(--t2);font-size:10.5px}
+.nz-places{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.nz-dot{display:inline-block;width:15px;height:15px;border:1px solid var(--line);border-radius:4px;background:var(--paper)}
+.nz-dot.used{background:var(--emerald);border-color:var(--emerald)}
+.nz-dot.resv{background:var(--amber);border-color:var(--amber)}
+/* A lapsed place is still a place: struck through and muted, counted in the strip
+   but excluded from what is available. Shown, never silently dropped. */
+.nz-dot.lapsed{position:relative;background:var(--paper);border-style:dashed;border-color:#C9D2CE;opacity:.72}
+.nz-dot.lapsed::after{position:absolute;top:6px;left:1px;width:11px;height:1px;background:#93A29C;content:""}
+.nz-place-legend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line2)}
+.nz-place-legend .nz-dot{vertical-align:-3px;width:11px;height:11px}
+.nz-place-legend .nz-dot.lapsed::after{top:4px;width:7px}
+.nz-place-move{display:grid;grid-template-columns:minmax(140px,auto) minmax(180px,1fr) auto;gap:10px;align-items:end;margin-top:10px}
+.nz-place-move .nz-fl{margin:0}
+.nz-expiry{font-weight:600}
+.nz-expiry.ok{color:var(--pine)}
+.nz-expiry.warn{color:#9A6B00}
+.nz-expiry.lapsed{color:var(--danger)}
+@media (max-width:760px){
+  .nz-place-move{grid-template-columns:1fr}
+  .nz-ent{align-items:flex-start;flex-wrap:wrap}
+}
+
+/* ── Client portal · training (portal_training_v1) ───────────────────────────
+   The employer's read-only view. It reuses the places strip from the staff
+   module — same arithmetic, same dots — and adds the client's own wording,
+   the headline stat band, and the skills grid. */
+.nz-pt-section{display:flex;align-items:center;gap:8px;margin:26px 0 12px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t2)}
+.nz-pt-section:first-child{margin-top:0}
+.nz-pt-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.nz-pt-stat{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.nz-pt-stat .v{font-size:26px;font-weight:800;line-height:1.05}
+.nz-pt-stat .l{margin-top:3px;color:var(--t2);font-size:11px}
+.nz-pt-stat.good{border-color:#BEE7D3;background:var(--mint)}
+.nz-pt-stat.good .v{color:var(--pine)}
+.nz-pt-stat.warn{border-color:#EAD6AC;background:#FBF1DE}
+.nz-pt-stat.warn .v{color:#9A6B00}
+.nz-pt-places{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.nz-pt-places .nz-ent.attn{background:#FDF8EC;box-shadow:inset 3px 0 0 var(--amber)}
+.nz-pt-expiry{margin-top:6px;font-size:12px}
+.nz-pt-expiry .nz-expiry{display:inline-flex;align-items:center;gap:5px}
+.nz-ent-rem .v.good{color:var(--pine)}
+.nz-pt-note{margin:9px 2px 0}
+.nz-pt-cert{display:inline-flex;align-items:center;gap:5px;color:var(--pine);font-size:12px;font-weight:600;text-decoration:none}
+.nz-pt-cert:hover{text-decoration:underline}
+.nz-pt-cert small{color:var(--t2);font-weight:400}
+.nz-pt-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line2);background:var(--paper)}
+.nz-pt-assured{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:1px solid #BEE7D3;border-radius:20px;background:var(--mint);color:var(--pine);font-size:10.5px;font-weight:700}
+.nz-pt-matrix th[scope="row"]{font-weight:600;text-align:left}
+.nz-pt-matrix td{text-align:center}
+.nz-chk{display:inline-grid;width:22px;height:22px;place-items:center;border-radius:50%;background:var(--mint);color:var(--pine)}
+.nz-chk.due{background:#FBF1DE;color:#9A6B00}
+.nz-chk.none{background:none;color:var(--t3)}
+@media (max-width:760px){
+  .nz-pt-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ── Public certificate verification ─────────────────────────────────────────
+   The one page a stranger can reach. Deliberately plain: one card, one claim,
+   and a standing that is legible before any of the detail is read. */
+.nz-verify-shell{display:grid;min-height:100vh;place-items:center;gap:20px;padding:40px 20px;background:linear-gradient(180deg,#EEF5F1,#F7F9F8 55%,#fff);align-content:center}
+.nz-verify-brand{display:flex;align-items:center;gap:11px}
+.nz-verify-brand>span{display:grid;width:36px;height:36px;place-items:center;border-radius:10px;background:var(--midnight);color:#fff;font-weight:800}
+.nz-verify-brand b{display:block;font-size:14px}
+.nz-verify-brand small{color:var(--t2);font-size:10.5px}
+.nz-verify-card{width:min(520px,100%);padding:30px 32px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 18px 45px rgba(11,27,43,.08)}
+.nz-verify-card h1{margin:10px 0 4px;font-size:26px;letter-spacing:-.035em}
+.nz-verify-card.valid{border-top:4px solid var(--emerald)}
+.nz-verify-card.revoked{border-top:4px solid var(--danger)}
+.nz-verify-card.unknown,.nz-verify-card.unavailable{border-top:4px solid var(--line)}
+.nz-verify-card.unknown h1,.nz-verify-card.unavailable h1{margin-top:0}
+.nz-verify-card>p{margin:0;color:var(--t2);font-size:13px;line-height:1.6}
+.nz-verify-badge{display:inline-block;padding:4px 10px;border-radius:20px;background:var(--mint);color:var(--pine);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nz-verify-card.revoked .nz-verify-badge{background:var(--danger-bg);color:var(--danger)}
+.nz-verify-course{margin:0 0 18px!important;color:var(--t1)!important;font-size:15px;font-weight:600}
+.nz-verify-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px;margin:0 0 18px;padding:18px 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+.nz-verify-facts dt{color:var(--t2);font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.nz-verify-facts dd{margin:3px 0 0;font-size:13.5px;font-weight:600}
+.nz-verify-note{color:var(--t2);font-size:11.5px!important;line-height:1.6}
+@media (max-width:480px){.nz-verify-facts{grid-template-columns:1fr}}
+
+/* ── Trainee portal (portal_trainee_v1) ──────────────────────────────────────
+   The person's own view. Warmer than the client portal's register — this is a
+   record someone carries, not a report they receive. */
+.nz-tr-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.nz-tr-avatar{display:grid;width:46px;height:46px;flex:none;place-items:center;border-radius:50%;background:var(--mint);color:var(--pine);font-size:16px;font-weight:700}
+.nz-tr-head h1{margin:0;font-size:24px;letter-spacing:-.035em}
+.nz-tr-head .sub{margin-top:2px}
+.nz-tr-portable{display:flex;align-items:flex-start;gap:11px;padding:14px 16px;margin-bottom:6px;border:1px solid #BEE7D3;border-radius:12px;background:var(--mint);color:var(--t1);font-size:12.5px;line-height:1.6}
+.nz-tr-portable>svg{flex:none;margin-top:1px;color:var(--pine)}
+.nz-tr-card{display:flex;align-items:center;gap:14px;padding:15px 16px;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.nz-tr-card-icon{display:grid;width:40px;height:40px;flex:none;place-items:center;border-radius:10px;background:var(--paper);color:var(--t2)}
+.nz-tr-card-body{flex:1;min-width:0}
+.nz-tr-card-body h3{margin:0 0 3px;font-size:15px}
+.nz-tr-card-emp{margin-top:3px;color:var(--t2);font-size:12px}
+.nz-tr-card-act{display:grid;flex:none;gap:6px;justify-items:end}
+.nz-tr-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:var(--paper);color:var(--t2);font-size:11px;font-weight:600;text-align:right}
+.nz-tr-pill.ok{background:var(--mint);color:var(--pine)}
+.nz-tr-pill.warn{background:#FBF1DE;color:#9A6B00}
+.nz-tr-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.nz-tr-form .nz-fl{margin:0}
+.nz-tr-form .hint{display:block;margin-top:5px}
+.nz-tr-email{grid-column:1/-1}
+.nz-tr-email-current{margin:5px 0 8px;font-size:13.5px;font-weight:600}
+@media (max-width:760px){
+  .nz-tr-form{grid-template-columns:1fr}
+  .nz-tr-card{align-items:flex-start;flex-wrap:wrap}
+  .nz-tr-card-act{justify-items:start}
+}

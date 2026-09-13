@@ -92,6 +92,8 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 | NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
+| NZC-074 | A **trainee is a person, not a client's contact**: one record per individual, keyed on a changeable personal email, aggregating history across every employer. Employer and funding are frozen on each booking and never rewritten. Places are booked by consultant/CRM only — never self-serve from a portal. Certificates are **publicly verifiable** at `/verify/<code>` through a SECURITY DEFINER function whose return list is the whole contract. Changing the sign-in email requires verifying the new address first, and a former employer loses visibility of the person's new personal details. | Confirmed (13 Sep 2026) |
+| NZC-073 | Training carries its own capabilities — `training.manage` (bookings, attendance, stage, certificate issuance) and `training.entitlement.manage` (moving a place's expiry) — held by Admin and Consultant, as peers of `actions.manage` / `srs.manage`. Run review stays `snapshot.review` (separation of duties); certificate issuance stays policy-gated on top of the capability. Matrix version 2. | Confirmed (13 Sep 2026) |
 
 ---
 
@@ -969,4 +971,75 @@ client had committed to. They are separated here:
 
 *Source: Francis, 12 Sep 2026 — the forward target model brief; design reference
 `docs/prototypes/client_workspace_v10.html`.*
+
+### NZC-073 — Training carries its own capabilities [Confirmed 13 Sep 2026]
+Training is a **module** in exactly the sense Actions and SRS Readiness are, and both of those
+already hold their own capability. Running it off the generic `job.manage` was the deviation, and
+it had two consequences worth naming: anyone who could manage a job could issue **NZI-branded
+verifiable certificates**, and moving a training place's expiry sat under `finance.manage`, so
+Finance could extend a place the delivering consultant could not.
+
+Two capabilities are added, held by **Admin and Consultant**, mirroring `actions.manage` /
+`srs.manage`:
+
+- **`training.manage`** — bookings, attendance, run stage transitions, certificate issuance.
+- **`training.entitlement.manage`** — moving a place's expiry off its job-end default. Extending
+  an already-granted place is an **operational concession, not a commercial re-sale**, so it
+  belongs with the delivering team; Finance keeps read visibility through `finance.view`. It is
+  treated like `baseline.rebaseline`: a **reason is required**, the change is audited, and it
+  clears the `default_from_job_end` flag so "moved" stays distinguishable from "default".
+
+Two things deliberately do **not** move. **Run review stays `snapshot.review`** — the consultant
+who delivers a course and issues its certificates must not also approve the reviewed run
+snapshot, the same separation of duties that governs every other reviewed unit. And **certificate
+issuance stays policy-gated on top of the capability**: attendance decides and consent holds. The
+capability says who may run the command; the policy still decides the outcome.
+
+This **supersedes the interim reuse** of `job.manage` (bookings/attendance/stage/certificates) and
+`finance.manage` (expiry) while the training backend was first wired up — no release shipped with
+those gates. The matrix moves to **version 2** (migration `0073`), and the capability pattern is
+widened to allow more than one dot, which `training.entitlement.manage` needs.
+*Source: Francis, 13 Sep 2026 — Training family brief; `docs/PERMISSION_MATRIX.md`.*
+
+### NZC-074 — A trainee is a person, and their record is portable [Confirmed 13 Sep 2026]
+The load-bearing decision of the training family, and the one everything else in it follows from.
+
+**Identity is person-centric.** A trainee is one record per individual, not a contact hanging off a
+client. The sign-in identity is their **personal** email — changeable, normalised, unique, and
+deliberately never a key. History aggregates per person, across every employer they have had.
+Making the trainee a client's contact would have been simpler and wrong: it would mean a person's
+certificates belonged to whoever employed them at the time, and disappeared when they moved.
+
+**Employer and funding are frozen at booking.** Each booking records who arranged the training and
+how it was paid for, as at that moment, and neither is ever re-read from the person's current
+employer. Updating where you work changes where you work — it does not rewrite who paid for a
+course in 2024. This is also what makes the two portals safe to build from the same rows: the
+client's view filters on the frozen employer, so it shows its own people and never a person's
+history elsewhere.
+
+**Places are booked by consultant/CRM only.** There is no self-serve booking from either portal.
+A place is a commercial instrument with an expiry and an atomic consume; putting a "book now"
+button on it would mean a client could spend an entitlement without anyone scheduling the delivery
+that has to follow. The client portal instead shows what is unused and when it expires, and says
+to talk to their consultant.
+
+**Certificates are publicly verifiable.** A certificate is worth more if a future employer can
+confirm it without an account, so `/verify/<code>` is public. That makes it the one tenant-crossing
+read on the platform, which is why it goes through `verify_training_certificate` — a SECURITY
+DEFINER function whose `RETURNS TABLE` *is* the contract: name, course, date, attendance, issuer,
+standing. It cannot return an email, an employer, or anything else the person has studied, because
+no caller can widen it. The verify code is separate from the certificate number (which is NZI's own
+reference and guessable by design) and carries enough entropy that certificates cannot be
+enumerated. A **revoked certificate still verifies** and says it was withdrawn — a copy in
+circulation should be recognisable for what it is.
+
+**Changing the sign-in email requires re-verification**, and the old address stays the login until
+the new one is confirmed: a mistyped address locks nobody out, and a borrowed session cannot
+quietly take an account over. Confirming revokes every session so the change lands everywhere at
+once. The corollary Francis confirmed explicitly: once a person updates their personal details, a
+**former employer loses visibility of them** — the client portal reads the employer frozen on each
+booking, so the old employer keeps the training record it paid for and nothing of the person's
+current identity.
+
+*Source: Francis, 13 Sep 2026 — Training family brief, four decisions confirmed at the outset.*
 

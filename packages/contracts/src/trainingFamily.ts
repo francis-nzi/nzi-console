@@ -114,6 +114,15 @@ export type TrainingCourseSession = {
   sessionHours: number | null;
   deliveryMode: TrainingDeliveryMode | null;
   status: TrainingSessionStatus;
+  /**
+   * Where it happens. A run sets a default, and a session may override it — a five-day
+   * course that moves online for one day is ordinary, and the register has to say so
+   * rather than quietly repeating the run's venue for every session.
+   */
+  venueName?: string | null;
+  venueAddress?: string | null;
+  onlineMeetingUrl?: string | null;
+  onlinePasscode?: string | null;
 };
 
 export type TrainingBooking = {
@@ -185,8 +194,9 @@ export type TrainingRunView = {
  */
 export function trainingAttendanceForBooking(
   bookingId: string,
-  sessions: TrainingCourseSession[],
-  attendance: TrainingSessionAttendance[],
+  // Read-only: this computes, it never reorders or mutates what it is given.
+  sessions: readonly TrainingCourseSession[],
+  attendance: readonly TrainingSessionAttendance[],
 ): { attendedMinutes: number; scheduledMinutes: number; attendancePct: number } {
   const sessionMinutes = new Map(
     sessions.map((s) => [s.id, Math.round((s.sessionHours ?? 0) * 60)]),

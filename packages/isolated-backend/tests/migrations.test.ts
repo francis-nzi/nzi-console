@@ -17,6 +17,7 @@ const permissionMatrixMigration = readFileSync(resolve(here, "../migrations/0066
 const clientContactsMigration = readFileSync(resolve(here, "../migrations/0067_client_contacts.sql"), "utf8");
 const clientLogoMigration = readFileSync(resolve(here, "../migrations/0068_client_logo.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
+const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
 const scopeEvidence = readFileSync(resolve(here, "../migrations/0008_scope_row_evidence_metadata.sql"), "utf8");
@@ -331,5 +332,91 @@ describe("isolated Postgres migrations", () => {
       "CHECK (metric = 'floor-area' OR reporting_denominator IS NOT NULL)",
     ]) assert.ok(siteFloorAreaMigration.includes(clause), clause);
     assert.ok(!/GRANT[^;]*(UPDATE|DELETE)[^;]*client_site_floor_areas/.test(siteFloorAreaMigration), "append-only");
+  });
+
+  it("keeps a trainee a person rather than an employer's contact (0072)", () => {
+    // The load-bearing decision: training is personal, so the record is not owned by a
+    // client. The current employer is a nullable pointer, never the key.
+    assert.match(traineeSpineMigration, /CREATE TABLE nzi_console\.trainees/);
+    assert.match(traineeSpineMigration, /CREATE UNIQUE INDEX trainees_email_idx ON nzi_console\.trainees \(organisation_id, personal_email\)/);
+    assert.ok(!/trainees[\s\S]*?client_id text NOT NULL/.test(traineeSpineMigration), "a trainee is never owned by a client");
+    assert.match(traineeSpineMigration, /REVOKE DELETE ON nzi_console\.trainees/, "deactivate, never delete");
+    // A booking points at the person and separately freezes the employer of the day.
+    assert.match(traineeSpineMigration, /ALTER TABLE nzi_console\.training_bookings ADD COLUMN trainee_id text/);
+    assert.match(traineeSpineMigration, /the EMPLOYER at the time of booking/i);
+  });
+
+  it("isolates trainee credentials and sessions behind the auth role (0072)", () => {
+    // The third realm follows the client portal exactly: the app role can read the person
+    // but can never read a password hash or forge a session.
+    for (const table of ["trainee_credentials", "trainee_login_challenges", "trainee_sessions", "trainee_invitations", "trainee_email_changes"]) {
+      assert.match(traineeSpineMigration, new RegExp(`CREATE TABLE nzi_console\\.${table}`), table);
+      assert.match(traineeSpineMigration, new RegExp(`GRANT SELECT, INSERT, UPDATE ON nzi_console\\.${table} TO nzi_console_auth`), `${table} auth grant`);
+    }
+    assert.match(traineeSpineMigration, /REVOKE ALL ON nzi_console\.trainee_credentials[\s\S]*?FROM PUBLIC, nzi_console_app, nzi_console_worker/);
+    // Changing the login email must be proved before it becomes the sign-in.
+    assert.match(traineeSpineMigration, /CREATE TABLE nzi_console\.trainee_email_changes[\s\S]*?confirmed_at timestamptz/);
+  });
+
+  it("makes an entitlement place impossible to double-consume (0049, NZC-056)", () => {
+    // The 🔴 guarantee: row-locked and status-guarded, like the job-number allocator, plus
+    // a unique index so one booking can never hold two places.
+    assert.match(trainingEntitlementsMigration, /CREATE FUNCTION nzi_console\.reserve_training_entitlement/);
+    assert.match(trainingEntitlementsMigration, /CREATE FUNCTION nzi_console\.consume_training_entitlement/);
+    for (const guard of ["FOR UPDATE", "IF current_status <> 'available'", "IF current_status <> 'reserved'"]) {
+      assert.ok(trainingEntitlementsMigration.includes(guard), guard);
+    }
+    assert.match(trainingEntitlementsMigration, /CREATE UNIQUE INDEX training_entitlements_one_per_booking_idx/);
+    // And the only cross-family link stays a CRP job, enforced rather than documented.
+    assert.match(trainingEntitlementsMigration, /Training entitlement source job must be a CRP job/);
+  });
+
+  it("records whether a place's expiry is the default or was moved (0072)", () => {
+    // "Expires 31 Mar 2026" means something different if a person chose it, and the
+    // client portal has to be able to say which.
+    assert.match(traineeSpineMigration, /ADD COLUMN default_from_job_end boolean NOT NULL DEFAULT false/);
+    assert.match(traineeSpineMigration, /SET expires_at = \(j\.due_date[\s\S]*?default_from_job_end = true/, "the default comes from the granting job's end");
+  });
+
+  it("freezes a reviewed run into an immutable, content-addressed snapshot (0072)", () => {
+    assert.match(traineeSpineMigration, /CREATE TABLE nzi_console\.training_run_snapshots/);
+    assert.match(traineeSpineMigration, /data_hash text NOT NULL/);
+    assert.match(traineeSpineMigration, /CREATE UNIQUE INDEX training_run_snapshots_hash_idx/);
+    assert.match(traineeSpineMigration, /REVOKE UPDATE, DELETE ON nzi_console\.training_run_snapshots/);
+    assert.ok(!/GRANT[^;]*UPDATE[^;]*training_run_snapshots/.test(traineeSpineMigration), "a reviewed run is never edited");
+  });
+
+  it("gives a certificate a public verification code that cannot be enumerated (0072)", () => {
+    assert.match(traineeSpineMigration, /ALTER TABLE nzi_console\.training_certificates ADD COLUMN verify_code text/);
+    assert.match(traineeSpineMigration, /CREATE UNIQUE INDEX training_certificates_verify_code_idx/);
+    assert.match(traineeSpineMigration, /never contact details/i, "the verify page shows validity, not personal data");
+  });
+
+  it("bounds public verification in the function rather than in its callers (0072)", () => {
+    // Verification is the one tenant-crossing read in the spine, so what it may return is
+    // fixed by the function's signature — not by whichever route happens to call it.
+    assert.match(traineeSpineMigration, /CREATE FUNCTION nzi_console\.verify_training_certificate\(p_verify_code text\)/);
+    assert.match(traineeSpineMigration, /verify_training_certificate[\s\S]*?SECURITY DEFINER SET search_path = nzi_console, pg_temp/);
+    const returns = /RETURNS TABLE \(([\s\S]*?)\) LANGUAGE sql/.exec(traineeSpineMigration)?.[1] ?? "";
+    assert.ok(returns.includes("person_name") && returns.includes("course_name"), "it returns the training");
+    for (const field of ["email", "client_id", "employer", "phone", "address", "trainee_id"]) {
+      assert.ok(!returns.includes(field), `verification must not return ${field}`);
+    }
+    // Only the app role may call it — it is not open to the worker or the auth role.
+    assert.match(traineeSpineMigration, /GRANT EXECUTE ON FUNCTION nzi_console\.verify_training_certificate\(text\) TO nzi_console_app;/);
+  });
+
+  it("lets a course say how long it stands for, and defaults to not lapsing (0072)", () => {
+    assert.match(traineeSpineMigration, /ADD COLUMN certificate_valid_months integer CHECK \(certificate_valid_months IS NULL OR certificate_valid_months > 0\)/);
+    // No DEFAULT: a renewal date nobody agreed is worse than no renewal date.
+    assert.doesNotMatch(traineeSpineMigration, /certificate_valid_months integer[^;]*DEFAULT/);
+    assert.match(traineeSpineMigration, /NULL means it does not lapse/);
+  });
+
+  it("settles the run stage machine on one vocabulary (0072)", () => {
+    for (const stage of ["planned", "scheduled", "in_delivery", "delivered", "certified", "reviewed"]) {
+      assert.ok(traineeSpineMigration.includes(`'${stage}'`), stage);
+    }
+    assert.match(traineeSpineMigration, /DROP CONSTRAINT IF EXISTS training_course_runs_workflow_stage_key_check/);
   });
 });

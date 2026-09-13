@@ -16,13 +16,19 @@ export type ClientAccess = { clientId: string; ownerUserId: string | null; owned
 
 type Subject =
   | { kind: "organisation" }
-  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment"; id: string };
+  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment" | "trainingRun" | "trainingSession" | "trainingEntitlement"; id: string };
 
 const organisation = (): Subject => ({ kind: "organisation" });
 const client = (input: { clientId: string }): Subject => ({ kind: "client", id: input.clientId });
 const job = (input: { jobId: string }): Subject => ({ kind: "job", id: input.jobId });
 const site = (input: { siteId: string }): Subject => ({ kind: "site", id: input.siteId });
 const srsAssessment = (input: { assessmentId: string }): Subject => ({ kind: "srsAssessment", id: input.assessmentId });
+const trainingRun = (input: { courseRunId: string }): Subject => ({ kind: "trainingRun", id: input.courseRunId });
+const trainingSession = (input: { sessionId: string }): Subject => ({ kind: "trainingSession", id: input.sessionId });
+// A grant's places all belong to one client, so the first resolves the own-clients scope.
+// The handler re-checks that every id really is from the same grant, so a caller cannot
+// smuggle another client's place in behind an id it does own.
+const trainingEntitlement = (input: { entitlementIds: string[] }): Subject => ({ kind: "trainingEntitlement", id: [...input.entitlementIds].sort()[0] ?? "" });
 
 /** Which record each command touches — exhaustive over CommandKey, so a new command must declare its subject. */
 const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } = {
@@ -46,6 +52,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.intensityMetric.set": client,
   "client.intensityMetric.deactivate": client,
   "job.intensityValue.set": job,
+  "training.booking.create": trainingRun,
+  "training.attendance.set": trainingSession,
+  "training.certificate.issue": trainingRun,
+  "training.run.stage.set": trainingRun,
+  "training.run.review": trainingRun,
+  "training.entitlement.expiry.set": trainingEntitlement,
   "srs.assessment.start": client,
   "srs.assessment.item.set": srsAssessment,
   "srs.assessment.complete": srsAssessment,
@@ -112,6 +124,9 @@ const accessSql: Record<Exclude<Subject["kind"], "organisation">, string> = {
   clientFactor: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_factors f JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(f.organisation_id,f.client_id) WHERE f.organisation_id=$1 AND f.client_factor_id=$2`,
   contact: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_contacts k JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2`,
   snapshot: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE s.organisation_id=$1 AND s.snapshot_id=$2`,
+  trainingRun: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.training_course_runs r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE r.organisation_id=$1 AND r.course_run_id=$2`,
+  trainingSession: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.training_course_sessions s JOIN nzi_console.training_course_runs r ON (r.organisation_id,r.course_run_id)=(s.organisation_id,s.course_run_id) JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE s.organisation_id=$1 AND s.session_id=$2`,
+  trainingEntitlement: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.training_entitlements e JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(e.organisation_id,e.source_client_id) WHERE e.organisation_id=$1 AND e.entitlement_id=$2`,
   srsAssessment: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.srs_assessments a JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) WHERE a.organisation_id=$1 AND a.assessment_id=$2`,
   reportVersion: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE r.organisation_id=$1 AND r.report_version_id=$2`,
 };

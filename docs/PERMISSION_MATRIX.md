@@ -53,6 +53,8 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `report.view` | ✓ | ✓ | R | R | R |
 | `actions.manage` | ✓ | ✓ | — | — | — |
 | `srs.manage` | ✓ | ✓ | — | — | — |
+| `training.manage` (bookings, attendance, stage, certificate issuance) | ✓ | ✓ | — | — | — |
+| `training.entitlement.manage` (move a place's expiry) ⚑ | ✓ | ✓ | — | R | — |
 | `finance.view` | ✓ | R | — | ✓ | — |
 | `finance.manage` (quotes/invoices/credit notes) | ✓ | — | — | ✓ | — |
 | `portal.admin` (invite, reset MFA/pw, job access, data-entry windows) ⚑ | ✓ | ✓ | — | — | — |
@@ -69,17 +71,31 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 - `snapshot.review` / `report.publish` — **separation of duties:** cannot be exercised by
   the same user who prepared the snapshot; `report.publish` additionally requires an
   approved snapshot to exist.
-- `portal.admin` — Consultant is scoped to their own clients; Admin is unscoped.
+- `training.manage` — the training module's operational capability, a peer of
+  `actions.manage` / `srs.manage`; **not** `job.manage`, so a general job manager does not
+  automatically issue NZI-branded verifiable certificates. **Certificate issuance is
+  policy-gated** (attendance decides, consent holds) and **run review is a separate act under
+  `snapshot.review`** — so the same separation of duties applies as everywhere else: the
+  Consultant who delivers and issues does not self-approve the reviewed run snapshot.
+- `training.entitlement.manage` — moving a place's expiry off its job-end default **always
+  requires a reason, is audited, and clears the `default_from_job_end` flag** (treated like
+  `baseline.rebaseline`). Held by the delivering team (Admin/Consultant), **not** finance-only —
+  it's an operational concession on an already-granted entitlement, not a commercial re-sale;
+  Finance keeps read visibility via `finance.view`.
 - `audit.view` — Consultant/Finance see the audit trail for their own clients only.
 - `support.portal_impersonate` — every entry is audited and time-boxed; it grants a
   read/preview context, never portal-user credential access.
 
 ## Naming convention
 
-Lowercase `domain.action`. The enumerated list above is exhaustive; adding a capability
-means adding a row here first, then the enum in `@nzi/contracts`. Legacy/ad-hoc strings
-found in review map as: `financials.edit` → `finance.manage`; any `*.manage` invented
-outside this list must be reconciled to a row here or added as one.
+Lowercase, dot-separated: `domain.action`, or `domain.subdomain.action` where a domain has
+sub-areas (e.g. `training.entitlement.manage`). Each segment is `[a-z_]+`; **two or more
+segments are allowed** — the DB CHECK constraint was widened from its original single-dot
+pattern (migration `0073`) to permit this, so do not narrow it back to `^[a-z]+\.[a-z_]+$`.
+The enumerated list above is exhaustive; adding a capability means adding a row here first,
+then the enum in `@nzi/contracts`. Legacy/ad-hoc strings found in review map as:
+`financials.edit` → `finance.manage`; any `*.manage` invented outside this list must be
+reconciled to a row here or added as one.
 
 ## Implementation notes
 
