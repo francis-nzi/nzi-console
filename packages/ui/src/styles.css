@@ -1158,3 +1158,32 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-verify-facts dd{margin:3px 0 0;font-size:13.5px;font-weight:600}
 .nz-verify-note{color:var(--t2);font-size:11.5px!important;line-height:1.6}
 @media (max-width:480px){.nz-verify-facts{grid-template-columns:1fr}}
+
+/* ── Trainee portal (portal_trainee_v1) ──────────────────────────────────────
+   The person's own view. Warmer than the client portal's register — this is a
+   record someone carries, not a report they receive. */
+.nz-tr-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.nz-tr-avatar{display:grid;width:46px;height:46px;flex:none;place-items:center;border-radius:50%;background:var(--mint);color:var(--pine);font-size:16px;font-weight:700}
+.nz-tr-head h1{margin:0;font-size:24px;letter-spacing:-.035em}
+.nz-tr-head .sub{margin-top:2px}
+.nz-tr-portable{display:flex;align-items:flex-start;gap:11px;padding:14px 16px;margin-bottom:6px;border:1px solid #BEE7D3;border-radius:12px;background:var(--mint);color:var(--t1);font-size:12.5px;line-height:1.6}
+.nz-tr-portable>svg{flex:none;margin-top:1px;color:var(--pine)}
+.nz-tr-card{display:flex;align-items:center;gap:14px;padding:15px 16px;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.nz-tr-card-icon{display:grid;width:40px;height:40px;flex:none;place-items:center;border-radius:10px;background:var(--paper);color:var(--t2)}
+.nz-tr-card-body{flex:1;min-width:0}
+.nz-tr-card-body h3{margin:0 0 3px;font-size:15px}
+.nz-tr-card-emp{margin-top:3px;color:var(--t2);font-size:12px}
+.nz-tr-card-act{display:grid;flex:none;gap:6px;justify-items:end}
+.nz-tr-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:var(--paper);color:var(--t2);font-size:11px;font-weight:600;text-align:right}
+.nz-tr-pill.ok{background:var(--mint);color:var(--pine)}
+.nz-tr-pill.warn{background:#FBF1DE;color:#9A6B00}
+.nz-tr-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.nz-tr-form .nz-fl{margin:0}
+.nz-tr-form .hint{display:block;margin-top:5px}
+.nz-tr-email{grid-column:1/-1}
+.nz-tr-email-current{margin:5px 0 8px;font-size:13.5px;font-weight:600}
+@media (max-width:760px){
+  .nz-tr-form{grid-template-columns:1fr}
+  .nz-tr-card{align-items:flex-start;flex-wrap:wrap}
+  .nz-tr-card-act{justify-items:start}
+}

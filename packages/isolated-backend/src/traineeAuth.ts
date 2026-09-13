@@ -352,3 +352,67 @@ export async function confirmTraineeEmailChange(pool: PoolLike, input: { organis
     return { traineeId: change.trainee_id, email: change.new_email };
   });
 }
+
+/* ── Maintaining your own record ─────────────────────────────────────────────────────── */
+
+export type TraineeSelfUpdate = {
+  fullName?: string;
+  phone?: string;
+  /** Where they work now, in their own words. Never retro-applied to past bookings. */
+  currentEmployerName?: string;
+  marketingConsent?: "granted" | "declined";
+};
+
+/**
+ * A person maintaining their own details.
+ *
+ * Everything here is about *who they are*, never about what they did. The email is
+ * deliberately absent — changing the sign-in address goes through
+ * `requestTraineeEmailChange` and needs the new address verified first. And updating the
+ * current employer changes only where they say they work now: past training stays
+ * attributed to whoever arranged it, because that is a historical fact about the training,
+ * not a field on the person.
+ *
+ * The consent version is stamped alongside the answer, so a recorded consent always says
+ * what was agreed to.
+ */
+export async function updateTraineeDetails(
+  pool: PoolLike,
+  input: { organisationId: string; traineeId: string; update: TraineeSelfUpdate; consentVersion: string },
+): Promise<{ traineeId: string; version: number }> {
+  const fullName = input.update.fullName?.trim();
+  if (fullName !== undefined && fullName === "") throw new TraineeInvitationError("Your name cannot be blank.");
+
+  return withAuthTransaction(pool, "write", async (db) => {
+    const current = await db.query<{ marketing_consent: string }>(
+      `SELECT marketing_consent FROM nzi_console.trainees
+       WHERE organisation_id=$1 AND trainee_id=$2 AND status='active' FOR UPDATE`,
+      [input.organisationId, input.traineeId]);
+    if (!current.rows[0]) throw new TraineeInvitationError("That trainee account is not active.");
+
+    const consent = input.update.marketingConsent;
+    const consentChanged = consent !== undefined && consent !== current.rows[0].marketing_consent;
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.trainees SET
+         full_name = coalesce($3, full_name),
+         phone = coalesce($4, phone),
+         current_employer_name = coalesce($5, current_employer_name),
+         -- Naming a new employer in free text clears the client link rather than leaving a
+         -- stale one: saying "I work at Acme now" must not keep them attached to the last
+         -- client we happened to know.
+         current_employer_client_id = CASE WHEN $5::text IS NULL THEN current_employer_client_id ELSE NULL END,
+         marketing_consent = coalesce($6, marketing_consent),
+         consent_version = CASE WHEN $7 THEN $8 ELSE consent_version END,
+         consent_recorded_at = CASE WHEN $7 THEN now() ELSE consent_recorded_at END,
+         version = version + 1, updated_at = now(), updated_by = 'trainee:self'
+       WHERE organisation_id=$1 AND trainee_id=$2
+       RETURNING version`,
+      [
+        input.organisationId, input.traineeId,
+        fullName ?? null, input.update.phone?.trim() ?? null,
+        input.update.currentEmployerName?.trim() ?? null,
+        consent ?? null, consentChanged, input.consentVersion,
+      ]);
+    return { traineeId: input.traineeId, version: saved.rows[0]!.version };
+  });
+}

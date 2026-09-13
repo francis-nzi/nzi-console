@@ -202,8 +202,18 @@ GRANT SELECT, INSERT, UPDATE ON nzi_console.trainee_sessions TO nzi_console_auth
 GRANT SELECT, INSERT, UPDATE ON nzi_console.trainee_invitations TO nzi_console_auth;
 GRANT SELECT, INSERT, UPDATE ON nzi_console.trainee_email_changes TO nzi_console_auth;
 GRANT SELECT ON nzi_console.trainees TO nzi_console_auth;
--- The auth role activates a trainee once they finish enrolling.
-GRANT UPDATE (status, personal_email, version, updated_by, updated_at) ON nzi_console.trainees TO nzi_console_auth;
+-- The auth role activates a trainee once they finish enrolling, and is also how the person
+-- maintains their own record: name, contact details, where they work now, and consent.
+-- The column list is the boundary — `status` aside, nothing here touches a training fact.
+-- A person can correct who they are; they cannot restate what they attended, who paid for
+-- it, or which employer arranged it. Those live on bookings and snapshots and are not
+-- reachable from this grant.
+GRANT UPDATE (
+  status, personal_email, full_name, phone,
+  current_employer_client_id, current_employer_name,
+  marketing_consent, consent_version, consent_recorded_at,
+  version, updated_by, updated_at
+) ON nzi_console.trainees TO nzi_console_auth;
 
 -- The app role revokes a person's sessions without being able to write the table itself —
 -- the same boundary-crossing shape as revoke_portal_user_sessions.

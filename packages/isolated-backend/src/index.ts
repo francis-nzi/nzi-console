@@ -39,6 +39,7 @@ export * from "./access";
 export * from "./clientContacts";
 export { mapClientContact, normaliseContactRoles } from "./clientContactRecords";
 export * from "./traineeAuth";
+export { getTraineePortal, type TraineePortalReadModel, type TraineeDetails, type TraineeTrainingEntry, type TraineeUpcomingSession } from "./traineePortal";
 export { createTrainingBooking, getTrainingRun, issueTrainingCertificates, jobHasTrainingRun, listTrainingRunsForJob, reviewTrainingRun, setTrainingAttendance, setTrainingEntitlementExpiry, setTrainingRunStage, type TrainingBookingRecord, type TrainingRunRecord } from "./trainingRuns";
 export { getJobAnnualMetrics, type JobAnnualMetricsReadModel } from "./intensityMetricRecords";
 export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMetrics, listClientIntensityValues, listJobIntensityValues, setClientIntensityMetric, setJobIntensityValue } from "./intensityMetrics";
