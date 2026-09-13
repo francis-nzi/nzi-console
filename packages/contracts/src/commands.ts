@@ -343,7 +343,7 @@ export type CommandInputMap = {
   /** Issue every certificate the policy allows on this run; consent-pending ones stay held. */
   "training.certificate.issue": { courseRunId: string; expectedRunVersion: number };
   /** Move a place's expiry. The CRM can, and the change is audited and marked as no longer the default. */
-  "training.entitlement.expiry.set": { entitlementId: string; expiresAt: string | null; reason: string };
+  "training.entitlement.expiry.set": { entitlementIds: string[]; expiresAt: string | null; reason: string };
   "training.run.stage.set": { courseRunId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   /** Freeze the register and the issued certificates into a content-addressed snapshot. */
   "training.run.review": { courseRunId: string; expectedVersion: number; note?: string };
@@ -642,7 +642,12 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   "training.entitlement.expiry.set": { key: "training.entitlement.expiry.set", label: "Move a training place's expiry", permission: "training.entitlement.manage", reasonRequired: true, transaction: "entitlement expiry + default flag cleared + audit + outbox + idempotency", auditAction: "training_entitlement_expiry_set", validate: (input, context) => {
     const issues = baseIssues(context, true);
-    required(issues, "entitlementId", input.entitlementId);
+    // A grant's places share one date, so the grant is what moves — one act, one audit
+    // event, all-or-nothing. Moving three of ten is how a strip starts disagreeing with
+    // itself.
+    if (!Array.isArray(input.entitlementIds) || input.entitlementIds.length === 0) {
+      issues.push({ field: "entitlementIds", code: "REQUIRED", message: "Name at least one place to move." });
+    }
     // Moving a date somebody is relying on is a deliberate act, so it carries a reason.
     required(issues, "reason", input.reason);
     if (input.expiresAt !== null && !isoDate(input.expiresAt)) issues.push({ field: "expiresAt", code: "INVALID", message: "Expiry must use YYYY-MM-DD, or be cleared." });

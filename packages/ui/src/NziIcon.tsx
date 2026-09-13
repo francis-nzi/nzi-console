@@ -21,6 +21,8 @@ export const nziIconKeys = [
   "solar", "heat-pump", "handshake", "policy", "bus", "recycle", "document", "leaf",
   // Readiness and general
   "shield", "target", "chart", "clock",
+  // Training: sessions, certificates and places
+  "calendar", "video", "award", "ticket", "person", "plus", "check", "alert", "download",
 ] as const;
 export type NziIconKey = (typeof nziIconKeys)[number];
 export const isNziIconKey = (value: string): value is NziIconKey => (nziIconKeys as readonly string[]).includes(value);
@@ -50,6 +52,15 @@ const PATHS: Record<NziIconKey, string> = {
   target: "M12 3v4M12 17v4M3 12h4M17 12h4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   clock: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM12 8v4l3 2",
+  calendar: "M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM4 10h16M8 3v4M16 3v4",
+  video: "M3 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7ZM15 10l6-3v10l-6-3",
+  award: "M12 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM9 12.5 7.5 21l4.5-2.5 4.5 2.5L15 12.5",
+  ticket: "M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8ZM13 6v12",
+  person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21a7 7 0 0 1 14 0",
+  plus: "M12 5v14M5 12h14",
+  check: "M4 12.5 9 18 20 6",
+  alert: "M12 4 2.5 20h19L12 4ZM12 10v4M12 17.5h.01",
+  download: "M12 4v11M8 11l4 4 4-4M4 20h16",
 };
 
 /**

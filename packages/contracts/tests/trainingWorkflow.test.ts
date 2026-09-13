@@ -124,7 +124,9 @@ test("the places summary counts each place once, and never double-counts a lapse
 test("a lapsed grant keeps its unused places visible and reads zero available", () => {
   // The rule both registers render: unused places stay in the strip, counted, while
   // "available" reads 0 — shown, never silently dropped or quietly zeroed.
+  let next = 0;
   const grant = (over: Partial<TrainingEntitlement> = {}) => ({
+    id: `ent-${++next}`,
     sourceJobId: "job-crp-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy — Level 1",
     status: "available" as TrainingEntitlement["status"], expiresAt: "2026-03-31", defaultFromJobEnd: true, ...over,
   });
@@ -141,13 +143,16 @@ test("a lapsed grant keeps its unused places visible and reads zero available", 
   assert.deepEqual(group!.places, ["consumed", "consumed", "consumed", "lapsed", "lapsed"]);
   assert.equal(group!.expiry.state, "lapsed");
   if (group!.expiry.state === "lapsed") assert.equal(group!.expiry.fromJobEnd, true);
+  // Only the unused places can have their date moved — a consumed place's expiry means
+  // nothing, and the command refuses it, so the register never offers to move one.
+  assert.deepEqual(group!.movableEntitlementIds, ["ent-4", "ent-5"]);
 });
 
 test("grants are grouped per granting job and course, each with its own expiry", () => {
   const groups = trainingPlaceGroups([
-    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "consumed", expiresAt: "2027-03-31" },
-    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "available", expiresAt: "2027-03-31" },
-    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Awareness webinar", status: "available", expiresAt: "2026-09-30" },
+    { id: "ent-1", sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "consumed", expiresAt: "2027-03-31" },
+    { id: "ent-2", sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "available", expiresAt: "2027-03-31" },
+    { id: "ent-3", sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Awareness webinar", status: "available", expiresAt: "2026-09-30" },
   ], TODAY);
   assert.equal(groups.length, 2, "two courses from one job are two grants");
   const webinar = groups.find((group) => group.courseLabel === "Awareness webinar")!;

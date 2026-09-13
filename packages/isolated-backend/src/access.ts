@@ -25,7 +25,10 @@ const site = (input: { siteId: string }): Subject => ({ kind: "site", id: input.
 const srsAssessment = (input: { assessmentId: string }): Subject => ({ kind: "srsAssessment", id: input.assessmentId });
 const trainingRun = (input: { courseRunId: string }): Subject => ({ kind: "trainingRun", id: input.courseRunId });
 const trainingSession = (input: { sessionId: string }): Subject => ({ kind: "trainingSession", id: input.sessionId });
-const trainingEntitlement = (input: { entitlementId: string }): Subject => ({ kind: "trainingEntitlement", id: input.entitlementId });
+// A grant's places all belong to one client, so the first resolves the own-clients scope.
+// The handler re-checks that every id really is from the same grant, so a caller cannot
+// smuggle another client's place in behind an id it does own.
+const trainingEntitlement = (input: { entitlementIds: string[] }): Subject => ({ kind: "trainingEntitlement", id: [...input.entitlementIds].sort()[0] ?? "" });
 
 /** Which record each command touches — exhaustive over CommandKey, so a new command must declare its subject. */
 const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } = {

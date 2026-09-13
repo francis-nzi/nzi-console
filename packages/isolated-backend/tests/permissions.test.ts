@@ -48,8 +48,14 @@ const identity = { clientId: "client-a", expectedVersion: 3, name: "Synthetic Cl
 describe("the permission matrix (NZC-022)", () => {
   it("defines the capability enum exactly as PERMISSION_MATRIX.md enumerates it", () => {
     const doc = readFileSync(resolve(here, "../../../docs/PERMISSION_MATRIX.md"), "utf8");
+    // Only the Matrix section enumerates capabilities. The preamble and the naming
+    // convention both mention dotted names that are not capabilities — a superseded
+    // spelling and a shape example — and scraping the whole file made the enum's
+    // ground truth depend on a hand-kept exclusion list.
+    const enumeration = /^## Matrix$([\s\S]*?)^## Naming convention$/m.exec(doc)?.[1];
+    assert.ok(enumeration, "PERMISSION_MATRIX.md must keep its Matrix section");
     // A capability may carry more than one dot — training.entitlement.manage does.
-    const documented = new Set([...doc.matchAll(/`([a-z]+(?:\.[a-z_]+)+)`/g)].map(([, name]) => name!).filter((name) => !["financials.edit", "domain.action"].includes(name)));
+    const documented = new Set([...enumeration.matchAll(/`([a-z]+(?:\.[a-z_]+)+)`/g)].map(([, name]) => name!));
     assert.deepEqual([...capabilities].sort(), [...documented].sort());
   });
 

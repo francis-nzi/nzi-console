@@ -223,38 +223,57 @@ export function issueTrainingCertificates(pool: PoolLike, input: CommandInputMap
   });
 }
 
-export type SetEntitlementExpiryResult = { entitlementId: string; expiresAt: string | null; wasDefault: boolean };
+export type SetEntitlementExpiryResult = { entitlementIds: string[]; expiresAt: string | null; wasDefault: boolean };
 
 /**
- * Move a place's expiry.
+ * Move the expiry on a grant's places.
  *
  * The default comes from the granting job's end date. Moving it is a commercial decision
  * somebody makes, so it needs a reason, it is audited, and the default flag is cleared —
  * which is what lets the client portal distinguish "expires then because the job ended"
  * from "expires then because we agreed it".
+ *
+ * The grant moves as a unit. Every place in it carries the same date, so a partial move
+ * would leave one strip quoting two expiries; the rows are locked in a stable order and
+ * the whole set moves or none of it does.
  */
 export function setTrainingEntitlementExpiry(pool: PoolLike, input: CommandInputMap["training.entitlement.expiry.set"], context: CommandContext): Promise<StoredOutcome<SetEntitlementExpiryResult>> {
   return runPostgresCommand(pool, "training.entitlement.expiry.set", input, context, async (db) => {
-    const current = await db.query<{ status: string; expires_at: Date | string | null; default_from_job_end: boolean }>(
-      `SELECT status, expires_at, default_from_job_end FROM nzi_console.training_entitlements
-       WHERE organisation_id=$1 AND entitlement_id=$2 FOR UPDATE`,
-      [context.organisationId, input.entitlementId]);
-    const entitlement = current.rows[0];
-    if (!entitlement) throw new CommandValidationError([{ field: "entitlementId", code: "NOT_FOUND", message: "That place does not exist." }]);
-    if (entitlement.status === "consumed") throw new CommandValidationError([{ field: "entitlementId", code: "PLACE_CONSUMED", message: "That place has been used — its expiry no longer applies." }]);
+    const ids = [...new Set(input.entitlementIds)].sort();
+    const current = await db.query<{ entitlement_id: string; source_job_id: string; source_client_id: string; status: string; expires_at: Date | string | null; default_from_job_end: boolean }>(
+      `SELECT entitlement_id, source_job_id, source_client_id, status, expires_at, default_from_job_end
+       FROM nzi_console.training_entitlements
+       WHERE organisation_id=$1 AND entitlement_id = ANY($2::text[])
+       ORDER BY entitlement_id FOR UPDATE`,
+      [context.organisationId, ids]);
+    if (current.rows.length !== ids.length) {
+      throw new CommandValidationError([{ field: "entitlementIds", code: "NOT_FOUND", message: "One of those places no longer exists — reload the register." }]);
+    }
+    // The authorization check resolved one place's client. Every place must come from the
+    // same grant, or a caller could move another client's date behind an id it does own.
+    if (new Set(current.rows.map((row) => `${row.source_client_id}::${row.source_job_id}`)).size > 1) {
+      throw new CommandValidationError([{ field: "entitlementIds", code: "MIXED_GRANT", message: "Those places come from different grants — move one grant at a time." }]);
+    }
+    const consumed = current.rows.filter((row) => row.status === "consumed");
+    if (consumed.length > 0) {
+      throw new CommandValidationError([{ field: "entitlementIds", code: "PLACE_CONSUMED", message: `${consumed.length} of those places ${consumed.length === 1 ? "has" : "have"} been used — expiry no longer applies to ${consumed.length === 1 ? "it" : "them"}.` }]);
+    }
 
-    const previous = entitlement.expires_at === null ? null : (entitlement.expires_at instanceof Date ? entitlement.expires_at.toISOString() : String(entitlement.expires_at));
+    const stamp = (value: Date | string | null) => value === null ? null : value instanceof Date ? value.toISOString() : String(value);
     await db.query(
       `UPDATE nzi_console.training_entitlements
        SET expires_at=$3, default_from_job_end=false, updated_at=now()
-       WHERE organisation_id=$1 AND entitlement_id=$2`,
-      [context.organisationId, input.entitlementId, input.expiresAt === null ? null : `${input.expiresAt}T23:59:59Z`]);
+       WHERE organisation_id=$1 AND entitlement_id = ANY($2::text[])`,
+      [context.organisationId, ids, input.expiresAt === null ? null : `${input.expiresAt}T23:59:59Z`]);
 
+    // The grant is what the user moved, so the grant is the audited entity; the places it
+    // covers are named in the payload rather than lost behind a count.
+    const first = current.rows[0]!;
     return {
-      data: { entitlementId: input.entitlementId, expiresAt: input.expiresAt, wasDefault: entitlement.default_from_job_end },
-      entityType: "training_entitlement", entityId: input.entitlementId, topic: "training.entitlement.expiry_set",
-      before: { expiresAt: previous, defaultFromJobEnd: entitlement.default_from_job_end },
-      after: { expiresAt: input.expiresAt, defaultFromJobEnd: false },
+      data: { entitlementIds: ids, expiresAt: input.expiresAt, wasDefault: current.rows.every((row) => row.default_from_job_end) },
+      entityType: "training_entitlement_grant", entityId: first.source_job_id, topic: "training.entitlement.expiry_set",
+      before: { entitlements: current.rows.map((row) => ({ entitlementId: row.entitlement_id, expiresAt: stamp(row.expires_at), defaultFromJobEnd: row.default_from_job_end })) },
+      after: { entitlementIds: ids, expiresAt: input.expiresAt, defaultFromJobEnd: false },
     };
   });
 }

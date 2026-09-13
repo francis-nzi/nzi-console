@@ -1036,3 +1036,67 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-btn.danger{color:var(--danger,#C23B22);border-color:#F0C4BC}
 @media (max-width:1200px){.nz-cw-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:420px){.nz-two,.nz-three{grid-template-columns:1fr}}
+
+/* ── Training module (job_training_v1) ───────────────────────────────────────
+   The run's own stage machine, its sessions, its register and the places strip.
+   The places dots use the neutral/status tokens, never --s1/--s2/--s3: those
+   carry GHG scope identity and a training place is not a scope. */
+.nz-run-stage{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px;margin-bottom:16px}
+.nz-run-step{display:grid;flex:1 1 96px;min-width:96px;gap:1px;padding:8px 6px;border-radius:8px;text-align:center;color:var(--t2);font-size:11.5px;font-weight:600;white-space:nowrap}
+.nz-run-step>b{color:var(--t3);font-size:9px;font-weight:700}
+.nz-run-step.done{color:var(--pine)}.nz-run-step.done>b{color:var(--emerald)}
+.nz-run-step.now{background:var(--emerald);color:#fff}.nz-run-step.now>b{color:var(--mint)}
+.nz-run-stage .sp{flex:0 0 8px}
+.nz-run-kv{display:flex;flex-wrap:wrap;gap:18px 30px}
+.nz-run-fact .k{color:var(--t2);font-size:11px}
+.nz-run-fact .v{margin-top:1px;font-size:14px;font-weight:600}
+.nz-run-fact .v.big{font-size:20px;font-weight:800}
+.nz-run-fact .v small{color:var(--t2);font-size:11px;font-weight:500}
+.nz-run-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
+
+.nz-session{display:flex;align-items:center;gap:13px;padding:11px 16px;border-bottom:1px solid var(--line2)}
+.nz-session:last-child{border-bottom:0}
+.nz-session-date{flex:0 0 auto;width:52px;text-align:center}
+.nz-session-date>b{display:block;font-size:19px;font-weight:800;line-height:1}
+.nz-session-date>span{color:var(--t2);font-size:10px;font-weight:700;text-transform:uppercase}
+.nz-session-main{flex:1;min-width:0}
+.nz-session-main .nm{font-weight:600}
+.nz-session-main .sub{margin-top:2px}
+.nz-session-att{flex:0 0 auto;text-align:right}
+.nz-session-att>b{font-weight:700;font-variant-numeric:tabular-nums}
+.nz-session-att>span{display:block;color:var(--t2);font-size:10.5px}
+
+.nz-att{display:inline-flex;align-items:center;gap:8px}
+.nz-att>i{display:block;width:64px;height:9px;overflow:hidden;border-radius:20px;background:var(--paper);border:1px solid var(--line)}
+.nz-att>i>span{display:block;height:100%;border-radius:20px;background:var(--emerald)}
+.nz-att>b{width:38px;font-size:12px;font-weight:600}
+
+.nz-ent{display:flex;align-items:center;gap:14px;padding:13px 16px;border-bottom:1px solid var(--line2)}
+.nz-ent:last-child{border-bottom:0}
+.nz-ent-icon{display:grid;width:36px;height:36px;flex:0 0 auto;place-items:center;border-radius:9px;background:var(--mint);color:var(--pine)}
+.nz-ent-main{flex:1;min-width:0}
+.nz-ent-main .nm{font-weight:600}
+.nz-ent-rem{flex:0 0 auto;text-align:right}
+.nz-ent-rem .v{font-size:20px;font-weight:800}
+.nz-ent-rem .l{color:var(--t2);font-size:10.5px}
+.nz-places{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.nz-dot{display:inline-block;width:15px;height:15px;border:1px solid var(--line);border-radius:4px;background:var(--paper)}
+.nz-dot.used{background:var(--emerald);border-color:var(--emerald)}
+.nz-dot.resv{background:var(--amber);border-color:var(--amber)}
+/* A lapsed place is still a place: struck through and muted, counted in the strip
+   but excluded from what is available. Shown, never silently dropped. */
+.nz-dot.lapsed{position:relative;background:var(--paper);border-style:dashed;border-color:#C9D2CE;opacity:.72}
+.nz-dot.lapsed::after{position:absolute;top:6px;left:1px;width:11px;height:1px;background:#93A29C;content:""}
+.nz-place-legend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line2)}
+.nz-place-legend .nz-dot{vertical-align:-3px;width:11px;height:11px}
+.nz-place-legend .nz-dot.lapsed::after{top:4px;width:7px}
+.nz-place-move{display:grid;grid-template-columns:minmax(140px,auto) minmax(180px,1fr) auto;gap:10px;align-items:end;margin-top:10px}
+.nz-place-move .nz-fl{margin:0}
+.nz-expiry{font-weight:600}
+.nz-expiry.ok{color:var(--pine)}
+.nz-expiry.warn{color:#9A6B00}
+.nz-expiry.lapsed{color:var(--danger)}
+@media (max-width:760px){
+  .nz-place-move{grid-template-columns:1fr}
+  .nz-ent{align-items:flex-start;flex-wrap:wrap}
+}

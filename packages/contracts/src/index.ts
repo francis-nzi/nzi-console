@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "portal" | "sales" | "platform" | "clientWorkspace";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -31,6 +31,9 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   lca: { key: "lca", validate: (value) => rows(value, "assessments"), isEmpty: (value) => record(value) && (value.assessments as unknown[]).length === 0 },
   lcaComponents: { key: "lcaComponents", validate: (value) => rows(value, "components") && rows(value, "categories"), isEmpty: () => false },
   lcaReport: { key: "lcaReport", validate: (value) => record(value) && ("report" in value), isEmpty: () => false },
+  // Not empty at zero runs: a training job can hold places before anything is scheduled,
+  // and the module says so in its own words rather than showing a bare empty screen.
+  training: { key: "training", validate: (value) => rows(value, "runs"), isEmpty: () => false },
   portal: { key: "portal", validate: record, isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.

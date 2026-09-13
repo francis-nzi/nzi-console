@@ -114,6 +114,15 @@ export type TrainingCourseSession = {
   sessionHours: number | null;
   deliveryMode: TrainingDeliveryMode | null;
   status: TrainingSessionStatus;
+  /**
+   * Where it happens. A run sets a default, and a session may override it — a five-day
+   * course that moves online for one day is ordinary, and the register has to say so
+   * rather than quietly repeating the run's venue for every session.
+   */
+  venueName?: string | null;
+  venueAddress?: string | null;
+  onlineMeetingUrl?: string | null;
+  onlinePasscode?: string | null;
 };
 
 export type TrainingBooking = {

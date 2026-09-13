@@ -88,10 +88,14 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 
 ## Naming convention
 
-Lowercase `domain.action`. The enumerated list above is exhaustive; adding a capability
-means adding a row here first, then the enum in `@nzi/contracts`. Legacy/ad-hoc strings
-found in review map as: `financials.edit` → `finance.manage`; any `*.manage` invented
-outside this list must be reconciled to a row here or added as one.
+Lowercase, dot-separated: `domain.action`, or `domain.subdomain.action` where a domain has
+sub-areas (e.g. `training.entitlement.manage`). Each segment is `[a-z_]+`; **two or more
+segments are allowed** — the DB CHECK constraint was widened from its original single-dot
+pattern (migration `0073`) to permit this, so do not narrow it back to `^[a-z]+\.[a-z_]+$`.
+The enumerated list above is exhaustive; adding a capability means adding a row here first,
+then the enum in `@nzi/contracts`. Legacy/ad-hoc strings found in review map as:
+`financials.edit` → `finance.manage`; any `*.manage` invented outside this list must be
+reconciled to a row here or added as one.
 
 ## Implementation notes
 

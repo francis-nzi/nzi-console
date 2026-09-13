@@ -169,9 +169,15 @@ export type TrainingPlaceGroup = {
   places: TrainingPlaceState[];
   /** Places that reached expiry without being used. Shown, never dropped. */
   unusedAtExpiry: number;
+  /**
+   * The places whose expiry can still move — everything the grant covers except those
+   * already used. A consumed place's date no longer means anything, and the command
+   * refuses it, so the register never offers to move one.
+   */
+  movableEntitlementIds: string[];
 };
 
-type GroupableEntitlement = Pick<TrainingEntitlement, "status" | "expiresAt"> & {
+type GroupableEntitlement = Pick<TrainingEntitlement, "id" | "status" | "expiresAt"> & {
   sourceJobId: string;
   sourceJobNumber: string;
   courseLabel?: string;
@@ -199,6 +205,7 @@ export function trainingPlaceGroups(entitlements: readonly GroupableEntitlement[
       expiry: trainingPlaceExpiry(first, today),
       places: states.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b)),
       unusedAtExpiry: summary.lapsed,
+      movableEntitlementIds: places.filter((place) => place.status !== "consumed").map((place) => place.id),
     };
   });
 }

@@ -7,7 +7,7 @@
 //
 //   NEXT_PUBLIC_FEATURE_JOB_MODULES=job-module-lca
 
-export type JobModuleFlag = "job-module-lca";
+export type JobModuleFlag = "job-module-lca" | "job-module-training";
 
 const enabledModules = (): Set<string> =>
   new Set(
