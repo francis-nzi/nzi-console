@@ -1100,3 +1100,61 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
   .nz-place-move{grid-template-columns:1fr}
   .nz-ent{align-items:flex-start;flex-wrap:wrap}
 }
+
+/* ── Client portal · training (portal_training_v1) ───────────────────────────
+   The employer's read-only view. It reuses the places strip from the staff
+   module — same arithmetic, same dots — and adds the client's own wording,
+   the headline stat band, and the skills grid. */
+.nz-pt-section{display:flex;align-items:center;gap:8px;margin:26px 0 12px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t2)}
+.nz-pt-section:first-child{margin-top:0}
+.nz-pt-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.nz-pt-stat{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.nz-pt-stat .v{font-size:26px;font-weight:800;line-height:1.05}
+.nz-pt-stat .l{margin-top:3px;color:var(--t2);font-size:11px}
+.nz-pt-stat.good{border-color:#BEE7D3;background:var(--mint)}
+.nz-pt-stat.good .v{color:var(--pine)}
+.nz-pt-stat.warn{border-color:#EAD6AC;background:#FBF1DE}
+.nz-pt-stat.warn .v{color:#9A6B00}
+.nz-pt-places{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.nz-pt-places .nz-ent.attn{background:#FDF8EC;box-shadow:inset 3px 0 0 var(--amber)}
+.nz-pt-expiry{margin-top:6px;font-size:12px}
+.nz-pt-expiry .nz-expiry{display:inline-flex;align-items:center;gap:5px}
+.nz-ent-rem .v.good{color:var(--pine)}
+.nz-pt-note{margin:9px 2px 0}
+.nz-pt-cert{display:inline-flex;align-items:center;gap:5px;color:var(--pine);font-size:12px;font-weight:600;text-decoration:none}
+.nz-pt-cert:hover{text-decoration:underline}
+.nz-pt-cert small{color:var(--t2);font-weight:400}
+.nz-pt-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line2);background:var(--paper)}
+.nz-pt-assured{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:1px solid #BEE7D3;border-radius:20px;background:var(--mint);color:var(--pine);font-size:10.5px;font-weight:700}
+.nz-pt-matrix th[scope="row"]{font-weight:600;text-align:left}
+.nz-pt-matrix td{text-align:center}
+.nz-chk{display:inline-grid;width:22px;height:22px;place-items:center;border-radius:50%;background:var(--mint);color:var(--pine)}
+.nz-chk.due{background:#FBF1DE;color:#9A6B00}
+.nz-chk.none{background:none;color:var(--t3)}
+@media (max-width:760px){
+  .nz-pt-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ── Public certificate verification ─────────────────────────────────────────
+   The one page a stranger can reach. Deliberately plain: one card, one claim,
+   and a standing that is legible before any of the detail is read. */
+.nz-verify-shell{display:grid;min-height:100vh;place-items:center;gap:20px;padding:40px 20px;background:linear-gradient(180deg,#EEF5F1,#F7F9F8 55%,#fff);align-content:center}
+.nz-verify-brand{display:flex;align-items:center;gap:11px}
+.nz-verify-brand>span{display:grid;width:36px;height:36px;place-items:center;border-radius:10px;background:var(--midnight);color:#fff;font-weight:800}
+.nz-verify-brand b{display:block;font-size:14px}
+.nz-verify-brand small{color:var(--t2);font-size:10.5px}
+.nz-verify-card{width:min(520px,100%);padding:30px 32px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 18px 45px rgba(11,27,43,.08)}
+.nz-verify-card h1{margin:10px 0 4px;font-size:26px;letter-spacing:-.035em}
+.nz-verify-card.valid{border-top:4px solid var(--emerald)}
+.nz-verify-card.revoked{border-top:4px solid var(--danger)}
+.nz-verify-card.unknown,.nz-verify-card.unavailable{border-top:4px solid var(--line)}
+.nz-verify-card.unknown h1,.nz-verify-card.unavailable h1{margin-top:0}
+.nz-verify-card>p{margin:0;color:var(--t2);font-size:13px;line-height:1.6}
+.nz-verify-badge{display:inline-block;padding:4px 10px;border-radius:20px;background:var(--mint);color:var(--pine);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nz-verify-card.revoked .nz-verify-badge{background:var(--danger-bg);color:var(--danger)}
+.nz-verify-course{margin:0 0 18px!important;color:var(--t1)!important;font-size:15px;font-weight:600}
+.nz-verify-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px;margin:0 0 18px;padding:18px 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+.nz-verify-facts dt{color:var(--t2);font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.nz-verify-facts dd{margin:3px 0 0;font-size:13.5px;font-weight:600}
+.nz-verify-note{color:var(--t2);font-size:11.5px!important;line-height:1.6}
+@media (max-width:480px){.nz-verify-facts{grid-template-columns:1fr}}

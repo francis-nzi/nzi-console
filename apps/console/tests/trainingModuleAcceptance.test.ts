@@ -101,8 +101,8 @@ describe("training module", () => {
       { id: "s2", courseRunId: "r1", sessionTitle: null, sessionDate: "2026-09-02", startTime: null, endTime: null, sessionHours: 3, deliveryMode: null, status: "delivered" as const },
     ];
     const booking = (id: string, consent: "granted" | "unknown") => ({
-      id, courseRunId: "r1", clientId: "c1", participantType: "client_staff" as const, bookingSource: "consultant" as const,
-      personName: id, personEmail: null, billingStatus: "included" as const, attendanceStatus: "booked" as const,
+      id, courseRunId: "r1", clientId: "c1", participantType: "client_employee" as const, bookingSource: "entitlement" as const,
+      personName: id, personEmail: null, billingStatus: "free_place" as const, attendanceStatus: "booked" as const,
       consentStatus: consent, entitlementId: null,
     });
     const attendance = [

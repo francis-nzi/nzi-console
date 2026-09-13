@@ -314,6 +314,55 @@ CREATE UNIQUE INDEX training_certificates_verify_code_idx ON nzi_console.trainin
 COMMENT ON COLUMN nzi_console.training_certificates.verify_code IS
   'The public verification id. Published on the certificate and its QR; the verify page shows name, course, date, issuer and validity — never contact details. Revoking the certificate makes the page say so rather than removing it.';
 
+-- ── Public verification, bounded by construction ─────────────────────────────────────
+--
+-- Verification is the one read with no session behind it: a future employer holding a
+-- certificate must be able to confirm it without an account, and therefore without a
+-- tenant context. That is exactly why it goes through a SECURITY DEFINER function rather
+-- than a query the app could widen later — the function IS the contract for what public
+-- verification can ever return.
+--
+-- It returns the person's name, the course, the date, the issuer and the standing. It
+-- cannot return an email, an employer, a person's other training, or anything about the
+-- client who paid. A wrong code returns no row, not a hint about which part was wrong.
+
+CREATE FUNCTION nzi_console.verify_training_certificate(p_verify_code text)
+RETURNS TABLE (
+  person_name text, course_name text, completed_on date, attendance_pct numeric,
+  certificate_number text, issued_on date, status text, revoked_on date, issuer text
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = nzi_console, pg_temp AS $$
+  SELECT b.person_name,
+         coalesce(p.product_name, r.run_name, 'Training'),
+         (SELECT max(s.session_date) FROM nzi_console.training_course_sessions s
+           WHERE (s.organisation_id, s.course_run_id) = (r.organisation_id, r.course_run_id) AND s.status = 'delivered'),
+         c.attendance_pct,
+         c.certificate_number,
+         c.issued_at::date,
+         c.status,
+         c.revoked_at::date,
+         'Net Zero International'
+  FROM nzi_console.training_certificates c
+  JOIN nzi_console.training_bookings b ON (b.organisation_id, b.booking_id) = (c.organisation_id, c.booking_id)
+  JOIN nzi_console.training_course_runs r ON (r.organisation_id, r.course_run_id) = (c.organisation_id, c.course_run_id)
+  LEFT JOIN nzi_console.training_products p ON (p.organisation_id, p.training_product_id) = (r.organisation_id, r.training_product_id)
+  WHERE c.verify_code = p_verify_code;
+$$;
+GRANT EXECUTE ON FUNCTION nzi_console.verify_training_certificate(text) TO nzi_console_app;
+COMMENT ON FUNCTION nzi_console.verify_training_certificate(text) IS
+  'Public certificate verification: the only tenant-crossing read in the training spine, and deliberately a function so its return list is the whole contract. Name, course, date, attendance, issuer and standing — never contact details, employer, or a person''s other training.';
+
+-- ── How long a certificate stands for ────────────────────────────────────────────────
+--
+-- Some training expires and some does not, and only the product knows which. Left NULL,
+-- a certificate is treated as standing indefinitely — so the client portal's skills view
+-- can say "holds this" without inventing a refresher date nobody agreed. A refresher is
+-- only ever shown where a validity was actually set.
+
+ALTER TABLE nzi_console.training_products
+  ADD COLUMN certificate_valid_months integer CHECK (certificate_valid_months IS NULL OR certificate_valid_months > 0);
+COMMENT ON COLUMN nzi_console.training_products.certificate_valid_months IS
+  'How long this training stands for, in months. NULL means it does not lapse — never a default of "one year", which would put a refresher date on every record whether or not one was agreed.';
+
 COMMENT ON TABLE nzi_console.trainees IS
   'A person who has trained, independent of any employer (the load-bearing decision). Personal email is the changeable login identity; history aggregates per person. Employer attribution lives on each booking and is never rewritten.';
 COMMENT ON TABLE nzi_console.training_run_snapshots IS

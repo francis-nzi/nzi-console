@@ -392,6 +392,27 @@ describe("isolated Postgres migrations", () => {
     assert.match(traineeSpineMigration, /never contact details/i, "the verify page shows validity, not personal data");
   });
 
+  it("bounds public verification in the function rather than in its callers (0072)", () => {
+    // Verification is the one tenant-crossing read in the spine, so what it may return is
+    // fixed by the function's signature — not by whichever route happens to call it.
+    assert.match(traineeSpineMigration, /CREATE FUNCTION nzi_console\.verify_training_certificate\(p_verify_code text\)/);
+    assert.match(traineeSpineMigration, /verify_training_certificate[\s\S]*?SECURITY DEFINER SET search_path = nzi_console, pg_temp/);
+    const returns = /RETURNS TABLE \(([\s\S]*?)\) LANGUAGE sql/.exec(traineeSpineMigration)?.[1] ?? "";
+    assert.ok(returns.includes("person_name") && returns.includes("course_name"), "it returns the training");
+    for (const field of ["email", "client_id", "employer", "phone", "address", "trainee_id"]) {
+      assert.ok(!returns.includes(field), `verification must not return ${field}`);
+    }
+    // Only the app role may call it — it is not open to the worker or the auth role.
+    assert.match(traineeSpineMigration, /GRANT EXECUTE ON FUNCTION nzi_console\.verify_training_certificate\(text\) TO nzi_console_app;/);
+  });
+
+  it("lets a course say how long it stands for, and defaults to not lapsing (0072)", () => {
+    assert.match(traineeSpineMigration, /ADD COLUMN certificate_valid_months integer CHECK \(certificate_valid_months IS NULL OR certificate_valid_months > 0\)/);
+    // No DEFAULT: a renewal date nobody agreed is worse than no renewal date.
+    assert.doesNotMatch(traineeSpineMigration, /certificate_valid_months integer[^;]*DEFAULT/);
+    assert.match(traineeSpineMigration, /NULL means it does not lapse/);
+  });
+
   it("settles the run stage machine on one vocabulary (0072)", () => {
     for (const stage of ["planned", "scheduled", "in_delivery", "delivered", "certified", "reviewed"]) {
       assert.ok(traineeSpineMigration.includes(`'${stage}'`), stage);

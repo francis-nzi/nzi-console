@@ -9,6 +9,8 @@ export * from "./portalTerms";
 export * from "./portalAnalytics";
 export * from "./portalActions";
 export { getPortalClientIntensity, type PortalIntensityReadModel, type PortalIntensityYear } from "./portalIntensity";
+export { getPortalClientTraining, type PortalTrainingReadModel, type PortalTrainingRecord, type PortalTrainingSkillCell } from "./portalTraining";
+export { verifyTrainingCertificate, type CertificateVerification } from "./certificateVerification";
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";
