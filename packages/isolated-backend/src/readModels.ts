@@ -2,10 +2,11 @@ import type { Queryable } from "./postgres";
 import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
+import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { dateOnly } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 export { dateOnly } from "./dates";
@@ -172,65 +173,43 @@ export type ClientYearFigure = {
   /** null when the snapshot was issued before stamping, or the stamp was backfilled — never a gate. */
   provenance: ProvenanceSignature | null;
   intensity: { state: "resolved" | "unavailable"; metric: string | null; unit: string; value: number | null; note: string | null };
-  /** Every intensity basis this year's own data supports — an absent denominator says so rather than borrowing another basis. */
-  bases: Record<IntensityBasisKey, ClientIntensityBasis>;
+  /**
+   * The denominator for each of the client's defined metrics in this year. A metric with
+   * nothing recorded says so — it is never borrowed from another year or another metric.
+   * The intensity itself is computed by `resolveIntensity` from this and the definition,
+   * so every surface reads one computation.
+   */
+  denominators: Record<string, ClientYearDenominator>;
   issuedAt: string;
   issuedBy: string;
 };
 
-/** The three normalisation bases the client workspace offers. One term, one meaning. */
-export type IntensityBasisKey = "turnover" | "employee" | "floor-area";
-export type ClientIntensityBasis =
-  | { state: "resolved"; value: number; unit: string; denominator: number; denominatorLabel: string; denominatorUnit: string; source: "job-business-metric" | "site-floor-area" }
-  | { state: "unavailable"; reason: string };
-
-const BASIS_LABEL: Record<IntensityBasisKey, string> = { turnover: "Turnover", employee: "Employees", "floor-area": "Floor area" };
+/** How a year's denominator for one metric was arrived at — or why there is none. */
+export type ClientYearDenominator = { value: number | null; source: "recorded" | "site-floor-area" | "none"; reason?: string };
 
 /**
- * One reporting year's intensity on every basis. Turnover and employees come from the
- * business metric the job recorded; floor area is summed from the client's in-service
- * sites for that year's period (effective-dated), so it resolves even when the job chose
- * another basis. A basis without a denominator reads unavailable **with its reason** — it
- * is never estimated from a different denominator.
+ * The denominators for one reporting year, one per metric the client has defined.
+ *
+ * A recorded value wins, including one that deliberately overrides a resolved figure. A
+ * site-derived metric falls back to the sum of the client's in-service sites for that
+ * period (NZC-071), which refuses a partial answer rather than under-counting the
+ * boundary. Anything else is simply not recorded, and says so.
  */
-export function resolveIntensityBases(input: {
-  totalTco2e: number | null;
-  intensityTarget: IntensityTargetReadModel | null | undefined;
+export function resolveYearDenominators(input: {
+  definitions: readonly IntensityMetricDefinition[];
+  values: readonly IntensityMetricValue[];
+  reportingYear: number;
   sites: readonly ClientSiteReadModel[];
   period: ReportingPeriod | null;
-}): Record<IntensityBasisKey, ClientIntensityBasis> {
-  const { totalTco2e, intensityTarget, sites, period } = input;
-  const keys: IntensityBasisKey[] = ["turnover", "employee", "floor-area"];
-  if (totalTco2e === null) {
-    return Object.fromEntries(keys.map((key) => [key, { state: "unavailable", reason: "No assured total is resolved for this year, so no intensity can be formed." }])) as Record<IntensityBasisKey, ClientIntensityBasis>;
+}): Record<string, ClientYearDenominator> {
+  const out: Record<string, ClientYearDenominator> = {};
+  for (const definition of input.definitions) {
+    const recorded = input.values.find((value) =>
+      value.metricKey === definition.key && value.reportingYear === input.reportingYear && value.periodKey === "year");
+    const { value, source, reason } = denominatorFor({ definition, recorded, sites: input.sites, period: input.period });
+    out[definition.key] = reason === undefined ? { value, source } : { value, source, reason };
   }
-  const jobDenominator = (key: IntensityBasisKey) =>
-    intensityTarget && intensityTarget.metric === key && intensityTarget.reportingDenominator !== null && intensityTarget.reportingDenominator > 0
-      ? intensityTarget : null;
-
-  const businessBasis = (key: "turnover" | "employee", fallbackUnit: string): ClientIntensityBasis => {
-    const target = jobDenominator(key);
-    if (!target) return { state: "unavailable", reason: `This year's job did not record ${key === "turnover" ? "turnover" : "employees"} as a business metric, so there is no denominator for this basis.` };
-    const denominatorUnit = target.denominatorUnit?.trim() || fallbackUnit;
-    return { state: "resolved", value: totalTco2e / target.reportingDenominator!, unit: `tCO₂e / ${denominatorUnit}`, denominator: target.reportingDenominator!, denominatorLabel: BASIS_LABEL[key], denominatorUnit, source: "job-business-metric" };
-  };
-
-  // Floor area: the job's frozen denominator if it recorded one, else the client's
-  // effective-dated sites for the period. Expressed in kg to keep the figure readable.
-  const floorArea = ((): ClientIntensityBasis => {
-    type Resolved = { m2: number; source: "job-business-metric" | "site-floor-area" };
-    const target = jobDenominator("floor-area");
-    const squareMetres: Resolved | { reason: string } = target
-      ? { m2: target.reportingDenominator!, source: "job-business-metric" }
-      : period
-        ? (() => { const resolved = resolveFloorAreaDenominator(sites, period); return resolved.state === "resolved" ? { m2: resolved.floorAreaM2, source: "site-floor-area" as const } : { reason: resolved.reason }; })()
-        : { reason: "This year has no reporting period on record, so the in-service site boundary cannot be resolved." };
-    if (!("m2" in squareMetres)) return { state: "unavailable", reason: squareMetres.reason };
-    if (squareMetres.m2 <= 0) return { state: "unavailable", reason: "The in-service sites for this year sum to no floor area." };
-    return { state: "resolved", value: (totalTco2e * 1000) / squareMetres.m2, unit: "kgCO₂e / m²", denominator: squareMetres.m2, denominatorLabel: BASIS_LABEL["floor-area"], denominatorUnit: "m²", source: squareMetres.source };
-  })();
-
-  return { turnover: businessBasis("turnover", "£m"), employee: businessBasis("employee", "FTE"), "floor-area": floorArea };
+  return out;
 }
 export type ClientWorkspaceReadModel = {
   client: ClientScreenReadModel;
@@ -258,6 +237,8 @@ export type ClientWorkspaceReadModel = {
    * rendering an empty assessment.
    */
   srs: { framework: SrsFramework | null; assessments: SrsAssessment[] };
+  /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
+  intensityMetrics: IntensityMetricDefinition[];
 };
 
 const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
@@ -269,7 +250,7 @@ const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id
 export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
   const [client] = await listClients(db, clientId);
   if (!client) return null;
-  const [sites, snapshots, periods, contacts, reports, messages, files, srsFramework, srsAssessments] = await Promise.all([
+  const [sites, snapshots, periods, contacts, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues] = await Promise.all([
     listClientSites(db, clientId),
     db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
     db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
@@ -279,6 +260,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     listClientFiles(db, clientId),
     getSrsFramework(db),
     listSrsAssessments(db, clientId),
+    listClientIntensityMetrics(db, clientId),
+    listClientIntensityValues(db, clientId),
   ]);
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
@@ -314,7 +297,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
         state: figures.intensity.state, metric: snapshot.intensityTarget?.metric ?? null,
         unit: figures.intensity.unit, value: figures.intensity.value, note: figures.intensity.note,
       },
-      bases: resolveIntensityBases({ totalTco2e: figures.latest.value, intensityTarget: snapshot.intensityTarget, sites, period }),
+      denominators: resolveYearDenominators({ definitions: intensityMetrics, values: intensityValues, reportingYear: snapshot.reportingYear, sites, period }),
       issuedAt: snapshot.createdAt, issuedBy: snapshot.createdBy,
     };
   });
@@ -334,6 +317,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     messages,
     files,
     srs: { framework: srsFramework, assessments: srsAssessments },
+    intensityMetrics,
   };
 }
 

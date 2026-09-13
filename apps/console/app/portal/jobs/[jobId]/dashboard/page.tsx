@@ -19,7 +19,10 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
           <h1>Emissions dashboard</h1>
           <p>Your headline figures, straight from your latest assured report.</p>
         </div>
-        <Link className="nz-btn" href={`/portal/jobs/${jobId}`}>Open the full report →</Link>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="nz-btn" href="/portal/intensity">Emissions intensity</Link>
+          <Link className="nz-btn" href={`/portal/jobs/${jobId}`}>Open the full report →</Link>
+        </div>
       </div>
       <PortalDashboard jobId={jobId} />
       {portalFeatureEnabled("portal-actions") ? <PortalActionTrackerPanel jobId={jobId} /> : null}

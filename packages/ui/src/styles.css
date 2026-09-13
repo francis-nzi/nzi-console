@@ -824,6 +824,29 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-cw-vhead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .nz-cw-vhead h2{margin:2px 0 0;font-size:19px}
 .nz-cw-vsub{font-size:12.5px;color:var(--t2);margin:0;max-width:720px}
+/* Intensity metrics — the manage-metrics rows, the icon picker, and the job capture. */
+.nz-metric-badge{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--paper);border:1px solid var(--line);color:var(--t2);flex:0 0 auto;cursor:pointer}
+button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
+.nz-metric-row{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line2)}
+.nz-metric-row:last-of-type{border-bottom:0}
+.nz-metric-row.off{opacity:.6}
+.nz-metric-meta{flex:1;min-width:0;display:grid;gap:6px}
+.nz-metric-name{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;flex-wrap:wrap}
+.nz-metric-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nz-metric-actions{display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.nz-inp.sm,.nz-sel.sm{font-size:12px;padding:4px 8px;height:auto}
+.nz-icon-pick{display:flex;flex-wrap:wrap;gap:6px}
+.nz-icon-opt{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--t2);cursor:pointer}
+.nz-icon-opt.on{border-color:var(--pine);background:var(--mint);color:var(--pine)}
+.nz-icon-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nz-editlink.nz-danger{color:var(--danger)}
+.nz-basis-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--line2);font-size:12.5px}
+.nz-basis-strip b{font-size:15px}
+.nz-basis-strip .sp{flex:1}
+.nz-metric-table td{vertical-align:middle}
+.nz-metric-table .nz-auto-val{font-weight:600}
+.nz-time-row{background:repeating-linear-gradient(45deg,var(--paper),var(--paper) 6px,transparent 6px,transparent 12px);color:var(--t3)}
+
 /* SRS readiness — the hero, the roadmap rows, the maturity chips and the ladder.
    Maturity uses its own sequential ramp; the scope palette stays reserved for scopes. */
 .nz-srs-hero{display:flex;gap:22px;flex-wrap:wrap;align-items:center;padding:18px 22px;margin-bottom:16px}

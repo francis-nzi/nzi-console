@@ -10,6 +10,19 @@ commercial, §10 CRM).
 **Tier:** `Go-live` = parity- or trust-critical, blocks go-live · `Should` = expected by
 users migrating from the live system · `Stage 2` = deferrable.
 
+## Build status snapshot (12 Sep 2026)
+- **Merged to `main` / live:** provenance (#144), site effective-dating + floor area,
+  contact roles + logo + year-end, permission matrix, target model (#145), breadcrumbs,
+  the shell rebuild Phase 1 (#146/#147) **and Phase 2** (`b696421`), and #143 (NZC-069 held).
+- **PR open, review-gated (migration):** **SRS Readiness — PR #149** (migration 0070; not
+  yet applied to staging).
+- **In flight next (both PR-gated, carry migrations):** intensity metrics, then the
+  action-lever library.
+- **Designed + briefed, impl to build:** report (R-track) — prototype `report_v1.html` +
+  `_handoff_REPORT_brief.md`; the **print-safe icon-set decision is settled** (curated inline
+  SVG, in DESIGN_CONVENTIONS §10) which also unblocks the intensity/action report icons.
+- **Held:** commercial ledger (NZC-069 held).
+
 Prototype it reconciles against: Client Workspace artifact (v5).
 
 ---
@@ -54,7 +67,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 |---|---|---|---|
 | Baseline record + re-baseline/recalculate governed drawer + history timeline | `MODEL_FIDELITY_BASELINE.md`, `client_baselines` | Built | — |
 | Significance threshold on recalculation (NZC-068) | decision | Built (design) | — |
-| **Forward target model**: net-zero year, interim year, per-scope target year+pct, benchmark year — feeds the pathway | `clients` target fields | Prototype ✓ · impl To build | Go-live |
+| **Forward target model**: net-zero year, interim year, per-scope target year+pct, benchmark year — feeds the pathway | `client_targets` (0069), versioned | Prototype ✓ · impl PR #145 | Go-live |
 
 ## E. Carbon Analytics
 
@@ -83,9 +96,9 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
 | Action tracker (levers with progress) | portal `actions` A2-lite | Built (qualitative) | — |
-| **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | To build | Go-live |
-| Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | To build | Should |
-| Spheres-of-Influence framework mapping | framework | To build | Should |
+| **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | Prototype ✓ · briefed (`_handoff_ACTION_LEVER_LIBRARY_brief.md`) | Go-live |
+| Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | Prototype ✓ · briefed | Should |
+| Spheres-of-Influence framework mapping | framework | Prototype ✓ (grouped by sphere) | Should |
 | Action status / owner / target dates | `report_actions` | Partial | Should |
 | Quantified emissions projection from actions | (live has none) | To build | Stage 2 |
 
@@ -94,9 +107,9 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
 | Readiness summary (overall %, governance, metrics & targets) | `srs_readiness` | Built (illustrative) | — |
-| **Full SRS readiness questionnaire per client** | `srs_readiness_routes` (0065) | To build | Should |
-| Framework definition driving the questionnaire | Admin → SRS readiness | To build | Should |
-| Portal surfacing of readiness (M6.4) | portal `srs-readiness` | To build | Stage 2 |
+| **SRS Readiness redesign** — assessment + demo graphics | `srs_readiness_routes` (0065) | Review + prototype + brief · **impl PR #149 (open; migration 0070; awaiting review + apply to staging)** | Should (commercial) |
+| Framework definition (standards/pillars/requirements/weights), Admin-versioned | Admin → SRS readiness | Prototype ✓ · briefed | Should |
+| Portal surfacing of readiness (read-only, M6.4) | portal `srs-readiness` | Briefed | Stage 2 |
 
 ## I. CRM — Tasks / Notes / Communications / Timeline
 
@@ -175,7 +188,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 4. Contact roles (B)
 5. Permission gating (cross-cutting)
 6. Distinct data states, never failed-as-zero (cross-cutting)
-7. Action lever library assignment (G)
+7. Action lever library assignment (G) — prototyped + briefed
 8. Portal user administration (M)
 9. Logo + year-end month (A)
 
@@ -207,6 +220,37 @@ Remaining go-live items 3–9 are still to design/build.
 - **Commercial ledger / Xero (NZC-069): HELD** — to be picked up in a dedicated
   quotes/invoices exercise. Split onto its own branch with honest Xero status now; do not
   merge until revisited.
+
+### ⭐ Client workspace shell rebuild (the piece that makes Render match v10)
+Every prior brief added a *feature* onto the existing `page.tsx`; the page shell/IA was
+never rebuilt, so the deployed client page is the old two-tab layout with new bits grafted
+on. The **shell rebuild** commissions the v10 IA — the left area sub-nav, setup-progress
+strip, top-pinned Active-jobs card with the rest collapsible, drawer-based editing
+throughout, Carbon Analytics on `@nzi/charts` — into which the built features slot.
+Phase 1: shell + Overview + Carbon Analytics + drawers (retire the separate /edit page).
+Phase 2: the remaining areas (Reporting, Actions, SRS, Tasks, Notes, Files, Comms, Company
+Profile, AI Profile; Financials shows the HELD state). Depends on #142 + #145 merged.
+Status: **Phase 1 (#146 + #147, `adae870`) AND Phase 2 (`b696421`) MERGED to `main`; #143
+(NZC-069 held docs) merged (`f85e168`).** Breadcrumbs (full, linkable, per DESIGN_CONVENTIONS
+§3.1) merged with Phase 1. All acceptance items met; PRESERVE items test-pinned. Shell
+rebuild is **complete and live on Render**.
+
+### Follow-ups from the target-model review (PR #145)
+- **#137 must finish the v10 Baseline & targets card** — the dated baseline record, its
+  figures and the history timeline (the baseline *half* of the card). PR #145 built only
+  the targets half and shows the baseline in force as a single line.
+- **Report engine pathway → client target model (for NEW issues only).** Issued reports
+  are frozen evidence and stay as-is, but the report chart's job-level target assumes
+  net zero = 0, which is *wrong* (net zero carries a residual — the client model gets this
+  right). New report issues must adopt the client target model; do it before the next
+  reporting cycle so fresh reports don't bake in the zero-residual error.
+- **Benchmark seam** flips from the client-record baseline fields to the `client_baselines`
+  dated record when #137 lands — one function, source-stamped, no downstream change.
+
+### Target-model judgement calls (all confirmed)
+Benchmark seam (single source-stamped fn) · baseline card half deferred to #137 · frozen
+reports untouched (engine unified for new issues as a follow-up) · `client_targets` as a
+versioned table not columns — required for audit + the NZC-068 hold.
 - **NZC-066 completion:** every report issue records the baseline it was issued against
   (baseline-ref stamped at issue time); existing issues backfilled `migrated_unverified`
   where derivable, else flagged. Currently missing.

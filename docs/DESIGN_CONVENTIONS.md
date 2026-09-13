@@ -134,3 +134,25 @@ convenience (may use `localStorage`), never load-bearing.
   diverge. A metric with no recorded value for a year reads **"unavailable"**, never 0.
 - The metric's icon renders **identically** across the client YoY, the portal and the
   report (print determinism, same rule as charts).
+
+## 10. Icons (locked)
+
+- Metric, action and category icons are a **curated inline-SVG line-icon set** (currentColor,
+  ~2px stroke), shipped in `@nzi/ui` — **not emoji**. currentColor lets an icon tint with the
+  tokens and print cleanly in mono; inline SVG is deterministic in the PDF (no font/emoji
+  dependency). Source from an MIT-licensed line set (e.g. Lucide / Phosphor), shipped inline
+  (no runtime fetch). The same set serves intensity metrics, action levers and the report.
+- Prototypes may use emoji as placeholders, but shipped UI and the report use the SVG set.
+
+## 11. The report (locked)
+
+- The client report is the **composition** of assured footprint, intensity, targets/pathway,
+  the decarbonisation plan and the SRS readiness statement — it recomputes nothing; each
+  section reads the same resolvers/charts as the app.
+- A single, deliberate **light "paper" look** (print/PDF target), not theme-toggling.
+- An **issued report is version-pinned and immutable** (frozen evidence). New issues use the
+  client target model (net zero carries its residual, not zero); already-issued reports are
+  never rewritten.
+- Every data section carries provenance; the Methodology page states the assurance basis
+  honestly — "reviewed snapshot (internal review); not third-party assured." Never imply
+  third-party assurance.

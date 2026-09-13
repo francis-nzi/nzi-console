@@ -1,3 +1,4 @@
+import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
@@ -24,6 +25,9 @@ export type CommandKey =
   | "client.contact.update"
   | "client.contact.deactivate"
   | "client.targets.set"
+  | "client.intensityMetric.set"
+  | "client.intensityMetric.deactivate"
+  | "job.intensityValue.set"
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
@@ -313,6 +317,17 @@ export type CommandInputMap = {
    * explicit acknowledgement needed when the benchmark has moved since the last version.
    */
   "client.targets.set": { clientId: string; expectedVersion: number; restateAgainstBenchmark?: boolean } & ForwardTargetWriteFields;
+  /** Define or redefine one of this client's intensity metrics — a new version each time. */
+  "client.intensityMetric.set": {
+    clientId: string; metricKey: string; label: string; unitWording: string; divider: number;
+    iconKey: string; ordering?: number; expectedVersion: number;
+  };
+  "client.intensityMetric.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
+  /** Record one metric's annual value on a job, for one reporting year. */
+  "job.intensityValue.set": {
+    jobId: string; reportingYear: number; metricKey: string; value: number | null;
+    periodKey?: string; note?: string; expectedVersion: number;
+  };
   /** Open a dated assessment, stamped with the framework version in force. */
   "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
   /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
@@ -567,6 +582,35 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "client.intensityMetric.set": { key: "client.intensityMetric.set", label: "Define an intensity metric", permission: "client.edit", reasonRequired: false, transaction: "versioned metric definition + audit + outbox + idempotency", auditAction: "client_intensity_metric_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "label", input.label);
+    required(issues, "unitWording", input.unitWording);
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(input.metricKey ?? "")) issues.push({ field: "metricKey", code: "INVALID", message: "A metric key is lower-case letters, digits, dashes or underscores." });
+    if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
+    if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "client.intensityMetric.deactivate": { key: "client.intensityMetric.deactivate", label: "Deactivate an intensity metric", permission: "client.edit", reasonRequired: false, transaction: "versioned metric definition (inactive) + audit + outbox + idempotency", auditAction: "client_intensity_metric_deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "metricKey", input.metricKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
+  "job.intensityValue.set": { key: "job.intensityValue.set", label: "Record an annual metric value", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned annual value + audit + outbox + idempotency", auditAction: "job_intensity_value_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    required(issues, "metricKey", input.metricKey);
+    if (!Number.isInteger(input.reportingYear) || input.reportingYear < 2000 || input.reportingYear > 2100) issues.push({ field: "reportingYear", code: "INVALID", message: "Reporting year is between 2000 and 2100." });
+    // Null clears the value; a recorded one cannot be negative, and zero cannot be divided by.
+    if (input.value !== null && !(typeof input.value === "number" && Number.isFinite(input.value) && input.value >= 0)) issues.push({ field: "value", code: "INVALID", message: "A recorded value is zero or greater." });
+    if (input.periodKey != null && input.periodKey !== "year" && !/^\d{4}-(0[1-9]|1[0-2]|Q[1-4])$/.test(input.periodKey)) issues.push({ field: "periodKey", code: "INVALID", message: "A period is 'year', a month (2024-03) or a quarter (2024-Q1)." });
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
   "srs.assessment.start": { key: "srs.assessment.start", label: "Start an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment stamped with the active framework version + optional NZI pre-fill + audit + outbox + idempotency", auditAction: "srs_assessment_started", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); if (!isoDate(input.assessedOn)) issues.push({ field: "assessedOn", code: "INVALID", message: "Assessment date must use YYYY-MM-DD." }); return issues; } },
   "srs.assessment.item.set": { key: "srs.assessment.item.set", label: "Answer an SRS requirement", permission: "srs.manage", reasonRequired: false, transaction: "assessment item upsert + audit + outbox + idempotency", auditAction: "srs_assessment_item_set", validate: (input, context) => {
     const issues = baseIssues(context, false);

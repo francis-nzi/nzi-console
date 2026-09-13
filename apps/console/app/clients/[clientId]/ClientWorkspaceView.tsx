@@ -15,6 +15,7 @@ import { AnalyticsArea } from "./AnalyticsArea";
 import { CommsArea, FilesArea } from "./CommsFilesAreas";
 import { ProfileArea } from "./ProfileArea";
 import { ReportingArea } from "./ReportingArea";
+import { IntensityMetricsDrawer } from "./IntensityMetricsDrawer";
 import { SrsArea } from "./SrsArea";
 import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
@@ -160,7 +161,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
             <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
           </aside>
         </div>
-        : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} />
+        : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
         : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} />
         : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
@@ -179,6 +180,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "compliance" ? <ComplianceForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "factors" ? <FactorsDrawerBody clientId={client.id} onClose={closeDrawer} /> : null}
       {drawer?.kind === "portal" ? <PortalDrawerBody client={client} onClose={closeDrawer} /> : null}
+      {drawer?.kind === "intensity-metrics" ? <IntensityMetricsDrawer clientId={client.id} metrics={workspace.intensityMetrics} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "contact" ? <ContactForm key={drawer.contact?.id ?? "new-contact"} clientId={client.id} contact={drawer.contact} access={access.contact} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "site" ? <SiteForm key={drawer.site?.id ?? "new-site"} clientId={client.id} site={drawer.site} sites={sites} periods={[...workspace.reportingPeriods].reverse()} access={access.site} onClose={closeDrawer} onSaved={saved} onPartial={() => router.refresh()} /> : null}
     </Drawer>

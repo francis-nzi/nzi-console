@@ -27,6 +27,7 @@ import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabP
 import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
+import { JobAnnualMetrics } from "./JobAnnualMetrics";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
@@ -141,6 +142,7 @@ export function CrpScopeWorkspace({
   intensityTarget,
   sites,
   purchasedGoodsCategories,
+  writeEnabled,
 }: {
   job: FamilyJob;
   rows: ScopeRowReadModel[];
@@ -151,6 +153,8 @@ export function CrpScopeWorkspace({
   intensityTarget:IntensityTargetReadModel|null;
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
+  /** NZI_WRITE_API_ENABLED — the same flag the client workspace gates on. */
+  writeEnabled:boolean;
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.readyForReporting
     ? {
@@ -285,6 +289,7 @@ export function CrpScopeWorkspace({
   const configPanels = (
     <>
       <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
       <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
       <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
