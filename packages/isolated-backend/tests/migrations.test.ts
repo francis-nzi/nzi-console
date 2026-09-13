@@ -420,3 +420,48 @@ describe("isolated Postgres migrations", () => {
     assert.match(traineeSpineMigration, /DROP CONSTRAINT IF EXISTS training_course_runs_workflow_stage_key_check/);
   });
 });
+
+describe("the action-lever library (0075)", () => {
+  const migration = readFileSync(resolve(here, "../migrations/0075_action_lever_library.sql"), "utf8");
+
+  it("isolates both tables by tenant and refuses deletes", () => {
+    for (const table of ["action_levers", "client_actions"]) {
+      assert.match(migration, new RegExp(`ALTER TABLE nzi_console\.${table} ENABLE ROW LEVEL SECURITY`), table);
+      assert.match(migration, new RegExp(`ALTER TABLE nzi_console\.${table} FORCE ROW LEVEL SECURITY`), table);
+      assert.match(migration, new RegExp(`REVOKE DELETE ON nzi_console\.${table} FROM PUBLIC, nzi_console_app`), table);
+      // Deactivate-not-delete means the app never needs DELETE, so it is not granted.
+      assert.doesNotMatch(migration, new RegExp(`GRANT[^;]*DELETE[^;]*ON nzi_console\.${table}`), table);
+    }
+  });
+
+  it("makes an action either a catalogue lever or a bespoke one, never both or neither", () => {
+    assert.match(migration, /CONSTRAINT client_actions_lever_or_bespoke CHECK \(\s*\n?\s*\(lever_id IS NOT NULL AND bespoke_title IS NULL\)/);
+    assert.match(migration, /OR \(lever_id IS NULL AND nullif\(trim\(bespoke_title\), ''\) IS NOT NULL/);
+  });
+
+  it("holds one meaning of done", () => {
+    assert.match(migration, /CONSTRAINT client_actions_complete_is_100 CHECK \(\(status = 'complete'\) = \(progress_pct = 100\)\)/);
+  });
+
+  it("stops the same lever being assigned twice while it is live", () => {
+    assert.match(migration, /CREATE UNIQUE INDEX client_actions_one_live_per_lever_idx[\s\S]*?WHERE lever_id IS NOT NULL AND active/);
+  });
+
+  it("leaves the Stage 2 impact slot empty but unfalsifiable", () => {
+    assert.match(migration, /modelled_tco2e_per_year numeric\(14,3\)/);
+    assert.match(migration, /CONSTRAINT action_levers_modelled_impact_sourced/);
+    // The seed populates neither column: the catalogue ships qualitative.
+    const seed = /INSERT INTO nzi_console\.action_levers[\s\S]*?ON CONFLICT DO NOTHING;/.exec(migration)?.[0] ?? "";
+    assert.ok(!seed.includes("modelled_"), "no seeded lever claims a modelled impact");
+  });
+
+  it("seeds every lever the v12 design shows", () => {
+    for (const key of ["solar-pv", "heat-pump", "ev-fleet", "supplier-engagement", "sustainable-procurement", "commuting-plan", "waste-reduction"]) {
+      assert.ok(migration.includes(`'${key}'`), key);
+    }
+    // Governance is its own value, not a scope: a supplier code of conduct reduces nothing
+    // by itself, and tagging it "Scope 3" would overstate what it is.
+    assert.match(migration, /scope text NOT NULL CHECK \(scope IN \('1', '2', '3', 'governance'\)\)/);
+    assert.match(migration, /'supplier-code',\s*'Publish a supplier code of conduct',\s*'governance'/);
+  });
+});

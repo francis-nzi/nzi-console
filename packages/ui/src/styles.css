@@ -1187,3 +1187,45 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
   .nz-tr-card{align-items:flex-start;flex-wrap:wrap}
   .nz-tr-card-act{justify-items:start}
 }
+
+/* ── Actions area — the client's decarbonisation plan (client_workspace_v12) ──
+   Grouped by sphere of influence. The status pill uses the semantic status
+   tokens, never the scope palette: scope colour means scope, and a plan's
+   progress is not a scope. */
+.nz-actions-head{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.nz-action-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.nz-action-stat{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.nz-action-stat b{display:block;font-size:22px;font-weight:800;line-height:1.05}
+.nz-action-stat span{display:block;margin-top:2px;color:var(--t2);font-size:11px}
+
+.nz-action-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line2)}
+.nz-action-row:last-child{border-bottom:0}
+.nz-action-icon{display:grid;width:34px;height:34px;flex:none;place-items:center;border-radius:9px;background:var(--paper);color:var(--t2)}
+.nz-action-main{flex:1;min-width:0}
+.nz-action-main .nm{font-weight:600}
+.nz-action-main .sub{margin-top:2px}
+.nz-action-state{display:grid;flex:none;gap:5px;justify-items:end;width:140px}
+.nz-action-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.nz-action-pill>i{display:block;width:7px;height:7px;border-radius:50%;background:currentColor}
+.nz-action-pill.ok{background:var(--mint);color:var(--pine)}
+.nz-action-pill.prog{background:#FBF1DE;color:#9A6B00}
+.nz-action-pill.plan{background:var(--paper);color:var(--t2)}
+.nz-action-progress{width:100%;height:6px;overflow:hidden;border-radius:20px;background:var(--paper);border:1px solid var(--line)}
+.nz-action-progress>span{display:block;height:100%;border-radius:20px;background:var(--emerald)}
+.nz-action-head{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+
+/* The "Add from library" drawer. */
+.nz-drawer-form{display:block}
+.nz-drawer-form>.sub{margin:0 0 14px}
+.nz-drawer-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)}
+.nz-lib-item{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line2)}
+.nz-lib-item:last-of-type{border-bottom:0}
+.nz-lib-main{flex:1;min-width:0}
+.nz-lib-main .nm{font-weight:600;font-size:13px}
+.nz-action-remove{padding:12px 14px;margin-top:14px;border:1px solid #F0C4BC;border-radius:10px;background:var(--danger-bg)}
+.nz-action-remove .nz-fl{margin-bottom:0}
+@media (max-width:760px){
+  .nz-action-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nz-action-row{align-items:flex-start;flex-wrap:wrap}
+  .nz-action-state{width:auto;justify-items:start}
+}
