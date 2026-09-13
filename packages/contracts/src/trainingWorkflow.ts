@@ -150,6 +150,59 @@ export function trainingPlacesSummary(entitlements: ReadonlyArray<Pick<TrainingE
   return summary;
 }
 
+/**
+ * A grant as both registers draw it: one row per grant, with a strip of places.
+ *
+ * The two surfaces word this differently on purpose — staff read the mechanism
+ * ("Lapsed · 2 unused"), the client reads the benefit ("Expired 31/03/2026 · 2 places went
+ * unused") — but both render these numbers, so they cannot disagree. Every figure here
+ * comes from the entitlement rows; none of it is written by hand.
+ */
+export type TrainingPlaceGroup = {
+  key: string;
+  sourceJobId: string;
+  sourceJobNumber: string;
+  courseLabel: string;
+  summary: TrainingPlacesSummary;
+  expiry: TrainingPlaceExpiry;
+  /** The strip, worst-news-last: consumed, reserved, then what is left or lost. */
+  places: TrainingPlaceState[];
+  /** Places that reached expiry without being used. Shown, never dropped. */
+  unusedAtExpiry: number;
+};
+
+type GroupableEntitlement = Pick<TrainingEntitlement, "status" | "expiresAt"> & {
+  sourceJobId: string;
+  sourceJobNumber: string;
+  courseLabel?: string;
+  defaultFromJobEnd?: boolean;
+};
+
+export function trainingPlaceGroups(entitlements: readonly GroupableEntitlement[], today: string): TrainingPlaceGroup[] {
+  const byGrant = new Map<string, GroupableEntitlement[]>();
+  for (const entitlement of entitlements) {
+    const key = `${entitlement.sourceJobId}::${entitlement.courseLabel ?? ""}`;
+    byGrant.set(key, [...(byGrant.get(key) ?? []), entitlement]);
+  }
+  return [...byGrant.entries()].map(([key, places]) => {
+    const summary = trainingPlacesSummary(places, today);
+    const first = places[0]!;
+    const states = places.map((place) => trainingPlaceState(place, today));
+    const order: TrainingPlaceState[] = ["consumed", "reserved", "available", "lapsed", "revoked"];
+    return {
+      key,
+      sourceJobId: first.sourceJobId,
+      sourceJobNumber: first.sourceJobNumber,
+      courseLabel: first.courseLabel ?? "",
+      summary,
+      // The grant's own expiry: every place in it shares the granting job's date.
+      expiry: trainingPlaceExpiry(first, today),
+      places: states.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b)),
+      unusedAtExpiry: summary.lapsed,
+    };
+  });
+}
+
 /* ── What a run is worth saying about itself ─────────────────────────────────────────── */
 
 export type TrainingRunSummary = {

@@ -19,6 +19,15 @@ places are reserved by **consultant/CRM only** (no client/trainee self-book in t
 **require re-verification AND** the former employer loses visibility of the person's new personal
 details while keeping its historical funded record. Nothing below is open.
 
+**Vocabulary is deliberately register-split** (keep, don't unify): the **staff** module speaks
+the mechanism — *remaining · consumed / reserved / available · expiry is CRM-movable*; the
+**client** portal speaks the benefit — *Yet to be taken · Available to book · Expiring within
+60 days*. Same underlying place rows, two audiences.
+
+**All place figures compute from the `training_entitlements` rows — never hand-written.** The
+prototypes are visual references, not data; where a mock's staff and client numbers disagree,
+that is exactly the trap the resolver removes.
+
 Standard rules: branch + PR; **typecheck AND build green**; theme-aware three-state; print-safe
 `NziIcon` line-icon set (not emoji); dd/mm/yyyy dates (NZC-040); unit notation not pluralised
 (£m/kWh/CPD hours). Governed spine throughout: versioned rows + expectedVersion, provenance,
@@ -113,6 +122,14 @@ snapshot via the **shared resolver** (no recompute); session-derived client iden
 🔴 2. **Per-entitlement rows** — granted vs used/reserved/available (with a places strip),
    **expiry with a warning state** as it approaches; expired places shown as **lapsed**, not
    silently dropped; link back to the granting CRP job.
+   **Lapsed copy (canonical — client register, plain/benefit voice):** once past `expires_at`
+   with unused places, the row's expiry line goes to the danger token and reads
+   *"Expired 31/03/2026 · N places went unused"*; the unused places stay visible in the strip
+   rendered as a **struck/muted dot** (a `.dot.lapsed` — dashed outline with a diagonal strike),
+   counted but excluded from "available"; the "available" figure reads **0**. The **staff**
+   module uses the mechanism register for the same state: *"Lapsed · N unused"*. Never drop the
+   places or zero them out silently. (`.expiry.lapsed` already exists in the prototype CSS with
+   no copy — this is the copy; add the matching `.dot.lapsed`.)
 🔴 3. **Training their team has taken** — person, course, completed date, attendance, certificate
    download. Assured mark: "from the reviewed training record".
 🟠 4. **Skills matrix** — which staff hold which current training, with a **refresher-due** state.

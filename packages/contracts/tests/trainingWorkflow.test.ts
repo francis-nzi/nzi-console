@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isAllowedTrainingRunStageTransition, trainingCertificateDecision, trainingPlaceExpiry,
-  trainingPlaceState, trainingPlacesSummary, trainingRunStages, trainingRunSummary,
+  trainingPlaceGroups, trainingPlaceState, trainingPlacesSummary, trainingRunStages, trainingRunSummary,
 } from "../src/trainingWorkflow";
 import type { TrainingBooking, TrainingCourseSession, TrainingEntitlement, TrainingSessionAttendance } from "../src/trainingFamily";
 
@@ -119,6 +119,40 @@ test("the places summary counts each place once, and never double-counts a lapse
   // Only unused places can expire, and the soonest of them is what to act on.
   assert.equal(summary.expiringSoon, 1);
   assert.equal(summary.nextExpiry, "2026-10-15");
+});
+
+test("a lapsed grant keeps its unused places visible and reads zero available", () => {
+  // The rule both registers render: unused places stay in the strip, counted, while
+  // "available" reads 0 — shown, never silently dropped or quietly zeroed.
+  const grant = (over: Partial<TrainingEntitlement> = {}) => ({
+    sourceJobId: "job-crp-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy — Level 1",
+    status: "available" as TrainingEntitlement["status"], expiresAt: "2026-03-31", defaultFromJobEnd: true, ...over,
+  });
+  const [group] = trainingPlaceGroups([
+    grant({ status: "consumed" }), grant({ status: "consumed" }), grant({ status: "consumed" }),
+    grant(), grant(),
+  ], TODAY);
+
+  assert.equal(group!.summary.granted, 5);
+  assert.equal(group!.summary.consumed, 3);
+  assert.equal(group!.summary.available, 0, "nothing is available once the date has passed");
+  assert.equal(group!.unusedAtExpiry, 2, "and the two that went unused are still counted");
+  assert.equal(group!.places.length, 5, "every place stays in the strip");
+  assert.deepEqual(group!.places, ["consumed", "consumed", "consumed", "lapsed", "lapsed"]);
+  assert.equal(group!.expiry.state, "lapsed");
+  if (group!.expiry.state === "lapsed") assert.equal(group!.expiry.fromJobEnd, true);
+});
+
+test("grants are grouped per granting job and course, each with its own expiry", () => {
+  const groups = trainingPlaceGroups([
+    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "consumed", expiresAt: "2027-03-31" },
+    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Carbon Literacy", status: "available", expiresAt: "2027-03-31" },
+    { sourceJobId: "job-1", sourceJobNumber: "J000702", courseLabel: "Awareness webinar", status: "available", expiresAt: "2026-09-30" },
+  ], TODAY);
+  assert.equal(groups.length, 2, "two courses from one job are two grants");
+  const webinar = groups.find((group) => group.courseLabel === "Awareness webinar")!;
+  assert.equal(webinar.summary.available, 1);
+  assert.equal(webinar.expiry.state, "expiring", "its own date, not the other grant's");
 });
 
 test("the run summary counts the booked, not the cancelled or the waitlisted", () => {
