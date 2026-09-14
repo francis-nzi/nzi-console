@@ -101,9 +101,19 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
     const issued = JSON.stringify(await getReportComposition(client as never, "version-1"));
 
     // Now change every source the report quotes, the way a consultant would next week.
+    // A strategy and its SRS alignment are one fact, so they go in one transaction: the
+    // "at least one requirement" trigger is deferred and judges the transaction at commit.
+    // Inserting the strategy alone — as this fixture once did — is exactly what the trigger
+    // exists to refuse.
+    await client.query(`BEGIN`);
     await client.query(
       `INSERT INTO nzi_console.client_strategies (organisation_id, client_strategy_id, client_id, bespoke_title, bespoke_scope, bespoke_control_level, created_by)
        VALUES ('org-a', 'added-later', 'client-a', 'Added after the report was issued', '1', 'direct_control', 'tester')`);
+    await client.query(
+      `INSERT INTO nzi_console.client_strategy_srs_requirements (organisation_id, client_strategy_id, framework_id, requirement_id)
+       SELECT organisation_id, 'added-later', framework_id, requirement_id
+       FROM nzi_console.srs_requirements WHERE organisation_id = 'org-a' ORDER BY requirement_id LIMIT 1`);
+    await client.query(`COMMIT`);
     await client.query(
       `UPDATE nzi_console.reduction_strategies SET title = 'Renamed after the report was issued'
        WHERE organisation_id = 'org-a' AND strategy_key = 'solar-pv'`);
