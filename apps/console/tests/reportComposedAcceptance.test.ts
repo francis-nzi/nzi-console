@@ -1,0 +1,98 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+
+const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
+
+/**
+ * The composed report (report_v1). The rules worth holding: it renders a frozen composition
+ * and resolves nothing; it never implies assurance it does not have; a gap is stated rather
+ * than zeroed; and it is one document across screen, portal and print.
+ */
+describe("the composed report", () => {
+  const view = read("apps/console/app/reports/[versionId]/ReportComposedView.tsx");
+  const css = read("apps/console/app/reports/[versionId]/report-composed.css");
+  const page = read("apps/console/app/reports/[versionId]/page.tsx");
+  const route = read("apps/console/app/api/isolated/report-versions/[versionId]/composition/route.ts");
+
+  it("renders the frozen composition and resolves nothing of its own", () => {
+    assert.match(view, /composition: ReportComposition/);
+    // No live reads: if a figure is not in the composition it is not in the report.
+    for (const call of ["loadScreen", "resolveIntensity", "overallReadiness", "listClientActions", "fetch("]) {
+      assert.ok(!view.includes(call), `the view must not call ${call}`);
+    }
+    assert.match(route, /getReportComposition/);
+    // Reading only: a composition is evidence of what the client was sent.
+    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+      assert.doesNotMatch(route, new RegExp(`export async function ${method}\\b`), method);
+    }
+  });
+
+  it("ships behind report-sections, leaving the existing report path untouched", () => {
+    assert.match(page, /reportFeatureEnabled\("report-sections"\)/);
+    assert.match(page, /ReportComposedView/);
+  });
+
+  it("says an unissued version is unissued rather than rendering a blank document", () => {
+    assert.match(page, /This report version has not been issued/);
+    assert.match(read("packages/contracts/src/index.ts"), /reportComposition: \{ key: "reportComposition"[^}]*isEmpty: \(\) => false/);
+  });
+
+  it("states the assurance basis on the cover as well as the methodology page", () => {
+    // Whoever reads only the first page should still know what this document is and is not.
+    assert.match(view, /nzr-cover-basis">\{composition\.assurance\.statement\}/);
+    assert.match(view, /reportMethodologyRows\(composition\)/);
+    // Nothing anywhere may imply an assurance the platform cannot evidence.
+    assert.doesNotMatch(view, /independently assured|third-party assured by|externally verified/i);
+  });
+
+  it("states a gap instead of rendering it as zero", () => {
+    // "0 tCO2e" and "we could not read your footprint" look identical on a page and mean
+    // opposite things.
+    assert.match(view, /function Gap\(\{ section \}: \{ section: ReportSectionGap \}\)/);
+    assert.match(view, /\{section\.reason\}/);
+    assert.match(view, /metric\.value === null[\s\S]{0,120}metric\.unavailableReason/);
+    assert.match(css, /\.nzr-gap\{/);
+  });
+
+  it("does not draw a net-zero pathway to a flat zero", () => {
+    assert.match(view, /targets\.residualTco2e !== null/);
+    assert.match(view, /addressed through removals\s*\n?\s*rather than reduced to nothing/);
+  });
+
+  it("says the plan's percentages are progress, not carbon", () => {
+    assert.match(view, /not a modelled carbon reduction/);
+    // Grouped by level of control, per the settled naming.
+    assert.match(view, /group\.controlLevel/);
+    assert.doesNotMatch(view, /sphere/i);
+  });
+
+  it("carries provenance beside the figures, not only on a back page", () => {
+    assert.match(view, /function Provenance\(\{ provenance \}/);
+    assert.match(view, /Evidence hash \{provenance\.dataHash\}/);
+    // Every data section that has provenance renders it.
+    const uses = (view.match(/<Provenance provenance=/g) ?? []).length;
+    assert.equal(uses, 3, "emissions, intensity and targets each carry their own basis");
+  });
+
+  it("is one document on screen, in the portal and in print", () => {
+    // A report that renders dark on screen and light in the PDF is two documents, and only
+    // one of them is the one the client was sent.
+    assert.doesNotMatch(css, /prefers-color-scheme|data-theme/);
+    assert.match(css, /@media print\{/);
+    assert.match(css, /break-inside:avoid/);
+    // Icons are the curated print-safe set, never emoji.
+    assert.match(view, /NziIcon/);
+    assert.doesNotMatch(view, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+  });
+
+  it("keeps scope colour for scopes only", () => {
+    // Status and maturity marks must not borrow the scope palette.
+    const nonScope = /\.nzr-(gap|plan-summary|action|prov|metric)\b[\s\S]*?\}/g;
+    for (const block of css.match(nonScope) ?? []) {
+      for (const scopeColour of ["#FF5C48", "#FFC24B", "#0BA75E"]) {
+        assert.ok(!block.includes(scopeColour), `${scopeColour} must not appear on a non-scope mark`);
+      }
+    }
+  });
+});
