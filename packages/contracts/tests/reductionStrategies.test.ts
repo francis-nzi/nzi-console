@@ -6,12 +6,12 @@ import {
 } from "../src/reductionStrategies";
 
 const lever = (id: string, over: Partial<LibraryStrategy> = {}): LibraryStrategy => ({
-  id, key: id, leverIds: [], title: id, description: "", scope: "2", category: "Energy",
+  id, key: id, leverIds: [], defaultSrsRequirementIds: ["req-1"], title: id, description: "", scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", active: true, version: 1, modelledImpact: null, ...over,
 });
 
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
-  id, clientId: "client-a", leverIds: [], strategyId: null, title: id, scope: "2", category: "Energy",
+  id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });

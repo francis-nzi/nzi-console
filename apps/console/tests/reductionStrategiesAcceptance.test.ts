@@ -171,4 +171,69 @@ describe("Reduction Strategies", () => {
     assert.match(area, /summary\.total === 0/);
     assert.match(area, /This client has no reduction plan yet/);
   });
+
+  /* ── Phase 2: SRS alignment and the report flag ──────────────────────────────────── */
+
+  const alignment = read("packages/isolated-backend/migrations/0081_strategy_srs_alignment.sql");
+
+  it("holds 'at least one requirement' in the database, not only in the form", () => {
+    // A CHECK cannot span tables and an immediate trigger fires before the alignment rows
+    // exist, so the rule is a deferred constraint trigger: the transaction is judged as a
+    // whole, at commit, when both halves are present.
+    assert.match(alignment, /CREATE CONSTRAINT TRIGGER client_strategy_alignment_required/);
+    assert.match(alignment, /DEFERRABLE INITIALLY DEFERRED/);
+    // Deactivated strategies are exempt — the rule is about a plan, and a removed strategy
+    // has left the plan while staying on the record.
+    assert.match(alignment, /client_strategy_requires_alignment/);
+  });
+
+  it("refuses an unaligned strategy at the command as well", () => {
+    // The database rule is the guarantee; the command rule is what makes the refusal
+    // legible. A person who hits only the trigger gets a constraint name, not a sentence.
+    for (const key of ["client.strategy.assign", "client.strategy.update"]) {
+      assert.match(commands, new RegExp(`"${key}": \\{.*srsRequirementIds: string\\[\\]`), key);
+    }
+    assert.match(commands, /Align this strategy to at least one UK SRS requirement\./);
+    // And the backend refuses ids the framework does not know, rather than writing nothing
+    // and reporting success.
+    assert.match(backend, /UNKNOWN_REQUIREMENT/);
+    assert.match(backend, /setStrategyAlignment/);
+  });
+
+  it("offers the requirements grouped by pillar, not as one list of forty-eight", () => {
+    assert.match(forms, /requirementsByPillar\(framework\)/);
+    assert.match(read("packages/contracts/src/srsReadiness.ts"), /export function requirementsByPillar/);
+    // Both add paths and the edit path carry an alignment, and none can be submitted without
+    // one.
+    assert.match(forms, /srsRequirementIds\.length === 0 \? "Align this strategy to at least one UK SRS requirement\."/);
+    assert.match(forms, /srsRequirementIds: defaults\(entry\)/);
+    // No framework means nothing to align to — said, rather than shown as a dead form.
+    assert.match(forms, /No UK SRS framework is published for this organisation yet/);
+  });
+
+  it("shows the codes, never the generated ids", () => {
+    assert.match(area, /codes\.get\(id\)/);
+    assert.match(forms, /nz-tag srs/);
+    // A requirement retired from the framework has no code to print, so the chip is dropped
+    // rather than rendered as a raw id.
+    assert.match(area, /code is string/);
+  });
+
+  it("makes the report flag a live field that a report freezes, not a live read", () => {
+    assert.match(alignment, /include_in_report boolean NOT NULL DEFAULT true/);
+    assert.match(commands, /"client\.strategy\.update": \{.*includeInReport: boolean/);
+    assert.match(forms, /Applies to reports issued from now on/);
+    // The plan section of an issued report is composed at issue and frozen with everything
+    // else — so a strategy held back next week does not vanish from a report already sent.
+    const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
+    assert.match(compositions, /composeReportPlan\(strategies, levers, requirementCodes\)/);
+    assert.match(read("packages/contracts/src/reportComposition.ts"), /strategy\.includeInReport/);
+  });
+
+  it("says on the plan itself what the report will leave out", () => {
+    // Otherwise the only place the omission is visible is the document, which is the one
+    // place it is too late to notice.
+    assert.match(area, /held back from the client&rsquo;s/);
+    assert.match(area, /not in report/);
+  });
 });

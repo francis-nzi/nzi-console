@@ -15,6 +15,10 @@
 //
 //   npx tsx scripts/generate-provisioning.ts
 //
+// 0080 is applied and frozen, so regenerating emits a NEW migration that CREATE OR REPLACEs
+// the function — everything it does is idempotent, so re-running the trigger creation and the
+// backfill over an already-provisioned database is a no-op.
+//
 // The migration is the artefact and is committed; this is the tool that made it. A CI test
 // asserts a newly provisioned organisation ends up with exactly what a migration-seeded one
 // has, so the two cannot drift after generation either.
@@ -70,19 +74,41 @@ function afterRename(statement: string): string {
     .replace(/sphere_of_influence/g, "control_level");
 }
 
+/**
+ * `0081`'s alignment seeds are already per-strategy rather than per-organisation, so they
+ * need scoping rather than un-fanning: add the organisation filter to the strategy they
+ * select from. Lifted for the same reason as the rest — the mapping is 21 pairs, and
+ * retyping it is how a default alignment quietly goes missing for a new tenant.
+ */
+function alignmentSeeds(sql: string): string[] {
+  const statements: string[] = [];
+  const pattern = /INSERT INTO nzi_console\.strategy_srs_requirements[\s\S]*?ON CONFLICT DO NOTHING;\n/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(sql))) {
+    const scoped = match[0].replace(/\nWHERE /, "\nWHERE s.organisation_id = p_organisation_id\n  AND ");
+    if (!/s\.organisation_id = p_organisation_id/.test(scoped)) {
+      throw new Error(`Could not scope an alignment seed to one organisation:\n${match[0].slice(0, 160)}`);
+    }
+    statements.push(scoped);
+  }
+  return statements;
+}
+
 const srs = seedStatements(read("0070_srs_readiness.sql")).map(forOneOrganisation);
 const library = seedStatements(read("0075_action_lever_library.sql")).map(forOneOrganisation).map(afterRename);
 const levers = seedStatements(read("0078_reduction_strategies.sql")).map(forOneOrganisation);
+const alignments = alignmentSeeds(read("0081_strategy_srs_alignment.sql"));
 
 if (srs.length !== 5) throw new Error(`Expected 5 SRS seed statements, found ${srs.length}`);
 if (library.length !== 1) throw new Error(`Expected 1 library seed statement, found ${library.length}`);
 if (levers.length !== 1) throw new Error(`Expected 1 lever seed statement, found ${levers.length}`);
+if (alignments.length !== 2) throw new Error(`Expected 2 alignment seed statements, found ${alignments.length}`);
 
 const indent = (sql: string) => sql.trimEnd().split("\n").map((line) => `  ${line}`).join("\n");
 
 const sql = `BEGIN;
 
--- 0080 — Reference data follows the organisation, instead of the migration that ran once.
+-- Reference data follows the organisation, instead of the migration that ran once.
 --
 -- The SRS framework, the levers and the strategy library are seeded with
 -- \`INSERT ... SELECT ... FROM nzi_console.organisations\`. That covers every organisation
@@ -162,6 +188,11 @@ ${indent(library[0]!)}
       WHERE (x.organisation_id, x.strategy_id) = (s.organisation_id, s.strategy_id)
     )
   ON CONFLICT DO NOTHING;
+  -- ── Default SRS alignment on each library strategy ────────────────────────────────
+  -- A client copy inherits these; without them a consultant would have to pick a
+  -- requirement by hand for every strategy, which is a poor first experience of a rule
+  -- that exists to protect the client.
+${alignments.map(indent).join("\n\n")}
 END
 $provision$;
 
@@ -200,5 +231,12 @@ SELECT nzi_console.provision_organisation(organisation_id) FROM nzi_console.orga
 COMMIT;
 `;
 
-writeFileSync(join(MIGRATIONS, "0080_organisation_provisioning.sql"), sql);
-console.log(`wrote 0080_organisation_provisioning.sql (${srs.length} SRS + 1 lever + 1 library seed statements lifted verbatim)`);
+const output = process.argv[2];
+if (!output) {
+  throw new Error(
+    "Usage: tsx scripts/generate-provisioning.ts <output.sql>\n" +
+    "0080 is applied and frozen — regenerating writes a NEW migration that CREATE OR REPLACEs the function.",
+  );
+}
+writeFileSync(join(MIGRATIONS, output), sql);
+console.log(`wrote ${output} (${srs.length} SRS + 1 lever + 1 library + ${alignments.length} alignment seed statements lifted verbatim)`);

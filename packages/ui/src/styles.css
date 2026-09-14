@@ -949,6 +949,9 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-tag.reg{color:#1F6FEB;background:#EAF1FE;border-color:#C7DBFB}
 .nz-tag.vac{color:var(--t2);background:var(--paper);border-color:var(--line)}
 .nz-tag.plan{color:#6B4E9B;background:#F1ECF9;border-color:#DECFF0}
+/* An SRS requirement code. Slate, deliberately outside the scope palette and outside the
+   status tones: "S2 M2" is a citation, not a measurement and not a state. */
+.nz-tag.srs{color:#334155;background:#F1F5F9;border-color:#CBD5E1;text-transform:none;letter-spacing:0;margin-right:5px}
 /* site drawer — right-hand panel over a scrim */
 .nz-site-drawer{position:fixed;top:0;right:0;height:100vh;width:min(470px,96vw);background:#fff;border-left:1px solid var(--line);box-shadow:-12px 0 36px rgba(11,27,43,.22);z-index:40;display:flex;flex-direction:column}
 .nz-site-drawer::before{content:"";position:fixed;inset:0;background:rgba(11,27,43,.28);z-index:-1}
@@ -1247,3 +1250,22 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-lever.collapsed .nz-lever-chev{transform:rotate(-90deg)}
 .nz-lever-body{padding:0 16px 6px}
 .nz-lever-body .nz-action-row:first-child{border-top:1px solid var(--line2)}
+
+/* The SRS alignment picker. Forty-eight requirements is a long list, so it is cut into its
+   four pillars and each opens and shuts — the same shape as the lever groups, because it is
+   the same problem. */
+.nz-srs-picker{margin:12px 0 4px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--paper)}
+.nz-srs-picker-head{display:flex;align-items:baseline;gap:8px;font-size:12.5px;font-weight:600;color:var(--t1)}
+.nz-srs-picker-head .hint{margin-left:auto}
+.nz-srs-picker-head .hint.warn{color:var(--coral);font-weight:600}
+.nz-srs-pillar{border-top:1px solid var(--line2);margin-top:8px;padding-top:6px}
+.nz-srs-pillar-head{display:flex;align-items:center;gap:8px;width:100%;padding:4px 0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.nz-srs-pillar-head b{font-size:12.5px}
+.nz-srs-pillar-head .cnt{color:var(--t2);font-size:11.5px}
+.nz-srs-pillar-head .sp{flex:1}
+.nz-srs-chev{display:grid;place-items:center;color:var(--t3);transition:transform .15s ease}
+.nz-srs-pillar-head[aria-expanded="false"] .nz-srs-chev{transform:rotate(-90deg)}
+.nz-srs-pillar-body{padding:2px 0 4px}
+.nz-srs-req{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;font-size:12.5px;line-height:1.45;color:var(--t1);cursor:pointer}
+.nz-srs-req:hover{background:var(--bg)}
+.nz-srs-req input{margin-top:2px;flex:none}

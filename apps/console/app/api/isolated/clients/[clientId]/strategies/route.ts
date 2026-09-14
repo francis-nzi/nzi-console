@@ -6,7 +6,8 @@ import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 
 export const dynamic = "force-dynamic";
 
-// Add an action to this client's plan — a catalogue lever or a bespoke one (actions.manage).
+// Add a strategy to this client's plan — a catalogue one or a bespoke one (actions.manage).
+// The body carries its SRS alignment; the command refuses an empty one.
 export async function POST(request: Request, { params }: { params: Promise<{ clientId: string }> }) {
   try {
     const principal = await requireCommandPrincipal(request, "client.strategy.assign");
@@ -16,7 +17,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
   } catch (error) { return commandFailure(error); }
 }
 
-// Status, owner, target date and progress. The client is not in the body: the action's own
+// Status, owner, target date, progress, SRS alignment and whether it appears in the report.
+// The client is not in the body: the strategy's own
 // row says whose plan it belongs to, and the access check resolves the client from it.
 export async function PATCH(request: Request) {
   try {

@@ -1,4 +1,4 @@
-import type { StrategyControlLevel, StrategyStatus, ClientStrategy } from "./reductionStrategies";
+import type { ClientStrategy, Lever, StrategyStatus } from "./reductionStrategies";
 
 /**
  * The report as a **composition**, frozen when it is issued.
@@ -134,14 +134,29 @@ export type ReportTargetsSection = {
 export const reportResidualTco2e = (targets: ReportTargetsSection): number | null =>
   targets.trajectory.find((point) => point.kind === "net-zero")?.tco2e ?? null;
 
+export type ReportPlanStrategy = {
+  title: string;
+  scope: string;
+  category: string;
+  status: StrategyStatus;
+  progressPct: number;
+  owner: string;
+  targetDate: string | null;
+  /** What this strategy advances, by requirement code — "S2 M2" rather than an id. */
+  srsRequirementCodes: string[];
+};
+
 export type ReportPlanSection = {
-  /** Grouped as the workspace groups it — by level of control, not by scope. */
-  groups: Array<{
-    controlLevel: StrategyControlLevel;
-    label: string;
-    actions: Array<{ title: string; scope: string; category: string; status: StrategyStatus; progressPct: number; owner: string; targetDate: string | null }>;
-  }>;
+  /** Grouped as the workspace groups it — by lever, the theme a strategy sits under. */
+  groups: Array<{ leverId: string; label: string; strategies: ReportPlanStrategy[] }>;
   summary: { total: number; planned: number; inProgress: number; complete: number };
+  /**
+   * How many live strategies were deliberately kept out of the report.
+   *
+   * Stated rather than hidden: a plan section showing four of a client's nine strategies
+   * should say that four is a selection, not the whole plan.
+   */
+  excludedCount: number;
   /** Said on the page: the plan is qualitative, and its percentages are not carbon. */
   qualitativeOnly: true;
 };
@@ -181,33 +196,62 @@ export type ReportComposition = {
  * actions already removed at issue time were never part of it.
  */
 export function composeReportPlan(
-  actions: readonly ClientStrategy[],
-  labels: Record<StrategyControlLevel, string>,
-  order: readonly StrategyControlLevel[],
+  strategies: readonly ClientStrategy[],
+  levers: readonly Lever[],
+  /** Requirement id → code, so the report shows "S2 M2" rather than a generated id. */
+  requirementCodes: ReadonlyMap<string, string>,
 ): ReportPlanSection | ReportSectionGap {
-  const live = actions.filter((action) => action.active);
-  if (live.length === 0) {
-    return { state: "unavailable", reason: "No decarbonisation actions were on this client's plan when the report was issued." };
+  const live = strategies.filter((strategy) => strategy.active);
+  // `include_in_report` is read HERE, at issue, and frozen with everything else. A later
+  // toggle cannot reach back into a report the client already holds.
+  const included = live.filter((strategy) => strategy.includeInReport);
+  const excludedCount = live.length - included.length;
+
+  if (included.length === 0) {
+    return {
+      state: "unavailable",
+      reason: live.length === 0
+        ? "No reduction strategies were on this client's plan when the report was issued."
+        : `None of this client's ${live.length} reduction strategies were marked for inclusion when the report was issued.`,
+    };
   }
-  const summary = { total: live.length, planned: 0, inProgress: 0, complete: 0 };
-  for (const action of live) {
-    if (action.status === "planned") summary.planned += 1;
-    else if (action.status === "in_progress") summary.inProgress += 1;
+
+  const summary = { total: included.length, planned: 0, inProgress: 0, complete: 0 };
+  for (const strategy of included) {
+    if (strategy.status === "planned") summary.planned += 1;
+    else if (strategy.status === "in_progress") summary.inProgress += 1;
     else summary.complete += 1;
   }
-  const groups = order
-    .map((controlLevel) => ({
-      controlLevel,
-      label: labels[controlLevel],
-      actions: live
-        .filter((action) => action.controlLevel === controlLevel)
-        .map((action) => ({
-          title: action.title, scope: action.scope, category: action.category,
-          status: action.status, progressPct: action.progressPct, owner: action.owner, targetDate: action.targetDate,
-        })),
+
+  const asReportStrategy = (strategy: ClientStrategy): ReportPlanStrategy => ({
+    title: strategy.title, scope: strategy.scope, category: strategy.category,
+    status: strategy.status, progressPct: strategy.progressPct,
+    owner: strategy.owner, targetDate: strategy.targetDate,
+    srsRequirementCodes: strategy.srsRequirementIds
+      .map((id) => requirementCodes.get(id))
+      .filter((code): code is string => code !== undefined)
+      .sort(),
+  });
+
+  const groups = [...levers]
+    .filter((lever) => lever.active)
+    .sort((a, b) => a.ordering - b.ordering || a.title.localeCompare(b.title))
+    .map((lever) => ({
+      leverId: lever.id,
+      label: lever.title,
+      strategies: included.filter((strategy) => strategy.leverIds.includes(lever.id)).map(asReportStrategy),
     }))
-    .filter((group) => group.actions.length > 0);
-  return { groups, summary, qualitativeOnly: true };
+    .filter((group) => group.strategies.length > 0);
+
+  // A strategy whose only lever was withdrawn still belongs in the report the client was
+  // sent. Grouped separately rather than dropped, for the same reason the workspace does it.
+  const liveLeverIds = new Set(levers.filter((lever) => lever.active).map((lever) => lever.id));
+  const unallocated = included.filter((strategy) => !strategy.leverIds.some((id) => liveLeverIds.has(id)));
+  if (unallocated.length > 0) {
+    groups.push({ leverId: "__unallocated", label: "Other", strategies: unallocated.map(asReportStrategy) });
+  }
+
+  return { groups, summary, excludedCount, qualitativeOnly: true };
 }
 
 /**

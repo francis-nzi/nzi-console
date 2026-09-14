@@ -204,13 +204,13 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     </Drawer>
     <Drawer open={strategyDrawer !== null} onClose={closeStrategyDrawer} ariaLabel={strategyDrawer ? strategyDrawerLabel(strategyDrawer) : "Actions drawer"} className="nz-site-drawer" dismissOnOutsideClick>
       {strategyDrawer?.kind === "strategy-library"
-        ? <StrategyLibraryForm clientId={client.id} library={strategyDrawer.library} access={access.actions}
+        ? <StrategyLibraryForm clientId={client.id} library={strategyDrawer.library} framework={workspace.srs.framework} access={access.actions}
           onClose={closeStrategyDrawer} onSaved={strategySaved} onBespoke={() => setStrategyDrawer({ kind: "strategy-bespoke" })} /> : null}
       {strategyDrawer?.kind === "strategy-bespoke"
-        ? <StrategyBespokeForm clientId={client.id} access={access.actions} onClose={closeStrategyDrawer}
+        ? <StrategyBespokeForm clientId={client.id} framework={workspace.srs.framework} access={access.actions} onClose={closeStrategyDrawer}
           onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
       {strategyDrawer?.kind === "strategy-edit"
-        ? <StrategyEditForm key={strategyDrawer.strategy.id} action={strategyDrawer.strategy} access={access.actions}
+        ? <StrategyEditForm key={strategyDrawer.strategy.id} action={strategyDrawer.strategy} framework={workspace.srs.framework} access={access.actions}
           onClose={closeStrategyDrawer} onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
     </Drawer>
   </AppShell>;

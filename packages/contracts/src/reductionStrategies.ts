@@ -53,6 +53,8 @@ export type LibraryStrategy = {
   key: string;
   /** The levers this strategy is allocated to (M:N). */
   leverIds: string[];
+  /** The SRS requirements a client copy inherits. Never empty in the seeded library. */
+  defaultSrsRequirementIds: string[];
   title: string;
   description: string;
   scope: StrategyScope;
@@ -74,6 +76,17 @@ export type ClientStrategy = {
   clientId: string;
   /** Inherited from the library strategy, or chosen directly for a bespoke one. */
   leverIds: string[];
+  /**
+   * The SRS requirements this strategy advances. **At least one, always** — a strategy on a
+   * plan exists to move something the client has to disclose, and the database enforces it
+   * with a deferred constraint trigger rather than trusting the command.
+   */
+  srsRequirementIds: string[];
+  /**
+   * Whether it appears in the report plan section. Read when a report composition is frozen
+   * at issue, never afterwards — toggling it later cannot rewrite a report already sent.
+   */
+  includeInReport: boolean;
   /** null for a bespoke action — one that is not in the catalogue. */
   strategyId: string | null;
   title: string;

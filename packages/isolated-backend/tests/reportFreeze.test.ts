@@ -29,10 +29,14 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migr
 const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
 
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
-  id, clientId: "client-a", strategyId: null, leverIds: [], title: id, scope: "2", category: "Energy",
+  id, clientId: "client-a", strategyId: null, leverIds: ["lever-energy"],
+  srsRequirementIds: ["req-1"], includeInReport: true, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });
+
+const LEVERS = [{ id: "lever-energy", key: "energy", title: "Energy", iconKey: "energy", ordering: 1, active: true }];
+const CODES = new Map([["req-1", "S2 M2"]]);
 
 describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let client: pg.Client;
@@ -75,9 +79,7 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
   after(async () => { await client?.end(); });
 
   it("returns what was frozen after the plan underneath it changes", async () => {
-    const plan = composeReportPlan(
-      [strategy("s1", { status: "in_progress", progressPct: 60 }), strategy("s2")],
-      strategyControlLevelLabels, strategyControlLevels);
+    const plan = composeReportPlan([strategy("s1", { status: "in_progress", progressPct: 60 }), strategy("s2")], LEVERS, CODES);
 
     const composition = {
       reportVersionId: "version-1", jobId: "job-a", jobNumber: "J000001", client: "Client A",
@@ -99,9 +101,19 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
     const issued = JSON.stringify(await getReportComposition(client as never, "version-1"));
 
     // Now change every source the report quotes, the way a consultant would next week.
+    // A strategy and its SRS alignment are one fact, so they go in one transaction: the
+    // "at least one requirement" trigger is deferred and judges the transaction at commit.
+    // Inserting the strategy alone — as this fixture once did — is exactly what the trigger
+    // exists to refuse.
+    await client.query(`BEGIN`);
     await client.query(
       `INSERT INTO nzi_console.client_strategies (organisation_id, client_strategy_id, client_id, bespoke_title, bespoke_scope, bespoke_control_level, created_by)
        VALUES ('org-a', 'added-later', 'client-a', 'Added after the report was issued', '1', 'direct_control', 'tester')`);
+    await client.query(
+      `INSERT INTO nzi_console.client_strategy_srs_requirements (organisation_id, client_strategy_id, framework_id, requirement_id)
+       SELECT organisation_id, 'added-later', framework_id, requirement_id
+       FROM nzi_console.srs_requirements WHERE organisation_id = 'org-a' ORDER BY requirement_id LIMIT 1`);
+    await client.query(`COMMIT`);
     await client.query(
       `UPDATE nzi_console.reduction_strategies SET title = 'Renamed after the report was issued'
        WHERE organisation_id = 'org-a' AND strategy_key = 'solar-pv'`);

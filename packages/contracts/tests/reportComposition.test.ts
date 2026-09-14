@@ -8,10 +8,13 @@ import {
 import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy } from "../src/reductionStrategies";
 
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
-  id, clientId: "client-a", leverIds: [], strategyId: null, title: id, scope: "2", category: "Energy",
+  id, clientId: "client-a", leverIds: ["lever-energy"], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });
+
+const LEVERS = [{ id: "lever-energy", key: "energy", title: "Energy", iconKey: "energy", ordering: 1, active: true }];
+const CODES = new Map([["req-1", "S2 M2"]]);
 
 const emissions = (over: Partial<ReportEmissionsSection> = {}): ReportEmissionsSection => ({
   totalTco2e: 1706,
@@ -95,32 +98,61 @@ describe("the report composition", () => {
   });
 
   describe("the plan section", () => {
-    it("freezes the plan as it stood, grouped by level of control", () => {
-      const section = composeReportPlan(
-        [action("a", { status: "in_progress", progressPct: 60 }), action("b", { controlLevel: "influence" })],
-        strategyControlLevelLabels, strategyControlLevels,
-      );
+    it("freezes the plan as it stood, grouped by lever", () => {
+      const section = composeReportPlan([action("a", { status: "in_progress", progressPct: 60 }), action("b")], LEVERS, CODES);
       assert.ok(!isReportGap(section));
       if (isReportGap(section)) return;
-      assert.deepEqual(section.groups.map((group) => group.controlLevel), ["direct_control", "influence"]);
+      assert.deepEqual(section.groups.map((group) => group.label), ["Energy"]);
       assert.equal(section.summary.total, 2);
       assert.equal(section.summary.inProgress, 1);
       // Said on the page: these percentages are progress, not carbon.
       assert.equal(section.qualitativeOnly, true);
     });
 
-    it("leaves out actions already removed at issue, and keeps the rest frozen", () => {
-      const section = composeReportPlan([action("a"), action("gone", { active: false })], strategyControlLevelLabels, strategyControlLevels);
+    it("carries each strategy's SRS alignment as a code, not an id", () => {
+      // "S2 M2" means something to a reader; a generated id does not.
+      const section = composeReportPlan([action("a")], LEVERS, CODES);
       assert.ok(!isReportGap(section));
       if (isReportGap(section)) return;
-      assert.equal(section.summary.total, 1, "an action removed before issue was never in the report");
+      assert.deepEqual(section.groups[0]!.strategies[0]!.srsRequirementCodes, ["S2 M2"]);
     });
 
-    it("states an empty plan rather than showing a zeroed summary", () => {
-      const section = composeReportPlan([], strategyControlLevelLabels, strategyControlLevels);
-      assert.ok(isReportGap(section));
-      if (!isReportGap(section)) return;
-      assert.match(section.reason, /No decarbonisation actions were on this client's plan/);
+    it("includes only the strategies marked for the report, and says how many it left out", () => {
+      // A plan section showing one of a client's three strategies must not read as the
+      // whole plan.
+      const section = composeReportPlan(
+        [action("in"), action("out-1", { includeInReport: false }), action("out-2", { includeInReport: false })],
+        LEVERS, CODES);
+      assert.ok(!isReportGap(section));
+      if (isReportGap(section)) return;
+      assert.equal(section.summary.total, 1);
+      assert.equal(section.excludedCount, 2);
+    });
+
+    it("distinguishes an empty plan from one with nothing included", () => {
+      // Two different facts that would otherwise read the same on the page.
+      const empty = composeReportPlan([], LEVERS, CODES);
+      assert.ok(isReportGap(empty));
+      if (isReportGap(empty)) assert.match(empty.reason, /No reduction strategies were on this client's plan/);
+
+      const noneIncluded = composeReportPlan([action("a", { includeInReport: false })], LEVERS, CODES);
+      assert.ok(isReportGap(noneIncluded));
+      if (isReportGap(noneIncluded)) assert.match(noneIncluded.reason, /None of this client's 1 reduction strategies were marked for inclusion/);
+    });
+
+    it("leaves out strategies already removed at issue, and keeps the rest frozen", () => {
+      const section = composeReportPlan([action("a"), action("gone", { active: false })], LEVERS, CODES);
+      assert.ok(!isReportGap(section));
+      if (isReportGap(section)) return;
+      assert.equal(section.summary.total, 1, "a strategy removed before issue was never in the report");
+    });
+
+    it("keeps a strategy whose lever was withdrawn rather than dropping it", () => {
+      const section = composeReportPlan([action("orphan", { leverIds: ["gone"] })], LEVERS, CODES);
+      assert.ok(!isReportGap(section));
+      if (isReportGap(section)) return;
+      assert.deepEqual(section.groups.map((group) => group.label), ["Other"]);
+      assert.equal(section.summary.total, 1, "it is still in the report the client was sent");
     });
   });
 });
