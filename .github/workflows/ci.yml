@@ -1,0 +1,60 @@
+# CI for nzi-console.
+#
+# The repository had none until now, which is why a migration could be merged, never
+# applied, and edited afterwards without anything noticing. The job that matters most here
+# is `migrations`: it applies every migration in order against a real Postgres, which is the
+# only check that can catch a file that parses as text but fails as SQL.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: typecheck · build · tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test -w @nzi/contracts
+      - run: npm test -w @nzi/isolated-backend
+      - run: npm run test:console
+
+  migrations:
+    name: migrations apply to a real Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nzi_migrations_ci
+        ports: ["5432:5432"]
+        # Without this the steps can start before Postgres is accepting connections, and the
+        # job fails for a reason that has nothing to do with the migrations.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # A throwaway database, recreated per run. Never a real one: the guard in the runner
+      # refuses anything but the isolated non-production boundary, and this is not that.
+      NZI_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_migrations_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply every migration in order
+        run: npx tsx --test packages/isolated-backend/tests/migrationsRun.test.ts
