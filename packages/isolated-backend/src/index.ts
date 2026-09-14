@@ -125,3 +125,5 @@ export async function runIsolatedCommand<T extends Record<string, unknown>>(stor
     return { state: "failed", code: "TRANSACTION_FAILED", message: error instanceof Error ? error.message : "Transaction failed.", retryable: false, correlationId: context.correlationId };
   }
 }
+export { mailDelivery, smtpSettingsFrom, suppressingMailer, SmtpConfigurationError, type Mailer, type MailMessage, type MailDelivery } from "./mailer";
+export { runReminderTick, scanClientReminders, drainOutbox, clientsWithPlans, REMINDER_TOPIC, MAX_SEND_ATTEMPTS, type ReminderRunSummary } from "./strategyReminderWorker";

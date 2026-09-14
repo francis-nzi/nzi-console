@@ -62,3 +62,7 @@ jobs:
       # Needs a real database, so it runs in this job rather than the unit suite.
       - name: An issued report does not move
         run: npx tsx --test packages/isolated-backend/tests/reportFreeze.test.ts
+      # Idempotency is a property of a unique index and a claim taken before a send, so it
+      # is only really tested against a database that can refuse the second one.
+      - name: Reminders send once, and the outbox backlog sends nothing
+        run: npx tsx --test packages/isolated-backend/tests/strategyReminders.test.ts

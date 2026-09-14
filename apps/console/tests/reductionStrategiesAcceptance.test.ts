@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
@@ -279,16 +279,21 @@ describe("strategy deadline signals", () => {
     assert.match(contract, /if \(days === null\) return \{ state: "none" \}/);
   });
 
-  it("stores nothing — 3a is derivation only", () => {
-    // The automation log belongs with the sending, in 3b. Adding the table here would be
-    // schema ahead of need, and a migration this slice does not require.
-    const migrations = readdirSync(new URL("../../../packages/isolated-backend/migrations", import.meta.url));
-    assert.ok(!migrations.some((name) => /automation_log|reminder|notification/i.test(name)),
-      "no notification migration lands in 3a");
+  it("stores nothing — the signal stays a derivation", () => {
+    // 3b added strategy_automation_log for *sends*. The read-time signal still records
+    // nothing: what the console and the portal show is derived from the date the client
+    // set, so a surface that started writing would have quietly become a second source of
+    // truth about what is overdue.
     for (const source of [area, portal, portalModel]) {
       for (const verb of ["INSERT", "UPDATE ", "postBrowserCommand", "patchBrowserCommand"]) {
         assert.ok(!source.includes(verb), `a read-time signal must not write (${verb})`);
       }
+    }
+    // And neither surface reads the send log: a reminder having gone out is not the same
+    // fact as a date having passed, and showing one for the other would be a lie on a slow
+    // clock.
+    for (const source of [area, portal, portalModel]) {
+      assert.ok(!source.includes("strategy_automation_log"), "the signal does not depend on what was sent");
     }
   });
 
@@ -336,5 +341,92 @@ describe("strategy deadline signals", () => {
   it("documents the window where the cadence is configured", () => {
     assert.match(contract, /export const strategyReminderWindowDays = 30/);
     assert.match(read("docs/DEPLOYMENT.md"), /strategyReminderWindowDays/);
+  });
+});
+
+/**
+ * Phase 3b — the email channel. The properties that matter are about what CANNOT happen:
+ * staging cannot mail a real client, the clock cannot double-send, and the standing outbox
+ * backlog cannot become email.
+ */
+describe("strategy deadline email", () => {
+  const worker = read("packages/isolated-backend/src/strategyReminderWorker.ts");
+  const mailer = read("packages/isolated-backend/src/mailer.ts");
+  const migration = read("packages/isolated-backend/migrations/0083_strategy_automation_log.sql");
+  const render = read("render.yaml");
+
+  it("claims before it sends, so a crash cannot double-send", () => {
+    // A log row written after a successful send cannot prevent a duplicate: the crash that
+    // loses it happens in the window between the send and the write.
+    assert.match(migration, /CREATE UNIQUE INDEX strategy_automation_log_once_idx/);
+    assert.match(migration, /client_strategy_id, kind, target_date, recipient_email/);
+    assert.match(worker, /ON CONFLICT \(organisation_id, client_strategy_id, kind, target_date, recipient_email\) DO NOTHING/);
+    // The claim is taken, then the outbox row is enqueued — never the other way round.
+    // Bounded by the next declaration: the function's own parameter type closes with a
+    // brace in column 0, so matching to the first of those stops inside the signature.
+    const scan = /export async function scanClientReminders[\s\S]*?async function listReminderContacts/.exec(worker)?.[0] ?? "";
+    assert.ok(scan.length > 0, "the scan function is found");
+    assert.ok(scan.indexOf("strategy_automation_log") < scan.indexOf("transactional_outbox"));
+  });
+
+  it("cannot turn the 0001 outbox backlog into email", () => {
+    // Every command has written an outbox row since the first migration and nothing has
+    // ever drained one. Safety is by construction: no handler, no mail.
+    assert.match(worker, /if \(row\.topic !== REMINDER_TOPIC\)/);
+    assert.match(worker, /state='skipped'/);
+    // 'skipped', not 'sent' — the audit trail must not claim a delivery that never happened.
+    assert.match(migration, /CHECK \(state IN \('pending','processing','sent','skipped','failed'\)\)/);
+  });
+
+  it("fails closed on three independent conditions", () => {
+    assert.match(mailer, /boundaryToken === "isolated-non-production"/);
+    assert.match(mailer, /appEnv !== "production"/);
+    assert.match(mailer, /mailMode !== "send"/);
+    // The boundary is read first, so nothing else can override the isolation rule.
+    assert.ok(mailer.indexOf("isolated-non-production") < mailer.indexOf('appEnv !== "production"'));
+  });
+
+  it("never writes a secret down", () => {
+    // Not in code, not in comments, not in the deployment file.
+    for (const source of [mailer, worker, render, read("packages/isolated-backend/src/smtpMailer.ts")]) {
+      assert.ok(!/smtp\.office365\.com/i.test(source), "no host value is hardcoded");
+      assert.ok(!/SMTP_PASS\s*=\s*["'][^"']+["']/.test(source), "no password literal");
+    }
+    // Every SMTP variable is dashboard-supplied rather than committed.
+    for (const key of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]) {
+      assert.match(render, new RegExp(`- key: ${key}\\s+sync: false`), key);
+    }
+    // And a configuration error names the variable without echoing any value.
+    assert.match(mailer, /Missing SMTP configuration: \$\{missing\.join/);
+  });
+
+  it("leaves the send switch off in the deployed worker", () => {
+    // NZI_MAIL_MODE is absent rather than set false-y: adding it is the one edit that could
+    // put mail on the wire from this service.
+    assert.match(render, /type: worker/);
+    assert.match(render, /name: nzi-console-reminders/);
+    assert.doesNotMatch(render, /^\s+- key: NZI_MAIL_MODE/m);
+    assert.match(render, /NZI_DATABASE_BOUNDARY\s*\n\s*value: isolated-non-production/);
+  });
+
+  it("re-derives against live state before sending", () => {
+    // The gap between the scan and the send is where a client gets told they are late for
+    // something they finished.
+    assert.match(worker, /the strategy is no longer on the plan/);
+    assert.match(worker, /the target date has moved/);
+    assert.match(worker, /no longer has a deadline to raise/);
+  });
+
+  it("holds on absent consent rather than assuming it", () => {
+    assert.match(migration, /email_consent text NOT NULL DEFAULT 'unknown'/);
+    assert.match(read("packages/contracts/src/strategyReminders.ts"), /contact\.emailConsent !== "granted"\) continue/);
+  });
+
+  it("runs as the worker role, which cannot edit a plan", () => {
+    // A worker running as nzi_console_app could change a client's plan while reminding
+    // them about it.
+    assert.match(read("packages/isolated-backend/src/postgres.ts"), /withTenantWorker/);
+    assert.match(migration, /GRANT SELECT ON nzi_console\.client_strategies TO nzi_console_worker/);
+    assert.doesNotMatch(migration, /GRANT[^;]*(INSERT|UPDATE|DELETE)[^;]*ON nzi_console\.client_strategies TO nzi_console_worker/);
   });
 });

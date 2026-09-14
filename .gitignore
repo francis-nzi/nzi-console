@@ -20,3 +20,7 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# Scratch copies of handoff briefs. Untracked working notes — and they have carried
+# credential values in the past, which must never reach the repository.
+Claude outputs/

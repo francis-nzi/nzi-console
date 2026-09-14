@@ -43,6 +43,16 @@ export function withTenantWrite<T>(pool: PoolLike, organisationId: string, work:
   return withTenantTransaction(pool, organisationId, "nzi_console_app", "write", work);
 }
 
+/**
+ * The background worker's own tenant context. A separate role from the console's, with a
+ * much narrower grant: it reads plans, clients and contacts, and writes only the outbox and
+ * the automation log. A worker that ran as `nzi_console_app` could edit a client's plan
+ * while reminding them about it.
+ */
+export function withTenantWorker<T>(pool: PoolLike, organisationId: string, work: (client: Queryable) => Promise<T>): Promise<T> {
+  return withTenantTransaction(pool, organisationId, "nzi_console_worker", "write", work);
+}
+
 export function withAuthTransaction<T>(pool: PoolLike, mode: "read" | "write", work: (client: Queryable) => Promise<T>): Promise<T> {
   return withTenantTransaction(pool, "authentication", "nzi_console_auth", mode, work);
 }

@@ -79,10 +79,17 @@ Restructures `0075`'s flat `action_levers` catalogue into two concepts plus a jo
   requirement(s) it advances.
 
 ## 4. Include in report  🟠
-- Per `client_strategies` boolean **`include_in_report`** (default true; consultant can exclude).
+- Per `client_strategies` boolean **`include_in_report`** (default **true**; consultant can exclude).
+- **The plan is built transparently with the client** (decided 14 Sep 2026): the flag means
+  "client-facing", gating **both** the live portal plan and the formal report. Default true = the
+  client watches their plan take shape live; setting it false is the deliberate **hold-back** that
+  drops a strategy from the portal and the report together. One flag, one meaning — do **not**
+  split portal-visibility from report-inclusion, and do **not** default it false.
 - The report's plan section renders **only** included strategies.
 - It must **freeze into the report composition at issue** (per the composition rule) — an issued
-  report keeps the strategies-and-flags it was built with; later toggles don't rewrite it.
+  report keeps the strategies-and-flags it was built with; later toggles don't rewrite it. The
+  **portal** plan, by contrast, is **live** (exempt from the published-snapshot rule — a plan is
+  not a measurement, and a stale deadline is worse than a live one).
 
 ## 5. Report plan section  🟠
 - The "Decarbonisation plan" section is driven by **Reduction Strategies**, grouped by **lever**

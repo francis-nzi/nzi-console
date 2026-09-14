@@ -65,3 +65,69 @@ services:
         sync: false
       - key: NZI_CONSOLE_MFA_ENCRYPTION_KEY
         sync: false
+
+  # ── Reminder worker ────────────────────────────────────────────────────────────────
+  # Drains nzi_console.transactional_outbox on a clock and sends reduction-strategy
+  # deadline reminders. A separate service because a tick driven by web traffic fires
+  # whenever someone happens to be looking, which is neither a schedule nor idempotent.
+  #
+  # ON THIS SERVICE IT SENDS NOTHING. NZI_DATABASE_BOUNDARY=isolated-non-production makes
+  # mailDelivery() return "suppress" before either of the other two conditions is read, so
+  # the worker composes each reminder, records it in strategy_automation_log, and logs the
+  # mail it would have sent. That is the isolation rule, not a limitation to work around:
+  # staging must never email a real client.
+  #
+  # Real sending needs a non-isolated boundary AND NEXT_PUBLIC_APP_ENV=production AND
+  # NZI_MAIL_MODE=send. All three, and the default of every one of them is silence.
+  - type: worker
+    name: nzi-console-reminders
+    runtime: node
+    region: frankfurt
+    plan: starter
+    branch: main
+    # The worker runs TypeScript through tsx, so tsx is a runtime dependency of
+    # @nzi/isolated-backend rather than a dev one — Render sets NODE_ENV=production, which
+    # would otherwise skip it and the service would fail to start.
+    buildCommand: npm install
+    startCommand: npm run reminder-worker -w @nzi/isolated-backend
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_APP_ENV
+        value: staging
+      - key: NZI_DATABASE_BOUNDARY
+        value: isolated-non-production
+      - key: NZI_DEMO_ORGANISATION_ID
+        value: demo-nzi-console
+      # Same non-production Supabase as the console. Never commit this value.
+      - key: NZI_ISOLATED_DATABASE_URL
+        sync: false
+      # How often the clock ticks. Reminders are day-grained, so this only controls how
+      # promptly a newly-due date is noticed, not how often anyone is written to —
+      # strategy_automation_log's unique index is what stops a second send.
+      - key: NZI_REMINDER_TICK_SECONDS
+        value: "900"
+      # Deliberately ABSENT rather than set to a false-y value: mailDelivery() requires the
+      # exact string "send", so an unset variable is the suppressing default. Adding it here
+      # would be the one edit that could put mail on the wire, and it must never be made on
+      # this service.
+      #   - key: NZI_MAIL_MODE
+      #     value: send
+      #
+      # SMTP transport (Office 365), matching live. Values are supplied per service in the
+      # Render dashboard and never committed. The worker reads this contract but, on this
+      # service, never opens a connection — the suppressing mailer is chosen before any
+      # transport is built, so these may be left unset here entirely.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_TLS
+        sync: false
