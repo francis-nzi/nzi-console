@@ -121,7 +121,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Spheres-of-Influence framework mapping | framework | Prototype ✓ (grouped by sphere) | Should |
 | Action status / owner / target dates | `report_actions` | Built — Reduction Strategies (NZC-075) | Should |
 | **Deadline signals — in-app + portal** (approaching / overdue, derived at read time; no date raises nothing) | brief §6 | **Built — #164** (no migration) | Should |
-| **Deadline email reminders** — worker `nzi-console-reminders` drains the outbox on a 900 s clock; Office 365 SMTP; claim-before-send idempotency (`strategy_automation_log`) | brief §6a · NZC-076 | **Built — #165 / migration `0083` · verified on staging 14 Sep 2026** (first tick: outbox backlog skipped × 42, sent 0, failed 0; log 0 rows — no consent yet). Staging is suppress-and-log and cannot send. | Should |
+| **Deadline email reminders** — worker `nzi-console-reminders` drains the outbox on a 900 s clock; Office 365 SMTP; claim-before-send idempotency (`strategy_automation_log`) | brief §6a · NZC-076 | **Built — #165 / migration `0083` · verified on staging 14 Sep 2026** (first tick: outbox backlog skipped × 42, sent 0, failed 0; log 0 rows — no reminder has run yet (no client strategies on staging); reminder path proven by CI, not by a staging run). Staging is suppress-and-log and cannot send. | Should |
 | ↳ Production gate (b): **live worker standup** against the live DB boundary + real SMTP | NZC-076 | **Intentionally open** — a separate reviewed deploy, *and* a reviewed change to the worker's start-up guard, which by design refuses the live boundary today | Should |
 | Quantified emissions projection from actions | (live has none) | To build | Stage 2 |
 
