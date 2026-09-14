@@ -134,27 +134,36 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         ? <Gap section={plan} />
         : <>
           <div className="nzr-plan-summary">
-            <span><b className="num">{plan.summary.total}</b> actions</span>
+            <span><b className="num">{plan.summary.total}</b> strategies</span>
             <span><b className="num">{plan.summary.inProgress}</b> in progress</span>
             <span><b className="num">{plan.summary.complete}</b> complete</span>
             <span><b className="num">{plan.summary.planned}</b> planned</span>
           </div>
-          {plan.groups.map((group) => <section className="nzr-plan-group" key={group.controlLevel}>
+          {/* Grouped by lever — the theme a strategy sits under. */}
+          {plan.groups.map((group) => <section className="nzr-plan-group" key={group.leverId}>
             <h3>{group.label}</h3>
-            {group.actions.map((action, index) => <div className="nzr-action" key={`${action.title}-${index}`}>
-              <div className="nm">{action.title}</div>
+            {group.strategies.map((strategy, index) => <div className="nzr-strategy" key={`${strategy.title}-${index}`}>
+              <div className="nm">{strategy.title}</div>
               <div className="mt">
-                <span className="nzr-tag">{strategyScopeLabel(action.scope as StrategyScope)}</span>
-                {[action.category, action.owner, action.targetDate === null ? "" : formatDate(action.targetDate)]
+                <span className="nzr-tag">{strategyScopeLabel(strategy.scope as StrategyScope)}</span>
+                {/* What it advances. The whole point of the alignment is that a reader can
+                    see which disclosure each strategy is for. */}
+                {strategy.srsRequirementCodes.map((code) => <span className="nzr-tag srs" key={code}>{code}</span>)}
+                {[strategy.category, strategy.owner, strategy.targetDate === null ? "" : formatDate(strategy.targetDate)]
                   .filter(Boolean).join(" · ")}
               </div>
-              <div className="st">{strategyStatusLabels[action.status]} · {action.progressPct}%</div>
+              <div className="st">{strategyStatusLabels[strategy.status]} · {strategy.progressPct}%</div>
             </div>)}
           </section>)}
+          {/* Said plainly: this is a selection, not necessarily the whole plan. */}
+          {plan.excludedCount > 0 ? <p className="nzr-note">
+            {plan.excludedCount} further {plan.excludedCount === 1 ? "strategy is" : "strategies are"} on this
+            client&rsquo;s plan but not included in this report.
+          </p> : null}
           <p className="nzr-note">
             The plan is tracked qualitatively: the percentages above are reported progress against each
-            action, not a modelled carbon reduction. Quantified impact per lever is not yet part of this
-            report.
+            strategy, not a modelled carbon reduction. Each strategy shows the UK SRS requirement it
+            advances. Quantified impact per strategy is not yet part of this report.
           </p>
         </>}
     </Page>

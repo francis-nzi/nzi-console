@@ -23,6 +23,7 @@ type StrategyRow = {
   category: string; control_level: string; icon_key: string; active: boolean; version: number;
   modelled_tco2e_per_year: string | null; modelled_impact_basis: string | null;
   lever_ids: string[] | null;
+  srs_requirement_ids: string[] | null;
 };
 
 const mapStrategy = (row: StrategyRow): LibraryStrategy => ({
@@ -30,6 +31,7 @@ const mapStrategy = (row: StrategyRow): LibraryStrategy => ({
   scope: row.scope as StrategyScope, category: row.category,
   controlLevel: row.control_level as StrategyControlLevel, iconKey: row.icon_key,
   leverIds: row.lever_ids ?? [],
+  defaultSrsRequirementIds: row.srs_requirement_ids ?? [],
   active: row.active, version: row.version,
   // The pairing is enforced in the database too; reading it as a tuple means a figure can
   // never reach a screen without the basis that justifies it.
@@ -43,7 +45,8 @@ const mapStrategy = (row: StrategyRow): LibraryStrategy => ({
 // cost paid on every page load.
 const STRATEGY_COLUMNS = `s.strategy_id, s.strategy_key, s.title, s.description, s.scope, s.category,
   s.control_level, s.icon_key, s.active, s.version, s.modelled_tco2e_per_year::text, s.modelled_impact_basis,
-  coalesce(array_agg(sl.lever_id) FILTER (WHERE sl.lever_id IS NOT NULL), '{}') AS lever_ids`;
+  coalesce(array_agg(DISTINCT sl.lever_id) FILTER (WHERE sl.lever_id IS NOT NULL), '{}') AS lever_ids,
+  coalesce(array_agg(DISTINCT sr.requirement_id) FILTER (WHERE sr.requirement_id IS NOT NULL), '{}') AS srs_requirement_ids`;
 
 /** The levers, in the order Admin set — the plan's grouping follows this. */
 export async function listLevers(db: Queryable): Promise<Lever[]> {
@@ -61,6 +64,7 @@ export async function listLibraryStrategies(db: Queryable): Promise<LibraryStrat
     `SELECT ${STRATEGY_COLUMNS}
      FROM nzi_console.reduction_strategies s
      LEFT JOIN nzi_console.strategy_levers sl ON (sl.organisation_id, sl.strategy_id) = (s.organisation_id, s.strategy_id)
+     LEFT JOIN nzi_console.strategy_srs_requirements sr ON (sr.organisation_id, sr.strategy_id) = (s.organisation_id, s.strategy_id)
      GROUP BY s.organisation_id, s.strategy_id
      ORDER BY s.control_level, lower(s.title)`);
   return result.rows.map(mapStrategy);
@@ -75,6 +79,8 @@ type ClientStrategyRow = {
   strategy_title: string | null; strategy_scope: string | null; strategy_category: string | null;
   strategy_control_level: string | null; strategy_icon: string | null;
   lever_ids: string[] | null;
+  srs_requirement_ids: string[] | null;
+  include_in_report: boolean;
 };
 
 const dateOnly = (value: Date | string | null) =>
@@ -91,6 +97,8 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   // A library strategy inherits the library's lever allocation; a bespoke one has none yet
   // and falls into the "not allocated" group rather than disappearing from a grouped plan.
   leverIds: row.lever_ids ?? [],
+  srsRequirementIds: row.srs_requirement_ids ?? [],
+  includeInReport: row.include_in_report,
   status: row.status as StrategyStatus, owner: row.owner,
   targetDate: dateOnly(row.target_date), progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
@@ -100,13 +108,17 @@ export async function listClientStrategies(db: Queryable, clientId: string): Pro
   const result = await db.query<ClientStrategyRow>(
     `SELECT a.client_strategy_id, a.client_id, a.strategy_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
             a.bespoke_control_level, a.bespoke_icon_key, a.status, a.owner, a.target_date, a.progress_pct,
-            a.notes, a.active, a.version,
+            a.notes, a.active, a.version, a.include_in_report,
             l.title AS strategy_title, l.scope AS strategy_scope, l.category AS strategy_category,
             l.control_level AS strategy_control_level, l.icon_key AS strategy_icon,
-            coalesce(array_agg(sl.lever_id) FILTER (WHERE sl.lever_id IS NOT NULL), '{}') AS lever_ids
+            coalesce(array_agg(DISTINCT sl.lever_id) FILTER (WHERE sl.lever_id IS NOT NULL), '{}') AS lever_ids,
+            -- The client's OWN alignment, not the library default it started from: a
+            -- consultant may have changed it, and the report must quote what they chose.
+            coalesce(array_agg(DISTINCT cr.requirement_id) FILTER (WHERE cr.requirement_id IS NOT NULL), '{}') AS srs_requirement_ids
      FROM nzi_console.client_strategies a
      LEFT JOIN nzi_console.reduction_strategies l ON (l.organisation_id, l.strategy_id) = (a.organisation_id, a.strategy_id)
      LEFT JOIN nzi_console.strategy_levers sl ON (sl.organisation_id, sl.strategy_id) = (l.organisation_id, l.strategy_id)
+     LEFT JOIN nzi_console.client_strategy_srs_requirements cr ON (cr.organisation_id, cr.client_strategy_id) = (a.organisation_id, a.client_strategy_id)
      WHERE a.client_id = $1
      GROUP BY a.organisation_id, a.client_strategy_id, l.title, l.scope, l.category, l.control_level, l.icon_key
      ORDER BY a.created_at, a.client_strategy_id`, [clientId]);

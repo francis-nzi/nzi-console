@@ -29,10 +29,14 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migr
 const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
 
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
-  id, clientId: "client-a", strategyId: null, leverIds: [], title: id, scope: "2", category: "Energy",
+  id, clientId: "client-a", strategyId: null, leverIds: ["lever-energy"],
+  srsRequirementIds: ["req-1"], includeInReport: true, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });
+
+const LEVERS = [{ id: "lever-energy", key: "energy", title: "Energy", iconKey: "energy", ordering: 1, active: true }];
+const CODES = new Map([["req-1", "S2 M2"]]);
 
 describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let client: pg.Client;
@@ -75,9 +79,7 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
   after(async () => { await client?.end(); });
 
   it("returns what was frozen after the plan underneath it changes", async () => {
-    const plan = composeReportPlan(
-      [strategy("s1", { status: "in_progress", progressPct: 60 }), strategy("s2")],
-      strategyControlLevelLabels, strategyControlLevels);
+    const plan = composeReportPlan([strategy("s1", { status: "in_progress", progressPct: 60 }), strategy("s2")], LEVERS, CODES);
 
     const composition = {
       reportVersionId: "version-1", jobId: "job-a", jobNumber: "J000001", client: "Client A",

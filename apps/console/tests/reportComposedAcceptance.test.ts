@@ -84,9 +84,25 @@ describe("the composed report", () => {
 
   it("says the plan's percentages are progress, not carbon", () => {
     assert.match(view, /not a modelled carbon reduction/);
-    // Grouped by level of control, per the settled naming.
-    assert.match(view, /group\.controlLevel/);
+    // Grouped by lever — the theme a strategy sits under (phase 2).
+    assert.match(view, /group\.leverId/);
     assert.doesNotMatch(view, /sphere/i);
+  });
+
+  it("shows only included strategies, and says how many it left out", () => {
+    // A plan section showing four of a client's nine strategies must not read as the whole
+    // plan. `include_in_report` is read when the composition is frozen, never afterwards.
+    assert.match(view, /plan\.excludedCount > 0/);
+    assert.match(view, /not included in this report/);
+    const contract = read("packages/contracts/src/reportComposition.ts");
+    assert.match(contract, /strategy\.includeInReport/);
+    assert.match(contract, /read HERE, at issue, and frozen with everything else/);
+  });
+
+  it("shows what each strategy advances, by requirement code", () => {
+    assert.match(view, /strategy\.srsRequirementCodes\.map/);
+    // Codes, not generated ids — "S2 M2" means something to a reader.
+    assert.match(read("packages/contracts/src/reportComposition.ts"), /"S2 M2" rather than an id/);
   });
 
   it("carries provenance beside the figures, not only on a back page", () => {

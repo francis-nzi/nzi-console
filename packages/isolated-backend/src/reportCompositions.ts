@@ -5,7 +5,7 @@ import {
   type ReportComposition, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
-import { listClientStrategies } from "./reductionStrategies";
+import { listClientStrategies, listLevers } from "./reductionStrategies";
 import { listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
@@ -210,11 +210,16 @@ export async function composeReport(db: Queryable, input: {
   const emissions = composeEmissions(input.snapshot);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
 
-  const [intensity, targets, srs, actions] = await Promise.all([
+  const [intensity, targets, srs, strategies, levers, requirementCodes] = await Promise.all([
     composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e }),
     composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
     composeSrs(db, input.clientId),
     listClientStrategies(db, input.clientId),
+    listLevers(db),
+    // Requirement ids mean nothing to a reader, so the report carries codes like "S2 M2".
+    db.query<{ requirement_id: string; code: string }>(
+      `SELECT requirement_id, code FROM nzi_console.srs_requirements`,
+    ).then((result) => new Map(result.rows.map((row) => [row.requirement_id, row.code]))),
   ]);
   return {
     reportVersionId: input.reportVersionId,
@@ -230,7 +235,7 @@ export async function composeReport(db: Queryable, input: {
     emissions,
     intensity,
     targets,
-    plan: composeReportPlan(actions, strategyControlLevelLabels, strategyControlLevels),
+    plan: composeReportPlan(strategies, levers, requirementCodes),
     srs,
   };
 }
