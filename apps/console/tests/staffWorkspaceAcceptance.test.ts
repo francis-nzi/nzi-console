@@ -18,7 +18,7 @@ describe("staff workspace acceptance contracts",()=>{
     assert.ok(shell.includes("areas={"),"the nav sits in the shell's own column");
     assert.ok(shell.includes("<EvidenceDrawer"),"the evidence drawer keeps the shell slot");
     const areas=read("apps/console/app/clients/[clientId]/clientAreas.ts");
-    for(const area of ["overview","analytics","reporting","actions","srs","tasks","notes","files","comms","profile","financials","ai"])assert.ok(areas.includes(`"${area}"`),area);
+    for(const area of ["overview","analytics","reporting","strategies","srs","tasks","notes","files","comms","profile","financials","ai"])assert.ok(areas.includes(`"${area}"`),area);
     for(const group of ["Client","Manage","Record"])assert.ok(areas.includes(`label: "${group}"`),group);
   });
   it("hosts every record drawer in one place — no card owns a drawer, and there is no separate edit page",()=>{

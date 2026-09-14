@@ -13,9 +13,9 @@ const area = (name: string) => read(`apps/console/app/clients/[clientId]/${name}
 describe("client workspace phase 2 areas", () => {
   it("marks as built only the areas that have a record behind them", () => {
     const areas = area("clientAreas.ts");
-    // `actions` joined this list with the action-lever library: it now has a catalogue and
-    // a client plan behind it, where before it had nothing.
-    for (const built of ["overview", "analytics", "reporting", "actions", "srs", "profile", "comms", "files", "ai"]) {
+    // `strategies` joined this list with the Reduction Strategies area: it has a lever set, a
+    // shared library and a client plan behind it, where before it had nothing.
+    for (const built of ["overview", "analytics", "reporting", "strategies", "srs", "profile", "comms", "files", "ai"]) {
       assert.match(areas, new RegExp(`"${built}"`), built);
     }
     const builtSet = /BUILT_AREAS[^=]*=[\s\S]*?\]\)/.exec(areas)?.[0] ?? "";
@@ -23,7 +23,7 @@ describe("client workspace phase 2 areas", () => {
     for (const notBuilt of ["tasks", "notes", "financials"]) {
       assert.ok(!builtSet.includes(`"${notBuilt}"`), `${notBuilt} must not be marked built`);
     }
-    assert.ok(builtSet.includes('"actions"'), "actions is built");
+    assert.ok(builtSet.includes('"strategies"'), "reduction strategies is built");
   });
 
   it("says plainly that tasks and notes have no store, rather than showing an empty list", () => {

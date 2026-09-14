@@ -1,4 +1,4 @@
-import type { ActionControlLevel, ActionStatus, ClientAction } from "./actionLevers";
+import type { StrategyControlLevel, StrategyStatus, ClientStrategy } from "./reductionStrategies";
 
 /**
  * The report as a **composition**, frozen when it is issued.
@@ -137,9 +137,9 @@ export const reportResidualTco2e = (targets: ReportTargetsSection): number | nul
 export type ReportPlanSection = {
   /** Grouped as the workspace groups it — by level of control, not by scope. */
   groups: Array<{
-    controlLevel: ActionControlLevel;
+    controlLevel: StrategyControlLevel;
     label: string;
-    actions: Array<{ title: string; scope: string; category: string; status: ActionStatus; progressPct: number; owner: string; targetDate: string | null }>;
+    actions: Array<{ title: string; scope: string; category: string; status: StrategyStatus; progressPct: number; owner: string; targetDate: string | null }>;
   }>;
   summary: { total: number; planned: number; inProgress: number; complete: number };
   /** Said on the page: the plan is qualitative, and its percentages are not carbon. */
@@ -181,9 +181,9 @@ export type ReportComposition = {
  * actions already removed at issue time were never part of it.
  */
 export function composeReportPlan(
-  actions: readonly ClientAction[],
-  labels: Record<ActionControlLevel, string>,
-  order: readonly ActionControlLevel[],
+  actions: readonly ClientStrategy[],
+  labels: Record<StrategyControlLevel, string>,
+  order: readonly StrategyControlLevel[],
 ): ReportPlanSection | ReportSectionGap {
   const live = actions.filter((action) => action.active);
   if (live.length === 0) {

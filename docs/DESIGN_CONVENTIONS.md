@@ -69,6 +69,19 @@ expanded by default** — Activity, Emissions history, Baseline & targets, and a
 Overview card are collapsed by default. The chevron toggles the card; state is per-viewer
 convenience (may use `localStorage`), never load-bearing.
 
+### 3.3 Reduction Strategies (locked)
+
+The client area is **Reduction Strategies**, never bare "Strategies": `Strategy` is already one
+of the four SRS pillars, and one term means one thing. The `strategy` **domain** (a reduction
+strategy a client is pursuing) is distinct from the SRS `strategy` **pillar** (a disclosure
+requirement group), and neither may borrow the other's name.
+
+The plan is grouped by **lever** — an Admin-managed theme, many-to-many with strategies, so a
+strategy appears under every lever it belongs to. **Control level** (direct control / supply
+chain / influence) is a separate single-value axis and renders as a chip, never as the
+grouping. Lever sections follow §3.2: collapsible, header as the control, count visible when
+collapsed, state per-viewer and never load-bearing.
+
 ## 4. Editing model
 
 - **Drawer-based editing everywhere.** Records are edited in drawers opened from the page,

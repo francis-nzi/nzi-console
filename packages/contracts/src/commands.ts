@@ -1,5 +1,5 @@
 import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
-import { actionScopes, actionControlLevels, actionStatuses } from "./actionLevers";
+import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
@@ -36,11 +36,11 @@ export type CommandKey =
   | "client.intensityMetric.set"
   | "client.intensityMetric.deactivate"
   | "job.intensityValue.set"
-  | "action.lever.upsert"
-  | "action.lever.deactivate"
-  | "client.action.assign"
-  | "client.action.update"
-  | "client.action.remove"
+  | "strategy.library.upsert"
+  | "strategy.library.deactivate"
+  | "client.strategy.assign"
+  | "client.strategy.update"
+  | "client.strategy.remove"
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
@@ -365,11 +365,11 @@ export type CommandInputMap = {
     periodKey?: string; note?: string; expectedVersion: number;
   };
   /** Open a dated assessment, stamped with the framework version in force. */
-  "action.lever.upsert": { leverId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
-  "action.lever.deactivate": { leverId: string; expectedVersion: number; reason: string };
-  "client.action.assign": { clientId: string; leverId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; owner?: string; targetDate?: string | null; notes?: string };
-  "client.action.update": { clientActionId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string };
-  "client.action.remove": { clientActionId: string; expectedVersion: number; reason: string };
+  "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
+  "strategy.library.deactivate": { strategyId: string; expectedVersion: number; reason: string };
+  "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; owner?: string; targetDate?: string | null; notes?: string };
+  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string };
+  "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
   "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
   /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
   "srs.assessment.item.set": {
@@ -710,48 +710,48 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   // The catalogue is reference data, so it sits with `admin.lookups` — a consultant
   // assembles a plan from it but does not get to redefine the library while doing so.
-  "action.lever.upsert": { key: "action.lever.upsert", label: "Add or edit a catalogue lever", permission: "admin.lookups", reasonRequired: false, transaction: "versioned catalogue lever + audit + outbox + idempotency", auditAction: "action_lever_upserted", validate: (input, context) => {
+  "strategy.library.upsert": { key: "strategy.library.upsert", label: "Add or edit a catalogue lever", permission: "admin.lookups", reasonRequired: false, transaction: "versioned catalogue lever + audit + outbox + idempotency", auditAction: "reduction_strategy_upserted", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "key", input.key);
     required(issues, "title", input.title);
     required(issues, "iconKey", input.iconKey);
-    if (!oneOf(input.scope, actionScopes)) issues.push({ field: "scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
-    if (!oneOf(input.controlLevel, actionControlLevels)) issues.push({ field: "controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
+    if (!oneOf(input.scope, strategyScopes)) issues.push({ field: "scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
+    if (!oneOf(input.controlLevel, strategyControlLevels)) issues.push({ field: "controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
     // Editing an existing lever is versioned; creating one has nothing to conflict with.
-    if (input.leverId !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.strategyId !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
-  "action.lever.deactivate": { key: "action.lever.deactivate", label: "Withdraw a catalogue lever", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "action_lever_deactivated", validate: (input, context) => {
+  "strategy.library.deactivate": { key: "strategy.library.deactivate", label: "Withdraw a catalogue lever", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "reduction_strategy_deactivated", validate: (input, context) => {
     const issues = baseIssues(context, true);
-    required(issues, "leverId", input.leverId);
+    required(issues, "strategyId", input.strategyId);
     // Withdrawing a lever changes what every consultant can reach, so it carries a reason.
     required(issues, "reason", input.reason);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
-  "client.action.assign": { key: "client.action.assign", label: "Add an action to the plan", permission: "actions.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_action_assigned", validate: (input, context) => {
+  "client.strategy.assign": { key: "client.strategy.assign", label: "Add an action to the plan", permission: "strategy.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_strategy_assigned", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "clientId", input.clientId);
     // Exactly one of the two shapes: from the catalogue, or standing on its own.
-    const fromCatalogue = typeof input.leverId === "string" && input.leverId.trim() !== "";
+    const fromCatalogue = typeof input.strategyId === "string" && input.strategyId.trim() !== "";
     const bespoke = input.bespoke;
     if (fromCatalogue === Boolean(bespoke)) {
-      issues.push({ field: "leverId", code: "INVALID", message: "Add either a catalogue lever or a bespoke action, not both." });
+      issues.push({ field: "strategyId", code: "INVALID", message: "Add either a catalogue lever or a bespoke action, not both." });
     } else if (bespoke) {
       required(issues, "bespoke.title", bespoke.title);
-      if (!oneOf(bespoke.scope, actionScopes)) issues.push({ field: "bespoke.scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
-      if (!oneOf(bespoke.controlLevel, actionControlLevels)) issues.push({ field: "bespoke.controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
+      if (!oneOf(bespoke.scope, strategyScopes)) issues.push({ field: "bespoke.scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
+      if (!oneOf(bespoke.controlLevel, strategyControlLevels)) issues.push({ field: "bespoke.controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
     }
     if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
       issues.push({ field: "targetDate", code: "INVALID", message: "Target date must use YYYY-MM-DD." });
     }
     return issues;
   } },
-  "client.action.update": { key: "client.action.update", label: "Update an action", permission: "actions.manage", reasonRequired: false, transaction: "versioned client action + audit + outbox + idempotency", auditAction: "client_action_updated", validate: (input, context) => {
+  "client.strategy.update": { key: "client.strategy.update", label: "Update an action", permission: "strategy.manage", reasonRequired: false, transaction: "versioned client action + audit + outbox + idempotency", auditAction: "client_strategy_updated", validate: (input, context) => {
     const issues = baseIssues(context, false);
-    required(issues, "clientActionId", input.clientActionId);
+    required(issues, "clientStrategyId", input.clientStrategyId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
-    if (!oneOf(input.status, actionStatuses)) issues.push({ field: "status", code: "INVALID", message: "Status must be planned, in progress or complete." });
+    if (!oneOf(input.status, strategyStatuses)) issues.push({ field: "status", code: "INVALID", message: "Status must be planned, in progress or complete." });
     if (!Number.isInteger(input.progressPct) || input.progressPct < 0 || input.progressPct > 100) {
       issues.push({ field: "progressPct", code: "INVALID", message: "Progress must be a whole percentage from 0 to 100." });
     } else if ((input.status === "complete") !== (input.progressPct === 100)) {
@@ -764,9 +764,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
-  "client.action.remove": { key: "client.action.remove", label: "Remove an action from the plan", permission: "actions.manage", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "client_action_removed", validate: (input, context) => {
+  "client.strategy.remove": { key: "client.strategy.remove", label: "Remove an action from the plan", permission: "strategy.manage", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "client_strategy_removed", validate: (input, context) => {
     const issues = baseIssues(context, true);
-    required(issues, "clientActionId", input.clientActionId);
+    required(issues, "clientStrategyId", input.clientStrategyId);
     // What a client once intended to do is part of the engagement's history, so dropping
     // it from the plan is a deliberate, reasoned act rather than a tidy-up.
     required(issues, "reason", input.reason);

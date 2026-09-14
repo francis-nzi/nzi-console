@@ -1,0 +1,361 @@
+<!-- NZI Console — Client · Reduction Strategies (ex-Actions) · v1 (2026-09-14)
+     The renamed + restructured Actions area. Shared LIBRARY of strategies allocated to LEVERS
+     (themes, M:N); control level is a separate axis. The client's plan is chosen + customised
+     from the library (+ bespoke). Every client strategy is aligned to at least one SRS
+     requirement (mandatory), against the built 48 grouped by the 4 pillars. Each carries an
+     include-in-report toggle. Deadline notifications (in-app + portal + email) flag approaching
+     and overdue dates. Theme-aware; print-safe inline line icons (NziIcon), not emoji. -->
+<title>Client · Reduction Strategies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F1F5F2;--panel:#FFFFFF;--panel-2:#F7FAF8;--panel-3:#EEF3EF;
+  --ink:#14201A;--ink-2:#3C4A43;--muted:#65746C;--faint:#8A968E;--line:#E1E7E2;--line-2:#EDF1ED;
+  --accent:#0B7A46;--accent-d:#095C35;--accent-bg:#E6F4EC;--ok-line:#BCE3CE;
+  --warn:#B4690E;--warn-bg:#FBF1DE;--warn-line:#EAD6AC;
+  --danger:#C23B22;--danger-bg:#FBEBE7;--danger-line:#F0CABF;
+  --base:#6B4E9B;--base-bg:#F1ECF9;--base-line:#DECFF0;
+  --teal:#1F6F8B;--teal-bg:#E9F3F8;--teal-line:#C7E0EC;
+  --font:"Inter","Inter Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1512;--panel:#141B18;--panel-2:#111815;--panel-3:#1A221E;--ink:#E7EEE9;--ink-2:#B9C4BD;--muted:#8FA097;--faint:#6C7A72;--line:#25302A;--line-2:#1E2723;
+  --accent:#39B47B;--accent-d:#8FE3B8;--accent-bg:#12271C;--ok-line:#1F4030;--warn:#E0A24A;--warn-bg:#2A2113;--warn-line:#4A3A1C;
+  --danger:#E4735C;--danger-bg:#2C1713;--danger-line:#4A241C;--base:#B49BE0;--base-bg:#211A2E;--base-line:#3A2E52;--teal:#5AA9C4;--teal-bg:#13252C;--teal-line:#274853;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+svg.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+.top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;align-items:center;gap:10px;font-size:13px}
+.crumbs a{color:var(--muted);text-decoration:none}.crumbs a:hover{color:var(--accent);text-decoration:underline}
+.crumbs b{color:var(--ink)}.crumbs .sep{color:var(--faint);margin:0 6px}
+.layout{display:flex;gap:0;align-items:flex-start}
+.wrap{flex:1;min-width:0;max-width:1000px;margin:0 auto;padding:22px 24px 60px}
+.jhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.jhead .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.jhead h1{font-size:22px;margin:3px 0 2px}.jhead .sub{font-size:12.5px;color:var(--muted)}
+.btn{font-family:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:8px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:6px 10px;font-size:12px}
+
+/* summary strip */
+.summ{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:800px){.summ{grid-template-columns:repeat(3,1fr)}}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.stat .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.stat .l{font-size:11px;color:var(--muted);margin-top:1px}
+.stat.warnbox{background:var(--warn-bg);border-color:var(--warn-line)}.stat.warnbox .v{color:var(--warn)}
+.stat.dangerbox{background:var(--danger-bg);border-color:var(--danger-line)}.stat.dangerbox .v{color:var(--danger)}
+
+/* notifications banner */
+.notif{display:flex;align-items:center;gap:11px;background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:11px;padding:11px 14px;margin-bottom:16px;font-size:13px;color:var(--ink-2)}
+.notif .i{color:var(--warn);flex:0 0 auto}
+.notif b{color:var(--ink)}
+.notif .sp{flex:1}
+.notif .ch{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+
+/* lever group */
+.lever{margin-bottom:20px}
+.lh{display:flex;align-items:center;gap:10px;margin:0 2px 8px}
+.lh .lic{width:30px;height:30px;border-radius:8px;background:var(--accent-bg);color:var(--accent-d);display:grid;place-items:center;flex:0 0 auto}
+.lh h2{font-size:14.5px;margin:0}
+.lh .cnt{font-size:11.5px;color:var(--muted)}
+.lh .sp{flex:1}
+
+/* strategy card */
+.strat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:9px;display:flex;gap:13px;align-items:flex-start}
+.strat.due{border-left:3px solid var(--warn)}
+.strat.over{border-left:3px solid var(--danger)}
+.strat.done{opacity:.82}
+.strat .sic{width:34px;height:34px;border-radius:9px;background:var(--panel-3);display:grid;place-items:center;color:var(--accent-d);flex:0 0 auto}
+.strat .body{flex:1;min-width:0}
+.strat .t{font-weight:600;font-size:14px}
+.strat .meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;align-items:center}
+.tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;border:1px solid var(--line)}
+.tag.ctrl{color:var(--ink-2);background:var(--panel-3)}
+.tag.lev{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}
+.tag.srs{color:var(--base);background:var(--base-bg);border-color:var(--base-line);cursor:pointer}
+.tag.scope{color:var(--teal);background:var(--teal-bg);border-color:var(--teal-line)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid var(--line);color:var(--ink-2)}
+.pill.ok{color:var(--accent-d);background:var(--accent-bg);border-color:var(--ok-line)}
+.pill.prog{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+.pill.plan{color:var(--muted);background:var(--panel-3)}
+.owner{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+.due-lbl{font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.due-lbl.soon{color:var(--warn)}.due-lbl.late{color:var(--danger)}.due-lbl.ok{color:var(--muted);font-weight:500}
+.prog-bar{width:90px;height:7px;background:var(--panel-3);border-radius:20px;overflow:hidden;display:inline-block;vertical-align:middle}
+.prog-bar span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.strat .right{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+/* report toggle */
+.rep{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.sw{width:34px;height:19px;border-radius:20px;background:var(--line);position:relative;flex:0 0 auto;transition:.15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.15s}
+.sw.on{background:var(--accent)}.sw.on::after{left:17px}
+.rep.on{color:var(--accent-d);font-weight:600}
+
+.stoolbar{display:flex;align-items:center;gap:8px;margin:2px 2px 12px}
+.stoolbar .lbl{font-size:11.5px;color:var(--muted)}.stoolbar .sp{flex:1}
+.stoolbar button{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);border-radius:8px;padding:5px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.stoolbar button:hover{border-color:var(--accent);color:var(--accent-d)}
+.lh{cursor:pointer;user-select:none}
+.chev{color:var(--faint);transition:transform .15s;display:inline-flex;flex:0 0 auto}
+.lever.collapsed .chev{transform:rotate(-90deg)}
+.lever.collapsed .lbody{display:none}
+.lever.collapsed .lh{margin-bottom:0}
+.gov{display:flex;gap:9px;font-size:11.5px;color:var(--ink-2);background:var(--base-bg);border:1px solid var(--base-line);border-radius:10px;padding:11px 13px;margin-top:16px}
+.gov .i{color:var(--base);flex:0 0 auto}
+
+/* drawer */
+.drawer{width:376px;flex:0 0 auto;background:var(--panel);border-left:1px solid var(--line);min-height:100vh;padding:18px 18px 40px}
+@media(max-width:1120px){.drawer{display:none}}
+.dh{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.drawer h3{font-size:16px;margin:3px 0 3px}
+.drawer .lead{font-size:12.5px;color:var(--muted);margin:0 0 14px}
+.filt{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.filt button{font:inherit;font-size:11.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);border-radius:20px;padding:3px 10px;cursor:pointer}
+.filt button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.libitem{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:9px}
+.libitem .lt{font-weight:600;font-size:13px}
+.libitem .lm{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;align-items:center}
+.libitem .add{margin-top:9px}
+.srsbox{background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;padding:11px 12px;margin-top:4px}
+.srsbox .req{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:7px}
+.pillar{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);margin:8px 0 4px}
+.qrow{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;color:var(--ink-2)}
+.qbox{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--line);flex:0 0 auto;display:grid;place-items:center}
+.qbox.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.qrow .qc{font-size:10px;font-weight:700;color:var(--base);background:var(--base-bg);border:1px solid var(--base-line);border-radius:4px;padding:0 5px}
+.must{font-size:11px;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:7px;padding:6px 9px;margin-top:8px;display:flex;gap:6px}
+</style>
+
+<div class="top"><div class="crumbs"><a href="#">Clients</a><span class="sep">/</span><a href="#">Bushy Tails Ltd</a><span class="sep">/</span><b>Reduction Strategies</b></div></div>
+
+<div class="layout">
+<div class="wrap">
+  <div class="jhead">
+    <div style="flex:1">
+      <div class="eyebrow">Client · Decarbonisation plan</div>
+      <h1>Reduction Strategies</h1>
+      <div class="sub">Bushy Tails Ltd · chosen from the shared library and customised · grouped by lever</div>
+    </div>
+    <button class="btn pri">＋ Add from library</button>
+  </div>
+
+  <!-- notifications -->
+  <div class="notif">
+    <svg class="i" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    <span><b>2 strategies due within 30 days</b> and <b style="color:var(--danger)">1 overdue</b>. Deadline reminders were sent to the client.</span>
+    <span class="sp"></span>
+    <span class="ch"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 6 10-6"/></svg> in-app · portal · email</span>
+  </div>
+
+  <!-- summary -->
+  <div class="summ">
+    <div class="stat"><div class="v">9</div><div class="l">Strategies</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">In progress</div></div>
+    <div class="stat"><div class="v">2</div><div class="l">Complete</div></div>
+    <div class="stat warnbox"><div class="v">2</div><div class="l">Due within 30d</div></div>
+    <div class="stat dangerbox"><div class="v">1</div><div class="l">Overdue</div></div>
+    <div class="stat"><div class="v">7</div><div class="l">In report</div></div>
+  </div>
+
+  <div class="stoolbar">
+    <span class="lbl">4 lever groups</span>
+    <span class="sp"></span>
+    <button onclick="allSecs(false)"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M6 9l6 6 6-6"/></svg> Open all</button>
+    <button onclick="allSecs(true)"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M18 15l-6-6-6 6"/></svg> Collapse all</button>
+  </div>
+
+  <!-- lever: Energy -->
+  <div class="lever">
+    <div class="lh"><span class="lic"><svg class="i" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12z"/></svg></span><h2>Energy</h2><span class="cnt">· 2 strategies</span></div>
+
+    <div class="strat due">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12z"/></svg></div>
+      <div class="body">
+        <div class="t">Switch to a certified renewable electricity tariff</div>
+        <div class="meta">
+          <span class="pill prog">In progress</span>
+          <span class="prog-bar"><span style="width:60%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Scope 2</span>
+          <span class="tag lev">Energy</span>
+          <span class="tag srs" title="Aligned SRS requirement">◈ S2 M2</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> A. Shaw</span>
+          <span class="due-lbl soon"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Due 31/03/2026 · 24 days</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep on">In report <span class="sw on"></span></span></div>
+    </div>
+
+    <div class="strat">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></div>
+      <div class="body">
+        <div class="t">Install on-site solar PV (roof array)</div>
+        <div class="meta">
+          <span class="pill plan">Planned</span>
+          <span class="prog-bar"><span style="width:0%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Scope 2</span>
+          <span class="tag lev">Energy</span><span class="tag lev">Buildings &amp; sites</span>
+          <span class="tag srs">◈ S2 S3</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> A. Shaw</span>
+          <span class="due-lbl ok"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg> Due 30/09/2026</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep on">In report <span class="sw on"></span></span></div>
+    </div>
+  </div>
+
+  <!-- lever: Transport & fleet -->
+  <div class="lever">
+    <div class="lh"><span class="lic"><svg class="i" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/></svg></span><h2>Transport &amp; fleet</h2><span class="cnt">· 1 strategy</span></div>
+    <div class="strat">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><rect x="1" y="6" width="15" height="10" rx="2"/><path d="M16 9h4l2 3v4h-6z"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></div>
+      <div class="body">
+        <div class="t">Electrify the delivery van fleet</div>
+        <div class="meta">
+          <span class="pill prog">In progress</span>
+          <span class="prog-bar"><span style="width:25%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Scope 1</span>
+          <span class="tag lev">Transport &amp; fleet</span>
+          <span class="tag srs">◈ S2 S1</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> R. Owens</span>
+          <span class="due-lbl ok"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg> Due 31/12/2026</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep on">In report <span class="sw on"></span></span></div>
+    </div>
+  </div>
+
+  <!-- lever: Procurement & supply chain -->
+  <div class="lever">
+    <div class="lh"><span class="lic"><svg class="i" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M3 3h2l2 13h11l2-8H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg></span><h2>Procurement &amp; supply chain</h2><span class="cnt">· 1 strategy</span></div>
+    <div class="strat">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+      <div class="body">
+        <div class="t">Supplier engagement programme — top 20 by spend</div>
+        <div class="meta">
+          <span class="pill prog">In progress</span>
+          <span class="prog-bar"><span style="width:40%"></span></span>
+          <span class="tag ctrl">Supply chain</span><span class="tag scope">Scope 3</span>
+          <span class="tag lev">Procurement &amp; supply chain</span>
+          <span class="tag srs">◈ S2 S2</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> M. Osei</span>
+          <span class="due-lbl soon"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Due 30/06/2026 · 29 days</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep">In report <span class="sw"></span></span></div>
+    </div>
+  </div>
+
+  <!-- lever: Governance & behaviour -->
+  <div class="lever">
+    <div class="lh"><span class="lic"><svg class="i" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M12 3l8 4v5c0 5-4 8-8 9-4-1-8-4-8-9V7z"/></svg></span><h2>Governance &amp; behaviour</h2><span class="cnt">· 3 strategies</span></div>
+
+    <div class="strat over">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M3 8l9-4 9 4-9 4z"/><path d="M7 10v5c0 1 2 3 5 3s5-2 5-3v-5"/></svg></div>
+      <div class="body">
+        <div class="t">Board-level climate competence training</div>
+        <div class="meta">
+          <span class="pill prog">In progress</span>
+          <span class="prog-bar"><span style="width:30%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Governance</span>
+          <span class="tag lev">Governance &amp; behaviour</span>
+          <span class="tag srs">◈ S2 G4</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> D. Fletcher</span>
+          <span class="due-lbl late"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Overdue — was 28/02/2026</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep on">In report <span class="sw on"></span></span></div>
+    </div>
+
+    <div class="strat done">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+      <div class="body">
+        <div class="t">Set a science-based reduction target</div>
+        <div class="meta">
+          <span class="pill ok">Complete</span>
+          <span class="prog-bar"><span style="width:100%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Governance</span>
+          <span class="tag lev">Governance &amp; behaviour</span>
+          <span class="tag srs">◈ S2 M6</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> M. Osei</span>
+          <span class="due-lbl ok">Completed 14/01/2026</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep on">In report <span class="sw on"></span></span></div>
+    </div>
+
+    <div class="strat">
+      <div class="sic"><svg class="i" viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+      <div class="body">
+        <div class="t">Publish a climate transition plan</div>
+        <div class="meta">
+          <span class="pill plan">Planned</span>
+          <span class="prog-bar"><span style="width:0%"></span></span>
+          <span class="tag ctrl">Direct control</span><span class="tag scope">Governance</span>
+          <span class="tag lev">Governance &amp; behaviour</span>
+          <span class="tag srs">◈ S2 S7</span>
+          <span class="owner"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg> Unassigned</span>
+          <span class="due-lbl ok">No date set</span>
+        </div>
+      </div>
+      <div class="right"><span class="rep">In report <span class="sw"></span></span></div>
+    </div>
+  </div>
+
+  <div class="gov"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Strategies are chosen from the shared library and customised per client; the library wording is referenced (an Admin correction propagates) until a field is edited here. Every strategy is aligned to at least one SRS requirement — the readiness view shows which strategies close each gap. <b>In report</b> is frozen into a report when it's issued; a later toggle never rewrites an issued report. Levers and control level are separate axes. Deactivate, never delete; every change is audited.</span></div>
+</div>
+
+<!-- Add-from-library drawer -->
+<aside class="drawer">
+  <div class="dh">Shared library</div>
+  <h3>Add a reduction strategy</h3>
+  <p class="lead">Choose from NZI's central library, then customise it for this client. Filter by lever or control level.</p>
+  <div class="filt"><button class="on">All levers</button><button>Energy</button><button>Transport</button><button>Procurement</button><button>Waste</button></div>
+  <div class="filt"><button class="on">Any control</button><button>Direct</button><button>Supply chain</button><button>Influence</button></div>
+
+  <div class="libitem">
+    <div class="lt">Heat-pump retrofit for heating</div>
+    <div class="lm"><span class="tag ctrl">Direct control</span><span class="tag lev">Energy</span><span class="tag lev">Buildings &amp; sites</span><span class="tag scope">Scope 1</span></div>
+    <div class="lm"><span class="tag srs">◈ default S2 S3</span></div>
+    <div class="add"><button class="btn sm pri" style="width:100%">＋ Add &amp; align</button></div>
+  </div>
+
+  <div class="libitem">
+    <div class="lt">Reduce business air travel (policy + targets)</div>
+    <div class="lm"><span class="tag ctrl">Direct control</span><span class="tag lev">Transport &amp; fleet</span><span class="tag scope">Scope 3</span></div>
+    <div class="lm"><span class="tag srs">◈ default S2 S1</span></div>
+    <div class="add"><button class="btn sm" style="width:100%">＋ Add &amp; align</button></div>
+  </div>
+
+  <!-- mandatory SRS alignment step, shown for the item being added -->
+  <div class="srsbox">
+    <div class="req">Align to SRS Readiness — required</div>
+    <div class="pillar">Strategy · S2 Climate</div>
+    <div class="qrow"><span class="qbox on">✓</span><span class="qc">S2 S3</span> Effects on strategy &amp; decision-making</div>
+    <div class="qrow"><span class="qbox"></span><span class="qc">S2 S1</span> Risks &amp; opportunities identified</div>
+    <div class="pillar">Metrics &amp; targets · S2 Climate</div>
+    <div class="qrow"><span class="qbox"></span><span class="qc">S2 M6</span> Climate-related targets disclosed</div>
+    <div class="pillar">Governance · S1 General</div>
+    <div class="qrow"><span class="qbox"></span><span class="qc">S1 G1</span> Oversight beyond climate</div>
+    <div class="must"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg> At least one SRS requirement must be aligned before the strategy can be saved.</div>
+  </div>
+</aside>
+</div>
+
+<script>
+// Make each lever section collapsible: wrap its strategies in a body, add a chevron, toggle on header click.
+document.querySelectorAll('.lever').forEach(sec=>{
+  const lh=sec.querySelector('.lh');
+  const body=document.createElement('div');body.className='lbody';
+  let n=lh.nextSibling;
+  while(n){const next=n.nextSibling;body.appendChild(n);n=next;}
+  sec.appendChild(body);
+  const chev=document.createElement('span');chev.className='chev';
+  chev.innerHTML='<svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M6 9l6 6 6-6"/></svg>';
+  lh.insertBefore(chev,lh.firstChild);
+  lh.addEventListener('click',()=>sec.classList.toggle('collapsed'));
+});
+function allSecs(collapse){document.querySelectorAll('.lever').forEach(s=>s.classList.toggle('collapsed',collapse));}
+</script>

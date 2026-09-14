@@ -92,6 +92,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 | NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
+| NZC-075 | **Actions become Reduction Strategies** (ISO 14060 alignment) — never bare "Strategies", because `Strategy` is already an SRS pillar. The flat catalogue splits into **levers** (Admin-managed themes) and a shared **strategy library**, joined **many-to-many**: a strategy can sit under several levers, and the plan is grouped by lever. **Control level stays a separate single-value axis.** Capability `actions.manage` → `strategy.manage` at **matrix version 3**. Supersedes the model shipped in `0075`. | Confirmed (14 Sep 2026) |
 | NZC-074 | A **trainee is a person, not a client's contact**: one record per individual, keyed on a changeable personal email, aggregating history across every employer. Employer and funding are frozen on each booking and never rewritten. Places are booked by consultant/CRM only — never self-serve from a portal. Certificates are **publicly verifiable** at `/verify/<code>` through a SECURITY DEFINER function whose return list is the whole contract. Changing the sign-in email requires verifying the new address first, and a former employer loses visibility of the person's new personal details. | Confirmed (13 Sep 2026) |
 | NZC-073 | Training carries its own capabilities — `training.manage` (bookings, attendance, stage, certificate issuance) and `training.entitlement.manage` (moving a place's expiry) — held by Admin and Consultant, as peers of `actions.manage` / `srs.manage`. Run review stays `snapshot.review` (separation of duties); certificate issuance stays policy-gated on top of the capability. Matrix version 2. | Confirmed (13 Sep 2026) |
 
@@ -1000,6 +1001,37 @@ This **supersedes the interim reuse** of `job.manage` (bookings/attendance/stage
 those gates. The matrix moves to **version 2** (migration `0073`), and the capability pattern is
 widened to allow more than one dot, which `training.entitlement.manage` needs.
 *Source: Francis, 13 Sep 2026 — Training family brief; `docs/PERMISSION_MATRIX.md`.*
+
+### NZC-075 — Actions become Reduction Strategies, and levers become a categorisation [Confirmed 14 Sep 2026]
+
+**The name.** "Reduction Strategies", for ISO 14060 alignment — and never bare "Strategies",
+because `Strategy` is already one of the four SRS pillars and one-term-one-meaning is locked.
+The SRS pillar is untouched. The entity is *a reduction strategy*; the area is *Reduction
+Strategies*.
+
+**The model.** `0075` shipped a flat catalogue whose rows were called levers, each with a
+free-text `category`. Both were wrong in the same way. A lever is a **theme** — energy,
+buildings, transport, procurement — that several strategies share, and a strategy can belong
+to more than one of them: installing solar is energy *and* buildings. A text column cannot
+express that, and it cannot be filtered, ordered or given an icon. So the concepts separate:
+`levers` (Admin-managed), `reduction_strategies` (the shared library), and `strategy_levers`
+joining them many-to-many. The plan is grouped by lever, and a strategy allocated to two
+levers appears under both — that is what the categorisation means, and hiding it from one of
+its themes would make the grouping lie.
+
+**Control level stays its own axis.** "Which theme is this" and "how much of the outcome does
+the client control" are different questions, and a single field cannot answer both. Control
+level remains single-valued: direct control / supply chain / influence.
+
+**The capability** moves `actions.manage` → `strategy.manage` at **matrix version 3**, held by
+Admin and Consultant exactly as before. A new version, never an edit: a principal resolved
+against version 1 or 2 keeps meaning what it meant when it was resolved. The library stays on
+`admin.lookups` — a consultant builds a plan from it but does not redefine it while doing so.
+
+This **supersedes the model in `0075`** rather than sitting beside it, and supersedes
+`docs/_handoff_ACTION_LEVER_LIBRARY_brief.md`.
+
+*Source: Francis, 14 Sep 2026 — Reduction Strategies brief.*
 
 ### NZC-074 — A trainee is a person, and their record is portable [Confirmed 13 Sep 2026]
 The load-bearing decision of the training family, and the one everything else in it follows from.

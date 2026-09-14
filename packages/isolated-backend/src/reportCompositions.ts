@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-  actionControlLevelLabels, actionControlLevels, activeMetrics, composeReportPlan, isReportGap, maturityLabel,
+  strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan, isReportGap, maturityLabel,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity,
   type ReportComposition, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
-import { listClientActions } from "./actionLevers";
+import { listClientStrategies } from "./reductionStrategies";
 import { listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
@@ -214,7 +214,7 @@ export async function composeReport(db: Queryable, input: {
     composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e }),
     composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
     composeSrs(db, input.clientId),
-    listClientActions(db, input.clientId),
+    listClientStrategies(db, input.clientId),
   ]);
   return {
     reportVersionId: input.reportVersionId,
@@ -230,7 +230,7 @@ export async function composeReport(db: Queryable, input: {
     emissions,
     intensity,
     targets,
-    plan: composeReportPlan(actions, actionControlLevelLabels, actionControlLevels),
+    plan: composeReportPlan(actions, strategyControlLevelLabels, strategyControlLevels),
     srs,
   };
 }

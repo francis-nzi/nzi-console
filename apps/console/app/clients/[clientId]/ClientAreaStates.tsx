@@ -10,7 +10,7 @@ import { CLIENT_AREA_LABELS, type ClientAreaId } from "./clientAreas";
  */
 
 const NOT_YET: Partial<Record<ClientAreaId, { what: string; when: string }>> = {
-  actions: { what: "the client's decarbonisation plan, assembled from the action-lever catalogue", when: "the action-lever library, which is its own piece of work and in progress now." },
+  strategies: { what: "the client's decarbonisation plan, assembled from the action-lever catalogue", when: "the action-lever library, which is its own piece of work and in progress now." },
   // No table, no route, no commands — nothing to wire. Saying so beats an empty list that
   // reads as "this client has no tasks" when the truth is that tasks are not built.
   tasks: { what: "client-scoped tasks with an owner and a due date", when: "a task store — there is no tasks table, route or command in this platform yet, so nothing can be shown." },
