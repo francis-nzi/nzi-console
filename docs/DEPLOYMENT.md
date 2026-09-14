@@ -131,11 +131,69 @@ edit plus the usual PR.
 "Today" is London, not UTC — overdue turns over at UK midnight — and is resolved on the server so a
 client's device clock cannot decide whether their own plan is late.
 
-**Not built yet (phase 3b):** sending. There is no email transport in this repo, and
-`transactional_outbox` (present since `0001`) has never had a drainer — `render.yaml` declares a single
-`web` service. Reminder *sends* need a scheduled worker plus a `strategy_automation_log` to make them
-idempotent; on isolated staging the policy is **suppress-and-log** (compute the would-send, never put
-real mail on the wire to a real client).
+## Reminder worker and email (phase 3b)
+
+A second Render service, `nzi-console-reminders` (`type: worker`), drains
+`nzi_console.transactional_outbox` on a clock and sends deadline reminders.
+
+### This service sends nothing, by design
+
+`mailDelivery()` requires **all three** of the following, and the default of every one of them is
+silence:
+
+| Condition | On `nzi-console-reminders` | Effect |
+|---|---|---|
+| `NZI_DATABASE_BOUNDARY` ≠ `isolated-non-production` | it **is** isolated | suppress |
+| `NEXT_PUBLIC_APP_ENV` = `production` | `staging` | suppress |
+| `NZI_MAIL_MODE` = `send` (exact string) | unset | suppress |
+
+The boundary token is checked first, so **no combination of the other two can make this service email
+a real client**. `NZI_MAIL_MODE` is deliberately absent from `render.yaml` rather than set to a false-y
+value: adding it is the single edit that could put mail on the wire, and it must never be made here.
+
+Suppressed is a *successful* outcome, not a skipped one: the message is composed in full, written to
+`strategy_automation_log` with `state='suppressed'`, and logged. "We would have sent this" stays
+inspectable.
+
+### Idempotency
+
+`strategy_automation_log` is claimed **before** a send is attempted, never written after one succeeds —
+a row written afterwards cannot stop a duplicate, because the crash that loses it happens between the
+send and the write. The unique index on `(organisation_id, client_strategy_id, kind, target_date,
+recipient_email)` is the guarantee:
+
+- the clock can run as often as you like; a given reminder sends once
+- a **moved** target date is a new deadline and earns a new reminder
+- a transient SMTP failure retries (backoff, `MAX_SEND_ATTEMPTS = 4`) without duplicating a delivered
+  message
+- delivery status lives on the log row (`claimed` → `sent` | `suppressed` | `failed`, with `attempts`
+  and `last_error`)
+
+### The standing outbox backlog
+
+`transactional_outbox` has been written by **every command since migration `0001`** and drained by
+nothing, so it holds a long tail of `pending` rows. The drainer clears them without sending: delivery is
+keyed on a handler lookup, and a topic no handler recognises is marked **`skipped`** — a new state added
+in `0083`, because marking them `sent` would record deliveries that never happened. Nothing in that
+backlog has a mail handler, so none of it can become email.
+
+### SMTP (Office 365, matching live)
+
+Read from the environment, never committed, never logged: `SMTP_HOST`, `SMTP_PORT` (default `587`),
+`SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_TLS` (TLS is required unless the value is exactly `false`).
+Each service supplies its own values in the Render dashboard. On this worker they may be left unset
+entirely — the suppressing mailer is chosen before any transport is built.
+
+### Consent
+
+`client_contacts.email_consent` (`unknown` | `granted` | `declined`, default `unknown`) follows the
+training model: **`unknown` holds**. Only `granted` is written to, so no contact receives mail until
+someone has recorded that they may. Inactive contacts and duplicate addresses are excluded.
+
+### Tick
+
+`NZI_REMINDER_TICK_SECONDS` (default `900`) controls only how promptly a newly-due date is noticed, not
+how often anyone is written to — the unique index is what stops a second send.
 
 ## Rollback / teardown
 
