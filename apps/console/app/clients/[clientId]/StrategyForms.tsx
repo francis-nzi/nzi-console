@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  actionProgressForStatus, actionScopeLabel, actionScopes, actionControlLevelLabels, actionControlLevels,
-  actionStatusForProgress, actionStatuses, actionStatusLabels,
-  type ActionLibraryEntry, type ActionScope, type ActionControlLevel, type ActionStatus, type ClientAction,
+  strategyProgressForStatus, strategyScopeLabel, strategyScopes, strategyControlLevelLabels, strategyControlLevels,
+  strategyStatusForProgress, strategyStatuses, strategyStatusLabels,
+  type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy,
 } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -24,26 +24,26 @@ const errorText = (result: BrowserCommandResult<unknown>) =>
 
 const iconKey = (key: string): NziIconKey => key as NziIconKey;
 
-export function ActionLibraryForm({ clientId, library, access, onClose, onSaved, onBespoke }: {
-  clientId: string; library: ActionLibraryEntry[]; access: EditAccess;
+export function StrategyLibraryForm({ clientId, library, access, onClose, onSaved, onBespoke }: {
+  clientId: string; library: StrategyLibraryEntry[]; access: EditAccess;
   onClose: () => void; onSaved: (text: string) => void; onBespoke: () => void;
 }) {
-  const [controlLevel, setControlLevel] = useState<ActionControlLevel | "all">("all");
-  const [scope, setScope] = useState<ActionScope | "all">("all");
+  const [controlLevel, setControlLevel] = useState<StrategyControlLevel | "all">("all");
+  const [scope, setScope] = useState<StrategyScope | "all">("all");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const shown = library.filter((entry) =>
-    (controlLevel === "all" || entry.lever.controlLevel === controlLevel) && (scope === "all" || entry.lever.scope === scope));
+    (controlLevel === "all" || entry.strategy.controlLevel === controlLevel) && (scope === "all" || entry.strategy.scope === scope));
 
-  async function add(entry: ActionLibraryEntry) {
-    setPendingId(entry.lever.id);
+  async function add(entry: StrategyLibraryEntry) {
+    setPendingId(entry.strategy.id);
     setError(null);
-    const result = await postBrowserCommand<{ clientActionId: string }>(
-      `/api/isolated/clients/${encodeURIComponent(clientId)}/actions`, { leverId: entry.lever.id }, crypto.randomUUID());
+    const result = await postBrowserCommand<{ clientStrategyId: string }>(
+      `/api/isolated/clients/${encodeURIComponent(clientId)}/strategies`, { strategyId: entry.strategy.id }, crypto.randomUUID());
     setPendingId(null);
     if (result.state !== "success") { setError(errorText(result)); return; }
-    onSaved(`${entry.lever.title} added to the plan.`);
+    onSaved(`${entry.strategy.title} added to the plan.`);
   }
 
   return <div className="nz-drawer-form">
@@ -54,37 +54,37 @@ export function ActionLibraryForm({ clientId, library, access, onClose, onSaved,
 
     <div className="nz-filters" style={{ marginBottom: 10 }}>
       <button type="button" aria-pressed={controlLevel === "all"} className={controlLevel === "all" ? "on" : undefined} onClick={() => setControlLevel("all")}>All levels</button>
-      {actionControlLevels.map((value) => <button key={value} type="button" aria-pressed={controlLevel === value}
-        className={controlLevel === value ? "on" : undefined} onClick={() => setControlLevel(value)}>{actionControlLevelLabels[value].split(" · ")[0]}</button>)}
+      {strategyControlLevels.map((value) => <button key={value} type="button" aria-pressed={controlLevel === value}
+        className={controlLevel === value ? "on" : undefined} onClick={() => setControlLevel(value)}>{strategyControlLevelLabels[value].split(" · ")[0]}</button>)}
     </div>
     <div className="nz-filters" style={{ marginBottom: 12 }}>
       <button type="button" aria-pressed={scope === "all"} className={scope === "all" ? "on" : undefined} onClick={() => setScope("all")}>All scopes</button>
-      {actionScopes.map((value) => <button key={value} type="button" aria-pressed={scope === value}
-        className={scope === value ? "on" : undefined} onClick={() => setScope(value)}>{actionScopeLabel(value)}</button>)}
+      {strategyScopes.map((value) => <button key={value} type="button" aria-pressed={scope === value}
+        className={scope === value ? "on" : undefined} onClick={() => setScope(value)}>{strategyScopeLabel(value)}</button>)}
     </div>
 
     {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
 
     {shown.length === 0
       ? <p className="sub">No lever in the catalogue matches that filter.</p>
-      : shown.map((entry) => <div className="nz-lib-item" key={entry.lever.id}>
-        <span className="nz-action-icon"><NziIcon name={iconKey(entry.lever.iconKey)} size={16} /></span>
+      : shown.map((entry) => <div className="nz-lib-item" key={entry.strategy.id}>
+        <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={16} /></span>
         <div className="nz-lib-main">
-          <div className="nm">{entry.lever.title}</div>
+          <div className="nm">{entry.strategy.title}</div>
           <div className="sub">
-            <span className="nz-tag">{actionScopeLabel(entry.lever.scope)}</span>
-            {` ${[entry.lever.category, actionControlLevelLabels[entry.lever.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
+            <span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span>
+            {` ${[entry.strategy.category, strategyControlLevelLabels[entry.strategy.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
           </div>
           {/* A withdrawn lever is still shown while a client holds it, and says why it
               cannot be added again. */}
-          {!entry.lever.active ? <div className="hint">Withdrawn from the catalogue — kept because this client holds it.</div> : null}
+          {!entry.strategy.active ? <div className="hint">Withdrawn from the catalogue — kept because this client holds it.</div> : null}
         </div>
         {entry.assigned
           ? <span className="nz-tag">Added</span>
-          : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.lever.active || pendingId !== null}
-            blockedReason={access.state !== "allowed" ? access.reason : !entry.lever.active ? "This lever has been withdrawn from the catalogue." : undefined}
+          : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.strategy.active || pendingId !== null}
+            blockedReason={access.state !== "allowed" ? access.reason : !entry.strategy.active ? "This lever has been withdrawn from the catalogue." : undefined}
             reasonClassName="hint nz-gated-reason"
-            onClick={() => void add(entry)}>{pendingId === entry.lever.id ? "Adding…" : "Add"}</GatedButton>}
+            onClick={() => void add(entry)}>{pendingId === entry.strategy.id ? "Adding…" : "Add"}</GatedButton>}
       </div>)}
 
     <div className="nz-drawer-actions">
@@ -95,12 +95,12 @@ export function ActionLibraryForm({ clientId, library, access, onClose, onSaved,
   </div>;
 }
 
-export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
+export function StrategyBespokeForm({ clientId, access, onClose, onSaved }: {
   clientId: string; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [scope, setScope] = useState<ActionScope>("3");
-  const [controlLevel, setControlLevel] = useState<ActionControlLevel>("direct_control");
+  const [scope, setScope] = useState<StrategyScope>("3");
+  const [controlLevel, setControlLevel] = useState<StrategyControlLevel>("direct_control");
   const [category, setCategory] = useState("");
   const [owner, setOwner] = useState("");
   const [targetDate, setTargetDate] = useState("");
@@ -112,8 +112,8 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
   async function save() {
     setPending(true); setError(null);
     key.current ??= crypto.randomUUID();
-    const result = await postBrowserCommand<{ clientActionId: string }>(
-      `/api/isolated/clients/${encodeURIComponent(clientId)}/actions`,
+    const result = await postBrowserCommand<{ clientStrategyId: string }>(
+      `/api/isolated/clients/${encodeURIComponent(clientId)}/strategies`,
       { bespoke: { title, scope, controlLevel, category }, owner, targetDate: targetDate || null, notes }, key.current);
     setPending(false);
     if (result.state !== "success") { key.current = null; setError(errorText(result)); return; }
@@ -130,12 +130,12 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
       <input className="nz-inp" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Replace the Leeds depot boiler" /></label>
     <div className="nz-two">
       <label className="nz-fl"><span>Scope</span>
-        <select className="nz-sel" value={scope} onChange={(event) => setScope(event.target.value as ActionScope)}>
-          {actionScopes.map((value) => <option key={value} value={value}>{actionScopeLabel(value)}</option>)}
+        <select className="nz-sel" value={scope} onChange={(event) => setScope(event.target.value as StrategyScope)}>
+          {strategyScopes.map((value) => <option key={value} value={value}>{strategyScopeLabel(value)}</option>)}
         </select></label>
       <label className="nz-fl"><span>How much do they control?</span>
-        <select className="nz-sel" value={controlLevel} onChange={(event) => setControlLevel(event.target.value as ActionControlLevel)}>
-          {actionControlLevels.map((value) => <option key={value} value={value}>{actionControlLevelLabels[value]}</option>)}
+        <select className="nz-sel" value={controlLevel} onChange={(event) => setControlLevel(event.target.value as StrategyControlLevel)}>
+          {strategyControlLevels.map((value) => <option key={value} value={value}>{strategyControlLevelLabels[value]}</option>)}
         </select></label>
     </div>
     <div className="nz-two">
@@ -160,10 +160,10 @@ export function ActionBespokeForm({ clientId, access, onClose, onSaved }: {
   </div>;
 }
 
-export function ActionEditForm({ action, access, onClose, onSaved }: {
-  action: ClientAction; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+export function StrategyEditForm({ action, access, onClose, onSaved }: {
+  action: ClientStrategy; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
-  const [status, setStatus] = useState<ActionStatus>(action.status);
+  const [status, setStatus] = useState<StrategyStatus>(action.status);
   const [progressPct, setProgressPct] = useState(action.progressPct);
   const [owner, setOwner] = useState(action.owner);
   const [targetDate, setTargetDate] = useState(action.targetDate ?? "");
@@ -175,14 +175,14 @@ export function ActionEditForm({ action, access, onClose, onSaved }: {
 
   // The two controls are one fact seen two ways, so moving either moves the other. The
   // database holds the same rule; keeping them in step here means the person never meets it.
-  const chooseStatus = (next: ActionStatus) => { setStatus(next); setProgressPct(actionProgressForStatus(next, progressPct)); };
-  const chooseProgress = (next: number) => { setProgressPct(next); setStatus(actionStatusForProgress(next, status)); };
+  const chooseStatus = (next: StrategyStatus) => { setStatus(next); setProgressPct(strategyProgressForStatus(next, progressPct)); };
+  const chooseProgress = (next: number) => { setProgressPct(next); setStatus(strategyStatusForProgress(next, status)); };
 
   async function save() {
     setPending(true); setError(null);
     const result = await patchBrowserCommand<{ version: number }>(
-      `/api/isolated/clients/${encodeURIComponent(action.clientId)}/actions`,
-      { clientActionId: action.id, expectedVersion: action.version, status, owner, targetDate: targetDate || null, progressPct, notes },
+      `/api/isolated/clients/${encodeURIComponent(action.clientId)}/strategies`,
+      { clientStrategyId: action.id, expectedVersion: action.version, status, owner, targetDate: targetDate || null, progressPct, notes },
       crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
@@ -192,8 +192,8 @@ export function ActionEditForm({ action, access, onClose, onSaved }: {
   async function remove() {
     setPending(true); setError(null);
     const result = await putBrowserCommand<{ version: number }>(
-      `/api/isolated/clients/${encodeURIComponent(action.clientId)}/actions`,
-      { clientActionId: action.id, expectedVersion: action.version, reason }, crypto.randomUUID());
+      `/api/isolated/clients/${encodeURIComponent(action.clientId)}/strategies`,
+      { clientStrategyId: action.id, expectedVersion: action.version, reason }, crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
     onSaved("Action removed from the plan. It stays on the record.");
@@ -202,12 +202,12 @@ export function ActionEditForm({ action, access, onClose, onSaved }: {
   return <div className="nz-drawer-form">
     <div className="nz-action-head">
       <span className="nz-action-icon"><NziIcon name={iconKey(action.iconKey)} size={18} /></span>
-      <div><b>{action.title}</b><div className="sub"><span className="nz-tag">{actionScopeLabel(action.scope)}</span> {action.category}</div></div>
+      <div><b>{action.title}</b><div className="sub"><span className="nz-tag">{strategyScopeLabel(action.scope)}</span> {action.category}</div></div>
     </div>
 
     <label className="nz-fl"><span>Status</span>
-      <select className="nz-sel" value={status} onChange={(event) => chooseStatus(event.target.value as ActionStatus)}>
-        {actionStatuses.map((value) => <option key={value} value={value}>{actionStatusLabels[value]}</option>)}
+      <select className="nz-sel" value={status} onChange={(event) => chooseStatus(event.target.value as StrategyStatus)}>
+        {strategyStatuses.map((value) => <option key={value} value={value}>{strategyStatusLabels[value]}</option>)}
       </select></label>
 
     <label className="nz-fl"><span>Progress — {progressPct}%</span>

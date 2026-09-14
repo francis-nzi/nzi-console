@@ -51,7 +51,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `report.edit` | ✓ | ✓ | — | — | — |
 | `report.publish` ⚑ | ✓ | — | ✓ | — | — |
 | `report.view` | ✓ | ✓ | R | R | R |
-| `actions.manage` | ✓ | ✓ | — | — | — |
+| `strategy.manage` | ✓ | ✓ | — | — | — |
 | `srs.manage` | ✓ | ✓ | — | — | — |
 | `training.manage` (bookings, attendance, stage, certificate issuance) | ✓ | ✓ | — | — | — |
 | `training.entitlement.manage` (move a place's expiry) ⚑ | ✓ | ✓ | — | R | — |
@@ -72,7 +72,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   the same user who prepared the snapshot; `report.publish` additionally requires an
   approved snapshot to exist.
 - `training.manage` — the training module's operational capability, a peer of
-  `actions.manage` / `srs.manage`; **not** `job.manage`, so a general job manager does not
+  `strategy.manage` / `srs.manage`; **not** `job.manage`, so a general job manager does not
   automatically issue NZI-branded verifiable certificates. **Certificate issuance is
   policy-gated** (attendance decides, consent holds) and **run review is a separate act under
   `snapshot.review`** — so the same separation of duties applies as everywhere else: the

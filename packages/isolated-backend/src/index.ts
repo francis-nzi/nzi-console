@@ -52,11 +52,11 @@ export { listClientFiles, listClientMessages, listClientReports, type ClientFile
 export * from "./clientLogo";
 export * from "./clientTargets";
 export {
-  assignClientAction, deactivateActionLever, listActionLevers, listClientActions,
-  removeClientAction, updateClientAction, upsertActionLever,
-  type AssignActionResult, type DeactivateLeverResult, type RemoveActionResult,
-  type UpdateActionResult, type UpsertLeverResult,
-} from "./actionLevers";
+  assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
+  removeClientStrategy, updateClientStrategy, upsertLibraryStrategy,
+  type AssignStrategyResult, type DeactivateStrategyResult, type RemoveStrategyResult,
+  type UpdateStrategyResult, type UpsertStrategyResult,
+} from "./reductionStrategies";
 export {
   composeReport, freezeReportComposition, getReportComposition,
   type FreezeCompositionResult, type SnapshotForComposition,

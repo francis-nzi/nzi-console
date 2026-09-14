@@ -14,13 +14,18 @@ import { withAccess } from "./support/access";
 const here = dirname(fileURLToPath(import.meta.url));
 const matrixMigration = readFileSync(resolve(here, "../migrations/0066_permission_matrix.sql"), "utf8");
 const matrixMigrationV2 = readFileSync(resolve(here, "../migrations/0073_training_capabilities.sql"), "utf8");
+// Version 3 renames actions.manage to strategy.manage for the Reduction Strategies area.
+const matrixMigrationV3 = readFileSync(resolve(here, "../migrations/0079_strategy_capability.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
  * migration of its own, so this follows PERMISSION_MATRIX_VERSION rather than pinning to
  * the first one — otherwise the day the matrix moves, the test quietly checks history.
  */
-const matrixSql = `${matrixMigration}\n${matrixMigrationV2}`;
+// Every matrix migration, concatenated. `rowPattern` then selects only the rows for the
+// version in force, so adding a version means adding its file here and nothing else —
+// earlier versions stay readable, which is the point of versioning the matrix at all.
+const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 

@@ -1,8 +1,8 @@
 import { NziIcon, type NziIconKey } from "@nzi/ui";
 import {
-  actionScopeLabel, actionStatusLabels, isReportGap, reportCompositionSectionMeta,
+  strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
   reportHeadline, reportMethodologyRows, reportResidualTco2e,
-  type ActionScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
+  type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 
@@ -41,7 +41,7 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
       {!isReportGap(emissions) ? <div className="nzr-figures">
         <Figure label="Assured footprint" value={tonnes(emissions.totalTco2e)} unit="tCO₂e" />
         {emissions.byScope.map((entry) => <Figure key={entry.scope}
-          label={actionScopeLabel(entry.scope as ActionScope)} value={tonnes(entry.tco2e)} unit="tCO₂e" />)}
+          label={strategyScopeLabel(entry.scope as StrategyScope)} value={tonnes(entry.tco2e)} unit="tCO₂e" />)}
       </div> : <Gap section={emissions} />}
     </Page>
 
@@ -54,7 +54,7 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             <thead><tr><th>Scope</th><th className="r">tCO₂e</th><th className="r">Share</th></tr></thead>
             <tbody>
               {emissions.byScope.map((entry) => <tr key={entry.scope}>
-                <td>{actionScopeLabel(entry.scope as ActionScope)}</td>
+                <td>{strategyScopeLabel(entry.scope as StrategyScope)}</td>
                 <td className="r num">{tonnes(entry.tco2e)}</td>
                 <td className="r num">{emissions.totalTco2e === 0 ? "—" : `${((entry.tco2e / emissions.totalTco2e) * 100).toFixed(1)}%`}</td>
               </tr>)}
@@ -144,11 +144,11 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             {group.actions.map((action, index) => <div className="nzr-action" key={`${action.title}-${index}`}>
               <div className="nm">{action.title}</div>
               <div className="mt">
-                <span className="nzr-tag">{actionScopeLabel(action.scope as ActionScope)}</span>
+                <span className="nzr-tag">{strategyScopeLabel(action.scope as StrategyScope)}</span>
                 {[action.category, action.owner, action.targetDate === null ? "" : formatDate(action.targetDate)]
                   .filter(Boolean).join(" · ")}
               </div>
-              <div className="st">{actionStatusLabels[action.status]} · {action.progressPct}%</div>
+              <div className="st">{strategyStatusLabels[action.status]} · {action.progressPct}%</div>
             </div>)}
           </section>)}
           <p className="nzr-note">

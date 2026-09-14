@@ -105,6 +105,7 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
       "srs_frameworks", "srs_assessments", "client_intensity_metrics",
       "trainees", "training_certificates", "action_levers", "client_actions",
       "report_compositions", "schema_migrations",
+      "levers", "reduction_strategies", "strategy_levers", "client_strategies",
     ]) {
       assert.ok(tables.has(table), `nzi_console.${table} should exist after all migrations`);
     }
@@ -128,7 +129,7 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     const levers = await client.query<{ total: string; withImpact: string }>(
       `SELECT count(*)::text AS "total",
               count(*) FILTER (WHERE modelled_tco2e_per_year IS NOT NULL)::text AS "withImpact"
-       FROM nzi_console.action_levers`);
+       FROM nzi_console.reduction_strategies`);
     assert.equal(levers.rows[0]!.total, "13");
     assert.equal(levers.rows[0]!.withImpact, "0", "the catalogue ships qualitative");
   });
@@ -154,9 +155,23 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
       ["later-organisation", "Created after the migrations ran"]);
     const late = await client.query<{ frameworks: string; levers: string }>(
       `SELECT (SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'later-organisation') AS "frameworks",
-              (SELECT count(*)::text FROM nzi_console.action_levers WHERE organisation_id = 'later-organisation') AS "levers"`);
+              (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = 'later-organisation') AS "levers"`);
     assert.equal(late.rows[0]!.frameworks, "0", "an organisation created later has no SRS framework");
     assert.equal(late.rows[0]!.levers, "0", "and no lever catalogue");
+  });
+
+  it("allocates every library strategy to at least one lever", async () => {
+    // The plan is grouped by lever, so a strategy allocated to none would simply not render
+    // anywhere. 0078's fallback mapping exists for exactly that case; this proves it caught
+    // everything rather than trusting that the hand-written mapping was exhaustive.
+    const orphans = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.reduction_strategies s
+       WHERE NOT EXISTS (SELECT 1 FROM nzi_console.strategy_levers l
+                         WHERE (l.organisation_id, l.strategy_id) = (s.organisation_id, s.strategy_id))`);
+    assert.equal(orphans.rows[0]!.count, "0", "no library strategy is left without a lever");
+
+    const levers = await client.query<{ count: string }>(`SELECT count(*)::text FROM nzi_console.levers`);
+    assert.equal(levers.rows[0]!.count, "7", "the seeded lever set");
   });
 
   it("keeps evidence stores append-only in the built schema", async () => {

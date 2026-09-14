@@ -5,10 +5,10 @@ import {
   reportHeadline, reportMethodologyRows,
   type ReportComposition, type ReportEmissionsSection,
 } from "../src/reportComposition";
-import { actionControlLevelLabels, actionControlLevels, type ClientAction } from "../src/actionLevers";
+import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy } from "../src/reductionStrategies";
 
-const action = (id: string, over: Partial<ClientAction> = {}): ClientAction => ({
-  id, clientId: "client-a", leverId: null, title: id, scope: "2", category: "Energy",
+const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
+  id, clientId: "client-a", leverIds: [], strategyId: null, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, ...over,
 });
@@ -98,7 +98,7 @@ describe("the report composition", () => {
     it("freezes the plan as it stood, grouped by level of control", () => {
       const section = composeReportPlan(
         [action("a", { status: "in_progress", progressPct: 60 }), action("b", { controlLevel: "influence" })],
-        actionControlLevelLabels, actionControlLevels,
+        strategyControlLevelLabels, strategyControlLevels,
       );
       assert.ok(!isReportGap(section));
       if (isReportGap(section)) return;
@@ -110,14 +110,14 @@ describe("the report composition", () => {
     });
 
     it("leaves out actions already removed at issue, and keeps the rest frozen", () => {
-      const section = composeReportPlan([action("a"), action("gone", { active: false })], actionControlLevelLabels, actionControlLevels);
+      const section = composeReportPlan([action("a"), action("gone", { active: false })], strategyControlLevelLabels, strategyControlLevels);
       assert.ok(!isReportGap(section));
       if (isReportGap(section)) return;
       assert.equal(section.summary.total, 1, "an action removed before issue was never in the report");
     });
 
     it("states an empty plan rather than showing a zeroed summary", () => {
-      const section = composeReportPlan([], actionControlLevelLabels, actionControlLevels);
+      const section = composeReportPlan([], strategyControlLevelLabels, strategyControlLevels);
       assert.ok(isReportGap(section));
       if (!isReportGap(section)) return;
       assert.match(section.reason, /No decarbonisation actions were on this client's plan/);

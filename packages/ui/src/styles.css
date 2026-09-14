@@ -1229,3 +1229,21 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
   .nz-action-row{align-items:flex-start;flex-wrap:wrap}
   .nz-action-state{width:auto;justify-items:start}
 }
+
+/* ── Reduction Strategies: collapsible lever groups ──────────────────────────
+   Per DESIGN_CONVENTIONS §3.2 — the header is the control, and collapse state
+   is per-viewer convenience, never load-bearing. A collapsed group keeps its
+   header and its count, so the plan's shape is still readable when it is shut. */
+.nz-strategy-toolbar{display:flex;align-items:center;gap:8px;padding:0 0 10px}
+.nz-strategy-toolbar .sp{flex:1}
+.nz-lever{padding:0;overflow:hidden}
+.nz-lever-head{display:flex;align-items:center;gap:10px;width:100%;padding:13px 16px;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.nz-lever-head:hover{background:var(--paper)}
+.nz-lever-head h2{margin:0;font-size:15px}
+.nz-lever-head .cnt{color:var(--t2);font-size:12px}
+.nz-lever-head .sp{flex:1}
+.nz-lever-icon{display:grid;width:30px;height:30px;flex:none;place-items:center;border-radius:8px;background:var(--mint);color:var(--pine)}
+.nz-lever-chev{display:grid;place-items:center;color:var(--t3);transition:transform .15s ease}
+.nz-lever.collapsed .nz-lever-chev{transform:rotate(-90deg)}
+.nz-lever-body{padding:0 16px 6px}
+.nz-lever-body .nz-action-row:first-child{border-top:1px solid var(--line2)}

@@ -24,7 +24,7 @@ export const capabilities = [
   "report.edit",
   "report.publish",
   "report.view",
-  "actions.manage",
+  "strategy.manage",
   "srs.manage",
   "training.manage",
   "training.entitlement.manage",
@@ -54,7 +54,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 2;
+export const PERMISSION_MATRIX_VERSION = 3;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -66,7 +66,7 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
   admin: all(...capabilities),
   consultant: {
     ...all("client.view", "client.create", "client.edit", "contact.manage", "site.manage", "target.edit", "job.manage",
-      "scoperow.edit", "report.edit", "report.view", "actions.manage", "srs.manage", "training.manage", "training.entitlement.manage", "finance.view", "clientfactor.manage",
+      "scoperow.edit", "report.edit", "report.view", "strategy.manage", "srs.manage", "training.manage", "training.entitlement.manage", "finance.view", "clientfactor.manage",
       "support.portal_impersonate"),
     "baseline.rebaseline": "own_clients",
     "portal.admin": "own_clients",
