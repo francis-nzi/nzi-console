@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import {
+  strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary, strategyReminderWindowDays,
   strategyLibrary, strategyPlanByLever, strategyPlanSummary, strategyScopeLabel,
   strategyStatusLabels, strategiesWithoutLever,
-  type ClientStrategy, type Lever, type StrategyStatus,
+  type ClientStrategy, type Lever, type StrategyDeadline, type StrategyStatus,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -34,8 +35,10 @@ import type { StrategyDrawerRequest } from "./strategyDrawers";
 
 const iconKey = (key: string): NziIconKey => key as NziIconKey;
 
-export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
+export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: {
   workspace: ClientWorkspaceReadModel;
+  /** The London calendar date, resolved on the server so it survives hydration unchanged. */
+  today: string;
   access: EditAccess;
   onDrawer: (request: StrategyDrawerRequest) => void;
 }) {
@@ -49,6 +52,11 @@ export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
   // and what an assessor asks about; the generated id is neither.
   const codes = new Map((workspace.srs.framework?.requirements ?? []).map((requirement) => [requirement.id, requirement.code]));
   const excluded = plan.filter((strategy) => !strategy.includeInReport).length;
+
+  // Derived at read time from the date the client set. Nothing is stored and no date is
+  // invented: an undated strategy raises nothing at all.
+  const signals = strategyDeadlineSignals(plan, today);
+  const deadlines = strategyDeadlineSummary(signals);
 
   // Collapsed groups, by lever id. Per-viewer convenience only (DESIGN_CONVENTIONS §3.2) —
   // never load-bearing, so a collapsed group is still fully rendered in the report and in
@@ -85,6 +93,19 @@ export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
           <Stat value={summary.planned} label="Planned" />
         </div>}
 
+        {/* What needs attention, said once at the top rather than left to be found by
+            scrolling every lever group. Undated strategies are absent by design. */}
+        {deadlines.total > 0 ? <div className={deadlines.overdue > 0 ? "nz-banner warn" : "nz-banner"} style={{ marginTop: 10 }}>
+          <b>{deadlineHeadline(deadlines)}</b>
+          <ul className="nz-deadline-list">
+            {signals.slice(0, 5).map((signal) => <li key={signal.strategy.id}>
+              <DeadlineFlag deadline={signal.deadline} /> {signal.strategy.title}
+              {signal.strategy.owner !== "" ? <span className="hint"> · {signal.strategy.owner}</span> : null}
+            </li>)}
+          </ul>
+          {signals.length > 5 ? <span className="hint">and {signals.length - 5} more.</span> : null}
+        </div> : null}
+
         {/* A plan whose report shows only some of it should say so here, where it is edited,
             not only in the document. */}
         {excluded > 0 ? <p className="hint" style={{ marginTop: 10 }}>
@@ -109,7 +130,7 @@ export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
         {groups.map((group) => <LeverGroup key={group.lever.id}
           lever={group.lever} strategies={group.strategies}
           collapsed={collapsed.has(group.lever.id)} onToggle={() => toggle(group.lever.id)}
-          codes={codes} access={access} onDrawer={onDrawer} />)}
+          codes={codes} today={today} access={access} onDrawer={onDrawer} />)}
 
         {/* A strategy whose only lever was withdrawn still belongs to the plan the client
             agreed. Shown in its own group rather than silently dropped from a grouped view. */}
@@ -117,7 +138,7 @@ export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
           lever={{ id: "__unallocated", key: "unallocated", title: "Not yet allocated to a lever", iconKey: "target", ordering: 999, active: true }}
           strategies={unallocated}
           collapsed={collapsed.has("__unallocated")} onToggle={() => toggle("__unallocated")}
-          codes={codes} access={access} onDrawer={onDrawer} /> : null}
+          codes={codes} today={today} access={access} onDrawer={onDrawer} /> : null}
       </>}
 
     <p className="nz-maps">
@@ -129,9 +150,9 @@ export function ReductionStrategiesArea({ workspace, access, onDrawer }: {
   </>;
 }
 
-function LeverGroup({ lever, strategies, collapsed, onToggle, codes, access, onDrawer }: {
+function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, access, onDrawer }: {
   lever: Lever; strategies: ClientStrategy[]; collapsed: boolean; onToggle: () => void;
-  codes: ReadonlyMap<string, string>; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
+  codes: ReadonlyMap<string, string>; today: string; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
 }) {
   const bodyId = `lever-body-${lever.id}`;
   return <section className={collapsed ? "nz-panel nz-lever collapsed" : "nz-panel nz-lever"}>
@@ -145,13 +166,13 @@ function LeverGroup({ lever, strategies, collapsed, onToggle, codes, access, onD
       <span className="nz-lever-chev" aria-hidden="true"><NziIcon name="check" size={14} /></span>
     </button>
     <div className="nz-lever-body" id={bodyId} hidden={collapsed}>
-      {strategies.map((strategy) => <StrategyRow key={strategy.id} strategy={strategy} codes={codes} access={access} onDrawer={onDrawer} />)}
+      {strategies.map((strategy) => <StrategyRow key={strategy.id} strategy={strategy} codes={codes} today={today} access={access} onDrawer={onDrawer} />)}
     </div>
   </section>;
 }
 
-function StrategyRow({ strategy, codes, access, onDrawer }: {
-  strategy: ClientStrategy; codes: ReadonlyMap<string, string>; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
+function StrategyRow({ strategy, codes, today, access, onDrawer }: {
+  strategy: ClientStrategy; codes: ReadonlyMap<string, string>; today: string; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
 }) {
   const parts = [strategy.category, strategy.owner, targetText(strategy)].filter((part) => part !== "");
   // Codes the framework still knows. A requirement retired from the framework leaves the
@@ -171,6 +192,7 @@ function StrategyRow({ strategy, codes, access, onDrawer }: {
         {aligned.map((code) => <span className="nz-tag srs" key={code}>{code}</span>)}
         {!strategy.includeInReport
           ? <span className="nz-tag" style={{ marginLeft: 6 }}>not in report</span> : null}
+        <DeadlineFlag deadline={strategyDeadline(strategy, today)} />
       </div>
     </div>
     <div className="nz-action-state">
@@ -193,6 +215,33 @@ function StrategyRow({ strategy, codes, access, onDrawer }: {
 function targetText(strategy: ClientStrategy): string {
   if (strategy.targetDate === null) return "";
   return strategy.status === "complete" ? `complete ${formatDate(strategy.targetDate)}` : `due ${formatDate(strategy.targetDate)}`;
+}
+
+/**
+ * The deadline in words. Days, not a bare date — "overdue by 10 days" is the fact someone
+ * acts on, and the date is already on the row beside it.
+ */
+function DeadlineFlag({ deadline }: { deadline: StrategyDeadline }) {
+  if (deadline.state === "overdue") {
+    return <span className="nz-deadline late">
+      <NziIcon name="alert" size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+      Overdue by {deadline.daysOverdue} {deadline.daysOverdue === 1 ? "day" : "days"}
+    </span>;
+  }
+  if (deadline.state === "approaching") {
+    return <span className="nz-deadline soon">
+      {deadline.daysRemaining === 0 ? "Due today" : `Due in ${deadline.daysRemaining} ${deadline.daysRemaining === 1 ? "day" : "days"}`}
+    </span>;
+  }
+  return null;
+}
+
+/** Counts, so the banner says what it is before the list does. */
+function deadlineHeadline({ overdue, approaching }: { overdue: number; approaching: number }): string {
+  const parts: string[] = [];
+  if (overdue > 0) parts.push(`${overdue} ${overdue === 1 ? "strategy is" : "strategies are"} overdue`);
+  if (approaching > 0) parts.push(`${approaching} due within ${strategyReminderWindowDays} days`);
+  return `${parts.join(", and ")}.`;
 }
 
 function StatusPill({ status }: { status: StrategyStatus }) {

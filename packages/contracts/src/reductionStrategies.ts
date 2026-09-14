@@ -260,3 +260,95 @@ export function strategyLibrary(
       strategyControlLevels.indexOf(a.strategy.controlLevel) - strategyControlLevels.indexOf(b.strategy.controlLevel)
       || a.strategy.title.localeCompare(b.strategy.title));
 }
+
+/* ── Deadlines ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * What a strategy's `targetDate` means today.
+ *
+ * One derivation, read by the staff console, the client portal and (later) the reminder
+ * worker, so the three cannot disagree about whether something is overdue. Derived at read
+ * time from the date the client actually set — nothing is stored, and no date is invented.
+ *
+ * Two rules do the real work:
+ *
+ * - **No date raises nothing.** A strategy without a target is not late; it is undated. The
+ *   honest signal is silence, not a warning against a date nobody set.
+ * - **A complete strategy raises nothing.** On a finished strategy the date is when it
+ *   happened, not a deadline — `targetText` already words it that way — so treating it as
+ *   one would flag finished work as late.
+ *
+ * Days are whole calendar days at midnight UTC, mirroring `trainingPlaceExpiry`: whether
+ * something is overdue must not depend on the time of day it is looked at, or on where the
+ * person looking is sitting.
+ */
+export type StrategyDeadline =
+  | { state: "none" }
+  | { state: "scheduled"; targetDate: string; daysRemaining: number }
+  | { state: "approaching"; targetDate: string; daysRemaining: number }
+  | { state: "overdue"; targetDate: string; daysOverdue: number };
+
+/** Close enough to act on, far enough ahead to be useful. Documented in DEPLOYMENT.md. */
+export const strategyReminderWindowDays = 30;
+
+export function strategyDeadline(
+  strategy: Pick<ClientStrategy, "status" | "targetDate" | "active">,
+  today: string,
+  windowDays: number = strategyReminderWindowDays,
+): StrategyDeadline {
+  // A strategy taken off the plan is off the plan; it does not go on being late.
+  if (!strategy.active) return { state: "none" };
+  if (strategy.status === "complete") return { state: "none" };
+  const targetDate = strategy.targetDate;
+  if (targetDate === null || targetDate === "") return { state: "none" };
+  const days = daysUntil(today, targetDate);
+  // An unreadable date is not a deadline. Reporting it as "due today" — which a 0 default
+  // would — invents a signal out of bad data.
+  if (days === null) return { state: "none" };
+  if (days < 0) return { state: "overdue", targetDate, daysOverdue: -days };
+  return days <= windowDays
+    ? { state: "approaching", targetDate, daysRemaining: days }
+    : { state: "scheduled", targetDate, daysRemaining: days };
+}
+
+const daysUntil = (from: string, to: string): number | null => {
+  const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${to.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.round((end - start) / 86400000);
+};
+
+/** Only these two are a signal; the rest is a plan going to plan. */
+export const strategyDeadlineRaises = (deadline: StrategyDeadline): boolean =>
+  deadline.state === "approaching" || deadline.state === "overdue";
+
+/**
+ * The plan's deadline signals, worst first, so a surface can show the ones that matter
+ * without re-deriving the ordering. Overdue before approaching, then by date.
+ */
+export type StrategyDeadlineSignal = { strategy: ClientStrategy; deadline: StrategyDeadline };
+
+export function strategyDeadlineSignals(
+  plan: readonly ClientStrategy[],
+  today: string,
+  windowDays: number = strategyReminderWindowDays,
+): StrategyDeadlineSignal[] {
+  return plan
+    .map((strategy) => ({ strategy, deadline: strategyDeadline(strategy, today, windowDays) }))
+    .filter((entry) => strategyDeadlineRaises(entry.deadline))
+    .sort((a, b) => {
+      if (a.deadline.state !== b.deadline.state) return a.deadline.state === "overdue" ? -1 : 1;
+      const aDate = "targetDate" in a.deadline ? a.deadline.targetDate : "";
+      const bDate = "targetDate" in b.deadline ? b.deadline.targetDate : "";
+      return aDate.localeCompare(bDate) || a.strategy.title.localeCompare(b.strategy.title);
+    });
+}
+
+/** How a surface counts what it is about to show. */
+export type StrategyDeadlineSummary = { overdue: number; approaching: number; total: number };
+
+export const strategyDeadlineSummary = (signals: readonly StrategyDeadlineSignal[]): StrategyDeadlineSummary => ({
+  overdue: signals.filter((entry) => entry.deadline.state === "overdue").length,
+  approaching: signals.filter((entry) => entry.deadline.state === "approaching").length,
+  total: signals.length,
+});

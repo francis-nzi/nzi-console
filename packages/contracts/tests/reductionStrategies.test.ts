@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   strategyLibrary, strategyPlanGroups, strategyPlanSummary, strategyProgressForStatus,
-  strategyStatusForProgress, type LibraryStrategy, type ClientStrategy,
+  strategyStatusForProgress, strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary,
+  type LibraryStrategy, type ClientStrategy,
 } from "../src/reductionStrategies";
 
 const lever = (id: string, over: Partial<LibraryStrategy> = {}): LibraryStrategy => ({
@@ -121,5 +122,72 @@ describe("the action-lever library", () => {
       assert.equal(quantified.modelledImpact?.basis, "Supplier-provided");
       assert.equal(lever("l2").modelledImpact, null, "and it is null everywhere today");
     });
+  });
+});
+
+describe("what a target date means today", () => {
+  const dated = (over: Partial<ClientStrategy>) => action("s", over);
+  const TODAY = "2026-09-14";
+
+  it("raises nothing for a strategy with no date", () => {
+    // The brief's rule, and the one most easily broken by a default: an undated strategy is
+    // not late, and a warning against a date nobody set is an invented fact.
+    assert.deepEqual(strategyDeadline(dated({ targetDate: null }), TODAY), { state: "none" });
+    assert.deepEqual(strategyDeadline(dated({ targetDate: "" }), TODAY), { state: "none" });
+  });
+
+  it("raises nothing for a finished strategy, whatever its date says", () => {
+    // On a complete strategy the date is when it happened, not a deadline. Treating it as
+    // one would flag finished work as late.
+    assert.deepEqual(
+      strategyDeadline(dated({ status: "complete", progressPct: 100, targetDate: "2026-01-01" }), TODAY),
+      { state: "none" });
+  });
+
+  it("raises nothing for a strategy taken off the plan", () => {
+    assert.deepEqual(strategyDeadline(dated({ active: false, targetDate: "2026-01-01" }), TODAY), { state: "none" });
+  });
+
+  it("counts a passed date as overdue, by whole days", () => {
+    assert.deepEqual(strategyDeadline(dated({ targetDate: "2026-09-04" }), TODAY),
+      { state: "overdue", targetDate: "2026-09-04", daysOverdue: 10 });
+  });
+
+  it("treats the target day itself as due, not overdue", () => {
+    // Someone has until the end of the day they set. Calling it late that morning would be
+    // wrong by one day, every time.
+    assert.deepEqual(strategyDeadline(dated({ targetDate: TODAY }), TODAY),
+      { state: "approaching", targetDate: TODAY, daysRemaining: 0 });
+  });
+
+  it("separates approaching from merely scheduled at the window edge", () => {
+    assert.equal(strategyDeadline(dated({ targetDate: "2026-10-14" }), TODAY).state, "approaching", "30 days is inside");
+    assert.equal(strategyDeadline(dated({ targetDate: "2026-10-15" }), TODAY).state, "scheduled", "31 days is not");
+  });
+
+  it("does not depend on the time of day or the reader's timezone", () => {
+    // Whether something is overdue must be the same fact in London and in Auckland, and the
+    // same at 23:59 as at 00:01 — so the comparison is calendar days at midnight UTC.
+    const withTime = strategyDeadline(dated({ targetDate: "2026-09-20T23:30:00+13:00" }), "2026-09-14T00:30:00Z");
+    assert.deepEqual(withTime, { state: "approaching", targetDate: "2026-09-20T23:30:00+13:00", daysRemaining: 6 });
+  });
+
+  it("says nothing rather than 'due today' when the date cannot be read", () => {
+    // A zero-on-failure default would turn bad data into a live reminder.
+    assert.deepEqual(strategyDeadline(dated({ targetDate: "not a date" }), TODAY), { state: "none" });
+  });
+
+  it("orders signals worst first, and counts them", () => {
+    const plan = [
+      dated({ targetDate: "2026-10-01" }),
+      { ...dated({ targetDate: "2026-08-01" }), id: "late-badly", title: "late badly" },
+      { ...dated({ targetDate: "2026-09-10" }), id: "late-a-little", title: "late a little" },
+      { ...dated({ targetDate: "2027-06-01" }), id: "far-off", title: "far off" },
+      { ...dated({ targetDate: null }), id: "undated", title: "undated" },
+    ];
+    const signals = strategyDeadlineSignals(plan, TODAY);
+    assert.deepEqual(signals.map((entry) => entry.strategy.title), ["late badly", "late a little", "s"]);
+    // The far-off and undated ones are not signals — a plan going to plan is not news.
+    assert.deepEqual(strategyDeadlineSummary(signals), { overdue: 2, approaching: 1, total: 3 });
   });
 });
