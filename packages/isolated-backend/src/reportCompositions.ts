@@ -8,6 +8,7 @@ import {
 import { listClientActions } from "./actionLevers";
 import { listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
+import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
 import type { Queryable } from "./postgres";
 
 /**
@@ -63,7 +64,6 @@ export type SnapshotForComposition = {
   createdBy: string;
   measurements: Array<{ scope: string; tco2e: number; qualityTier?: string | null; factorSet?: string | null }>;
   annualComparison: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
-  target: { baselineYear: number; baselineTco2e: number; milestones: Array<{ year: number; reductionPct: number; tco2e: number }>; residualTco2e: number | null } | null;
 };
 
 function composeEmissions(snapshot: SnapshotForComposition): ReportEmissionsSection | ReportSectionGap {
@@ -87,18 +87,32 @@ function composeEmissions(snapshot: SnapshotForComposition): ReportEmissionsSect
   };
 }
 
-function composeTargets(snapshot: SnapshotForComposition): ReportTargetsSection | ReportSectionGap {
-  if (!snapshot.target) {
+/**
+ * Targets, read from the **client target model** (NZC-072) at issue time.
+ *
+ * Deliberately not from the reviewed snapshot. Targets are their own versioned record and a
+ * client edits them between reports, so freezing them at *review* time would miss a target
+ * restated between review and issue — the same drift this store exists to close, one record
+ * along. The snapshot's own `target` is the superseded job-level model and is not read here.
+ */
+async function composeTargets(db: Queryable, input: {
+  clientId: string; snapshot: SnapshotForComposition; actuals: readonly TargetActual[];
+}): Promise<ReportTargetsSection | ReportSectionGap> {
+  const benchmarkInForce = await getBenchmarkInForce(db, input.clientId);
+  const targets = await getClientTargets(db, input.clientId, { benchmarkInForce, actuals: input.actuals });
+  if (!targets.model || targets.trajectory.length === 0) {
     return { state: "unavailable", reason: "No reduction target was set for this client when the report was issued." };
   }
   return {
-    baselineYear: snapshot.target.baselineYear,
-    baselineTco2e: snapshot.target.baselineTco2e,
-    milestones: snapshot.target.milestones,
-    // Net zero carries its residual. A pathway that lands on a flat zero claims something
-    // the target model does not say.
-    residualTco2e: snapshot.target.residualTco2e,
-    provenance: provenanceFrom(snapshot),
+    benchmark: targets.benchmark === null ? null : {
+      year: targets.benchmark.year, totalTco2e: targets.benchmark.totalTco2e,
+      source: targets.benchmark.source, reference: targets.benchmark.reference,
+    },
+    // The trajectory already carries the net-zero residual; nothing here flattens it to zero.
+    trajectory: targets.trajectory.map((point) => ({ year: point.year, tco2e: point.tco2e, kind: point.kind, pct: point.pct })),
+    benchmarkStale: targets.benchmarkStale,
+    setAt: targets.setAt,
+    provenance: provenanceFrom(input.snapshot),
   };
 }
 
@@ -187,6 +201,8 @@ export async function composeReport(db: Queryable, input: {
   reportVersionId: string;
   clientId: string;
   snapshot: SnapshotForComposition;
+  /** The assured years the pathway plots actual against, from the client's own snapshots. */
+  actuals: readonly TargetActual[];
   issuedAt: string;
 }): Promise<ReportComposition> {
   // Composed once and shared: intensity divides by the same footprint the emissions section
@@ -194,8 +210,9 @@ export async function composeReport(db: Queryable, input: {
   const emissions = composeEmissions(input.snapshot);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
 
-  const [intensity, srs, actions] = await Promise.all([
+  const [intensity, targets, srs, actions] = await Promise.all([
     composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e }),
+    composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
     composeSrs(db, input.clientId),
     listClientActions(db, input.clientId),
   ]);
@@ -212,7 +229,7 @@ export async function composeReport(db: Queryable, input: {
     assurance: reportAssurance({ reviewedBy: input.snapshot.createdBy, reviewedAt: input.snapshot.createdAt }),
     emissions,
     intensity,
-    targets: composeTargets(input.snapshot),
+    targets,
     plan: composeReportPlan(actions, actionControlLevelLabels, actionControlLevels),
     srs,
   };

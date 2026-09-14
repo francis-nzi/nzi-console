@@ -56,8 +56,30 @@ describe("the composed report", () => {
   });
 
   it("does not draw a net-zero pathway to a flat zero", () => {
-    assert.match(view, /targets\.residualTco2e !== null/);
+    // The residual is read from the trajectory the client actually set, never assumed.
+    assert.match(view, /reportResidualTco2e\(targets\)/);
+    assert.match(view, /residual !== null && residual > 0/);
     assert.match(view, /addressed through removals\s*\n?\s*rather than reduced to nothing/);
+  });
+
+  it("freezes targets from the client target model, not the snapshot", () => {
+    // Targets are their own versioned record and a client edits them between reports —
+    // exactly the drift this store exists to close. Reading them from the snapshot would
+    // freeze them at REVIEW time, missing a target restated before issue.
+    const backend = read("packages/isolated-backend/src/reportCompositions.ts");
+    assert.match(backend, /getClientTargets\(db, input\.clientId/);
+    assert.match(backend, /getBenchmarkInForce\(db, input\.clientId\)/);
+    // The superseded job-level target on the snapshot is not read, and is no longer even
+    // declared on the composition's input type.
+    assert.doesNotMatch(backend, /snapshot\.target\b/);
+    assert.doesNotMatch(backend, /baselineTco2e|milestones/);
+  });
+
+  it("says when targets are held against a moved baseline", () => {
+    // NZC-068 — a re-baseline holds targets rather than restating them. A report issued in
+    // that state must not present the pathway as though nothing had moved.
+    assert.match(view, /targets\.benchmarkStale/);
+    assert.match(view, /have not been recalculated against the new baseline/);
   });
 
   it("says the plan's percentages are progress, not carbon", () => {
