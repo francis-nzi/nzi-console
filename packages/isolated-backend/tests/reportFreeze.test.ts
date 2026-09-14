@@ -51,11 +51,12 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
     // this test is about is whether a frozen composition survives its sources changing.
     await client.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ('org-a', 'Org A')`);
     await client.query(
-      `INSERT INTO nzi_console.clients (organisation_id, client_id, name, status, created_by)
-       VALUES ('org-a', 'client-a', 'Client A', 'active', 'tester')`);
+      `INSERT INTO nzi_console.clients (organisation_id, client_id, name, status)
+       VALUES ('org-a', 'client-a', 'Client A', 'active')`);
+    // `job_number` is generated from `sequence`, so it is not supplied.
     await client.query(
-      `INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, job_number, sequence, job_family, title, workflow_stage, owner, start_date, due_date, created_by)
-       VALUES ('org-a', 'job-a', 'client-a', 'J000001', 1, 'crp', 'CRP', 'delivery', 'owner', DATE '2025-04-01', DATE '2026-03-31', 'tester')`);
+      `INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage)
+       VALUES ('org-a', 'job-a', 'client-a', 1, 'crp', 'CRP', 'open', 'delivery')`);
     await client.query(
       `INSERT INTO nzi_console.report_versions (organisation_id, report_version_id, job_id, status, manifest_version, reviewed_snapshot_id, data_hash)
        VALUES ('org-a', 'version-1', 'job-a', 'published', 1, 'snapshot-a', 'sha256:evidence')`);
