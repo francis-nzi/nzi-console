@@ -1,7 +1,7 @@
 import { NziIcon, type NziIconKey } from "@nzi/ui";
 import {
   actionScopeLabel, actionStatusLabels, isReportGap, reportCompositionSectionMeta,
-  reportHeadline, reportMethodologyRows,
+  reportHeadline, reportMethodologyRows, reportResidualTco2e,
   type ActionScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
@@ -29,6 +29,8 @@ const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractio
 export function ReportComposedView({ composition }: { composition: ReportComposition }) {
   const { emissions, intensity, targets, plan, srs } = composition;
   const footer = `${composition.client} · Carbon Reduction Plan FY${composition.reportingYear}`;
+  // The figure the pathway actually lands on — read from the model, never assumed to be 0.
+  const residual = isReportGap(targets) ? null : reportResidualTco2e(targets);
 
   return <main className="nzr-doc">
     <Cover composition={composition} />
@@ -93,21 +95,33 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
       {isReportGap(targets)
         ? <Gap section={targets} />
         : <>
-          <p className="nzr-note">
-            Baseline FY{targets.baselineYear}: {tonnes(targets.baselineTco2e)} tCO₂e.
-          </p>
+          {targets.benchmark === null
+            ? <p className="nzr-note">The baseline these targets were measured against is not recorded.</p>
+            : <p className="nzr-note">
+              Measured against the FY{targets.benchmark.year} baseline of {tonnes(targets.benchmark.totalTco2e)} tCO₂e
+              {targets.benchmark.reference ? ` (${targets.benchmark.reference})` : ""}.
+            </p>}
+          {/* NZC-068 — a re-baseline HOLDS targets rather than restating them. A report
+              issued in that state must say so, not present a pathway measured against a
+              benchmark that no longer applies as though nothing had moved. */}
+          {targets.benchmarkStale ? <p className="nzr-gap">
+            These targets were set against a baseline that has since been restated. They are held as set, and
+            have not been recalculated against the new baseline — so the pathway below is the one the client
+            agreed, not a revised one.
+          </p> : null}
           <table className="nzr-tbl">
-            <thead><tr><th>Year</th><th className="r">Reduction</th><th className="r">tCO₂e</th></tr></thead>
-            <tbody>{targets.milestones.map((milestone) => <tr key={milestone.year}>
-              <td>FY{milestone.year}</td>
-              <td className="r num">{milestone.reductionPct}%</td>
-              <td className="r num">{tonnes(milestone.tco2e)}</td>
+            <thead><tr><th>Year</th><th>Milestone</th><th className="r">Reduction</th><th className="r">tCO₂e</th></tr></thead>
+            <tbody>{targets.trajectory.map((point) => <tr key={`${point.kind}-${point.year}`}>
+              <td>FY{point.year}</td>
+              <td>{point.kind === "benchmark" ? "Baseline" : point.kind === "near-term" ? "Near-term target" : "Net zero"}</td>
+              <td className="r num">{point.kind === "benchmark" ? "—" : `${point.pct}%`}</td>
+              <td className="r num">{tonnes(point.tco2e)}</td>
             </tr>)}</tbody>
           </table>
           {/* Net zero carries its residual. A pathway drawn to a flat zero claims something
               the client's target model does not say. */}
-          {targets.residualTco2e !== null ? <p className="nzr-note">
-            Net zero here means a residual of {tonnes(targets.residualTco2e)} tCO₂e, addressed through removals
+          {residual !== null && residual > 0 ? <p className="nzr-note">
+            Net zero here means a residual of {tonnes(residual)} tCO₂e, addressed through removals
             rather than reduced to nothing.
           </p> : null}
           <Provenance provenance={targets.provenance} />
