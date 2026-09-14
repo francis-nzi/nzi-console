@@ -99,8 +99,11 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
 }) {
   const [controlLevel, setControlLevel] = useState<StrategyControlLevel | "all">("all");
   const [scope, setScope] = useState<StrategyScope | "all">("all");
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The entry awaiting confirmation, and the alignment as the person has it so far.
+  const [confirming, setConfirming] = useState<StrategyLibraryEntry | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
 
   const shown = library.filter((entry) =>
     (controlLevel === "all" || entry.strategy.controlLevel === controlLevel) && (scope === "all" || entry.strategy.scope === scope));
@@ -110,15 +113,59 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
   const defaults = (entry: StrategyLibraryEntry) =>
     entry.strategy.defaultSrsRequirementIds.filter((id) => codes.has(id));
 
+  const startAdd = (entry: StrategyLibraryEntry) => {
+    setError(null);
+    setSelected(defaults(entry));
+    setConfirming(entry);
+  };
+  const cancelAdd = () => { setConfirming(null); setSelected([]); setError(null); };
+
   async function add(entry: StrategyLibraryEntry) {
-    setPendingId(entry.strategy.id);
+    setPending(true);
     setError(null);
     const result = await postBrowserCommand<{ clientStrategyId: string }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/strategies`,
-      { strategyId: entry.strategy.id, srsRequirementIds: defaults(entry) }, crypto.randomUUID());
-    setPendingId(null);
+      { strategyId: entry.strategy.id, srsRequirementIds: selected }, crypto.randomUUID());
+    setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
+    cancelAdd();
     onSaved(`${entry.strategy.title} added to the plan.`);
+  }
+
+  /**
+   * The confirm step. The library's alignment arrives pre-filled, so agreeing with it is one
+   * click — but it is a click. Carrying the default silently would produce alignments nobody
+   * judged, and an alignment nobody judged is worse than none: it looks like consideration.
+   */
+  if (confirming !== null && framework !== null) {
+    const entry = confirming;
+    const unchanged = selected.length === defaults(entry).length
+      && defaults(entry).every((id) => selected.includes(id));
+    return <div className="nz-drawer-form">
+      <div className="nz-action-head">
+        <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={18} /></span>
+        <div><b>{entry.strategy.title}</b>
+          <div className="sub"><span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span> {entry.strategy.category}</div></div>
+      </div>
+      <p className="sub">
+        Confirm what this advances for <b>this</b> client before it joins the plan. The catalogue&rsquo;s
+        alignment is filled in below — keep it, or change it to match what they are actually doing.
+      </p>
+
+      <SrsAlignmentPicker framework={framework} selected={selected} onChange={setSelected} disabled={pending} />
+      {!unchanged ? <small className="hint">Changed from the catalogue&rsquo;s alignment for this client.</small> : null}
+
+      {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+      <div className="nz-drawer-actions">
+        <button type="button" className="nz-btn" onClick={cancelAdd}>Back to the library</button>
+        <span style={{ flex: 1 }} />
+        <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || pending || selected.length === 0}
+          blockedReason={access.state !== "allowed" ? access.reason
+            : selected.length === 0 ? "Align this strategy to at least one UK SRS requirement." : undefined}
+          reasonClassName="hint nz-gated-reason"
+          onClick={() => void add(entry)}>{pending ? "Adding…" : "Add to plan"}</GatedButton>
+      </div>
+    </div>;
   }
 
   return <div className="nz-drawer-form">
@@ -153,8 +200,8 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
               <span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span>
               {` ${[entry.strategy.category, strategyControlLevelLabels[entry.strategy.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
             </div>
-            {/* What the library says this advances. Carried across on add, and editable after
-                — so the person can see it before it lands on the plan rather than afterwards. */}
+            {/* What the library says this advances. It pre-fills the confirm step rather than
+                being applied silently — see the confirm branch above. */}
             {aligned.length > 0
               ? <div className="sub">{aligned.map((id) => <span className="nz-tag srs" key={id}>{codes.get(id)}</span>)}</div>
               : <div className="hint">No SRS alignment set in the catalogue — an administrator sets one before this can be assigned.</div>}
@@ -164,12 +211,13 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
           </div>
           {entry.assigned
             ? <span className="nz-tag">Added</span>
-            : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.strategy.active || aligned.length === 0 || pendingId !== null}
+            : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.strategy.active || framework === null || aligned.length === 0}
               blockedReason={access.state !== "allowed" ? access.reason
                 : !entry.strategy.active ? "This lever has been withdrawn from the catalogue."
-                  : aligned.length === 0 ? "Every strategy must advance at least one UK SRS requirement." : undefined}
+                  : framework === null ? "No UK SRS framework is published yet."
+                    : aligned.length === 0 ? "Every strategy must advance at least one UK SRS requirement." : undefined}
               reasonClassName="hint nz-gated-reason"
-              onClick={() => void add(entry)}>{pendingId === entry.strategy.id ? "Adding…" : "Add"}</GatedButton>}
+              onClick={() => startAdd(entry)}>Add</GatedButton>}
         </div>;
       })}
 
