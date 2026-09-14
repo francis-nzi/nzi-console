@@ -111,6 +111,47 @@ describe("action-lever library", () => {
     assert.match(view, /useEditAccess\("actions\.manage", writeEnabled\)/);
   });
 
+  it("calls the grouping control level, leaving 'sphere of influence' to the SBTi framework", () => {
+    // One term, one meaning. The SBTi beyond-value-chain framework in portalActions.ts owns
+    // "Spheres of Influence"; this operational-reduction grouping is a different idea and
+    // must not wear the same name.
+    const rename = read("packages/isolated-backend/migrations/0076_control_level_rename.sql");
+    assert.match(rename, /RENAME COLUMN sphere_of_influence TO control_level/);
+    assert.match(rename, /RENAME COLUMN bespoke_sphere_of_influence TO bespoke_control_level/);
+    // Postgres carries a renamed column into index and CHECK definitions but leaves the
+    // constraint's own name behind, which would point at a column that no longer exists.
+    assert.match(rename, /RENAME CONSTRAINT action_levers_sphere_of_influence_check TO action_levers_control_level_check/);
+
+    const contract = read("packages/contracts/src/actionLevers.ts");
+    assert.match(contract, /export const actionControlLevels = \["direct_control", "supply_chain", "influence"\]/);
+    // The only surviving mention is the note saying why the other term is not used here.
+    const mentions = [...contract.matchAll(/sphere/gi)].length;
+    assert.equal(mentions, 1, "only the note distinguishing the two concepts may say 'sphere'");
+    assert.match(contract, /NOT the SBTi "Spheres of Influence" framework/);
+
+    for (const path of [
+      "packages/isolated-backend/src/actionLevers.ts",
+      "apps/console/app/clients/[clientId]/ActionsArea.tsx",
+      "apps/console/app/clients/[clientId]/ActionForms.tsx",
+      "packages/isolated-backend/migrations/0075_action_lever_library.sql",
+    ]) {
+      // 0075 still creates the column under its original name — it was frozen by review, so
+      // the rename is a forward migration rather than an edit to it.
+      const text = path.endsWith("0075_action_lever_library.sql") ? "" : read(path);
+      if (text) assert.doesNotMatch(text, /sphere/i, path);
+    }
+    // The heading the brief asked for, in the client's words.
+    assert.match(area, /<span className="eyebrow">Level of control<\/span>/);
+    assert.doesNotMatch(read("docs/prototypes/client_workspace_v12.html"), /sphere/i);
+  });
+
+  it("keeps the SBTi framework's own term untouched", () => {
+    // The rename must not have swept through the A2-lite portal tracker, which is a
+    // genuinely different concept and keeps the original wording.
+    const portal = read("packages/contracts/src/portalActions.ts");
+    assert.match(portal, /sphere/i, "the SBTi framework still owns the term");
+  });
+
   it("says an empty plan is empty rather than showing a zeroed summary", () => {
     assert.match(area, /summary\.total === 0/);
     assert.match(area, /This client has no reduction plan yet/);

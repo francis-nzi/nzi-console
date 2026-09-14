@@ -1,5 +1,5 @@
 import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
-import { actionScopes, actionSpheres, actionStatuses } from "./actionLevers";
+import { actionScopes, actionControlLevels, actionStatuses } from "./actionLevers";
 import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
@@ -365,9 +365,9 @@ export type CommandInputMap = {
     periodKey?: string; note?: string; expectedVersion: number;
   };
   /** Open a dated assessment, stamped with the framework version in force. */
-  "action.lever.upsert": { leverId?: string; key: string; title: string; description?: string; scope: string; category?: string; sphere: string; iconKey: string; expectedVersion?: number };
+  "action.lever.upsert": { leverId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
   "action.lever.deactivate": { leverId: string; expectedVersion: number; reason: string };
-  "client.action.assign": { clientId: string; leverId?: string; bespoke?: { title: string; scope: string; category?: string; sphere: string; iconKey?: string }; owner?: string; targetDate?: string | null; notes?: string };
+  "client.action.assign": { clientId: string; leverId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; owner?: string; targetDate?: string | null; notes?: string };
   "client.action.update": { clientActionId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string };
   "client.action.remove": { clientActionId: string; expectedVersion: number; reason: string };
   "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
@@ -716,7 +716,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "title", input.title);
     required(issues, "iconKey", input.iconKey);
     if (!oneOf(input.scope, actionScopes)) issues.push({ field: "scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
-    if (!oneOf(input.sphere, actionSpheres)) issues.push({ field: "sphere", code: "INVALID", message: "Choose how much of this the client controls." });
+    if (!oneOf(input.controlLevel, actionControlLevels)) issues.push({ field: "controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
     // Editing an existing lever is versioned; creating one has nothing to conflict with.
     if (input.leverId !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
@@ -740,7 +740,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     } else if (bespoke) {
       required(issues, "bespoke.title", bespoke.title);
       if (!oneOf(bespoke.scope, actionScopes)) issues.push({ field: "bespoke.scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
-      if (!oneOf(bespoke.sphere, actionSpheres)) issues.push({ field: "bespoke.sphere", code: "INVALID", message: "Choose how much of this the client controls." });
+      if (!oneOf(bespoke.controlLevel, actionControlLevels)) issues.push({ field: "bespoke.controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
     }
     if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
       issues.push({ field: "targetDate", code: "INVALID", message: "Target date must use YYYY-MM-DD." });

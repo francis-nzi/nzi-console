@@ -20,7 +20,7 @@ import type { ActionDrawerRequest } from "./actionDrawers";
  * trail behind it. An action says what the client intends to do about it. Reading them in
  * one place would let a plan borrow the authority of evidence.
  *
- * Grouped by sphere of influence rather than by scope, because that is the axis a client
+ * Grouped by level of control rather than by scope, because that is the axis a client
  * can act on: what they control, what they buy, and what they can only influence.
  *
  * Qualitative today (A2-lite). No action here carries a modelled tCO₂e, and the area says
@@ -71,9 +71,9 @@ export function ActionsArea({ workspace, access, onDrawer }: {
       ? <section className="nz-panel">
         <Empty text="This client has no reduction plan yet. Add levers from the NZI catalogue — or a bespoke action for something specific to them — and they will appear here grouped by how much of the outcome the client controls." />
       </section>
-      : groups.map((group) => <section className="nz-panel" key={group.sphere}>
+      : groups.map((group) => <section className="nz-panel" key={group.controlLevel}>
         <div className="nz-card-h">
-          <span className="eyebrow">Sphere of influence</span><h2>{group.label}</h2>
+          <span className="eyebrow">Level of control</span><h2>{group.label}</h2>
           <span className="sp" /><span className="hint">{group.scopeHint}</span>
         </div>
         <div className="nz-card-b">
