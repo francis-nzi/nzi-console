@@ -63,3 +63,4 @@ export * from "./srsReadiness";
 export * from "./intensityMetrics";
 export * from "./trainingWorkflow";
 export * from "./actionLevers";
+export * from "./reportComposition";

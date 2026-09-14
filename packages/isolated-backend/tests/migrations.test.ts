@@ -465,3 +465,38 @@ describe("the action-lever library (0075)", () => {
     assert.match(migration, /'supplier-code',\s*'Publish a supplier code of conduct',\s*'governance'/);
   });
 });
+
+describe("what an issued report freezes (0077)", () => {
+  const migration = readFileSync(resolve(here, "../migrations/0077_report_compositions.sql"), "utf8");
+
+  it("is immutable: insert and read, never update or delete", () => {
+    // An issued report is evidence. Correcting it means issuing a new version, so nothing
+    // on the platform needs to be able to edit or remove one.
+    assert.match(migration, /GRANT SELECT, INSERT ON nzi_console\.report_compositions TO nzi_console_app;/);
+    assert.match(migration, /REVOKE UPDATE, DELETE ON nzi_console\.report_compositions FROM PUBLIC, nzi_console_app/);
+    assert.doesNotMatch(migration, /GRANT[^;]*UPDATE[^;]*ON nzi_console\.report_compositions/);
+  });
+
+  it("binds one composition to one report version", () => {
+    // A report version is a document the client was sent; it cannot mean two things.
+    assert.match(migration, /CREATE UNIQUE INDEX report_compositions_version_idx\s*\n?\s*ON nzi_console\.report_compositions \(organisation_id, report_version_id\)/);
+  });
+
+  it("is content-addressed, so re-issuing the same facts reuses the row", () => {
+    assert.match(migration, /CREATE UNIQUE INDEX report_compositions_hash_idx/);
+    assert.match(migration, /data_hash text NOT NULL CHECK \(nullif\(trim\(data_hash\), ''\) IS NOT NULL\)/);
+  });
+
+  it("carries the measurement it rests on explicitly", () => {
+    // So the composition and its snapshot cannot drift apart even if the report version
+    // were ever re-pointed at a different one.
+    assert.match(migration, /reviewed_snapshot_id text NOT NULL/);
+    assert.match(migration, /snapshot_data_hash text NOT NULL/);
+  });
+
+  it("is tenant-isolated like every other evidence store", () => {
+    assert.match(migration, /ALTER TABLE nzi_console\.report_compositions ENABLE ROW LEVEL SECURITY/);
+    assert.match(migration, /ALTER TABLE nzi_console\.report_compositions FORCE ROW LEVEL SECURITY/);
+    assert.match(migration, /CREATE POLICY tenant_isolation ON nzi_console\.report_compositions/);
+  });
+});
