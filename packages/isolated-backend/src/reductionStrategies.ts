@@ -221,6 +221,46 @@ export function deactivateLibraryStrategy(pool: PoolLike, input: CommandInputMap
 
 /* ── A client's plan ─────────────────────────────────────────────────────────────────── */
 
+
+/**
+ * Replace a client strategy's SRS alignment.
+ *
+ * Written in the same transaction as the strategy itself, which is why the database rule is
+ * a DEFERRED constraint trigger: an immediate check would fire between these two statements,
+ * when the strategy exists and its alignments do not.
+ */
+async function setStrategyAlignment(db: Queryable, input: {
+  organisationId: string; clientStrategyId: string; requirementIds: readonly string[];
+}): Promise<void> {
+  await db.query(
+    `DELETE FROM nzi_console.client_strategy_srs_requirements
+     WHERE organisation_id=$1 AND client_strategy_id=$2`,
+    [input.organisationId, input.clientStrategyId]);
+
+  // The framework comes from the requirement itself rather than from the caller: an
+  // alignment must point at a requirement that really exists, in the framework it belongs
+  // to, and taking the caller's word for that is how a dangling reference gets in.
+  const written = await db.query<{ requirement_id: string }>(
+    `INSERT INTO nzi_console.client_strategy_srs_requirements
+       (organisation_id, client_strategy_id, framework_id, requirement_id)
+     SELECT r.organisation_id, $2, r.framework_id, r.requirement_id
+     FROM nzi_console.srs_requirements r
+     WHERE r.organisation_id=$1 AND r.requirement_id = ANY($3::text[])
+     ON CONFLICT DO NOTHING
+     RETURNING requirement_id`,
+    [input.organisationId, input.clientStrategyId, [...new Set(input.requirementIds)]]);
+
+  // An id that matched no requirement would leave the strategy with fewer alignments than
+  // the consultant chose — or none at all, which the deferred trigger would then reject
+  // with a message about the strategy rather than about the id that was wrong.
+  if (written.rows.length === 0) {
+    throw new CommandValidationError([{
+      field: "srsRequirementIds", code: "UNKNOWN_REQUIREMENT",
+      message: "None of those UK SRS requirements exist in the framework in force.",
+    }]);
+  }
+}
+
 export type AssignStrategyResult = { clientStrategyId: string; strategyId: string | null };
 
 export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["client.strategy.assign"], context: CommandContext): Promise<StoredOutcome<AssignStrategyResult>> {
@@ -249,6 +289,7 @@ export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["cli
            (organisation_id, client_strategy_id, client_id, strategy_id, owner, target_date, notes, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [context.organisationId, clientStrategyId, input.clientId, input.strategyId, input.owner?.trim() ?? "", targetDate, input.notes?.trim() ?? "", context.actorId]);
+      await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds: input.srsRequirementIds });
       const data: AssignStrategyResult = { clientStrategyId, strategyId: input.strategyId };
       return {
         data,
@@ -266,6 +307,7 @@ export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["cli
       [context.organisationId, clientStrategyId, input.clientId, bespoke.title.trim(), bespoke.scope,
         bespoke.category?.trim() ?? "", bespoke.controlLevel, bespoke.iconKey ?? "target",
         input.owner?.trim() ?? "", targetDate, input.notes?.trim() ?? "", context.actorId]);
+    await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds: input.srsRequirementIds });
     const data: AssignStrategyResult = { clientStrategyId, strategyId: null };
     return {
       data,
@@ -290,11 +332,12 @@ export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["cli
 
     const saved = await db.query<{ version: number }>(
       `UPDATE nzi_console.client_strategies
-       SET status=$3, owner=$4, target_date=$5, progress_pct=$6, notes=$7,
+       SET status=$3, owner=$4, target_date=$5, progress_pct=$6, notes=$7, include_in_report=$9,
            version=version+1, updated_at=now(), updated_by=$8
        WHERE organisation_id=$1 AND client_strategy_id=$2 RETURNING version`,
       [context.organisationId, input.clientStrategyId, input.status, input.owner?.trim() ?? "",
-        input.targetDate ?? null, input.progressPct, input.notes?.trim() ?? "", context.actorId]);
+        input.targetDate ?? null, input.progressPct, input.notes?.trim() ?? "", context.actorId, input.includeInReport]);
+    await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId: input.clientStrategyId, requirementIds: input.srsRequirementIds });
     return {
       data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version },
       entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.updated",

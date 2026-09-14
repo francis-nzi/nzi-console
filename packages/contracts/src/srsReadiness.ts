@@ -96,6 +96,21 @@ export function orderedRequirements(framework: SrsFramework): SrsRequirement[] {
     || a.id.localeCompare(b.id));
 }
 
+/**
+ * The same ordering, cut into pillars.
+ *
+ * A reduction strategy is aligned to requirements, and 48 of them in one flat list is a
+ * list nobody reads. The pillar is the axis a person already thinks in — Governance,
+ * Strategy, Risk management, Metrics and targets — so the picker groups by it and inherits
+ * the one ordering rather than inventing a second one.
+ */
+export function requirementsByPillar(framework: SrsFramework): Array<{ pillar: SrsPillar; requirements: SrsRequirement[] }> {
+  const ordered = orderedRequirements(framework);
+  return [...framework.pillars].sort((a, b) => a.ordering - b.ordering)
+    .map((pillar) => ({ pillar, requirements: ordered.filter((requirement) => requirement.pillarKey === pillar.key) }))
+    .filter((group) => group.requirements.length > 0);
+}
+
 /* ── Rolling up ─────────────────────────────────────────────────────────────────────── */
 
 /**

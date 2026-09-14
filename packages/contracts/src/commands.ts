@@ -367,8 +367,8 @@ export type CommandInputMap = {
   /** Open a dated assessment, stamped with the framework version in force. */
   "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
   "strategy.library.deactivate": { strategyId: string; expectedVersion: number; reason: string };
-  "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; owner?: string; targetDate?: string | null; notes?: string };
-  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string };
+  "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
+  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
   "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
   /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
@@ -729,9 +729,15 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
-  "client.strategy.assign": { key: "client.strategy.assign", label: "Add an action to the plan", permission: "strategy.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_strategy_assigned", validate: (input, context) => {
+  "client.strategy.assign": { key: "client.strategy.assign", label: "Add a strategy to the plan", permission: "strategy.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_strategy_assigned", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "clientId", input.clientId);
+    // Every strategy on a plan advances something the client has to disclose. The database
+    // holds this too, as a deferred constraint trigger; saying it here means the drawer can
+    // refuse before the round trip rather than surfacing a constraint name.
+    if (!Array.isArray(input.srsRequirementIds) || input.srsRequirementIds.length === 0) {
+      issues.push({ field: "srsRequirementIds", code: "REQUIRED", message: "Align this strategy to at least one UK SRS requirement." });
+    }
     // Exactly one of the two shapes: from the catalogue, or standing on its own.
     const fromCatalogue = typeof input.strategyId === "string" && input.strategyId.trim() !== "";
     const bespoke = input.bespoke;
@@ -747,9 +753,13 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
-  "client.strategy.update": { key: "client.strategy.update", label: "Update an action", permission: "strategy.manage", reasonRequired: false, transaction: "versioned client action + audit + outbox + idempotency", auditAction: "client_strategy_updated", validate: (input, context) => {
+  "client.strategy.update": { key: "client.strategy.update", label: "Update a strategy", permission: "strategy.manage", reasonRequired: false, transaction: "versioned client action + audit + outbox + idempotency", auditAction: "client_strategy_updated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "clientStrategyId", input.clientStrategyId);
+    // The same rule on update: a strategy cannot be edited into having no alignment.
+    if (!Array.isArray(input.srsRequirementIds) || input.srsRequirementIds.length === 0) {
+      issues.push({ field: "srsRequirementIds", code: "REQUIRED", message: "Align this strategy to at least one UK SRS requirement." });
+    }
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     if (!oneOf(input.status, strategyStatuses)) issues.push({ field: "status", code: "INVALID", message: "Status must be planned, in progress or complete." });
     if (!Number.isInteger(input.progressPct) || input.progressPct < 0 || input.progressPct > 100) {
