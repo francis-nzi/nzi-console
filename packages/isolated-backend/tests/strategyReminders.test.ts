@@ -68,16 +68,21 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
       `INSERT INTO nzi_console.clients (organisation_id, client_id, name, status)
        VALUES ($1, 'client-a', 'Northwind Ltd', 'active')`, [ORG]);
     // One consenting contact, one who has not been asked, one who declined, one inactive.
+    // `deactivated_at` tracks `status` — 0067 holds the two as one fact, so an inactive
+    // contact without a date is a state the table refuses rather than a fixture shortcut.
     for (const [id, name, email, status, consent] of [
       ["c-yes", "Dana Reid", "dana@example.com", "active", "granted"],
       ["c-unknown", "Sam Patel", "sam@example.com", "active", "unknown"],
       ["c-no", "Lee Chan", "lee@example.com", "active", "declined"],
       ["c-gone", "Kit Moss", "kit@example.com", "inactive", "granted"],
     ]) {
+      const gone = status === "inactive";
       await client.query(
         `INSERT INTO nzi_console.client_contacts
-           (organisation_id, contact_id, client_id, full_name, email, status, email_consent, created_by, updated_by)
-         VALUES ($1,$2,'client-a',$3,$4,$5,$6,'tester','tester')`, [ORG, id, name, email, status, consent]);
+           (organisation_id, contact_id, client_id, full_name, email, status, email_consent,
+            created_by, updated_by, deactivated_by, deactivated_at)
+         VALUES ($1,$2,'client-a',$3,$4,$5,$6,'tester','tester',$7,$8)`,
+        [ORG, id, name, email, status, consent, gone ? "tester" : null, gone ? new Date().toISOString() : null]);
     }
   });
 
