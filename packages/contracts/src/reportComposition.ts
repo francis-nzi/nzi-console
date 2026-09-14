@@ -103,14 +103,36 @@ export type ReportIntensitySection = {
   provenance: ReportProvenance;
 };
 
+/**
+ * Targets, frozen from the **client target model** (NZC-072) as it stood at issue.
+ *
+ * Not from the reviewed snapshot. Targets are a record of their own, versioned and edited
+ * between reports — exactly the kind of live record this whole store exists to pin. Reading
+ * them from the snapshot would freeze them at *review* time instead, so a target restated
+ * between review and issue would be missing from the document that quotes it.
+ */
 export type ReportTargetsSection = {
-  baselineYear: number;
-  baselineTco2e: number;
-  /** The client's own target model. Net zero carries its residual; it is never plain zero. */
-  milestones: Array<{ year: number; reductionPct: number; tco2e: number }>;
-  residualTco2e: number | null;
+  /** The baseline the targets were measured against, read — never typed. */
+  benchmark: { year: number; totalTco2e: number; source: string; reference: string | null } | null;
+  /**
+   * The pathway, as the chart draws it. The net-zero point carries its **residual**: the
+   * model's own figure, which is not generally zero, and drawing it to zero would claim
+   * something the client never set.
+   */
+  trajectory: Array<{ year: number; tco2e: number; kind: string; pct: number }>;
+  /**
+   * NZC-068 — the baseline moved after these targets were set, so they are **held**, not
+   * silently restated. A report issued in that state says so rather than presenting a
+   * pathway measured against a benchmark that no longer applies.
+   */
+  benchmarkStale: boolean;
+  setAt: string | null;
   provenance: ReportProvenance;
 };
+
+/** The residual the pathway actually lands on — never assumed to be zero. */
+export const reportResidualTco2e = (targets: ReportTargetsSection): number | null =>
+  targets.trajectory.find((point) => point.kind === "net-zero")?.tco2e ?? null;
 
 export type ReportPlanSection = {
   /** Grouped as the workspace groups it — by level of control, not by scope. */
