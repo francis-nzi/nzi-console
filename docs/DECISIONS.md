@@ -92,6 +92,7 @@ arises, add the next `NZC-###`. Keep entries short — link out to the two compa
 | NZC-070 | Sites are effective-dated, never hard-deleted. The reporting boundary for a job is the set of sites in service at any point in its **reporting period** (financial year): `(in_service_from IS NULL OR in_service_from <= period_end) AND (vacated_effective IS NULL OR vacated_effective > period_start)`. One resolver governs trend, gap engine, snapshot issue, report roll-ups and charts; rows outside the boundary raise a gap. One registered office per client. | Confirmed (11 Sep 2026) |
 | NZC-071 | Site floor area is effective-dated (`client_site_floor_areas`); the per-m² intensity denominator is the sum of the in-boundary sites' floor area for the reporting period, and is "unavailable" when any in-boundary site has none. Replaces the typed floor-area denominator. | Confirmed (11 Sep 2026) |
 | NZC-072 | Forward targets are a record of their own (`client_targets`), distinct from the baseline: years and % reductions against the **benchmark read from the baseline in force**, versioned and audited. The reduction pathway and the target gap are both derived from that model — no fixed points. A re-baseline **holds** targets; restating them onto the new benchmark is an explicit, reasoned act. | Confirmed (12 Sep 2026) |
+| NZC-076 | **Strategy deadline reminders are emailed** by a separate background worker (`nzi-console-reminders`) that drains `transactional_outbox` on a 900 s clock, over **Office 365 SMTP** reading `SMTP_*` from the environment (matching live). Idempotent by **claim-before-send** on `strategy_automation_log`'s unique key. **Staging is suppress-and-log**, keyed off `NZI_DATABASE_BOUNDARY=isolated-non-production`; the worker refuses to boot without it. `email_consent` defaults to `unknown`, which holds. Verified on staging 14 Sep 2026. **Two production gates intentionally open:** consent capture, and a live worker standup. | Confirmed (14 Sep 2026) |
 | NZC-075 | **Actions become Reduction Strategies** (ISO 14060 alignment) — never bare "Strategies", because `Strategy` is already an SRS pillar. The flat catalogue splits into **levers** (Admin-managed themes) and a shared **strategy library**, joined **many-to-many**: a strategy can sit under several levers, and the plan is grouped by lever. **Control level stays a separate single-value axis.** Capability `actions.manage` → `strategy.manage` at **matrix version 3**. Supersedes the model shipped in `0075`. | Confirmed (14 Sep 2026) |
 | NZC-074 | A **trainee is a person, not a client's contact**: one record per individual, keyed on a changeable personal email, aggregating history across every employer. Employer and funding are frozen on each booking and never rewritten. Places are booked by consultant/CRM only — never self-serve from a portal. Certificates are **publicly verifiable** at `/verify/<code>` through a SECURITY DEFINER function whose return list is the whole contract. Changing the sign-in email requires verifying the new address first, and a former employer loses visibility of the person's new personal details. | Confirmed (13 Sep 2026) |
 | NZC-073 | Training carries its own capabilities — `training.manage` (bookings, attendance, stage, certificate issuance) and `training.entitlement.manage` (moving a place's expiry) — held by Admin and Consultant, as peers of `actions.manage` / `srs.manage`. Run review stays `snapshot.review` (separation of duties); certificate issuance stays policy-gated on top of the capability. Matrix version 2. | Confirmed (13 Sep 2026) |
@@ -1001,6 +1002,62 @@ This **supersedes the interim reuse** of `job.manage` (bookings/attendance/stage
 those gates. The matrix moves to **version 2** (migration `0073`), and the capability pattern is
 widened to allow more than one dot, which `training.entitlement.manage` needs.
 *Source: Francis, 13 Sep 2026 — Training family brief; `docs/PERMISSION_MATRIX.md`.*
+
+### NZC-076 — Strategy deadline reminders are emailed, and staging cannot send them [Confirmed 14 Sep 2026]
+
+**What shipped.** Email reminders for approaching and overdue reduction-strategy target dates
+(PR #165, migration `0083`), completing the notifications family: in-app and portal signals
+derived at read time (#164), and email sent by a worker.
+
+**Transport: Office 365 SMTP, matching live.** The worker reads `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` and `SMTP_TLS` from the environment — the same contract
+`nzi-insights-pro-api-live` already carries, with each service supplying its own values. None of
+them is in the repository, and a configuration error names the missing variable without echoing
+any value.
+
+**A separate worker, not the web service.** `nzi-console-reminders` is its own Render `worker`
+service, draining `transactional_outbox` on a clock (`NZI_REMINDER_TICK_SECONDS`, 900 s). A tick
+driven by web traffic fires whenever someone happens to be looking, which is neither a schedule
+nor idempotent. It is also the outbox's **first drainer** since `0001`: every command has written
+a row there and nothing had ever read one. That standing backlog is cleared as `skipped` — a
+state added for the purpose, because marking it `sent` would record deliveries that never
+happened — and none of it can become email, since no backlog topic has a mail handler.
+
+**Idempotent by claim-before-send.** A `strategy_automation_log` row is claimed *before* a send is
+attempted, never written after one succeeds, so a crash mid-send cannot lose the fact that a send
+was owed. The unique key is (strategy, kind, target date, recipient): a re-run of the clock never
+double-sends, a moved date earns a new reminder, and a transient SMTP failure retries without
+duplicating a delivered message. A queued reminder is re-derived against live state before it is
+sent, so a strategy finished since the scan is not chased.
+
+**Staging is suppress-and-log, and it fails closed.** On `NZI_DATABASE_BOUNDARY=isolated-non-production`
+the worker composes each reminder, records it in full with `state='suppressed'`, and puts nothing on
+the wire. The worker **refuses to boot without that boundary**: its start-up guard is
+`validateDatabaseBoundary`, which throws on any other token and on `APP_ENV=production`. Real sending
+additionally needs `NEXT_PUBLIC_APP_ENV=production` and `NZI_MAIL_MODE=send`, and every one of the
+three defaults to silence.
+
+**Consent holds.** `client_contacts.email_consent` (`unknown` | `granted` | `declined`) defaults to
+`unknown`, following the training model: an absent decision is not permission. Only `granted` is
+written to.
+
+**Verified on staging, 14 Sep 2026.** On the first tick the outbox backlog drained as
+**skipped × 42, sent 0, failed 0**, and `strategy_automation_log` held **0 rows** — correctly, since
+no contact has consented yet.
+
+**Two production gates, both intentionally open.**
+
+- **(a) Consent capture.** Nothing in the product sets `email_consent` yet, so no contact can be
+  written to. Production needs an audited way to record it — a reasoned, attributable change with
+  a history, not a direct database edit.
+- **(b) A live worker standup** against the live database boundary with real SMTP, as a separate
+  reviewed deploy. This is **not configuration alone**: the start-up guard that makes staging fail
+  closed also refuses the live boundary and `APP_ENV=production`, so the send path is unreachable
+  from the current code by design. Standing the worker up live needs a reviewed change to that
+  guard as well as the deploy.
+
+*Source: Francis, 14 Sep 2026 — transport (Office 365 SMTP) and background-worker decisions; staging
+verification of #165.*
 
 ### NZC-075 — Actions become Reduction Strategies, and levers become a categorisation [Confirmed 14 Sep 2026]
 

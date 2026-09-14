@@ -21,6 +21,11 @@ users migrating from the live system · `Stage 2` = deferrable.
 - **Designed + briefed, impl to build:** report (R-track) — prototype `report_v1.html` +
   `_handoff_REPORT_brief.md`; the **print-safe icon-set decision is settled** (curated inline
   SVG, in DESIGN_CONVENTIONS §10) which also unblocks the intensity/action report icons.
+- **Reduction Strategies notifications — done (14 Sep 2026):** in-app + portal deadline signals
+  (#164) and **email reminders (#165, migration `0083`) — live and verified on staging**: worker
+  `nzi-console-reminders` drained the outbox backlog as skipped × 42, sent 0, failed 0; staging is
+  suppress-and-log and cannot send (NZC-076). **Two production gates intentionally open:**
+  (a) consent capture (§B), (b) live worker standup against the live boundary + real SMTP (§G).
 - **Held:** commercial ledger (NZC-069 held).
 - **Job families:** shared spine + numbering done; models `0045`–`0050` done; LCA/PCF staff
   module built (L1–L7). Remaining staff modules: Training, Consultancy (follow LCA pattern,
@@ -63,6 +68,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Primary contact designation | `client_contacts` | Built | — |
 | **Contact roles**: report signee · portal candidate · quote/invoice recipient · training attendee | `client_contacts` | To build | Go-live |
 | Deactivate-not-delete | principle | To build | Go-live |
+| **Email consent capture** — an audited way to set `client_contacts.email_consent` (`unknown` → `granted` / `declined`), with reason and history. Production gate (a) for strategy reminder email: `unknown` holds, so no contact can be written to until this exists | NZC-076 · migration `0083` (column only) | **To build — intentionally open gate** | Should |
 
 ## C. Sites
 
@@ -113,7 +119,10 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | Prototype ✓ · briefed (`_handoff_ACTION_LEVER_LIBRARY_brief.md`) | Go-live |
 | Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | Prototype ✓ · briefed | Should |
 | Spheres-of-Influence framework mapping | framework | Prototype ✓ (grouped by sphere) | Should |
-| Action status / owner / target dates | `report_actions` | Partial | Should |
+| Action status / owner / target dates | `report_actions` | Built — Reduction Strategies (NZC-075) | Should |
+| **Deadline signals — in-app + portal** (approaching / overdue, derived at read time; no date raises nothing) | brief §6 | **Built — #164** (no migration) | Should |
+| **Deadline email reminders** — worker `nzi-console-reminders` drains the outbox on a 900 s clock; Office 365 SMTP; claim-before-send idempotency (`strategy_automation_log`) | brief §6a · NZC-076 | **Built — #165 / migration `0083` · verified on staging 14 Sep 2026** (first tick: outbox backlog skipped × 42, sent 0, failed 0; log 0 rows — no consent yet). Staging is suppress-and-log and cannot send. | Should |
+| ↳ Production gate (b): **live worker standup** against the live DB boundary + real SMTP | NZC-076 | **Intentionally open** — a separate reviewed deploy, *and* a reviewed change to the worker's start-up guard, which by design refuses the live boundary today | Should |
 | Quantified emissions projection from actions | (live has none) | To build | Stage 2 |
 
 ## H. SRS Readiness  *(incorporate live detail)*
