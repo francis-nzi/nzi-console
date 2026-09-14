@@ -1041,9 +1041,13 @@ three defaults to silence.
 `unknown`, following the training model: an absent decision is not permission. Only `granted` is
 written to.
 
-**Verified on staging, 14 Sep 2026.** On the first tick the outbox backlog drained as
-**skipped × 42, sent 0, failed 0**, and `strategy_automation_log` held **0 rows** — correctly, since
-no contact has consented yet.
+**Staging verification (14 Sep 2026)** covered the worker lifecycle and the outbox drain only: the
+worker boots, refuses any boundary but `isolated-non-production`, self-suppresses (transport:
+suppressed), and drained the pre-existing outbox backlog as skipped (42 skipped / 0 sent / 0 failed).
+The reminder-generation path — scan due strategies → resolve contact → consent check → suppress/send
+→ log — was NOT exercised on staging, because there are no client strategies on staging yet; that
+path is proven by the real-Postgres CI suite, not by a staging run. `strategy_automation_log` is empty
+because no reminder has run, not because of consent state.
 
 **Two production gates, both intentionally open.**
 
