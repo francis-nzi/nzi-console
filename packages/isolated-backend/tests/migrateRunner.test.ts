@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 // @ts-expect-error — the runner is plain ESM, deliberately dependency-light and runnable
 // without a build step. Its decision logic is pure and is what this file exercises.
-import { assertDisposable, migrationFiles, reconcile, refuseOn } from "../scripts/migrate.mjs";
+import { assertDisposable, migrationFiles, needsBaseline, reconcile, refuseOn } from "../scripts/migrate.mjs";
 
 /**
  * The runner's refusals.
@@ -158,5 +158,31 @@ describe("the throwaway-database guard", () => {
     // both through.
     assert.throws(() => assertDisposable("postgres://u:p@h:5432/latest"), /not named as a disposable/);
     assert.throws(() => assertDisposable("postgres://u:p@h:5432/precise"), /not named as a disposable/);
+  });
+});
+
+describe("adopting an existing database", () => {
+  // The one-time case that tripped staging: a database that predates the ledger has every
+  // object already and no history recorded. Applying from 0001 fails on "already exists" —
+  // safe, but the error describes the symptom rather than the fix.
+
+  it("spots a populated schema with an empty ledger", () => {
+    assert.equal(needsBaseline([], 42), true);
+  });
+
+  it("discounts the ledger migration, which creates itself", () => {
+    // 0000 having run says nothing about whether the rest of the schema was recorded.
+    assert.equal(needsBaseline(["0000_schema_migrations.sql"], 42), true);
+  });
+
+  it("leaves a genuinely empty database alone", () => {
+    // A fresh database SHOULD apply from the start; that is not the adoption case.
+    assert.equal(needsBaseline([], 0), false);
+    assert.equal(needsBaseline(["0000_schema_migrations.sql"], 0), false);
+  });
+
+  it("says nothing once there is real history", () => {
+    assert.equal(needsBaseline(["0000_schema_migrations.sql", "0001_core_schema.sql"], 42), false);
+    assert.equal(needsBaseline(["0077_report_compositions.sql"], 42), false);
   });
 });
