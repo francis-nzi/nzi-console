@@ -158,12 +158,14 @@ function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, acce
   return <section className={collapsed ? "nz-panel nz-lever collapsed" : "nz-panel nz-lever"}>
     {/* The whole header is the control, so the hit target is the row rather than a chevron. */}
     <button type="button" className="nz-lever-head" onClick={onToggle} aria-expanded={!collapsed} aria-controls={bodyId}>
+      {/* The chevron is the only affordance, on the left, rotating ▸ closed / ▾ open — the same
+          glyph as @nzi/ui's Collapsible (DESIGN_CONVENTIONS §3.4). Never a tick: a check means
+          selected or complete, and an open group is neither. */}
+      <svg className="nz-lever-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
       <span className="nz-lever-icon"><NziIcon name={iconKey(lever.iconKey)} size={17} /></span>
       <h2>{lever.title}</h2>
       {/* A collapsed group still says how much is inside it. */}
       <span className="cnt">· {strategies.length} {strategies.length === 1 ? "strategy" : "strategies"}</span>
-      <span className="sp" />
-      <span className="nz-lever-chev" aria-hidden="true"><NziIcon name="check" size={14} /></span>
     </button>
     <div className="nz-lever-body" id={bodyId} hidden={collapsed}>
       {strategies.map((strategy) => <StrategyRow key={strategy.id} strategy={strategy} codes={codes} today={today} access={access} onDrawer={onDrawer} />)}
