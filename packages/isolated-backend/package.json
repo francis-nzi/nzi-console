@@ -9,7 +9,10 @@
   "scripts": {
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "acceptance:provision": "tsx scripts/provision-acceptance-accounts.ts"
+    "acceptance:provision": "tsx scripts/provision-acceptance-accounts.ts",
+    "migrate": "node scripts/migrate.mjs up",
+    "migrate:status": "node scripts/migrate.mjs status",
+    "migrate:baseline": "node scripts/migrate.mjs baseline"
   },
   "dependencies": {
     "@nzi/charts": "*",
