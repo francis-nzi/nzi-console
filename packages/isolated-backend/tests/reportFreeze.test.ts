@@ -23,6 +23,8 @@ import { composeReportPlan, reportAssurance, strategyControlLevelLabels, strateg
  * about what a mock was told to say.
  */
 
+const EVIDENCE_HASH = `sha256:${"a".repeat(64)}`;
+
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
 
@@ -57,9 +59,17 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
     await client.query(
       `INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage)
        VALUES ('org-a', 'job-a', 'client-a', 1, 'crp', 'CRP', 'open', 'delivery')`);
+    // A report version references a real reviewed snapshot, and `data_hash` is CHECK-
+    // constrained to an actual sha256 — so the fixture uses one rather than a placeholder.
+    await client.query(
+      `INSERT INTO nzi_console.reviewed_crp_snapshots
+         (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+       VALUES ('org-a', 'snapshot-a', 'job-a', 1, 1, $1, $2::jsonb, 'preparer-a')`,
+      [EVIDENCE_HASH, JSON.stringify({ jobNumber: "J000001", client: "Client A", reportingYear: 2025, measurements: [], annualComparison: [] })]);
     await client.query(
       `INSERT INTO nzi_console.report_versions (organisation_id, report_version_id, job_id, status, manifest_version, reviewed_snapshot_id, data_hash)
-       VALUES ('org-a', 'version-1', 'job-a', 'published', 1, 'snapshot-a', 'sha256:evidence')`);
+       VALUES ('org-a', 'version-1', 'job-a', 'published', 1, 'snapshot-a', $1)`,
+      [EVIDENCE_HASH]);
   });
 
   after(async () => { await client?.end(); });
@@ -72,7 +82,7 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
     const composition = {
       reportVersionId: "version-1", jobId: "job-a", jobNumber: "J000001", client: "Client A",
       reportingYear: 2025, issuedAt: "2026-04-01T00:00:00.000Z",
-      snapshotId: "snapshot-a", snapshotDataHash: "sha256:evidence",
+      snapshotId: "snapshot-a", snapshotDataHash: EVIDENCE_HASH,
       assurance: reportAssurance({ reviewedBy: "reviewer-a", reviewedAt: "2026-03-30T00:00:00.000Z" }),
       emissions: { state: "unavailable", reason: "not part of this test" },
       intensity: { state: "unavailable", reason: "not part of this test" },
