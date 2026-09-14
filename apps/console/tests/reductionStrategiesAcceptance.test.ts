@@ -206,7 +206,6 @@ describe("Reduction Strategies", () => {
     // Both add paths and the edit path carry an alignment, and none can be submitted without
     // one.
     assert.match(forms, /srsRequirementIds\.length === 0 \? "Align this strategy to at least one UK SRS requirement\."/);
-    assert.match(forms, /srsRequirementIds: defaults\(entry\)/);
     // No framework means nothing to align to — said, rather than shown as a dead form.
     assert.match(forms, /No UK SRS framework is published for this organisation yet/);
   });
@@ -228,6 +227,20 @@ describe("Reduction Strategies", () => {
     const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
     assert.match(compositions, /composeReportPlan\(strategies, levers, requirementCodes\)/);
     assert.match(read("packages/contracts/src/reportComposition.ts"), /strategy\.includeInReport/);
+  });
+
+  it("makes a library add confirm its alignment rather than inherit it silently", () => {
+    // Alignment's worth is that someone judged it. A default applied without a look produces
+    // nominal alignments nobody stands behind, which is worse than none — it reads as
+    // consideration. Pre-filled from the catalogue, so agreeing is one click, but a click.
+    assert.match(forms, /startAdd\(entry\)/);
+    assert.match(forms, /setSelected\(defaults\(entry\)\)/);
+    assert.match(forms, /Confirm what this advances for/);
+    // The posted alignment is what the person confirmed, not what the catalogue said.
+    assert.match(forms, /srsRequirementIds: selected/);
+    assert.doesNotMatch(forms, /srsRequirementIds: defaults\(entry\)/);
+    // And a change away from the catalogue's default is visible as a change.
+    assert.match(forms, /Changed from the catalogue&rsquo;s alignment for this client\./);
   });
 
   it("says on the plan itself what the report will leave out", () => {
