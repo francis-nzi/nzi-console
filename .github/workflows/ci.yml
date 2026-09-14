@@ -58,3 +58,7 @@ jobs:
       - run: npm ci
       - name: Apply every migration in order
         run: npx tsx --test packages/isolated-backend/tests/migrationsRun.test.ts
+      # The keystone property of an issued report: it does not move when its sources do.
+      # Needs a real database, so it runs in this job rather than the unit suite.
+      - name: An issued report does not move
+        run: npx tsx --test packages/isolated-backend/tests/reportFreeze.test.ts

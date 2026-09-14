@@ -118,3 +118,38 @@ describe("the composed report", () => {
     }
   });
 });
+
+describe("publishing freezes the composition", () => {
+  const handler = readFileSync(new URL("../../../packages/isolated-backend/src/postgresCommands.ts", import.meta.url), "utf8");
+  const commands = readFileSync(new URL("../../../packages/contracts/src/commands.ts", import.meta.url), "utf8");
+
+  it("composes and freezes inside the publish transaction", () => {
+    // A published report without its composition is a document nobody can reproduce, so the
+    // freeze cannot be a follow-up step that might not run.
+    const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
+    assert.ok(publish.length > 0, "the publish handler is found");
+    assert.match(publish, /composeForReportVersion\(db\s*,\s*\{/);
+    assert.match(publish, /freezeReportComposition\(db\s*,\s*\{/);
+    assert.match(publish, /compositionId:\s*frozen\.compositionId/);
+  });
+
+  it("pins the version it is publishing", () => {
+    // Two publishes racing on one report must not both proceed.
+    assert.match(commands, /"report\.publish": \{ reportVersionId: string;[^}]*expectedVersion: number \}/);
+    const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
+    assert.match(publish, /report\.version!==input\.expectedVersion.*VersionConflictError/);
+  });
+
+  it("keeps separation of duties at publish, not only at validation", () => {
+    const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
+    assert.match(publish, /requireReleasableSnapshot\(context,source\)/);
+    assert.match(handler, /You prepared this snapshot, so someone else must validate and publish it/);
+  });
+
+  it("supersedes the previous published version rather than editing it", () => {
+    // Re-publishing is a new version; the one the client already has stays as it was.
+    const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
+    assert.match(publish, /SET status='superseded'/);
+    assert.doesNotMatch(publish, /UPDATE nzi_console\.report_compositions/);
+  });
+});
