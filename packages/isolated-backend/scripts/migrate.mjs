@@ -133,6 +133,23 @@ export function reconcile(files, applied) {
   return { pending, drifted, gaps, orphans };
 }
 
+/**
+ * Is this an existing database that has never been baselined?
+ *
+ * The one-time adoption case. A database that predates the ledger has every object already
+ * and no history recorded, so the runner would try to apply from `0001` and fail on
+ * "relation already exists" — safe, but the error says nothing about what to actually do.
+ * It happened on staging, and the next person to hit it deserves the answer rather than the
+ * symptom.
+ *
+ * `0000` is discounted because the ledger migration creates itself: its presence says
+ * nothing about whether the rest of the schema was recorded.
+ */
+export function needsBaseline(recordedFilenames, existingTableCount) {
+  const realHistory = [...recordedFilenames].filter((name) => !name.startsWith("0000_"));
+  return realHistory.length === 0 && existingTableCount > 0;
+}
+
 export function refuseOn({ drifted, gaps, orphans }) {
   const problems = [];
   if (gaps.length) {
@@ -173,6 +190,14 @@ async function status(client) {
     return;
   }
 
+  // Said here too, because status is where someone looks before they run anything.
+  if (needsBaseline([...applied.keys()], await schemaTableCount(client))) {
+    console.log("This looks like an existing database that has never been baselined.");
+    console.log(`  ${files.length} migrations on disk; the schema has tables, but the ledger records none.`);
+    console.log(`  Record its history first:  npm run migrate:baseline ${files[files.length - 1].filename}`);
+    return;
+  }
+
   console.log(`${applied.size} applied, ${pending.length} pending, ${files.length} on disk.`);
   const baselined = [...applied.values()].filter((row) => row.baselined).length;
   if (baselined) console.log(`  ${baselined} of the applied rows are baselined (asserted, not run by this runner).`);
@@ -187,9 +212,32 @@ async function status(client) {
   if (!pending.length && !gaps.length && !drifted.length && !orphans.length) console.log(`\nUp to date.`);
 }
 
+/** Tables in the schema other than the ledger itself. */
+async function schemaTableCount(client) {
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS present FROM information_schema.tables
+     WHERE table_schema = 'nzi_console' AND table_name <> 'schema_migrations'`);
+  return rows[0].present;
+}
+
 async function up(client, actor) {
   const files = migrationFiles();
   const applied = await appliedRows(client);
+
+  // Before anything else: an existing database that was never baselined would otherwise be
+  // "applied" from 0001 and fail on "already exists". That is safe but unhelpful.
+  if (needsBaseline([...applied.keys()], await schemaTableCount(client))) {
+    const last = files[files.length - 1].filename;
+    throw new Error(
+      `This looks like an existing database that has never been baselined.\n\n` +
+      `  The schema already has tables, but the ledger records no migrations — so applying\n` +
+      `  from the start would fail on objects that are already there.\n\n` +
+      `  If this database is up to date, record its history first:\n` +
+      `    npm run migrate:baseline ${last}\n\n` +
+      `  Then 'npm run migrate' will apply only what is genuinely pending.\n`,
+    );
+  }
+
   const state = reconcile(files, applied);
   refuseOn(state);
 
