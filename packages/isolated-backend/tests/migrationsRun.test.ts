@@ -78,6 +78,18 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
         // Name the file. A bare Postgres error 70 files into a run is a puzzle.
         assert.fail(`${file.filename} failed to apply: ${(error as Error).message}`);
       }
+
+      // `0070` and `0075` seed per organisation — `INSERT ... SELECT ... FROM organisations`
+      // — so on a database with none they insert nothing at all. No migration creates an
+      // organisation, so a genuinely empty database gets no SRS framework and no lever
+      // catalogue. Real environments have one by this point, and the seeding assertions
+      // below are only meaningful against one, so create it as soon as the table exists.
+      if (file.filename.startsWith("0001_")) {
+        await client.query(
+          `INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`,
+          ["ci-organisation", "CI"],
+        );
+      }
     }
   });
 
@@ -89,7 +101,7 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     // A spread across the domains, so a migration that applies but creates nothing useful
     // still fails.
     for (const table of [
-      "organisations", "clients", "jobs", "scope_rows", "report_versions",
+      "organisations", "clients", "jobs", "job_scope_rows", "report_versions",
       "srs_frameworks", "srs_assessments", "client_intensity_metrics",
       "trainees", "training_certificates", "action_levers", "client_actions",
       "report_compositions", "schema_migrations",
@@ -119,6 +131,32 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
        FROM nzi_console.action_levers`);
     assert.equal(levers.rows[0]!.total, "13");
     assert.equal(levers.rows[0]!.withImpact, "0", "the catalogue ships qualitative");
+  });
+
+  it("seeds reference data per organisation, so a new organisation gets none of it", async () => {
+    // Found by this suite's first CI run, and worth pinning rather than papering over.
+    //
+    // `0070` and `0075` seed with `INSERT ... SELECT ... FROM nzi_console.organisations`.
+    // That is per-organisation by design, but it means the seed only ever covers the
+    // organisations that existed WHEN THE MIGRATION RAN. No migration creates one, so an
+    // empty database gets nothing — and an organisation created later gets nothing either,
+    // because nothing re-runs the seed.
+    //
+    // Staging only has a framework because its organisation predates 0070. This asserts the
+    // behaviour as it actually is; closing it needs a decision (seed on organisation
+    // creation, or a backfill migration), not a quiet change here.
+    const framework = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'ci-organisation'`);
+    assert.equal(framework.rows[0]!.count, "1", "the organisation present at migration time is seeded");
+
+    await client.query(
+      `INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`,
+      ["later-organisation", "Created after the migrations ran"]);
+    const late = await client.query<{ frameworks: string; levers: string }>(
+      `SELECT (SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'later-organisation') AS "frameworks",
+              (SELECT count(*)::text FROM nzi_console.action_levers WHERE organisation_id = 'later-organisation') AS "levers"`);
+    assert.equal(late.rows[0]!.frameworks, "0", "an organisation created later has no SRS framework");
+    assert.equal(late.rows[0]!.levers, "0", "and no lever catalogue");
   });
 
   it("keeps evidence stores append-only in the built schema", async () => {
