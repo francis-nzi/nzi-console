@@ -103,8 +103,11 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     for (const table of [
       "organisations", "clients", "jobs", "job_scope_rows", "report_versions",
       "srs_frameworks", "srs_assessments", "client_intensity_metrics",
-      "trainees", "training_certificates", "action_levers", "client_actions",
+      "trainees", "training_certificates",
       "report_compositions", "schema_migrations",
+      // Post-0078 names. `action_levers` and `client_actions` are deliberately absent: 0078
+      // renames them, and asserting the old names would pass only while the rename was
+      // incomplete.
       "levers", "reduction_strategies", "strategy_levers", "client_strategies",
     ]) {
       assert.ok(tables.has(table), `nzi_console.${table} should exist after all migrations`);
@@ -153,11 +156,13 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     await client.query(
       `INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`,
       ["later-organisation", "Created after the migrations ran"]);
-    const late = await client.query<{ frameworks: string; levers: string }>(
+    const late = await client.query<{ frameworks: string; strategies: string; levers: string }>(
       `SELECT (SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'later-organisation') AS "frameworks",
-              (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = 'later-organisation') AS "levers"`);
+              (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = 'later-organisation') AS "strategies",
+              (SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = 'later-organisation') AS "levers"`);
     assert.equal(late.rows[0]!.frameworks, "0", "an organisation created later has no SRS framework");
-    assert.equal(late.rows[0]!.levers, "0", "and no lever catalogue");
+    assert.equal(late.rows[0]!.strategies, "0", "and no strategy library");
+    assert.equal(late.rows[0]!.levers, "0", "and no levers — so its plan would have nothing to group by");
   });
 
   it("allocates every library strategy to at least one lever", async () => {
