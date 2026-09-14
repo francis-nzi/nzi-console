@@ -118,13 +118,13 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     // 0070 is the one that failed on staging. Its seed is the part a text assertion cannot
     // check: that the INSERT ... SELECT actually produces rows.
     const framework = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE framework_id = 'uk-srs-2026' AND status = 'active'`);
+      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026' AND status = 'active'`);
     assert.equal(framework.rows[0]!.count, "1", "one active framework version");
     const requirements = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_requirements WHERE framework_id = 'uk-srs-2026'`);
+      `SELECT count(*)::text FROM nzi_console.srs_requirements WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026'`);
     assert.equal(requirements.rows[0]!.count, "48", "48 requirements, matching the file");
     const pillars = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_pillars WHERE framework_id = 'uk-srs-2026'`);
+      `SELECT count(*)::text FROM nzi_console.srs_pillars WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026'`);
     assert.equal(pillars.rows[0]!.count, "4");
   });
 
@@ -132,37 +132,73 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     const levers = await client.query<{ total: string; withImpact: string }>(
       `SELECT count(*)::text AS "total",
               count(*) FILTER (WHERE modelled_tco2e_per_year IS NOT NULL)::text AS "withImpact"
-       FROM nzi_console.reduction_strategies`);
+       FROM nzi_console.reduction_strategies WHERE organisation_id = 'ci-organisation'`);
     assert.equal(levers.rows[0]!.total, "13");
     assert.equal(levers.rows[0]!.withImpact, "0", "the catalogue ships qualitative");
   });
 
-  it("seeds reference data per organisation, so a new organisation gets none of it", async () => {
-    // Found by this suite's first CI run, and worth pinning rather than papering over.
-    //
-    // `0070` and `0075` seed with `INSERT ... SELECT ... FROM nzi_console.organisations`.
-    // That is per-organisation by design, but it means the seed only ever covers the
-    // organisations that existed WHEN THE MIGRATION RAN. No migration creates one, so an
-    // empty database gets nothing — and an organisation created later gets nothing either,
-    // because nothing re-runs the seed.
-    //
-    // Staging only has a framework because its organisation predates 0070. This asserts the
-    // behaviour as it actually is; closing it needs a decision (seed on organisation
-    // creation, or a backfill migration), not a quiet change here.
-    const framework = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'ci-organisation'`);
-    assert.equal(framework.rows[0]!.count, "1", "the organisation present at migration time is seeded");
-
+  it("gives an organisation created after the migrations the same reference set", async () => {
+    // The gap this suite found on its first run, now closed: reference data follows the
+    // organisation rather than the migration that ran once. A client onboarded today must
+    // not hit the missing `srs_frameworks` that took staging down.
     await client.query(
       `INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`,
-      ["later-organisation", "Created after the migrations ran"]);
-    const late = await client.query<{ frameworks: string; strategies: string; levers: string }>(
-      `SELECT (SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'later-organisation') AS "frameworks",
-              (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = 'later-organisation') AS "strategies",
-              (SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = 'later-organisation') AS "levers"`);
-    assert.equal(late.rows[0]!.frameworks, "0", "an organisation created later has no SRS framework");
-    assert.equal(late.rows[0]!.strategies, "0", "and no strategy library");
-    assert.equal(late.rows[0]!.levers, "0", "and no levers — so its plan would have nothing to group by");
+      ["onboarded-today", "Created after every migration ran"]);
+
+    // Compared against the organisation the migrations themselves seeded, rather than
+    // against numbers typed here — the point is that the two are the same, whatever they are.
+    const counts = async (organisationId: string) => {
+      const { rows } = await client.query<{ requirements: string; pillars: string; levers: string; strategies: string; allocations: string }>(
+        `SELECT (SELECT count(*)::text FROM nzi_console.srs_requirements WHERE organisation_id = $1) AS "requirements",
+                (SELECT count(*)::text FROM nzi_console.srs_pillars WHERE organisation_id = $1) AS "pillars",
+                (SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = $1) AS "levers",
+                (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = $1) AS "strategies",
+                (SELECT count(*)::text FROM nzi_console.strategy_levers WHERE organisation_id = $1) AS "allocations"`,
+        [organisationId]);
+      return rows[0]!;
+    };
+    assert.deepEqual(await counts("onboarded-today"), await counts("ci-organisation"),
+      "a newly created organisation gets exactly what a migration-seeded one has");
+
+    // And the content matches, not just the tallies — a transcription slip in the generated
+    // provisioning would otherwise pass on counts alone.
+    const { rows: diff } = await client.query<{ code: string }>(
+      `SELECT code FROM nzi_console.srs_requirements WHERE organisation_id = 'ci-organisation'
+       EXCEPT
+       SELECT code FROM nzi_console.srs_requirements WHERE organisation_id = 'onboarded-today'`);
+    assert.deepEqual(diff, [], "every requirement code is present in the provisioned organisation");
+  });
+
+  it("provisions idempotently, so the trigger and the backfill can run over each other", async () => {
+    const before = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.strategy_levers WHERE organisation_id = 'onboarded-today'`);
+    await client.query(`SELECT nzi_console.provision_organisation('onboarded-today')`);
+    await client.query(`SELECT nzi_console.provision_organisation('onboarded-today')`);
+    const after = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.strategy_levers WHERE organisation_id = 'onboarded-today'`);
+    assert.equal(after.rows[0]!.count, before.rows[0]!.count, "provisioning twice changes nothing");
+
+    // One active framework version stays one, rather than gaining a duplicate.
+    const active = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'onboarded-today' AND status = 'active'`);
+    assert.equal(active.rows[0]!.count, "1");
+  });
+
+  it("provisions whatever creates the organisation, not only a command", async () => {
+    // Nothing in the repository creates an organisation — they arrive by script or by hand.
+    // A command would be a hook nothing calls, and the gap would reopen the first time
+    // someone inserted a row directly, which is how it opened in the first place. So this
+    // inserts one the crudest way available and expects it to come out provisioned.
+    await client.query(
+      `INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`,
+      ["raw-insert", "Inserted directly, no application code involved"]);
+    const { rows } = await client.query<{ frameworks: string; levers: string; strategies: string }>(
+      `SELECT (SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'raw-insert') AS "frameworks",
+              (SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = 'raw-insert') AS "levers",
+              (SELECT count(*)::text FROM nzi_console.reduction_strategies WHERE organisation_id = 'raw-insert') AS "strategies"`);
+    assert.equal(rows[0]!.frameworks, "1", "a directly inserted organisation still gets its framework");
+    assert.notEqual(rows[0]!.levers, "0", "and its levers");
+    assert.notEqual(rows[0]!.strategies, "0", "and its strategy library");
   });
 
   it("allocates every library strategy to at least one lever", async () => {
@@ -175,8 +211,11 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
                          WHERE (l.organisation_id, l.strategy_id) = (s.organisation_id, s.strategy_id))`);
     assert.equal(orphans.rows[0]!.count, "0", "no library strategy is left without a lever");
 
-    const levers = await client.query<{ count: string }>(`SELECT count(*)::text FROM nzi_console.levers`);
-    assert.equal(levers.rows[0]!.count, "7", "the seeded lever set");
+    // Scoped to one organisation: reference data is per-organisation, so an unscoped count
+    // is a multiple of however many organisations earlier tests happened to create.
+    const levers = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = 'ci-organisation'`);
+    assert.equal(levers.rows[0]!.count, "7", "the seeded lever set, per organisation");
   });
 
   it("keeps evidence stores append-only in the built schema", async () => {
