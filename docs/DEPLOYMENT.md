@@ -113,6 +113,30 @@ rebuild; `lca`/`pcf` jobs return to `FamilyWorkspace`, no data change.
 - Browser-side Supabase keys are not used; database access is server-only through the dedicated
   non-production session pooler.
 
+## Reduction-strategy deadline signals (phase 3a)
+
+Approaching/overdue strategy dates are **derived at read time** and shown in the staff console and the
+client portal. Nothing is stored, nothing is sent, and no date is invented — a strategy with no
+`target_date` raises nothing, and a completed strategy raises nothing.
+
+| Setting | Where | Value |
+|---|---|---|
+| Reminder window | `strategyReminderWindowDays` in `@nzi/contracts/reductionStrategies` | `30` days |
+| "Today" | resolved server-side, `Europe/London` calendar date | client workspace page; `/api/portal/strategies` |
+
+The window is a code constant rather than an environment variable **on purpose**: it changes what a
+client is told, so it belongs in a reviewed commit, not a dashboard field. Changing it is a one-line
+edit plus the usual PR.
+
+"Today" is London, not UTC — overdue turns over at UK midnight — and is resolved on the server so a
+client's device clock cannot decide whether their own plan is late.
+
+**Not built yet (phase 3b):** sending. There is no email transport in this repo, and
+`transactional_outbox` (present since `0001`) has never had a drainer — `render.yaml` declares a single
+`web` service. Reminder *sends* need a scheduled worker plus a `strategy_automation_log` to make them
+idempotent; on isolated staging the policy is **suppress-and-log** (compute the would-send, never put
+real mail on the wire to a real client).
+
 ## Rollback / teardown
 
 For an immediate application rollback, set `NZI_DATA_MODE=fixture` on service

@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
 import {isPortalIdentity,isPortalJobList,type PortalIdentity as User,type PortalJob as Job} from "./portalPortfolioValidation";
+import {PortalStrategyDeadlines} from "./PortalStrategyDeadlines";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
 import {portalFeatureEnabled} from "../lib/portalFlags";
 import { formatDate } from "../lib/formatDate";
@@ -17,6 +18,9 @@ export function PortalHome(){
     <section className="nz-portal-shell" id="portal-main-content" tabIndex={-1}>
       <div className="nz-portal-welcome"><div><span className="nz-eyebrow">Verified sustainability reporting</span><h1>{greeting?`Good ${greeting}`:"Welcome"}{user?.displayName?`, ${user.displayName.split(" ")[0]}`:""}.</h1><p>Your reports, approvals and conversations with the NZI advisory team—all in one secure place.</p></div><div className="nz-trust-mark"><i>✓</i><div><b>Secure client workspace</b><span>MFA protected · access controlled</span></div></div></div>
       <div className="nz-portal-summary"><div><span>Reporting engagements</span><b>{jobs===null?"—":jobs.length}</b><small>Explicitly granted to you</small></div><div><span>Published reports</span><b>{jobs===null?"—":published}</b><small>Immutable client records</small></div><div><span>Approved</span><b>{jobs===null?"—":approved}</b><small>Version-bound approvals</small></div><div className={actions?"attention":""}><span>Actions for you</span><b>{jobs===null?"—":actions}</b><small>{actions?"Review requested":"Everything up to date"}</small></div></div>
+      {/* The plan's own dates, ahead of the portfolio: an action that has passed its date is
+          the most actionable thing on this page. Renders nothing when nothing is due. */}
+      <PortalStrategyDeadlines/>
       {/* Training sits alongside the portfolio rather than inside a job: places belong to
           the client and follow their people, not any one reporting engagement. */}
       <div className="nz-portal-section-head"><div><span className="nz-eyebrow">Your portfolio</span><h2>Reporting engagements</h2><p>Only work explicitly authorised for your account is shown.</p></div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{actions>0&&<span className="nz-st need">{actions} action{actions===1?"":"s"} waiting</span>}<a className="nz-btn" href="/portal/training">Your team&rsquo;s training</a></div></div>

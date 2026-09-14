@@ -1269,3 +1269,12 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-srs-req{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;font-size:12.5px;line-height:1.45;color:var(--t1);cursor:pointer}
 .nz-srs-req:hover{background:var(--bg)}
 .nz-srs-req input{margin-top:2px;flex:none}
+
+/* Deadline signals. `--danger`, never `--s1`/`--coral`: those carry Scope 1 identity, and
+   "overdue" is a state rather than a measurement. The two resolve to the same colour today,
+   which is exactly why the token has to be the right one. */
+.nz-deadline{font-size:11px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.nz-deadline.soon{color:#8A6100}
+.nz-deadline.late{color:var(--danger)}
+.nz-deadline-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px}
+.nz-deadline-list li{line-height:1.45}

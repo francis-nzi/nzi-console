@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
@@ -248,5 +248,93 @@ describe("Reduction Strategies", () => {
     // place it is too late to notice.
     assert.match(area, /held back from the client&rsquo;s/);
     assert.match(area, /not in report/);
+  });
+});
+
+/**
+ * Phase 3a — deadline signals. Derived at read time from the date the client set: nothing
+ * is recorded, nothing is sent, and no date is invented. The sending half (the outbox
+ * drainer and the log that makes it idempotent) is 3b and deliberately absent here.
+ */
+describe("strategy deadline signals", () => {
+  const contract = read("packages/contracts/src/reductionStrategies.ts");
+  const area = read("apps/console/app/clients/[clientId]/ReductionStrategiesArea.tsx");
+  const portal = read("apps/console/app/portal/PortalStrategyDeadlines.tsx");
+  const portalModel = read("packages/isolated-backend/src/portalStrategies.ts");
+  const portalRoute = read("apps/console/app/api/portal/strategies/route.ts");
+
+  it("derives one answer that every surface reads", () => {
+    // Staff console, client portal and (in 3b) the reminder worker must not be able to
+    // disagree about whether something is overdue.
+    assert.match(contract, /export function strategyDeadline\(/);
+    assert.match(area, /strategyDeadlineSignals\(plan, today\)/);
+    assert.match(portalModel, /strategyDeadlineSignals\(plan, input\.today\)/);
+  });
+
+  it("invents no date and raises nothing without one", () => {
+    assert.match(contract, /if \(targetDate === null \|\| targetDate === ""\) return \{ state: "none" \}/);
+    // A complete strategy's date is when it happened, not a deadline.
+    assert.match(contract, /strategy\.status === "complete"\) return \{ state: "none" \}/);
+    // And an unreadable date is not silently treated as today.
+    assert.match(contract, /if \(days === null\) return \{ state: "none" \}/);
+  });
+
+  it("stores nothing — 3a is derivation only", () => {
+    // The automation log belongs with the sending, in 3b. Adding the table here would be
+    // schema ahead of need, and a migration this slice does not require.
+    const migrations = readdirSync(new URL("../../../packages/isolated-backend/migrations", import.meta.url));
+    assert.ok(!migrations.some((name) => /automation_log|reminder|notification/i.test(name)),
+      "no notification migration lands in 3a");
+    for (const source of [area, portal, portalModel]) {
+      for (const verb of ["INSERT", "UPDATE ", "postBrowserCommand", "patchBrowserCommand"]) {
+        assert.ok(!source.includes(verb), `a read-time signal must not write (${verb})`);
+      }
+    }
+  });
+
+  it("takes today from the server, never the reader's clock", () => {
+    // A client's device clock must not get to decide whether their own plan is overdue,
+    // and a client component calling new Date() would also differ across hydration.
+    assert.match(portalRoute, /timeZone: "Europe\/London"/);
+    assert.doesNotMatch(portal, /new Date\(\)/);
+    assert.doesNotMatch(area, /new Date\(\)/);
+    assert.match(area, /today: string;/);
+  });
+
+  it("keeps the portal read-only and session-scoped", () => {
+    assert.match(portalRoute, /user\.clientId/);
+    assert.doesNotMatch(portalRoute, /params|searchParams/);
+    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+      assert.doesNotMatch(portalRoute, new RegExp(`export async function ${method}\b`), method);
+    }
+    assert.match(portalRoute, /withTenantRead/);
+  });
+
+  it("shows the client only what the report would show them", () => {
+    // include_in_report is the consultant's control over what this client is presented
+    // with; a strategy held back may be unagreed or sensitive, so the portal fails closed.
+    assert.match(portalModel, /strategy\.active && strategy\.includeInReport/);
+  });
+
+  it("distinguishes loading, failed and nothing-due in the portal", () => {
+    // "We could not load your plan" and "nothing is due" look identical as an empty panel
+    // and mean opposite things.
+    assert.match(portal, /nz-portal-state failed/);
+    assert.match(portal, /nz-portal-state loading/);
+    assert.match(portal, /model\.total===0\|\|model\.highlights\.length===0\)return null/);
+  });
+
+  it("uses the danger token, not Scope 1's coral", () => {
+    // --s1 / --coral carry Scope 1 identity. Overdue is a state, not a measurement, and
+    // the two resolving to the same colour today is exactly why the token must be right.
+    const css = read("packages/ui/src/styles.css");
+    const block = /\.nz-deadline\.late\{[^}]*\}/.exec(css)?.[0] ?? "";
+    assert.match(block, /var\(--danger\)/);
+    assert.ok(!block.includes("--coral") && !block.includes("--s1") && !block.includes("#FF5C48"));
+  });
+
+  it("documents the window where the cadence is configured", () => {
+    assert.match(contract, /export const strategyReminderWindowDays = 30/);
+    assert.match(read("docs/DEPLOYMENT.md"), /strategyReminderWindowDays/);
   });
 });
