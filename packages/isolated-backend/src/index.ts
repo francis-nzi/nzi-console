@@ -57,6 +57,10 @@ export {
   type AssignActionResult, type DeactivateLeverResult, type RemoveActionResult,
   type UpdateActionResult, type UpsertLeverResult,
 } from "./actionLevers";
+export {
+  composeReport, freezeReportComposition, getReportComposition,
+  type FreezeCompositionResult, type SnapshotForComposition,
+} from "./reportCompositions";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };

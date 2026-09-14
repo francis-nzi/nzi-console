@@ -24,15 +24,26 @@ their "report icon" pieces are now unblocked. (Recorded in DESIGN_CONVENTIONS.)
    theme-toggling.
 🟢 2. Each section composes existing resolvers/charts — do NOT recompute: footprint & scope
    split, intensity metrics (with their icons + divider), target model + pathway, action-lever
-   plan (grouped by sphere), SRS readiness (radar + maturity + roadmap). Reuse `@nzi/charts`.
-🔴 3. **Every figure resolves from the assured snapshot** and the report is **version-pinned/
-   immutable when issued** (frozen evidence). New issues use the client target model (net
-   zero carries its residual, not zero — the earlier report-pathway fix); already-issued
-   reports are untouched.
+   plan (grouped by **level of control** — the `control_level` field, per the action-lever
+   rename; never "sphere of influence", which is reserved for the SBTi framework), SRS readiness
+   (radar + maturity + roadmap). Reuse `@nzi/charts`.
+🔴 3. **Issuing a report freezes a composition, not just a snapshot.** The measurement snapshot
+   freezes the footprint — but a report also quotes intensity, the plan and SRS readiness, which
+   are **live records that keep changing**. So issuing must freeze the whole composition — the
+   snapshot it rests on *plus everything else it quotes, as at that moment* — into its own
+   immutable store. Otherwise editing next week's plan silently rewrites a report the client
+   already holds, the exact failure immutability exists to prevent. (This is a migration →
+   stops for review.) Every figure still resolves from assured/reviewed sources, never captured
+   by hand. New issues use the client target model (net zero carries its residual, not zero —
+   the earlier report-pathway fix); already-issued reports are untouched.
 🟡 4. **Provenance in the report:** each data section carries factor set + version + data hash
    + as-at + quality tiers; the Methodology page states the assurance basis honestly —
    **"reviewed snapshot (internal review); not third-party assured"** (the platform records
-   who reviewed, not who assured — never imply third-party assurance).
+   who reviewed, not who assured — never imply third-party assurance). Model the assurance basis
+   as a **closed union whose only member today is "reviewed"** — not a boolean — so a
+   third-party-assured claim is *unrepresentable* until the platform actually records an assurer,
+   standard and scope. A boolean is one careless `true` from a false assurance claim on a
+   client-facing document.
 🟡 5. Outputs: on-screen (Report Studio), the **portal** (read-only), and **PDF/DOCX** (R5
    paged track) — the same section model and print-safe assets across all three.
 

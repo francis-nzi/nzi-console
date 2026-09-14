@@ -8,12 +8,24 @@ import {ReportPagedView} from "./ReportPagedView";
 import {REPORT_PAGED_MEDIA_RULES} from "./reportPrintRules";
 import { formatDateTime } from "../../lib/formatDate";
 import { LogoMark } from "../../lib/LogoMark";
+import { ReportComposedView } from "./ReportComposedView";
+import type { ReportComposition } from "@nzi/contracts";
+import "./report-composed.css";
 
 export const dynamic="force-dynamic";
 
 export default async function ReportVersionPage({params}:{params:Promise<{versionId:string}>}){
   const {versionId}=await params;
   const result=await loadScreen<{report:CrpReportVersionReadModel|null}>("report",{report:null},`report-versions/${versionId}`);
+  // R-track: the composed report (report_v1) reads the FROZEN composition, so it renders
+  // what this version said when it was issued rather than what the live records say now.
+  // Behind `report-sections`; with the flag off the existing report path is untouched.
+  if(reportFeatureEnabled("report-sections")){
+    const composed=await loadScreen<{composition:ReportComposition|null}>("reportComposition",{composition:null},`report-versions/${versionId}/composition`);
+    return <ScreenState result={composed}>{data=>data.composition
+      ?<ReportComposedView composition={data.composition}/>
+      :<main className="report-canvas"><section className="nz-empty"><h1>This report version has not been issued</h1><p>A report freezes what it says at the moment it is issued. Until then there is nothing fixed to show — the live figures are on the client workspace.</p><a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;
+  }
   return <ScreenState result={result}>{data=>data.report
     ?<ReportVersion version={data.report}/>
     :<main className="report-canvas"><section className="nz-empty"><h1>Live report version unavailable</h1><p>Connect this console to the isolated backend to open immutable report evidence.</p><a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;

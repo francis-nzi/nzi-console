@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -28,6 +28,9 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   datasets: { key: "datasets", validate: (value) => rows(value, "datasets") && rows(value, "issues"), isEmpty: (value) => record(value) && (value.datasets as unknown[]).length === 0 },
   reports: { key: "reports", validate: (value) => rows(value, "reports"), isEmpty: (value) => record(value) && (value.reports as unknown[]).length === 0 },
   report: { key: "report", validate: (value) => record(value) && record(value.report), isEmpty: () => false },
+  // Not "empty" when null: a report version that was never issued has no composition,
+  // and the page says that rather than showing a blank document.
+  reportComposition: { key: "reportComposition", validate: (value) => record(value) && ("composition" in value), isEmpty: () => false },
   lca: { key: "lca", validate: (value) => rows(value, "assessments"), isEmpty: (value) => record(value) && (value.assessments as unknown[]).length === 0 },
   lcaComponents: { key: "lcaComponents", validate: (value) => rows(value, "components") && rows(value, "categories"), isEmpty: () => false },
   lcaReport: { key: "lcaReport", validate: (value) => record(value) && ("report" in value), isEmpty: () => false },
@@ -63,3 +66,4 @@ export * from "./srsReadiness";
 export * from "./intensityMetrics";
 export * from "./trainingWorkflow";
 export * from "./actionLevers";
+export * from "./reportComposition";
