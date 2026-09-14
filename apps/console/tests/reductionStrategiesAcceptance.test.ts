@@ -430,3 +430,64 @@ describe("strategy deadline email", () => {
     assert.doesNotMatch(migration, /GRANT[^;]*(INSERT|UPDATE|DELETE)[^;]*ON nzi_console\.client_strategies TO nzi_console_worker/);
   });
 });
+
+/**
+ * The strategy drawers follow the side-panel anatomy of the job scope-row panel
+ * (DESIGN_CONVENTIONS §3.4). Found on staging: with the SRS pillars open the body overflowed
+ * with no scroll, and "Add to plan" became unreachable.
+ */
+describe("strategy drawers follow the side-panel anatomy", () => {
+  const forms = read("apps/console/app/clients/[clientId]/StrategyForms.tsx");
+  const area = read("apps/console/app/clients/[clientId]/ReductionStrategiesArea.tsx");
+  const css = read("packages/ui/src/styles.css");
+  const conventions = read("docs/DESIGN_CONVENTIONS.md");
+  const count = (source: string, needle: string) => source.split(needle).length - 1;
+
+  it("keeps the primary action reachable: fixed header, scrolling body, pinned footer", () => {
+    // Four views — the library list, its confirm step, bespoke, edit — each with exactly one
+    // header, one scrollable body and one pinned footer.
+    assert.equal(count(forms, 'className="nz-db"'), 4, "every drawer view has a scrollable body");
+    assert.equal(count(forms, 'className="nz-df"'), 4, "and a pinned footer");
+    assert.equal(count(forms, "<DrawerHeader "), 4, "and the fixed eyebrow + title + subtitle header");
+    // The old single block that could not scroll is gone.
+    assert.ok(!forms.includes("nz-drawer-form"), "no non-scrolling form wrapper");
+    assert.ok(!forms.includes("nz-drawer-actions"), "no in-body action row that scrolls away");
+    // The body is the scroll region and the footer is outside it.
+    assert.ok(css.includes(".nz-db{padding:16px 20px;overflow-y:auto;flex:1"), "the body scrolls");
+  });
+
+  it("shows an action's error next to the action", () => {
+    assert.equal(count(forms, "<FooterError error={error} />"), 4);
+    assert.ok(css.includes(".nz-df>.nz-banner{flex:1 0 100%;margin:0}"));
+  });
+
+  it("collapses the SRS pillars by default with the shared chevron", () => {
+    assert.ok(forms.includes("<Collapsible key={group.pillar.key}"), "pillars are @nzi/ui Collapsible sections");
+    assert.ok(forms.includes("count={`${count} of ${group.requirements.length}`}"), "the header says where the selections are");
+    // Collapsible is collapsed unless told otherwise, and the picker no longer opens them all.
+    assert.ok(!forms.includes("defaultOpen"), "nothing opens a pillar by default");
+    assert.ok(!forms.includes("new Set(groups.map"), "no all-open initial state");
+  });
+
+  it("never uses a tick as a section affordance", () => {
+    // A check means selected or complete; an open section is neither.
+    for (const [name, source] of [["StrategyForms", forms], ["ReductionStrategiesArea", area]] as const) {
+      assert.ok(!source.includes('name="check"'), `${name} renders no check glyph`);
+    }
+    assert.ok(!css.includes("nz-srs-chev"), "the hand-rolled pillar chevron is gone");
+  });
+
+  it("puts the lever chevron on the left and rotates it like Collapsible", () => {
+    const head = area.slice(area.indexOf('className="nz-lever-head"'), area.indexOf("</button>", area.indexOf('className="nz-lever-head"')));
+    assert.ok(head.indexOf("nz-lever-chev") > -1 && head.indexOf("nz-lever-chev") < head.indexOf("nz-lever-icon"), "chevron comes first");
+    assert.ok(head.includes('d="M9 6l6 6-6 6"'), "the same glyph as .nz-collapsible-chev");
+    assert.ok(css.includes(".nz-lever.collapsed .nz-lever-chev{transform:none}"), "points right when closed");
+  });
+
+  it("records the convention so it cannot recur", () => {
+    assert.ok(conventions.includes("### 3.4 Drawer / side-panel (locked)"));
+    assert.ok(conventions.includes("Canonical example: the job scope-row panel"));
+    assert.ok(conventions.includes("Never a tick or check as a section affordance."));
+    assert.ok(conventions.includes("never scrolls out of view"));
+  });
+});

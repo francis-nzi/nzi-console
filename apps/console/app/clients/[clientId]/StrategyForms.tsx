@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
+import { useRef, useState, type ReactNode } from "react";
+import { Collapsible, GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   requirementsByPillar,
@@ -12,8 +12,15 @@ import {
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
- * The Reduction Strategies drawers: pick from the library, write a bespoke strategy, or
- * edit one already on the plan.
+ * The Reduction Strategies drawers: pick from the library, confirm what a library strategy
+ * advances, write a bespoke strategy, or edit one already on the plan.
+ *
+ * Every drawer has the side-panel anatomy of the job scope-row panel (DESIGN_CONVENTIONS
+ * §3.4): a fixed header (eyebrow + title + subtitle), a body that is the only thing that
+ * scrolls, and a pinned footer holding the actions. The footer is the point — with the SRS
+ * pillars open the body is far taller than the screen, and a primary action that scrolls
+ * away with it is a form nobody can submit. An error from that action renders in the footer
+ * beside it for the same reason.
  *
  * Status and progress are kept in step as the person types, because the database holds a
  * constraint that "done" means one thing — a form that can offer 60%-and-complete is a
@@ -29,27 +36,36 @@ const errorText = (result: BrowserCommandResult<unknown>) =>
 
 const iconKey = (key: string): NziIconKey => key as NziIconKey;
 
+/** The fixed header: eyebrow, title, subtitle — the scope-row panel's own markup. */
+function DrawerHeader({ kicker, title, subtitle }: { kicker: string; title: string; subtitle?: ReactNode }) {
+  return <div className="nz-dh">
+    <div className="kick">{kicker}</div>
+    <h3>{title}</h3>
+    {subtitle ? <div className="m">{subtitle}</div> : null}
+  </div>;
+}
+
+/** An action's error, shown in the pinned footer so it stays next to the button that caused it. */
+function FooterError({ error }: { error: string | null }) {
+  return error ? <div className="nz-banner warn" role="alert">{error}</div> : null;
+}
+
 /**
  * The alignment picker: the framework's requirements, grouped by pillar.
  *
  * Codes and titles together — "S2 M2" is what a report prints and what an assessor asks
- * about, but only the title says what it means. Pillars are collapsible for the same reason
- * the lever groups are: four pillars of a dozen requirements each is a long drawer.
+ * about, but only the title says what it means. Each pillar is a collapsed-by-default
+ * `Collapsible` (§3.4): four pillars of a dozen requirements each is far longer than a
+ * drawer, and the header's "n of m" count says where the selections are while it is shut.
  */
 function SrsAlignmentPicker({ framework, selected, onChange, disabled }: {
   framework: SrsFramework; selected: readonly string[]; onChange: (ids: string[]) => void; disabled?: boolean;
 }) {
   const groups = requirementsByPillar(framework);
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(groups.map((group) => group.pillar.key)));
   const chosen = new Set(selected);
 
   const toggleRequirement = (id: string) =>
     onChange(chosen.has(id) ? selected.filter((value) => value !== id) : [...selected, id]);
-  const togglePillar = (key: string) => setOpen((current) => {
-    const next = new Set(current);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
 
   return <div className="nz-srs-picker">
     <div className="nz-srs-picker-head">
@@ -63,24 +79,14 @@ function SrsAlignmentPicker({ framework, selected, onChange, disabled }: {
       here is what the report prints beside it.
     </p>
     {groups.map((group) => {
-      const bodyId = `srs-pillar-${group.pillar.key}`;
       const count = group.requirements.filter((requirement) => chosen.has(requirement.id)).length;
-      return <div className="nz-srs-pillar" key={group.pillar.key}>
-        <button type="button" className="nz-srs-pillar-head" aria-expanded={open.has(group.pillar.key)} aria-controls={bodyId}
-          onClick={() => togglePillar(group.pillar.key)}>
-          <b>{group.pillar.label}</b>
-          <span className="cnt">· {count} of {group.requirements.length}</span>
-          <span className="sp" />
-          <span className="nz-srs-chev" aria-hidden="true"><NziIcon name="check" size={13} /></span>
-        </button>
-        <div className="nz-srs-pillar-body" id={bodyId} hidden={!open.has(group.pillar.key)}>
-          {group.requirements.map((requirement) => <label className="nz-srs-req" key={requirement.id}>
-            <input type="checkbox" checked={chosen.has(requirement.id)} disabled={disabled}
-              onChange={() => toggleRequirement(requirement.id)} />
-            <span><span className="nz-tag srs">{requirement.code}</span> {requirement.title}</span>
-          </label>)}
-        </div>
-      </div>;
+      return <Collapsible key={group.pillar.key} title={group.pillar.label} count={`${count} of ${group.requirements.length}`}>
+        {group.requirements.map((requirement) => <label className="nz-srs-req" key={requirement.id}>
+          <input type="checkbox" checked={chosen.has(requirement.id)} disabled={disabled}
+            onChange={() => toggleRequirement(requirement.id)} />
+          <span><span className="nz-tag srs">{requirement.code}</span> {requirement.title}</span>
+        </label>)}
+      </Collapsible>;
     })}
   </div>;
 }
@@ -141,92 +147,92 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
     const entry = confirming;
     const unchanged = selected.length === defaults(entry).length
       && defaults(entry).every((id) => selected.includes(id));
-    return <div className="nz-drawer-form">
-      <div className="nz-action-head">
-        <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={18} /></span>
-        <div><b>{entry.strategy.title}</b>
-          <div className="sub"><span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span> {entry.strategy.category}</div></div>
+    return <>
+      <DrawerHeader kicker="Reduction strategies · confirm alignment" title={entry.strategy.title}
+        subtitle="Confirm what this advances for this client before it joins the plan." />
+      <div className="nz-db">
+        <div className="nz-action-head">
+          <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={18} /></span>
+          <div className="sub"><span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span> {entry.strategy.category}</div>
+        </div>
+        <p className="hint">
+          The catalogue&rsquo;s alignment is filled in below — keep it, or change it to match what they are
+          actually doing.
+        </p>
+
+        <SrsAlignmentPicker framework={framework} selected={selected} onChange={setSelected} disabled={pending} />
+        {!unchanged ? <small className="hint">Changed from the catalogue&rsquo;s alignment for this client.</small> : null}
       </div>
-      <p className="sub">
-        Confirm what this advances for <b>this</b> client before it joins the plan. The catalogue&rsquo;s
-        alignment is filled in below — keep it, or change it to match what they are actually doing.
-      </p>
-
-      <SrsAlignmentPicker framework={framework} selected={selected} onChange={setSelected} disabled={pending} />
-      {!unchanged ? <small className="hint">Changed from the catalogue&rsquo;s alignment for this client.</small> : null}
-
-      {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-      <div className="nz-drawer-actions">
+      <div className="nz-df">
+        <FooterError error={error} />
         <button type="button" className="nz-btn" onClick={cancelAdd}>Back to the library</button>
-        <span style={{ flex: 1 }} />
+        <span className="sp" />
         <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || pending || selected.length === 0}
           blockedReason={access.state !== "allowed" ? access.reason
             : selected.length === 0 ? "Align this strategy to at least one UK SRS requirement." : undefined}
           reasonClassName="hint nz-gated-reason"
           onClick={() => void add(entry)}>{pending ? "Adding…" : "Add to plan"}</GatedButton>
       </div>
-    </div>;
+    </>;
   }
 
-  return <div className="nz-drawer-form">
-    <p className="sub">
-      Assign reduction levers from the NZI catalogue to this client&rsquo;s plan. The catalogue is
-      Admin-managed; what you assign is tracked per client and grouped by how much of it the client controls.
-    </p>
+  return <>
+    <DrawerHeader kicker="Reduction strategies" title="Add from the library"
+      subtitle="Choose from the NZI catalogue. It is Admin-managed; what you add is tracked for this client." />
+    <div className="nz-db">
+      <div className="nz-filters" style={{ marginBottom: 10 }}>
+        <button type="button" aria-pressed={controlLevel === "all"} className={controlLevel === "all" ? "on" : undefined} onClick={() => setControlLevel("all")}>All levels</button>
+        {strategyControlLevels.map((value) => <button key={value} type="button" aria-pressed={controlLevel === value}
+          className={controlLevel === value ? "on" : undefined} onClick={() => setControlLevel(value)}>{strategyControlLevelLabels[value].split(" · ")[0]}</button>)}
+      </div>
+      <div className="nz-filters" style={{ marginBottom: 12 }}>
+        <button type="button" aria-pressed={scope === "all"} className={scope === "all" ? "on" : undefined} onClick={() => setScope("all")}>All scopes</button>
+        {strategyScopes.map((value) => <button key={value} type="button" aria-pressed={scope === value}
+          className={scope === value ? "on" : undefined} onClick={() => setScope(value)}>{strategyScopeLabel(value)}</button>)}
+      </div>
 
-    <div className="nz-filters" style={{ marginBottom: 10 }}>
-      <button type="button" aria-pressed={controlLevel === "all"} className={controlLevel === "all" ? "on" : undefined} onClick={() => setControlLevel("all")}>All levels</button>
-      {strategyControlLevels.map((value) => <button key={value} type="button" aria-pressed={controlLevel === value}
-        className={controlLevel === value ? "on" : undefined} onClick={() => setControlLevel(value)}>{strategyControlLevelLabels[value].split(" · ")[0]}</button>)}
-    </div>
-    <div className="nz-filters" style={{ marginBottom: 12 }}>
-      <button type="button" aria-pressed={scope === "all"} className={scope === "all" ? "on" : undefined} onClick={() => setScope("all")}>All scopes</button>
-      {strategyScopes.map((value) => <button key={value} type="button" aria-pressed={scope === value}
-        className={scope === value ? "on" : undefined} onClick={() => setScope(value)}>{strategyScopeLabel(value)}</button>)}
-    </div>
+      {framework === null ? <NoFramework /> : null}
 
-    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-    {framework === null ? <NoFramework /> : null}
-
-    {shown.length === 0
-      ? <p className="sub">No lever in the catalogue matches that filter.</p>
-      : shown.map((entry) => {
-        const aligned = defaults(entry);
-        return <div className="nz-lib-item" key={entry.strategy.id}>
-          <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={16} /></span>
-          <div className="nz-lib-main">
-            <div className="nm">{entry.strategy.title}</div>
-            <div className="sub">
-              <span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span>
-              {` ${[entry.strategy.category, strategyControlLevelLabels[entry.strategy.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
+      {shown.length === 0
+        ? <p className="sub">No strategy in the catalogue matches that filter.</p>
+        : shown.map((entry) => {
+          const aligned = defaults(entry);
+          return <div className="nz-lib-item" key={entry.strategy.id}>
+            <span className="nz-action-icon"><NziIcon name={iconKey(entry.strategy.iconKey)} size={16} /></span>
+            <div className="nz-lib-main">
+              <div className="nm">{entry.strategy.title}</div>
+              <div className="sub">
+                <span className="nz-tag">{strategyScopeLabel(entry.strategy.scope)}</span>
+                {` ${[entry.strategy.category, strategyControlLevelLabels[entry.strategy.controlLevel].split(" · ")[0]].filter(Boolean).join(" · ")}`}
+              </div>
+              {/* What the library says this advances. It pre-fills the confirm step rather than
+                  being applied silently — see the confirm branch above. */}
+              {aligned.length > 0
+                ? <div className="sub">{aligned.map((id) => <span className="nz-tag srs" key={id}>{codes.get(id)}</span>)}</div>
+                : <div className="hint">No SRS alignment set in the catalogue — an administrator sets one before this can be assigned.</div>}
+              {/* A withdrawn strategy is still shown while a client holds it, and says why it
+                  cannot be added again. */}
+              {!entry.strategy.active ? <div className="hint">Withdrawn from the catalogue — kept because this client holds it.</div> : null}
             </div>
-            {/* What the library says this advances. It pre-fills the confirm step rather than
-                being applied silently — see the confirm branch above. */}
-            {aligned.length > 0
-              ? <div className="sub">{aligned.map((id) => <span className="nz-tag srs" key={id}>{codes.get(id)}</span>)}</div>
-              : <div className="hint">No SRS alignment set in the catalogue — an administrator sets one before this can be assigned.</div>}
-            {/* A withdrawn lever is still shown while a client holds it, and says why it
-                cannot be added again. */}
-            {!entry.strategy.active ? <div className="hint">Withdrawn from the catalogue — kept because this client holds it.</div> : null}
-          </div>
-          {entry.assigned
-            ? <span className="nz-tag">Added</span>
-            : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.strategy.active || framework === null || aligned.length === 0}
-              blockedReason={access.state !== "allowed" ? access.reason
-                : !entry.strategy.active ? "This lever has been withdrawn from the catalogue."
-                  : framework === null ? "No UK SRS framework is published yet."
-                    : aligned.length === 0 ? "Every strategy must advance at least one UK SRS requirement." : undefined}
-              reasonClassName="hint nz-gated-reason"
-              onClick={() => startAdd(entry)}>Add</GatedButton>}
-        </div>;
-      })}
-
-    <div className="nz-drawer-actions">
+            {entry.assigned
+              ? <span className="nz-tag">Added</span>
+              : <GatedButton className="nz-btn sm" blocked={access.state !== "allowed" || !entry.strategy.active || framework === null || aligned.length === 0}
+                blockedReason={access.state !== "allowed" ? access.reason
+                  : !entry.strategy.active ? "This strategy has been withdrawn from the catalogue."
+                    : framework === null ? "No UK SRS framework is published yet."
+                      : aligned.length === 0 ? "Every strategy must advance at least one UK SRS requirement." : undefined}
+                reasonClassName="hint nz-gated-reason"
+                onClick={() => startAdd(entry)}>Add</GatedButton>}
+          </div>;
+        })}
+    </div>
+    <div className="nz-df">
+      <FooterError error={error} />
       <button type="button" className="nz-btn" onClick={onBespoke}>Add something bespoke instead</button>
-      <span style={{ flex: 1 }} />
+      <span className="sp" />
       <button type="button" className="nz-btn" onClick={onClose}>Done</button>
     </div>
-  </div>;
+  </>;
 }
 
 export function StrategyBespokeForm({ clientId, framework, access, onClose, onSaved }: {
@@ -256,49 +262,51 @@ export function StrategyBespokeForm({ clientId, framework, access, onClose, onSa
     onSaved(`${title.trim()} added to the plan.`);
   }
 
-  return <div className="nz-drawer-form">
-    <p className="sub">
-      For something this client is doing that is not in the catalogue. If it turns out to be common, an
-      administrator can add it to the library so other clients can use it too.
-    </p>
-    <label className="nz-fl"><span>What are they doing?</span>
-      <input className="nz-inp" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Replace the Leeds depot boiler" /></label>
-    <div className="nz-two">
-      <label className="nz-fl"><span>Scope</span>
-        <select className="nz-sel" value={scope} onChange={(event) => setScope(event.target.value as StrategyScope)}>
-          {strategyScopes.map((value) => <option key={value} value={value}>{strategyScopeLabel(value)}</option>)}
-        </select></label>
-      <label className="nz-fl"><span>How much do they control?</span>
-        <select className="nz-sel" value={controlLevel} onChange={(event) => setControlLevel(event.target.value as StrategyControlLevel)}>
-          {strategyControlLevels.map((value) => <option key={value} value={value}>{strategyControlLevelLabels[value]}</option>)}
-        </select></label>
-    </div>
-    <div className="nz-two">
-      <label className="nz-fl"><span>Category</span>
-        <input className="nz-inp" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Heating" /></label>
-      <label className="nz-fl"><span>Owner</span>
-        <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Who at the client is leading it" /></label>
-    </div>
-    <label className="nz-fl"><span>Target date</span>
-      <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
-    <label className="nz-fl"><span>Notes</span>
-      <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+  return <>
+    <DrawerHeader kicker="Reduction strategies" title="Add a bespoke strategy"
+      subtitle="For something this client is doing that is not in the catalogue." />
+    <div className="nz-db">
+      <p className="hint">
+        If it turns out to be common, an administrator can add it to the library so other clients can use it too.
+      </p>
+      <label className="nz-fl"><span>What are they doing?</span>
+        <input className="nz-inp" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Replace the Leeds depot boiler" /></label>
+      <div className="nz-two">
+        <label className="nz-fl"><span>Scope</span>
+          <select className="nz-sel" value={scope} onChange={(event) => setScope(event.target.value as StrategyScope)}>
+            {strategyScopes.map((value) => <option key={value} value={value}>{strategyScopeLabel(value)}</option>)}
+          </select></label>
+        <label className="nz-fl"><span>How much do they control?</span>
+          <select className="nz-sel" value={controlLevel} onChange={(event) => setControlLevel(event.target.value as StrategyControlLevel)}>
+            {strategyControlLevels.map((value) => <option key={value} value={value}>{strategyControlLevelLabels[value]}</option>)}
+          </select></label>
+      </div>
+      <div className="nz-two">
+        <label className="nz-fl"><span>Category</span>
+          <input className="nz-inp" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Heating" /></label>
+        <label className="nz-fl"><span>Owner</span>
+          <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Who at the client is leading it" /></label>
+      </div>
+      <label className="nz-fl"><span>Target date</span>
+        <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
+      <label className="nz-fl"><span>Notes</span>
+        <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
 
-    {framework === null
-      ? <NoFramework />
-      : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} />}
-
-    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-    <div className="nz-drawer-actions">
+      {framework === null
+        ? <NoFramework />
+        : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} />}
+    </div>
+    <div className="nz-df">
+      <FooterError error={error} />
       <button type="button" className="nz-btn" onClick={onClose}>Cancel</button>
-      <span style={{ flex: 1 }} />
+      <span className="sp" />
       <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || pending || title.trim() === "" || srsRequirementIds.length === 0}
         blockedReason={access.state !== "allowed" ? access.reason
           : title.trim() === "" ? "Say what the strategy is."
             : srsRequirementIds.length === 0 ? "Align this strategy to at least one UK SRS requirement." : undefined}
         reasonClassName="hint nz-gated-reason" onClick={() => void save()}>{pending ? "Adding…" : "Add to plan"}</GatedButton>
     </div>
-  </div>;
+  </>;
 }
 
 export function StrategyEditForm({ action, framework, access, onClose, onSaved }: {
@@ -340,63 +348,61 @@ export function StrategyEditForm({ action, framework, access, onClose, onSaved }
       { clientStrategyId: action.id, expectedVersion: action.version, reason }, crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
-    onSaved("Action removed from the plan. It stays on the record.");
+    onSaved("Strategy removed from the plan. It stays on the record.");
   }
 
-  return <div className="nz-drawer-form">
-    <div className="nz-action-head">
-      <span className="nz-action-icon"><NziIcon name={iconKey(action.iconKey)} size={18} /></span>
-      <div><b>{action.title}</b><div className="sub"><span className="nz-tag">{strategyScopeLabel(action.scope)}</span> {action.category}</div></div>
+  return <>
+    <DrawerHeader kicker={`Reduction strategy · version ${action.version}`} title={action.title}
+      subtitle={<><span className="nz-tag">{strategyScopeLabel(action.scope)}</span> {action.category}</>} />
+    <div className="nz-db">
+      <label className="nz-fl"><span>Status</span>
+        <select className="nz-sel" value={status} onChange={(event) => chooseStatus(event.target.value as StrategyStatus)}>
+          {strategyStatuses.map((value) => <option key={value} value={value}>{strategyStatusLabels[value]}</option>)}
+        </select></label>
+
+      <label className="nz-fl"><span>Progress — {progressPct}%</span>
+        <input type="range" min={0} max={100} step={5} value={progressPct}
+          onChange={(event) => chooseProgress(Number(event.target.value))} />
+        <small className="hint">What the client reports, not a modelled reduction.</small></label>
+
+      <div className="nz-two">
+        <label className="nz-fl"><span>Owner</span>
+          <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
+        <label className="nz-fl"><span>{status === "complete" ? "Completed" : "Target date"}</span>
+          <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
+      </div>
+      <label className="nz-fl"><span>Notes</span>
+        <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+
+      {framework === null
+        ? <NoFramework />
+        : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} />}
+
+      {/* Read when a report is issued and frozen with it. Turning it off later does not change
+          a report already sent — and turning it on does not add it to one either. */}
+      <label className="nz-fl nz-check"><input type="checkbox" checked={includeInReport}
+        onChange={(event) => setIncludeInReport(event.target.checked)} />
+        <span>Include in the client&rsquo;s report</span></label>
+      <small className="hint">
+        Applies to reports issued from now on. A report already issued keeps the plan it was issued with.
+      </small>
+
+      {removing ? <div className="nz-action-remove">
+        <p className="sub">
+          Removing takes this off the plan but keeps it on the record — a report that cited it must not end up
+          pointing at nothing.
+        </p>
+        <label className="nz-fl"><span>Why is it being removed?</span>
+          <input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. superseded by the site-wide retrofit" /></label>
+      </div> : null}
     </div>
 
-    <label className="nz-fl"><span>Status</span>
-      <select className="nz-sel" value={status} onChange={(event) => chooseStatus(event.target.value as StrategyStatus)}>
-        {strategyStatuses.map((value) => <option key={value} value={value}>{strategyStatusLabels[value]}</option>)}
-      </select></label>
-
-    <label className="nz-fl"><span>Progress — {progressPct}%</span>
-      <input type="range" min={0} max={100} step={5} value={progressPct}
-        onChange={(event) => chooseProgress(Number(event.target.value))} />
-      <small className="hint">What the client reports, not a modelled reduction.</small></label>
-
-    <div className="nz-two">
-      <label className="nz-fl"><span>Owner</span>
-        <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
-      <label className="nz-fl"><span>{status === "complete" ? "Completed" : "Target date"}</span>
-        <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
-    </div>
-    <label className="nz-fl"><span>Notes</span>
-      <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
-
-    {framework === null
-      ? <NoFramework />
-      : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} />}
-
-    {/* Read when a report is issued and frozen with it. Turning it off later does not change
-        a report already sent — and turning it on does not add it to one either. */}
-    <label className="nz-fl nz-check"><input type="checkbox" checked={includeInReport}
-      onChange={(event) => setIncludeInReport(event.target.checked)} />
-      <span>Include in the client&rsquo;s report</span></label>
-    <small className="hint">
-      Applies to reports issued from now on. A report already issued keeps the plan it was issued with.
-    </small>
-
-    {removing ? <div className="nz-action-remove">
-      <p className="sub">
-        Removing takes this off the plan but keeps it on the record — a report that cited it must not end up
-        pointing at nothing.
-      </p>
-      <label className="nz-fl"><span>Why is it being removed?</span>
-        <input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. superseded by the site-wide retrofit" /></label>
-    </div> : null}
-
-    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-
-    <div className="nz-drawer-actions">
+    <div className="nz-df">
+      <FooterError error={error} />
       {removing
         ? <>
           <button type="button" className="nz-btn" onClick={() => { setRemoving(false); setReason(""); }}>Cancel</button>
-          <span style={{ flex: 1 }} />
+          <span className="sp" />
           <GatedButton className="nz-btn danger" blocked={pending || reason.trim() === ""}
             blockedReason={reason.trim() === "" ? "A reason is required." : undefined} reasonClassName="hint nz-gated-reason"
             onClick={() => void remove()}>{pending ? "Removing…" : "Remove from plan"}</GatedButton>
@@ -405,7 +411,7 @@ export function StrategyEditForm({ action, framework, access, onClose, onSaved }
           <GatedButton className="nz-btn danger" blocked={access.state !== "allowed"}
             blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason"
             onClick={() => setRemoving(true)}>Remove</GatedButton>
-          <span style={{ flex: 1 }} />
+          <span className="sp" />
           <button type="button" className="nz-btn" onClick={onClose}>Cancel</button>
           <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || pending || srsRequirementIds.length === 0}
             blockedReason={access.state !== "allowed" ? access.reason
@@ -414,5 +420,5 @@ export function StrategyEditForm({ action, framework, access, onClose, onSaved }
             onClick={() => void save()}>{pending ? "Saving…" : "Save"}</GatedButton>
         </>}
     </div>
-  </div>;
+  </>;
 }

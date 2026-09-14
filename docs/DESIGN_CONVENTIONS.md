@@ -82,6 +82,30 @@ chain / influence) is a separate single-value axis and renders as a chip, never 
 grouping. Lever sections follow §3.2: collapsible, header as the control, count visible when
 collapsed, state per-viewer and never load-bearing.
 
+### 3.4 Drawer / side-panel (locked)
+
+**Canonical example: the job scope-row panel** — Jobs → a CRP job → Data entry → open a scope
+row. Its header reads "Scope row · version N / *source* / Scope N", its sections are Factor &
+calculation, Data quality, Apportionment & site, Source detail, Monthly activity and Evidence &
+provenance, and its footer holds **Save & calculate** and **History**. Every drawer and side panel
+matches that anatomy.
+
+- **Fixed header + scrollable body + pinned footer.** The header is eyebrow + title + subtitle
+  (`.nz-dh` with `.kick`, `h3`, `.m`). Only the body scrolls. The primary action lives in the
+  footer and **never scrolls out of view**, however many sections are open. Client-workspace
+  drawers use `.nz-dh` / `.nz-db` / `.nz-df`; the evidence panel uses `.nz-dh` / `.nz-dbody` /
+  `.nz-dact`.
+- **An error from the footer's action renders in the footer**, beside the button that caused it —
+  not at the top of a body the person may have scrolled away from.
+- **Collapsible sections use `@nzi/ui` `Collapsible`:** a **left-aligned chevron** that rotates
+  (▸ closed / ▾ open), **collapsed by default**, with the header carrying a count or summary so
+  where the content (or the selections) sit still reads while it is closed.
+- **Never a tick or check as a section affordance.** A check means *selected* or *complete*; an
+  open section is neither. The chevron is the only header affordance.
+- A collapsible that has to stay in the DOM while closed (the Reduction Strategies lever groups,
+  which search must still find) may be hand-rolled, but uses the same chevron glyph, position and
+  rotation.
+
 ## 4. Editing model
 
 - **Drawer-based editing everywhere.** Records are edited in drawers opened from the page,

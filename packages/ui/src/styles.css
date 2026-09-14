@@ -1246,8 +1246,9 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-lever-head .cnt{color:var(--t2);font-size:12px}
 .nz-lever-head .sp{flex:1}
 .nz-lever-icon{display:grid;width:30px;height:30px;flex:none;place-items:center;border-radius:8px;background:var(--mint);color:var(--pine)}
-.nz-lever-chev{display:grid;place-items:center;color:var(--t3);transition:transform .15s ease}
-.nz-lever.collapsed .nz-lever-chev{transform:rotate(-90deg)}
+/* Same chevron as .nz-collapsible-chev: points right when closed, rotates down when open. */
+.nz-lever-chev{flex:none;color:var(--t3);transition:transform .18s ease;transform:rotate(90deg)}
+.nz-lever.collapsed .nz-lever-chev{transform:none}
 .nz-lever-body{padding:0 16px 6px}
 .nz-lever-body .nz-action-row:first-child{border-top:1px solid var(--line2)}
 
@@ -1258,14 +1259,13 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-srs-picker-head{display:flex;align-items:baseline;gap:8px;font-size:12.5px;font-weight:600;color:var(--t1)}
 .nz-srs-picker-head .hint{margin-left:auto}
 .nz-srs-picker-head .hint.warn{color:var(--coral);font-weight:600}
-.nz-srs-pillar{border-top:1px solid var(--line2);margin-top:8px;padding-top:6px}
-.nz-srs-pillar-head{display:flex;align-items:center;gap:8px;width:100%;padding:4px 0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
-.nz-srs-pillar-head b{font-size:12.5px}
-.nz-srs-pillar-head .cnt{color:var(--t2);font-size:11.5px}
-.nz-srs-pillar-head .sp{flex:1}
-.nz-srs-chev{display:grid;place-items:center;color:var(--t3);transition:transform .15s ease}
-.nz-srs-pillar-head[aria-expanded="false"] .nz-srs-chev{transform:rotate(-90deg)}
-.nz-srs-pillar-body{padding:2px 0 4px}
+/* Pillars are @nzi/ui Collapsible sections (§3.4): left chevron, collapsed by default, count
+   in the header. The picker only sets their spacing; the chevron is the shared one. */
+.nz-srs-picker .nz-collapsible{margin-top:4px}
+.nz-srs-picker .nz-collapsible:first-of-type{border-top:1px solid var(--line2)}
+
+/* An action's error sits in the pinned footer, full width, above the buttons it belongs to. */
+.nz-df>.nz-banner{flex:1 0 100%;margin:0}
 .nz-srs-req{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;font-size:12.5px;line-height:1.45;color:var(--t1);cursor:pointer}
 .nz-srs-req:hover{background:var(--bg)}
 .nz-srs-req input{margin-top:2px;flex:none}
