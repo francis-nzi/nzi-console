@@ -118,13 +118,13 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     // 0070 is the one that failed on staging. Its seed is the part a text assertion cannot
     // check: that the INSERT ... SELECT actually produces rows.
     const framework = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE framework_id = 'uk-srs-2026' AND status = 'active'`);
+      `SELECT count(*)::text FROM nzi_console.srs_frameworks WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026' AND status = 'active'`);
     assert.equal(framework.rows[0]!.count, "1", "one active framework version");
     const requirements = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_requirements WHERE framework_id = 'uk-srs-2026'`);
+      `SELECT count(*)::text FROM nzi_console.srs_requirements WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026'`);
     assert.equal(requirements.rows[0]!.count, "48", "48 requirements, matching the file");
     const pillars = await client.query<{ count: string }>(
-      `SELECT count(*)::text FROM nzi_console.srs_pillars WHERE framework_id = 'uk-srs-2026'`);
+      `SELECT count(*)::text FROM nzi_console.srs_pillars WHERE organisation_id = 'ci-organisation' AND framework_id = 'uk-srs-2026'`);
     assert.equal(pillars.rows[0]!.count, "4");
   });
 
@@ -132,7 +132,7 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
     const levers = await client.query<{ total: string; withImpact: string }>(
       `SELECT count(*)::text AS "total",
               count(*) FILTER (WHERE modelled_tco2e_per_year IS NOT NULL)::text AS "withImpact"
-       FROM nzi_console.reduction_strategies`);
+       FROM nzi_console.reduction_strategies WHERE organisation_id = 'ci-organisation'`);
     assert.equal(levers.rows[0]!.total, "13");
     assert.equal(levers.rows[0]!.withImpact, "0", "the catalogue ships qualitative");
   });
@@ -211,8 +211,11 @@ describe("every migration runs", { skip: DATABASE_URL ? false : "NZI_TEST_DATABA
                          WHERE (l.organisation_id, l.strategy_id) = (s.organisation_id, s.strategy_id))`);
     assert.equal(orphans.rows[0]!.count, "0", "no library strategy is left without a lever");
 
-    const levers = await client.query<{ count: string }>(`SELECT count(*)::text FROM nzi_console.levers`);
-    assert.equal(levers.rows[0]!.count, "7", "the seeded lever set");
+    // Scoped to one organisation: reference data is per-organisation, so an unscoped count
+    // is a multiple of however many organisations earlier tests happened to create.
+    const levers = await client.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.levers WHERE organisation_id = 'ci-organisation'`);
+    assert.equal(levers.rows[0]!.count, "7", "the seeded lever set, per organisation");
   });
 
   it("keeps evidence stores append-only in the built schema", async () => {
