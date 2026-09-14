@@ -22,6 +22,7 @@ import { getAssuranceScreen, listGapResolutions, listReportSections } from "./re
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
+import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
@@ -1601,10 +1602,14 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
 });}
 
-export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{
-  const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
+export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string;compositionId:string;compositionHash:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{
+  const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string;version:number}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id,version FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
   const report=found.rows[0];
   if(!report)throw new CommandValidationError([{field:"reportVersionId",code:"NOT_FOUND",message:"Validated report version was not found."}]);
+  // Pinned: the version the caller saw is the version being published. Two publishes racing
+  // on one report must not both proceed — the loser is told to reload rather than issuing a
+  // second document from a screen that has since moved.
+  if(report.version!==input.expectedVersion)throw new VersionConflictError(input.expectedVersion,report.version);
   if(report.status!==input.expectedStatus)throw new CommandValidationError([{field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report version may be published."}]);
   if(report.manifest_version!==input.manifestVersion||report.reviewed_snapshot_id!==input.reviewedSnapshotId)throw new CommandValidationError([{field:"reportVersionId",code:"EVIDENCE_MISMATCH",message:"The report version does not match the reviewed snapshot and manifest supplied."}]);
   // Checked again at publish: the snapshot is still approved, and the publisher is not its preparer.
@@ -1615,7 +1620,21 @@ export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["repo
   const published=await db.query<{published_at:Date|string}>(`UPDATE nzi_console.report_versions SET status='published',published_at=now(),published_by=$3,version=version+1 WHERE organisation_id=$1 AND report_version_id=$2 AND status='validated' RETURNING published_at`,[context.organisationId,input.reportVersionId,context.actorId]);
   if(!published.rows[0])throw new VersionConflictError();
   const publishedAt=published.rows[0].published_at instanceof Date?published.rows[0].published_at.toISOString():String(published.rows[0].published_at);
-  return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};
+
+  // Freeze what this report SAYS, not only the measurement it rests on.
+  //
+  // The reviewed snapshot pins the footprint. Intensity, the targets, the plan and the SRS
+  // readiness are live records that go on changing after the client has the document, so
+  // publishing composes them as at this moment and stores the result. Without it, editing
+  // next week's plan would silently rewrite a report already sent — and pinning only the
+  // snapshot would have looked like immutability while leaving four sections free to drift.
+  //
+  // Inside the same transaction as the status change: a published report without its
+  // composition is a document nobody can reproduce.
+  const composition=await composeForReportVersion(db,{organisationId:context.organisationId,reportVersionId:input.reportVersionId,issuedAt:publishedAt});
+  const frozen=await freezeReportComposition(db,{organisationId:context.organisationId,composition,issuedBy:context.actorId});
+
+  return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt,compositionId:frozen.compositionId,compositionHash:frozen.dataHash},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};
 });}
 
 export type ApproveReviewedSnapshotResult = { snapshotId: string; jobId: string; approvedBy: string; approvedAt: string };

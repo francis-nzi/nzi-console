@@ -235,6 +235,76 @@ export async function composeReport(db: Queryable, input: {
   };
 }
 
+/**
+ * Everything a report version needs to be composed, gathered from the version itself.
+ *
+ * Publish knows a report version id and little else, so this walks from there to the job,
+ * the client and the reviewed snapshot rather than making the caller assemble it. Keeping
+ * the gathering here means the publish handler cannot accidentally compose from a different
+ * snapshot than the one the version was validated against.
+ */
+export async function composeForReportVersion(db: Queryable, input: {
+  organisationId: string; reportVersionId: string; issuedAt: string;
+}): Promise<ReportComposition> {
+  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string }>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id
+     FROM nzi_console.report_versions r
+     JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
+     WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
+    [input.organisationId, input.reportVersionId]);
+  const row = version.rows[0];
+  if (!row) throw new Error(`Report version ${input.reportVersionId} was not found.`);
+
+  const snapshotRow = await db.query<{
+    snapshot_id: string; job_id: string; data_hash: string; created_at: Date | string; created_by: string;
+    payload_json: {
+      jobNumber: string; client: string; reportingYear: number;
+      measurements: Array<{ scope: string; tco2e: number; qualityTier?: string; factorSet?: string }>;
+      annualComparison?: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
+    };
+  }>(
+    `SELECT snapshot_id, job_id, data_hash, created_at, created_by, payload_json
+     FROM nzi_console.reviewed_crp_snapshots
+     WHERE organisation_id = $1 AND snapshot_id = $2`,
+    [input.organisationId, row.reviewed_snapshot_id]);
+  const snapshot = snapshotRow.rows[0];
+  if (!snapshot) throw new Error(`Reviewed snapshot ${row.reviewed_snapshot_id} was not found.`);
+
+  const payload = snapshot.payload_json;
+  const createdAt = snapshot.created_at instanceof Date ? snapshot.created_at.toISOString() : String(snapshot.created_at);
+
+  // The assured years the pathway plots actual against — every reviewed snapshot this
+  // client has, which is the same series the workspace reads.
+  const assured = await db.query<{ snapshot_id: string; payload_json: { reportingYear: number; jobNumber: string; measurements: Array<{ tco2e: number }> } }>(
+    `SELECT s.snapshot_id, s.payload_json
+     FROM nzi_console.reviewed_crp_snapshots s
+     JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (s.organisation_id, s.job_id)
+     WHERE s.organisation_id = $1 AND j.client_id = $2`,
+    [input.organisationId, row.client_id]);
+  const actuals: TargetActual[] = assured.rows
+    .map((entry) => ({
+      year: Number(entry.payload_json.reportingYear),
+      tco2e: (entry.payload_json.measurements ?? []).reduce((total, measurement) => total + Number(measurement.tco2e), 0),
+      snapshotId: entry.snapshot_id,
+      jobNumber: entry.payload_json.jobNumber,
+    }))
+    .sort((a, b) => a.year - b.year);
+
+  return composeReport(db, {
+    reportVersionId: input.reportVersionId,
+    clientId: row.client_id,
+    issuedAt: input.issuedAt,
+    actuals,
+    snapshot: {
+      id: snapshot.snapshot_id, jobId: snapshot.job_id, jobNumber: payload.jobNumber,
+      client: payload.client, reportingYear: payload.reportingYear,
+      dataHash: snapshot.data_hash, createdAt, createdBy: snapshot.created_by,
+      measurements: payload.measurements ?? [],
+      annualComparison: payload.annualComparison ?? [],
+    },
+  });
+}
+
 export type FreezeCompositionResult = { compositionId: string; dataHash: string; reused: boolean };
 
 /**
