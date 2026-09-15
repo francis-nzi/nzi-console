@@ -229,7 +229,7 @@ describe("the report's readiness roadmap", () => {
     assert.match(contract, /gaps as resolveGaps/);
     assert.match(contract, /for \(const gap of resolveGaps\(framework, items\)\)/);
     // No re-sort after the builder has spoken.
-    const composer = /export function composeReportSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
+    const composer = /export function composeSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
     assert.ok(composer.length > 0, "the composer exists");
     assert.doesNotMatch(composer, /\.sort\(/, "gaps() already ordered them");
   });
@@ -240,7 +240,7 @@ describe("the report's readiness roadmap", () => {
     assert.match(compositions, /const planned = listClientStrategies\(db, input\.clientId\)/);
     assert.match(compositions, /composeSrs\(db, input\.clientId, planned\)/);
     const composeSrs = /async function composeSrs[\s\S]*?^\}/m.exec(compositions)?.[0] ?? "";
-    assert.match(composeSrs, /composeReportSrsRoadmap\(/);
+    assert.match(composeSrs, /composeSrsRoadmap\(/);
     assert.match(composeSrs, /\(await planned\)\.filter\(\(strategy\) => strategy\.includeInReport\)/,
       "the same population the plan section prints");
     // And exactly one read of the strategies, shared by both sections.
@@ -251,7 +251,7 @@ describe("the report's readiness roadmap", () => {
     assert.match(contract, /strategiesBySrsRequirement/);
     // The exclusion lives in that helper and is asserted where it is defined; here we hold
     // that the roadmap goes through it rather than re-deriving the mapping.
-    const composer = /export function composeReportSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
+    const composer = /export function composeSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
     assert.match(composer, /strategiesBySrsRequirement\(plan\)/);
     assert.doesNotMatch(composer, /srsRequirementIds/, "no second mapping of its own");
   });

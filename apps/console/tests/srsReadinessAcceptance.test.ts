@@ -123,3 +123,89 @@ describe("what a requirement is being addressed by", () => {
     assert.match(read("packages/isolated-backend/migrations/0070_srs_readiness.sql"), /linked_action_id text/);
   });
 });
+
+/**
+ * The client-facing readiness statement on the portal: live, read-only, and carrying
+ * nothing from the consultant's working record.
+ */
+describe("the portal readiness statement", () => {
+  const portal = read("apps/console/app/portal/PortalReadiness.tsx");
+  const model = read("packages/isolated-backend/src/portalReadiness.ts");
+  const route = read("apps/console/app/api/portal/readiness/route.ts");
+  const home = read("apps/console/app/portal/PortalHome.tsx");
+
+  it("resolves live, and never from a frozen composition", () => {
+    // The live twin of the report's frozen section. A stale readiness on the page telling a
+    // client where they stand today would be worse than no page.
+    assert.match(model, /listSrsAssessments\(db, input\.clientId\)/);
+    assert.ok(!model.includes("getReportComposition"), "never reads a composition");
+    assert.doesNotMatch(model, /FROM nzi_console\.report_compositions/);
+    assert.match(portal, /cache:"no-store"/);
+  });
+
+  it("shows only a completed assessment, never a draft's provisional scoring", () => {
+    assert.match(model, /entry\.status === "complete"/);
+    assert.match(model, /Your readiness assessment is in progress/);
+  });
+
+  it("states an absent assessment rather than rendering it as zero", () => {
+    assert.match(portal, /model\.state==="none"/);
+    assert.match(portal, /Your readiness assessment is in progress/);
+    // A 0% would read as a score the client had been given.
+    assert.doesNotMatch(model, /overallPct: 0\b/);
+  });
+
+  it("reuses the shared gap ordering and the shared reverse link", () => {
+    assert.match(model, /composeSrsRoadmap\(framework, assessment\.items/);
+    assert.doesNotMatch(model, /\.sort\(\(/, "no second ordering of its own");
+    // The builder's own inversion excludes withdrawn strategies; the portal adds the
+    // client-facing gate so a held-back strategy cannot appear as what closes a gap.
+    assert.match(model, /plan\.filter\(\(strategy\) => strategy\.includeInReport\)/);
+  });
+
+  it("projects field by field, so nothing internal rides along", () => {
+    // The assessment's notes and each item's owner/evidence/linked action are consultant
+    // working records. Built explicitly rather than spread, so a new internal column cannot
+    // arrive on the client's page by default.
+    assert.doesNotMatch(model, /\.\.\.assessment/, "no spread of the assessment");
+    assert.doesNotMatch(model, /\.\.\.item/, "no spread of an item");
+    // Exact accessors, not substrings: `evidenced` is a client-facing count of how many
+    // requirements have evidence recorded, and carries none of the evidence itself.
+    for (const internal of ["notes", "linkedActionId", "dueDate", "evidenceRef", "evidenceNote", "assessedBy"]) {
+      assert.doesNotMatch(portal, new RegExp(`\\.${internal}\\b`), `the view never reaches for ${internal}`);
+      assert.doesNotMatch(model, new RegExp(`${internal}:`), `nor does the read model project ${internal}`);
+    }
+    assert.match(model, /evidenced: \{ count:/, "only the count of what is evidenced crosses");
+  });
+
+  it("is read-only — no mutation path and no control implying one", () => {
+    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+      assert.doesNotMatch(route, new RegExp(`export async function ${method}\b`), method);
+    }
+    assert.match(route, /withTenantRead/);
+    assert.match(route, /user\.clientId/);
+    assert.doesNotMatch(route, /params|searchParams/, "the client is the session's own");
+    assert.ok(!portal.includes("<button"), "and the view offers nothing to press");
+    for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) {
+      assert.ok(!model.includes(verb), `the read model must not write (${verb})`);
+    }
+  });
+
+  it("reuses the proven readiness charts rather than drawing its own", () => {
+    assert.match(portal, /SrsPillarRadar/);
+    assert.match(portal, /SrsMaturityBullets/);
+    assert.match(portal, /from "@nzi\/charts"/);
+  });
+
+  it("sits with the plan, so the page reads as one story", () => {
+    assert.match(home, /<PortalReadiness\/>/);
+    assert.match(home, /<PortalReductionPlan\/>/);
+  });
+
+  it("is theme-aware — the portal follows the viewer, unlike the report", () => {
+    const css = read("packages/ui/src/styles.css");
+    const block = /\.nz-portal-readiness-charts\{[\s\S]*?\.nz-portal-gap \.none\{[^}]*\}/.exec(css)?.[0] ?? "";
+    assert.ok(block.length > 0, "the readiness styles exist");
+    assert.doesNotMatch(block, /#[0-9A-Fa-f]{6}/, "no hard-coded colour — tokens only");
+  });
+});
