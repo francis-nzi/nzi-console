@@ -1270,6 +1270,16 @@ comment wished were true. It also risks duplicating live services, so it is its 
 its own review — not a side effect of a documentation pass.
 
 **The legacy tail stays.** `MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET` and others sit in the
-dashboard undeclared. None was removed: with auth now known to be enabled and required,
+console's dashboard undeclared. None was removed: with auth now known to be enabled and required,
 `NZI_JWT_SECRET` is plausibly load-bearing, and tidying a list is not a reason to risk it. Each key
-needs its own check before deletion.
+needs its own check before deletion. **The worker has no such tail** — it holds exactly four keys.
+
+**The worker's isolation was verified, not assumed.** Its dashboard carries `NODE_VERSION`,
+`NZI_DATABASE_BOUNDARY`, `NZI_DEMO_ORGANISATION_ID` and `NZI_ISOLATED_DATABASE_URL` — and neither
+`NZI_MAIL_MODE` nor any `SMTP_*` value. It therefore cannot put mail on the wire, by three
+independent conditions rather than one, and with no transport to open even if all three were
+defeated. The boundary token is checked first in `mailDelivery()`, so the worker's own startup line
+— *"runs against the isolated non-production boundary"* — is that branch firing, and is itself
+evidence the variable is set correctly. Two declared keys are unset (`NEXT_PUBLIC_APP_ENV`,
+`NZI_REMINDER_TICK_SECONDS`); both fail safe and neither changes behaviour, the tick's code default
+being the declared 900 s.
