@@ -132,8 +132,15 @@ describe("Reduction Strategies", () => {
     assert.match(created, /CONSTRAINT action_levers_modelled_impact_sourced/);
     const seed = /INSERT INTO nzi_console\.action_levers[\s\S]*?ON CONFLICT DO NOTHING;/.exec(created)?.[0] ?? "";
     assert.ok(seed.length > 0 && !seed.includes("modelled_"), "no seeded strategy claims an impact");
-    assert.match(area, /Stage 2, and\s*\n?\s*nothing on this screen estimates it/);
+    // The screen now carries a quantified layer (NZC-078), so "nothing here estimates it" is
+    // no longer the claim. What must still hold is the distinction it was protecting: an
+    // estimate is labelled an estimate, progress is not a reduction, and neither is measured.
     assert.match(area, /not a modelled reduction/);
+    assert.match(area, /consultant <b>estimate<\/b> per strategy/);
+    assert.match(area, /it is never measured/);
+    const projection = read("apps/console/app/clients/[clientId]/StrategyProjection.tsx");
+    assert.match(projection, /consultant estimates<\/b>, not measurements/);
+    assert.match(projection, /compared — never combined/);
   });
 
   it("keeps the plan distinct from the measurement", () => {

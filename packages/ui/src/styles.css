@@ -1337,3 +1337,15 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
   .nz-portal-readiness-charts{gap:10px}
   .nz-portal-gap .lv{margin-left:0}
 }
+
+/* The quantified projection — an estimate, and styled so it never reads as measurement. */
+.nz-proj-chart{margin-top:12px}
+.nz-proj-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:12px}
+.nz-proj-facts>div{display:grid;gap:2px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.nz-proj-facts .l{color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nz-proj-facts .v{font-size:17px;font-weight:800;color:var(--t1)}
+.nz-proj-facts .v small{color:var(--t3);font-size:11px;font-weight:500}
+.nz-proj-facts .sub{font-size:11px;line-height:1.4}
+.nz-proj-flags{margin-top:12px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px}
+.nz-proj-flags .l{display:block;color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nz-proj-flags ul{list-style:none;margin:5px 0 0;padding:0;display:grid;gap:3px;font-size:11.5px;color:var(--t2);line-height:1.45}

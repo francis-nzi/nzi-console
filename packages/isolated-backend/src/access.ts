@@ -66,6 +66,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.strategy.assign": client,
   "client.strategy.update": clientStrategy,
   "client.strategy.remove": clientStrategy,
+  "client.strategy.estimate.set": clientStrategy,
   "srs.assessment.start": client,
   "srs.assessment.item.set": srsAssessment,
   "srs.assessment.complete": srsAssessment,

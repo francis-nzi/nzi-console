@@ -15,7 +15,7 @@ const lever = (id: string, over: Partial<LibraryStrategy> = {}): LibraryStrategy
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
-  progressPct: 0, notes: "", active: true, version: 1, ...over,
+  progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
 describe("the action-lever library", () => {

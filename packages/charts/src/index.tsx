@@ -3,6 +3,7 @@
 
 export { EmissionsScopeDonut, formatDate } from "./EmissionsScopeDonut";
 export { ReductionPathway } from "./ReductionPathway";
+export { ProjectedPathway } from "./ProjectedPathway";
 export { ScopeYearOnYearBar } from "./ScopeYearOnYearBar";
 export { EmissionsByActivity } from "./EmissionsByActivity";
 export { ManifestChartSet, PrintSafeBadge } from "./ManifestChartSet";

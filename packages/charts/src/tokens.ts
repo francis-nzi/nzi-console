@@ -1,4 +1,4 @@
-// @nzi/charts — brand tokens (the single styling source for every chart)
+// @nzi/charts â brand tokens (the single styling source for every chart)
 //
 // Explicit hex, not CSS custom properties: charts must render deterministically
 // when rasterised/printed server-side, where the CSS cascade is not present.
@@ -24,24 +24,36 @@ export const tokens = {
     coral: "#FF5C48",
     mint: "#DFF5E9",
   },
-  // GHG Protocol scope identity — brand-locked. Matches the scope swatches in the
+  // GHG Protocol scope identity â brand-locked. Matches the scope swatches in the
   // job table (packages/mock-data). Categorical, fixed order, never cycled.
   scope: {
-    "1": "#FF5C48", // Scope 1 — coral
-    "2": "#FFC24B", // Scope 2 — amber
-    "3": "#0BA75E", // Scope 3 — emerald
+    "1": "#FF5C48", // Scope 1 â coral
+    "2": "#FFC24B", // Scope 2 â amber
+    "3": "#0BA75E", // Scope 3 â emerald
   } as Record<string, string>,
   site: ["#0BA75E", "#2F7E8D", "#6B6FB3", "#D28B36", "#8A5A7B", "#51605A"],
-  // SRS readiness — a sequential maturity ramp (0 not started → 4 assured) plus the two
+  // SRS readiness â a sequential maturity ramp (0 not started â 4 assured) plus the two
   // standard series. Deliberately not the scope palette: scope identity means scope.
   srs: {
     maturity: ["#E4E9E5", "#CDEBD9", "#8FD3AE", "#2E9E68", "#0B6B41"],
     /** Text that stays legible on each maturity fill. */
     maturityInk: ["#3C4A43", "#095C35", "#095C35", "#FFFFFF", "#FFFFFF"],
-    s2: "#0B7A4B",   // climate — the brand pine, the led standard
-    s1: "#6B4E9B",   // general — a categorical partner hue, not a scope colour
+    s2: "#0B7A4B",   // climate â the brand pine, the led standard
+    s1: "#6B4E9B",   // general â a categorical partner hue, not a scope colour
     target: "#14201A",
     warn: "#B4690E",
+  },
+  // Three trajectories on one plot: what was measured, what the plan projects, and what the
+  // target needs. Validated with the dataviz palette script on the light chart surface —
+  // projected vs actual is the pair that must never be confused, and it clears every check
+  // with room (normal-vision ΔE 30.7, deutan 22.9). `target` is a neutral reference rather
+  // than a third hue, the same role it plays on the SRS radar: a line to read against, not a
+  // result. Projected is dashed as well as differently coloured, so "estimate" survives
+  // greyscale, print and colour-blindness.
+  projection: {
+    actual: "#0BA75E",    // measured — the brand emerald, as on the existing pathway
+    projected: "#6B4E9B", // estimate — a categorical partner hue, never a scope colour
+    target: "#14201A",    // needed — neutral reference
   },
   font:
     "var(--font-inter, Inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
@@ -50,13 +62,13 @@ export const tokens = {
 /**
  * Bump whenever a visual token changes. It participates in asset identity.
  *
- * NOT bumped for the `srs` block above: it is purely additive — no existing chart's
+ * NOT bumped for the `srs` block above: it is purely additive â no existing chart's
  * appearance changes, so every already-published asset identity stays valid.
  */
 export const TOKENS_VERSION = 1;
 
 /**
- * SRS maturity fill for a level 0–4, and the ink that stays legible on it.
+ * SRS maturity fill for a level 0â4, and the ink that stays legible on it.
  * Clamped: a level outside the ramp resolves to its nearest end rather than
  * rendering as `undefined` (which would print as an unstyled black fill).
  */
@@ -80,9 +92,9 @@ function clampLevel(level: number, length: number): number {
  * leading digit ("3"). Falls back to pine for anything unrecognised.
  *
  * NOTE (dataviz palette validation, light surface #FFF):
- *   CVD separation PASS (worst adjacent emerald↔amber ΔE 15.0) · normal-vision PASS.
+ *   CVD separation PASS (worst adjacent emeraldâamber ÎE 15.0) Â· normal-vision PASS.
  *   Amber (Scope 2) is light / low-contrast on white, so scope fills REQUIRE
- *   secondary encoding — which the donut always provides: 2px surface gaps,
+ *   secondary encoding â which the donut always provides: 2px surface gaps,
  *   direct labels, a legend and a table view. Identity is never colour-alone.
  */
 export function scopeColor(scope: string): string {
@@ -92,8 +104,8 @@ export function scopeColor(scope: string): string {
 
 /**
  * EN 15804 module-group identity for LCA charts. Categorical, fixed order,
- * five groups. Uses hexes already in the palette (product → emerald, then the
- * site categorical slots) — no new token, so `TOKENS_VERSION` is unchanged.
+ * five groups. Uses hexes already in the palette (product â emerald, then the
+ * site categorical slots) â no new token, so `TOKENS_VERSION` is unchanged.
  * Dataviz check (light surface #FFF): the five are the same set the site donut
  * already validates for CVD separation; module fills always carry secondary
  * encoding (direct labels + legend + a table view), never colour-alone.

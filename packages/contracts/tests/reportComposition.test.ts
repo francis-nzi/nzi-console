@@ -12,7 +12,7 @@ import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy 
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: ["lever-energy"], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
   controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
-  progressPct: 0, notes: "", active: true, version: 1, ...over,
+  progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
 const LEVERS = [{ id: "lever-energy", key: "energy", title: "Energy", iconKey: "energy", ordering: 1, active: true }];

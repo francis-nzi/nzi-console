@@ -1176,3 +1176,47 @@ the migration to the target database before merging the code, as #142/#145 did.
 sits beside — `DESIGN_CONVENTIONS` §12, and `getClientWorkspace` now degrades its adjunct reads to
 honest "unavailable" states while essential reads still fail loudly. The gate stops schema drift;
 the resilience rule stops the next surprise from costing the whole page.
+
+### NZC-078 — A strategy carries an estimated reduction, and an estimate is never a measurement [Confirmed 15 Sep 2026]
+
+**What shipped.** The first quantitative layer on Reduction Strategies (migration `0085`): a
+consultant's expected annual reduction per strategy, rolled up into a **projected** trajectory and
+drawn against the existing **target** pathway and the **measured** actuals. Staff console only.
+
+**The rule that outranks the rest: a projection is a forward estimate.** It is built from
+consultant judgement, never derived from an assured snapshot, and never rendered as the footprint.
+A test asserts the module imports only the plan and the target model, and that no code path in it
+reaches for a snapshot or a measurement; the chart encodes the distinction twice, by hue and by
+dash, so "estimate" survives greyscale, print and colour-blindness. The three series answer three
+different questions and the value is the distance between them — a projected line that merged into
+the measured one would destroy the only comparison worth having.
+
+**Basis: consultant estimate, optionally seeded from the catalogue.** Not modelled from activity
+data, which would buy false precision for a much larger build. The library already carried
+`modelled_tco2e_per_year` with a mandatory basis (`0075`), so a client estimate seeds from it and
+records that it did — no library migration was needed.
+
+**Expression: tCO₂e/yr or a percent, both resolved to tCO₂e/yr.** A percent resolves against that
+scope's share of the **benchmark in force** — the same denominator the target pathway uses, which
+is what makes bottom-up and top-down comparable rather than two numbers sharing an axis. The
+resolved figure is **stored**, not recomputed on read, for the same reason targets stamp the
+benchmark they were set against: a later re-baseline must not silently restate a number a
+consultant agreed.
+
+**Timing: steps in at the target date.** The full annual reduction applies from that date onward.
+An **undated** strategy contributes nothing and is flagged — inventing a date would put a saving on
+the chart nobody committed to a time for. A strategy with **no estimate** likewise contributes
+nothing and says so: "not estimated" and "saves nothing" are different facts.
+
+**Overlap: sum, and raise over-claim — never cap.** If a scope's projected reductions exceed that
+scope's footprint, the scope and the contributing strategies are named. Silently clamping would
+make an arithmetic error look like a plan that exactly eliminates a scope, which is the most
+flattering possible reading of a mistake. The line is floored at zero so it stays drawable, and the
+warning is what makes the floor visible.
+
+**Permission: `strategy.manage`, reused.** Entering an estimate is managing the strategy, and that
+capability is already held by exactly Admin and Consultant. The matrix stays at version 3.
+
+**Staff console only this phase.** Report inclusion (freezing the projection into the composition at
+issue, with client-facing estimate discipline), portal inclusion, and consultant-marked strategy
+interactions for finer overlap accounting are later phases, each with their own review.

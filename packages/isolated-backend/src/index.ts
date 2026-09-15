@@ -62,7 +62,7 @@ export * from "./clientLogo";
 export * from "./clientTargets";
 export {
   assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
-  removeClientStrategy, updateClientStrategy, upsertLibraryStrategy,
+  removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy,
   type AssignStrategyResult, type DeactivateStrategyResult, type RemoveStrategyResult,
   type UpdateStrategyResult, type UpsertStrategyResult,
 } from "./reductionStrategies";
