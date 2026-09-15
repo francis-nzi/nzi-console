@@ -1349,3 +1349,11 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-proj-flags{margin-top:12px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px}
 .nz-proj-flags .l{display:block;color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
 .nz-proj-flags ul{list-style:none;margin:5px 0 0;padding:0;display:grid;gap:3px;font-size:11.5px;color:var(--t2);line-height:1.45}
+
+/* Entering an expected reduction — an estimate, never presented as measurement. */
+.nz-est-seed{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:9px 11px;border:1px dashed var(--line);border-radius:9px;font-size:12px}
+.nz-est-seed .sub{font-size:11px;color:var(--t3)}
+.nz-est-seed .nz-btn{flex:none}
+/* The live resolution of a percentage: feedback, so it reads quietly. */
+.nz-est-resolved{margin:2px 0 8px;padding:8px 10px;border-radius:8px;background:var(--mint);color:var(--pine);font-size:11.5px;line-height:1.45}
+.nz-est-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}

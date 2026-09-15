@@ -210,3 +210,38 @@ describe("over-claim is raised, never capped", () => {
     assert.deepEqual(projectionOverClaims(contributions, benchmark), []);
   });
 });
+
+describe("an entered estimate reaches the projection", () => {
+  it("contributes as soon as it has a figure and a date", () => {
+    // What the entry form exists to make possible: before, the strategy was flagged as
+    // having no estimate and the trajectory was empty.
+    const before = splitProjectionInputs([strategy("a", { estimate: null })]);
+    assert.deepEqual(before.contributions, []);
+    assert.equal(before.excluded[0]?.reason, "no-estimate");
+
+    const after = splitProjectionInputs([strategy("a", { targetDate: "2027-01-01" })]);
+    assert.equal(after.contributions.length, 1);
+    assert.deepEqual(after.excluded, []);
+    const line = projectedTrajectory(after.contributions, benchmark, targetTrajectory);
+    assert.equal(line.find((point) => point.year === 2030)?.tco2e, 950, "the projection moves");
+  });
+
+  it("carries a catalogue seed's provenance through unchanged", () => {
+    // The consultant accepted the catalogue figure, so the roll-up must still be able to say
+    // the catalogue stands behind it, and which version of it.
+    const seeded = strategy("a", {
+      estimate: estimate({ source: "library-default", sourceVersion: 3, assumptions: "Supplier-provided" }),
+    });
+    const { contributions } = splitProjectionInputs([seeded]);
+    assert.equal(contributions[0]?.estimate.source, "library-default");
+    assert.equal(contributions[0]?.estimate.sourceVersion, 3);
+    assert.equal(contributions[0]?.estimate.assumptions, "Supplier-provided");
+  });
+
+  it("treats an overridden seed as the consultant's own figure", () => {
+    const overridden = strategy("a", { estimate: estimate({ source: "consultant", sourceVersion: null }) });
+    const { contributions } = splitProjectionInputs([overridden]);
+    assert.equal(contributions[0]?.estimate.source, "consultant");
+    assert.equal(contributions[0]?.estimate.sourceVersion, null, "no catalogue version is claimed");
+  });
+});

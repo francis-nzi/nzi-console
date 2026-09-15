@@ -210,7 +210,10 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         ? <StrategyBespokeForm clientId={client.id} framework={workspace.srs.framework} access={access.actions} onClose={closeStrategyDrawer}
           onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
       {strategyDrawer?.kind === "strategy-edit"
-        ? <StrategyEditForm key={strategyDrawer.strategy.id} action={strategyDrawer.strategy} framework={workspace.srs.framework} access={access.actions}
+        ? <StrategyEditForm key={strategyDrawer.strategy.id} action={strategyDrawer.strategy} framework={workspace.srs.framework}
+          benchmark={workspace.targets.benchmarkInForce}
+          libraryDefault={workspace.strategies.library.find((entry) => entry.id === strategyDrawer.strategy.strategyId) ?? null}
+          access={access.actions}
           onClose={closeStrategyDrawer} onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
     </Drawer>
   </AppShell>;
