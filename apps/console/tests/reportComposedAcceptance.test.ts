@@ -214,3 +214,75 @@ describe("the report's readiness radar", () => {
     assert.match(css, /\.nzr-srs,\.nzr-chart\{break-inside:avoid\}/);
   });
 });
+
+/**
+ * The readiness roadmap in section 06. Composed at issue and frozen, like everything else
+ * the report quotes.
+ */
+describe("the report's readiness roadmap", () => {
+  const view = read("apps/console/app/reports/[versionId]/ReportComposedView.tsx");
+  const css = read("apps/console/app/reports/[versionId]/report-composed.css");
+  const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
+  const contract = read("packages/contracts/src/reportComposition.ts");
+
+  it("reuses the existing gap ordering rather than inventing a second one", () => {
+    assert.match(contract, /gaps as resolveGaps/);
+    assert.match(contract, /for \(const gap of resolveGaps\(framework, items\)\)/);
+    // No re-sort after the builder has spoken.
+    const composer = /export function composeReportSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
+    assert.ok(composer.length > 0, "the composer exists");
+    assert.doesNotMatch(composer, /\.sort\(/, "gaps() already ordered them");
+  });
+
+  it("answers gaps from the plan the same report froze, never the live one", () => {
+    // A second read could straddle an edit and leave one report disagreeing with its own
+    // plan section about what the client is doing.
+    assert.match(compositions, /const planned = listClientStrategies\(db, input\.clientId\)/);
+    assert.match(compositions, /composeSrs\(db, input\.clientId, planned\)/);
+    const composeSrs = /async function composeSrs[\s\S]*?^\}/m.exec(compositions)?.[0] ?? "";
+    assert.match(composeSrs, /composeReportSrsRoadmap\(/);
+    assert.match(composeSrs, /\(await planned\)\.filter\(\(strategy\) => strategy\.includeInReport\)/,
+      "the same population the plan section prints");
+    // And exactly one read of the strategies, shared by both sections.
+    assert.equal((compositions.match(/listClientStrategies\(db, input\.clientId\)/g) ?? []).length, 1);
+  });
+
+  it("excludes withdrawn strategies through the shared inversion", () => {
+    assert.match(contract, /strategiesBySrsRequirement/);
+    // The exclusion lives in that helper and is asserted where it is defined; here we hold
+    // that the roadmap goes through it rather than re-deriving the mapping.
+    const composer = /export function composeReportSrsRoadmap[\s\S]*?\n\}/.exec(contract)?.[0] ?? "";
+    assert.match(composer, /strategiesBySrsRequirement\(plan\)/);
+    assert.doesNotMatch(composer, /srsRequirementIds/, "no second mapping of its own");
+  });
+
+  it("stays optional, so an older report renders without one", () => {
+    assert.match(contract, /roadmap\?: ReportSrsRoadmap/);
+    assert.match(view, /srs\.roadmap \? <SrsRoadmap/);
+    // Absent and empty are different facts and must not collapse into one another.
+    assert.match(view, /roadmap\.pillars\.length === 0/);
+    assert.match(view, /No requirement sits below the maturity the framework expects/);
+  });
+
+  it("renders after the maturity table and the radar", () => {
+    const section = /<SectionHead n="06"[\s\S]*?<\/Page>/.exec(view)?.[0] ?? "";
+    assert.ok(section.length > 0, "section 06 exists");
+    assert.ok(section.indexOf("nzr-srs") < section.indexOf("SrsRoadmap"), "roadmap follows maturity + radar");
+  });
+
+  it("reads only the frozen composition", () => {
+    const roadmap = /function SrsRoadmap[\s\S]*?^\}/m.exec(view)?.[0] ?? "";
+    assert.ok(roadmap.length > 0);
+    assert.doesNotMatch(roadmap, /fetch\(|useEffect|resolveGaps|listClientStrategies/, "nothing live, nothing recomputed");
+  });
+
+  it("says honestly when a gap has nothing aimed at it", () => {
+    assert.match(view, /No strategy aligned yet\./);
+    assert.match(view, /no strategy aligned yet\./, "and counts them in the lede");
+  });
+
+  it("keeps a gap and its strategies on one printed sheet", () => {
+    assert.match(css, /\.nzr-roadmap-gap\{break-inside:avoid\}/);
+    assert.match(css, /\.nzr-roadmap-pillar h4\{break-after:avoid\}/);
+  });
+});

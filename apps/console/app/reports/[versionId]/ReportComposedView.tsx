@@ -4,7 +4,7 @@ import {
   strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
   reportHeadline, reportMethodologyRows, reportResidualTco2e, reportSrsRadarChart,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
-  type ReportSrsSection,
+  type ReportSrsRoadmap, type ReportSrsSection,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 
@@ -188,6 +188,8 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
               </tr>)}</tbody>
             </table>
           </div>
+          {/* A composition frozen before the roadmap shipped carries none, and renders none. */}
+          {srs.roadmap ? <SrsRoadmap roadmap={srs.roadmap} /> : null}
           <p className="nzr-note">
             Readiness is an assessment of this organisation&rsquo;s own reporting maturity. It is not a
             statement that the disclosure has been prepared, filed or assured.
@@ -259,6 +261,47 @@ function SrsRadar({ srs }: { srs: ReportSrsSection }) {
       },
       ...chart,
     }} />
+  </div>;
+}
+
+/**
+ * What to work on next, and what the client is already doing about it.
+ *
+ * Every word comes from the frozen composition: the gaps as assessed at issue, answered by
+ * the plan this same report froze. A gap with nothing against it says so — that is the
+ * useful half of the picture, and filling it in would be inventing work.
+ */
+function SrsRoadmap({ roadmap }: { roadmap: ReportSrsRoadmap }) {
+  if (roadmap.pillars.length === 0) {
+    return <p className="nzr-note">
+      No requirement sits below the maturity the framework expects of it, so there is nothing outstanding
+      on this assessment.
+    </p>;
+  }
+  return <div className="nzr-roadmap">
+    <h3>What to address next</h3>
+    <p className="nzr-note" style={{ marginTop: 0 }}>
+      Requirements below the maturity expected of them, furthest short first, with the reduction
+      strategies on this plan that advance each one.
+      {roadmap.unaddressedCount > 0
+        ? ` ${roadmap.unaddressedCount} ${roadmap.unaddressedCount === 1 ? "has" : "have"} no strategy aligned yet.`
+        : ""}
+    </p>
+    {roadmap.pillars.map((pillar) => <div className="nzr-roadmap-pillar" key={pillar.key}>
+      <h4>{pillar.label}</h4>
+      {pillar.gaps.map((gap) => <div className="nzr-roadmap-gap" key={gap.code}>
+        <div className="hd">
+          <span className="nzr-tag srs">{gap.code}</span>
+          <b>{gap.title}</b>
+          <span className="lv">{gap.maturityLabel} → {gap.targetLabel}</span>
+        </div>
+        {gap.strategies.length > 0
+          ? <ul>{gap.strategies.map((strategy) => <li key={strategy.title}>
+            {strategy.title} <span className="st">{strategy.statusLabel}</span>
+          </li>)}</ul>
+          : <p className="none">No strategy aligned yet.</p>}
+      </div>)}
+    </div>)}
   </div>;
 }
 

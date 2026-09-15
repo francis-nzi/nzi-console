@@ -74,6 +74,22 @@
 .nzr-prov{margin-top:16px;padding-top:11px;border-top:1px solid var(--line-2);color:var(--faint);font-size:10.5px;line-height:1.6;overflow-wrap:anywhere}
 
 /* Readiness: the radar beside the pillar table, the shape and the numbers together. */
+/* The roadmap: what to address next, and what is already aimed at it. */
+.nzr-roadmap{margin-top:22px}
+.nzr-roadmap h3{margin:0 0 4px}
+.nzr-roadmap-pillar{margin-top:14px}
+.nzr-roadmap-pillar h4{margin:0 0 4px;color:var(--accent-d);font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+.nzr-roadmap-gap{padding:9px 0;border-bottom:1px solid var(--line-2)}
+.nzr-roadmap-gap:last-child{border-bottom:0}
+.nzr-roadmap-gap .hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.nzr-roadmap-gap .hd b{font-size:12.5px}
+.nzr-roadmap-gap .lv{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap}
+.nzr-roadmap-gap ul{list-style:none;margin:5px 0 0;padding:0 0 0 2px;display:grid;gap:2px;font-size:12px}
+.nzr-roadmap-gap li{color:var(--ink-2);line-height:1.45}
+.nzr-roadmap-gap .st{color:var(--muted);font-size:11px}
+/* An unaddressed gap is signal, so it reads as a statement rather than a warning. */
+.nzr-roadmap-gap .none{margin:5px 0 0;color:var(--muted);font-size:11.5px;font-style:italic}
+
 .nzr-srs{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
 .nzr-chart{flex:0 0 300px;max-width:100%}
 .nzr-srs .nzr-tbl{flex:1 1 260px;min-width:0}
@@ -94,5 +110,8 @@
   .nzr-strategy,.nzr-metric,.nzr-figure,.nzr-gap{break-inside:avoid}
   /* A radar split across two sheets is not a radar. */
   .nzr-srs,.nzr-chart{break-inside:avoid}
+  /* A gap and the strategies answering it belong on the same sheet. */
+  .nzr-roadmap-gap{break-inside:avoid}
+  .nzr-roadmap-pillar h4{break-after:avoid}
   .nzr-sechd{break-after:avoid}
 }
