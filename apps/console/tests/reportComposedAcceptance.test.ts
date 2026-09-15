@@ -169,3 +169,48 @@ describe("publishing freezes the composition", () => {
     assert.doesNotMatch(publish, /UPDATE nzi_console\.report_compositions/);
   });
 });
+
+/**
+ * The readiness radar in section 06. Wiring only: the chart is the one `@nzi/charts`
+ * already ships, and the data is what the composition froze.
+ */
+describe("the report's readiness radar", () => {
+  const view = read("apps/console/app/reports/[versionId]/ReportComposedView.tsx");
+  const css = read("apps/console/app/reports/[versionId]/report-composed.css");
+  const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
+
+  it("reuses the shipped chart rather than drawing its own", () => {
+    assert.match(view, /import \{[^}]*SrsPillarRadar[^}]*\} from "@nzi\/charts"/);
+    assert.match(view, /reportSrsRadarChart\(srs\)/, "and the payload the contract assembles");
+  });
+
+  it("draws it from the frozen composition and resolves nothing", () => {
+    const radar = /function SrsRadar[\s\S]*?^\}/m.exec(view)?.[0] ?? "";
+    assert.ok(radar, "the radar component exists");
+    assert.doesNotMatch(radar, /fetch\(|useEffect|pillarReadiness|overallReadiness/, "no live read, no recompute");
+    assert.match(radar, /srs\.assessedOn/, "it is keyed to the frozen assessment");
+  });
+
+  it("renders the table alone when the composition froze no radar", () => {
+    assert.match(view, /srs\.radar \? <SrsRadar/, "the chart is conditional on what was frozen");
+    assert.match(view, /<thead><tr><th>Pillar<\/th><th>Maturity<\/th><\/tr><\/thead>/, "the table is not");
+  });
+
+  it("freezes what the radar needs at issue, because a level alone cannot draw one", () => {
+    const composeSrs = /async function composeSrs[\s\S]*?^\}/m.exec(compositions)?.[0] ?? "";
+    assert.match(composeSrs, /maxLevel:/, "the ladder's height");
+    assert.match(composeSrs, /target: pillars\.map/, "and the target profile to read a shape against");
+    assert.match(composeSrs, /climateLed/, "with the climate standard painted over the top, as the workspace draws it");
+  });
+
+  it("never attributes readiness to the footprint's provenance", () => {
+    // Readiness comes from the client's own answers, not from the assured measurement.
+    const radar = /function SrsRadar[\s\S]*?^\}/m.exec(view)?.[0] ?? "";
+    assert.match(radar, /factorSets: \[\]/, "readiness has no factor set");
+    assert.match(radar, /generatedAt: srs\.assessedOn/, "it is as at the assessment, not the snapshot");
+  });
+
+  it("keeps the radar on one sheet when printed", () => {
+    assert.match(css, /\.nzr-srs,\.nzr-chart\{break-inside:avoid\}/);
+  });
+});

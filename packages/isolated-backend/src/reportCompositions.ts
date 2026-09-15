@@ -178,16 +178,30 @@ async function composeSrs(db: Queryable, clientId: string): Promise<ReportSrsSec
     };
   }
   const overall = overallReadiness(framework, assessment.items);
+  const pillars = pillarReadiness(framework, assessment.items);
+  // The climate-led standard is the one painted over the top, exactly as the workspace
+  // radar draws it — the report and the screen must not disagree about which is which.
+  const climate = framework.standards.find((standard) => standard.climateLed) ?? framework.standards[0] ?? null;
+  const other = climate ? framework.standards.find((standard) => standard.key !== climate.key) ?? null : null;
   return {
     frameworkVersion: assessment.frameworkVersion,
     assessedOn: assessment.assessedOn.slice(0, 10),
     overallPct: overall.percent,
     overallLabel: maturityLabel(framework, overall.levelIndex),
-    pillars: pillarReadiness(framework, assessment.items).map((pillar) => ({
+    pillars: pillars.map((pillar) => ({
       label: pillar.label,
       maturity: pillar.overall.level,
       maturityLabel: maturityLabel(framework, pillar.overall.levelIndex),
     })),
+    radar: climate ? {
+      maxLevel: Math.max(1, framework.maturityLevels.length - 1),
+      series: [climate, ...(other ? [other] : [])].map((standard) => ({
+        key: (standard.key === climate.key ? "S2" : "S1") as "S1" | "S2",
+        label: standard.label.replace(/^UK SRS \w+ — /, ""),
+        values: pillars.map((pillar) => pillar.byStandard[standard.key]?.level ?? 0),
+      })),
+      target: pillars.map((pillar) => pillar.targetLevel),
+    } : undefined,
   };
 }
 

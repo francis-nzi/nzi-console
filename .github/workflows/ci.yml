@@ -26,6 +26,9 @@ jobs:
       - run: npm run build
       - run: npm test -w @nzi/contracts
       - run: npm test -w @nzi/isolated-backend
+      # The chart renderers. They were green but unenforced: nothing in CI ran them, so a
+      # broken SVG would have reached a client-facing report unnoticed.
+      - run: npm test -w @nzi/charts
       - run: npm run test:console
 
   migrations:

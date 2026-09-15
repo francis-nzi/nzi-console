@@ -73,10 +73,17 @@
 .nzr-tag.srs{border-color:#BEE7D3;background:var(--accent-bg,#E6F4EC);color:var(--accent-d)}
 .nzr-prov{margin-top:16px;padding-top:11px;border-top:1px solid var(--line-2);color:var(--faint);font-size:10.5px;line-height:1.6;overflow-wrap:anywhere}
 
+/* Readiness: the radar beside the pillar table, the shape and the numbers together. */
+.nzr-srs{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.nzr-chart{flex:0 0 300px;max-width:100%}
+.nzr-srs .nzr-tbl{flex:1 1 260px;min-width:0}
+
 @media (max-width:760px){
   .nzr-page{padding:28px 22px}
   .nzr-cover{padding:56px 22px}
   .nzr-figures,.nzr-metrics{grid-template-columns:1fr}
+  .nzr-srs{gap:10px}
+  .nzr-chart{flex-basis:100%}
 }
 
 /* Print: the paper IS the page, so the frame around it goes away. */
@@ -85,5 +92,7 @@
   .nzr-page{border:0;border-radius:0;margin:0;box-shadow:none;padding:0 0 24px;break-after:page}
   .nzr-page:last-child{break-after:auto}
   .nzr-strategy,.nzr-metric,.nzr-figure,.nzr-gap{break-inside:avoid}
+  /* A radar split across two sheets is not a radar. */
+  .nzr-srs,.nzr-chart{break-inside:avoid}
   .nzr-sechd{break-after:avoid}
 }
