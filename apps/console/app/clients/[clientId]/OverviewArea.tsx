@@ -112,9 +112,11 @@ export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabl
   onDrawer: (request: DrawerRequest) => void;
   factorsEnabled: boolean;
 }) {
-  const { client, sites, reportingPeriods, contacts, contactConsent } = workspace;
+  const { client, sites, reportingPeriods, contacts, contactConsent, degraded } = workspace;
+  // A part that could not be read says so on its own card; the rest of the page is unaffected.
+  const consentUnavailable = degraded?.find((entry) => entry.part === "contactConsent")?.reason ?? null;
   return <>
-    <ClientContacts contacts={contacts ?? []} consent={contactConsent ?? []} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
+    <ClientContacts contacts={contacts ?? []} consent={contactConsent ?? []} consentUnavailable={consentUnavailable} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
     <ClientSites sites={sites} reportingPeriods={reportingPeriods} today={today} access={access.site} onEdit={(site) => onDrawer({ kind: "site", site })} />
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Commercial</span><h2>Financial status</h2></>} count="Held">
       <FinancialStatusCard />

@@ -193,3 +193,31 @@ matches that anatomy.
 - Every data section carries provenance; the Methodology page states the assurance basis
   honestly — "reviewed snapshot (internal review); not third-party assured." Never imply
   third-party assurance.
+
+## 12. Hot read models: essential vs adjunct (locked)
+
+A read model that assembles a page composes two kinds of read, and they fail differently.
+
+- **Essential** — the record the page *is*, and what it rests on. For `getClientWorkspace`: the
+  client, its reviewed snapshots, the sites that set the reporting boundary, the targets measured
+  against them. These **fail loudly**. A client record that rendered without its footprint would
+  look healthy while being wrong, and hiding that is worse than a 503.
+- **Adjunct** — everything feeding one card beside the record: contacts, consent history, reports,
+  correspondence, files, readiness, intensity, the reduction plan. These **fail soft**, to an
+  honest degraded state naming what could not be read.
+
+`Promise.all` rejects on the first rejection, so an unwrapped adjunct read takes the whole page
+with it. On **15 September 2026** exactly that happened: migration `0084` was unapplied on staging,
+the consent read threw, and every client workspace returned 503 over a card nobody was looking at.
+
+**A degraded part says "unavailable"; it never renders its fallback as fact.** An empty list and
+"we could not read this" look identical on a page and mean opposite things — the same rule as
+never showing a failed query as zero. The read model reports `degraded: [{ part, reason }]`, and
+the card consults it before drawing.
+
+The reason is one fixed sentence per part, not the database's message: the cause may be an
+unapplied migration, a dropped connection or a permissions change, and the reader's next step is
+the same in all three.
+
+**Judgement, not reflex.** Do not soft-fail everything — the distinction is exactly what stops a
+broken core record from rendering as a calm, empty page.

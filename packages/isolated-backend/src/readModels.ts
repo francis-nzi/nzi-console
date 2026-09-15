@@ -213,6 +213,40 @@ export function resolveYearDenominators(input: {
   }
   return out;
 }
+/**
+ * The parts of the workspace that are **adjunct**: each feeds one card, and none of them is
+ * the client record.
+ *
+ * Essential reads — the client itself, the reviewed snapshots the footprint is derived from,
+ * the sites that set its boundary, and the targets measured against it — are deliberately
+ * absent. They still fail loudly. A client record that quietly rendered without its footprint
+ * would hide real breakage behind a page that looked fine, which is the opposite of the point.
+ */
+export type ClientWorkspacePart =
+  | "contacts" | "contactConsent" | "reports" | "messages" | "files"
+  | "srs" | "intensity" | "strategies";
+
+/** What could not be read, and why — in place of a value that would be a guess. */
+export type ClientWorkspaceDegradation = { part: ClientWorkspacePart; reason: string };
+
+/**
+ * One sentence per part, said to the person looking at the card.
+ *
+ * Deliberately not the database's message: it is the same sentence whether the cause is an
+ * unapplied migration, a dropped connection or a permissions change, and the reader's next
+ * step ("this is not your data — tell someone") is identical in all three.
+ */
+const degradedReasons: Record<ClientWorkspacePart, string> = {
+  contacts: "Contacts could not be read, so none are shown here.",
+  contactConsent: "Consent history is unavailable, so the state below cannot be shown with the decision behind it.",
+  reports: "This client's reports could not be read.",
+  messages: "Correspondence could not be read.",
+  files: "Files could not be read.",
+  srs: "The readiness assessment could not be read.",
+  intensity: "Intensity measures could not be read.",
+  strategies: "The reduction plan could not be read.",
+};
+
 export type ClientWorkspaceReadModel = {
   client: ClientScreenReadModel;
   sites: ClientSiteReadModel[];
@@ -255,6 +289,13 @@ export type ClientWorkspaceReadModel = {
   strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[] };
   /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
   intensityMetrics: IntensityMetricDefinition[];
+  /**
+   * Adjunct parts that could not be read this time. Empty in the normal case.
+   *
+   * A card whose part is listed here says so rather than rendering its fallback as fact: an
+   * empty list and "we could not read this" look identical on a page and mean opposite things.
+   */
+  degraded: ClientWorkspaceDegradation[];
 };
 
 const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id: row.snapshot_id, jobId: row.job_id, jobNumber: row.payload_json.jobNumber, client: row.payload_json.client, reportingYear: row.payload_json.reportingYear, version: row.snapshot_version, jobVersion: row.job_version, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at), createdBy: row.created_by, dataHash: row.data_hash, target: row.payload_json.target ?? null, intensityTarget: row.payload_json.intensityTarget ?? null, annualComparison: row.payload_json.annualComparison ?? [], sections: row.payload_json.sections ?? resolveReportSections([]), gapResolutions: row.payload_json.gapResolutions ?? [], provenance: row.payload_json.provenance ?? null, measurements: row.payload_json.measurements });
@@ -266,22 +307,36 @@ const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id
 export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
   const [client] = await listClients(db, clientId);
   if (!client) return null;
+
+  // Adjunct reads fail soft; essential ones do not. See `ClientWorkspaceDegradation`.
+  //
+  // `Promise.all` rejects on the first rejection, so before this every one of the reads
+  // below could take the whole workspace down — which is exactly what happened on
+  // 15 Sep 2026, when an unapplied `0084` made the consent read throw and every client
+  // workspace returned 503 over a card nobody was looking at.
+  const degraded: ClientWorkspaceDegradation[] = [];
+  const adjunct = <T>(part: ClientWorkspacePart, fallback: T, read: Promise<T>): Promise<T> =>
+    read.catch(() => {
+      degraded.push({ part, reason: degradedReasons[part] });
+      return fallback;
+    });
+
   const [sites, snapshots, periods, contacts, contactConsent, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues, libraryStrategies, clientStrategies, levers] = await Promise.all([
     listClientSites(db, clientId),
     db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
     db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
-    listClientContacts(db, clientId),
-    latestConsentByContact(db, clientId),
-    listClientReports(db, clientId),
-    listClientMessages(db, clientId),
-    listClientFiles(db, clientId),
-    getSrsFramework(db),
-    listSrsAssessments(db, clientId),
-    listClientIntensityMetrics(db, clientId),
-    listClientIntensityValues(db, clientId),
-    listLibraryStrategies(db),
-    listClientStrategies(db, clientId),
-    listLevers(db),
+    adjunct("contacts", [], listClientContacts(db, clientId)),
+    adjunct("contactConsent", new Map(), latestConsentByContact(db, clientId)),
+    adjunct("reports", [], listClientReports(db, clientId)),
+    adjunct("messages", [], listClientMessages(db, clientId)),
+    adjunct("files", [], listClientFiles(db, clientId)),
+    adjunct("srs", null, getSrsFramework(db)),
+    adjunct("srs", [], listSrsAssessments(db, clientId)),
+    adjunct("intensity", [], listClientIntensityMetrics(db, clientId)),
+    adjunct("intensity", [], listClientIntensityValues(db, clientId)),
+    adjunct("strategies", [], listLibraryStrategies(db)),
+    adjunct("strategies", [], listClientStrategies(db, clientId)),
+    adjunct("strategies", [], listLevers(db)),
   ]);
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
@@ -331,6 +386,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     }),
     contacts,
     contactConsent: [...contactConsent.values()],
+    degraded,
     targets,
     actuals,
     history,

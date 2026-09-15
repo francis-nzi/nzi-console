@@ -200,3 +200,105 @@ how often anyone is written to — the unique index is what stops a second send.
 For an immediate application rollback, set `NZI_DATA_MODE=fixture` on service
 `srv-d6o8snvgi27c73frfta0` and trigger a deploy. This disconnects the application from Postgres and returns
 Clients and Jobs to bundled fixtures without deleting isolated data. Entire teardown remains additive.
+
+## Migrations and deploys — the gate (NZC-077)
+
+Schema and code must not ship apart. On **15 September 2026** they did: #176 merged, auto-deploy
+shipped code that read the `0084` `client_contact_consent_events` table, `render.yaml` had no
+migration step, and every client workspace returned **503** — over a consent card nobody was
+looking at. Two independent faults, addressed separately: this section is the deploy gate; the
+resilience half is in `DESIGN_CONVENTIONS` §11 (adjunct reads fail soft).
+
+### Staging — auto-apply before cutover (proposed; Francis to apply)
+
+`render.yaml` is a deployment surface, so the change below is **proposed, not applied**. It adds a
+pre-deploy step to the **staging web service only** (`nzi-console`). Nothing here touches the live
+service, which is not in this blueprint at all.
+
+```diff
+   - type: web
+     name: nzi-console
+     runtime: node
+     region: frankfurt
+     plan: starter
+     branch: main
+     # Build from the monorepo root so workspace packages (@nzi/ui, @nzi/mock-data) resolve.
+     buildCommand: npm install && npm run build -w @nzi/console
++    # Apply pending migrations before the new release serves traffic (NZC-077).
++    #
++    # Fails closed by construction: Render runs this after the build and before cutover, and
++    # "if any command fails or times out, the entire deploy fails … your service continues
++    # running its most recent successful deploy, with zero downtime". So a migration that
++    # cannot complete leaves the PREVIOUS code serving the OLD schema — consistent — rather
++    # than new code against a database it does not match.
++    #
++    # Safe to run on every deploy: the runner is ledger-based and idempotent, applies pending
++    # files in order, and refuses gaps or a checksum mismatch. An up-to-date database is a no-op.
++    preDeployCommand: npm run migrate -w @nzi/isolated-backend
+     startCommand: npm run start -w @nzi/console
+```
+
+**Two things to know before applying it.**
+
+- `preDeployCommand` **requires a paid instance type** — it is unavailable on Render's Free
+  instance. `nzi-console` is on `plan: starter`, so it qualifies. If the service is ever moved to
+  Free, this step silently stops being available and the gate goes with it.
+- The pre-deploy step needs the **same `DATABASE_URL`** the service runs with. It inherits the
+  service's environment, so no new secret is introduced — but confirm the runner's connection
+  variable matches what the service already supplies.
+
+**The worker (`nzi-console-reminders`) deliberately gets no gate.** Two services racing to apply
+the same migrations is a worse failure than the one being fixed; the web service is the one that
+owns the schema, and the worker follows it.
+
+**Expected behaviour, to verify on the first migration-carrying deploy after this lands:**
+
+| Case | Expected |
+|---|---|
+| No pending migrations | Pre-deploy is a no-op; deploy proceeds |
+| Pending migration applies cleanly | Applied before cutover; new code serves against current schema |
+| Migration fails | **Deploy aborts.** Previous version keeps serving, on the schema it was written for |
+
+Validate with a deliberate dry-run rather than in anger: a migration-carrying PR to staging with
+the gate in place, and a knowingly-bad migration on a throwaway branch to watch the release abort.
+
+### Production — a hard check, never an auto-apply (prepared; wired at go-live)
+
+Production takes the **opposite** posture, and deliberately. Staging is isolated and optimises for
+velocity; a production schema change stays a human act, done knowingly, with someone watching.
+
+The live service is **not configured by this work**. The procedure below is written down now and
+wired to the live service **at go-live**, as its own reviewed step.
+
+Production's pre-deploy runs the **status** command, not the apply:
+
+```
+npm run migrate:status -w @nzi/isolated-backend
+```
+
+`status` is read-only and exits non-zero when anything is pending, so the deploy **fails closed**
+if the schema is behind — it refuses to cut over rather than applying anything itself.
+
+**The go-live sequence for a migration-carrying release to production:**
+
+1. **Apply the migration first**, deliberately: open the **Render Shell on the live service** and run
+   `npm run migrate -w @nzi/isolated-backend`. Secrets stay in the service's environment — never
+   pasted into a shell, a ticket or a chat.
+2. **Confirm it landed**: `npm run migrate:status -w @nzi/isolated-backend` reports nothing pending.
+3. **Deploy the code.** The hard check confirms the schema is current and cutover proceeds.
+
+If step 1 is skipped, step 3 fails closed and the previous version keeps serving. That is the point:
+the only way to ship code against a stale production schema is to defeat the check on purpose.
+
+### Interim discipline — until the staging gate is applied
+
+Until the `preDeployCommand` above is in place, the safeguard is procedural and is the same one
+#142/#145 used: **for any migration-carrying PR, apply the migration to the target database before
+merging the code.** Merge order matters precisely because nothing yet enforces it.
+
+The `0084` apply that unblocks the 15 September outage is this discipline, after the fact:
+
+```
+npm run migrate:status -w @nzi/isolated-backend   # read-only: expect 0084 pending
+npm run migrate -w @nzi/isolated-backend          # applies it, in order, with the ledger
+```

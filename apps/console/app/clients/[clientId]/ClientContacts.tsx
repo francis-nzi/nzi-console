@@ -45,10 +45,15 @@ function ConsentLine({ contact, latest }: { contact: ClientContactReadModel; lat
 }
 
 /** The card. Editing happens in the workspace's drawer host, not here. */
-export function ClientContacts({ contacts, consent, access, onEdit }: {
+export function ClientContacts({ contacts, consent, consentUnavailable, access, onEdit }: {
   contacts: ClientContactReadModel[];
   /** Newest decision per contact; a contact with none is not in here. */
   consent: ContactConsentEvent[];
+  /**
+   * Set when the consent history could not be read at all. Distinct from an empty `consent`,
+   * which means "no decision has been recorded" — the opposite claim.
+   */
+  consentUnavailable: string | null;
   access: EditAccess;
   onEdit: (contact: ClientContactReadModel | null) => void;
 }) {
@@ -61,6 +66,7 @@ export function ClientContacts({ contacts, consent, access, onEdit }: {
       <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => onEdit(null)}>＋ Add</GatedButton>
     </div>
     <div className="nz-card-b">
+      {consentUnavailable !== null ? <div className="nz-banner warn" role="status" style={{ margin: "0 0 10px" }}>{consentUnavailable}</div> : null}
       {contacts.length === 0
         ? <p className="sub" style={{ margin: "8px 0" }}>No contacts yet. Add the people this client works through — and mark who signs reports, who can use the portal and who receives invoices.</p>
         : contacts.map((contact) => <div key={contact.id} className="nz-lrow">
@@ -75,7 +81,14 @@ export function ClientContacts({ contacts, consent, access, onEdit }: {
             {/* Only where there is an address to email. A contact with none cannot be
                 written to whatever the state says, and a consent line there would imply a
                 channel that does not exist. */}
-            {contact.email ? <ConsentLine contact={contact} latest={latestByContact.get(contact.id) ?? null} /> : null}
+            {/* An unreadable history is not "no decision recorded". The state is still shown —
+                it is on the contact row itself — but without a basis it cannot be vouched for,
+                so the line says that rather than implying nobody ever decided. */}
+            {contact.email
+              ? consentUnavailable !== null
+                ? <div className="nz-consent-line"><span className="nz-st need">Consent history unavailable</span></div>
+                : <ConsentLine contact={contact} latest={latestByContact.get(contact.id) ?? null} />
+              : null}
           </div>
           <button type="button" className="nz-editlink" onClick={() => onEdit(contact)} aria-label={`Edit contact ${contact.fullName}`}>Edit</button>
         </div>)}
