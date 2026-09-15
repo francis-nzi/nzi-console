@@ -1278,3 +1278,24 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-deadline.late{color:var(--danger)}
 .nz-deadline-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px}
 .nz-deadline-list li{line-height:1.45}
+
+/* The client-facing plan on the portal: read-only, grouped by lever. Tokens throughout, so
+   it follows the viewer's theme — unlike the report, which is deliberately paper-only. */
+.nz-portal-plan{margin-top:10px}
+.nz-portal-plan-item{padding:11px 0;border-top:1px solid var(--line2)}
+.nz-portal-plan-item:first-child{border-top:0}
+.nz-portal-plan-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.nz-portal-plan-head b{font-size:13px}
+/* A date that is neither passed nor near is just a date, and reads as one. */
+.nz-portal-plan-date{color:var(--t3);font-size:11px;white-space:nowrap}
+.nz-portal-plan-item .sub{margin:3px 0 0;line-height:1.45}
+.nz-portal-plan-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.nz-portal-plan-item .nz-prog{margin:8px 0 0}
+.nz-portal-plan-item .nz-prog .track{width:110px}
+.nz-portal-plan-srs{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--mint);color:var(--pine)}
+.nz-portal-plan-srs .l{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nz-portal-plan-srs ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px;font-size:11.5px;line-height:1.45}
+@media (max-width:640px){
+  .nz-portal-plan-head{flex-direction:column;gap:2px}
+  .nz-portal-plan-item .nz-prog .track{width:80px}
+}

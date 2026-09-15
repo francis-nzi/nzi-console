@@ -109,8 +109,9 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
         {/* A plan whose report shows only some of it should say so here, where it is edited,
             not only in the document. */}
         {excluded > 0 ? <p className="hint" style={{ marginTop: 10 }}>
-          {excluded} {excluded === 1 ? "strategy is" : "strategies are"} held back from the client&rsquo;s
-          report. Reports already issued are unaffected — each keeps the plan it was issued with.
+          {excluded} {excluded === 1 ? "strategy is" : "strategies are"} held back from the client — absent
+          from their portal plan and from reports issued from now on. Reports already issued are
+          unaffected: each keeps the plan it was issued with.
         </p> : null}
       </div>
     </section>
@@ -193,7 +194,7 @@ function StrategyRow({ strategy, codes, today, access, onDrawer }: {
       <div className="sub">
         {aligned.map((code) => <span className="nz-tag srs" key={code}>{code}</span>)}
         {!strategy.includeInReport
-          ? <span className="nz-tag" style={{ marginLeft: 6 }}>not in report</span> : null}
+          ? <span className="nz-tag" style={{ marginLeft: 6 }}>not shown to client</span> : null}
         <DeadlineFlag deadline={strategyDeadline(strategy, today)} />
       </div>
     </div>
