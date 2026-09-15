@@ -112,9 +112,9 @@ export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabl
   onDrawer: (request: DrawerRequest) => void;
   factorsEnabled: boolean;
 }) {
-  const { client, sites, reportingPeriods, contacts } = workspace;
+  const { client, sites, reportingPeriods, contacts, contactConsent } = workspace;
   return <>
-    <ClientContacts contacts={contacts ?? []} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
+    <ClientContacts contacts={contacts ?? []} consent={contactConsent ?? []} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
     <ClientSites sites={sites} reportingPeriods={reportingPeriods} today={today} access={access.site} onEdit={(site) => onDrawer({ kind: "site", site })} />
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Commercial</span><h2>Financial status</h2></>} count="Held">
       <FinancialStatusCard />

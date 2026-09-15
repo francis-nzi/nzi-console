@@ -7,7 +7,8 @@ import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues }
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
+import { latestConsentByContact } from "./clientContacts";
 import { dateOnly } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 export { dateOnly } from "./dates";
@@ -220,6 +221,14 @@ export type ClientWorkspaceReadModel = {
   reportingPeriods: ClientReportingPeriod[];
   /** Active contacts, primary first. */
   contacts: ClientContactReadModel[];
+  /**
+   * The newest consent decision per contact, where one was ever recorded.
+   *
+   * Carried beside the contacts rather than on them: a contact can be `granted` with no
+   * decision behind it — the shape a hand-edited row has — and the surface has to be able to
+   * tell that apart from a recorded grant rather than render a bare "granted".
+   */
+  contactConsent: ContactConsentEvent[];
   /** NZC-072 — the forward targets, the benchmark they are measured against, and the pathway and gap derived from both. */
   targets: ClientTargetsReadModel;
   /** One assured total per reporting year — the actual line on the pathway. */
@@ -257,11 +266,12 @@ const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id
 export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
   const [client] = await listClients(db, clientId);
   if (!client) return null;
-  const [sites, snapshots, periods, contacts, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues, libraryStrategies, clientStrategies, levers] = await Promise.all([
+  const [sites, snapshots, periods, contacts, contactConsent, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues, libraryStrategies, clientStrategies, levers] = await Promise.all([
     listClientSites(db, clientId),
     db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
     db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
     listClientContacts(db, clientId),
+    latestConsentByContact(db, clientId),
     listClientReports(db, clientId),
     listClientMessages(db, clientId),
     listClientFiles(db, clientId),
@@ -320,6 +330,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
       return { jobId: row.job_id, jobNumber: row.job_number, label: `FY${String(row.reporting_year ?? Number(from.slice(0, 4))).slice(-2)}`, from, to, days: reportingPeriodDays(from, to), eligible: isEligibleReportingYear(from, to) };
     }),
     contacts,
+    contactConsent: [...contactConsent.values()],
     targets,
     actuals,
     history,

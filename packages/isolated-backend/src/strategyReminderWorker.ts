@@ -245,6 +245,19 @@ async function deliverReminder(db: Queryable, input: {
   const currentDate = "targetDate" in deadline ? deadline.targetDate.slice(0, 10) : "";
   if (currentDate !== input.payload.targetDate) return await markStale(db, input, "the target date has moved");
 
+  // Consent again, against live state, immediately before the send.
+  //
+  // The scan checks it before claiming, but a claim can sit in the outbox across ticks and
+  // through a retry. Without this, a contact who withdrew after the claim would still be
+  // emailed — and "declined" has to mean never sent, not "not enqueued again". Checked here,
+  // a withdrawal takes effect on the very next drain.
+  const consent = await consentFor(db, input.organisationId, input.payload.recipientEmail);
+  if (consent !== "granted") {
+    return await markStale(db, input, consent === "declined"
+      ? "the contact has withdrawn consent"
+      : "the contact has no recorded consent");
+  }
+
   try {
     if (input.delivery.mode === "send") {
       await input.mailer.send({ to: input.payload.recipientEmail, subject: claim.subject, body: claim.body });
@@ -326,4 +339,27 @@ export async function runReminderTick(db: Queryable, input: {
     mailer: input.mailer, delivery, limit: input.limit, windowDays: input.windowDays,
   });
   return { scanned, claimed, ...drained };
+}
+
+/**
+ * The consent recorded for an address, read fresh at send time.
+ *
+ * By address rather than contact id, because that is what the claim carries and what the
+ * mail would actually go to. An address that no longer matches any contact returns
+ * `unknown`, which blocks: the safe reading of "we no longer know who this is".
+ *
+ * Only an active contact counts. A deactivated one has been taken off the client's record,
+ * and consent recorded before that is not standing permission to keep mailing them.
+ */
+async function consentFor(db: Queryable, organisationId: string, email: string): Promise<"granted" | "declined" | "unknown"> {
+  const result = await db.query<{ email_consent: string }>(
+    `SELECT email_consent FROM nzi_console.client_contacts
+     WHERE organisation_id = $1 AND lower(email) = lower($2) AND status = 'active'`,
+    [organisationId, email],
+  );
+  if (result.rows.length === 0) return "unknown";
+  // More than one contact can share an address. Any refusal wins: one person having declined
+  // is a decision, and sending anyway because a second record says otherwise is indefensible.
+  if (result.rows.some((row) => row.email_consent === "declined")) return "declined";
+  return result.rows.every((row) => row.email_consent === "granted") ? "granted" : "unknown";
 }

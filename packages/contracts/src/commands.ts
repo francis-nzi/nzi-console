@@ -1,4 +1,5 @@
 import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
+import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
@@ -26,6 +27,7 @@ export type CommandKey =
   | "client.contact.create"
   | "client.contact.update"
   | "client.contact.deactivate"
+  | "client.contact.consent.record"
   | "client.targets.set"
   | "training.booking.create"
   | "training.attendance.set"
@@ -282,7 +284,7 @@ export const clientContactRoleLabels: Record<ClientContactRole, string> = {
   report_signee: "Report signee", portal_candidate: "Portal candidate", invoice_recipient: "Quote & invoice recipient", training_attendee: "Training attendee",
 };
 export type ClientContactWriteFields = { fullName: string; jobTitle?: string | null; email?: string | null; phone?: string | null; isPrimary: boolean; roles: ClientContactRole[] };
-export type ClientContactReadModel = { id: string; clientId: string; fullName: string; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean; roles: ClientContactRole[]; status: "active" | "inactive"; version: number; updatedAt: string; updatedBy: string };
+export type ClientContactReadModel = { id: string; clientId: string; fullName: string; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean; roles: ClientContactRole[]; status: "active" | "inactive"; version: number; updatedAt: string; updatedBy: string ; /** `0083` default is `unknown`, which blocks. The basis behind it travels separately, in the consent events. */ emailConsent: ContactConsentState };
 
 /** A milestone is a year and the reduction committed to by then; both or neither. */
 export type TargetMilestoneFields = { year: number | null; pct: number | null };
@@ -324,6 +326,17 @@ export type CommandInputMap = {
   "client.contact.update": { contactId: string; expectedVersion: number } & ClientContactWriteFields;
   /** Deactivate, never delete. */
   "client.contact.deactivate": { contactId: string; expectedVersion: number };
+  /**
+   * Production gate (a) — recording that a contact may (or may not) be emailed.
+   *
+   * `unknown` is not a recordable decision: it is the fail-closed default, and the absence
+   * of a decision rather than one. A withdrawal is `declined`, which supersedes without
+   * erasing what came before.
+   */
+  "client.contact.consent.record": {
+    contactId: string; expectedVersion: number;
+    state: ContactConsentDecision; basis: ContactConsentBasis; note?: string | null;
+  };
   /**
    * NZC-072 — the forward commitment. The benchmark is not here: it is read from the
    * baseline in force and stamped onto the version. `restateAgainstBenchmark` is the
@@ -623,6 +636,30 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.contact.create": { key: "client.contact.create", label: "Add client contact", permission: "contact.manage", reasonRequired: false, transaction: "contact + version history + audit + outbox + idempotency", auditAction: "client_contact_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "clientId", input.clientId); return issues; } },
   "client.contact.update": { key: "client.contact.update", label: "Edit client contact", permission: "contact.manage", reasonRequired: false, transaction: "versioned contact + history + audit + outbox + idempotency", auditAction: "client_contact_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientContactIssues(input)]; required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "client.contact.deactivate": { key: "client.contact.deactivate", label: "Remove client contact", permission: "contact.manage", reasonRequired: false, transaction: "deactivation (never deletion) + history + audit + outbox + idempotency", auditAction: "client_contact_deactivated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "contactId", input.contactId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  // Gated by `contact.manage`, which is already held by exactly Admin and Consultant and by
+  // neither Finance nor Viewer — the holders this control needs. A second capability with
+  // the same holders would be a matrix version that changed nobody's access.
+  "client.contact.consent.record": {
+    key: "client.contact.consent.record", label: "Record email consent", permission: "contact.manage",
+    reasonRequired: false,
+    transaction: "consent state + append-only consent event + audit + outbox + idempotency",
+    auditAction: "client_contact_consent_recorded",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "contactId", input.contactId);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      if (!(contactConsentDecisions as readonly string[]).includes(input.state)) {
+        // `unknown` lands here: it is the fail-closed default, not a decision to record.
+        issues.push({ field: "state", code: "INVALID", message: "Consent is recorded as granted or declined." });
+      }
+      if (!isStaffRecordableBasis(input.basis)) {
+        // Including `portal-self-serve`, which is phase 2 and is the contact's own action:
+        // the console must not be able to claim a client acted on their own behalf.
+        issues.push({ field: "basis", code: "INVALID", message: "Record how this decision reached NZI: recorded by a consultant, or imported with the contact." });
+      }
+      return issues;
+    },
+  },
   "training.booking.create": { key: "training.booking.create", label: "Book a trainee onto a run", permission: "training.manage", reasonRequired: false, transaction: "booking + atomic entitlement reserve + audit + outbox + idempotency", auditAction: "training_booking_created", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "courseRunId", input.courseRunId);

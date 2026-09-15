@@ -2,12 +2,13 @@
 // and the contact commands. Every write bumps the version and appends a history row;
 // nothing is ever deleted.
 import { randomUUID } from "node:crypto";
-import { clientContactRoles, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext } from "@nzi/contracts";
+import { clientContactRoles, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext, type ContactConsentState } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 
 export type ClientContactRow = {
   contact_id: string; client_id: string; full_name: string; job_title: string | null; email: string | null; phone: string | null;
   is_primary: boolean; roles: string[]; status: "active" | "inactive"; version: number; updated_at: Date | string; updated_by: string;
+  email_consent: ContactConsentState;
 };
 
 const clean = (value: string | null | undefined) => value?.trim() || null;
@@ -19,10 +20,11 @@ export function mapClientContact(row: ClientContactRow): ClientContactReadModel 
     id: row.contact_id, clientId: row.client_id, fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone,
     isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status, version: row.version,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at), updatedBy: row.updated_by,
+    emailConsent: row.email_consent ?? "unknown",
   };
 }
 
-export const CLIENT_CONTACT_COLUMNS = "contact_id,client_id,full_name,job_title,email,phone,is_primary,roles,status,version,updated_at,updated_by";
+export const CLIENT_CONTACT_COLUMNS = "contact_id,client_id,full_name,job_title,email,phone,is_primary,roles,status,version,updated_at,updated_by,email_consent";
 
 export async function recordContactVersion(db: Queryable, context: CommandContext, row: ClientContactRow): Promise<void> {
   await db.query(

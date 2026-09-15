@@ -500,3 +500,42 @@ describe("what an issued report freezes (0077)", () => {
     assert.match(migration, /CREATE POLICY tenant_isolation ON nzi_console\.report_compositions/);
   });
 });
+
+describe("0084 — consent is recorded, never assumed", () => {
+  const consent = readFileSync(resolve(here, "../migrations/0084_contact_consent_events.sql"), "utf8");
+
+  it("keeps the history append-only, so a withdrawal supersedes without erasing", () => {
+    // An earlier grant is the evidence that an earlier send was permitted. Deleting it
+    // would destroy the only proof that what already went out was allowed.
+    assert.match(consent, /REVOKE UPDATE ON nzi_console\.client_contact_consent_events/);
+    assert.match(consent, /REVOKE DELETE ON nzi_console\.client_contact_consent_events/);
+    assert.match(consent, /GRANT SELECT, INSERT ON nzi_console\.client_contact_consent_events/);
+  });
+
+  it("records who decided, when, and on what basis", () => {
+    for (const column of ["state", "previous_state", "basis", "note", "recorded_by", "recorded_at"]) {
+      assert.ok(consent.includes(`${column} `), column);
+    }
+    // A state with no basis is the hand-edited shape this control replaces.
+    assert.match(consent, /basis text NOT NULL CHECK \(basis IN \('consultant-recorded','imported','portal-self-serve'\)\)/);
+  });
+
+  it("refuses `unknown` as a recorded decision", () => {
+    // It is the fail-closed default — the absence of a decision rather than one.
+    assert.match(consent, /state text NOT NULL CHECK \(state IN \('granted','declined'\)\)/);
+    assert.match(consent, /previous_state text NOT NULL CHECK \(previous_state IN \('unknown','granted','declined'\)\)/);
+  });
+
+  it("is tenant-isolated and version-unique per contact", () => {
+    assert.match(consent, /ALTER TABLE nzi_console\.client_contact_consent_events ENABLE ROW LEVEL SECURITY/);
+    assert.match(consent, /FORCE ROW LEVEL SECURITY/);
+    assert.match(consent, /UNIQUE \(organisation_id, contact_id, version\)/);
+    assert.match(consent, /FOREIGN KEY \(organisation_id, contact_id\)/);
+  });
+
+  it("changes no capability, so the matrix stays at version 3", () => {
+    // contact.manage is already held by exactly Admin and Consultant. A second capability
+    // with the same holders would be a matrix version that changed nobody's access.
+    assert.doesNotMatch(consent, /staff_role_capabilities|staff_capability_matrix_versions/);
+  });
+});
