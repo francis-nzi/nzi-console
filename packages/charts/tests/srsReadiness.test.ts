@@ -132,3 +132,36 @@ test("no SRS chart borrows a GHG scope colour — scope identity means scope", (
     assert.ok(!SCOPE_COLOURS.includes(colour), `${colour} is a scope colour and must not be an SRS token`);
   }
 });
+
+/**
+ * The report draws this radar from a **frozen** composition rather than from a live
+ * assessment, so the payload the report assembles has to reach the chart intact and print
+ * without a runtime fetch.
+ */
+test("the radar renders a frozen report composition as print-safe inline SVG", () => {
+  // Exactly the shape `reportSrsRadarChart` hands over: frozen series, target and ladder.
+  const frozen: SrsPillarRadarData = {
+    spec: { id: "report-srs-radar-2026-06-30", type: "srs_pillar_radar", title: "Readiness by pillar", family: "crp", specVersion: 1 },
+    unit: "level", state: "success",
+    // Readiness has no factor set and no snapshot: it comes from the client's own answers.
+    provenance: { jobId: "", dataHash: "", factorSets: [], generatedAt: "2026-06-30", reviewedSnapshotId: "", resolverVersion: 1, tokensVersion: TOKENS_VERSION, rendererVersion: RENDERER_VERSION },
+    pillars: ["Governance", "Strategy", "Risk mgmt", "Metrics"],
+    series: [
+      { key: "S2", label: "Climate", values: [3, 2, 2, 1] },
+      { key: "S1", label: "General", values: [2, 1, 1, 1] },
+    ],
+    target: [3, 3, 3, 4],
+    maxLevel: 4,
+  };
+  const svg = renderToStaticMarkup(createElement(SrsPillarRadar, { data: frozen, showChrome: false, width: 300 }));
+
+  assert.match(svg, /^<svg /, "inline SVG, so it prints and fetches nothing at render time");
+  assert.doesNotMatch(svg, /<image|href="http/, "no external asset the PDF could fail to load");
+  // The frozen levels reach the reader, including through the accessible description.
+  assert.match(svg, /Climate: Governance 3, Strategy 2, Risk mgmt 2, Metrics 1/);
+  assert.match(svg, /General: Governance 2/);
+  assert.match(svg, /Target: Governance 3, Strategy 3, Risk mgmt 3, Metrics 4/);
+  assert.match(svg, /maturity level 0 to 4/);
+  // Every axis is named, so identity never rests on colour alone.
+  for (const pillar of frozen.pillars) assert.ok(svg.includes(pillar), pillar);
+});

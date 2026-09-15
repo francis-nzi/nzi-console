@@ -167,6 +167,26 @@ export type ReportSrsSection = {
   overallPct: number;
   overallLabel: string;
   pillars: Array<{ label: string; maturity: number; maturityLabel: string }>;
+  /**
+   * What the pillar radar draws, frozen alongside the table it sits with.
+   *
+   * The table's `maturity` alone cannot draw a radar: the axes need the ladder's height and
+   * the target profile to read a shape against, and neither is derivable from a level. They
+   * are frozen here rather than resolved at render, for the same reason as everything else
+   * in a composition — an issued report must not move when the client reassesses.
+   *
+   * **Optional on purpose.** Compositions frozen before the radar shipped do not carry it,
+   * and those reports render the table alone. A report is what it said when it was issued;
+   * back-filling a chart into one would be inventing a figure it never contained.
+   *
+   * `series` values and `target` are indexed against `pillars` above, in the same order —
+   * both come from one `pillarReadiness` call.
+   */
+  radar?: {
+    maxLevel: number;
+    series: Array<{ key: "S1" | "S2"; label: string; values: number[] }>;
+    target: number[];
+  };
 };
 
 export type ReportComposition = {
@@ -302,4 +322,45 @@ export function reportMethodologyRows(composition: ReportComposition): Array<{ l
     { label: "Evidence hash", value: composition.snapshotDataHash },
   ];
   return rows;
+}
+
+/* ── The readiness radar ─────────────────────────────────────────────────────────────── */
+
+/** What `SrsPillarRadar` needs, assembled from a frozen composition. */
+export type ReportSrsRadarChart = {
+  pillars: string[];
+  series: Array<{ key: "S1" | "S2"; label: string; values: number[] }>;
+  target: number[];
+  maxLevel: number;
+};
+
+/**
+ * The report's readiness radar, from what the report froze — or `null` when it froze none.
+ *
+ * A composition issued before the radar shipped carries no `radar` block, and gets no chart:
+ * an issued report is what it said at the time, and back-filling a graphic into one would be
+ * showing the client a figure their document never contained. The caller renders the pillar
+ * table either way.
+ *
+ * Assembling the payload here rather than in the view keeps it testable without a browser,
+ * and keeps the one place that decides what the chart is fed next to the type that froze it.
+ */
+export function reportSrsRadarChart(srs: ReportSrsSection): ReportSrsRadarChart | null {
+  const radar = srs.radar;
+  if (!radar || srs.pillars.length === 0 || radar.series.length === 0) return null;
+  return {
+    pillars: srs.pillars.map((pillar) => shortPillarLabel(pillar.label)),
+    series: radar.series,
+    target: radar.target,
+    maxLevel: radar.maxLevel,
+  };
+}
+
+/**
+ * Axis labels have to fit a 300px radar. The full name stays in the table beside it, so
+ * this is presentation and is never what gets frozen.
+ */
+export function shortPillarLabel(label: string): string {
+  if (label.length <= 11) return label;
+  return label.replace(/\bmanagement\b/i, "mgmt").replace(/\s*&\s*targets$/i, "").slice(0, 12).trim();
 }

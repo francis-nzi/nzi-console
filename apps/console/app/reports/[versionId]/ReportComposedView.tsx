@@ -1,8 +1,10 @@
 import { NziIcon, type NziIconKey } from "@nzi/ui";
+import { CRP_RESOLVER_VERSION, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
 import {
   strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
-  reportHeadline, reportMethodologyRows, reportResidualTco2e,
+  reportHeadline, reportMethodologyRows, reportResidualTco2e, reportSrsRadarChart,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
+  type ReportSrsSection,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 
@@ -177,12 +179,15 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             UK SRS readiness stands at <b>{srs.overallLabel} ({srs.overallPct}%)</b>, assessed
             on {formatDate(srs.assessedOn)} against framework version {srs.frameworkVersion}.
           </p>
-          <table className="nzr-tbl">
-            <thead><tr><th>Pillar</th><th>Maturity</th></tr></thead>
-            <tbody>{srs.pillars.map((pillar) => <tr key={pillar.label}>
-              <td>{pillar.label}</td><td>{pillar.maturityLabel}</td>
-            </tr>)}</tbody>
-          </table>
+          <div className="nzr-srs">
+            {srs.radar ? <SrsRadar srs={srs} /> : null}
+            <table className="nzr-tbl">
+              <thead><tr><th>Pillar</th><th>Maturity</th></tr></thead>
+              <tbody>{srs.pillars.map((pillar) => <tr key={pillar.label}>
+                <td>{pillar.label}</td><td>{pillar.maturityLabel}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
           <p className="nzr-note">
             Readiness is an assessment of this organisation&rsquo;s own reporting maturity. It is not a
             statement that the disclosure has been prepared, filed or assured.
@@ -226,6 +231,35 @@ function Page({ children, footer, number }: { children: React.ReactNode; footer:
     {children}
     <div className="nzr-pf"><span>{footer}</span><span>{number}</span></div>
   </section>;
+}
+
+/**
+ * Readiness by pillar, drawn from the frozen composition.
+ *
+ * The same `SrsPillarRadar` the workspace uses — one spec, one renderer, so screen, portal
+ * and PDF cannot drift apart. It reads `srs.radar` and nothing live: the shape is what this
+ * report said when it was issued, not what the client has reassessed to since.
+ *
+ * Axis labels are shortened to fit 300px. That is presentation, so it happens here and is
+ * never frozen — the full pillar names stay in the table beside it.
+ */
+function SrsRadar({ srs }: { srs: ReportSrsSection }) {
+  const chart = reportSrsRadarChart(srs);
+  if (!chart) return null;
+  return <div className="nzr-chart">
+    <SrsPillarRadar showChrome={false} width={300} data={{
+      spec: { id: `report-srs-radar-${srs.assessedOn}`, type: "srs_pillar_radar", title: "Readiness by pillar", family: "crp", specVersion: 1 },
+      unit: "level", state: "success",
+      // Readiness is derived from the client's own answers, not from the footprint: it has
+      // no factor set and no snapshot behind it, and borrowing the emissions provenance
+      // would attribute it to a measurement it never came from. Same as the workspace radar.
+      provenance: {
+        jobId: "", dataHash: "", factorSets: [], generatedAt: srs.assessedOn, reviewedSnapshotId: "",
+        resolverVersion: CRP_RESOLVER_VERSION, tokensVersion: TOKENS_VERSION, rendererVersion: RENDERER_VERSION,
+      },
+      ...chart,
+    }} />
+  </div>;
 }
 
 function SectionHead({ n, section }: { n: string; section: keyof typeof reportCompositionSectionMeta }) {

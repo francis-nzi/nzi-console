@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   REPORT_ASSURANCE_STATEMENT, composeReportPlan, isReportGap, reportAssurance,
-  reportHeadline, reportMethodologyRows,
-  type ReportComposition, type ReportEmissionsSection,
+  reportHeadline, reportMethodologyRows, reportSrsRadarChart, shortPillarLabel,
+  type ReportComposition, type ReportEmissionsSection, type ReportSrsSection,
 } from "../src/reportComposition";
 import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy } from "../src/reductionStrategies";
 
@@ -154,5 +154,64 @@ describe("the report composition", () => {
       assert.deepEqual(section.groups.map((group) => group.label), ["Other"]);
       assert.equal(section.summary.total, 1, "it is still in the report the client was sent");
     });
+  });
+});
+
+describe("the readiness radar a report draws", () => {
+  const srs = (over: Partial<ReportSrsSection> = {}): ReportSrsSection => ({
+    frameworkVersion: 2, assessedOn: "2026-06-30", overallPct: 58, overallLabel: "Developing",
+    pillars: [
+      { label: "Governance", maturity: 3, maturityLabel: "Established" },
+      { label: "Strategy", maturity: 2, maturityLabel: "Developing" },
+      { label: "Risk management", maturity: 2, maturityLabel: "Developing" },
+      { label: "Metrics & targets", maturity: 1, maturityLabel: "Emerging" },
+    ],
+    radar: {
+      maxLevel: 4,
+      series: [
+        { key: "S2", label: "Climate", values: [3, 2, 2, 1] },
+        { key: "S1", label: "General", values: [2, 1, 1, 1] },
+      ],
+      target: [3, 3, 3, 4],
+    },
+    ...over,
+  });
+
+  it("draws it from what the report froze, not from anything live", () => {
+    const chart = reportSrsRadarChart(srs());
+    assert.ok(chart);
+    assert.deepEqual(chart.series.map((entry) => entry.key), ["S2", "S1"]);
+    assert.deepEqual(chart.series[0]!.values, [3, 2, 2, 1]);
+    assert.deepEqual(chart.target, [3, 3, 3, 4]);
+    assert.equal(chart.maxLevel, 4);
+    // One axis per frozen pillar, in the frozen order — the series index against it.
+    assert.equal(chart.pillars.length, srs().pillars.length);
+    assert.equal(chart.series[0]!.values.length, chart.pillars.length);
+    assert.equal(chart.target.length, chart.pillars.length);
+  });
+
+  it("gives a composition frozen before the radar shipped no chart at all", () => {
+    // An issued report is what it said at the time. Back-filling a graphic into one would
+    // show the client a figure their document never contained.
+    const { radar: _radar, ...withoutRadar } = srs();
+    assert.equal(reportSrsRadarChart(withoutRadar), null);
+  });
+
+  it("draws nothing rather than an empty dial when there is nothing to plot", () => {
+    assert.equal(reportSrsRadarChart(srs({ pillars: [] })), null);
+    assert.equal(reportSrsRadarChart(srs({ radar: { maxLevel: 4, series: [], target: [] } })), null);
+  });
+
+  it("shortens only the axis labels that will not fit", () => {
+    const chart = reportSrsRadarChart(srs());
+    assert.ok(chart);
+    assert.deepEqual(chart.pillars, ["Governance", "Strategy", "Risk mgmt", "Metrics"]);
+    // The full names are untouched in the section the table renders from.
+    assert.equal(srs().pillars[2]!.label, "Risk management");
+  });
+
+  it("leaves a label that already fits exactly as it is", () => {
+    assert.equal(shortPillarLabel("Strategy"), "Strategy");
+    assert.equal(shortPillarLabel("Governance"), "Governance");
   });
 });
