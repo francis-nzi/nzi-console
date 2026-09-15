@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-  strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan, isReportGap, maturityLabel,
+  strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
+  composeReportSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity,
   type ReportComposition, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
@@ -166,7 +167,16 @@ async function composeIntensity(db: Queryable, input: {
  * the *result* into the composition is what keeps an issued report from moving when the
  * client reassesses next quarter.
  */
-async function composeSrs(db: Queryable, clientId: string): Promise<ReportSrsSection | ReportSectionGap> {
+async function composeSrs(
+  db: Queryable,
+  clientId: string,
+  /**
+   * The client's strategies, awaited from the same read the plan section uses rather than
+   * queried again — the roadmap must answer its gaps with the plan *this* report froze, and
+   * a second query could return a plan edited between the two.
+   */
+  planned: Promise<ClientStrategy[]>,
+): Promise<ReportSrsSection | ReportSectionGap> {
   const [framework, assessments] = await Promise.all([getSrsFramework(db), listSrsAssessments(db, clientId)]);
   const assessment = assessments.find((entry) => entry.status === "complete") ?? null;
   if (!framework || !assessment) {
@@ -202,6 +212,14 @@ async function composeSrs(db: Queryable, clientId: string): Promise<ReportSrsSec
       })),
       target: pillars.map((pillar) => pillar.targetLevel),
     } : undefined,
+    // Answered by the same population the plan section prints: live at issue, and marked for
+    // the report. A strategy held back from the client does not get to close a gap in front
+    // of them, and one already removed never appears at all.
+    roadmap: composeReportSrsRoadmap(
+      framework,
+      assessment.items,
+      (await planned).filter((strategy) => strategy.includeInReport),
+    ),
   };
 }
 
@@ -224,11 +242,16 @@ export async function composeReport(db: Queryable, input: {
   const emissions = composeEmissions(input.snapshot);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
 
+  // Read once and shared: the plan section prints these strategies and the readiness
+  // roadmap answers its gaps with them. Two reads could straddle an edit and leave one
+  // report disagreeing with itself about its own plan.
+  const planned = listClientStrategies(db, input.clientId);
+
   const [intensity, targets, srs, strategies, levers, requirementCodes] = await Promise.all([
     composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e }),
     composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
-    composeSrs(db, input.clientId),
-    listClientStrategies(db, input.clientId),
+    composeSrs(db, input.clientId, planned),
+    planned,
     listLevers(db),
     // Requirement ids mean nothing to a reader, so the report carries codes like "S2 M2".
     db.query<{ requirement_id: string; code: string }>(

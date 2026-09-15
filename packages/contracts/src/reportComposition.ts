@@ -1,4 +1,5 @@
-import type { ClientStrategy, Lever, StrategyStatus } from "./reductionStrategies";
+import { strategiesBySrsRequirement, strategyStatusLabels, type ClientStrategy, type Lever, type StrategyStatus } from "./reductionStrategies";
+import { gaps as resolveGaps, maturityLabel, type SrsAssessmentItem, type SrsFramework } from "./srsReadiness";
 
 /**
  * The report as a **composition**, frozen when it is issued.
@@ -187,6 +188,44 @@ export type ReportSrsSection = {
     series: Array<{ key: "S1" | "S2"; label: string; values: number[] }>;
     target: number[];
   };
+  /**
+   * What the client should work on next, and what they are already doing about it.
+   *
+   * Frozen like the rest of the section. The gaps come from the readiness as assessed at
+   * issue, and the strategies against each gap come from the **plan this same report froze**
+   * — not from the live plan. A report issued last month therefore shows last month's gaps
+   * answered by last month's strategies, however much the plan has moved since. Re-issuing
+   * is what updates it.
+   *
+   * **Optional on purpose**, exactly as `radar` is. A composition frozen before this shipped
+   * carries no roadmap and renders without one. An empty `pillars` is a different fact and
+   * is kept distinct: it means the client was assessed and nothing sits below its target.
+   */
+  roadmap?: ReportSrsRoadmap;
+};
+
+/** A strategy answering a gap, as it stood when the report was issued. */
+export type ReportSrsRoadmapStrategy = { title: string; status: StrategyStatus; statusLabel: string };
+
+export type ReportSrsRoadmapGap = {
+  code: string;
+  /** The requirement in words — a code alone tells a client nothing. */
+  title: string;
+  /** Where it stands now, and what the framework expects of it. */
+  maturityLabel: string;
+  targetLabel: string;
+  /** How many rungs short. What `gaps()` orders by, carried so the page can show it. */
+  shortfall: number;
+  /** Empty when nothing on the frozen plan advanced it — stated, never filled in. */
+  strategies: ReportSrsRoadmapStrategy[];
+};
+
+export type ReportSrsRoadmapPillar = { key: string; label: string; gaps: ReportSrsRoadmapGap[] };
+
+export type ReportSrsRoadmap = {
+  pillars: ReportSrsRoadmapPillar[];
+  /** Gaps with nothing aligned to them. Said plainly: it is the useful signal, not a flaw. */
+  unaddressedCount: number;
 };
 
 export type ReportComposition = {
@@ -363,4 +402,67 @@ export function reportSrsRadarChart(srs: ReportSrsSection): ReportSrsRadarChart 
 export function shortPillarLabel(label: string): string {
   if (label.length <= 11) return label;
   return label.replace(/\bmanagement\b/i, "mgmt").replace(/\s*&\s*targets$/i, "").slice(0, 12).trim();
+}
+
+/* ── The readiness roadmap ───────────────────────────────────────────────────────────── */
+
+/**
+ * The gaps a report freezes, and what the client was doing about each one.
+ *
+ * Two existing pieces, joined — deliberately no new rules:
+ *
+ * - **Ordering is `gaps()`.** It already sorts worst-shortfall first, then by the framework's
+ *   own order so the list is stable between assessments. Re-sorting here would be a second
+ *   opinion about what matters most, and the two would drift.
+ * - **The alignment is `strategiesBySrsRequirement()`**, the same inversion the readiness
+ *   screen reads. It excludes withdrawn strategies, so a gap cannot look answered by work
+ *   the client stopped doing.
+ *
+ * `plan` must be the strategies **this report froze** — active and `include_in_report`, the
+ * same population the plan section shows. Passing the live plan would make a report's
+ * roadmap drift away from its own plan section, which is the failure freezing exists to stop.
+ *
+ * Pillars appear in the order their worst gap appears, so the pillar needing most attention
+ * leads. That is `gaps()`'s ordering read through a grouping, not a second ranking.
+ */
+export function composeReportSrsRoadmap(
+  framework: SrsFramework,
+  items: readonly SrsAssessmentItem[],
+  plan: readonly ClientStrategy[],
+): ReportSrsRoadmap {
+  const byRequirement = strategiesBySrsRequirement(plan);
+  const pillarLabels = new Map(framework.pillars.map((pillar) => [pillar.key, pillar.label]));
+  const pillars: ReportSrsRoadmapPillar[] = [];
+  const index = new Map<string, ReportSrsRoadmapPillar>();
+  let unaddressedCount = 0;
+
+  for (const gap of resolveGaps(framework, items)) {
+    const strategies = (byRequirement.get(gap.requirement.id) ?? []).map((strategy) => ({
+      title: strategy.title,
+      status: strategy.status,
+      statusLabel: strategyStatusLabels[strategy.status],
+    }));
+    if (strategies.length === 0) unaddressedCount += 1;
+
+    const key = gap.requirement.pillarKey;
+    let pillar = index.get(key);
+    if (!pillar) {
+      // First time this pillar appears is its rank: the gaps arrive worst-first.
+      pillar = { key, label: pillarLabels.get(key) ?? key, gaps: [] };
+      index.set(key, pillar);
+      pillars.push(pillar);
+    }
+    pillar.gaps.push({
+      code: gap.requirement.code,
+      title: gap.requirement.title,
+      // `maturity` is null when the requirement was never assessed, which is not the same as
+      // level 0 — `maturityLabel` words the floor, and the shortfall beside it says how far.
+      maturityLabel: maturityLabel(framework, gap.maturity ?? 0),
+      targetLabel: maturityLabel(framework, gap.targetMaturity),
+      shortfall: gap.shortfall,
+      strategies,
+    });
+  }
+
+  return { pillars, unaddressedCount };
 }
