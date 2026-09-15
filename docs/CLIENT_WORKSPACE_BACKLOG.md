@@ -119,7 +119,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Action tracker (levers with progress) | portal `actions` A2-lite | Built — #119 (qualitative) | — |
 | **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | **Built — #153** (Admin catalogue; brief `_handoff_ACTION_LEVER_LIBRARY_brief.md`) | Go-live |
 | Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | **Built — #153** (client plan + lever summary) | Should |
-| Spheres-of-Influence framework mapping | framework | Built — `d37e409` (renamed `sphere_of_influence` → `control_level`, migration 0076) | Should |
+| Spheres-of-Influence framework mapping — **control level**, an attribute of each strategy (lever stays the grouping) | framework | Built — `d37e409` (renamed `sphere_of_influence` → `control_level`, migration 0076); carried into the **report** plan as a per-strategy chip, frozen at issue — **Built, PR number pending** (optional, so pre-change compositions render without it) | Should |
 | Action status / owner / target dates | `report_actions` | Built — #158, Reduction Strategies (NZC-075) | Should |
 | **Strategy → SRS alignment + `include_in_report`, and the plan the report prints** | `strategy_srs_requirements` (0081) | **Built — #162** (alignment confirmed on library add, #163) | Should |
 | Drawer anatomy — strategy drawers match the scope-row side panel | DESIGN_CONVENTIONS §3.4 | **Built — #169** (no migration) | — |

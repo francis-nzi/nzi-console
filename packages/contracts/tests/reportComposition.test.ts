@@ -4,7 +4,7 @@ import {
   REPORT_ASSURANCE_STATEMENT, composeReportPlan, isReportGap, reportAssurance,
   reportHeadline, reportMethodologyRows, reportSrsRadarChart, shortPillarLabel,
   composeSrsRoadmap,
-  type ReportComposition, type ReportEmissionsSection, type ReportSrsSection,
+  type ReportComposition, type ReportEmissionsSection, type ReportPlanStrategy, type ReportSrsSection,
 } from "../src/reportComposition";
 import type { SrsAssessmentItem, SrsFramework, SrsMaturity } from "../src/srsReadiness";
 import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy } from "../src/reductionStrategies";
@@ -319,5 +319,37 @@ describe("the readiness roadmap a report freezes", () => {
     assert.equal(srs.roadmap, undefined, "and nothing back-fills it");
     // The section still renders everything else it froze.
     assert.equal(srs.pillars.length, 1);
+  });
+});
+
+describe("control level on a report's plan strategy", () => {
+  it("carries it from the strategy, frozen with the rest of the plan", () => {
+    const section = composeReportPlan([action("a", { controlLevel: "supply_chain" })], LEVERS, CODES);
+    assert.ok(!isReportGap(section));
+    if (isReportGap(section)) return;
+    assert.equal(section.groups[0]!.strategies[0]!.controlLevel, "supply_chain");
+  });
+
+  it("stays an attribute — the plan is still grouped by lever", () => {
+    // Two strategies at different control levels, one lever: one group, not two.
+    const section = composeReportPlan([
+      action("a", { controlLevel: "direct_control" }),
+      action("b", { controlLevel: "influence" }),
+    ], LEVERS, CODES);
+    assert.ok(!isReportGap(section));
+    if (isReportGap(section)) return;
+    assert.deepEqual(section.groups.map((group) => group.label), ["Energy"]);
+    assert.deepEqual(section.groups[0]!.strategies.map((entry) => entry.controlLevel),
+      ["direct_control", "influence"]);
+  });
+
+  it("is absent on a strategy frozen before it was carried, so nothing is back-filled", () => {
+    // What an older composition looks like: the field simply is not there, and the report
+    // renders without the chip rather than guessing at a classification.
+    const older: ReportPlanStrategy = {
+      title: "Rooftop solar", scope: "2", category: "Energy", status: "planned",
+      progressPct: 0, owner: "", targetDate: null, srsRequirementCodes: ["S2 M2"],
+    };
+    assert.equal(older.controlLevel, undefined);
   });
 });

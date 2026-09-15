@@ -1,4 +1,4 @@
-import { strategiesBySrsRequirement, strategyStatusLabels, type ClientStrategy, type Lever, type StrategyStatus } from "./reductionStrategies";
+import { strategiesBySrsRequirement, strategyStatusLabels, type ClientStrategy, type Lever, type StrategyControlLevel, type StrategyStatus } from "./reductionStrategies";
 import { gaps as resolveGaps, maturityLabel, type SrsAssessmentItem, type SrsFramework } from "./srsReadiness";
 
 /**
@@ -145,6 +145,17 @@ export type ReportPlanStrategy = {
   targetDate: string | null;
   /** What this strategy advances, by requirement code — "S2 M2" rather than an id. */
   srsRequirementCodes: string[];
+  /**
+   * How much of this the client actually controls — an **attribute of the strategy**, not a
+   * grouping. The plan is grouped by lever and stays that way; this says, per strategy,
+   * whether it is theirs to do, something they buy, or something they can only influence.
+   *
+   * **Optional on purpose**, the same pattern the radar and roadmap use: a composition frozen
+   * before this shipped carries no control level and renders without the chip. A report is
+   * what it said when it was issued, and back-filling an attribute into one would be adding
+   * a claim the document never made.
+   */
+  controlLevel?: StrategyControlLevel;
 };
 
 export type ReportPlanSection = {
@@ -286,6 +297,9 @@ export function composeReportPlan(
     title: strategy.title, scope: strategy.scope, category: strategy.category,
     status: strategy.status, progressPct: strategy.progressPct,
     owner: strategy.owner, targetDate: strategy.targetDate,
+    // Frozen with everything else the plan says: a strategy re-classified next quarter does
+    // not change what the client was told about the one they hold.
+    controlLevel: strategy.controlLevel,
     srsRequirementCodes: strategy.srsRequirementIds
       .map((id) => requirementCodes.get(id))
       .filter((code): code is string => code !== undefined)

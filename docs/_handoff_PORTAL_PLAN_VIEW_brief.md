@@ -11,8 +11,9 @@ unfulfilled. This brief closes the gap.
 - `PortalStrategiesReadModel` returns only totals/overdue/approaching/highlights (counts + worst-first
   exceptions from #164) — no plan listing, no portal route for one.
 - The workspace plan and the **report** plan are both built (#155/#162): grouped by lever,
-  `include_in_report` filtered (control level is captured per strategy but is not carried into the
-  report today). The portal must be consistent with them — but **live**, not frozen.
+  `include_in_report` filtered, with control level shown per strategy in the report plan as a chip,
+  frozen at issue (an attribute, not a grouping). The portal must be consistent with them — but
+  **live**, not frozen.
 - No backlog row exists for this (it's untracked) — Track 0 adds a §M row; this brief is that work.
 
 **Decisions already settled that constrain this (do not re-litigate):**
