@@ -598,3 +598,73 @@ describe("the portal plan view", () => {
     assert.match(home, /import \{PortalReductionPlan\}/);
   });
 });
+
+/**
+ * Entering an expected reduction (NZC-078, the entry half). The form is what lets the
+ * projection populate; the rules it must not break are the backend's own.
+ */
+describe("the reduction-estimate form", () => {
+  const form = read("apps/console/app/clients/[clientId]/StrategyEstimateFields.tsx");
+  const drawer = read("apps/console/app/clients/[clientId]/StrategyForms.tsx");
+  const host = read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
+
+  it("posts to the existing command rather than reimplementing it", () => {
+    assert.match(form, /strategies\/estimate/);
+    assert.match(form, /clientStrategyId: strategy\.id, expectedVersion: strategy\.version/);
+    // The stored figure is the command's, resolved server-side against the benchmark in
+    // force — the browser's preview is feedback and is never what gets saved.
+    assert.doesNotMatch(form, /estimate_tco2e_per_year|UPDATE |INSERT /);
+  });
+
+  it("refuses an unresolvable percentage instead of showing a zero", () => {
+    // The backend refuses rather than storing zero; the form must say the same thing rather
+    // than rendering "0 tCO₂e/yr", which would read as an agreed figure of nothing.
+    assert.match(form, /const unresolvable = hasAmount && unit === "percent" && resolved === null/);
+    assert.match(form, /There is no baseline recorded for scope/);
+    assert.match(form, /cannot be resolved into tonnes/);
+    assert.match(form, /resolveEstimateTco2e/, "it uses the shared resolver, not its own arithmetic");
+  });
+
+  it("seeds from the catalogue in one click, and records that it did", () => {
+    assert.match(form, /Use catalogue estimate \(v\{libraryDefault\.version\}\)/);
+    assert.match(form, /libraryDefault\.modelledImpact\.tco2ePerYear/);
+    assert.match(form, /setAssumptions\(libraryDefault\.modelledImpact\.basis\)/, "the basis comes with the figure");
+    assert.match(form, /source: seeded !== null \? "library-default" : "consultant"/);
+    assert.match(form, /sourceVersion: seeded\?\.version \?\? null/);
+  });
+
+  it("stops claiming the catalogue once the consultant changes the figure", () => {
+    // Provenance follows the act. An edited seed is the consultant's number, and saying
+    // otherwise would put the catalogue behind a figure it never gave.
+    assert.match(form, /const touched = /);
+    assert.match(form, /setSeeded\(null\)/);
+  });
+
+  it("requires the basis, as the database does", () => {
+    assert.match(form, /assumptions\.trim\(\) === "" \? "Say what this estimate rests on\."/);
+    assert.match(form, /no stated basis/);
+  });
+
+  it("says when an estimate cannot reach the trajectory yet", () => {
+    // An undated strategy contributes nothing — flagged here, at the moment the number is
+    // entered, rather than left to be discovered as an absence on the chart.
+    assert.match(form, /no target date, so it will not appear on the projected trajectory/);
+  });
+
+  it("is its own section and its own action inside the drawer", () => {
+    // Saving the strategy must not be a way to change a carbon figure in passing.
+    assert.match(form, /<Collapsible title="Expected reduction"/);
+    assert.match(drawer, /<StrategyEstimateFields strategy=\{action\}/);
+    assert.match(form, /Save estimate/);
+  });
+
+  it("is given the baseline and the catalogue entry by the workspace", () => {
+    assert.match(host, /benchmark=\{workspace\.targets\.benchmarkInForce\}/);
+    assert.match(host, /libraryDefault=\{workspace\.strategies\.library\.find/);
+  });
+
+  it("labels the figure an estimate wherever it is entered", () => {
+    assert.match(form, /forward <b>estimate<\/b>, not a measurement/);
+    assert.match(form, /never shown\s*\n?\s*as the assured footprint/);
+  });
+});

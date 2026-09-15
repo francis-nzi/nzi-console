@@ -2,12 +2,13 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { Collapsible, GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
+import { StrategyEstimateFields } from "./StrategyEstimateFields";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   requirementsByPillar,
   strategyProgressForStatus, strategyScopeLabel, strategyScopes, strategyControlLevelLabels, strategyControlLevels,
   strategyStatusForProgress, strategyStatuses, strategyStatusLabels,
-  type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy,
+  type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
 } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -309,8 +310,13 @@ export function StrategyBespokeForm({ clientId, framework, access, onClose, onSa
   </>;
 }
 
-export function StrategyEditForm({ action, framework, access, onClose, onSaved }: {
-  action: ClientStrategy; framework: SrsFramework | null; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+export function StrategyEditForm({ action, framework, benchmark, libraryDefault, access, onClose, onSaved }: {
+  action: ClientStrategy; framework: SrsFramework | null;
+  /** The baseline a percentage estimate resolves against — the target pathway's own. */
+  benchmark: TargetBenchmark | null;
+  /** The catalogue entry this strategy came from, so its modelled figure can seed the form. */
+  libraryDefault: LibraryStrategy | null;
+  access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [status, setStatus] = useState<StrategyStatus>(action.status);
   const [progressPct, setProgressPct] = useState(action.progressPct);
@@ -398,6 +404,12 @@ export function StrategyEditForm({ action, framework, access, onClose, onSaved }
         <label className="nz-fl"><span>Why is it being removed?</span>
           <input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. superseded by the site-wide retrofit" /></label>
       </div> : null}
+
+      {/* The quantified layer, in its own section with its own action: an estimate is a
+          separate governed fact, and Save above must not be a way to change a carbon figure
+          while editing a target date. */}
+      <StrategyEstimateFields strategy={action} benchmark={benchmark} libraryDefault={libraryDefault}
+        access={access} onSaved={onSaved} />
     </div>
 
     <div className="nz-df">
