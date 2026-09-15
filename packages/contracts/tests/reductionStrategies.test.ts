@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   strategyLibrary, strategyPlanGroups, strategyPlanSummary, strategyProgressForStatus,
   strategyStatusForProgress, strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary,
+  strategiesBySrsRequirement,
   type LibraryStrategy, type ClientStrategy,
 } from "../src/reductionStrategies";
 
@@ -189,5 +190,49 @@ describe("what a target date means today", () => {
     assert.deepEqual(signals.map((entry) => entry.strategy.title), ["late badly", "late a little", "s"]);
     // The far-off and undated ones are not signals — a plan going to plan is not news.
     assert.deepEqual(strategyDeadlineSummary(signals), { overdue: 2, approaching: 1, total: 3 });
+  });
+});
+
+describe("the reverse of the SRS alignment", () => {
+  it("names the strategies advancing a requirement", () => {
+    // The question readiness asks: given this requirement, what is the client doing?
+    const byRequirement = strategiesBySrsRequirement([
+      action("solar", { srsRequirementIds: ["req-metrics"], title: "Rooftop solar" }),
+      action("fleet", { srsRequirementIds: ["req-metrics", "req-gov"], title: "Fleet to EV" }),
+      action("board", { srsRequirementIds: ["req-gov"], title: "Board oversight" }),
+    ]);
+    assert.deepEqual(byRequirement.get("req-metrics")?.map((entry) => entry.title), ["Fleet to EV", "Rooftop solar"]);
+    // A strategy advancing two requirements is named under both — it is one piece of work
+    // doing two jobs, not two records.
+    assert.deepEqual(byRequirement.get("req-gov")?.map((entry) => entry.title), ["Board oversight", "Fleet to EV"]);
+  });
+
+  it("returns nothing for a requirement no strategy addresses, so the view can say so", () => {
+    const byRequirement = strategiesBySrsRequirement([action("solar", { srsRequirementIds: ["req-metrics"] })]);
+    assert.equal(byRequirement.get("req-untouched"), undefined);
+    assert.equal(byRequirement.has("req-untouched"), false);
+  });
+
+  it("leaves out withdrawn strategies rather than overstating readiness", () => {
+    // A strategy taken off the plan is not answering anything. Counting it would make a
+    // requirement look addressed by work the client is no longer doing.
+    const byRequirement = strategiesBySrsRequirement([
+      action("dropped", { srsRequirementIds: ["req-gov"], active: false, title: "Abandoned" }),
+      action("live", { srsRequirementIds: ["req-gov"], title: "Board oversight" }),
+    ]);
+    assert.deepEqual(byRequirement.get("req-gov")?.map((entry) => entry.title), ["Board oversight"]);
+  });
+
+  it("puts the furthest along first, and orders ties by title", () => {
+    const byRequirement = strategiesBySrsRequirement([
+      action("b", { srsRequirementIds: ["r"], title: "Beta", progressPct: 10 }),
+      action("c", { srsRequirementIds: ["r"], title: "Alpha", progressPct: 10 }),
+      action("a", { srsRequirementIds: ["r"], title: "Gamma", progressPct: 80 }),
+    ]);
+    assert.deepEqual(byRequirement.get("r")?.map((entry) => entry.title), ["Gamma", "Alpha", "Beta"]);
+  });
+
+  it("holds an empty plan without inventing a requirement", () => {
+    assert.equal(strategiesBySrsRequirement([]).size, 0);
   });
 });

@@ -89,3 +89,37 @@ describe("SRS readiness", () => {
     assert.doesNotMatch(area, /Readiness statement/, "the report statement is not shipped in this PR");
   });
 });
+
+/**
+ * The reverse of the strategy → SRS alignment: a requirement says which of this client's
+ * strategies advance it. Read-side only — the link is already stored on the strategy.
+ */
+describe("what a requirement is being addressed by", () => {
+  const area = app("SrsArea.tsx");
+
+  it("names the client's strategies rather than reporting that a link exists", () => {
+    assert.match(area, /strategiesBySrsRequirement/, "the reverse is derived from the plan already loaded");
+    assert.match(area, /workspace\.strategies\.plan/, "and from the same plan the strategies area shows");
+    assert.match(area, /strategyStatusLabels\[strategy\.status\]/, "each strategy is named with its status");
+  });
+
+  it("retires the linked_action_id decoy from the view", () => {
+    // It said a row had been filled in, not that the requirement was addressed, and the
+    // column it points at has no foreign key behind it.
+    assert.doesNotMatch(area, /linkedActionId/, "the view no longer reads the decoy column");
+    // The rendered literals, not the word — the comment above the replacement still explains
+    // what these said and why naming the strategies is not the same claim.
+    assert.doesNotMatch(area, /" · linked action"/, "nor renders the roadmap string");
+    assert.doesNotMatch(area, /" · no action yet"/, "nor its negative");
+    assert.doesNotMatch(area, /"Linked action"/, "nor the register's version");
+  });
+
+  it("says honestly when nothing addresses a requirement", () => {
+    assert.match(area, /No strategy yet/, "an unaddressed requirement says so");
+    assert.match(area, /no strategy yet/, "and so does an unaddressed gap in the register");
+  });
+
+  it("leaves the column in place — dropping it is a separate migration", () => {
+    assert.match(read("packages/isolated-backend/migrations/0070_srs_readiness.sql"), /linked_action_id text/);
+  });
+});
