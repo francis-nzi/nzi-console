@@ -11,6 +11,10 @@ export * from "./portalActions";
 export { getPortalClientIntensity, type PortalIntensityReadModel, type PortalIntensityYear } from "./portalIntensity";
 export { getPortalClientTraining, type PortalTrainingReadModel, type PortalTrainingRecord, type PortalTrainingSkillCell } from "./portalTraining";
 export {
+  getPortalClientReadiness,
+  type PortalReadinessPillar, type PortalReadinessReadModel,
+} from "./portalReadiness";
+export {
   getPortalClientStrategies,
   type PortalPlanGroup, type PortalPlanRequirement, type PortalPlanStrategy,
   type PortalStrategiesReadModel, type PortalStrategyHighlight,

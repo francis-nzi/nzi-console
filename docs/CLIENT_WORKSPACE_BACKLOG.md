@@ -135,7 +135,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Readiness summary (overall %, governance, metrics & targets) | `srs_readiness` | Built (illustrative) | — |
 | **SRS Readiness redesign** — assessment + demo graphics | `srs_readiness_routes` (0065) | **Built — #149** (`2a47bc8`, migration `0070` on `main`); charts `SrsPillarRadar` / `SrsMaturityBullets` / `SrsGapHeatmap` / `SrsReadinessTrend` | Should (commercial) |
 | Framework definition (standards/pillars/requirements/weights), Admin-versioned | Admin → SRS readiness | **Built — #149** (versioned framework + requirements, migration `0070`) | Should |
-| Portal surfacing of readiness (read-only, M6.4) | portal `srs-readiness` | Briefed | Stage 2 |
+| **Portal surfacing of readiness** (read-only, M6.4) — overall + per-pillar maturity (`SrsPillarRadar` / `SrsMaturityBullets`), shortfall-ordered gaps via `gaps()`, each naming the client strategies that address it. **Live** (current completed assessment), the twin of the report's frozen statement | portal `srs-readiness` · brief `docs/_handoff_PORTAL_SRS_STATEMENT_brief.md` | **Built — PR number pending** (no migration). A draft assessment is held back rather than shown as provisional scoring; no assessment shows an honest empty state, never 0% | Should |
 
 ## I. CRM — Tasks / Notes / Communications / Timeline
 

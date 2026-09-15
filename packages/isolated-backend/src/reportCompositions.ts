@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
-  composeReportSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
+  composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity,
   type ReportComposition, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
@@ -215,7 +215,7 @@ async function composeSrs(
     // Answered by the same population the plan section prints: live at issue, and marked for
     // the report. A strategy held back from the client does not get to close a gap in front
     // of them, and one already removed never appears at all.
-    roadmap: composeReportSrsRoadmap(
+    roadmap: composeSrsRoadmap(
       framework,
       assessment.items,
       (await planned).filter((strategy) => strategy.includeInReport),

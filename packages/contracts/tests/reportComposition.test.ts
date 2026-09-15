@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   REPORT_ASSURANCE_STATEMENT, composeReportPlan, isReportGap, reportAssurance,
   reportHeadline, reportMethodologyRows, reportSrsRadarChart, shortPillarLabel,
-  composeReportSrsRoadmap,
+  composeSrsRoadmap,
   type ReportComposition, type ReportEmissionsSection, type ReportSrsSection,
 } from "../src/reportComposition";
 import type { SrsAssessmentItem, SrsFramework, SrsMaturity } from "../src/srsReadiness";
@@ -250,14 +250,14 @@ describe("the readiness roadmap a report freezes", () => {
   it("orders by shortfall through gaps(), and groups by pillar", () => {
     // m1 is 3 short, g1 is 1 short, m2 is 2 short. Metrics leads because its worst gap is
     // the worst gap overall — the ordering is gaps()'s, read through the grouping.
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 2), item("m1", 0), item("m2", 1)], []);
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 2), item("m1", 0), item("m2", 1)], []);
     assert.deepEqual(roadmap.pillars.map((pillar) => pillar.label), ["Metrics & targets", "Governance"]);
     assert.deepEqual(roadmap.pillars[0]!.gaps.map((gap) => [gap.code, gap.shortfall]), [["M1", 3], ["M2", 2]]);
     assert.deepEqual(roadmap.pillars[1]!.gaps.map((gap) => [gap.code, gap.shortfall]), [["G1", 1]]);
   });
 
   it("answers each gap with the strategies aligned to it", () => {
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 1)], [
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 1)], [
       action("a", { srsRequirementIds: ["g1"], title: "Board oversight", status: "in_progress", progressPct: 50 }),
       action("b", { srsRequirementIds: ["m1"], title: "Elsewhere" }),
     ]);
@@ -270,7 +270,7 @@ describe("the readiness roadmap a report freezes", () => {
   it("says plainly when nothing on the plan addresses a gap", () => {
     // The useful half of the picture. Inventing an alignment would tell the client work is
     // under way that nobody has agreed to.
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 1), item("m1", 1)], [
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 1), item("m1", 1)], [
       action("a", { srsRequirementIds: ["g1"], title: "Board oversight" }),
     ]);
     const all = roadmap.pillars.flatMap((pillar) => pillar.gaps);
@@ -279,7 +279,7 @@ describe("the readiness roadmap a report freezes", () => {
   });
 
   it("excludes a withdrawn strategy, so a gap never looks answered by abandoned work", () => {
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 1)], [
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 1)], [
       action("dropped", { srsRequirementIds: ["g1"], title: "Abandoned", active: false }),
     ]);
     const governance = roadmap.pillars.find((pillar) => pillar.label === "Governance")!;
@@ -288,7 +288,7 @@ describe("the readiness roadmap a report freezes", () => {
   });
 
   it("states where a requirement stands and what is expected of it", () => {
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 1)], []);
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 1)], []);
     const gap = roadmap.pillars.find((pillar) => pillar.label === "Governance")!.gaps[0]!;
     assert.equal(gap.title, "Requirement g1", "the requirement in words, not just a code");
     assert.equal(gap.maturityLabel, "Developing");
@@ -297,7 +297,7 @@ describe("the readiness roadmap a report freezes", () => {
 
   it("reads an unassessed requirement as the floor, not as an answer", () => {
     // null maturity is "not looked at", which is short of target by the whole ladder.
-    const roadmap = composeReportSrsRoadmap(framework, [], []);
+    const roadmap = composeSrsRoadmap(framework, [], []);
     const gap = roadmap.pillars.flatMap((pillar) => pillar.gaps).find((entry) => entry.code === "G1")!;
     assert.equal(gap.shortfall, 3);
     assert.equal(gap.maturityLabel, "Not started");
@@ -306,7 +306,7 @@ describe("the readiness roadmap a report freezes", () => {
   it("returns an empty roadmap — not a missing one — when nothing is below target", () => {
     // Two different facts. An empty roadmap means "assessed, nothing outstanding"; an absent
     // one means the report was frozen before roadmaps existed.
-    const roadmap = composeReportSrsRoadmap(framework, [item("g1", 3), item("m1", 3), item("m2", 3)], []);
+    const roadmap = composeSrsRoadmap(framework, [item("g1", 3), item("m1", 3), item("m2", 3)], []);
     assert.deepEqual(roadmap.pillars, []);
     assert.equal(roadmap.unaddressedCount, 0);
   });

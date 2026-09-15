@@ -407,7 +407,11 @@ export function shortPillarLabel(label: string): string {
 /* ── The readiness roadmap ───────────────────────────────────────────────────────────── */
 
 /**
- * The gaps a report freezes, and what the client was doing about each one.
+ * The gaps below target, and what the client is doing about each one.
+ *
+ * Shared by both surfaces, which is the point: the report freezes the result at issue, the
+ * portal composes it live on every load. One builder means the client cannot be shown one
+ * ordering in their document and a different one on their portal.
  *
  * Two existing pieces, joined — deliberately no new rules:
  *
@@ -425,7 +429,7 @@ export function shortPillarLabel(label: string): string {
  * Pillars appear in the order their worst gap appears, so the pillar needing most attention
  * leads. That is `gaps()`'s ordering read through a grouping, not a second ranking.
  */
-export function composeReportSrsRoadmap(
+export function composeSrsRoadmap(
   framework: SrsFramework,
   items: readonly SrsAssessmentItem[],
   plan: readonly ClientStrategy[],

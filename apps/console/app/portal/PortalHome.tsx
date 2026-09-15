@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
 import {isPortalIdentity,isPortalJobList,type PortalIdentity as User,type PortalJob as Job} from "./portalPortfolioValidation";
+import {PortalReadiness} from "./PortalReadiness";
 import {PortalReductionPlan} from "./PortalReductionPlan";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
 import {portalFeatureEnabled} from "../lib/portalFlags";
@@ -22,6 +23,9 @@ export function PortalHome(){
           the most actionable thing on this page. The plan itself follows, live — read-only,
           and stating plainly when there is no plan yet. */}
       <PortalReductionPlan/>
+      {/* Where they stand, beside what they are doing about it: the readiness gaps name the
+          strategies from the plan above that address them. Live, like the plan. */}
+      <PortalReadiness/>
       {/* Training sits alongside the portfolio rather than inside a job: places belong to
           the client and follow their people, not any one reporting engagement. */}
       <div className="nz-portal-section-head"><div><span className="nz-eyebrow">Your portfolio</span><h2>Reporting engagements</h2><p>Only work explicitly authorised for your account is shown.</p></div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{actions>0&&<span className="nz-st need">{actions} action{actions===1?"":"s"} waiting</span>}<a className="nz-btn" href="/portal/training">Your team&rsquo;s training</a></div></div>
