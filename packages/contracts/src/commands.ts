@@ -1,4 +1,8 @@
 import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
+import {
+  estimateConfidences, estimateScopes, estimateSources, estimateUnits,
+  type EstimateConfidence, type EstimateScope, type EstimateSource, type EstimateUnit,
+} from "./strategyProjection";
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
@@ -43,6 +47,7 @@ export type CommandKey =
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
+  | "client.strategy.estimate.set"
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
@@ -383,6 +388,20 @@ export type CommandInputMap = {
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
+  /**
+   * A forward **estimate** of what this strategy will save. Never a measurement, and never
+   * derived from an assured snapshot.
+   *
+   * `estimate: null` clears it — a strategy with no estimate contributes nothing to the
+   * projection and says so, which is a different fact from an estimate of zero.
+   */
+  "client.strategy.estimate.set": {
+    clientStrategyId: string; expectedVersion: number;
+    estimate: {
+      amount: number; unit: EstimateUnit; scope: EstimateScope; assumptions: string;
+      confidence?: EstimateConfidence | null; source: EstimateSource; sourceVersion?: number | null;
+    } | null;
+  };
   "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
   /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
   "srs.assessment.item.set": {
@@ -811,6 +830,44 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
+  // Reuses `strategy.manage`: entering an estimate is managing the strategy, and that
+  // capability is already held by exactly Admin and Consultant. A new capability with the
+  // same holders would be a matrix version that changed nobody's access.
+  "client.strategy.estimate.set": {
+    key: "client.strategy.estimate.set", label: "Set a strategy's reduction estimate", permission: "strategy.manage",
+    reasonRequired: false,
+    transaction: "versioned client strategy + audit + outbox + idempotency",
+    auditAction: "client_strategy_estimate_set",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "clientStrategyId", input.clientStrategyId);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      const estimate = input.estimate;
+      if (estimate === null) return issues;
+      if (!Number.isFinite(estimate.amount) || estimate.amount < 0) {
+        issues.push({ field: "amount", code: "INVALID", message: "A reduction is zero or more — a negative figure is an increase, not a saving." });
+      }
+      if (!(estimateUnits as readonly string[]).includes(estimate.unit)) {
+        issues.push({ field: "unit", code: "INVALID", message: "Enter the reduction in tCO₂e per year, or as a percentage of the baseline scope." });
+      }
+      if (estimate.unit === "percent" && Number.isFinite(estimate.amount) && estimate.amount > 100) {
+        issues.push({ field: "amount", code: "INVALID", message: "A reduction cannot be more than 100% of the scope it applies to." });
+      }
+      if (!(estimateScopes as readonly string[]).includes(estimate.scope)) {
+        issues.push({ field: "scope", code: "INVALID", message: "Say which scope the reduction lands on — a percentage means nothing without it." });
+      }
+      // The basis is what separates an estimate from an unsourced claim, so it is required
+      // in the command as well as in the database.
+      required(issues, "assumptions", estimate.assumptions);
+      if (!(estimateSources as readonly string[]).includes(estimate.source)) {
+        issues.push({ field: "source", code: "INVALID", message: "Record whether this was seeded from the catalogue or entered by a consultant." });
+      }
+      if (estimate.confidence != null && !(estimateConfidences as readonly string[]).includes(estimate.confidence)) {
+        issues.push({ field: "confidence", code: "INVALID", message: "Confidence is low, medium or high." });
+      }
+      return issues;
+    },
+  },
   "client.strategy.remove": { key: "client.strategy.remove", label: "Remove an action from the plan", permission: "strategy.manage", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "client_strategy_removed", validate: (input, context) => {
     const issues = baseIssues(context, true);
     required(issues, "clientStrategyId", input.clientStrategyId);

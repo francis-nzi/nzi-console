@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, ClientStrategy, CommandContext, CommandInputMap } from "@nzi/contracts";
+import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
+import { resolveEstimateTco2e } from "@nzi/contracts";
+import { getBenchmarkInForce } from "./clientTargetRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -76,6 +78,9 @@ type ClientStrategyRow = {
   bespoke_control_level: string | null; bespoke_icon_key: string | null;
   status: string; owner: string; target_date: Date | string | null; progress_pct: number;
   notes: string; active: boolean; version: number;
+  estimate_amount: string | null; estimate_unit: string | null; estimate_scope: string | null;
+  estimate_tco2e_per_year: string | null; estimate_assumptions: string; estimate_confidence: string | null;
+  estimate_source: string | null; estimate_source_version: number | null;
   strategy_title: string | null; strategy_scope: string | null; strategy_category: string | null;
   strategy_control_level: string | null; strategy_icon: string | null;
   lever_ids: string[] | null;
@@ -102,13 +107,38 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   status: row.status as StrategyStatus, owner: row.owner,
   targetDate: dateOnly(row.target_date), progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
+  estimate: mapEstimate(row),
 });
+
+/**
+ * The estimate, or null when none was entered.
+ *
+ * The database constraint makes a partial estimate impossible, so a present amount means
+ * every part is present. Null is "not estimated" — a different fact from zero, which would
+ * say the strategy saves nothing.
+ */
+const mapEstimate = (row: ClientStrategyRow): StrategyEstimate | null => {
+  if (row.estimate_amount === null || row.estimate_unit === null || row.estimate_scope === null) return null;
+  if (row.estimate_tco2e_per_year === null || row.estimate_source === null) return null;
+  return {
+    amount: Number(row.estimate_amount),
+    unit: row.estimate_unit as StrategyEstimate["unit"],
+    scope: row.estimate_scope as StrategyEstimate["scope"],
+    tco2ePerYear: Number(row.estimate_tco2e_per_year),
+    assumptions: row.estimate_assumptions,
+    confidence: (row.estimate_confidence as StrategyEstimate["confidence"]) ?? null,
+    source: row.estimate_source as StrategyEstimate["source"],
+    sourceVersion: row.estimate_source_version,
+  };
+};
 
 export async function listClientStrategies(db: Queryable, clientId: string): Promise<ClientStrategy[]> {
   const result = await db.query<ClientStrategyRow>(
     `SELECT a.client_strategy_id, a.client_id, a.strategy_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
             a.bespoke_control_level, a.bespoke_icon_key, a.status, a.owner, a.target_date, a.progress_pct,
             a.notes, a.active, a.version, a.include_in_report,
+            a.estimate_amount::text, a.estimate_unit, a.estimate_scope, a.estimate_tco2e_per_year::text,
+            a.estimate_assumptions, a.estimate_confidence, a.estimate_source, a.estimate_source_version,
             l.title AS strategy_title, l.scope AS strategy_scope, l.category AS strategy_category,
             l.control_level AS strategy_control_level, l.icon_key AS strategy_icon,
             coalesce(array_agg(DISTINCT sl.lever_id) FILTER (WHERE sl.lever_id IS NOT NULL), '{}') AS lever_ids,
@@ -373,6 +403,66 @@ export function removeClientStrategy(pool: PoolLike, input: CommandInputMap["cli
       data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version },
       entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.removed",
       before: { active: action.active }, after: { active: false },
+    };
+  });
+}
+
+export type SetStrategyEstimateResult = { clientStrategyId: string; version: number; tco2ePerYear: number | null };
+
+/**
+ * Record what a strategy is expected to save — an estimate, resolved to tCO₂e/yr.
+ *
+ * A percent resolves against **this scope's share of the benchmark in force**, the same
+ * denominator the target pathway uses, and the resolved figure is stored rather than
+ * recomputed on read: a later re-baseline must not silently restate a number a consultant
+ * agreed, for the same reason targets stamp the benchmark they were set against.
+ *
+ * Nothing here reads an assured snapshot. The estimate is a forward view and must never be
+ * derived from, or presented as, the measured footprint.
+ */
+export function setClientStrategyEstimate(pool: PoolLike, input: CommandInputMap["client.strategy.estimate.set"], context: CommandContext): Promise<StoredOutcome<SetStrategyEstimateResult>> {
+  return runPostgresCommand(pool, "client.strategy.estimate.set", input, context, async (db) => {
+    const current = await db.query<{ version: number; active: boolean; client_id: string; estimate_tco2e_per_year: string | null }>(
+      `SELECT version, active, client_id, estimate_tco2e_per_year FROM nzi_console.client_strategies
+       WHERE organisation_id=$1 AND client_strategy_id=$2 FOR UPDATE`,
+      [context.organisationId, input.clientStrategyId]);
+    const strategy = current.rows[0];
+    if (!strategy) throw new CommandValidationError([{ field: "clientStrategyId", code: "NOT_FOUND", message: "That strategy does not exist." }]);
+    if (strategy.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, strategy.version);
+    if (!strategy.active) throw new CommandValidationError([{ field: "clientStrategyId", code: "REMOVED", message: "That strategy has been removed from the plan." }]);
+
+    let resolved: number | null = null;
+    if (input.estimate !== null) {
+      const benchmark = await getBenchmarkInForce(db, strategy.client_id);
+      resolved = resolveEstimateTco2e(input.estimate, benchmark);
+      if (resolved === null) {
+        // Refused rather than stored as zero: "we could not resolve this" and "this saves
+        // nothing" are opposite claims, and the roll-up would treat the zero as agreed.
+        throw new CommandValidationError([{
+          field: "amount", code: "UNRESOLVABLE",
+          message: input.estimate.unit === "percent"
+            ? `A percentage needs a baseline for scope ${input.estimate.scope}, and this client's benchmark in force has none. Enter the reduction in tCO₂e per year instead, or set the baseline first.`
+            : "That reduction could not be resolved to tCO₂e per year.",
+        }]);
+      }
+    }
+
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.client_strategies
+       SET estimate_amount=$3, estimate_unit=$4, estimate_scope=$5, estimate_tco2e_per_year=$6,
+           estimate_assumptions=$7, estimate_confidence=$8, estimate_source=$9, estimate_source_version=$10,
+           version=version+1, updated_at=now(), updated_by=$11
+       WHERE organisation_id=$1 AND client_strategy_id=$2 RETURNING version`,
+      [context.organisationId, input.clientStrategyId,
+        input.estimate?.amount ?? null, input.estimate?.unit ?? null, input.estimate?.scope ?? null, resolved,
+        input.estimate?.assumptions.trim() ?? "", input.estimate?.confidence ?? null,
+        input.estimate?.source ?? null, input.estimate?.sourceVersion ?? null, context.actorId]);
+
+    return {
+      data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version, tco2ePerYear: resolved },
+      entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.estimate.set",
+      before: { estimateTco2ePerYear: strategy.estimate_tco2e_per_year === null ? null : Number(strategy.estimate_tco2e_per_year) },
+      after: { estimateTco2ePerYear: resolved, unit: input.estimate?.unit ?? null, source: input.estimate?.source ?? null },
     };
   });
 }

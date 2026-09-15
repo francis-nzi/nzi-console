@@ -1,3 +1,4 @@
+import type { StrategyEstimate } from "./strategyProjection";
 /**
  * The action-lever library — the PLAN half of a CRP.
  *
@@ -101,6 +102,12 @@ export type ClientStrategy = {
   notes: string;
   active: boolean;
   version: number;
+  /**
+   * The consultant's expected annual reduction — an ESTIMATE, never a measurement, and
+   * null until one is entered. A strategy with none contributes nothing to the projection
+   * and says so, rather than contributing a zero that would read as "this saves nothing".
+   */
+  estimate: StrategyEstimate | null;
 };
 
 /**

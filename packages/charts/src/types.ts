@@ -1,6 +1,6 @@
 export type JobFamily = "crp" | "lca" | "pcf" | "training" | "consultancy";
 export type ChartState = "success" | "empty" | "degraded" | "failed";
-export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "intensity_bases_indexed" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance" | "srs_pillar_radar" | "srs_maturity_bullets" | "srs_gap_heatmap" | "srs_readiness_trend";
+export type ChartType = "emissions_scope_donut" | "emissions_site_donut" | "reduction_pathway" | "scope_year_on_year_bar" | "emissions_by_activity" | "purchased_goods_breakdown" | "intensity_pathway" | "intensity_bases_indexed" | "lca_stage_bar" | "lca_module_donut" | "lca_hotspots_bar" | "training_attendance" | "srs_pillar_radar" | "srs_maturity_bullets" | "srs_gap_heatmap" | "srs_readiness_trend" | "projected_pathway";
 export type LcaModuleGroup = "product" | "transport" | "use" | "end_of_life" | "benefits";
 import type { ProvenanceSignature, QualityTier } from "@nzi/contracts";
 export type DataQuality = QualityTier;
@@ -84,4 +84,12 @@ export type SrsGapHeatmapData = ChartEnvelope & { levels: string[]; groups: SrsG
 export type SrsReadinessPoint = { label: string; value: number };
 export type SrsReadinessTrendData = ChartEnvelope & { points: SrsReadinessPoint[] };
 
-export type AnyChartData = ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | IntensityBasesIndexedData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | LcaModuleDonutData | LcaHotspotsBarData | TrainingAttendanceData | SrsPillarRadarData | SrsMaturityBulletsData | SrsGapHeatmapData | SrsReadinessTrendData;
+export type AnyChartData = ProjectedPathwayData | ScopeDonutData | SiteDonutData | ReductionPathwayData | IntensityPathwayData | IntensityBasesIndexedData | ScopeYearOnYearData | EmissionsByActivityData | PurchasedGoodsBreakdownData | LcaStageBarData | LcaModuleDonutData | LcaHotspotsBarData | TrainingAttendanceData | SrsPillarRadarData | SrsMaturityBulletsData | SrsGapHeatmapData | SrsReadinessTrendData;
+
+/** Three trajectories on one axis: measured, projected (estimate) and target (reference). */
+export type ProjectedPathwayData = ChartEnvelope & {
+  actual: YearPoint[];
+  /** The bottom-up estimate from the client's plan. Never a measurement. */
+  projected: YearPoint[];
+  target: YearPoint[];
+};

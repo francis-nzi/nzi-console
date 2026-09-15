@@ -12,6 +12,7 @@ import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
+import { StrategyProjection } from "./StrategyProjection";
 import type { StrategyDrawerRequest } from "./strategyDrawers";
 
 /**
@@ -30,7 +31,9 @@ import type { StrategyDrawerRequest } from "./strategyDrawers";
  *
  * "Reduction Strategies", never bare "Strategies": `Strategy` is already an SRS pillar.
  *
- * Qualitative today (A2-lite). No strategy here carries a modelled tCO₂e.
+ * Qualitative progress, plus an optional quantified layer: a strategy may carry a
+ * consultant ESTIMATE of what it will save, rolled up into the projected trajectory below
+ * the summary. The estimate is a forward view and is never the measured footprint.
  */
 
 const iconKey = (key: string): NziIconKey => key as NziIconKey;
@@ -116,6 +119,10 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
       </div>
     </section>
 
+    {/* The quantified view, directly under the qualitative summary: what the plan is
+        estimated to deliver, against the target and the measured footprint. */}
+    {summary.total > 0 ? <StrategyProjection workspace={workspace} /> : null}
+
     {summary.total === 0
       ? <section className="nz-panel">
         <Empty text="This client has no reduction plan yet. Add strategies from the NZI library — or a bespoke one for something specific to them — and they will appear here grouped by lever." />
@@ -143,10 +150,11 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
       </>}
 
     <p className="nz-maps">
-      Qualitative tracker (A2-lite): progress is what the client reports, not a modelled reduction. The
-      strategy library is Admin-managed and allocated to levers there; a client&rsquo;s copy references the
-      library wording, so an Admin correction propagates. Quantified impact per strategy is Stage 2, and
-      nothing on this screen estimates it.
+      Progress is what the client reports against each strategy — not a modelled reduction, and not the
+      same thing as the estimate above it. The strategy library is Admin-managed and allocated to levers
+      there; a client&rsquo;s copy references the library wording, so an Admin correction propagates.
+      Quantified impact is a consultant <b>estimate</b> per strategy, rolled up into the projection at the
+      top of this screen; it is never measured, and it never appears in a client-facing surface from here.
     </p>
   </>;
 }

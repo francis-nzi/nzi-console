@@ -10,7 +10,7 @@ const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrateg
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true,
   strategyId: null, title: id, scope: "2", category: "Energy", controlLevel: "direct_control",
   iconKey: "energy", status: "planned", owner: "", targetDate: null, progressPct: 0,
-  notes: "", active: true, version: 1, ...over,
+  notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
 describe("who a reminder may be sent to", () => {
