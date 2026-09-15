@@ -179,7 +179,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
 | Portal access button + link into the client's portal | `platform` | Built | — |
-| **Portal plan view** — the client-facing **live** Reduction Strategies plan on the portal (grouped by lever, `include_in_report` only, read-only). Distinct from the deadline *signals* in #164, which are counts + exceptions only (`PortalStrategiesReadModel`) | §G plan · `getPortalClientStrategies` | **To build — briefed** (`docs/_handoff_PORTAL_PLAN_VIEW_brief.md`) | Should |
+| **Portal plan view** — the client-facing **live** Reduction Strategies plan on the portal (grouped by lever, `include_in_report` only, read-only). Distinct from the deadline *signals* in #164, which are counts + exceptions only (`PortalStrategiesReadModel`) | §G plan · `getPortalClientStrategies` | **Built — #173** (no migration; brief `docs/_handoff_PORTAL_PLAN_VIEW_brief.md`). `owner` and `notes` are kept off the wire; the workspace toggle now reads "Show this to the client" | Should |
 | **Portal user administration**: candidate users, create/patch, reset password, reset MFA, resend invite | `portal-candidate-users`, `portal-users` | To build | Go-live |
 | **Portal-jobs**: which jobs a client can see | `portal-jobs`, `portal-access` | To build | Should |
 | **Data-entry expiry windows** (time-boxed client data entry) | `jobs/{id}/portal-data-entry-expiry` | To build | Should |
