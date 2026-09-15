@@ -153,6 +153,27 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     assert.deepEqual(mailer.sent.map((message) => message.to), ["dana@example.com"]);
   });
 
+  it("does not send to a contact who withdrew consent after the claim", async () => {
+    // The gap this slice closes. The scan checks consent before claiming, but a claim sits
+    // in the outbox across ticks and through retries. Without a re-check at send time,
+    // "declined" would mean "not enqueued again" rather than "never sent".
+    await resetQueues();
+    await addStrategy("s-withdrawn", "2026-09-04");
+    const mailer = recordingMailer();
+    const claimed = await scanClientReminders(client as never, { organisationId: ORG, clientId: "client-a", today: TODAY });
+    assert.equal(claimed.claimed, 1, "claimed while consent stood");
+
+    await client.query(`UPDATE nzi_console.client_contacts SET email_consent = 'declined' WHERE contact_id = 'c-yes'`);
+    const drained = await drainOutbox(client as never, { organisationId: ORG, today: TODAY, mailer, delivery: { mode: "send" } });
+
+    assert.equal(mailer.sent.length, 0, "nothing goes out to someone who has withdrawn");
+    assert.equal(drained.sent, 0);
+    const log = await client.query(`SELECT state, last_error FROM nzi_console.strategy_automation_log WHERE recipient_email = 'dana@example.com'`);
+    assert.equal(log.rows[0]?.state, "suppressed", "and the claim is resolved rather than left to retry forever");
+    assert.match(String(log.rows[0]?.last_error), /withdrawn consent/);
+    await client.query(`UPDATE nzi_console.client_contacts SET email_consent = 'granted' WHERE contact_id = 'c-yes'`);
+  });
+
   it("retries a transient failure without duplicating a delivered message", async () => {
     await resetQueues();
     await addStrategy("s-flaky", "2026-09-03");

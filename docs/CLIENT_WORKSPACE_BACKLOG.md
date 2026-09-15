@@ -68,7 +68,8 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Primary contact designation | `client_contacts` | Built | — |
 | **Contact roles**: report signee · portal candidate · quote/invoice recipient · training attendee | `client_contacts` | To build | Go-live |
 | Deactivate-not-delete | principle | To build | Go-live |
-| **Email consent capture** — an audited way to set `client_contacts.email_consent` (`unknown` → `granted` / `declined`), with reason and history. Production gate (a) for strategy reminder email: `unknown` holds, so no contact can be written to until this exists | NZC-076 · migration `0083` (column only) | **To build — intentionally open gate** | Should |
+| **Email consent capture** — an audited way to set `client_contacts.email_consent` (`unknown` → `granted` / `declined`), with basis, note and history. Production gate (a) for strategy reminder email: `unknown` holds, so no contact can be written to until this exists | NZC-076 · migration `0083` (column) · `0084` (events) · brief `docs/_handoff_STRATEGY_CONSENT_brief.md` | **Built — phase 1, staff console** (migration `0084`, append-only consent events; gated by the existing `contact.manage`, so the matrix stays at v3). **PR number pending — carries a migration, so it stops for review before merge.** Phase 2 (portal self-serve) not built; `portal-self-serve` basis is reserved but not staff-recordable | Should |
+| ↳ Production gate (a) now **closed**: consent can be recorded. Sending is still off — staging suppresses, and production sending remains behind gate (b), the live worker standup (§G) | NZC-076 | **Closed by the row above** — recording state enables no send | Should |
 
 ## C. Sites
 

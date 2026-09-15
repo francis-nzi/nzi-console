@@ -1306,3 +1306,13 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
   .nz-portal-plan-head{flex-direction:column;gap:2px}
   .nz-portal-plan-item .nz-prog .track{width:80px}
 }
+
+/* Email consent — the state always shown with the basis behind it, never bare. */
+.nz-consent-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-top:5px}
+.nz-consent-line .sub{font-size:11px;color:var(--t3);line-height:1.4}
+.nz-consent{margin-top:14px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.nz-consent>.l{display:block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t3)}
+.nz-consent-now{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:5px}
+.nz-consent-now .sub{font-size:11.5px;color:var(--t2);line-height:1.45}
+.nz-consent .nz-fl{margin-top:9px}
+.nz-consent-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:11px;flex-wrap:wrap}

@@ -49,6 +49,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.contact.create": client,
   "client.contact.update": (input) => ({ kind: "contact", id: input.contactId }),
   "client.contact.deactivate": (input) => ({ kind: "contact", id: input.contactId }),
+  "client.contact.consent.record": (input) => ({ kind: "contact", id: input.contactId }),
   "client.targets.set": client,
   "client.intensityMetric.set": client,
   "client.intensityMetric.deactivate": client,
