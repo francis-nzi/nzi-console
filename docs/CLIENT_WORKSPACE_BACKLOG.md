@@ -14,10 +14,10 @@ users migrating from the live system · `Stage 2` = deferrable.
 - **Merged to `main` / live:** provenance (#144), site effective-dating + floor area,
   contact roles + logo + year-end, permission matrix, target model (#145), breadcrumbs,
   the shell rebuild Phase 1 (#146/#147) **and Phase 2** (`b696421`), and #143 (NZC-069 held).
-- **PR open, review-gated (migration):** **SRS Readiness — PR #149** (migration 0070; not
-  yet applied to staging).
-- **In flight next (both PR-gated, carry migrations):** intensity metrics, then the
-  action-lever library.
+- **SRS Readiness — landed:** **PR #149 merged** (`2a47bc8`, migration `0070` on `main`) —
+  versioned framework, dated assessments, dashboard.
+- **Both landed since:** intensity metrics (#150) and the action-lever library (#153,
+  renamed to `control_level` by `d37e409` / migration 0076).
 - **Designed + briefed, impl to build:** report (R-track) — prototype `report_v1.html` +
   `_handoff_REPORT_brief.md`; the **print-safe icon-set decision is settled** (curated inline
   SVG, in DESIGN_CONVENTIONS §10) which also unblocks the intensity/action report icons.
@@ -115,11 +115,13 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
-| Action tracker (levers with progress) | portal `actions` A2-lite | Built (qualitative) | — |
-| **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | Prototype ✓ · briefed (`_handoff_ACTION_LEVER_LIBRARY_brief.md`) | Go-live |
-| Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | Prototype ✓ · briefed | Should |
-| Spheres-of-Influence framework mapping | framework | Prototype ✓ (grouped by sphere) | Should |
-| Action status / owner / target dates | `report_actions` | Built — Reduction Strategies (NZC-075) | Should |
+| Action tracker (levers with progress) | portal `actions` A2-lite | Built — #119 (qualitative) | — |
+| **Action lever library / catalogue** | `report_actions_routes`, `action_lever_framework` (0064), Admin → Action options | **Built — #153** (Admin catalogue; brief `_handoff_ACTION_LEVER_LIBRARY_brief.md`) | Go-live |
+| Assign actions per client from library + **lever summary** | `/clients/{id}/report-actions`, `action-lever-summary` | **Built — #153** (client plan + lever summary) | Should |
+| Spheres-of-Influence framework mapping | framework | Built — `d37e409` (renamed `sphere_of_influence` → `control_level`, migration 0076) | Should |
+| Action status / owner / target dates | `report_actions` | Built — #158, Reduction Strategies (NZC-075) | Should |
+| **Strategy → SRS alignment + `include_in_report`, and the plan the report prints** | `strategy_srs_requirements` (0081) | **Built — #162** (alignment confirmed on library add, #163) | Should |
+| Drawer anatomy — strategy drawers match the scope-row side panel | DESIGN_CONVENTIONS §3.4 | **Built — #169** (no migration) | — |
 | **Deadline signals — in-app + portal** (approaching / overdue, derived at read time; no date raises nothing) | brief §6 | **Built — #164** (no migration) | Should |
 | **Deadline email reminders** — worker `nzi-console-reminders` drains the outbox on a 900 s clock; Office 365 SMTP; claim-before-send idempotency (`strategy_automation_log`) | brief §6a · NZC-076 | **Built — #165 / migration `0083` · verified on staging 14 Sep 2026** (first tick: outbox backlog skipped × 42, sent 0, failed 0; log 0 rows — no reminder has run yet (no client strategies on staging); reminder path proven by CI, not by a staging run). Staging is suppress-and-log and cannot send. | Should |
 | ↳ Production gate (b): **live worker standup** against the live DB boundary + real SMTP | NZC-076 | **Intentionally open** — a separate reviewed deploy, *and* a reviewed change to the worker's start-up guard, which by design refuses the live boundary today | Should |
@@ -130,8 +132,8 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
 | Readiness summary (overall %, governance, metrics & targets) | `srs_readiness` | Built (illustrative) | — |
-| **SRS Readiness redesign** — assessment + demo graphics | `srs_readiness_routes` (0065) | Review + prototype + brief · **impl PR #149 (open; migration 0070; awaiting review + apply to staging)** | Should (commercial) |
-| Framework definition (standards/pillars/requirements/weights), Admin-versioned | Admin → SRS readiness | Prototype ✓ · briefed | Should |
+| **SRS Readiness redesign** — assessment + demo graphics | `srs_readiness_routes` (0065) | **Built — #149** (`2a47bc8`, migration `0070` on `main`); charts `SrsPillarRadar` / `SrsMaturityBullets` / `SrsGapHeatmap` / `SrsReadinessTrend` | Should (commercial) |
+| Framework definition (standards/pillars/requirements/weights), Admin-versioned | Admin → SRS readiness | **Built — #149** (versioned framework + requirements, migration `0070`) | Should |
 | Portal surfacing of readiness (read-only, M6.4) | portal `srs-readiness` | Briefed | Stage 2 |
 
 ## I. CRM — Tasks / Notes / Communications / Timeline
@@ -177,6 +179,7 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Item | Live reference | Status | Tier |
 |---|---|---|---|
 | Portal access button + link into the client's portal | `platform` | Built | — |
+| **Portal plan view** — the client-facing live Reduction Strategies plan on the portal (grouped by lever, `include_in_report` only). Distinct from the deadline *signals* in #164, which are counts + exceptions only (`PortalStrategiesReadModel`) | §G plan · `getPortalClientStrategies` | **To build — brief not yet written** (`_handoff_PORTAL_PLAN_VIEW_brief.md` does not exist; raise it before implementation) | Should |
 | **Portal user administration**: candidate users, create/patch, reset password, reset MFA, resend invite | `portal-candidate-users`, `portal-users` | To build | Go-live |
 | **Portal-jobs**: which jobs a client can see | `portal-jobs`, `portal-access` | To build | Should |
 | **Data-entry expiry windows** (time-boxed client data entry) | `jobs/{id}/portal-data-entry-expiry` | To build | Should |
