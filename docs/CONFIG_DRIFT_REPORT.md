@@ -296,7 +296,8 @@ same migrations is worse than the fault the gate fixes.
 The question that mattered: are the portal plan and readiness statement merged but **dark** on
 staging, gated on a token that isn't set?
 
-**No — and not because the tokens are set. Because neither feature is gated at all.**
+**No — and at the time of this audit, not because the tokens were set: neither feature was gated at
+all.** That has since been fixed — both now gate on their own token (NZC-080, §4.1).
 
 `portalFeatureEnabled()` (`apps/console/app/lib/portalFlags.ts`) knows exactly two tokens, and every
 call site in the app is accounted for here:
@@ -308,21 +309,35 @@ call site in the app is accounted for here:
 
 | Feature | Gate | Status on staging |
 |---|---|---|
-| Portal reduction plan (**#173**) | **None.** `<PortalReductionPlan/>` renders unconditionally at `PortalHome.tsx:25`; the component contains no flag reference | **Live** |
-| Portal SRS readiness statement (**#177**) | **None.** `<PortalReadiness/>` renders unconditionally at `PortalHome.tsx:28`; the component contains no flag reference | **Live** |
+| Portal reduction plan (**#173**) | ~~None~~ → `portal-plan` (retrofitted, NZC-080) | **Live** — token set |
+| Portal SRS readiness statement (**#177**) | ~~None~~ → `portal-readiness` (retrofitted, NZC-080) | **Live** — token set |
 | `/api/portal/strategies`, `/api/portal/readiness` | **None** — neither route consults a flag | **Live** |
 
-> **The finding, stated plainly.** Nothing is dark. But two client-facing surfaces shipped with **no
-> rollout gate**, while every other portal Phase 2 surface sits behind a token. `REDESIGN_ROLLOUT.md`
-> §"Feature-flag strategy" says new UI stays behind a flag until its acceptance pass — these did not.
+> **The finding, stated plainly.** Nothing was dark. But two client-facing surfaces had shipped with
+> **no rollout gate**, while every other portal Phase 2 surface sits behind a token.
+> `REDESIGN_ROLLOUT.md` §"Feature-flag strategy" says new UI stays behind a flag until its acceptance
+> pass — these did not.
 >
-> It did no harm here: both are read-only, tenant-scoped, and were merged deliberately. But it means
-> there is **no way to turn either off without a revert**, which is exactly what a flag buys. Worth a
-> decision — add `portal-plan` / `portal-readiness` tokens retrospectively, or record that these two
-> were intentionally ungated. Not actioned in this pass; it changes behaviour, and this pass does not.
+> It did no harm: both are read-only, tenant-scoped, and were merged deliberately. But it meant there
+> was **no way to turn either off without a revert**, which is exactly what a flag buys.
 >
 > *(The brief cited the readiness statement as #183; that was the estimate-entry form. Readiness
 > shipped as #177 — corrected above.)*
+
+### 4.1 Resolved — gates retrofitted (NZC-080)
+
+Both surfaces now gate on their own token through the same `portalFeatureEnabled` mechanism every
+other portal surface uses: `portal-plan` and `portal-readiness`, registered in
+`REDESIGN_ROLLOUT.md` §"Feature-flag strategy" and declared in `render.yaml`. Both tokens were
+already set in the dashboard before the gate shipped, so **nothing a client sees changed** — the
+point was to restore the ability to withdraw either, not to withdraw anything.
+
+**The acceptance debt is separate and still outstanding.** A gate is not a substitute for the
+staging acceptance pass these two surfaces never had. Tracked in the backlog.
+
+**Still ungated, and correctly so:** `/api/portal/strategies` and `/api/portal/readiness`. No portal
+API route is flag-gated — the convention gates the UI, and inventing a stricter rule for these two
+alone would make them inconsistent with every other portal surface.
 
 ## 5. The legacy tail — deliberately untouched
 
