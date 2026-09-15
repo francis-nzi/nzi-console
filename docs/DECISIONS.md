@@ -1227,3 +1227,49 @@ capability is already held by exactly Admin and Consultant. The matrix stays at 
 **Staff console only this phase.** Report inclusion (freezing the projection into the composition at
 issue, with client-facing estimate discipline), portal inclusion, and consultant-marked strategy
 interactions for finer overlap accounting are later phases, each with their own review.
+
+### NZC-079 — The Render dashboard is the source of truth for the staging services; `render.yaml` is documentation [Confirmed 16 Sep 2026]
+
+**What was found.** `nzi-console` and `nzi-console-reminders` were created by hand, not from a
+Blueprint, so Render never reads `render.yaml` for them. The file nonetheless claimed, at
+`render.yaml:18–22`, to be "the single source of truth" for the redesign feature flags — while
+`DEPLOYMENT.md`, `REDESIGN_ROLLOUT.md` and five acceptance documents already said the opposite, and
+the same file described two of its own three flag variables as dashboard flips "for continuity
+only". Surfaced by NZC-077, where the migration gate had to be set in the dashboard because the
+YAML line would have been inert.
+
+**Decision: the dashboard is the effective source of truth for these two services.** `render.yaml`
+is documentation, and the carrier for a future Blueprint rebuild. A change to it does nothing to
+the running build, and the file now says so where it previously claimed the reverse.
+
+**But the file must still tell the truth.** Inert is not the same as free to be wrong: it is what
+anyone reads to learn what staging is, and a stale value there is a false belief waiting to be
+acted on. So it is reconciled to the running configuration and kept in step in the same PR as any
+dashboard change (`docs/CONFIG_DRIFT_REPORT.md`).
+
+**What the reconciliation found.** Of eighteen declared values, fifteen matched — including **every
+feature flag**, so the failure mode this exercise was built to catch ("staging is not the build we
+think it is") had not happened. Two auth variables had drifted, and one live variable was missing
+from the file entirely:
+
+- `NZI_AUTH_ENABLED` / `NZI_AUTH_REQUIRED` — declared `"false"`, live `true`, corroborated
+  independently by `/api/health`. The file now records the live values, **and records that their
+  intent is unconfirmed**: deliberate, or inherited from the recycled service this one was created
+  on. Nothing live was changed on that evidence.
+- `NEXT_PUBLIC_FEATURE_PORTAL` = `portal-analytics,portal-actions` — live and undeclared; now
+  declared.
+
+**The more interesting finding was not drift at all.** The portal reduction plan (#173) and the
+portal readiness statement (#177) are behind **no feature flag**, unlike every other portal Phase 2
+surface. Nothing is dark; but there is no way to turn either off without a revert, which is what a
+flag exists to buy. Recorded as an open decision, not actioned here.
+
+**Blueprint adoption is the recommended end state, and is deliberately not done.** Making
+`render.yaml` authoritative would make this class of drift impossible, which is what the false
+comment wished were true. It also risks duplicating live services, so it is its own migration with
+its own review — not a side effect of a documentation pass.
+
+**The legacy tail stays.** `MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET` and others sit in the
+dashboard undeclared. None was removed: with auth now known to be enabled and required,
+`NZI_JWT_SECRET` is plausibly load-bearing, and tidying a list is not a reason to risk it. Each key
+needs its own check before deletion.

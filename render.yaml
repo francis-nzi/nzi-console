@@ -15,11 +15,19 @@ services:
         value: 20.18.0
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
-      # Data-entry redesign flags (NZC-035/036/041/043/046). Gated rollout:
-      # render.yaml is the single source of truth (docs/REDESIGN_ROLLOUT.md
-      # §"Feature-flag strategy"), so every flip is a reviewed, source-controlled
-      # change. NEXT_PUBLIC_* is inlined at `next build`, so a change here forces
-      # a rebuild with the new set baked into the client bundle.
+      # Data-entry redesign flags (NZC-035/036/041/043/046).
+      #
+      # THIS FILE IS NOT READ FOR THIS SERVICE. nzi-console and the reminder worker
+      # were created by hand, not from a Blueprint, so Render never applies anything
+      # here — the Render dashboard is the effective source of truth, and a change to
+      # this file does nothing to the running build. It is documentation, and the
+      # carrier for a future Blueprint rebuild (NZC-079). Reconciled against the
+      # dashboard on 16 Sep 2026: docs/CONFIG_DRIFT_REPORT.md.
+      #
+      # A flip is therefore a dashboard edit + Clear build cache & deploy, per
+      # docs/DEPLOYMENT.md §"Feature-flag flips" — NEXT_PUBLIC_* is inlined at
+      # `next build`, so the dashboard value at build time is what ships in the bundle.
+      # Update the value here in the same PR, so the two do not drift again.
       #   spend            B2 ledger adapter (STAGING_ACCEPTANCE_B2.md)
       #   spend-import     B4 CSV bulk import (STAGING_ACCEPTANCE_B4.md)
       #   portal-spend     B5 portal spend mirror (STAGING_ACCEPTANCE_B5.md)
@@ -46,6 +54,14 @@ services:
       # continuity value here; the dashboard flip is still a manual step.
       - key: NEXT_PUBLIC_FEATURE_JOB_MODULES
         value: job-module-lca
+      # Client portal Phase 2 (apps/console/app/lib/portalFlags.ts). Live in the dashboard
+      # and previously missing from this file entirely — added 16 Sep 2026 so the two agree.
+      #   portal-analytics  the emissions dashboard + /portal/intensity
+      #   portal-actions    the qualitative action tracker on the job dashboard
+      # NOTE: the portal reduction plan (#173) and readiness statement (#177) are NOT behind
+      # either token — they render unconditionally. See docs/CONFIG_DRIFT_REPORT.md §4.
+      - key: NEXT_PUBLIC_FEATURE_PORTAL
+        value: portal-analytics,portal-actions
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
@@ -57,10 +73,19 @@ services:
       # Non-production Supabase only — never commit this value.
       - key: NZI_ISOLATED_DATABASE_URL
         sync: false
+      # Reconciled to the live dashboard values, 16 Sep 2026 — /api/health reports
+      # authentication enabled and required, and this file previously said "false".
+      #
+      # WHETHER THAT IS INTENDED IS UNCONFIRMED. It may be deliberate, or inherited from
+      # the recycled service this one was created on. These values are recorded here to
+      # stop the file lying about the running state; the live values were NOT changed and
+      # must not be, on this evidence alone. Confirm the intent before either is touched —
+      # and note NZI_JWT_SECRET is plausibly load-bearing for the auth these enable
+      # (docs/CONFIG_DRIFT_REPORT.md §5).
       - key: NZI_AUTH_ENABLED
-        value: "false"
+        value: "true"
       - key: NZI_AUTH_REQUIRED
-        value: "false"
+        value: "true"
       - key: NZI_CONSOLE_SESSION_SECRET
         sync: false
       - key: NZI_CONSOLE_MFA_ENCRYPTION_KEY
