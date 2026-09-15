@@ -10,7 +10,11 @@ export * from "./portalAnalytics";
 export * from "./portalActions";
 export { getPortalClientIntensity, type PortalIntensityReadModel, type PortalIntensityYear } from "./portalIntensity";
 export { getPortalClientTraining, type PortalTrainingReadModel, type PortalTrainingRecord, type PortalTrainingSkillCell } from "./portalTraining";
-export { getPortalClientStrategies, type PortalStrategiesReadModel, type PortalStrategyHighlight } from "./portalStrategies";
+export {
+  getPortalClientStrategies,
+  type PortalPlanGroup, type PortalPlanRequirement, type PortalPlanStrategy,
+  type PortalStrategiesReadModel, type PortalStrategyHighlight,
+} from "./portalStrategies";
 export { verifyTrainingCertificate, type CertificateVerification } from "./certificateVerification";
 export {
   claimVerifyAttempt, claimVerifyMiss, clientAddressFrom, verifyBucketKey,

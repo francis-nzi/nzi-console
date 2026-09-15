@@ -221,7 +221,12 @@ describe("Reduction Strategies", () => {
   it("makes the report flag a live field that a report freezes, not a live read", () => {
     assert.match(alignment, /include_in_report boolean NOT NULL DEFAULT true/);
     assert.match(commands, /"client\.strategy\.update": \{.*includeInReport: boolean/);
-    assert.match(forms, /Applies to reports issued from now on/);
+    // One flag, two surfaces, and the copy says which is live and which is frozen: the
+    // portal plan updates on the client's next load, the report keeps what it was issued
+    // with. A consultant clearing this must know it reaches the portal too.
+    assert.match(forms, /Show this to the client/);
+    assert.match(forms, /their portal plan, which updates live/);
+    assert.match(forms, /reports issued from\s+now on/);
     // The plan section of an issued report is composed at issue and frozen with everything
     // else — so a strategy held back next week does not vanish from a report already sent.
     const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
@@ -243,11 +248,14 @@ describe("Reduction Strategies", () => {
     assert.match(forms, /Changed from the catalogue&rsquo;s alignment for this client\./);
   });
 
-  it("says on the plan itself what the report will leave out", () => {
-    // Otherwise the only place the omission is visible is the document, which is the one
-    // place it is too late to notice.
-    assert.match(area, /held back from the client&rsquo;s/);
-    assert.match(area, /not in report/);
+  it("says on the plan itself what the client will not be shown", () => {
+    // Otherwise the only place the omission is visible is the client's own surface, which is
+    // the one place it is too late to notice. Worded for both surfaces now that the flag
+    // gates the live portal plan as well as the report.
+    assert.match(area, /held back from the client/);
+    assert.match(area, /absent\s+from their portal plan and from reports issued from now on/);
+    assert.match(area, /not shown to client/);
+    assert.doesNotMatch(area, /not in report</, "the tag no longer understates what the flag hides");
   });
 });
 
@@ -259,7 +267,7 @@ describe("Reduction Strategies", () => {
 describe("strategy deadline signals", () => {
   const contract = read("packages/contracts/src/reductionStrategies.ts");
   const area = read("apps/console/app/clients/[clientId]/ReductionStrategiesArea.tsx");
-  const portal = read("apps/console/app/portal/PortalStrategyDeadlines.tsx");
+  const portal = read("apps/console/app/portal/PortalReductionPlan.tsx");
   const portalModel = read("packages/isolated-backend/src/portalStrategies.ts");
   const portalRoute = read("apps/console/app/api/portal/strategies/route.ts");
 
@@ -326,7 +334,13 @@ describe("strategy deadline signals", () => {
     // and mean opposite things.
     assert.match(portal, /nz-portal-state failed/);
     assert.match(portal, /nz-portal-state loading/);
-    assert.match(portal, /model\.total===0\|\|model\.highlights\.length===0\)return null/);
+    // The deadlines panel still appears only when something is actually due — it is a
+    // warning, and a warning that fires on good news is noise. What changed is what sits
+    // below it: the plan itself now renders whether or not anything is due, so "nothing due"
+    // is no longer the same as "nothing to show".
+    assert.match(portal, /model\.highlights\.length>0\?<section/);
+    assert.match(portal, /Your reduction plan is being built with your consultant/,
+      "and no plan at all is stated, not left blank");
   });
 
   it("uses the danger token, not Scope 1's coral", () => {
@@ -489,5 +503,91 @@ describe("strategy drawers follow the side-panel anatomy", () => {
     assert.ok(conventions.includes("Canonical example: the job scope-row panel"));
     assert.ok(conventions.includes("Never a tick or check as a section affordance."));
     assert.ok(conventions.includes("never scrolls out of view"));
+  });
+});
+
+/**
+ * The client-facing plan view on the portal. Read-only, live, and carrying nothing the
+ * client should not see.
+ */
+describe("the portal plan view", () => {
+  const portal = read("apps/console/app/portal/PortalReductionPlan.tsx");
+  const model = read("packages/isolated-backend/src/portalStrategies.ts");
+  const route = read("apps/console/app/api/portal/strategies/route.ts");
+  const home = read("apps/console/app/portal/PortalHome.tsx");
+
+  it("is read-only — there is no way to change the plan from the portal", () => {
+    // The plan is agreed with the consultant; a portal write would fork one plan into two.
+    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+      assert.doesNotMatch(route, new RegExp(`export async function ${method}\b`), method);
+    }
+    for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) {
+      assert.ok(!portal.includes(verb), `the view must not write (${verb})`);
+      assert.ok(!model.includes(verb), `nor the read model (${verb})`);
+    }
+    assert.ok(!portal.includes("<button"), "and offers no control that implies it could");
+  });
+
+  it("resolves live rather than from a frozen composition", () => {
+    // A plan is not a measurement: the published-snapshot rule does not apply, and a stale
+    // deadline is worse than a live one.
+    assert.match(model, /listClientStrategies\(db, input\.clientId\)/);
+    // Asserted against what it calls and queries, not against the prose above it — the
+    // comment explaining the exemption naturally names the thing being ruled out.
+    assert.ok(!model.includes("getReportComposition"), "never reads a frozen composition");
+    assert.doesNotMatch(model, /FROM nzi_console\.report_compositions/);
+    assert.match(portal, /cache:"no-store"/);
+  });
+
+  it("applies the one client-facing gate and no second flag", () => {
+    assert.match(model, /strategy\.active && strategy\.includeInReport/);
+    // One flag, one meaning. A portal-only visibility flag would let the two surfaces
+    // disagree about what the client was told.
+    assert.ok(!model.includes("includeInPortal"), "no portal-only visibility flag");
+    assert.ok(!model.includes("show_on_portal"));
+  });
+
+  it("keeps the internal fields off the wire entirely", () => {
+    // The shapes themselves, not the prose around them: neither type declares the field, so
+    // there is nothing to serialise even by accident.
+    for (const shape of ["PortalStrategyHighlight", "PortalPlanStrategy"]) {
+      const block = new RegExp(`export type ${shape} = \\{[\\s\\S]*?\\n\\};`).exec(model)?.[0] ?? "";
+      assert.ok(block.length > 0, `${shape} is declared`);
+      assert.doesNotMatch(block, /^\s*owner\??:/m, `${shape} carries no owner`);
+      assert.doesNotMatch(block, /^\s*notes\??:/m, `${shape} carries no notes`);
+    }
+    assert.doesNotMatch(portal, /\.owner/, "and the view never reaches for it");
+    assert.doesNotMatch(portal, /\.notes/, "nor the consultant's working notes");
+  });
+
+  it("states an empty plan rather than drawing an empty list", () => {
+    assert.match(portal, /Your reduction plan is being built with your consultant/);
+    assert.match(portal, /model\.total===0\)return/);
+  });
+
+  it("shows a date only when one was set", () => {
+    assert.match(portal, /strategy\.targetDate!==null\?/);
+    assert.match(portal, /formatDate\(strategy\.targetDate\)/, "dd/mm/yyyy through the shared formatter");
+    assert.doesNotMatch(portal, /new Date\(\)/, "and never the reader's clock");
+  });
+
+  it("groups by lever with the shared collapsible, not a bespoke one", () => {
+    assert.match(portal, /import \{Collapsible\} from "@nzi\/ui"/);
+    assert.match(model, /strategyPlanByLever\(plan, levers\)/);
+    assert.match(model, /strategiesWithoutLever\(plan, levers\)/);
+    assert.match(model, /label: "Other"/);
+  });
+
+  it("is theme-aware — the portal follows the viewer, unlike the report", () => {
+    const css = read("packages/ui/src/styles.css");
+    const block = /\.nz-portal-plan\{[\s\S]*?\.nz-portal-plan-srs ul\{[^}]*\}/.exec(css)?.[0] ?? "";
+    assert.ok(block.length > 0, "the plan styles exist");
+    assert.doesNotMatch(block, /#[0-9A-Fa-f]{6}/, "no hard-coded colour — tokens only");
+    assert.match(block, /var\(--/);
+  });
+
+  it("sits on the portal home, above the portfolio", () => {
+    assert.match(home, /<PortalReductionPlan\/>/);
+    assert.match(home, /import \{PortalReductionPlan\}/);
   });
 });

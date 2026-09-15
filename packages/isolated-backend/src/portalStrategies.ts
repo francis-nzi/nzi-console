@@ -1,5 +1,9 @@
-import { strategyDeadlineSignals, strategyDeadlineSummary, type StrategyDeadline } from "@nzi/contracts";
-import { listClientStrategies } from "./reductionStrategies";
+import {
+  strategyControlLevelLabels, strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary,
+  strategyPlanByLever, strategyScopeLabel, strategyStatusLabels, strategiesWithoutLever,
+  type ClientStrategy, type LibraryStrategy, type StrategyDeadline, type StrategyStatus,
+} from "@nzi/contracts";
+import { listClientStrategies, listLevers, listLibraryStrategies } from "./reductionStrategies";
 import type { Queryable } from "./postgres";
 
 /**
@@ -30,10 +34,47 @@ export type PortalStrategyHighlight = {
   title: string;
   /** What theme it sits under, in the client's words. Never an internal id. */
   category: string;
-  owner: string;
   targetDate: string;
   deadline: StrategyDeadline;
 };
+
+/** An SRS requirement a strategy advances, in words a client can act on. */
+export type PortalPlanRequirement = { code: string; title: string };
+
+/**
+ * One strategy as the client sees it.
+ *
+ * Deliberately **not** the whole `ClientStrategy`. Two of its fields are internal and do not
+ * cross to the portal:
+ *
+ * - `owner` is a consultant handle today, not a name the client would recognise (Francis's
+ *   call). It is omitted rather than rendered blank.
+ * - `notes` is the consultant's working note on this client's copy — the same category of
+ *   private as `owner`. The `description` below is the **catalogue** copy from the library
+ *   strategy, written to be read, so a bespoke strategy simply has none.
+ */
+export type PortalPlanStrategy = {
+  id: string;
+  title: string;
+  /** Library catalogue copy. Empty for a bespoke strategy — never filled from `notes`. */
+  description: string;
+  /** "Scope 2", "Governance" — the client's words, never the raw enum. */
+  scopeLabel: string;
+  category: string;
+  controlLevelLabel: string;
+  status: StrategyStatus;
+  statusLabel: string;
+  progressPct: number;
+  /** null when none was set. The portal shows no date rather than inventing one. */
+  targetDate: string | null;
+  /** The same read-time derivation the signals above use, so the two cannot disagree. */
+  deadline: StrategyDeadline;
+  /** The readiness gaps this strategy closes — the client-facing half of the shared spine. */
+  srsRequirements: PortalPlanRequirement[];
+};
+
+/** A lever, or the "Other" bucket for strategies whose only lever was withdrawn. */
+export type PortalPlanGroup = { key: string; label: string; strategies: PortalPlanStrategy[] };
 
 export type PortalStrategiesReadModel = {
   /** Every strategy on the plan the client is shown — the denominator for the highlights. */
@@ -42,14 +83,37 @@ export type PortalStrategiesReadModel = {
   approaching: number;
   /** Worst first. Empty when nothing is due or late, which is the common and good case. */
   highlights: PortalStrategyHighlight[];
+  /**
+   * The plan itself, grouped by lever — **live**, resolved from `client_strategies` at
+   * request time rather than from a frozen `report_composition`.
+   *
+   * That exemption is deliberate and narrow. The published-snapshot rule exists so an
+   * unassured *measurement* cannot reach a client. A plan is not a measurement: it is what
+   * the client undertook to do, and a date is only useful while it is still the date. The
+   * report's plan stays frozen; these are two reads of the same rows, for two purposes.
+   *
+   * Empty when the client has no plan yet — which the portal states rather than drawing an
+   * empty list.
+   */
+  plan: PortalPlanGroup[];
 };
 
 export async function getPortalClientStrategies(
   db: Queryable,
   input: { clientId: string; today: string },
 ): Promise<PortalStrategiesReadModel> {
-  const plan = (await listClientStrategies(db, input.clientId))
-    .filter((strategy) => strategy.active && strategy.includeInReport);
+  const [strategies, levers, library, requirements] = await Promise.all([
+    listClientStrategies(db, input.clientId),
+    listLevers(db),
+    listLibraryStrategies(db),
+    // Requirement ids mean nothing to a reader. The report shows codes; the portal shows the
+    // code and what it is about, because its reader is the client rather than an assessor.
+    db.query<{ requirement_id: string; code: string; title: string }>(
+      `SELECT requirement_id, code, title FROM nzi_console.srs_requirements`,
+    ).then((result) => new Map(result.rows.map((row) => [row.requirement_id, { code: row.code, title: row.title }]))),
+  ]);
+  // The one client-facing gate, applied once, before anything is grouped or counted.
+  const plan = strategies.filter((strategy) => strategy.active && strategy.includeInReport);
   const signals = strategyDeadlineSignals(plan, input.today);
   const summary = strategyDeadlineSummary(signals);
   return {
@@ -59,11 +123,59 @@ export async function getPortalClientStrategies(
     highlights: signals.map(({ strategy, deadline }) => ({
       title: strategy.title,
       category: strategy.category,
-      owner: strategy.owner,
+      // `owner` is deliberately absent, here and on the plan rows below. It holds an
+      // internal consultant handle, so it is kept off the wire rather than merely unrendered
+      // — an unused field in a JSON response is still a field the client can read.
       // A signal always has a date — that is what made it a signal — but the type is a
       // union, so the date is read from the branch rather than asserted off the strategy.
       targetDate: "targetDate" in deadline ? deadline.targetDate : "",
       deadline,
     })),
+    plan: portalPlanGroups(plan, levers, library, requirements, input.today),
   };
+}
+
+/**
+ * The plan grouped by lever, exactly as the workspace and the report group it.
+ *
+ * A strategy on two levers appears under both — that is what a many-to-many categorisation
+ * means. One whose only lever was withdrawn lands in "Other" rather than vanishing: the
+ * client agreed to it, and a plan that quietly shortens itself because the catalogue moved
+ * on is not the plan they agreed.
+ */
+function portalPlanGroups(
+  plan: readonly ClientStrategy[],
+  levers: Awaited<ReturnType<typeof listLevers>>,
+  library: readonly LibraryStrategy[],
+  requirements: ReadonlyMap<string, PortalPlanRequirement>,
+  today: string,
+): PortalPlanGroup[] {
+  const descriptions = new Map(library.map((entry) => [entry.id, entry.description]));
+  const forClient = (strategy: ClientStrategy): PortalPlanStrategy => ({
+    id: strategy.id,
+    title: strategy.title,
+    // A bespoke strategy has no catalogue entry, so it has no description. Falling back to
+    // `notes` here would put a consultant's private working note in front of the client.
+    description: strategy.strategyId === null ? "" : descriptions.get(strategy.strategyId) ?? "",
+    scopeLabel: strategyScopeLabel(strategy.scope),
+    category: strategy.category,
+    controlLevelLabel: strategyControlLevelLabels[strategy.controlLevel],
+    status: strategy.status,
+    statusLabel: strategyStatusLabels[strategy.status],
+    progressPct: strategy.progressPct,
+    targetDate: strategy.targetDate === null || strategy.targetDate === "" ? null : strategy.targetDate,
+    deadline: strategyDeadline(strategy, today),
+    srsRequirements: strategy.srsRequirementIds
+      .map((id) => requirements.get(id))
+      .filter((entry): entry is PortalPlanRequirement => entry !== undefined)
+      .sort((a, b) => a.code.localeCompare(b.code)),
+  });
+
+  const groups: PortalPlanGroup[] = strategyPlanByLever(plan, levers)
+    .map((group) => ({ key: group.lever.id, label: group.lever.title, strategies: group.strategies.map(forClient) }));
+  const unallocated = strategiesWithoutLever(plan, levers);
+  if (unallocated.length > 0) {
+    groups.push({ key: "__other", label: "Other", strategies: unallocated.map(forClient) });
+  }
+  return groups;
 }

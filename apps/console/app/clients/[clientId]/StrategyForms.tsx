@@ -378,13 +378,16 @@ export function StrategyEditForm({ action, framework, access, onClose, onSaved }
         ? <NoFramework />
         : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} />}
 
-      {/* Read when a report is issued and frozen with it. Turning it off later does not change
-          a report already sent — and turning it on does not add it to one either. */}
+      {/* One flag, two surfaces. The portal plan reads it live, so clearing it takes the
+          strategy off the client's portal on their next load; the report reads it when a
+          report is issued and freezes it, so a report already sent is unaffected either way. */}
       <label className="nz-fl nz-check"><input type="checkbox" checked={includeInReport}
         onChange={(event) => setIncludeInReport(event.target.checked)} />
-        <span>Include in the client&rsquo;s report</span></label>
+        <span>Show this to the client</span></label>
       <small className="hint">
-        Applies to reports issued from now on. A report already issued keeps the plan it was issued with.
+        Controls what the client sees: their portal plan, which updates live, and the reports issued from
+        now on. A report already issued keeps the plan it was issued with. Clear it to hold a strategy
+        back from both.
       </small>
 
       {removing ? <div className="nz-action-remove">
