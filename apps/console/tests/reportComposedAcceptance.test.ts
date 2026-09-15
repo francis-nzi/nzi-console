@@ -286,3 +286,35 @@ describe("the report's readiness roadmap", () => {
     assert.match(css, /\.nzr-roadmap-pillar h4\{break-after:avoid\}/);
   });
 });
+
+describe("control level in the report plan", () => {
+  const view = read("apps/console/app/reports/[versionId]/ReportComposedView.tsx");
+  const css = read("apps/console/app/reports/[versionId]/report-composed.css");
+  const contract = read("packages/contracts/src/reportComposition.ts");
+
+  it("renders as a per-strategy chip, not a grouping", () => {
+    assert.match(view, /strategyControlLevelLabels\[strategy\.controlLevel\]/);
+    assert.match(view, /nzr-tag ctl/);
+    // Lever remains the grouping: the chip sits inside the strategy row, not on the group.
+    assert.match(view, /plan\.groups\.map\(\(group\) => <section className="nzr-plan-group"/);
+    assert.match(view, /<h3>\{group\.label\}<\/h3>/);
+  });
+
+  it("omits the chip on a composition frozen before it was carried", () => {
+    assert.match(contract, /controlLevel\?: StrategyControlLevel/);
+    assert.match(view, /strategy\.controlLevel !== undefined/);
+  });
+
+  it("is frozen at issue, like the rest of the plan", () => {
+    const composer = /const asReportStrategy[\s\S]*?\n  \}\);/.exec(contract)?.[0] ?? "";
+    assert.match(composer, /controlLevel: strategy\.controlLevel/);
+  });
+
+  it("does not borrow a scope colour for a non-scope mark", () => {
+    const chip = /\.nzr-tag\.ctl\{[^}]*\}/.exec(css)?.[0] ?? "";
+    assert.ok(chip.length > 0, "the chip has its own style");
+    for (const scopeColour of ["#FF5C48", "#FFC24B", "#0BA75E"]) {
+      assert.ok(!chip.includes(scopeColour), `must not use ${scopeColour}`);
+    }
+  });
+});

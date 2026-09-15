@@ -1,7 +1,7 @@
 import { NziIcon, type NziIconKey } from "@nzi/ui";
 import { CRP_RESOLVER_VERSION, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
 import {
-  strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
+  strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
   reportHeadline, reportMethodologyRows, reportResidualTco2e, reportSrsRadarChart,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
   type ReportSrsRoadmap, type ReportSrsSection,
@@ -148,6 +148,12 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
               <div className="nm">{strategy.title}</div>
               <div className="mt">
                 <span className="nzr-tag">{strategyScopeLabel(strategy.scope as StrategyScope)}</span>
+                {/* How much of it the client controls — an attribute of this strategy, not a
+                    grouping; lever remains the grouping above. Absent on compositions frozen
+                    before it was carried, which render without the chip rather than guessing. */}
+                {strategy.controlLevel !== undefined
+                  ? <span className="nzr-tag ctl">{strategyControlLevelLabels[strategy.controlLevel]}</span>
+                  : null}
                 {/* What it advances. The whole point of the alignment is that a reader can
                     see which disclosure each strategy is for. */}
                 {strategy.srsRequirementCodes.map((code) => <span className="nzr-tag srs" key={code}>{code}</span>)}

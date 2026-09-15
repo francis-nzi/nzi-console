@@ -71,6 +71,9 @@
 .nzr-tag{display:inline-block;margin-right:6px;padding:1px 6px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 
 .nzr-tag.srs{border-color:#BEE7D3;background:var(--accent-bg,#E6F4EC);color:var(--accent-d)}
+/* Control level: an attribute chip, so it must not read as loudly as the SRS alignment it
+   sits beside, and must not borrow a scope colour — scope identity means scope. */
+.nzr-tag.ctl{border-color:var(--line);background:#fff;color:var(--ink-2)}
 .nzr-prov{margin-top:16px;padding-top:11px;border-top:1px solid var(--line-2);color:var(--faint);font-size:10.5px;line-height:1.6;overflow-wrap:anywhere}
 
 /* Readiness: the radar beside the pillar table, the shape and the numbers together. */
