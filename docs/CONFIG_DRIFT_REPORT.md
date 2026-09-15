@@ -1,8 +1,11 @@
 # Config drift report — `render.yaml` vs the Render dashboard
 
-**Status: reconciled 16 September 2026 (NZC-079).** Phase 1 produced the inventory; Francis read the
-dashboard; Phase 2 brought `render.yaml` into line with what is actually running. **No live value was
-changed** — this file and `render.yaml` are documentation, and the point was to stop them lying.
+**Status: reconciled 16 September 2026 (NZC-079) — both services read.** Phase 1 produced the
+inventory; Francis read the dashboard; Phase 2 brought `render.yaml` into line with what is actually
+running. **No live value was changed** — this file and `render.yaml` are documentation, and the point
+was to stop them lying.
+
+The only thing still unread is the worker's **Settings → Deploy** commands (§3.4).
 
 ## Result in one line
 
@@ -14,7 +17,9 @@ worried about turned out not to be flag-gated at all.**
 | ✅ **Matched** | `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_FEATURE_REPORT_STUDIO`, `NEXT_PUBLIC_FEATURE_JOB_MODULES`, `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` (same 12 tokens), `NODE_VERSION`, `NZI_DATA_MODE`, `NZI_DATABASE_BOUNDARY`, `NZI_DEMO_ORGANISATION_ID`, `NZI_ISOLATED_API_URL` |
 | ⚠️ **Drifted** | `NZI_AUTH_ENABLED` and `NZI_AUTH_REQUIRED` — declared `"false"`, live `true` |
 | ⚠️ **Missing from the file** | `NEXT_PUBLIC_FEATURE_PORTAL` = `portal-analytics,portal-actions` — live, undeclared |
-| 🔎 **Unresolved** | The legacy tail (`MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET`, …) — deliberately not touched, §5 |
+| ⛔ **Mail safety** | **PASSES** — the worker holds four keys, `NZI_MAIL_MODE` and every `SMTP_*` absent; it cannot put mail on the wire (§3.3) |
+| ℹ️ **Declared, not set** | `NEXT_PUBLIC_APP_ENV` and `NZI_REMINDER_TICK_SECONDS` on the worker — both fail safe, neither changes behaviour (§3.3) |
+| 🔎 **Unresolved** | The legacy tail (`MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET`, …) on the console — deliberately not touched, §5 |
 
 **Every feature flag matched.** The thing that would have meant "staging is not the build we think"
 was not wrong. What *was* wrong is arguably more interesting: two client-facing portal surfaces have
@@ -223,31 +228,56 @@ differs, write the **actual** value — that is the finding.
 > Instance type is load-bearing beyond cost: a pre-deploy command is unavailable on Render's **Free**
 > instance, so dropping off a paid plan removes the migration gate **without an error**.
 
-### 3.3 `nzi-console-reminders` — Environment tab · ⚠️ NOT YET READ
+### 3.3 `nzi-console-reminders` — Environment tab · READ 16 Sep 2026
+
+**The dashboard holds exactly four keys.** Everything present matches; two declared keys are absent,
+both harmlessly; and there is no legacy tail on this service.
 
 | Key | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
-| `NODE_VERSION` | `20.18.0` | | |
-| `NEXT_PUBLIC_APP_ENV` | `staging` | | |
-| `NZI_DATABASE_BOUNDARY` | `isolated-non-production` | | |
-| `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` | | |
-| `NZI_ISOLATED_DATABASE_URL` | *(secret — set?)* | present / absent | |
-| `NZI_REMINDER_TICK_SECONDS` | `"900"` | | |
-| ⛔ `NZI_MAIL_MODE` | **must be absent** | present / absent | |
-| `SMTP_HOST` | *(secret)* | present / absent | |
-| `SMTP_PORT` | *(secret)* | present / absent | |
-| `SMTP_USER` | *(secret)* | present / absent | |
-| `SMTP_PASS` | *(secret)* | present / absent | |
-| `SMTP_FROM` | *(secret)* | present / absent | |
-| `SMTP_TLS` | *(secret)* | present / absent | |
-| — | *Any key in the dashboard **not** listed above* | | ⚠️ list it |
+| `NODE_VERSION` | `20.18.0` | present | ✓ |
+| `NEXT_PUBLIC_APP_ENV` | `staging` | **absent** | ⚠️ declared, not set — **fails safe**, see below |
+| `NZI_DATABASE_BOUNDARY` | `isolated-non-production` | `isolated-non-production` | ✓ — confirmed by the worker's own startup log |
+| `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` | present | ✓ |
+| `NZI_ISOLATED_DATABASE_URL` | *(secret)* | present | ✓ |
+| `NZI_REMINDER_TICK_SECONDS` | `"900"` | **absent** | ⚠️ declared, not set — **default is also 900**, no behavioural difference |
+| ⛔ `NZI_MAIL_MODE` | **must be absent** | **absent** | ✅ **required state** |
+| `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_FROM` · `SMTP_TLS` | *(secrets, `sync: false`)* | **all absent** | ✓ — `render.yaml:119–121` says they "may be left unset here entirely" |
+| — | *Any key not listed above* | **none** | ✓ no legacy tail here |
 
-> **⚠️ The worker has not been reconciled.** The readout covered `nzi-console` only. The worker tables
-> below are still the Phase 1 checklist, unfilled. **`NZI_MAIL_MODE` is the one to check first** — it
-> must be absent, and it is the single edit closest to putting mail on the wire from a service that
-> must never write to a real client. Until it is read, this report says nothing about the worker.
+#### ⛔ The mail check — passes, three times over
 
-### 3.4 `nzi-console-reminders` — Settings → Deploy · ⚠️ NOT YET READ
+The worker **cannot** put mail on the wire, and not by a single precaution:
+
+1. **The boundary.** `mailDelivery()` (`packages/isolated-backend/src/mailer.ts:47`) tests
+   `boundaryToken === "isolated-non-production"` **first**, before either other condition is read, and
+   returns `suppress`. `render.yaml`'s comment about the ordering is accurate. The worker's startup
+   log — *"runs against the isolated non-production boundary"* — **is that branch firing**, so the log
+   line is itself independent proof the variable is set correctly.
+2. **`NEXT_PUBLIC_APP_ENV` is unset**, so the second test (`!== "production"`) would also suppress.
+3. **`NZI_MAIL_MODE` is absent**, so the third would too. And with no `SMTP_*` values there is no
+   transport to open even if all three were defeated.
+
+#### The two absences, and why neither is a problem
+
+- **`NEXT_PUBLIC_APP_ENV`** — unset is *safer* than `staging`: both fail the `=== "production"` test,
+  and unset produces the more explicit suppression reason (*"NEXT_PUBLIC_APP_ENV is unset, not
+  production"*). It would only start to matter if the boundary token were ever removed, at which point
+  it is the second line of defence rather than the first. Worth setting for clarity, not for safety.
+- **`NZI_REMINDER_TICK_SECONDS`** — `reminder-worker.ts:24` reads
+  `Number(process.env.NZI_REMINDER_TICK_SECONDS ?? "900")`, so the fallback is the declared value.
+  The tick is 900 s either way; the declaration is redundant, not wrong.
+
+**Neither is drift in the sense that matters** — nothing runs differently from what the file says. They
+are declared-but-unset, which is a weaker finding than the console's auth pair, where the file said one
+thing and the service did another.
+
+### 3.4 `nzi-console-reminders` — Settings → Deploy · ⚠️ STILL UNREAD
+
+The Environment tab was read; the Deploy settings were not. Low risk — the worker is running, so its
+build and start commands evidently work — but **worth confirming the Pre-Deploy Command is empty**:
+NZC-077 deliberately gives the worker no migration gate, because two services racing to apply the
+same migrations is worse than the fault the gate fixes.
 
 | Setting | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
@@ -322,6 +352,12 @@ before anything is deleted. That is its own careful pass, not a sweep.
 - **The auth pair's intent** (§3.1) — deliberate, or inherited from the recycled service? The file now
   records the live values; nobody has confirmed they are wanted.
 - **The ungated portal surfaces** (§4) — retrofit tokens, or record that they are intentionally always-on.
-- **The legacy tail** (§5) — one careful pass, per key, before anything is removed.
+- **The legacy tail** (§5) — one careful pass, per key, before anything is removed. **Console only:**
+  the worker carries no undeclared keys at all.
+- **The worker's Deploy settings** (§3.4) — the last unread panel; confirm its Pre-Deploy Command is
+  empty, which NZC-077 requires.
+- **Two worker keys declared but unset** (§3.3) — `NEXT_PUBLIC_APP_ENV` and `NZI_REMINDER_TICK_SECONDS`.
+  Neither changes behaviour; setting `NEXT_PUBLIC_APP_ENV` would only make the second line of mail
+  defence explicit rather than implicit.
 - **Blueprint adoption** — the end state that would make this file authoritative again, and make this
   whole class of drift impossible.
