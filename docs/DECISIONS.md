@@ -1136,3 +1136,43 @@ current identity.
 
 *Source: Francis, 13 Sep 2026 — Training family brief, four decisions confirmed at the outset.*
 
+
+### NZC-077 — Staging applies migrations on deploy; production refuses to deploy without them [Confirmed 15 Sep 2026]
+
+**What happened.** #176 merged and auto-deploy shipped code reading the `0084`
+`client_contact_consent_events` table, which had not been applied to the staging database.
+`render.yaml` had no migration step — schema was applied out of band, by hand — so
+`getClientWorkspace` threw and **every** client workspace returned 503. Two independent faults:
+schema and code shipped apart, and a peripheral read cascaded into the core record.
+
+**Staging auto-applies, before cutover.** A pre-deploy step runs the migration runner. Staging is
+isolated, carries no real client data, and optimises for velocity; a gate that needed a human at
+every deploy would be routed around within a week. The runner is safe to run unconditionally: it
+is ledger-based and idempotent, applies pending files in order, refuses gaps and checksum
+mismatches, and CI already proves each migration applies against a real Postgres.
+
+**It fails closed, which is the part that matters.** Render runs the pre-deploy command after the
+build and before cutover, and a non-zero exit aborts the whole deploy while the previous version
+keeps serving. So a migration that cannot complete leaves the *old code* on the *old schema* —
+consistent — rather than new code against a database that does not match it. (`preDeployCommand`
+needs a paid instance type; `nzi-console` is on `starter`.)
+
+**Production takes the opposite posture: a hard check, never an auto-apply.** Its pre-deploy runs
+`migrate:status`, which is read-only and exits non-zero when anything is pending, so a release
+against a stale schema **fails closed** instead of migrating on its own. A production schema change
+stays a deliberate human act: applied through the runner in the live service's Render Shell, with
+secrets left in the environment, confirmed clean, and only then deployed.
+
+Why the asymmetry is not inconsistency: in both environments the deploy refuses to serve code
+against a schema it does not match. They differ only in who is trusted to close the gap — staging
+lets the runner do it, production requires a person.
+
+**The live service is not touched by this decision.** Only the staging blueprint changes now. The
+production posture is written down in `DEPLOYMENT.md` and wired to the live service **at go-live**,
+as its own reviewed step. Until the staging gate is applied, the interim discipline stands: apply
+the migration to the target database before merging the code, as #142/#145 did.
+
+**The second fault is fixed separately.** An adjunct read must not be able to down the record it
+sits beside — `DESIGN_CONVENTIONS` §12, and `getClientWorkspace` now degrades its adjunct reads to
+honest "unavailable" states while essential reads still fail loudly. The gate stops schema drift;
+the resilience rule stops the next surprise from costing the whole page.
