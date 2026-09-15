@@ -1,8 +1,32 @@
 # Config drift report — `render.yaml` vs the Render dashboard
 
-**Phase 1 (repo-side inventory). Working document — the right-hand columns are for Francis to fill
-from the dashboard.** Nothing is fixed here: Phase 2 reconciles, and any drift that changes staging
-behaviour is a dashboard action, not a merge.
+**Status: reconciled 16 September 2026 (NZC-079).** Phase 1 produced the inventory; Francis read the
+dashboard; Phase 2 brought `render.yaml` into line with what is actually running. **No live value was
+changed** — this file and `render.yaml` are documentation, and the point was to stop them lying.
+
+## Result in one line
+
+**Three differences out of eighteen declared values, and the two portal features everybody was
+worried about turned out not to be flag-gated at all.**
+
+| | |
+|---|---|
+| ✅ **Matched** | `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_FEATURE_REPORT_STUDIO`, `NEXT_PUBLIC_FEATURE_JOB_MODULES`, `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` (same 12 tokens), `NODE_VERSION`, `NZI_DATA_MODE`, `NZI_DATABASE_BOUNDARY`, `NZI_DEMO_ORGANISATION_ID`, `NZI_ISOLATED_API_URL` |
+| ⚠️ **Drifted** | `NZI_AUTH_ENABLED` and `NZI_AUTH_REQUIRED` — declared `"false"`, live `true` |
+| ⚠️ **Missing from the file** | `NEXT_PUBLIC_FEATURE_PORTAL` = `portal-analytics,portal-actions` — live, undeclared |
+| 🔎 **Unresolved** | The legacy tail (`MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET`, …) — deliberately not touched, §5 |
+
+**Every feature flag matched.** The thing that would have meant "staging is not the build we think"
+was not wrong. What *was* wrong is arguably more interesting: two client-facing portal surfaces have
+no gate at all (§4).
+
+**What changed in this pass:** `render.yaml` now records the live auth values with an explicit note
+that their *intent* is unconfirmed; `NEXT_PUBLIC_FEATURE_PORTAL` is declared; and the false
+"single source of truth" comment is replaced with what is actually true. The 12 `DATA_ENTRY_V2`
+tokens are identical to the dashboard's but in a different order — left alone, since re-typing a
+12-token list to match an ordering that has no behavioural meaning is risk without benefit.
+
+---
 
 **Scope:** the two services `render.yaml` describes — `nzi-console` (staging web) and
 `nzi-console-reminders` (worker). **Production (`nzi-insights-pro-api-live`) is out of scope.**
@@ -69,6 +93,10 @@ nothing to do with deployment config. Out of scope.
 
 Every declared item, verbatim. `sync: false` means the file declares the key but deliberately carries
 no value (secrets); the dashboard must supply it.
+
+> **This records the file as it stood at Phase 1, before reconciliation.** `render.yaml` has since been
+> corrected (§6), so the two auth values now read `true` there and `NEXT_PUBLIC_FEATURE_PORTAL` has been
+> added. The rows below are kept as the *before* picture — that is what makes the drift legible.
 
 ### 2.1 `nzi-console` — staging web service
 
@@ -155,30 +183,31 @@ edit closest to doing so, and it must not be on this service.
 Read each value from the Render dashboard and write it in. Where it matches, `✓` is enough; where it
 differs, write the **actual** value — that is the finding.
 
-### 3.1 `nzi-console` — Environment tab
+### 3.1 `nzi-console` — Environment tab · READ 16 Sep 2026
 
 | Key | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
-| `NODE_VERSION` | `20.18.0` | | |
-| `NEXT_PUBLIC_APP_ENV` | `staging` | | |
-| 🚩 `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` | `spend,spend-import,portal-spend,commuting,vehicle,travel,client-factors,data-entry-accordion,job-stage-sections,data-assurance,entry-lean-capture,data-entry-fast-add` | | |
-| 🚩 `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` | `report-svg-charts,report-tokens,report-edit,report-paged` | | |
-| 🚩 `NEXT_PUBLIC_FEATURE_JOB_MODULES` | `job-module-lca` | | |
-| `NZI_DATA_MODE` | `isolated-api` | | |
-| `NZI_DATABASE_BOUNDARY` | `isolated-non-production` | | |
-| `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` | | |
-| `NZI_ISOLATED_API_URL` | `https://nzi-pro-api-prod.onrender.com` | | |
+| `NODE_VERSION` | `20.18.0` | ✓ | ✓ |
+| `NEXT_PUBLIC_APP_ENV` | `staging` | ✓ | ✓ |
+| 🚩 `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2` | `spend,spend-import,portal-spend,commuting,vehicle,travel,client-factors,data-entry-accordion,job-stage-sections,data-assurance,entry-lean-capture,data-entry-fast-add` | ✓ | ✓ |
+| 🚩 `NEXT_PUBLIC_FEATURE_REPORT_STUDIO` | `report-svg-charts,report-tokens,report-edit,report-paged` | ✓ | ✓ |
+| 🚩 `NEXT_PUBLIC_FEATURE_JOB_MODULES` | `job-module-lca` | ✓ | ✓ |
+| `NZI_DATA_MODE` | `isolated-api` | ✓ | ✓ |
+| `NZI_DATABASE_BOUNDARY` | `isolated-non-production` | ✓ | ✓ |
+| `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` | ✓ | ✓ |
+| `NZI_ISOLATED_API_URL` | `https://nzi-pro-api-prod.onrender.com` | ✓ | ✓ |
 | `NZI_ISOLATED_DATABASE_URL` | *(secret — set?)* | present / absent | |
-| `NZI_AUTH_ENABLED` | `"false"` | | |
-| `NZI_AUTH_REQUIRED` | `"false"` | | |
+| ⚠️ `NZI_AUTH_ENABLED` | `"false"` | `true` | **NO — drifted** |
+| ⚠️ `NZI_AUTH_REQUIRED` | `"false"` | `true` | **NO — drifted** |
 | `NZI_CONSOLE_SESSION_SECRET` | *(secret — set?)* | present / absent | |
 | `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | *(secret — set?)* | present / absent | |
-| — | *Any key in the dashboard **not** listed above* | | ⚠️ list it |
+| ⚠️ `NEXT_PUBLIC_FEATURE_PORTAL` | *(not declared)* | `portal-analytics,portal-actions` | **NO — missing from file** |
+| 🔎 `MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET`, … | *(not declared)* | present — legacy tail | see §5, not actioned |
 
 **Never write a secret's value into this file.** For the three `sync: false` keys, "present" or
 "absent" is the whole answer.
 
-### 3.2 `nzi-console` — Settings → Deploy
+### 3.2 `nzi-console` — Settings → Deploy · NOT YET READ
 
 | Setting | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
@@ -194,7 +223,7 @@ differs, write the **actual** value — that is the finding.
 > Instance type is load-bearing beyond cost: a pre-deploy command is unavailable on Render's **Free**
 > instance, so dropping off a paid plan removes the migration gate **without an error**.
 
-### 3.3 `nzi-console-reminders` — Environment tab
+### 3.3 `nzi-console-reminders` — Environment tab · ⚠️ NOT YET READ
 
 | Key | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
@@ -213,7 +242,12 @@ differs, write the **actual** value — that is the finding.
 | `SMTP_TLS` | *(secret)* | present / absent | |
 | — | *Any key in the dashboard **not** listed above* | | ⚠️ list it |
 
-### 3.4 `nzi-console-reminders` — Settings → Deploy
+> **⚠️ The worker has not been reconciled.** The readout covered `nzi-console` only. The worker tables
+> below are still the Phase 1 checklist, unfilled. **`NZI_MAIL_MODE` is the one to check first** — it
+> must be absent, and it is the single edit closest to putting mail on the wire from a service that
+> must never write to a real client. Until it is read, this report says nothing about the worker.
+
+### 3.4 `nzi-console-reminders` — Settings → Deploy · ⚠️ NOT YET READ
 
 | Setting | Declared | Dashboard actual | Matches? |
 |---|---|---|---|
@@ -227,15 +261,67 @@ differs, write the **actual** value — that is the finding.
 
 ---
 
-## 4. What Phase 2 does with this
+## 4. Are the portal features actually live? — traced in the code
 
-1. **Act on value drift first.** A flag difference is a live behavioural bug, not a documentation nit —
-   staging is not the build we think we are testing. Each drift is Francis's call per item: update
-   `render.yaml` to match reality where the live value is right, or change the dashboard where the file
-   held the intent. **Dashboard changes are Francis's to apply.**
-2. **Correct the one false claim** at `render.yaml:18–22`, to match the wording `DEPLOYMENT.md` already
-   uses. Re-grep to prove none remains.
-3. **Record the NZC decision**: for these manually-created services the dashboard is the effective
-   source of truth, `render.yaml` is documentation and the carrier for a future Blueprint rebuild, and
-   **Blueprint adoption is recommended but deliberately not done** — it risks duplicating live services
-   and deserves its own migration.
+The question that mattered: are the portal plan and readiness statement merged but **dark** on
+staging, gated on a token that isn't set?
+
+**No — and not because the tokens are set. Because neither feature is gated at all.**
+
+`portalFeatureEnabled()` (`apps/console/app/lib/portalFlags.ts`) knows exactly two tokens, and every
+call site in the app is accounted for here:
+
+| Token | What it gates | In the live value? | Effect |
+|---|---|---|---|
+| `portal-analytics` | `/portal/intensity` (redirects away when off) · `/portal/jobs/[jobId]/dashboard` (redirects away when off) · the "Emissions dashboard" link on the portal home | ✅ yes | **Live** |
+| `portal-actions` | `PortalActionTrackerPanel` on the job dashboard | ✅ yes | **Live** |
+
+| Feature | Gate | Status on staging |
+|---|---|---|
+| Portal reduction plan (**#173**) | **None.** `<PortalReductionPlan/>` renders unconditionally at `PortalHome.tsx:25`; the component contains no flag reference | **Live** |
+| Portal SRS readiness statement (**#177**) | **None.** `<PortalReadiness/>` renders unconditionally at `PortalHome.tsx:28`; the component contains no flag reference | **Live** |
+| `/api/portal/strategies`, `/api/portal/readiness` | **None** — neither route consults a flag | **Live** |
+
+> **The finding, stated plainly.** Nothing is dark. But two client-facing surfaces shipped with **no
+> rollout gate**, while every other portal Phase 2 surface sits behind a token. `REDESIGN_ROLLOUT.md`
+> §"Feature-flag strategy" says new UI stays behind a flag until its acceptance pass — these did not.
+>
+> It did no harm here: both are read-only, tenant-scoped, and were merged deliberately. But it means
+> there is **no way to turn either off without a revert**, which is exactly what a flag buys. Worth a
+> decision — add `portal-plan` / `portal-readiness` tokens retrospectively, or record that these two
+> were intentionally ungated. Not actioned in this pass; it changes behaviour, and this pass does not.
+>
+> *(The brief cited the readiness statement as #183; that was the estimate-entry form. Readiness
+> shipped as #177 — corrected above.)*
+
+## 5. The legacy tail — deliberately untouched
+
+The dashboard carries keys `render.yaml` never declared: `MS_*`, `NZI_ENVIRONMENT`, `NZI_JWT_SECRET`
+and others. **None was removed, and none should be on this evidence.**
+
+`NZI_JWT_SECRET` is the clearest reason for caution: auth is **enabled and required** on this service
+(§3.1), so a secret that looks like dead weight from the recycled service it was created on may be
+load-bearing for the auth that is actually running. Removing it to tidy a list would be the kind of
+cleanup that takes staging down.
+
+Each key needs its own check — genuinely unreferenced in the code, and genuinely unread at runtime —
+before anything is deleted. That is its own careful pass, not a sweep.
+
+## 6. What Phase 2 did, and what is still open
+
+1. **Brought `render.yaml` into line with reality** — the two auth values, and the missing
+   `NEXT_PUBLIC_FEATURE_PORTAL` key, each with a comment saying what it reflects and what is still
+   unconfirmed. No live value was changed.
+2. **Corrected the false claim** at `render.yaml:18–22`, to the wording `DEPLOYMENT.md` already used.
+3. **Recorded NZC-079** — the dashboard is the effective source of truth for these manually-created
+   services; `render.yaml` is documentation and the carrier for a future Blueprint rebuild; Blueprint
+   adoption is recommended but deliberately not done, since it risks duplicating live services.
+
+**Still open, each needing a decision rather than a merge:**
+
+- **The auth pair's intent** (§3.1) — deliberate, or inherited from the recycled service? The file now
+  records the live values; nobody has confirmed they are wanted.
+- **The ungated portal surfaces** (§4) — retrofit tokens, or record that they are intentionally always-on.
+- **The legacy tail** (§5) — one careful pass, per key, before anything is removed.
+- **Blueprint adoption** — the end state that would make this file authoritative again, and make this
+  whole class of drift impossible.
