@@ -1167,10 +1167,17 @@ Why the asymmetry is not inconsistency: in both environments the deploy refuses 
 against a schema it does not match. They differ only in who is trusted to close the gap — staging
 lets the runner do it, production requires a person.
 
-**The live service is not touched by this decision.** Only the staging blueprint changes now. The
-production posture is written down in `DEPLOYMENT.md` and wired to the live service **at go-live**,
-as its own reviewed step. Until the staging gate is applied, the interim discipline stands: apply
-the migration to the target database before merging the code, as #142/#145 did.
+**The live service is not touched by this decision.** The production posture is written down in
+`DEPLOYMENT.md` and wired to the live service **at go-live**, as its own reviewed step.
+
+**How it was actually implemented (16 Sep 2026).** The staging gate is set as the Render
+**dashboard Pre-Deploy Command**, not through `render.yaml`: the staging service is not
+Blueprint-managed, so Render never reads that file for it and the YAML line would have looked like
+a gate while being inert. The decision is unchanged — a pre-deploy step runs the runner, fails
+closed — only the surface it is configured on. The `render.yaml` line is kept as documentation and
+as the carrier for a future Blueprint rebuild. It went in with `0085`, which it applied unattended
+on #182; `0084` was the last migration this project applied by hand. Staging no longer needs the
+apply-before-merge discipline; production still does, by design.
 
 **The second fault is fixed separately.** An adjunct read must not be able to down the record it
 sits beside — `DESIGN_CONVENTIONS` §12, and `getClientWorkspace` now degrades its adjunct reads to

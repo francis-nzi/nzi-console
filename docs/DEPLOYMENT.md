@@ -209,11 +209,32 @@ migration step, and every client workspace returned **503** — over a consent c
 looking at. Two independent faults, addressed separately: this section is the deploy gate; the
 resilience half is in `DESIGN_CONVENTIONS` §11 (adjunct reads fail soft).
 
-### Staging — auto-apply before cutover (proposed; Francis to apply)
+### Staging — auto-apply before cutover ✅ LIVE, and proven
 
-`render.yaml` is a deployment surface, so the change below is **proposed, not applied**. It adds a
-pre-deploy step to the **staging web service only** (`nzi-console`). Nothing here touches the live
-service, which is not in this blueprint at all.
+**The gate is on, and it works.** It is configured in the **Render dashboard**, as the staging web
+service's **Pre-Deploy Command**:
+
+```
+npm run migrate -w @nzi/isolated-backend
+```
+
+It proved itself on its first real job: migration `0085` (#182) was applied by the pre-deploy step
+on deploy, confirmed in the deploy log. That is the whole point of NZC-077 — the migration that
+closed the 15 September gap was the last one that had to be applied by hand.
+
+> **The mechanism is the dashboard setting, not `render.yaml`.** The staging service is **not
+> Blueprint-managed**, so Render does not read `render.yaml` for it and a `preDeployCommand` line
+> there would have changed nothing while appearing to. The YAML below is **documentation and
+> future-proofing for a Blueprint rebuild** — if the service is ever recreated from the blueprint,
+> this is the line that carries the gate across. It is not the active mechanism today.
+>
+> **The corollary is worth knowing:** any other behaviour `render.yaml` claims to govern for this
+> service — the feature-flag env vars among them, which the file's own comment calls "the single
+> source of truth" — is equally not in force from the file. The dashboard is authoritative. That is
+> a wider discrepancy than this section, and worth a pass of its own.
+
+The YAML that would carry the gate across a Blueprint rebuild, for the **staging web service only**
+(`nzi-console`). Nothing here touches the live service, which is not in this blueprint at all.
 
 ```diff
    - type: web
@@ -238,29 +259,31 @@ service, which is not in this blueprint at all.
      startCommand: npm run start -w @nzi/console
 ```
 
-**Two things to know before applying it.**
+**Two standing constraints — they apply to the dashboard setting too, not just the YAML.**
 
-- `preDeployCommand` **requires a paid instance type** — it is unavailable on Render's Free
-  instance. `nzi-console` is on `plan: starter`, so it qualifies. If the service is ever moved to
-  Free, this step silently stops being available and the gate goes with it.
-- The pre-deploy step needs the **same `DATABASE_URL`** the service runs with. It inherits the
-  service's environment, so no new secret is introduced — but confirm the runner's connection
-  variable matches what the service already supplies.
+- A pre-deploy command **requires a paid instance type** — it is unavailable on Render's Free
+  instance. `nzi-console` is on `starter`, so it qualifies. If the service is ever moved to Free,
+  the step silently stops being available and **the gate goes with it**, without an error.
+- The pre-deploy step runs with the **service's own environment**, so it uses the same
+  `DATABASE_URL` and introduces no new secret. That is also why it can only ever migrate the
+  database the service itself talks to.
 
 **The worker (`nzi-console-reminders`) deliberately gets no gate.** Two services racing to apply
 the same migrations is a worse failure than the one being fixed; the web service is the one that
 owns the schema, and the worker follows it.
 
-**Expected behaviour, to verify on the first migration-carrying deploy after this lands:**
+**Behaviour:**
 
-| Case | Expected |
-|---|---|
-| No pending migrations | Pre-deploy is a no-op; deploy proceeds |
-| Pending migration applies cleanly | Applied before cutover; new code serves against current schema |
-| Migration fails | **Deploy aborts.** Previous version keeps serving, on the schema it was written for |
+| Case | Expected | Status |
+|---|---|---|
+| No pending migrations | Pre-deploy is a no-op; deploy proceeds | Seen on every deploy since |
+| Pending migration applies cleanly | Applied before cutover; new code serves against current schema | **Proven — `0085` on #182** |
+| Migration fails | **Deploy aborts.** Previous version keeps serving, on the schema it was written for | Not yet observed |
 
-Validate with a deliberate dry-run rather than in anger: a migration-carrying PR to staging with
-the gate in place, and a knowingly-bad migration on a throwaway branch to watch the release abort.
+The failure path is the one still taken on trust: it rests on Render's documented contract that a
+failed pre-deploy fails the whole deploy and leaves the previous version serving. Worth proving
+once with a knowingly-bad migration on a throwaway branch, so the abort is something we have
+watched rather than something we have read.
 
 ### Production — a hard check, never an auto-apply (prepared; wired at go-live)
 
@@ -290,15 +313,21 @@ if the schema is behind — it refuses to cut over rather than applying anything
 If step 1 is skipped, step 3 fails closed and the previous version keeps serving. That is the point:
 the only way to ship code against a stale production schema is to defeat the check on purpose.
 
-### Interim discipline — until the staging gate is applied
+### Interim discipline — closed for staging, still the rule for production
 
-Until the `preDeployCommand` above is in place, the safeguard is procedural and is the same one
-#142/#145 used: **for any migration-carrying PR, apply the migration to the target database before
-merging the code.** Merge order matters precisely because nothing yet enforces it.
+**Staging no longer needs it.** The gate applies pending migrations on every deploy, so a
+migration-carrying PR to staging can simply be merged. `0084` was the last one applied by hand;
+`0085` was the first applied by the gate.
 
-The `0084` apply that unblocks the 15 September outage is this discipline, after the fact:
+**Production still needs it, and always will** — by design, not by omission. There the pre-deploy
+is a *check*, never an apply, so the sequence above (apply via the runner in the live Shell, confirm
+`migrate:status` clean, then deploy) remains the procedure. Production schema changes stay a
+deliberate human act.
+
+Should the staging gate ever be lost — the service moved to a Free instance, or recreated without
+the dashboard setting — the old discipline is the fallback:
 
 ```
-npm run migrate:status -w @nzi/isolated-backend   # read-only: expect 0084 pending
+npm run migrate:status -w @nzi/isolated-backend   # read-only: what is applied, what is pending
 npm run migrate -w @nzi/isolated-backend          # applies it, in order, with the ledger
 ```
