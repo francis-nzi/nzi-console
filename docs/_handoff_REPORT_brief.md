@@ -23,10 +23,12 @@ their "report icon" pieces are now unblocked. (Recorded in DESIGN_CONVENTIONS.)
    provenance. Deliberately a **single light "paper" look** (print/PDF target), not
    theme-toggling.
 🟢 2. Each section composes existing resolvers/charts — do NOT recompute: footprint & scope
-   split, intensity metrics (with their icons + divider), target model + pathway, action-lever
-   plan (grouped by **level of control** — the `control_level` field, per the action-lever
-   rename; never "sphere of influence", which is reserved for the SBTi framework), SRS readiness
-   (radar + maturity + roadmap). Reuse `@nzi/charts`.
+   split, intensity metrics (with their icons + divider), target model + pathway, the
+   **Reduction Strategies plan, grouped by lever** (#155/#162 — `composeReportPlan`, filtered to
+   `include_in_report` at issue, with an "Other" group for strategies whose only lever was
+   withdrawn). `control_level` is captured per strategy in the workspace and is **not** carried
+   into the report today; never "sphere of influence", which is reserved for the SBTi framework.
+   SRS readiness (radar + maturity + roadmap). Reuse `@nzi/charts`.
 🔴 3. **Issuing a report freezes a composition, not just a snapshot.** The measurement snapshot
    freezes the footprint — but a report also quotes intensity, the plan and SRS readiness, which
    are **live records that keep changing**. So issuing must freeze the whole composition — the
