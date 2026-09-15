@@ -874,6 +874,13 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-srs-mtag.m3{background:#2E9E68;color:#fff}
 .nz-srs-mtag.m4{background:#0B6B41;color:#fff}
 .nz-srs-gap{font-size:11.5px;font-weight:600;color:var(--pine)}
+/* The strategies advancing a requirement — the reverse of each strategy's SRS alignment. */
+.nz-srs-align{display:flex;flex-direction:column;gap:3px;margin-top:3px;font-size:11.5px}
+.nz-srs-align .s{display:block;line-height:1.35}
+.nz-srs-align .s b{font-weight:600;color:var(--t1)}
+.nz-srs-align .s .muted{font-size:11px}
+/* An unaddressed requirement reads as absence, not as an error. */
+.nz-srs-align.none{color:var(--t3);font-style:italic}
 .nz-srs-ladder{display:grid;gap:6px;margin:6px 0 4px}
 .nz-srs-rung{display:grid;grid-template-columns:auto 1fr;gap:4px 9px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:8px 11px;cursor:pointer}
 .nz-srs-rung.on{border-color:var(--pine);background:var(--mint)}

@@ -6,7 +6,8 @@ import { GatedButton, InfoTip } from "@nzi/ui";
 import {
   benchmark as resolveBenchmark, evidenceCoverage, gaps as resolveGaps, maturityLabel,
   orderedRequirements, overallReadiness, pillarReadiness, readinessTrend, standardReadiness,
-  type SrsAssessment, type SrsFramework, type SrsMaturity,
+  strategiesBySrsRequirement, strategyStatusLabels,
+  type ClientStrategy, type SrsAssessment, type SrsFramework, type SrsMaturity,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -84,6 +85,13 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
   const coverage = useMemo(() => evidenceCoverage(framework, assessment.items), [framework, assessment]);
   const gaps = useMemo(() => resolveGaps(framework, assessment.items), [framework, assessment]);
   const trend = useMemo(() => readinessTrend(framework, assessments.filter((entry) => entry.status === "complete" || entry.assessmentId === assessment.assessmentId)), [framework, assessments, assessment]);
+  // The reverse of the alignment each strategy carries: requirement → what this client is
+  // doing about it. Derived from the plan already in the workspace, so it cannot disagree
+  // with the Reduction Strategies area next door.
+  const strategiesByRequirement = useMemo(
+    () => strategiesBySrsRequirement(workspace.strategies.plan),
+    [workspace.strategies.plan],
+  );
   const mark = resolveBenchmark(assessment);
   const climate = framework.standards.find((standard) => standard.climateLed) ?? framework.standards[0]!;
   const other = framework.standards.find((standard) => standard.key !== climate.key) ?? null;
@@ -215,13 +223,13 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
                 <div>
                   <div className="nm">{gap.requirement.title}</div>
                   <div className="sub">{framework.pillars.find((pillar) => pillar.key === gap.requirement.pillarKey)?.label} · {gap.requirement.standardKey}
-                    {gap.linkedActionId ? " · linked action" : " · no action yet"}
                     {gap.owner ? ` · owner ${gap.owner}` : ""}</div>
+                  <AlignedStrategies strategies={strategiesByRequirement.get(gap.requirement.id) ?? []} />
                 </div>
                 <span className="d">{gap.dueDate ? formatDate(gap.dueDate) : "No date"}</span>
               </div>)}
             {gaps.length > 8 ? <p className="nz-maps">{gaps.length - 8} further gaps are in the register.</p> : null}
-            <p className="nz-maps">A gap becomes an action in the action-lever library, so the readiness roadmap and the decarbonisation plan share one spine. Linking is enabled once that library lands.</p>
+            <p className="nz-maps">A gap is answered by the strategies on this client&apos;s reduction plan that advance it, so the readiness roadmap and the decarbonisation plan share one spine. Each strategy states the requirements it advances when it is added to the plan.</p>
           </div>
         </section>
 
@@ -238,12 +246,41 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
       </div>
     </div>
 
-    <SrsRegister framework={framework} assessment={assessment} access={access} onDrawer={onDrawer} />
+    <SrsRegister framework={framework} assessment={assessment} access={access} onDrawer={onDrawer}
+      strategiesByRequirement={strategiesByRequirement} />
   </>;
 }
 
-function SrsRegister({ framework, assessment, access, onDrawer }: {
+/**
+ * What this client is actually doing about a requirement.
+ *
+ * Names the strategies rather than reporting that a link exists: "linked action" told the
+ * reader a row had been filled in, which is not the same as the requirement being addressed,
+ * and it could not be checked without opening something else.
+ */
+function AlignedStrategies({ strategies }: { strategies: readonly ClientStrategy[] }) {
+  if (strategies.length === 0) return <div className="nz-srs-align none">No strategy yet</div>;
+  return <div className="nz-srs-align">
+    {strategies.map((strategy) => <span key={strategy.id} className="s">
+      <b>{strategy.title}</b> <span className="muted">{strategyStatusLabels[strategy.status]}</span>
+    </span>)}
+  </div>;
+}
+
+/** The register's cell: the strategies if there are any, else why the row is still short. */
+function GapStrategies({ strategies, shortOfTarget, needs }: {
+  strategies: readonly ClientStrategy[]; shortOfTarget: boolean; needs: string | null;
+}) {
+  if (strategies.length > 0) return <AlignedStrategies strategies={strategies} />;
+  // An unaddressed gap says so. A requirement already at target needs nothing, so it stays
+  // blank rather than being nagged about.
+  if (shortOfTarget) return <span className="nz-srs-gap">{needs ? `Needs ${needs}` : "Below target"} · no strategy yet</span>;
+  return <span className="muted">—</span>;
+}
+
+function SrsRegister({ framework, assessment, access, onDrawer, strategiesByRequirement }: {
   framework: SrsFramework; assessment: SrsAssessment; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void;
+  strategiesByRequirement: Map<string, ClientStrategy[]>;
 }) {
   const items = new Map(assessment.items.map((item) => [item.requirementId, item]));
   const requirements = orderedRequirements(framework);
@@ -252,7 +289,7 @@ function SrsRegister({ framework, assessment, access, onDrawer }: {
   return <section className="nz-panel" style={{ marginTop: 16 }}>
     <CardHead eyebrow="Assessment" title="Requirement register" right={<span className="hint">consultant-led · framework Admin-versioned</span>} />
     <table className="nz-tbl">
-      <thead><tr><th>Requirement</th><th>Std</th><th>Pillar</th><th>Maturity</th><th>Evidence</th><th>Gap → action</th><th /></tr></thead>
+      <thead><tr><th>Requirement</th><th>Std</th><th>Pillar</th><th>Maturity</th><th>Evidence</th><th>Gap → strategy</th><th /></tr></thead>
       <tbody>
         {requirements.map((requirement) => {
           const item = items.get(requirement.id) ?? null;
@@ -269,9 +306,8 @@ function SrsRegister({ framework, assessment, access, onDrawer }: {
             <td>{item?.evidence
               ? <span title={item.evidence.note}>{item.evidence.ref ?? item.evidence.note.slice(0, 40) ?? item.evidence.kind}</span>
               : <span className="up">none</span>}</td>
-            <td>{shortOfTarget
-              ? <span className="nz-srs-gap">{item?.linkedActionId ? "Linked action" : `Needs ${level(requirement.targetMaturity)?.label}`} →</span>
-              : <span className="muted">—</span>}</td>
+            <td><GapStrategies strategies={strategiesByRequirement.get(requirement.id) ?? []}
+              shortOfTarget={shortOfTarget} needs={level(requirement.targetMaturity)?.label ?? null} /></td>
             <td style={{ textAlign: "right" }}>
               <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || assessment.status !== "draft"}
                 blockedReason={access.state !== "allowed" ? access.reason : assessment.status !== "draft" ? "This assessment is complete — start a reassessment to change it." : undefined}

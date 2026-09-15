@@ -352,3 +352,40 @@ export const strategyDeadlineSummary = (signals: readonly StrategyDeadlineSignal
   approaching: signals.filter((entry) => entry.deadline.state === "approaching").length,
   total: signals.length,
 });
+
+/* ── The reverse of the SRS alignment ────────────────────────────────────────────────── */
+
+/**
+ * Which strategies on a client's plan advance each SRS requirement.
+ *
+ * Every strategy carries the requirements it advances (`srsRequirementIds`, stored in
+ * `strategy_srs_requirements` and indexed by requirement for exactly this read). Readiness
+ * needs to ask it the other way round: given a requirement — usually a gap — what is this
+ * client actually doing about it?
+ *
+ * Derived from the plan already loaded rather than re-queried. Whoever shows readiness shows
+ * the plan beside it, and a second query could disagree with the list next to it mid-render.
+ *
+ * Withdrawn strategies are excluded: a strategy the client no longer holds does not answer a
+ * requirement, and showing it would overstate readiness — the failure this view exists to
+ * avoid.
+ */
+export function strategiesBySrsRequirement(
+  plan: readonly ClientStrategy[],
+): Map<string, ClientStrategy[]> {
+  const byRequirement = new Map<string, ClientStrategy[]>();
+  for (const strategy of plan) {
+    if (!strategy.active) continue;
+    for (const requirementId of strategy.srsRequirementIds) {
+      const existing = byRequirement.get(requirementId);
+      if (existing) existing.push(strategy);
+      else byRequirement.set(requirementId, [strategy]);
+    }
+  }
+  // Furthest along first, then by title: a stable order, so the same plan does not reshuffle
+  // between renders.
+  for (const strategies of byRequirement.values()) {
+    strategies.sort((a, b) => b.progressPct - a.progressPct || a.title.localeCompare(b.title));
+  }
+  return byRequirement;
+}
