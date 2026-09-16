@@ -11,6 +11,20 @@ import type { AnswerModel, ModelDraft } from "@nzi/contracts";
  * **The API key is passed in, never read from `process.env` here** — the same discipline as
  * `spendImportIdentity`. Reading it at the composition edge keeps the one place a secret enters
  * the process greppable, and keeps this module usable from a test that has no secret at all.
+ *
+ * ## Watch-point: the HTTP call itself is the one path no test exercises
+ *
+ * By design — there is no key in CI and there should not be, so nothing here proves the request
+ * shape, the headers or the response envelope against the real API. `parseModelDraft` is covered
+ * thoroughly and the rules above it are covered without a network, but the `fetch` in `draft()`
+ * has only ever run against a fake.
+ *
+ * **The first use of a real key on staging is therefore a supervised check, not a silent
+ * enablement.** Set the key, ask one question whose answer is known to be in the library, and
+ * confirm a cited answer comes back; then ask one that is not, and confirm the abstention. If the
+ * request shape is wrong the failure is safe — a non-2xx throws, `answerQuestion` reports it as a
+ * fault and still shows the retrieved sources — but "safe" is not "noticed", and an adapter that
+ * silently always fails would look identical to a library that never matches.
  */
 
 /** Sonnet is the default: a grounded lookup over a handful of short entries is not Opus work. */

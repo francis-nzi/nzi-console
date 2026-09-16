@@ -1536,6 +1536,15 @@ still shown**: they were real, only the prose was in doubt.
 it is; but it is passed as help in reading an ambiguous question and declared non-citable in the
 prompt, because it is the app's word about where someone is standing, not a ratified source.
 
+**Watch-point.** The HTTP adapter is the one path no test exercises — by design, since there is
+no key in CI. `parseModelDraft` is covered thoroughly and every rule above the model interface is
+covered without a network, but the request shape, headers and response envelope have only ever run
+against a fake. **The first use of a real key on staging is a supervised check, not a silent
+enablement**: ask one question whose answer is in the library and confirm a cited answer; ask one
+that is not and confirm the abstention. A wrong request shape fails safe — a non-2xx throws, is
+reported as a fault, and the retrieved sources still show — but safe is not the same as noticed,
+and an adapter that always failed would look identical to a library that never matches.
+
 **Model.** `claude-sonnet-5` by default — a grounded lookup over a handful of short entries is not
 Opus work. `ANTHROPIC_API_KEY` is read at the composition edge (the route) and nowhere deeper,
 matching `spendImportIdentity`; `render.yaml` declares the key with `sync: false` and never a
