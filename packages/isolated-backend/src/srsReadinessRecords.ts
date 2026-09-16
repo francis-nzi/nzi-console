@@ -22,16 +22,19 @@ export async function getSrsFramework(db: Queryable, frameworkId?: string): Prom
   const row = header.rows[0];
   if (!row) return null;
 
-  const [standards, pillars, levels, requirements] = await Promise.all([
-    db.query<{ standard_key: string; label: string; description: string; climate_led: boolean; ordering: number }>(
-      `SELECT standard_key,label,description,climate_led,ordering FROM nzi_console.srs_standards WHERE framework_id=$1 ORDER BY ordering`, [row.framework_id]),
-    db.query<{ pillar_key: string; label: string; description: string; ordering: number }>(
-      `SELECT pillar_key,label,description,ordering FROM nzi_console.srs_pillars WHERE framework_id=$1 ORDER BY ordering`, [row.framework_id]),
-    db.query<{ level: number; key: string; label: string; definition: string }>(
-      `SELECT level,key,label,definition FROM nzi_console.srs_maturity_levels WHERE framework_id=$1 ORDER BY level`, [row.framework_id]),
-    db.query<{ requirement_id: string; standard_key: string; pillar_key: string; code: string; title: string; help_text: string; weight: string; source: "entered" | "nzi-data"; nzi_source_key: string | null; target_maturity: number; ordering: number; active: boolean }>(
-      `SELECT requirement_id,standard_key,pillar_key,code,title,help_text,weight::text,source,nzi_source_key,target_maturity,ordering,active FROM nzi_console.srs_requirements WHERE framework_id=$1 ORDER BY standard_key,pillar_key,ordering`, [row.framework_id]),
-  ]);
+  // Sequential, not `Promise.all`. `db` here is a single pooled client inside a tenant
+  // transaction, and node-postgres allows only one query in flight per client — firing four at
+  // once raises "client.query() when the client is already executing a query" and is queued
+  // today only by the driver's good grace. A future pg major makes it an error rather than a
+  // warning, and the four reads are small and framework-scoped, so there is nothing to win here.
+  const standards = await db.query<{ standard_key: string; label: string; description: string; climate_led: boolean; ordering: number }>(
+    `SELECT standard_key,label,description,climate_led,ordering FROM nzi_console.srs_standards WHERE framework_id=$1 ORDER BY ordering`, [row.framework_id]);
+  const pillars = await db.query<{ pillar_key: string; label: string; description: string; ordering: number }>(
+    `SELECT pillar_key,label,description,ordering FROM nzi_console.srs_pillars WHERE framework_id=$1 ORDER BY ordering`, [row.framework_id]);
+  const levels = await db.query<{ level: number; key: string; label: string; definition: string }>(
+    `SELECT level,key,label,definition FROM nzi_console.srs_maturity_levels WHERE framework_id=$1 ORDER BY level`, [row.framework_id]);
+  const requirements = await db.query<{ requirement_id: string; standard_key: string; pillar_key: string; code: string; title: string; help_text: string; weight: string; source: "entered" | "nzi-data"; nzi_source_key: string | null; target_maturity: number; ordering: number; active: boolean }>(
+    `SELECT requirement_id,standard_key,pillar_key,code,title,help_text,weight::text,source,nzi_source_key,target_maturity,ordering,active FROM nzi_console.srs_requirements WHERE framework_id=$1 ORDER BY standard_key,pillar_key,ordering`, [row.framework_id]);
 
   return {
     frameworkId: row.framework_id, version: row.version, label: row.label, status: row.status,

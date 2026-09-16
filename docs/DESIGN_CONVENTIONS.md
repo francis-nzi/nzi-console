@@ -221,3 +221,31 @@ the same in all three.
 
 **Judgement, not reflex.** Do not soft-fail everything — the distinction is exactly what stops a
 broken core record from rendering as a calm, empty page.
+
+## 13. Inside a tenant transaction, `db` is one connection (locked)
+
+**Never `Promise.all` queries on a `Queryable` handed to you by `withTenantRead`,
+`withTenantWrite` or a command handler. Await them one at a time.**
+
+That `db` is a **single pooled client** with an open transaction, not the pool. node-postgres
+allows one query in flight per client, so firing several at once raises
+`Calling client.query() when the client is already executing a query`. Today the driver queues
+them and warns; a future major makes it an error. Parallelism was never real here — the queries
+were always going to run one after another on one connection.
+
+**Why this is a convention and not just a fixed bug.** It reads as an obvious optimisation, the
+code looks correct, the data comes back right, and nothing fails. The only symptom is a
+deprecation warning in a log — which is worse than a failure, because it is noise that shows up
+near whatever else is going on. When `getSrsFramework` did this, the warning appeared beside an
+unrelated optimistic-concurrency conflict during the NZC-080 seed run and made a
+wrong-version-passed bug look like a race, which cost a diagnosis. A warning that misattributes
+other failures is a real cost, not a tidiness issue.
+
+**Enforced, not just written down.** `packages/isolated-backend/tests/srsFrameworkRead.test.ts`
+drives the read through a fake that is stricter than the driver: it refuses overlap outright
+rather than queueing, so a reintroduced `Promise.all` fails a test rather than printing a warning
+nobody reads. Apply the same fake to any read model that fans out.
+
+**Where parallelism is fine:** separate `pool.query()` calls, or separate `withTenantRead` calls —
+each checks out its own client. The rule is about sharing *one* client, not about concurrency in
+general.
