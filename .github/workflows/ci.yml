@@ -79,3 +79,9 @@ jobs:
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing
         run: npx tsx --test packages/isolated-backend/tests/strategyReminders.test.ts
+      # The NZC-080 acceptance seed, run twice. Its first three failures were each found by
+      # running it against staging, which cost a round-trip apiece and left a half-applied
+      # fixture in a real client's plan. Two were invisible to typecheck by construction and one
+      # was a runtime-only rule, so only executing the commands against a database catches them.
+      - name: The portal acceptance seed runs end to end, and is re-runnable
+        run: npx tsx --test packages/isolated-backend/tests/portalAcceptanceSeed.test.ts

@@ -1,185 +1,67 @@
 /**
  * Seed the staging test client for the portal acceptance run (NZC-080).
  *
+ *   npm run seed:portal-acceptance
+ *   npm run seed:portal-acceptance -- --withdraw-all
+ *
  * Produces every case `docs/STAGING_ACCEPTANCE_PORTAL_PLAN.md` and
  * `docs/STAGING_ACCEPTANCE_PORTAL_READINESS.md` ask for, so the run is a spot-check against known
  * expected values rather than an exploration of whatever happens to be in the database.
  *
- *   npm run seed:portal-acceptance
- *
  * ## Through the command layer, not around it
  *
- * Every row is written by the same commands the staff console calls — `client.strategy.assign`,
- * `client.strategy.update`, `client.strategy.estimate.set`, `client.strategy.remove`,
- * `srs.assessment.start` / `.item.set` / `.complete`. Nothing here writes a domain row with SQL.
+ * Every domain row is written by the commands the staff console calls. A seed of raw INSERTs
+ * would produce rows that look right and carry no audit event, no outbox entry, no version and no
+ * provenance — and the acceptance run would then be checking the portal against data the real
+ * write path has never produced. The commands also enforce their own invariants, so this seed
+ * cannot create a shape the console could not.
  *
- * That is not ceremony. A seed of raw INSERTs would produce rows that *look* right and carry no
- * audit event, no outbox entry, no version and no provenance — and the acceptance run would then
- * be checking the portal against data the real write path has never produced. The commands also
- * enforce their own invariants (every strategy needs at least one SRS requirement, backed by a
- * deferred constraint trigger), so a seed that goes through them cannot create a shape the console
- * could not. If a command refuses this data, the seed is wrong and should fail here.
+ * The one exception is the seed actor's **membership** row, upserted with SQL below: there is no
+ * command for "make this user exist", and it is called out rather than hidden.
  *
- * The one exception is the seed actor's **membership** row, upserted with SQL below. That is
- * identity plumbing — there is no command for "make this user exist" — and it is called out rather
- * than hidden.
+ * ## Where the logic lives, and why
  *
- * ## Idempotent, via the layer's own machinery
+ * The sequence itself is `src/portalAcceptanceSeed.ts`, driven in CI against a real Postgres by
+ * `tests/portalAcceptanceSeed.test.ts`. This file is only the runnable edge: boundary guard,
+ * client resolution, printing.
  *
- * Commands are idempotent on `(organisation_id, idempotency_key)` and a **replay returns the
- * original outcome**, including the id it created. So each creation uses a key derived from a hash
- * of its own payload: the first run creates, every later run replays and hands back the same
- * `clientStrategyId`. The idempotency table is the seed's state — there is no marker column, no
- * second source of truth, and nothing to reconcile.
+ * That split was bought the hard way. The first two failures here were reproducible only by
+ * running against staging — a round-trip each, and each one left a half-applied fixture in a real
+ * client's plan. A fixture whose only test environment is the one you are trying to protect is a
+ * fixture nobody can fix cheaply.
  *
- * Updates are keyed by their payload too, which gives a useful property: **re-running refreshes
- * the due-date windows**. The dates are relative to the run (overdue, within 30 days, beyond 30
- * days), so a run three weeks later moves them back into their intended buckets rather than
- * letting "due soon" quietly become "overdue" and invalidate the criteria.
+ * ## Idempotent
  *
- * The SRS assessment is reconciled by reading instead, because `assessedOn` is a date and a
- * payload-derived key would start a second assessment tomorrow. One completed assessment is the
- * point, so the seed looks for one first.
+ * Commands are idempotent on `(organisation_id, idempotency_key)` and a replay returns the
+ * original outcome including the id it created, so each creation is keyed by a hash of its
+ * payload. Updates are keyed by payload too, so re-running refreshes the target dates back into
+ * their due-state buckets rather than letting "due soon" quietly become "overdue". The assessment
+ * is reconciled by reading, and an open draft is resumed rather than started beside.
  *
  * ## Fail-closed
  *
- * `validateDatabaseBoundary` is the same guard the app uses: production `APP_ENV` is refused, and
- * `NZI_DATABASE_BOUNDARY` must say `isolated-non-production`. There is no flag to override it.
+ * `validateDatabaseBoundary` is the app's own guard: production `APP_ENV` is refused and
+ * `NZI_DATABASE_BOUNDARY` must say `isolated-non-production`. There is no override.
  *
  * ## Cleanup
  *
- * Deactivate-not-delete. `--withdraw-all` takes every strategy this seed created off the plan
- * through `client.strategy.remove`, which deactivates and audits exactly as the console does.
- * Nothing is ever deleted, so the audit trail of the acceptance run survives it.
+ * `--withdraw-all` takes the seeded strategies off the plan through `client.strategy.remove`,
+ * which deactivates and audits exactly as the console does. Nothing is deleted, so the audit
+ * trail of the acceptance run survives it. The completed assessment is left alone: an assessment
+ * is a dated record, and withdrawing one would misrepresent the client's history.
  */
-import { createHash } from "node:crypto";
 import { Pool } from "pg";
-import {
-  commandGrantForRole, strategyControlLevels, strategyScopes, strategyStatuses,
-  type CommandContext, type SrsFramework, type SrsRequirement,
-} from "@nzi/contracts";
-import {
-  assignClientStrategy, completeSrsAssessment, getSrsAssessment, getSrsFramework, listClientStrategies,
-  listLibraryStrategies, listSrsAssessments, removeClientStrategy, setClientStrategyEstimate,
-  setSrsAssessmentItem, startSrsAssessment, updateClientStrategy, validateDatabaseBoundary,
-  withTenantRead,
-} from "../src/index";
+import { seedPortalAcceptance, SeedStepError, STRATEGY_CASES } from "../src/portalAcceptanceSeed";
+import { validateDatabaseBoundary } from "../src/databaseBoundary";
 
 const ORG = process.env.NZI_DEMO_ORGANISATION_ID ?? "demo-nzi-console";
 const ACTOR = process.env.SEED_ACTOR_ID ?? "acceptance-admin";
 const CLIENT_HINT = process.env.SEED_CLIENT_NAME ?? "Bushy Tails";
 const WITHDRAW_ALL = process.argv.includes("--withdraw-all");
 
-/** Stable across runs for the same payload; different the moment the payload changes. */
-function idempotencyKey(caseId: string, payload: unknown): string {
-  const stable = JSON.stringify(payload, Object.keys(payload as object).sort());
-  return `seed:portal-acceptance:${caseId}:${createHash("sha256").update(stable).digest("hex").slice(0, 16)}`;
-}
-
-function context(caseId: string, payload: unknown, reason?: string): CommandContext {
-  return {
-    organisationId: ORG, actorId: ACTOR, principal: "staff",
-    idempotencyKey: idempotencyKey(caseId, payload),
-    correlationId: `seed-portal-acceptance-${caseId}`,
-    grant: commandGrantForRole("admin", ORG, ACTOR),
-    ...(reason === undefined ? {} : { reason }),
-  };
-}
-
-/** Dates relative to the run, so the due-state buckets stay in their buckets on a re-run. */
-const dayOffset = (days: number): string => {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
-
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
-/**
- * The command inputs type `status`, `scope` and `controlLevel` as plain `string`, so the compiler
- * cannot tell a valid value from a typo — only the runtime validator can, half way through a run
- * that has already written rows. Checking the literals against the exported vocabularies up front
- * turns that into an immediate, obvious failure, and makes a future rename break here rather than
- * on staging.
- */
-function assertVocabulary(): void {
-  const bad: string[] = [];
-  for (const strategyCase of STRATEGY_CASES) {
-    if (!(strategyStatuses as readonly string[]).includes(strategyCase.status)) {
-      bad.push(`status "${strategyCase.status}" (case ${strategyCase.id}) — expected one of ${strategyStatuses.join(", ")}`);
-    }
-  }
-  if (!(strategyScopes as readonly string[]).includes(BESPOKE.scope)) {
-    bad.push(`scope "${BESPOKE.scope}" — expected one of ${strategyScopes.join(", ")}`);
-  }
-  if (!(strategyControlLevels as readonly string[]).includes(BESPOKE.controlLevel)) {
-    bad.push(`controlLevel "${BESPOKE.controlLevel}" — expected one of ${strategyControlLevels.join(", ")}`);
-  }
-  if (bad.length) throw new Error(`The seed uses values the commands will reject:\n  ${bad.join("\n  ")}`);
-}
-
-/** The one bespoke strategy — named here so the vocabulary check can reach it. */
-const BESPOKE = {
-  title: "Site-specific heat recovery (acceptance seed)",
-  scope: "1",
-  controlLevel: "direct_control",
-};
-
-/** The row as it stands right now — used where "is it still active?" has to be current. */
-async function freshVersion(pool: Pool, clientId: string, clientStrategyId: string) {
-  const strategies = await withTenantRead(pool, ORG, (db) => listClientStrategies(db, clientId));
-  return strategies.find((entry) => entry.id === clientStrategyId) ?? null;
-}
-
-/* ── The cases ───────────────────────────────────────────────────────────────────────── */
-
-type StrategyCase = {
-  id: string;
-  what: string;
-  /** Which template criterion this row exists to satisfy — printed in the summary. */
-  proves: string;
-  targetDate: string | null;
-  status: string;
-  progressPct: number;
-  includeInReport: boolean;
-  bespoke?: boolean;
-  withdraw?: boolean;
-  estimate?: boolean;
-};
-
-const STRATEGY_CASES: StrategyCase[] = [
-  { id: "overdue", what: "target date 45 days ago", proves: "plan #13 — due state `overdue`",
-    targetDate: dayOffset(-45), status: "in_progress", progressPct: 40, includeInReport: true },
-  { id: "approaching", what: "target date in 14 days", proves: "plan #14 — due state `approaching` (inside the 30-day window)",
-    targetDate: dayOffset(14), status: "in_progress", progressPct: 25, includeInReport: true },
-  { id: "scheduled", what: "target date in 120 days, carries a reduction estimate", proves: "plan #15 — due state `scheduled`; plan #7 set-up — estimate linkage",
-    targetDate: dayOffset(120), status: "planned", progressPct: 0, includeInReport: true, estimate: true },
-  { id: "undated", what: "bespoke, no target date, no library description", proves: "plan #16 — due state `none`; plan #5 — bespoke shows no description",
-    targetDate: null, status: "planned", progressPct: 10, includeInReport: true, bespoke: true },
-  { id: "complete-past", what: "complete, target date 60 days ago", proves: "plan #17 — completed work must show `none`, not overdue",
-    targetDate: dayOffset(-60), status: "complete", progressPct: 100, includeInReport: true },
-  { id: "hidden", what: "include_in_report = false", proves: "plan #3 — must be absent from the portal entirely",
-    targetDate: dayOffset(20), status: "in_progress", progressPct: 50, includeInReport: false },
-  { id: "gap-addressed", what: "live, in-report, aligned to the addressed gap", proves: "readiness #5 — the gap lists this strategy",
-    targetDate: dayOffset(60), status: "in_progress", progressPct: 30, includeInReport: true },
-  { id: "gap-withdrawn", what: "aligned to a gap, then withdrawn", proves: "readiness #6 — silently-covered case: the gap must read unaddressed",
-    targetDate: dayOffset(30), status: "planned", progressPct: 0, includeInReport: true, withdraw: true },
-  { id: "gap-out-of-report", what: "aligned to a gap, include_in_report = false", proves: "readiness #7 — silently-covered case: the gap must read unaddressed",
-    targetDate: dayOffset(45), status: "in_progress", progressPct: 20, includeInReport: false },
-];
-
-/* ── Requirement picking ─────────────────────────────────────────────────────────────── */
-
-/**
- * Requirements a person actually answers. `nzi-data` ones are resolved from the client's own
- * assured record rather than asked, so setting them by hand would seed a figure the app is
- * supposed to derive.
- */
-const answerable = (framework: SrsFramework): SrsRequirement[] =>
-  framework.requirements.filter((requirement) => requirement.active && requirement.source === "entered");
-
 async function main(): Promise<void> {
-  assertVocabulary();
   const url = validateDatabaseBoundary({
     appEnv: process.env.NEXT_PUBLIC_APP_ENV,
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
@@ -196,245 +78,62 @@ async function main(): Promise<void> {
       [ORG, ACTOR],
     );
 
-    const client = await pool.query<{ client_id: string; name: string }>(
+    const found = await pool.query<{ client_id: string; name: string }>(
       `SELECT client_id, name FROM nzi_console.clients
         WHERE organisation_id = $1 AND (name ILIKE $2 OR client_id = $2)
         ORDER BY name LIMIT 1`,
       [ORG, CLIENT_HINT],
     );
-    const target = client.rows[0];
+    const target = found.rows[0];
     if (!target) throw new Error(`No client matching "${CLIENT_HINT}" in ${ORG}. Set SEED_CLIENT_NAME to one that exists.`);
     log(`\nSeeding portal acceptance data for ${target.name} (${target.client_id}) in ${ORG}.\n`);
 
-    const { framework, library } = await withTenantRead(pool, ORG, async (db) => ({
-      framework: await getSrsFramework(db),
-      library: await listLibraryStrategies(db),
-    }));
-    if (!framework) throw new Error("No SRS framework is published; the readiness half cannot be seeded.");
-
-    const requirements = answerable(framework);
-    if (requirements.length < 8) throw new Error(`The framework has only ${requirements.length} answerable requirements; the seed needs at least 8.`);
-
-    // Three requirements reserved for the reverse-link cases, and one that must stay untouched by
-    // every strategy so it can be the honest "no strategy aligned yet" gap.
-    const reqAddressed = requirements[0]!;
-    const reqWithdrawn = requirements[1]!;
-    const reqOutOfReport = requirements[2]!;
-    const reqNoStrategy = requirements[3]!;
-    const reservedIds = new Set([reqAddressed.id, reqWithdrawn.id, reqOutOfReport.id, reqNoStrategy.id]);
-
-    // Library strategies spread across levers, and none of them touching the reserved
-    // requirements — otherwise the "no strategy" gap would quietly acquire one.
-    const usable = library.filter((entry) =>
-      entry.leverIds.length > 0 &&
-      entry.defaultSrsRequirementIds.length > 0 &&
-      !entry.defaultSrsRequirementIds.some((id) => reservedIds.has(id)));
-    const byLever = new Map<string, typeof usable>();
-    for (const entry of usable) {
-      const lever = entry.leverIds[0]!;
-      byLever.set(lever, [...(byLever.get(lever) ?? []), entry]);
-    }
-    if (byLever.size < 2) throw new Error(`The library offers strategies on only ${byLever.size} lever(s); the grouping criterion needs at least 2.`);
-    // Round-robin across levers so the plan genuinely groups rather than showing one heading.
-    const spread = [...byLever.values()].flatMap((entries, index) => entries.map((entry) => ({ entry, index })))
-      .sort((a, b) => a.index - b.index).map((item) => item.entry);
-
-    if (WITHDRAW_ALL) return await withdrawAll(pool, target.client_id);
-
-    const created = new Map<string, string>();
-    let libraryCursor = 0;
-
-    for (const strategyCase of STRATEGY_CASES) {
-      const requirementIds = strategyCase.id === "gap-addressed" ? [reqAddressed.id]
-        : strategyCase.id === "gap-withdrawn" ? [reqWithdrawn.id]
-        : strategyCase.id === "gap-out-of-report" ? [reqOutOfReport.id]
-        : null;
-
-      let assignInput;
-      if (strategyCase.bespoke) {
-        assignInput = {
-          clientId: target.client_id,
-          bespoke: BESPOKE,
-          srsRequirementIds: requirementIds ?? [requirements[4]!.id],
-          owner: ACTOR, notes: "Seeded for the NZC-080 portal acceptance run.",
-        };
-      } else {
-        const chosen = spread[libraryCursor % spread.length]!;
-        libraryCursor += 1;
-        assignInput = {
-          clientId: target.client_id, strategyId: chosen.id,
-          srsRequirementIds: requirementIds ?? chosen.defaultSrsRequirementIds,
-          owner: ACTOR, notes: "Seeded for the NZC-080 portal acceptance run.",
-        };
-      }
-
-      const assigned = await assignClientStrategy(pool, assignInput, context(`assign:${strategyCase.id}`, assignInput));
-      const clientStrategyId = assigned.data.clientStrategyId;
-      if (!clientStrategyId) throw new Error(`assign returned no id for case ${strategyCase.id}`);
-      created.set(strategyCase.id, clientStrategyId);
-      log(`  ${assigned.replayed ? "=" : "+"} ${strategyCase.id.padEnd(18)} ${strategyCase.what}`);
-
-      // Current version, read back rather than assumed — a replayed assign says nothing about
-      // what has happened to the row since.
-      const current = (await withTenantRead(pool, ORG, (db) => listClientStrategies(db, target.client_id)))
-        .find((entry) => entry.id === clientStrategyId);
-      if (!current) throw new Error(`Strategy ${clientStrategyId} (${strategyCase.id}) vanished after assignment.`);
-      if (!current.active && !strategyCase.withdraw) {
-        log(`    ! ${strategyCase.id} is withdrawn on the client's plan; leaving it alone rather than silently reinstating it.`);
-        continue;
-      }
-
-      const updateInput = {
-        clientStrategyId, expectedVersion: current.version,
-        status: strategyCase.status, owner: ACTOR, targetDate: strategyCase.targetDate,
-        progressPct: strategyCase.progressPct, notes: "Seeded for the NZC-080 portal acceptance run.",
-        srsRequirementIds: current.srsRequirementIds, includeInReport: strategyCase.includeInReport,
-      };
-      const updated = await updateClientStrategy(pool, updateInput, context(`update:${strategyCase.id}`, updateInput));
-      // Threaded from the command's own return value, not inferred by adding one. A replayed
-      // command returns the version as of its original execution, which is still current unless
-      // somebody has edited the row by hand — `freshVersion` covers that case rather than failing.
-      let version = updated.data.version;
-
-      if (strategyCase.estimate) {
-        const estimateInput = {
-          clientStrategyId, expectedVersion: version,
-          estimate: {
-            amount: 42.5, unit: "tco2e_per_year" as const, scope: "1" as const,
-            assumptions: "Seeded estimate for the NZC-080 acceptance run — not a real figure.",
-            source: "consultant" as const,
-          },
-        };
-        const priced = await setClientStrategyEstimate(pool, estimateInput, context(`estimate:${strategyCase.id}`, estimateInput));
-        version = priced.data.version;
-      }
-
-      if (strategyCase.withdraw) {
-        const live = await freshVersion(pool, target.client_id, clientStrategyId);
-        if (live?.active) {
-          const removeInput = { clientStrategyId, expectedVersion: version, reason: "Withdrawn for the NZC-080 acceptance run — the gap it addressed must read as unaddressed." };
-          await removeClientStrategy(pool, removeInput, context(`remove:${strategyCase.id}`, removeInput, removeInput.reason));
-          log(`    withdrawn (deactivated, not deleted)`);
-        }
-      }
-    }
-
-    await seedAssessment(pool, target.client_id, framework, requirements, {
-      addressed: reqAddressed, withdrawn: reqWithdrawn, outOfReport: reqOutOfReport, noStrategy: reqNoStrategy,
+    const summary = await seedPortalAcceptance(pool, {
+      organisationId: ORG, actorId: ACTOR, clientId: target.client_id, log, withdrawAll: WITHDRAW_ALL,
     });
 
-    summary(target.name, { addressed: reqAddressed, withdrawn: reqWithdrawn, outOfReport: reqOutOfReport, noStrategy: reqNoStrategy });
+    if (WITHDRAW_ALL) {
+      log("\nThe completed SRS assessment is left in place: assessments are a dated record, and");
+      log("withdrawing one would misrepresent the client's history rather than tidy it up.\n");
+      return;
+    }
+
+    log(`\n─── Seeded. What to expect in the portal for ${target.name} ───\n`);
+    for (const entry of STRATEGY_CASES) log(`  ${entry.id.padEnd(18)} ${entry.proves}`);
+    log("");
+    log(`  gap addressed      ${summary.reserved.addressed} — lists the live strategy (readiness #5)`);
+    log(`  gap withdrawn-only ${summary.reserved.withdrawn} — must read "no strategy aligned yet" (readiness #6)`);
+    log(`  gap out-of-report  ${summary.reserved.outOfReport} — must read "no strategy aligned yet" (readiness #7)`);
+    log(`  gap no strategy    ${summary.reserved.noStrategy} — must read "no strategy aligned yet" (readiness #8)`);
+    log("");
+    log(`  assessment ${summary.assessmentId} — ${summary.assessmentState}`);
+    log("");
+    log("  Re-run any time: creations replay, and the target dates are refreshed back into their");
+    log("  due-state buckets. Use --withdraw-all to take the seeded strategies off the plan.\n");
   } finally {
     await pool.end();
   }
 }
 
-/* ── The assessment ──────────────────────────────────────────────────────────────────── */
-
-async function seedAssessment(
-  pool: Pool, clientId: string, framework: SrsFramework, requirements: SrsRequirement[],
-  reserved: { addressed: SrsRequirement; withdrawn: SrsRequirement; outOfReport: SrsRequirement; noStrategy: SrsRequirement },
-): Promise<void> {
-  // Read first, rather than key off a payload containing today's date — that would start a second
-  // assessment tomorrow, and one completed assessment is the whole point.
-  const assessments = await withTenantRead(pool, ORG, (db) => listSrsAssessments(db, clientId));
-  const complete = assessments.find((assessment) => assessment.status === "complete");
-  if (complete) {
-    log(`\n  = SRS assessment ${complete.assessmentId} already complete — left as it is.`);
-    return;
-  }
-
-  // **Resume a draft rather than starting beside it.** A half-finished assessment is the state a
-  // failed run leaves behind, and `srs.assessment.start` refuses outright while one is open — so
-  // without this, a re-run after any mid-flight failure could never get past the first command.
-  const draft = assessments.find((assessment) => assessment.status === "draft");
-  let assessmentId: string;
-  if (draft) {
-    assessmentId = draft.assessmentId;
-    log(`\n  = SRS assessment ${assessmentId} already started — resuming it`);
-  } else {
-    const startInput = { clientId, assessedOn: dayOffset(0), notes: "Seeded for the NZC-080 portal acceptance run." };
-    const started = await startSrsAssessment(pool, startInput, context("srs:start", startInput));
-    assessmentId = started.data.assessmentId;
-    log(`\n  + SRS assessment ${assessmentId} started`);
-  }
-
-  // Gap depth varies so "ordered by shortfall" is actually testable — equal shortfalls would
-  // make any order look correct.
-  const answers: Array<{ requirement: SrsRequirement; maturity: number; note: string }> = [
-    { requirement: reserved.addressed, maturity: 0, note: "deep gap, addressed by a live strategy" },
-    { requirement: reserved.withdrawn, maturity: 1, note: "gap whose only strategy is withdrawn" },
-    { requirement: reserved.outOfReport, maturity: 1, note: "gap whose only strategy is out of report" },
-    { requirement: reserved.noStrategy, maturity: 2, note: "gap with no strategy at all" },
-  ];
-  // Everything else answerable is met, so met/gap is a genuine mix rather than all-gap.
-  for (const requirement of requirements.slice(4, 10)) {
-    answers.push({ requirement, maturity: Math.max(requirement.targetMaturity, 1), note: "met" });
-  }
-
-  // `srs.assessment.item.set` versions the **item**, not the assessment. The two are different
-  // rows with different counters: a fresh assessment header is created at v1, while a requirement
-  // nobody has answered has no row at all and therefore expects v0. Passing the header's version
-  // here is what produced "expected v1, found v0" — the seed handed one entity's version to a
-  // command guarding another's. So the version is read per requirement, and then threaded from
-  // each command's own return value rather than assumed to increment.
-  const itemVersions = new Map<string, number>();
-  const before = await withTenantRead(pool, ORG, (db) => getSrsAssessment(db, assessmentId));
-  if (!before) throw new Error(`Assessment ${assessmentId} disappeared mid-seed.`);
-  for (const item of before.items) itemVersions.set(item.requirementId, item.version);
-
-  for (const answer of answers) {
-    const itemInput = {
-      assessmentId, requirementId: answer.requirement.id,
-      maturity: Math.min(answer.maturity, 4),
-      evidenceKind: "note" as const,
-      evidenceNote: `Seeded for the NZC-080 acceptance run — ${answer.note}.`,
-      // 0 when the requirement has never been answered — that is the command's own rule for an
-      // absent row, not a guess about where counters start.
-      expectedVersion: itemVersions.get(answer.requirement.id) ?? 0,
-    };
-    const saved = await setSrsAssessmentItem(pool, itemInput, context(`srs:item:${answer.requirement.id}`, itemInput));
-    itemVersions.set(answer.requirement.id, saved.data.version);
-  }
-
-  // The header's version, which is what *this* command guards — read after the items, because
-  // each item write touches the assessment row.
-  const finalState = await withTenantRead(pool, ORG, (db) => getSrsAssessment(db, assessmentId));
-  if (!finalState) throw new Error(`Assessment ${assessmentId} disappeared before completion.`);
-  const completeInput = { assessmentId, expectedVersion: finalState.version };
-  await completeSrsAssessment(pool, completeInput, context("srs:complete", completeInput));
-  log(`  + SRS assessment completed — not a draft, so the portal will show it`);
-}
-
-/* ── Cleanup ─────────────────────────────────────────────────────────────────────────── */
-
-async function withdrawAll(pool: Pool, clientId: string): Promise<void> {
-  const strategies = (await withTenantRead(pool, ORG, (db) => listClientStrategies(db, clientId)))
-    .filter((entry) => entry.active && (entry.notes ?? "").includes("NZC-080 portal acceptance"));
-  log(`Withdrawing ${strategies.length} seeded strategies (deactivate, never delete).\n`);
-  for (const strategy of strategies) {
-    const input = { clientStrategyId: strategy.id, expectedVersion: strategy.version, reason: "Acceptance run complete — seeded strategy withdrawn." };
-    await removeClientStrategy(pool, input, context(`cleanup:${strategy.id}`, input, input.reason));
-    log(`  - ${strategy.id}`);
-  }
-  log("\nThe completed SRS assessment is left in place: assessments are a dated record, and");
-  log("withdrawing one would misrepresent the client's history rather than tidy it up.\n");
-}
-
-function summary(clientName: string, reserved: Record<string, SrsRequirement>): void {
-  log(`\n─── Seeded. What to expect in the portal for ${clientName} ───\n`);
-  for (const strategyCase of STRATEGY_CASES) log(`  ${strategyCase.id.padEnd(18)} ${strategyCase.proves}`);
-  log("");
-  log(`  gap addressed      ${reserved.addressed!.code} — lists the live strategy (readiness #5)`);
-  log(`  gap withdrawn-only ${reserved.withdrawn!.code} — must read "no strategy aligned yet" (readiness #6)`);
-  log(`  gap out-of-report  ${reserved.outOfReport!.code} — must read "no strategy aligned yet" (readiness #7)`);
-  log(`  gap no strategy    ${reserved.noStrategy!.code} — must read "no strategy aligned yet" (readiness #8)`);
-  log("");
-  log("  Re-run any time: creations replay, and the target dates are refreshed back into their");
-  log("  due-state buckets. Use --withdraw-all to take the seeded strategies off the plan.\n");
+/**
+ * Say what actually failed.
+ *
+ * `CommandValidationError`'s message is the constant "Command validation failed." — the detail is
+ * in its `issues`, as `{ field, code, message }`, and `SeedStepError` adds which command and case
+ * raised it. Printing only `error.message` threw all of that away and turned a one-line diagnosis
+ * into two staging round-trips.
+ */
+function describeFailure(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const head = error instanceof SeedStepError ? error.message : `${error.name}: ${error.message}`;
+  const issues = error instanceof SeedStepError
+    ? error.issues
+    : (error as { issues?: Array<{ field: string; code: string; message: string }> }).issues;
+  if (!Array.isArray(issues) || issues.length === 0) return head;
+  return [head, ...issues.map((issue) => `    · ${issue.field} [${issue.code}] ${issue.message}`)].join("\n");
 }
 
 main().catch((error) => {
-  process.stderr.write(`\nseed-portal-acceptance failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`\nseed-portal-acceptance failed: ${describeFailure(error)}\n`);
   process.exitCode = 1;
 });
