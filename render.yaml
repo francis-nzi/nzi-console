@@ -58,10 +58,13 @@ services:
       # and previously missing from this file entirely — added 16 Sep 2026 so the two agree.
       #   portal-analytics  the emissions dashboard + /portal/intensity
       #   portal-actions    the qualitative action tracker on the job dashboard
-      # NOTE: the portal reduction plan (#173) and readiness statement (#177) are NOT behind
-      # either token — they render unconditionally. See docs/CONFIG_DRIFT_REPORT.md §4.
+      #   portal-plan       the live reduction plan on the portal home (#173)
+      #   portal-readiness  the live UK SRS readiness statement (#177)
+      # The last two were added retrospectively (NZC-080): both surfaces shipped ungated, so
+      # there was no way to withdraw either short of a revert. Both tokens are set in the
+      # dashboard, so the gate changed nothing a client sees.
       - key: NEXT_PUBLIC_FEATURE_PORTAL
-        value: portal-analytics,portal-actions
+        value: portal-analytics,portal-actions,portal-plan,portal-readiness
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY

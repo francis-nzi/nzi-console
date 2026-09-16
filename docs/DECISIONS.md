@@ -1283,3 +1283,33 @@ defeated. The boundary token is checked first in `mailDelivery()`, so the worker
 evidence the variable is set correctly. Two declared keys are unset (`NEXT_PUBLIC_APP_ENV`,
 `NZI_REMINDER_TICK_SECONDS`); both fail safe and neither changes behaviour, the tick's code default
 being the declared 900 s.
+
+### NZC-080 — The two ungated portal surfaces get their rollout gates retrospectively [Confirmed 16 Sep 2026]
+
+**What was found.** Reconciling config against the dashboard (NZC-079) asked whether the portal
+reduction plan (#173) and the portal SRS readiness statement (#177) were merged but dark behind an
+unset token. Tracing every `portalFeatureEnabled` call site gave a different answer: **neither was
+gated at all.** Both rendered unconditionally from `PortalHome`, and neither component nor either
+API route consulted a flag.
+
+Nothing was dark, and nothing was harmed — both surfaces are read-only, tenant-scoped and were
+merged deliberately. But `REDESIGN_ROLLOUT.md` requires new UI to sit behind a flag until its
+acceptance pass, and every other portal Phase 2 surface does. These two left no way to withdraw
+either short of a revert, which is the one thing a flag exists to provide.
+
+**Decision: retrofit a token per surface** — `portal-plan` and `portal-readiness`, through the same
+`portalFeatureEnabled` mechanism, registered in `REDESIGN_ROLLOUT.md` and declared in `render.yaml`.
+One token each rather than one shared: they are separate surfaces, and withdrawing readiness should
+not take the plan with it.
+
+**No client-visible change.** Both tokens were set in the dashboard before the gate shipped, so the
+surfaces resolve enabled on deploy. The gate restores a capability; it does not exercise it.
+
+**The API routes stay ungated, deliberately.** No portal API route is flag-gated — the convention is
+that flags gate UI. Inventing a stricter rule for these two alone would make them inconsistent with
+every other portal surface for no stated reason. The data behind both is read-only and tenant-scoped
+either way.
+
+**The acceptance debt is not settled by this.** These are the two surfaces that reached staging
+without the acceptance pass the rollout document requires. Having a gate is not the same as having
+been accepted, and the backlog rows say so.

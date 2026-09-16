@@ -92,6 +92,23 @@ new UI out behind flags. Companion to `DEVELOPMENT_PLAN.md`, `MODEL_FIDELITY_DAT
 - Old path is the default until an adapter's flag flips; flags are removed in Phase 4.
 - Flags gate **UI only** — the schema (Phase 0) is always present, since it's additive and inert until read.
 
+### `NEXT_PUBLIC_FEATURE_PORTAL` — the client-portal tokens
+
+| Token | Gates | Notes |
+|---|---|---|
+| `portal-analytics` | `/portal/intensity` and `/portal/jobs/[jobId]/dashboard` (each redirects away when off), and the "Emissions dashboard" link on the portal home | |
+| `portal-actions` | the qualitative action tracker panel on the job dashboard | |
+| `portal-plan` | the live reduction plan on the portal home (#173) | **Retrofitted, NZC-080** — owes a staging acceptance pass |
+| `portal-readiness` | the live UK SRS readiness statement (#177) | **Retrofitted, NZC-080** — owes a staging acceptance pass |
+
+The last two were added **after** their surfaces shipped. Both had rendered unconditionally, which
+left no way to withdraw either short of a revert — the one thing a flag is for. They were gated
+retrospectively with both tokens already set in the dashboard, so nothing a client sees changed.
+
+**They are also the two surfaces that reached staging without the acceptance pass this document
+requires.** The gate restores the ability to turn them off; it does not substitute for the pass
+they still owe.
+
 ## Decision gates
 - **NZC-042 — site-scoped factor overrides:** ✅ **closed** — factors are not site-scoped (they live on the row, not the site); a site on its own tariff is a per-site row. No decision pending; S3 unblocked.
 - Confirm each rendered acceptance pass (Phase 1, and per-adapter in 2–3) before flipping a flag.
