@@ -1369,3 +1369,42 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-know-row .sub{margin:5px 0 0;line-height:1.5}
 .nz-know-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:9px;flex-wrap:wrap}
 .nz-know-reject{margin-top:9px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--paper)}
+
+/* ── The help affordance and drawer (NZC-081 §0b) ──────────────────────────────────────
+   An inline side panel, not a modal overlay: help sits beside the work so a person can read
+   an answer and act on the page behind it. Anatomy per DESIGN_CONVENTIONS §3.4. */
+.nz-help-btn{display:grid;place-items:center;width:30px;height:30px;flex:none;margin-left:8px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--t2);font-size:14px;font-weight:700;cursor:pointer}
+.nz-help-btn:hover{border-color:var(--pine);color:var(--pine)}
+.nz-help-btn.open{border-color:var(--pine);background:var(--mint);color:var(--pine)}
+.nz-help-btn:focus-visible{outline:2px solid var(--pine);outline-offset:2px}
+
+.nz-drawer.nz-help{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);z-index:40;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--card);box-shadow:-8px 0 24px rgba(11,27,43,.08);animation:nz-help-in .16s ease-out}
+.nz-drawer.nz-help:focus{outline:none}
+.nz-drawer.nz-help .nz-db{flex:1;overflow-y:auto}
+@keyframes nz-help-in{from{transform:translateX(12px);opacity:.6}to{transform:none;opacity:1}}
+/* Motion is decoration here; the panel must still arrive for anyone who asked for less of it. */
+@media (prefers-reduced-motion: reduce){.nz-drawer.nz-help{animation:none}}
+
+.nz-help-context{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:20px;background:var(--paper);color:var(--t2);font-size:11px}
+
+.nz-help-tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--card)}
+.nz-help-tabs button{padding:9px 11px;border:0;border-bottom:2px solid transparent;background:none;color:var(--t3);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.nz-help-tabs button:hover{color:var(--t1)}
+.nz-help-tabs button.on{border-bottom-color:var(--pine);color:var(--pine)}
+.nz-help-tabs button:focus-visible{outline:2px solid var(--pine);outline-offset:-2px}
+
+.nz-help-thread{display:grid;gap:9px;margin:10px 0}
+.nz-help-msg{display:grid;gap:3px;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5}
+.nz-help-msg b{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t3)}
+.nz-help-msg.you{background:var(--paper)}
+.nz-help-msg.nzi{border:1px solid var(--line);background:var(--card)}
+/* The abstention reads as a statement of fact, never as an error or a failure. */
+.nz-help-abstain{margin-top:4px;padding:6px 8px;border-radius:7px;background:var(--mint);color:var(--pine);font-size:11px;font-weight:600}
+.nz-help-capture{margin:4px 0 12px;padding:11px 12px;border:1px dashed var(--line);border-radius:10px}
+.nz-help-capture b{font-size:12.5px}
+.nz-help-capture .sub{margin:3px 0 8px}
+.nz-help-empty{display:grid;gap:4px;padding:16px;border:1px dashed var(--line);border-radius:10px;text-align:center}
+.nz-help-empty b{font-size:12.5px}
+.nz-help-empty span{color:var(--t3);font-size:11.5px;line-height:1.5}
+
+@media (max-width:640px){.nz-drawer.nz-help{width:100vw}}
