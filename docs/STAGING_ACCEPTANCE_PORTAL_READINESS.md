@@ -16,6 +16,25 @@ surface is a disclosure, not a display bug. The criteria below are weighted acco
 > (raise a fix PR, then re-run that one criterion) · `n/a` = not reachable this run, with the
 > reason written in.
 
+## Access — how to reach the surface
+
+**Staging URL:** `https://nzi-pro-api-prod.onrender.com` (the staging redesign UI, despite the
+name — `docs/DEPLOYMENT.md`).
+
+**The surface:** **`/portal`** — the portal *home*, the same route as the reduction plan. This
+statement renders there behind its own token, **`portal-readiness`**, independently of
+`portal-plan`; criterion 21 below checks that independence.
+
+**There is no "view as client"** — no impersonation path exists, so this is viewed by signing in
+as a portal user of the client.
+
+**Portal login setup** — existing user, invitation, TOTP, job grant, and the staging preconditions
+(`portal.admin`, `NZI_WRITE_API_ENABLED=true`, synthetic-email rule) are in
+**`STAGING_ACCEPTANCE_PORTAL_PLAN.md` § Access**. One copy, because the login is identical for
+both surfaces and two copies would drift.
+
+---
+
 ## Run header
 
 | | |

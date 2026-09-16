@@ -12,6 +12,62 @@ an acceptance — it is only the ability to withdraw. This record is what makes 
 > the evidence. `☐` = not yet checked · `✅` = passed · `❌` = failed (raise a fix PR, then re-run
 > that one criterion) · `n/a` = not reachable this run, with the reason written in.
 
+## Access — how to reach the surface
+
+**Staging URL:** `https://nzi-pro-api-prod.onrender.com` — misleadingly named; it is the staging
+redesign UI, not a production API (`docs/DEPLOYMENT.md`).
+
+**The surface:** **`/portal`** — the portal *home*. Both this plan and the SRS readiness statement
+render there, each behind its own token (`portal-plan`, `portal-readiness`).
+
+**There is no "view as client".** No impersonation path exists in the console — checked in the
+code, not assumed. Seeing what a client sees means signing in as a portal user belonging to that
+client.
+
+### If the client already has a portal user
+
+Staff console → **`/platform`** → the access view → **Client portal access**. It lists every portal
+user against their client. If one exists for this client:
+
+- `active`, and you hold the credentials → sign in at `/portal/login`; or
+- **Recover access** → issues a fresh single-use link, shown on screen with a Copy button.
+
+> **Recover access is a real revocation.** It immediately ends that account's sessions and
+> suspends its current credentials. Harmless on staging, but do not do it to an account someone
+> else is mid-way through using.
+
+### If it does not
+
+1. **Client workspace → the client → Contacts.** Give a contact the **Portal** role
+   (`portal_candidate`) with a **synthetic email** (`…@synthetic.invalid`). The invitation refuses
+   any address that is not a portal-candidate contact of that client.
+2. **`/platform` → Portal enrolment** → select the client, select that candidate, **Create
+   invitation** → **Copy setup link**.
+   **Copy it before navigating away.** Staging cannot email it: `NZI_DATABASE_BOUNDARY =
+   isolated-non-production` makes mail suppress-and-log (NZC-076), so the on-screen link is the
+   only delivery there will be.
+3. Open **`/portal/invite?token=…`** → set a password (**12 characters minimum**) → add the TOTP
+   secret to an authenticator → enter the 6-digit code. The account activates only once the code
+   verifies.
+4. Back in **Client portal access** → **Grant access** to at least one of the client's jobs. The
+   portal home is job-list driven, so an account with no grant signs in to an empty workspace.
+5. Sign in at **`/portal/login`** — email, password, authenticator code.
+
+### Preconditions
+
+| | |
+|---|---|
+| Staff capability | `portal.admin` |
+| `NZI_WRITE_API_ENABLED` | must be `true`, or the invitation endpoint returns 503 `WRITE_API_DISABLED`. **Not in `render.yaml`** — check the dashboard |
+| `NZI_CONSOLE_MFA_ENCRYPTION_KEY` | must be set (it is, `sync: false`) — the TOTP secret cannot be issued without it |
+| Invitation link | single-use, expires in **72 hours** |
+
+**Staging safety.** Never invite a real client contact's address; use `…@synthetic.invalid`, the
+convention `provision-acceptance-accounts.ts` already follows. Staging suppresses mail, but that
+safeguard should not be the only thing standing between a test account and a client's inbox.
+
+---
+
 ## Run header
 
 | | |
