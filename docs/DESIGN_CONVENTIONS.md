@@ -249,3 +249,35 @@ nobody reads. Apply the same fake to any read model that fans out.
 **Where parallelism is fine:** separate `pool.query()` calls, or separate `withTenantRead` calls —
 each checks out its own client. The rule is about sharing *one* client, not about concurrency in
 general.
+
+## 14. Anything idempotent is tested by running it twice (locked)
+
+**A test of a seed, a replayed command, or any operation that claims to be re-runnable must run
+it at least twice and assert on the state after the second run.** A single run does not test
+idempotency; it tests the first run.
+
+**Why.** Replay bugs are invisible to a single pass by construction. The first run creates, and
+everything looks right; the second meets state the first left behind, and that is where the fault
+lives. The NZC-080 acceptance seed proves the shape three times over — every one of its failures
+appeared only on a re-run:
+
+- an already-withdrawn strategy being updated again, which `client.strategy.update` refuses
+  outright (`REMOVED`) — the skip guard exempted exactly the case that intends to end withdrawn;
+- a draft assessment left by a failed run, which `srs.assessment.start` refuses to start beside;
+- a version threaded from the wrong entity, which only diverges once a row has been written once.
+
+Each was found by running against staging, at a round-trip apiece, and each left a half-applied
+fixture in a real client's plan. None was reachable by a first run, and none was visible to
+typecheck: the command inputs type `status` and `expectedVersion` loosely, and two of the three
+rules are enforced only at runtime.
+
+**What "twice" has to mean.** The second run must go through the same entry point with the same
+arguments — not a hand-built "now simulate a replay". The assertions that matter are on the second
+run's *outcome*: no duplicate rows, ids unchanged, and the states that should have been left alone
+left alone. Assert the count as well as the contents; a duplicate is the most common replay bug
+and the easiest to miss when you only check that a thing exists.
+
+**Enforced by example:** `packages/isolated-backend/tests/portalAcceptanceSeed.test.ts` runs the
+whole sequence twice against a real Postgres. With the old skip guard restored it fails on the
+second run and passes on the first — which is exactly the property this convention exists to
+catch, and worth verifying that way when you write one.
