@@ -125,6 +125,12 @@ const BESPOKE = {
   controlLevel: "direct_control",
 };
 
+/** The row as it stands right now — used where "is it still active?" has to be current. */
+async function freshVersion(pool: Pool, clientId: string, clientStrategyId: string) {
+  const strategies = await withTenantRead(pool, ORG, (db) => listClientStrategies(db, clientId));
+  return strategies.find((entry) => entry.id === clientStrategyId) ?? null;
+}
+
 /* ── The cases ───────────────────────────────────────────────────────────────────────── */
 
 type StrategyCase = {
@@ -284,27 +290,29 @@ async function main(): Promise<void> {
         progressPct: strategyCase.progressPct, notes: "Seeded for the NZC-080 portal acceptance run.",
         srsRequirementIds: current.srsRequirementIds, includeInReport: strategyCase.includeInReport,
       };
-      await updateClientStrategy(pool, updateInput, context(`update:${strategyCase.id}`, updateInput));
+      const updated = await updateClientStrategy(pool, updateInput, context(`update:${strategyCase.id}`, updateInput));
+      // Threaded from the command's own return value, not inferred by adding one. A replayed
+      // command returns the version as of its original execution, which is still current unless
+      // somebody has edited the row by hand — `freshVersion` covers that case rather than failing.
+      let version = updated.data.version;
 
       if (strategyCase.estimate) {
-        const afterUpdate = (await withTenantRead(pool, ORG, (db) => listClientStrategies(db, target.client_id)))
-          .find((entry) => entry.id === clientStrategyId)!;
         const estimateInput = {
-          clientStrategyId, expectedVersion: afterUpdate.version,
+          clientStrategyId, expectedVersion: version,
           estimate: {
             amount: 42.5, unit: "tco2e_per_year" as const, scope: "1" as const,
             assumptions: "Seeded estimate for the NZC-080 acceptance run — not a real figure.",
             source: "consultant" as const,
           },
         };
-        await setClientStrategyEstimate(pool, estimateInput, context(`estimate:${strategyCase.id}`, estimateInput));
+        const priced = await setClientStrategyEstimate(pool, estimateInput, context(`estimate:${strategyCase.id}`, estimateInput));
+        version = priced.data.version;
       }
 
       if (strategyCase.withdraw) {
-        const afterUpdate = (await withTenantRead(pool, ORG, (db) => listClientStrategies(db, target.client_id)))
-          .find((entry) => entry.id === clientStrategyId)!;
-        if (afterUpdate.active) {
-          const removeInput = { clientStrategyId, expectedVersion: afterUpdate.version, reason: "Withdrawn for the NZC-080 acceptance run — the gap it addressed must read as unaddressed." };
+        const live = await freshVersion(pool, target.client_id, clientStrategyId);
+        if (live?.active) {
+          const removeInput = { clientStrategyId, expectedVersion: version, reason: "Withdrawn for the NZC-080 acceptance run — the gap it addressed must read as unaddressed." };
           await removeClientStrategy(pool, removeInput, context(`remove:${strategyCase.id}`, removeInput, removeInput.reason));
           log(`    withdrawn (deactivated, not deleted)`);
         }
@@ -329,18 +337,27 @@ async function seedAssessment(
 ): Promise<void> {
   // Read first, rather than key off a payload containing today's date — that would start a second
   // assessment tomorrow, and one completed assessment is the whole point.
-  const existing = (await withTenantRead(pool, ORG, (db) => listSrsAssessments(db, clientId)))
-    .find((assessment) => assessment.status === "complete");
-  if (existing) {
-    log(`\n  = SRS assessment ${existing.assessmentId} already complete — left as it is.`);
+  const assessments = await withTenantRead(pool, ORG, (db) => listSrsAssessments(db, clientId));
+  const complete = assessments.find((assessment) => assessment.status === "complete");
+  if (complete) {
+    log(`\n  = SRS assessment ${complete.assessmentId} already complete — left as it is.`);
     return;
   }
 
-  const startInput = { clientId, assessedOn: dayOffset(0), notes: "Seeded for the NZC-080 portal acceptance run." };
-  const started = await startSrsAssessment(pool, startInput, context("srs:start", startInput));
-  const assessmentId = started.data.assessmentId;
-  if (!assessmentId) throw new Error("srs.assessment.start returned no assessment id.");
-  log(`\n  + SRS assessment ${assessmentId} started`);
+  // **Resume a draft rather than starting beside it.** A half-finished assessment is the state a
+  // failed run leaves behind, and `srs.assessment.start` refuses outright while one is open — so
+  // without this, a re-run after any mid-flight failure could never get past the first command.
+  const draft = assessments.find((assessment) => assessment.status === "draft");
+  let assessmentId: string;
+  if (draft) {
+    assessmentId = draft.assessmentId;
+    log(`\n  = SRS assessment ${assessmentId} already started — resuming it`);
+  } else {
+    const startInput = { clientId, assessedOn: dayOffset(0), notes: "Seeded for the NZC-080 portal acceptance run." };
+    const started = await startSrsAssessment(pool, startInput, context("srs:start", startInput));
+    assessmentId = started.data.assessmentId;
+    log(`\n  + SRS assessment ${assessmentId} started`);
+  }
 
   // Gap depth varies so "ordered by shortfall" is actually testable — equal shortfalls would
   // make any order look correct.
@@ -355,21 +372,36 @@ async function seedAssessment(
     answers.push({ requirement, maturity: Math.max(requirement.targetMaturity, 1), note: "met" });
   }
 
+  // `srs.assessment.item.set` versions the **item**, not the assessment. The two are different
+  // rows with different counters: a fresh assessment header is created at v1, while a requirement
+  // nobody has answered has no row at all and therefore expects v0. Passing the header's version
+  // here is what produced "expected v1, found v0" — the seed handed one entity's version to a
+  // command guarding another's. So the version is read per requirement, and then threaded from
+  // each command's own return value rather than assumed to increment.
+  const itemVersions = new Map<string, number>();
+  const before = await withTenantRead(pool, ORG, (db) => getSrsAssessment(db, assessmentId));
+  if (!before) throw new Error(`Assessment ${assessmentId} disappeared mid-seed.`);
+  for (const item of before.items) itemVersions.set(item.requirementId, item.version);
+
   for (const answer of answers) {
-    const assessment = await withTenantRead(pool, ORG, (db) => getSrsAssessment(db, assessmentId));
-    if (!assessment) throw new Error(`Assessment ${assessmentId} disappeared mid-seed.`);
     const itemInput = {
       assessmentId, requirementId: answer.requirement.id,
       maturity: Math.min(answer.maturity, 4),
       evidenceKind: "note" as const,
       evidenceNote: `Seeded for the NZC-080 acceptance run — ${answer.note}.`,
-      expectedVersion: assessment.version,
+      // 0 when the requirement has never been answered — that is the command's own rule for an
+      // absent row, not a guess about where counters start.
+      expectedVersion: itemVersions.get(answer.requirement.id) ?? 0,
     };
-    await setSrsAssessmentItem(pool, itemInput, context(`srs:item:${answer.requirement.id}`, itemInput));
+    const saved = await setSrsAssessmentItem(pool, itemInput, context(`srs:item:${answer.requirement.id}`, itemInput));
+    itemVersions.set(answer.requirement.id, saved.data.version);
   }
 
+  // The header's version, which is what *this* command guards — read after the items, because
+  // each item write touches the assessment row.
   const finalState = await withTenantRead(pool, ORG, (db) => getSrsAssessment(db, assessmentId));
-  const completeInput = { assessmentId, expectedVersion: finalState!.version };
+  if (!finalState) throw new Error(`Assessment ${assessmentId} disappeared before completion.`);
+  const completeInput = { assessmentId, expectedVersion: finalState.version };
   await completeSrsAssessment(pool, completeInput, context("srs:complete", completeInput));
   log(`  + SRS assessment completed — not a draft, so the portal will show it`);
 }
