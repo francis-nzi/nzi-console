@@ -25,7 +25,8 @@
     "console:build": "npm run build -w @nzi/console",
     "migrate": "npm run migrate -w @nzi/isolated-backend",
     "migrate:status": "npm run migrate:status -w @nzi/isolated-backend",
-    "migrate:baseline": "npm run migrate:baseline -w @nzi/isolated-backend"
+    "migrate:baseline": "npm run migrate:baseline -w @nzi/isolated-backend",
+    "seed:portal-acceptance": "npm run seed:portal-acceptance -w @nzi/isolated-backend"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

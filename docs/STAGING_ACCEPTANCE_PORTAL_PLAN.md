@@ -29,11 +29,29 @@ an acceptance — it is only the ability to withdraw. This record is what makes 
 ## Part 1 — data setup (prerequisite)
 
 The smoke test found the strategy table empty, so the surface has never been seen with real
-content. **Prefer entering this through the staff console rather than a seed:** it exercises the
-entry paths at the same time, and an acceptance run that only ever reads is a weaker test than one
-that writes first.
+content.
 
-Set up against one client (Bushy Tails or `demo-nzi-console`).
+**Set up by seed, then spot-check** (decided 16 Sep 2026). Run this once in the staging Render
+Shell:
+
+```
+npm run seed:portal-acceptance
+```
+
+The seed writes every row **through the same commands the staff console calls** — so the rows
+carry their audit event, outbox entry, version and provenance, and the entry path is still
+exercised. It is re-runnable: creations replay, and the target dates are refreshed back into their
+due-state buckets, so a run weeks later does not quietly turn "due soon" into "overdue" and
+invalidate criteria 13–16.
+
+It prints a summary mapping each seeded case to the criterion below that it serves. **Spot-check
+that summary against the staff console before viewing the portal** — the seed is only trustworthy
+if what it claims to have made is what is actually on the plan.
+
+Defaults to Bushy Tails; `SEED_CLIENT_NAME=…` picks another. `--withdraw-all` takes the seeded
+strategies back off the plan afterwards, by deactivation, never deletion.
+
+The table below is what the seed produces. Tick it as verified, not as requested.
 
 | # | Item | Why it is in the list | Done |
 |---|------|----------------------|------|

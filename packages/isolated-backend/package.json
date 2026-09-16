@@ -13,7 +13,8 @@
     "migrate": "node scripts/migrate.mjs up",
     "migrate:status": "node scripts/migrate.mjs status",
     "migrate:baseline": "node scripts/migrate.mjs baseline",
-    "reminder-worker": "tsx scripts/reminder-worker.ts"
+    "reminder-worker": "tsx scripts/reminder-worker.ts",
+    "seed:portal-acceptance": "tsx scripts/seed-portal-acceptance.ts"
   },
   "dependencies": {
     "@nzi/charts": "*",

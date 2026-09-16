@@ -33,8 +33,18 @@ surface is a disclosure, not a display bug. The criteria below are weighted acco
 ## Part 1 — data setup (prerequisite)
 
 Shares the client and strategy set-up in `STAGING_ACCEPTANCE_PORTAL_PLAN.md` Part 1 — do that
-first, then add the assessment below. Prefer the staff console over a seed, so the assessor path is
-exercised too.
+first — the same `npm run seed:portal-acceptance` produces both halves in one run, including the
+completed assessment and the four reverse-link cases below.
+
+The seed goes through `srs.assessment.start` / `.item.set` / `.complete`, the same commands the
+assessor uses, so the assessment is a real one rather than rows shaped to look like one. It leaves
+an existing completed assessment alone rather than starting a second: one completed assessment is
+the state these criteria are written against.
+
+**Spot-check the seed's printed summary against the staff SRS dashboard before viewing the
+portal.** Criteria 6–8 all assert that a gap reads as *unaddressed*, and that is exactly what a
+seed which silently failed to create the strategy would also produce — so the evidence for those
+three has to start with confirming the strategy exists and is aligned.
 
 | # | Item | Why it is in the list | Done |
 |---|------|----------------------|------|
