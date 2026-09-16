@@ -250,7 +250,7 @@ nobody reads. Apply the same fake to any read model that fans out.
 each checks out its own client. The rule is about sharing *one* client, not about concurrency in
 general.
 
-## 14. Anything idempotent is tested by running it twice (locked)
+## 14. Idempotent things are tested twice, and once over a dirtied database (locked)
 
 **A test of a seed, a replayed command, or any operation that claims to be re-runnable must run
 it at least twice and assert on the state after the second run.** A single run does not test
@@ -276,6 +276,25 @@ arguments — not a hand-built "now simulate a replay". The assertions that matt
 run's *outcome*: no duplicate rows, ids unchanged, and the states that should have been left alone
 left alone. Assert the count as well as the contents; a duplicate is the most common replay bug
 and the easiest to miss when you only check that a thing exists.
+
+**And once over a dirtied database.** Running twice on a fresh database proves convergence *within
+one version*, and nothing more. Both runs are the same build, so their idempotency keys — which
+are payload hashes — line up, the replay succeeds, and the replay hides everything underneath it.
+
+Real state is not like that. A client carries rows from earlier versions of the seed, whose keys
+no longer match anything the current build will produce: the replay misses, the command is issued
+for real, and a business guard refuses it. That is precisely how the NZC-080 seed's fourth failure
+reached staging (`client.strategy.assign` → `ALREADY_ASSIGNED`) after CI had run it twice, green.
+
+So the test must also **pre-dirty the database with foreign keys** — state written under
+idempotency keys the seed cannot match — and then assert the seed converges onto it. Seeding the
+same client twice does not do it, and will pass while the bug is live.
+
+**Which is why convergence is a property of reading, not of keys.** A key replays a command *this
+build* issued. Reading asks "is this already true?", which has one answer no matter which version
+asked. Every create step should reconcile by reading first and fall back to creating — and match
+on the thing's identity **regardless of soft-deleted state**, or an assign after a withdrawal
+quietly produces a second row for one entity, which is worse than the error it avoided.
 
 **Enforced by example:** `packages/isolated-backend/tests/portalAcceptanceSeed.test.ts` runs the
 whole sequence twice against a real Postgres. With the old skip guard restored it fails on the

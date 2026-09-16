@@ -4,9 +4,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { strategyDeadline } from "@nzi/contracts";
+import { commandGrantForRole, strategyDeadline } from "@nzi/contracts";
 import { seedPortalAcceptance, STRATEGY_CASES } from "../src/portalAcceptanceSeed";
-import { listClientStrategies } from "../src/reductionStrategies";
+import { assignClientStrategy, listClientStrategies, removeClientStrategy } from "../src/reductionStrategies";
 import { getSrsAssessment } from "../src/srsReadinessRecords";
 import { withTenantRead } from "../src/postgres";
 
@@ -147,6 +147,72 @@ describe("the portal acceptance seed", { skip: DATABASE_URL ? false : "NZI_TEST_
     const hidden = strategies.filter((row) => !row.includeInReport);
     assert.equal(hidden.length, 2, "the hidden case and the out-of-report gap case");
     for (const row of hidden) assert.ok(row.active, "out of report is not the same as withdrawn");
+  });
+
+  it("converges over partial data left by an earlier, differently-keyed run", async () => {
+    // The failure a fresh-database run cannot reach, and the one that actually bit on staging.
+    //
+    // Idempotency keys are payload hashes, so they only replay commands issued by *this* build.
+    // A client carrying rows from an earlier version of the seed has state whose keys no longer
+    // match: the replay misses, the assign is issued for real, and `client.strategy.assign`
+    // refuses it as ALREADY_ASSIGNED — the business rule is about the plan, not about who asked.
+    //
+    // Reproducing that needs dirt whose keys the seed cannot match, so the pre-existing rows are
+    // assigned here under deliberately foreign ones. Seeding the same client twice would not do
+    // it: both runs are this build, the keys line up, and the replay hides the bug.
+    const dirty = "ci-client-dirty";
+    const admin = new pg.Client({ connectionString: DATABASE_URL });
+    await admin.connect();
+    await admin.query(
+      `INSERT INTO nzi_console.clients (organisation_id, client_id, name, status)
+       VALUES ($1, $2, 'CI Dirty Client', 'active') ON CONFLICT DO NOTHING`, [ORG, dirty]);
+    await admin.end();
+
+    const foreign = (label: string) => ({
+      organisationId: ORG, actorId: ACTOR, principal: "staff" as const,
+      idempotencyKey: `an-earlier-seed-version:${label}`,
+      correlationId: "earlier-seed-version",
+      grant: commandGrantForRole("admin", ORG, ACTOR),
+    });
+
+    // The library strategies this seed picks, learned from the run against the clean client.
+    const chosen = (await read()).filter((row) => row.strategyId !== null).slice(0, 2);
+    assert.equal(chosen.length, 2, "two library-backed cases to pre-assign");
+
+    for (const row of chosen) {
+      await assignClientStrategy(pool, {
+        clientId: dirty, strategyId: row.strategyId!,
+        srsRequirementIds: row.srsRequirementIds,
+        owner: ACTOR, notes: "Left behind by an earlier version of the seed.",
+      }, foreign(`assign-${row.strategyId}`));
+    }
+    // Leave one withdrawn, as a half-finished earlier run would. The assign guard only blocks an
+    // *active* duplicate, so without reconciliation this one assigns again and leaves two rows
+    // for a single strategy — worse than the error it avoided.
+    const [toWithdraw] = await withTenantRead(pool, ORG, (db) => listClientStrategies(db, dirty));
+    await removeClientStrategy(pool,
+      { clientStrategyId: toWithdraw!.id, expectedVersion: toWithdraw!.version, reason: "Left withdrawn by an earlier run." },
+      { ...foreign(`remove-${toWithdraw!.id}`), reason: "Left withdrawn by an earlier run." });
+
+    const summary = await seedPortalAcceptance(pool, { organisationId: ORG, actorId: ACTOR, clientId: dirty });
+
+    const rows = await withTenantRead(pool, ORG, (db) => listClientStrategies(db, dirty));
+    assert.equal(rows.length, STRATEGY_CASES.length, "converged: no second copy of anything, counted not assumed");
+    assert.equal(summary.strategies.length, STRATEGY_CASES.length);
+
+    for (const row of chosen) {
+      assert.equal(rows.filter((entry) => entry.strategyId === row.strategyId).length, 1,
+        `exactly one row for library strategy ${row.strategyId}`);
+    }
+    const reusedIds = summary.strategies.map((entry) => entry.clientStrategyId);
+    assert.ok(reusedIds.includes(toWithdraw!.id), "the hand-withdrawn row was reconciled, not abandoned");
+
+    const second = await seedPortalAcceptance(pool, { organisationId: ORG, actorId: ACTOR, clientId: dirty });
+    assert.deepEqual(
+      second.strategies.map((entry) => entry.clientStrategyId).sort(),
+      summary.strategies.map((entry) => entry.clientStrategyId).sort(),
+      "and it stays converged on a further run",
+    );
   });
 
   it("aligns every strategy to at least one requirement", async () => {
