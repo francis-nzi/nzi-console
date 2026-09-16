@@ -1461,3 +1461,39 @@ and suppresses the capture offer.
 interface, not a change to anything above it — and `live-data` citations already name the read
 model that produced a figure, so an answer about a client's own data will be traceable to the same
 resolver the screen used rather than to a second path that can quietly disagree.
+
+### NZC-084 — Product docs are a distinct corpus, and one entry is never two citations [Confirmed 16 Sep 2026]
+
+**Decision.** Product documentation is a **separate registered grounding source** with its own
+corpus. It must **never** be re-served from public-tier knowledge-library entries, and no answer
+may present one approved entry as two corroborating citations. A `GroundingSource` declares the
+one citation kind it may `emit`, and `retrieveGrounding` drops — and reports — any candidate
+citing a corpus that is not its source's own.
+
+**Why this needs to be a rule and not just a rationale.** 0d stubbed docs as an empty registered
+source precisely to avoid this, but "we happened not to do it" binds nobody. Populating the corpus
+is future work, and the shortcut will look attractive at exactly that moment: public-tier entries
+are already written, already approved, already client-safe. The rule has to outlive the decision
+not to take it.
+
+**The failure it prevents is the hard kind to see.** Corroboration is something a reader *counts*.
+Two citations read as two sources independently agreeing, and a person — rightly — weighs an
+answer more heavily for it. If both are the same library entry wearing different hats, that extra
+confidence is manufactured out of nothing. Every individual citation is real and checkable, which
+is why such an answer would pass review: there is no fabricated reference to spot. It is a subtler
+failure than invention and it corrupts the one signal the whole grounded design asks people to
+trust.
+
+**Genuine agreement is not the same thing.** Where a real document and a library entry
+independently say the same thing, that *is* two sources agreeing and both may be cited. The
+prohibition is on one source dressed as two.
+
+**What is mechanical, and what is not.** The `emits` check is exact and catches a source handing
+back another corpus's citations. It cannot catch a doc source that re-serves entry text under a
+fabricated `docRef` — that would be indistinguishable from a real corpus to any check we could
+write. The rest of the rule therefore lives in the module doc on `productDocsSource` and here, and
+binds whoever populates the corpus.
+
+**Scope.** This binds Phase 2 as well: live-data tools cite the read model that produced a figure
+and must not also re-cite a library entry describing the same figure. Two citations must always
+mean two corpora.
