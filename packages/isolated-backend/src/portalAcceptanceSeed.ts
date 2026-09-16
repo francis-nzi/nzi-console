@@ -36,7 +36,7 @@ export type SeedOptions = {
 };
 
 export type SeedSummary = {
-  strategies: Array<{ caseId: string; clientStrategyId: string; action: "created" | "replayed" | "already-withdrawn" }>;
+  strategies: Array<{ caseId: string; clientStrategyId: string; action: "created" | "reused" | "already-withdrawn" }>;
   assessmentId: string | null;
   assessmentState: "completed" | "resumed-and-completed" | "already-complete" | "not-seeded";
   reserved: { addressed: string; withdrawn: string; outOfReport: string; noStrategy: string };
@@ -193,8 +193,19 @@ export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions)
   const spread = [...byLever.values()].flatMap((entries, index) => entries.map((entry) => ({ entry, index })))
     .sort((a, b) => a.index - b.index).map((item) => item.entry);
 
+  // One distinct library strategy per non-bespoke case, fixed up front.
+  //
+  // The cursor this replaces wrapped with `% spread.length`, so a short library silently gave two
+  // cases the same strategy — and then the second case's update overwrote the first's, leaving
+  // one of the acceptance criteria testing nothing. Failing loudly is the right answer: a seed
+  // that cannot produce its cases has not produced them.
+  const nonBespoke = STRATEGY_CASES.filter((entry) => !entry.bespoke);
+  if (spread.length < nonBespoke.length) {
+    throw new Error(`The library offers ${spread.length} usable strategies; ${nonBespoke.length} cases need one each.`);
+  }
+  const libraryByCase = new Map(nonBespoke.map((entry, index) => [entry.id, spread[index]!]));
+
   const strategies: SeedSummary["strategies"] = [];
-  let libraryCursor = 0;
 
   for (const entry of STRATEGY_CASES) {
     const requirementIds =
@@ -202,19 +213,45 @@ export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions)
       entry.id === "gap-withdrawn" ? [reserved.withdrawn.id] :
       entry.id === "gap-out-of-report" ? [reserved.outOfReport.id] : null;
 
-    const assignInput = entry.bespoke
-      ? { clientId, bespoke: BESPOKE, srsRequirementIds: requirementIds ?? [requirements[4]!.id], owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." }
-      : (() => {
-        const chosen = spread[libraryCursor % spread.length]!;
-        libraryCursor += 1;
-        return { clientId, strategyId: chosen.id, srsRequirementIds: requirementIds ?? chosen.defaultSrsRequirementIds, owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." };
-      })();
+    const chosen = entry.bespoke ? null : libraryByCase.get(entry.id)!;
 
-    const assigned = await step(`client.strategy.assign (${entry.id})`, () => assignClientStrategy(pool, assignInput, context(`assign:${entry.id}`, assignInput)));
-    const clientStrategyId = assigned.data.clientStrategyId;
-    log(`  ${assigned.replayed ? "=" : "+"} ${entry.id.padEnd(18)} ${entry.what}`);
+    // **Reconcile by reading, not by idempotency key.**
+    //
+    // A key only replays a command issued by *this* build: it is a hash of the payload, so a
+    // seed whose payload has changed since — a different library strategy, a reworded note, an
+    // earlier version of this file — produces a different key, the replay misses, and the assign
+    // is issued for real. `client.strategy.assign` then refuses it (`ALREADY_ASSIGNED`), because
+    // the business rule is about the plan, not about who asked.
+    //
+    // Keys therefore prove convergence within one version of the seed, and nothing about
+    // convergence over state a previous version left behind. Reading the plan first does: the
+    // question "is this action already on this client's plan?" has one answer regardless of which
+    // build asked it.
+    //
+    // Matched **regardless of `active`**. The guard only blocks an active duplicate, so an
+    // assign after a withdrawal would succeed and leave two rows for one strategy — a second copy
+    // of the same action, which is worse than the error it avoided. That is also why
+    // `--withdraw-all` does not clear this: it makes the assign possible again rather than making
+    // it unnecessary.
+    const plan = await readStrategies();
+    const found = entry.bespoke
+      ? plan.find((row) => row.strategyId === null && row.title === BESPOKE.title)
+      : plan.find((row) => row.strategyId === chosen!.id);
 
-    const current = (await readStrategies()).find((row) => row.id === clientStrategyId);
+    let clientStrategyId: string;
+    if (found) {
+      clientStrategyId = found.id;
+      log(`  = ${entry.id.padEnd(18)} already on the plan — reusing it`);
+    } else {
+      const assignInput = entry.bespoke
+        ? { clientId, bespoke: BESPOKE, srsRequirementIds: requirementIds ?? [requirements[4]!.id], owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." }
+        : { clientId, strategyId: chosen!.id, srsRequirementIds: requirementIds ?? chosen!.defaultSrsRequirementIds, owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." };
+      const assigned = await step(`client.strategy.assign (${entry.id})`, () => assignClientStrategy(pool, assignInput, context(`assign:${entry.id}`, assignInput)));
+      clientStrategyId = assigned.data.clientStrategyId;
+      log(`  + ${entry.id.padEnd(18)} ${entry.what}`);
+    }
+
+    const current = found ?? (await readStrategies()).find((row) => row.id === clientStrategyId);
     if (!current) throw new Error(`Strategy ${clientStrategyId} (${entry.id}) vanished after assignment.`);
 
     // An inactive strategy is skipped **whatever the case wants**: `client.strategy.update`
@@ -228,7 +265,7 @@ export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions)
       strategies.push({ caseId: entry.id, clientStrategyId, action: "already-withdrawn" });
       continue;
     }
-    strategies.push({ caseId: entry.id, clientStrategyId, action: assigned.replayed ? "replayed" : "created" });
+    strategies.push({ caseId: entry.id, clientStrategyId, action: found ? "reused" : "created" });
 
     const updateInput = {
       clientStrategyId, expectedVersion: current.version, status: entry.status, owner: actorId,

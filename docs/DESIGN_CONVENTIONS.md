@@ -250,7 +250,7 @@ nobody reads. Apply the same fake to any read model that fans out.
 each checks out its own client. The rule is about sharing *one* client, not about concurrency in
 general.
 
-## 14. Anything idempotent is tested by running it twice (locked)
+## 14. Idempotent things are tested twice, and once over a dirtied database (locked)
 
 **A test of a seed, a replayed command, or any operation that claims to be re-runnable must run
 it at least twice and assert on the state after the second run.** A single run does not test
@@ -277,7 +277,73 @@ run's *outcome*: no duplicate rows, ids unchanged, and the states that should ha
 left alone. Assert the count as well as the contents; a duplicate is the most common replay bug
 and the easiest to miss when you only check that a thing exists.
 
+**And once over a dirtied database.** Running twice on a fresh database proves convergence *within
+one version*, and nothing more. Both runs are the same build, so their idempotency keys — which
+are payload hashes — line up, the replay succeeds, and the replay hides everything underneath it.
+
+Real state is not like that. A client carries rows from earlier versions of the seed, whose keys
+no longer match anything the current build will produce: the replay misses, the command is issued
+for real, and a business guard refuses it. That is precisely how the NZC-080 seed's fourth failure
+reached staging (`client.strategy.assign` → `ALREADY_ASSIGNED`) after CI had run it twice, green.
+
+So the test must also **pre-dirty the database with foreign keys** — state written under
+idempotency keys the seed cannot match — and then assert the seed converges onto it. Seeding the
+same client twice does not do it, and will pass while the bug is live.
+
+**Which is why convergence is a property of reading, not of keys.** A key replays a command *this
+build* issued. Reading asks "is this already true?", which has one answer no matter which version
+asked. Every create step should reconcile by reading first and fall back to creating — and match
+on the thing's identity **regardless of soft-deleted state**, or an assign after a withdrawal
+quietly produces a second row for one entity, which is worse than the error it avoided.
+
 **Enforced by example:** `packages/isolated-backend/tests/portalAcceptanceSeed.test.ts` runs the
 whole sequence twice against a real Postgres. With the old skip guard restored it fails on the
 second run and passes on the first — which is exactly the property this convention exists to
 catch, and worth verifying that way when you write one.
+
+## 15. A merged branch is deleted, and a merge is verified on `main` (locked)
+
+The mechanical complement to §14, and to the working rule **"once a PR is in review, the next
+commit goes on a new branch"**.
+
+**Enable *Automatically delete head branches* on the repository** — GitHub → Settings → General →
+Pull Requests, or:
+
+```
+gh api -X PATCH repos/francis-nzi/nzi-console -f delete_branch_on_merge=true
+```
+
+Locally, `git fetch --prune` so a deleted branch stops appearing in your own view.
+
+**The class this closes.** A squash-merge rewrites the branch's commits into one new commit, so
+git can no longer match the branch's patches against `main`. A branch that outlives its PR
+therefore invites a second commit that **silently never lands**: the PR says merged, `main` looks
+healthy, and the work is simply absent.
+
+It has bitten twice:
+
+- **#193** — the NZC-084 "docs are a distinct corpus" rule was pushed after the PR was cut, and
+  merged as part of a later PR only because it was noticed.
+- **#199** — the seed fix, its error surfacing and its real-Postgres test were pushed after review
+  started; the squash took the earlier commit, and `main` kept the bug that had just been
+  diagnosed and endorsed.
+
+Both times **nothing failed**. No test, no build, no check: the branch pushed cleanly, the PR
+merged cleanly, and the only symptom was work that was not there. That puts it in the same family
+as the committed conflict markers of NZC-086 — damage no gate can see, because every gate is
+asking whether the code works, and absent code works fine.
+
+**What deleting the branch actually buys.** Not literal impossibility: a later `git push` from a
+local clone recreates the remote branch. What it removes is the *silence* — there is no open PR
+for that push to update, and the recreated branch is visibly unmerged rather than looking like a
+contribution to something already landed.
+
+**So verify on `main`, by content, never by PR number.** A merged PR is a claim about a branch, not
+about `main`. Check the thing itself:
+
+```
+git fetch origin && git show origin/main:path/to/file | grep <the change>
+git ls-tree --name-only origin/main <dir> | grep <new file>
+```
+
+If the change is not in `main`, it did not ship — whatever the PR says.
