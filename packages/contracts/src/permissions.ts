@@ -40,6 +40,14 @@ export const capabilities = [
   "admin.settings",
   "audit.view",
   "support.portal_impersonate",
+  // ── Knowledge library (NZC-081) ──
+  // Three, not two: writing to the library is its own act and must not ride an unrelated
+  // gate. `capture` is held by every role — anyone who answers a question can offer it to
+  // the library — while approval and publication are the two tiers that make an entry
+  // citable and then client-facing.
+  "knowledge.capture",
+  "knowledge.approve",
+  "knowledge.publish",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -54,7 +62,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 3;
+export const PERMISSION_MATRIX_VERSION = 4;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -67,14 +75,17 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
   consultant: {
     ...all("client.view", "client.create", "client.edit", "contact.manage", "site.manage", "target.edit", "job.manage",
       "scoperow.edit", "report.edit", "report.view", "strategy.manage", "srs.manage", "training.manage", "training.entitlement.manage", "finance.view", "clientfactor.manage",
-      "support.portal_impersonate"),
+      "support.portal_impersonate",
+      // Writes most of the knowledge and approves it to internal; publication to the
+      // client-facing tier stays with Admin, which is what gives the two tiers teeth.
+      "knowledge.capture", "knowledge.approve"),
     "baseline.rebaseline": "own_clients",
     "portal.admin": "own_clients",
     "audit.view": "own_clients",
   },
-  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view"),
-  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage"), "audit.view": "own_clients" },
-  viewer: all("client.view", "report.view"),
+  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture"),
+  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture"), "audit.view": "own_clients" },
+  viewer: all("client.view", "report.view", "knowledge.capture"),
 };
 
 export const roleLabels: Record<StaffRole, string> = {
