@@ -31,6 +31,7 @@ export type GroundingContext = { db: Queryable };
 export const knowledgeLibrarySource: GroundingSource<GroundingContext> = {
   id: "knowledge-library",
   label: "Approved knowledge library",
+  emits: "knowledge-library",
   async retrieve(question, { db }) {
     const similar = await findSimilarKnowledge(db, question);
     const approved = similar.filter((candidate) => candidate.status !== "draft");
@@ -59,18 +60,42 @@ export const knowledgeLibrarySource: GroundingSource<GroundingContext> = {
  * and a source that fabricated citations to documents that do not exist would be the exact
  * failure this whole design is built to avoid.
  *
- * It is registered anyway so the shape is exercised and Phase 1 has somewhere to plug a
- * corpus into without changing the contract.
+ * It is registered anyway so the shape is exercised and a corpus has somewhere to plug in
+ * without changing the contract.
  *
- * **Not backed by public library entries**, which was the alternative. Those are already
- * returned by the library source above, so re-serving them here would return one answer under
- * two citations — making a single source look like two corroborating ones. Apparent
- * corroboration that is really one entry counted twice is precisely the kind of false
- * confidence a grounded system must not manufacture.
+ * ## The rule this source exists under — NZC-084
+ *
+ * **Product docs are a distinct corpus. They must never be re-served from public-tier library
+ * entries, and one approved entry must never appear as two corroborating citations.**
+ *
+ * This binds whoever populates the corpus later, not just this stub. Serving public-tier
+ * entries here is the obvious shortcut — the content is already written, already approved,
+ * already public — and it is forbidden, because those entries are *already* returned by the
+ * library source above. Re-serving them would put one answer in front of a reader under two
+ * citations.
+ *
+ * That matters more than it first appears. Corroboration is something a reader **counts**: two
+ * citations read as two sources that independently agree, and a person weighs an answer more
+ * heavily for it. If both are the same entry wearing different hats, the extra confidence is
+ * manufactured out of nothing. Every individual citation is real, which is exactly why it would
+ * survive review — it is a harder failure to catch than an invented citation, and it corrupts
+ * the one signal this design asks people to trust.
+ *
+ * When a real corpus arrives it must be documents in their own right — a doc, a section, text
+ * that exists in that document — and where a document and a library entry genuinely say the
+ * same thing, that is two sources agreeing and both may be cited. The prohibition is on one
+ * source being **dressed as two**, not on genuine agreement.
+ *
+ * The mechanical half of the rule lives in `emits` and is enforced in `retrieveGrounding`: a
+ * source may only produce citations of its own kind, so a doc source cannot hand back
+ * `knowledge-library` citations. The rest is this comment and the decision record, because a
+ * doc source that re-served entry text under a fabricated `docRef` would be indistinguishable
+ * from a real corpus to any check we could write.
  */
 export const productDocsSource: GroundingSource<GroundingContext> = {
   id: "product-docs",
   label: "Product documentation (no corpus indexed yet)",
+  emits: "product-docs",
   async retrieve() {
     return [];
   },
@@ -105,7 +130,15 @@ export async function retrieveGrounding(
 
   for (const source of sources) {
     try {
-      candidates.push(...await source.retrieve(trimmed, context));
+      const produced = await source.retrieve(trimmed, context);
+      // NZC-084: a source may only cite its own corpus. A candidate citing someone else's is
+      // dropped rather than counted — the failure it guards against is one approved entry
+      // reaching a reader as two citations, which reads as two sources agreeing when it is one
+      // source wearing two hats. Reported as a failed source, because a source returning
+      // citations that are not its own is malfunctioning, and silence would hide that.
+      const own = produced.filter((candidate) => candidate.citation.source === source.emits);
+      if (own.length !== produced.length) failed.push(source.label);
+      candidates.push(...own);
       consulted.push(source.label);
     } catch {
       failed.push(source.label);
