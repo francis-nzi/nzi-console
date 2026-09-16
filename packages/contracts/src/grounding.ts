@@ -171,5 +171,20 @@ export type GroundingSource<Context = unknown> = {
   readonly id: string;
   /** What it is, for the "sources consulted" line a person can check. */
   readonly label: string;
+  /**
+   * The one kind of citation this source may produce.
+   *
+   * **Each corpus is distinct, and a source may only cite its own.** This is the mechanical half
+   * of the rule in NZC-084: one approved entry must never reach a reader as two citations. A
+   * candidate whose citation kind does not match its source's `emits` is dropped by
+   * `retrieveGrounding` and reported, rather than being counted as evidence.
+   *
+   * The rule exists because corroboration is something a reader *counts*. Two citations look
+   * like two independent sources agreeing; if both are the same library entry wearing different
+   * hats, the answer has manufactured confidence out of nothing. That is a subtler version of
+   * the fabrication this whole design prevents, and harder to spot precisely because every
+   * individual citation is real.
+   */
+  readonly emits: GroundingCitation["source"];
   retrieve(question: string, context: Context): Promise<GroundedCandidate[]>;
 };

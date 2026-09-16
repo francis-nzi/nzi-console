@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
-import { tourStatus, type TourDefinition, type TourSeen } from "@nzi/contracts";
+import { citationLabel, tourStatus, type GroundedCandidate, type TourDefinition, type TourSeen } from "@nzi/contracts";
 import { KnowledgeLibrary, KnowledgeReview } from "../knowledge/KnowledgeViews";
 import type { HelpPageContext } from "./helpContext";
 
@@ -116,17 +116,53 @@ export function HelpDrawer({ context, capabilities, onClose, returnFocusTo, tour
 }
 
 /**
- * Ask — a shell until Phase 1.
+ * Ask — a cited answer, or an honest reason there isn't one.
  *
- * Deliberately not a disabled box with nothing behind it: the two things that make this
- * surface trustworthy are present and visible now, so they are built into the shape rather
- * than bolted on once generation exists. Asking returns the **honest abstention** — which is
- * the truthful answer today, because nothing can ground one yet — and offers to capture the
- * question for the team, which is a real action that reaches the 0a pipeline.
+ * Four outcomes, and they are kept **visibly distinct** because they are different facts: an
+ * answer with its sources; an abstention with a reason; the request itself failing; and still
+ * waiting. Collapsing the failed case into the abstention would be the app's oldest failure
+ * mode — a broken query rendered as an honest-looking nothing.
+ *
+ * The sources are shown even when no answer was written. If retrieval found approved entries
+ * and generation was off, refused or unreachable, "here is what I found, read it yourself" is
+ * both true and useful; showing nothing would misreport the library rather than the model.
  */
+type AskCitation = { ref: number; candidate: GroundedCandidate };
+type AskOutcome =
+  | { state: "answered"; answer: string; citations: AskCitation[]; modelId: string; sources: GroundedCandidate[] }
+  | { state: "abstained"; reason: string; offerCapture: boolean; sources: GroundedCandidate[] };
+
 function AskShell({ context }: { context: HelpPageContext }) {
   const [question, setQuestion] = useState("");
   const [asked, setAsked] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<AskOutcome | null>(null);
+  const [pending, setPending] = useState(false);
+  /** Kept apart from an abstention on purpose — a failure is not an answer of any kind. */
+  const [failed, setFailed] = useState(false);
+
+  async function ask() {
+    const text = question.trim();
+    if (text === "") return;
+    setAsked(text); setQuestion(""); setOutcome(null); setFailed(false); setPending(true);
+    try {
+      const response = await fetch("/api/isolated/help/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: text, pageContext: context.label }),
+      });
+      if (!response.ok) throw new Error(`ask failed: ${response.status}`);
+      setOutcome(await response.json() as AskOutcome);
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const sources = outcome?.sources ?? [];
+  // Offered whenever nothing was answered — the question is worth capturing precisely when the
+  // library could not answer it. Retrieval says when it would only breed duplicates.
+  const offerCapture = outcome?.state === "abstained" && outcome.offerCapture;
 
   return <>
     <p className="nz-maps">
@@ -140,19 +176,50 @@ function AskShell({ context }: { context: HelpPageContext }) {
         ? <p className="sub">Ask about this page, or anything about the platform.</p>
         : <>
           <div className="nz-help-msg you"><b>You</b><span>{asked}</span></div>
-          <div className="nz-help-msg nzi">
+
+          {pending ? <div className="nz-help-msg nzi">
             <b>NZI Assistant</b>
+            <span className="sub">Looking through the approved knowledge…</span>
+          </div> : null}
+
+          {failed ? <div className="nz-help-msg nzi">
+            <b>NZI Assistant</b>
+            {/* Degraded, not empty. Saying "nothing answers this" here would be a claim about
+                the library that nobody actually checked. */}
             <span>
-              I can&rsquo;t answer this yet — answering from the knowledge library is not switched on.
-              I won&rsquo;t guess at it.
+              I couldn&rsquo;t reach the knowledge service, so I don&rsquo;t know whether this is
+              answered. That&rsquo;s a fault at my end, not a gap — try again shortly.
             </span>
-            {/* The abstention is the point: an uncited answer is worse than none. */}
+          </div> : null}
+
+          {outcome?.state === "answered" ? <div className="nz-help-msg nzi">
+            <b>NZI Assistant</b>
+            <span>{outcome.answer}</span>
+            <span className="nz-help-cites">
+              {outcome.citations.map((cite) => <span key={cite.ref} className="nz-help-cite">
+                <b>[{cite.ref}]</b> {citationLabel(cite.candidate.citation)}
+              </span>)}
+            </span>
+          </div> : null}
+
+          {outcome?.state === "abstained" ? <div className="nz-help-msg nzi">
+            <b>NZI Assistant</b>
+            <span>{outcome.reason}</span>
             <span className="nz-help-abstain">No grounded answer — nothing cited, so nothing claimed.</span>
-          </div>
+          </div> : null}
         </>}
     </div>
 
-    {asked !== null ? <div className="nz-help-capture">
+    {/* What retrieval found, whatever happened to the prose. */}
+    {outcome?.state === "abstained" && sources.length > 0 ? <div className="nz-help-sources">
+      <b>What I did find</b>
+      <p className="sub">Approved entries that matched your question. Read them yourself — they are the source.</p>
+      {sources.map((source, index) => <span key={index} className="nz-help-cite">
+        {citationLabel(source.citation)}
+      </span>)}
+    </div> : null}
+
+    {offerCapture ? <div className="nz-help-capture">
       <b>Capture this for the team</b>
       <p className="sub">
         Send it to the knowledge library as a draft. Someone with approval rights writes or checks the
@@ -165,14 +232,14 @@ function AskShell({ context }: { context: HelpPageContext }) {
       <textarea className="nz-notes" rows={2} value={question} placeholder={`e.g. What does "reviewed, not assured" mean?`}
         onChange={(event) => setQuestion(event.target.value)} />
     </label>
-    <GatedButton className="nz-btn pri" blocked={question.trim() === ""}
-      blockedReason={question.trim() === "" ? "Type a question first." : undefined}
+    <GatedButton className="nz-btn pri" blocked={question.trim() === "" || pending}
+      blockedReason={question.trim() === "" ? "Type a question first." : pending ? "Still looking…" : undefined}
       reasonClassName="hint nz-gated-reason"
-      onClick={() => { setAsked(question.trim()); setQuestion(""); }}>
-      Ask
+      onClick={() => { void ask(); }}>
+      {pending ? "Asking…" : "Ask"}
     </GatedButton>
     <p className="nz-maps">
-      It will be told you are on <b>{context.label}</b>.
+      It will be told you are on <b>{context.label}</b> — to read your question, never as a source.
     </p>
   </>;
 }

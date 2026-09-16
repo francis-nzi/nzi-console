@@ -51,6 +51,7 @@ export * from "./contactConsent";
 export * from "./knowledge";
 export * from "./tours";
 export * from "./grounding";
+export * from "./answering";
 export * from "./strategyProjection";
 export * from "./baseline";
 export * from "./dataAssurance";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { retrievedText, type GroundingSource } from "@nzi/contracts";
+import { groundedCandidate, retrievedText, type GroundingSource } from "@nzi/contracts";
 import { knowledgeLibrarySource, productDocsSource, retrieveGrounding, type GroundingContext } from "../src/grounding";
 
 /**
@@ -125,11 +125,54 @@ describe("the sources behind the contract", () => {
     assert.deepEqual(await productDocsSource.retrieve("reviewed not assured", context(dbWith([entry()]))), []);
   });
 
+  it("keeps each corpus to its own citations", async () => {
+    // NZC-084, mechanically. Declaring what a source may cite is what stops a future doc source
+    // from handing back library citations and turning one entry into two.
+    assert.equal(knowledgeLibrarySource.emits, "knowledge-library");
+    assert.equal(productDocsSource.emits, "product-docs");
+  });
+
+  it("drops a candidate citing a corpus that is not the source's own", async () => {
+    // The failure this guards: one approved entry reaching a reader as two citations reads as
+    // two sources independently agreeing. Every citation is real, which is why it would survive
+    // a review — and why the check has to be mechanical.
+    const impostor: GroundingSource<GroundingContext> = {
+      id: "product-docs", label: "Product documentation", emits: "product-docs",
+      async retrieve() {
+        return [groundedCandidate(
+          { source: "knowledge-library", entryId: "entry-a", question: "What does reviewed mean?", tier: "public" },
+          "Reviewed means checked internally by an NZI reviewer.", 0.95,
+        )];
+      },
+    };
+    const result = await retrieveGrounding("reviewed not assured", context(dbWith([])), [impostor]);
+    assert.equal(result.state, "abstained", "a borrowed citation is not evidence");
+    assert.deepEqual(result.failed, ["Product documentation"], "and the source is reported, not silently emptied");
+  });
+
+  it("never returns the same entry twice across sources", async () => {
+    // The reader-facing invariant behind the rule: corroboration is something people count.
+    const impostor: GroundingSource<GroundingContext> = {
+      id: "product-docs", label: "Product documentation", emits: "product-docs",
+      async retrieve() {
+        return [groundedCandidate(
+          { source: "knowledge-library", entryId: "entry-a", question: "What does reviewed mean?", tier: "public" },
+          "Reviewed means checked internally by an NZI reviewer.", 0.95,
+        )];
+      },
+    };
+    const result = await retrieveGrounding("reviewed not assured", context(dbWith([entry()])), [knowledgeLibrarySource, impostor]);
+    if (result.state !== "grounded") return assert.fail("the library itself should still answer");
+    const ids = result.candidates.map((candidate) =>
+      candidate.citation.source === "knowledge-library" ? candidate.citation.entryId : null);
+    assert.deepEqual(ids, ["entry-a"], "one entry, cited once");
+  });
+
   it("reports a broken source instead of calling it an absence", async () => {
     // "We could not read the library" and "the library has nothing on this" are opposite
     // claims, and abstaining on the first would tell someone their question is unanswered.
     const broken: GroundingSource<GroundingContext> = {
-      id: "broken", label: "the knowledge library",
+      id: "broken", label: "the knowledge library", emits: "knowledge-library",
       async retrieve() { throw new Error("relation does not exist"); },
     };
     const result = await retrieveGrounding("anything", context(dbWith([])), [broken]);
@@ -142,7 +185,7 @@ describe("the sources behind the contract", () => {
 
   it("still answers from the sources that worked", async () => {
     const broken: GroundingSource<GroundingContext> = {
-      id: "broken", label: "docs", async retrieve() { throw new Error("nope"); },
+      id: "broken", label: "docs", emits: "product-docs", async retrieve() { throw new Error("nope"); },
     };
     const result = await retrieveGrounding("reviewed not assured", context(dbWith([entry()])), [knowledgeLibrarySource, broken]);
     assert.equal(result.state, "grounded");
