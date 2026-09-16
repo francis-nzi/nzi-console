@@ -1549,3 +1549,39 @@ and an adapter that always failed would look identical to a library that never m
 Opus work. `ANTHROPIC_API_KEY` is read at the composition edge (the route) and nowhere deeper,
 matching `spendImportIdentity`; `render.yaml` declares the key with `sync: false` and never a
 value. Phase 2 (permission-checked live-data tools) remains future work and NZC-069 stays held.
+
+### NZC-086 — The gate scans the files, not just what they compile to [Confirmed 16 Sep 2026]
+
+**Decision.** CI fails if a merge-conflict marker appears in any tracked file
+(`npm run check:conflicts`, `scripts/check-conflict-markers.mjs`), and it runs first, before
+typecheck and build.
+
+**Why — the #194 incident.** During a rebase on `feat/grounded-answering`, conflict markers were
+resolved in `DECISIONS.md` and left in place in `CLIENT_WORKSPACE_BACKLOG.md`, staged by a
+`git add -A`, and committed. **The full gate passed**: typecheck clean, build green, 964 tests
+passing. It survived the gate, a push and a PR, and surfaced only when the next rebase produced a
+duplicated table row.
+
+**The class of failure, not the instance.** Nothing in the gate was broken or badly written. Every
+check in this repo answers *does the code work?*, and a corrupted document answers that with a
+confident yes — it compiles, because nothing compiles it. The damage was therefore invisible by
+construction, and no amount of additional test coverage would have found it. That is the argument
+for a check that reads the files themselves rather than what they compile to, and it is the same
+argument that put the `migrations` job in CI: the useful checks are the ones asking a question the
+unit tests structurally cannot.
+
+**Documents here are load-bearing.** `DECISIONS.md` is the governance record and the backlog is
+the delivery state. A half-merged one is worse than a broken build, because a broken build
+announces itself and a mangled table does not.
+
+**One deliberate piece of leniency.** Start and end markers (seven `<` or `>`) fail on sight —
+nobody writes those on purpose. The middle separator, a row of seven `=`, is **also a valid
+Markdown setext heading underline**, and this repo is mostly Markdown; so it is only treated as a
+conflict when the same file also carries a start or end marker, which a real conflict always
+writes. A check that eventually rejects a legitimate document gets switched off, and a check that
+is switched off protects nothing. Strictness is spent where it is free and withheld where it would
+cost credibility.
+
+**Not a hook.** Nothing is installed into anyone's working copy: a local hook can be skipped with
+`--no-verify` and cannot be relied on for the guarantee. CI blocks the merge, which is where the
+guarantee has to live.
