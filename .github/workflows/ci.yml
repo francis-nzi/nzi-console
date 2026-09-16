@@ -4,6 +4,11 @@
 # applied, and edited afterwards without anything noticing. The job that matters most here
 # is `migrations`: it applies every migration in order against a real Postgres, which is the
 # only check that can catch a file that parses as text but fails as SQL.
+#
+# The pattern worth noticing across both jobs: the checks that have earned their place here are
+# the ones answering a question the unit tests structurally cannot. `migrations` asks whether the
+# SQL runs; `check:conflicts` asks whether the files are intact. Everything else asks whether the
+# code works, and a corrupted document answers that with a confident yes.
 name: CI
 
 on:
@@ -22,6 +27,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # First, and deliberately so. This is the only check here that looks at the files rather
+      # than at what they compile to — a committed conflict marker in Markdown passes typecheck,
+      # build and every test, which is exactly how one reached a PR on #194 (NZC-086). It costs
+      # a second and it fails fast.
+      - run: npm run check:conflicts
       - run: npm run typecheck
       - run: npm run build
       - run: npm test -w @nzi/contracts
