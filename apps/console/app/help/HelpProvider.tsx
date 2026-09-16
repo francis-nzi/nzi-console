@@ -4,8 +4,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { HelpContext } from "@nzi/ui";
 import { useEditAccess } from "../lib/useEditAccess";
+import { CoachMarks } from "./CoachMarks";
 import { helpContextForPath } from "./helpContext";
 import { HelpDrawer } from "./HelpDrawer";
+import { useTours } from "./useTours";
 
 /**
  * Hosts the help drawer once, for the whole app.
@@ -33,6 +35,10 @@ export function HelpProvider({ children, writeEnabled }: { children: React.React
     setOpen((current) => !current);
   }, []);
 
+  // Tours live here rather than in the drawer: a tour must be able to run itself on arrival,
+  // when the drawer is closed and nobody has asked for anything.
+  const tours = useTours(path);
+
   const control = useMemo(() => ({
     open: toggle, isOpen: open,
     // Said here, not in @nzi/ui: what help contains is the app's business.
@@ -48,7 +54,11 @@ export function HelpProvider({ children, writeEnabled }: { children: React.React
         capabilities={{ approve: approve.state === "allowed", publish: publish.state === "allowed" }}
         onClose={() => setOpen(false)}
         returnFocusTo={opener.current}
+        tour={{ tour: tours.tour, seen: tours.seen, loaded: tours.loaded, onReplay: () => { setOpen(false); tours.replay(); } }}
       /> : null}
+      {tours.running !== null
+        ? <CoachMarks tour={tours.running} onFinish={(outcome) => void tours.finish(outcome)} />
+        : null}
     </HelpContext.Provider>
   );
 }

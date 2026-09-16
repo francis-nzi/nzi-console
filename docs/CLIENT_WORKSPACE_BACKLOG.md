@@ -207,7 +207,8 @@ Prototype it reconciles against: Client Workspace artifact (v5).
 | Accessibility — shared primitives + a11y acceptance | `ACCEPTANCE_A11Y_SHARED_PRIMITIVES.md` | Ongoing | Go-live |
 | **Help system — Phase 0a: knowledge library** — NZI-wide (no `client_id`), duplicate-safe idempotent capture, two-tier `draft → internal → public`, three capabilities at matrix v4, Library + Review UI | NZC-081 · migrations `0086`/`0087` · design `docs/_handoff_HELP_SYSTEM_design.md` | **Built — PR number pending** (carries migrations, so it stops for review) | Should |
 | **Help system — Phase 0b: drawer + `?` affordance** — rendered by `TopBar`, so every page has it without wiring; page-aware context chip; §3.4 anatomy, four tabs, focus-managed, reduced-motion. Library/Review re-host the 0a components; Ask abstains honestly (no generation until Phase 1); Guide stubbed until 0c | NZC-081 · `docs/_handoff_HELP_PHASE0_brief.md` §0b | **Built — PR number pending** (no migration) | Should |
-| ↳ Help system **0c** (tour engine + per-user seen-state, migration), **0d** (grounding interface) | `docs/_handoff_HELP_PHASE0_brief.md` | **To build** | Should |
+| **Help system — Phase 0c: tour engine + seen-state** — declarative per-page tours (data, versioned), in-house coach-marks (spotlight, progress, Back/Next/Skip, don’t-show-again), focus-trapped and keyboard-driven; auto-run once per person per tour **version**, always replayable from the Guide tab; exemplar client-workspace tour | NZC-082 · migration `0088` · `docs/_handoff_HELP_PHASE0_brief.md` §0c | **Built — PR number pending** (carries a migration, so it stops for review) | Should |
+| ↳ Help system **0d** (grounding interface — retrieval + citation + honest abstention, no model call) | `docs/_handoff_HELP_PHASE0_brief.md` | **To build** | Should |
 
 ---
 
