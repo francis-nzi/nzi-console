@@ -592,3 +592,36 @@ describe("0086 — the knowledge library is NZI's, not a client's", () => {
     assert.match(ddl, /USING gin \(canonical_key gin_trgm_ops\)/);
   });
 });
+
+describe("0088 — tour seen-state is per person, and per version", () => {
+  const tours = readFileSync(resolve(here, "../migrations/0088_help_tour_seen.sql"), "utf8");
+  const ddl = tours.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+
+  it("keys on the tour AND its version, so a revised tour surfaces again", () => {
+    // Keying on the tour alone would silently suppress a rewritten tour for exactly the
+    // people already using the page — the ones who most need the new version.
+    assert.match(ddl, /PRIMARY KEY \(organisation_id, user_id, tour_id, tour_version\)/);
+  });
+
+  it("is per user, which is why it is in the database rather than the browser", () => {
+    assert.match(ddl, /user_id text NOT NULL/);
+    assert.match(ddl, /help_tour_seen_user_idx/);
+  });
+
+  it("scopes to the NZI organisation like everything else", () => {
+    assert.match(ddl, /ALTER TABLE nzi_console\.help_tour_seen ENABLE ROW LEVEL SECURITY/);
+    assert.match(ddl, /FORCE ROW LEVEL SECURITY/);
+    assert.match(ddl, /organisation_id = current_setting\('app\.organisation_id', true\)/);
+  });
+
+  it("separates a dismissal from a completion", () => {
+    // Both stop the auto-run; only one is a preference, and a future "show me the tours
+    // again" needs to be able to tell them apart.
+    assert.match(ddl, /dismissed boolean NOT NULL DEFAULT false/);
+  });
+
+  it("is written but never deleted", () => {
+    assert.match(ddl, /GRANT SELECT, INSERT, UPDATE ON nzi_console\.help_tour_seen/);
+    assert.match(ddl, /REVOKE DELETE ON nzi_console\.help_tour_seen FROM nzi_console_app/);
+  });
+});

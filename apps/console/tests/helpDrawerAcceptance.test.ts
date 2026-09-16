@@ -158,3 +158,99 @@ describe("one library implementation, two hosts", () => {
     }
   });
 });
+
+/**
+ * The tour engine (0c). Tours are data; the engine is accountable for its own accessibility
+ * and for never teaching something false.
+ */
+describe("the coach-mark engine", () => {
+  const coach = read("apps/console/app/help/CoachMarks.tsx");
+  const css = read("packages/ui/src/styles.css");
+
+  it("skips a step whose anchor is not on the page rather than guessing", () => {
+    // A spotlight on nothing, or on the wrong element, teaches something false — which is
+    // worse than a shorter tour.
+    assert.match(coach, /tour\.steps\.filter\(\(step\) => document\.querySelector\(step\.anchor\) !== null\)/);
+    assert.match(coach, /if \(steps\.length === 0\) onFinish/, "and a tour with no runnable step ends");
+  });
+
+  it("traps focus while a spotlight is up", () => {
+    // Tab must not wander into a page the person cannot see past.
+    assert.match(coach, /event\.key === "Tab"/);
+    assert.match(coach, /event\.shiftKey && document\.activeElement === first/);
+    assert.match(coach, /returnTo\.current\?\.focus\(\)/, "and focus returns where it came from");
+  });
+
+  it("is fully keyboard-driven", () => {
+    assert.match(coach, /event\.key === "Escape"/);
+    assert.match(coach, /event\.key === "ArrowRight"/);
+    assert.match(coach, /event\.key === "ArrowLeft"/);
+  });
+
+  it("announces each step", () => {
+    assert.match(coach, /aria-live="polite"/);
+    assert.match(coach, /role="dialog"/);
+    assert.match(coach, /aria-label=\{`\$\{tour\.title\}: step/);
+  });
+
+  it("never performs the action on the user's behalf", () => {
+    // A tour that clicked things would be changing a person's data to explain their data.
+    assert.doesNotMatch(coach, /\.click\(\)/);
+    assert.match(coach, /Try it:/, "it asks them to do it");
+  });
+
+  it("drops motion but not the spotlight under reduced-motion", () => {
+    assert.match(coach, /prefers-reduced-motion: reduce/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\{\.nz-tour-spot,\.nz-tour-card \.step \.bar i\{transition:none\}\}/);
+  });
+
+  it("matches the prototype's step card", () => {
+    assert.match(coach, /Step \{index \+ 1\} \/ \{steps\.length\}/);
+    assert.match(coach, /Don&rsquo;t show this tour again/);
+    for (const control of ["Skip", "Back", "Next"]) assert.match(coach, new RegExp(control));
+  });
+
+  it("is theme-aware", () => {
+    const block = /\.nz-tour-spot\{[\s\S]*?\.nz-help-tour \.nz-btn\{[^}]*\}/.exec(css)?.[0] ?? "";
+    assert.ok(block.length > 0, "the tour styles exist");
+    assert.doesNotMatch(block.replace(/rgba\([^)]*\)/g, "").replace(/#fff\b/g, ""), /#[0-9A-Fa-f]{6}/, "no hard-coded colour");
+  });
+});
+
+describe("tours are data, not code", () => {
+  it("keeps step definitions out of the engine", () => {
+    const coach = read("apps/console/app/help/CoachMarks.tsx");
+    // If the engine ever names a page, tours have stopped being authorable content.
+    for (const page of ["nz-client-head", "nz-subnav", "clients", "jobs"]) {
+      assert.ok(!coach.includes(page), `the engine must not know about ${page}`);
+    }
+  });
+
+  it("ships one exemplar so the loop is exercised by something real", () => {
+    const tours = read("apps/console/app/help/tours.ts");
+    assert.match(tours, /id: "client-workspace"/);
+    assert.match(tours, /version: 1/);
+    assert.match(tours, /anchor: "\.nz-client-head"/);
+  });
+
+  it("wires the Guide tab that 0b stubbed", () => {
+    const drawer = read("apps/console/app/help/HelpDrawer.tsx");
+    assert.match(drawer, /<GuidePanel panel=\{tourPanel\} \/>/);
+    assert.match(drawer, /Replay the tour/);
+    // Replay is offered whatever the seen-state says.
+    assert.doesNotMatch(drawer, /disabled=\{.*seen/);
+  });
+
+  it("does not auto-run before it knows what the person has seen", () => {
+    // Running optimistically would re-teach the page to someone who already knows it, every
+    // time they opened it, until the fetch returned.
+    const hook = read("apps/console/app/help/useTours.ts");
+    assert.match(hook, /if \(seen === null \|\| tour === null \|\| running !== null\) return;/);
+  });
+
+  it("records the seen-state against the session's own user, never the body", () => {
+    const route = read("apps/console/app/api/isolated/tours/route.ts");
+    assert.match(route, /userId: staff\.userId/);
+    assert.doesNotMatch(route, /body\.userId|body\.user/);
+  });
+});

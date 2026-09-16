@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
+import { tourStatus, type TourDefinition, type TourSeen } from "@nzi/contracts";
 import { KnowledgeLibrary, KnowledgeReview } from "../knowledge/KnowledgeViews";
 import type { HelpPageContext } from "./helpContext";
 
@@ -31,11 +32,20 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function HelpDrawer({ context, capabilities, onClose, returnFocusTo }: {
+type TourPanel = {
+  tour: TourDefinition | null;
+  seen: readonly TourSeen[];
+  /** False until the seen-state has arrived — "not seen yet" would otherwise be a guess. */
+  loaded: boolean;
+  onReplay: () => void;
+};
+
+export function HelpDrawer({ context, capabilities, onClose, returnFocusTo, tour: tourPanel }: {
   context: HelpPageContext;
   capabilities: { approve: boolean; publish: boolean };
   onClose: () => void;
   returnFocusTo: HTMLElement | null;
+  tour: TourPanel;
 }) {
   const [tab, setTab] = useState<TabId>("ask");
   const panel = useRef<HTMLDivElement>(null);
@@ -90,7 +100,7 @@ export function HelpDrawer({ context, capabilities, onClose, returnFocusTo }: {
 
       <div className="nz-db" id={`help-panel-${tab}`} role="tabpanel" aria-labelledby={`help-tab-${tab}`}>
         {tab === "ask" ? <AskShell context={context} /> : null}
-        {tab === "guide" ? <GuideStub /> : null}
+        {tab === "guide" ? <GuidePanel panel={tourPanel} /> : null}
         {/* The same components the /knowledge page renders — one implementation, two hosts. */}
         {tab === "library" ? <KnowledgeLibrary /> : null}
         {tab === "review" && showReview ? <KnowledgeReview capabilities={capabilities} /> : null}
@@ -167,19 +177,36 @@ function AskShell({ context }: { context: HelpPageContext }) {
   </>;
 }
 
-/** Guide — a stub until 0c wires the tour engine. Says so rather than looking broken. */
-function GuideStub() {
+/**
+ * Guide — this page's tour, and whether you have been through it.
+ *
+ * Replay is always offered, whatever the seen-state says: the auto-run is a courtesy, and
+ * someone who wants the tour again should never have to clear something to get it.
+ */
+function GuidePanel({ panel }: { panel: TourPanel }) {
+  const status = tourStatus(panel.tour, panel.seen);
   return <>
     <p className="nz-maps">
       Guided tours walk through a page the first time you open it, and can be replayed here whenever
       you want them.
     </p>
-    <div className="nz-help-empty">
-      <b>No tour for this page yet</b>
-      <span>
-        Tours are authored per page as each one is finished. When this page has one it appears here,
-        and you can replay it as often as you like.
-      </span>
-    </div>
+
+    {panel.tour === null
+      ? <div className="nz-help-empty">
+        <b>No tour for this page yet</b>
+        <span>{status.detail}</span>
+      </div>
+      : <div className="nz-help-tour">
+        <b>{panel.tour.title}</b>
+        <span className="sub">{panel.tour.summary}</span>
+        <span className="nz-help-tour-meta">
+          {panel.tour.steps.length} {panel.tour.steps.length === 1 ? "step" : "steps"}
+          {/* Still loading is its own state: "you have not seen this" would be a guess. */}
+          {panel.loaded ? ` · ${status.detail}` : " · checking what you have already seen…"}
+        </span>
+        <button type="button" className="nz-btn pri" onClick={panel.onReplay}>
+          {status.kind === "unseen" || status.kind === "revised" ? "Take the tour" : "Replay the tour"}
+        </button>
+      </div>}
   </>;
 }

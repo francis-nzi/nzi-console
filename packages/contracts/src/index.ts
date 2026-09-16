@@ -49,6 +49,7 @@ export function hasData<T>(result: ScreenResult<T>): result is Extract<ScreenRes
 export * from "./commands";
 export * from "./contactConsent";
 export * from "./knowledge";
+export * from "./tours";
 export * from "./strategyProjection";
 export * from "./baseline";
 export * from "./dataAssurance";

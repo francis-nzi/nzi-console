@@ -1366,3 +1366,49 @@ progress must never remove the answer people are relying on.
 draft and nothing more. The AI proposes, a named person ratifies, and the library records which —
 that is what makes a cited entry worth citing. It is also the whole write surface the AI will ever
 have; it never mutates app data.
+
+### NZC-082 — Tours are data, seen-state is per person, and one write sits outside the command layer [Confirmed 16 Sep 2026]
+
+**What shipped (0c).** The declarative tour engine, per-user seen-state (migration `0088`), the
+Guide tab that 0b stubbed, and one exemplar tour for the client workspace so the auto-run →
+replay → remember loop is exercised by something real rather than by a fixture.
+
+**Tours are content.** A tour is a list of anchors and words in `apps/console/app/help/tours.ts`;
+the engine that renders them knows nothing about any page, and a test asserts it never names one.
+Adding a page's tour is an edit to that file and a review of its wording — not a change to a
+component. That is what makes "authored per page as each page is finished" practical.
+
+**Seen-state is keyed on the tour *and its version*.** This is the part worth stating plainly: a
+materially revised tour has no record for anyone, so it surfaces again for the people who saw the
+old one. Keying on the tour alone would silently suppress a rewritten tour for exactly the users
+who most need the new version — the ones already using the page. Bumping the version is therefore
+an editorial act meaning "this changed enough to be worth showing again"; a typo fix does not
+warrant one.
+
+**It is per person, not per device — which is why it is in the database.** Per-viewer conveniences
+in this app live in browser storage and should. This one cannot: someone taught the client
+workspace on their laptop should not be taught it again on their tablet, and browser storage
+clears. The reason is cross-device continuity, not governance.
+
+**A dismissal and a completion are different facts.** Both stop the auto-run; only one is a
+preference. They are stored separately so a future "show me the tours again" can tell them apart,
+and once dismissed stays dismissed — replaying a tour you asked never to see again is not a request
+to start being taught it.
+
+**The exception: this is the one mutation in the app that is not a command.** Every other write is
+permission-checked and audited — `PERMISSION_MATRIX.md` says no mutating path is exempt, and this
+is the documented exception to that sentence. Recording that you were shown a tour is a person's
+own UI state, the server-side equivalent of a remembered collapsed panel; an audit entry for it
+would be noise in a log that exists to answer who changed a client's data, and a capability for it
+would be a permission nobody could sensibly be refused.
+
+The safety is structural instead: the user and organisation come from the **verified session**,
+never from the request body, so the only row anyone can write is their own — and the route accepts
+nothing that identifies a person. If that trade ever looks wrong, the fix is a capability held by
+every role (as `knowledge.capture` is), not an unaudited write with a wider reach.
+
+**The engine never acts for the user.** A step may say what to try; it never clicks it. A tour that
+performed actions would be changing someone's data in order to explain their data.
+
+**A step whose anchor is missing is skipped, not guessed at.** A spotlight on nothing — or on the
+wrong element after a refactor — teaches something false, which is worse than a shorter tour.
