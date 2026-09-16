@@ -37,8 +37,10 @@ describe("Reduction Strategies", () => {
   });
 
   it("renames the capability as a new matrix version rather than editing one", () => {
-    // A principal resolved against an earlier version must keep meaning what it meant.
-    assert.match(read("packages/contracts/src/permissions.ts"), /PERMISSION_MATRIX_VERSION = 3/);
+    // A principal resolved against an earlier version must keep meaning what it meant. The
+    // matrix has since moved on (v4 added the knowledge capabilities, NZC-081) — what this
+    // holds is that v3 is still v3, not that v3 is still the latest. Pinning the current
+    // version here would make every future bump look like a Reduction Strategies regression.
     const v3 = read("packages/isolated-backend/migrations/0079_strategy_capability.sql");
     assert.match(v3, /INSERT INTO nzi_console\.staff_capability_matrix_versions[\s\S]*VALUES \(3,/);
     assert.match(v3, /\(3, 'consultant', 'strategy\.manage', 'all'\)/);

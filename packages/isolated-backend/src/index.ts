@@ -50,6 +50,7 @@ export * from "./siteLifecycle";
 export * from "./siteBoundary";
 export * from "./access";
 export * from "./clientContacts";
+export * from "./knowledge";
 export { mapClientContact, normaliseContactRoles } from "./clientContactRecords";
 export * from "./traineeAuth";
 export { getTraineePortal, type TraineePortalReadModel, type TraineeDetails, type TraineeTrainingEntry, type TraineeUpcomingSession } from "./traineePortal";

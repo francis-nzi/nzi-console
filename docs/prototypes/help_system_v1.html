@@ -1,0 +1,535 @@
+<title>NZI Help System</title>
+<style>
+  /* ---------- NZI design system tokens (three-state theme) ---------- */
+  :root{
+    --emerald:#0BA75E; --pine:#0B7A4B; --midnight:#0B1B2B;
+    --amber:#FFC24B; --amber-ink:#B4690E; --coral:#FF5C48; --mint:#DFF5E9;
+    --ground:#F4F7F5; --surface:#FFFFFF; --surface-2:#EEF3F0;
+    --ink:#0B1B2B; --ink-2:#3C4A54; --muted:#697680; --line:#DCE5E0;
+    --accent:#0BA75E; --accent-ink:#076C41;
+    --scrim:rgba(11,27,43,.55);
+    --shadow:0 1px 2px rgba(11,27,43,.06),0 8px 24px rgba(11,27,43,.08);
+    --shadow-lg:0 12px 40px rgba(11,27,43,.22);
+    --radius:14px; --radius-sm:9px;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --s1:var(--coral); --s2:var(--amber); --s2-ink:var(--amber-ink); --s3:var(--emerald);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#081521; --surface:#0E2130; --surface-2:#122a3b;
+      --ink:#EAF2ED; --ink-2:#B7C6CE; --muted:#8296a0; --line:#1E3746;
+      --accent:#1DBE72; --accent-ink:#8FE9BD;
+      --mint:#12352a; --scrim:rgba(2,8,14,.66);
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+      --shadow-lg:0 16px 50px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#081521; --surface:#0E2130; --surface-2:#122a3b;
+    --ink:#EAF2ED; --ink-2:#B7C6CE; --muted:#8296a0; --line:#1E3746;
+    --accent:#1DBE72; --accent-ink:#8FE9BD;
+    --mint:#12352a; --scrim:rgba(2,8,14,.66);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+    --shadow-lg:0 16px 50px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,h4{margin:0;text-wrap:balance;letter-spacing:-.01em}
+  button{font-family:inherit;cursor:pointer}
+  a{color:inherit}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ---------- app shell (mock console behind the help) ---------- */
+  .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;align-items:center;
+    gap:14px;padding:11px 18px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:750;letter-spacing:-.02em}
+  .brand .mark{width:26px;height:26px;border-radius:7px;background:
+    linear-gradient(135deg,var(--emerald),var(--pine));color:#fff;display:grid;place-items:center;
+    font-weight:800;font-size:14px}
+  .brand small{font-weight:600;color:var(--muted);letter-spacing:.02em;font-size:11px;text-transform:uppercase}
+  .nav{display:flex;gap:3px;margin-left:8px;flex-wrap:wrap}
+  .nav a{padding:6px 11px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:13px}
+  .nav a.on{background:var(--mint);color:var(--pine)}
+  :root[data-theme="dark"] .nav a.on{color:var(--accent-ink)}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .nav a.on{color:var(--accent-ink)}}
+  .top .spacer{flex:1}
+  .iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink-2);display:grid;place-items:center;font-size:15px}
+  .iconbtn:hover{border-color:var(--accent);color:var(--accent)}
+  #help-btn{position:relative;font-weight:800}
+  #help-btn.pulse::after{content:"";position:absolute;inset:-4px;border-radius:12px;
+    border:2px solid var(--accent);animation:pulse 1.8s ease-out infinite}
+  @keyframes pulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.35)}}
+  @media (prefers-reduced-motion:reduce){#help-btn.pulse::after{animation:none;opacity:.5}}
+
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
+  .crumb{color:var(--muted);font-size:12.5px;font-weight:600;margin-bottom:6px}
+  .page-h{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+  .page-h h1{font-size:25px;font-weight:800}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
+    font-size:11.5px;font-weight:700;letter-spacing:.01em}
+  .pill.active{background:var(--mint);color:var(--pine)}
+  :root[data-theme="dark"] .pill.active{color:var(--accent-ink)}
+  .lead{color:var(--ink-2);margin:8px 0 20px;max-width:60ch}
+
+  .grid{display:grid;grid-template-columns:1.35fr .95fr;gap:16px}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow)}
+  .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px}
+  .lever{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .lever:first-of-type{border-top:0}
+  .lever .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .lever .nm{font-weight:650;flex:1}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-size:11px;
+    font-weight:700;background:var(--surface-2);color:var(--ink-2)}
+  .chip.s2{background:color-mix(in srgb,var(--amber) 26%,transparent);color:var(--s2-ink)}
+  .chip.due{background:color-mix(in srgb,var(--coral) 20%,transparent);color:var(--coral)}
+
+  /* projection chart */
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--ink-2)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .lz{width:16px;height:0;border-top:2.5px solid}
+  figure{margin:0}
+
+  /* ---------- help drawer ---------- */
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(430px,100%);z-index:60;
+    background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);
+    display:flex;flex-direction:column;transform:translateX(102%);transition:transform .28s cubic-bezier(.2,.7,.2,1)}
+  .drawer.open{transform:none}
+  @media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+  .dh{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .dh .t{font-weight:800;font-size:15px;flex:1;display:flex;align-items:center;gap:8px}
+  .dh .ctx{font-size:11px;font-weight:700;color:var(--pine);background:var(--mint);padding:3px 8px;border-radius:7px}
+  :root[data-theme="dark"] .dh .ctx{color:var(--accent-ink)}
+  .tabs{display:flex;gap:2px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .tabs button{flex:1;border:0;background:transparent;color:var(--muted);font-weight:700;font-size:12.5px;
+    padding:8px 6px;border-radius:8px}
+  .tabs button.on{background:var(--surface-2);color:var(--ink)}
+  .db{flex:1;overflow:auto;padding:14px 16px}
+  .df{border-top:1px solid var(--line);padding:12px 16px;background:var(--surface)}
+
+  /* chat */
+  .msg{margin-bottom:14px}
+  .msg .who{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .bubble{padding:11px 13px;border-radius:12px;font-size:13.5px}
+  .msg.you .bubble{background:var(--surface-2);border:1px solid var(--line)}
+  .msg.ai .bubble{background:color-mix(in srgb,var(--mint) 65%,var(--surface));border:1px solid color-mix(in srgb,var(--emerald) 25%,var(--line))}
+  .srcrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .src{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;
+    background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
+  .src b{color:var(--pine)}
+  :root[data-theme="dark"] .src b{color:var(--accent-ink)}
+  .honest{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .tag{font-size:10.5px;font-weight:800;letter-spacing:.02em;padding:3px 8px;border-radius:999px}
+  .tag.live{background:color-mix(in srgb,var(--emerald) 18%,transparent);color:var(--pine)}
+  :root[data-theme="dark"] .tag.live{color:var(--accent-ink)}
+  .tag.est{background:color-mix(in srgb,var(--amber) 26%,transparent);color:var(--s2-ink)}
+  .tag.rev{background:var(--surface-2);color:var(--ink-2)}
+  .note{font-size:11.5px;color:var(--muted);margin-top:8px;font-style:italic}
+  .aiact{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .mini{font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:8px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink)}
+  .mini:hover{border-color:var(--accent);color:var(--accent)}
+  .mini.p{background:var(--accent);border-color:var(--accent);color:#04241a}
+  :root[data-theme="dark"] .mini.p{color:#04140d}
+
+  .suggest{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+  .suggest button{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;
+    padding:9px 11px;font-size:13px;font-weight:600;color:var(--ink)}
+  .suggest button:hover{border-color:var(--accent)}
+  .suggest button span{color:var(--muted);font-weight:600;font-size:11.5px;display:block;margin-top:2px}
+
+  .askrow{display:flex;gap:8px}
+  .askrow input{flex:1;border:1px solid var(--line);background:var(--ground);color:var(--ink);
+    border-radius:10px;padding:10px 12px;font-size:13.5px;font-family:inherit}
+  .askrow input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .send{border:0;background:var(--accent);color:#04241a;font-weight:800;border-radius:10px;padding:0 14px}
+  :root[data-theme="dark"] .send{color:#04140d}
+
+  /* library + review lists */
+  .krow{border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px;background:var(--surface)}
+  .krow .q{font-weight:750;margin-bottom:4px}
+  .krow .a{font-size:12.5px;color:var(--ink-2)}
+  .kmeta{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;align-items:center}
+  .st{font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+  .st.pend{background:color-mix(in srgb,var(--amber) 30%,transparent);color:var(--s2-ink)}
+  .st.intn{background:var(--surface-2);color:var(--ink-2)}
+  .st.pub{background:color-mix(in srgb,var(--emerald) 20%,transparent);color:var(--pine)}
+  :root[data-theme="dark"] .st.pub{color:var(--accent-ink)}
+  .prov{font-size:11px;color:var(--muted)}
+  .rowact{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+
+  .cap{font-size:11.5px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);
+    border-radius:9px;padding:8px 10px;margin-bottom:12px;display:flex;gap:8px;align-items:flex-start}
+  .cap b{color:var(--ink)}
+  label.fld{display:block;font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;
+    color:var(--muted);margin:12px 0 5px}
+  .fld+textarea,.fld+input{width:100%;border:1px solid var(--line);background:var(--ground);color:var(--ink);
+    border-radius:10px;padding:9px 11px;font-family:inherit;font-size:13px;resize:vertical}
+
+  /* tour overlay */
+  #tour{position:fixed;inset:0;z-index:80;display:none}
+  #tour.on{display:block}
+  #spot{position:absolute;border-radius:12px;box-shadow:0 0 0 9999px var(--scrim);transition:all .3s cubic-bezier(.2,.7,.2,1);
+    pointer-events:none}
+  #coach{position:absolute;width:min(320px,86vw);background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow-lg);padding:15px;transition:all .3s cubic-bezier(.2,.7,.2,1)}
+  #coach .step{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);
+    display:flex;align-items:center;gap:8px}
+  #coach .step .bar{flex:1;height:3px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+  #coach .step .bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  #coach h4{font-size:16px;font-weight:800;margin:9px 0 5px}
+  #coach p{margin:0;color:var(--ink-2);font-size:13.5px}
+  #coach .row{display:flex;align-items:center;gap:8px;margin-top:14px}
+  #coach .row .sp{flex:1}
+  #coach .skip{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:12.5px;padding:6px}
+  #coach .nx{border:0;background:var(--accent);color:#04241a;font-weight:800;border-radius:9px;padding:8px 14px}
+  :root[data-theme="dark"] #coach .nx{color:#04140d}
+  #coach .bk{border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:700;border-radius:9px;padding:8px 12px}
+  #coach .dsa{display:flex;align-items:center;gap:6px;margin-top:11px;font-size:11.5px;color:var(--muted)}
+
+  .backdrop{position:fixed;inset:0;background:var(--scrim);z-index:55;opacity:0;pointer-events:none;transition:opacity .28s}
+  .backdrop.on{opacity:1;pointer-events:auto}
+
+  .demobar{max-width:1080px;margin:0 auto;padding:12px 18px 0;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .demobar .lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .demobtn{border:1px dashed var(--line);background:var(--surface);color:var(--ink-2);border-radius:8px;
+    padding:6px 11px;font-weight:700;font-size:12.5px}
+  .demobtn:hover{border-color:var(--accent);color:var(--accent)}
+  .foot{max-width:1080px;margin:6px auto 0;padding:0 18px;color:var(--muted);font-size:11.5px}
+</style>
+
+<!-- ======================= mock console top bar ======================= -->
+<header class="top">
+  <div class="brand"><span class="mark">N</span>NZI&nbsp;Pro <small>Insights</small></div>
+  <nav class="nav">
+    <a href="#" class="on">Control Room</a>
+    <a href="#" id="nav-strategies">Reduction Strategies</a>
+    <a href="#">SRS Readiness</a>
+    <a href="#">Reports</a>
+  </nav>
+  <span class="spacer"></span>
+  <button class="iconbtn" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  <button class="iconbtn pulse" id="help-btn" aria-label="Open help">?</button>
+</header>
+
+<!-- demo controls (prototype only) -->
+<div class="demobar">
+  <span class="lab">Prototype demo</span>
+  <button class="demobtn" onclick="startTour()">▶ Play page tour</button>
+  <button class="demobtn" onclick="openDrawer('ask')">💬 Ask the assistant</button>
+  <button class="demobtn" onclick="openDrawer('review')">✓ Knowledge review queue</button>
+  <span style="flex:1"></span>
+</div>
+<p class="foot">A working mock of the NZI help system — the page behind is illustrative. Everything is in-memory; nothing is saved.</p>
+
+<!-- ======================= mock page content ======================= -->
+<main class="wrap">
+  <div class="crumb">Clients · Bushy Tails Ltd</div>
+  <div class="page-h">
+    <h1 id="page-title">Bushy Tails Ltd</h1>
+    <span class="pill active">● Active</span>
+  </div>
+  <p class="lead">Consumer goods · Manchester, UK · Account owner A. Shaw. Their decarbonisation plan and readiness, built transparently with the client.</p>
+
+  <div class="grid">
+    <section class="card" id="proj-chart">
+      <h3>Emissions projection · three trajectories</h3>
+      <figure>
+        <svg viewBox="0 0 460 210" width="100%" role="img" aria-label="Projected, target and measured emissions to 2030">
+          <!-- grid -->
+          <g stroke="var(--line)" stroke-width="1">
+            <line x1="40" y1="20" x2="40" y2="175"/><line x1="40" y1="175" x2="440" y2="175"/>
+            <line x1="40" y1="130" x2="440" y2="130"/><line x1="40" y1="85" x2="440" y2="85"/><line x1="40" y1="40" x2="440" y2="40"/>
+          </g>
+          <g fill="var(--muted)" font-size="9" font-family="var(--mono)">
+            <text x="8" y="178">0</text><text x="4" y="133">2k</text><text x="4" y="88">4k</text><text x="4" y="43">6k</text>
+            <text x="40" y="192">’25</text><text x="235" y="192">’27</text><text x="428" y="192">’30</text>
+          </g>
+          <!-- measured (solid emerald), to now -->
+          <polyline fill="none" stroke="var(--emerald)" stroke-width="2.5" points="40,52 140,66 235,78"/>
+          <circle cx="235" cy="78" r="3.5" fill="var(--emerald)"/>
+          <!-- projected (dashed teal partner hue) -->
+          <polyline fill="none" stroke="#2E7BC4" stroke-width="2.5" stroke-dasharray="2 4" points="235,78 335,104 440,120"/>
+          <!-- target (neutral dashed reference) -->
+          <polyline fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="6 5" points="40,52 235,92 440,150"/>
+        </svg>
+      </figure>
+      <div class="legend">
+        <span><i class="lz" style="border-color:var(--emerald)"></i> Measured</span>
+        <span><i class="lz" style="border-color:#2E7BC4;border-top-style:dashed"></i> Projected (estimate)</span>
+        <span><i class="lz" style="border-color:var(--muted);border-top-style:dashed"></i> Target (needed)</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Reduction plan · by lever</h3>
+      <div class="lever"><span class="dot" style="background:var(--emerald)"></span><span class="nm">On-site solar PV</span><span class="chip s2">◈ S2 M2</span></div>
+      <div class="lever"><span class="dot" style="background:var(--amber)"></span><span class="nm">Green fleet / EV</span><span class="chip due">⚑ overdue</span></div>
+      <div class="lever"><span class="dot" style="background:var(--coral)"></span><span class="nm">Supplier engagement</span><span class="chip">Cat 1</span></div>
+      <div class="lever"><span class="dot" style="background:var(--pine)"></span><span class="nm">Rail-first travel policy</span><span class="chip">Cat 6</span></div>
+    </section>
+  </div>
+</main>
+
+<!-- ======================= help drawer ======================= -->
+<div class="backdrop" id="backdrop" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" aria-label="Help" role="dialog" aria-modal="false">
+  <div class="dh">
+    <span class="t">✦ Help <span class="ctx" id="ctx">Bushy Tails</span></span>
+    <button class="iconbtn" onclick="closeDrawer()" aria-label="Close help">✕</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button id="tb-ask" class="on" onclick="tab('ask')">Ask</button>
+    <button id="tb-guide" onclick="tab('guide')">Guide</button>
+    <button id="tb-library" onclick="tab('library')">Library</button>
+    <button id="tb-review" onclick="tab('review')">Review <span id="revcount" style="color:var(--s2-ink)"></span></button>
+  </div>
+
+  <!-- ASK -->
+  <div class="db" id="panel-ask">
+    <div id="chat"></div>
+    <div class="suggest" id="suggest">
+      <div class="who" style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:2px">Try asking</div>
+      <button onclick="ask('assurance')">What does “reviewed, not assured” mean on a report?<span>Grounded answer, cited to the library + docs</span></button>
+      <button onclick="ask('readiness')">What’s Bushy Tails’ SRS readiness right now?<span>Live answer, from data you’re allowed to see</span></button>
+      <button onclick="ask('fleet')">How do I bulk-import three years of fleet mileage?<span>No sourced answer yet — watch it offer to capture</span></button>
+    </div>
+  </div>
+  <div class="df" id="askfoot">
+    <div class="askrow">
+      <label for="qin" style="position:absolute;left:-9999px">Ask a question</label>
+      <input id="qin" placeholder="Ask anything about NZI or this client…" onkeydown="if(event.key==='Enter')freeAsk()">
+      <button class="send" onclick="freeAsk()">Ask</button>
+    </div>
+  </div>
+
+  <!-- GUIDE -->
+  <div class="db" id="panel-guide" hidden>
+    <div class="cap">✦ <span>Tours run once for a page you’re new to, then live here so you can replay them any time. Your progress is saved to your account, not this device.</span></div>
+    <div class="krow"><div class="q">Reduction Strategies workspace</div><div class="a">Build a client’s plan, align to SRS, set reduction estimates.</div>
+      <div class="rowact"><button class="mini p" onclick="closeDrawer();startTour()">▶ Replay tour</button><span class="st pub">✓ Completed</span></div></div>
+    <div class="krow"><div class="q">SRS Readiness</div><div class="a">Assess the four pillars and see which strategies close each gap.</div>
+      <div class="rowact"><button class="mini" onclick="alert('Would launch the SRS Readiness tour.')">▶ Start tour</button><span class="prov">Not started</span></div></div>
+    <div class="krow"><div class="q">Report Studio</div><div class="a">Compose, review and issue the client report.</div>
+      <div class="rowact"><button class="mini" onclick="alert('Would launch the Report Studio tour.')">▶ Start tour</button><span class="prov">Not started</span></div></div>
+  </div>
+
+  <!-- LIBRARY -->
+  <div class="db" id="panel-library" hidden>
+    <div class="askrow" style="margin-bottom:12px"><input placeholder="Search the knowledge library…" aria-label="Search library"><button class="send">Go</button></div>
+    <div id="library"></div>
+  </div>
+
+  <!-- REVIEW -->
+  <div class="db" id="panel-review" hidden>
+    <div class="cap">✓ <span>You can approve because you hold <b>knowledge.approve</b>. Promoting to public needs <b>knowledge.publish</b>. Every entry is versioned and keeps who asked, drafted, approved and published it.</span></div>
+    <div id="review"></div>
+  </div>
+</aside>
+
+<!-- ======================= tour overlay ======================= -->
+<div id="tour" aria-live="polite">
+  <div id="spot"></div>
+  <div id="coach">
+    <div class="step"><span id="stepn">Step 1 / 3</span><span class="bar"><i id="stepbar"></i></span></div>
+    <h4 id="coach-t"></h4>
+    <p id="coach-b"></p>
+    <label class="dsa"><input type="checkbox" id="dsa"> Don’t show this tour again</label>
+    <div class="row">
+      <button class="skip" onclick="endTour()">Skip</button>
+      <span class="sp"></span>
+      <button class="bk" id="bk" onclick="tourStep(-1)">Back</button>
+      <button class="nx" id="nx" onclick="tourStep(1)">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s){return document.querySelector(s)};
+
+  /* ---------- theme toggle ---------- */
+  $("#theme").onclick=function(){
+    var r=document.documentElement;
+    var now=r.getAttribute("data-theme");
+    var sysDark=window.matchMedia("(prefers-color-scheme:dark)").matches;
+    var eff=now?now:(sysDark?"dark":"light");
+    r.setAttribute("data-theme",eff==="dark"?"light":"dark");
+  };
+
+  /* ---------- drawer ---------- */
+  var drawer=$("#drawer"),backdrop=$("#backdrop");
+  window.openDrawer=function(which){
+    drawer.classList.add("open");backdrop.classList.add("on");
+    $("#help-btn").classList.remove("pulse");
+    if(which)tab(which);
+  };
+  window.closeDrawer=function(){drawer.classList.remove("open");backdrop.classList.remove("on")};
+  $("#help-btn").onclick=function(){drawer.classList.contains("open")?closeDrawer():openDrawer()};
+
+  var panels=["ask","guide","library","review"];
+  window.tab=function(t){
+    panels.forEach(function(p){
+      $("#panel-"+p).hidden=(p!==t);
+      $("#tb-"+p).classList.toggle("on",p===t);
+    });
+    $("#askfoot").hidden=(t!=="ask");
+  };
+
+  /* ---------- AI answers (scripted, grounded / live / abstain) ---------- */
+  var ANS={
+    assurance:{kind:"grounded",
+      html:'“Reviewed, not assured” means the footprint was checked by an NZI reviewer internally — the platform records <b>who reviewed it and when</b> — but it has <b>not</b> been verified by a third-party assurer. We never imply external assurance we don’t hold.',
+      sources:[["Knowledge library","Assurance basis"],["Docs","Report methodology · §4"]]},
+    readiness:{kind:"live",
+      html:'Bushy Tails Ltd is at <b>41% overall SRS readiness</b> — Governance 0/9, Strategy 1/11, Risk 0/7, Metrics&nbsp;&&nbsp;targets 1/21. The biggest unaddressed gap is <b>S2 S1 — climate risks & time horizons</b>, which no current strategy covers.',
+      tags:[["live","● Live · as at 14 Sep 2026"],["rev","reviewed snapshot — not third-party assured"]],
+      note:"Shown from data you’re permitted to see, using the same figures as the Readiness view.",
+      sources:[["Live record","Bushy Tails · SRS assessment"]]},
+    fleet:{kind:"abstain",
+      html:'I don’t have a sourced answer for that yet, so I won’t guess. Bulk fleet import isn’t covered in the library or the docs I can see.'}
+  };
+
+  var chat=$("#chat");
+  function esc(s){return s.replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+  function addYou(q){
+    var d=document.createElement("div");d.className="msg you";
+    d.innerHTML='<div class="who">You</div><div class="bubble">'+esc(q)+'</div>';
+    chat.appendChild(d);
+  }
+  function addAI(a,q){
+    var d=document.createElement("div");d.className="msg ai";
+    var h='<div class="who">NZI Assistant</div><div class="bubble">'+a.html;
+    if(a.tags){h+='<div class="honest">';a.tags.forEach(function(t){h+='<span class="tag '+t[0]+'">'+t[1]+'</span>'});h+='</div>'}
+    if(a.note){h+='<div class="note">'+a.note+'</div>'}
+    if(a.sources){h+='<div class="srcrow">';a.sources.forEach(function(s){h+='<span class="src">🔗 '+s[0]+' · <b>'+s[1]+'</b></span>'});h+='</div>'}
+    h+='<div class="aiact">';
+    if(a.kind==="abstain"){h+='<button class="mini p" onclick="capture(\''+esc(q).replace(/'/g,"")+'\',true)">✎ Capture this for the team</button>';}
+    else{h+='<button class="mini" onclick="capture(\''+esc(q).replace(/'/g,"")+'\',false)">+ Add to knowledge library</button><button class="mini">👍 Helpful</button>';}
+    h+='</div></div>';
+    d.innerHTML=h;chat.appendChild(d);
+    d.scrollIntoView({behavior:"smooth",block:"end"});
+  }
+  window.ask=function(key){
+    $("#suggest").hidden=true;
+    var map={assurance:"What does “reviewed, not assured” mean on a report?",readiness:"What’s Bushy Tails’ SRS readiness right now?",fleet:"How do I bulk-import three years of fleet mileage?"};
+    addYou(map[key]);setTimeout(function(){addAI(ANS[key],map[key])},260);
+  };
+  window.freeAsk=function(){
+    var v=$("#qin").value.trim();if(!v)return;$("#qin").value="";$("#suggest").hidden=true;
+    addYou(v);
+    setTimeout(function(){addAI(ANS.fleet,v)},260); // free-form falls to honest abstention in the demo
+  };
+
+  /* ---------- capture -> draft -> review queue ---------- */
+  var queue=[
+    {q:"Where does the benchmark for a client target come from?",a:"It resolves from getBenchmarkInForce at issue and freezes into the report composition — a re-baseline never silently restates an agreed target.",status:"pending",by:"J. Okafor",drafted:"NZI Assistant"},
+    {q:"What’s the difference between a lever and a control level?",a:"A lever is a theme a strategy sits under (M:N). Control level (direct / supply chain / influence) is a separate single axis on each strategy.",status:"internal",by:"A. Shaw",drafted:"A. Shaw"}
+  ];
+  function similarInLibrary(q){
+    var t=q.toLowerCase();
+    return queue.filter(function(e){
+      if(e.status==="pending")return false;
+      var w=e.q.toLowerCase().split(/\W+/).filter(function(x){return x.length>3});
+      var hit=w.filter(function(x){return t.indexOf(x)>-1}).length;
+      return hit>=2;
+    });
+  }
+  window.capture=function(q,fromAbstain){
+    tab("ask"); // stay in context; open a small inline capture in chat
+    // idempotent: only one open capture form at a time — reopening replaces it
+    if(window._capEl&&window._capEl.parentNode){window._capEl.parentNode.removeChild(window._capEl)}
+    var dups=similarInLibrary(q);
+    var dupHtml=dups.length?('<div class="cap" style="margin:0 0 4px;background:color-mix(in srgb,var(--amber) 18%,var(--surface));border-color:color-mix(in srgb,var(--amber) 40%,var(--line))">🔎 <span><b>'+dups.length+' similar entr'+(dups.length>1?'ies':'y')+'</b> may already answer this — “'+dups[0].q+'”. Add your wording to it as an alias, or capture a new one below.</span></div>'):'';
+    var d=document.createElement("div");d.className="msg ai";
+    d.innerHTML='<div class="who">Capture to library</div><div class="bubble">'+dupHtml+
+      '<div class="cap" style="margin:0 0 4px">✎ <span>Drafts are reviewed by a nominated approver before they go live. Nothing you capture is visible to others until then.</span></div>'+
+      '<label class="fld" for="capq">Question</label><input id="capq" value="'+q.replace(/"/g,"&quot;")+'">'+
+      '<label class="fld" for="capa">Answer <span style="text-transform:none;font-weight:600;color:var(--muted)">'+(fromAbstain?"— you or a colleague can write this":"— AI draft, edit freely")+'</span></label>'+
+      '<textarea id="capa" rows="3">'+(fromAbstain?"":"Reviewed means checked internally by an NZI reviewer; not third-party assured.")+'</textarea>'+
+      '<div class="note">Asked by you · '+(fromAbstain?"no AI draft (unsourced)":"drafted by NZI Assistant")+' · will be reviewed before it goes live</div>'+
+      '<div class="aiact"><button class="mini p" onclick="submitDraft()">Submit for approval</button></div>'+
+      '</div>';
+    chat.appendChild(d);d.scrollIntoView({behavior:"smooth",block:"end"});
+    window._capEl=d;
+  };
+  window.submitDraft=function(){
+    var q=$("#capq").value.trim(),a=$("#capa").value.trim();
+    queue.unshift({q:q,a:a||"(awaiting an answer)",status:"pending",by:"You",drafted:a?"NZI Assistant":"—"});
+    if(window._capEl){window._capEl.querySelector(".bubble").innerHTML='<b>Submitted for approval.</b> It’s in the review queue now — a nominated approver will check it before it joins the library.';window._capEl=null;}
+    renderReview();renderLib();bumpCount();
+  };
+
+  function bumpCount(){var n=queue.filter(function(e){return e.status==="pending"}).length;$("#revcount").textContent=n?("· "+n):"";}
+  window.approve=function(i){queue[i].status="internal";queue[i].approver="You (knowledge.approve)";renderReview();renderLib();bumpCount()};
+  window.promote=function(i){queue[i].status="public";queue[i].publisher="You (knowledge.publish)";renderReview();renderLib();bumpCount()};
+  window.reject=function(i){queue.splice(i,1);renderReview();bumpCount()};
+
+  function stpill(s){return s==="pending"?'<span class="st pend">Pending review</span>':s==="internal"?'<span class="st intn">Internal</span>':'<span class="st pub">✓ Public</span>'}
+  function renderReview(){
+    var host=$("#review"),h="";
+    queue.forEach(function(e,i){
+      h+='<div class="krow"><div class="q">'+e.q+'</div><div class="a">'+e.a+'</div>'+
+        '<div class="kmeta">'+stpill(e.status)+'<span class="prov">asked '+e.by+' · drafted '+e.drafted+(e.approver?' · approved '+e.approver:'')+'</span></div>'+
+        '<div class="rowact">';
+      if(e.status==="pending"){h+='<button class="mini p" onclick="approve('+i+')">Approve → internal</button><button class="mini">Edit</button><button class="mini" onclick="reject('+i+')">Reject</button>';}
+      else if(e.status==="internal"){h+='<button class="mini p" onclick="promote('+i+')">Promote → public</button><button class="mini">Edit</button>';}
+      else{h+='<span class="prov">Live on the site · published '+(e.publisher||"")+'</span>';}
+      h+='</div></div>';
+    });
+    host.innerHTML=h;
+  }
+  function renderLib(){
+    var host=$("#library"),h="";
+    queue.filter(function(e){return e.status!=="pending"}).forEach(function(e){
+      h+='<div class="krow"><div class="q">'+e.q+'</div><div class="a">'+e.a+'</div><div class="kmeta">'+stpill(e.status)+'<span class="prov">approved knowledge</span></div></div>';
+    });
+    if(!h)h='<p class="prov">No approved entries yet.</p>';
+    host.innerHTML=h;
+  }
+  renderReview();renderLib();bumpCount();
+
+  /* ---------- tour ---------- */
+  var steps=[
+    {sel:"#nav-strategies",t:"Build the plan here",b:"Reduction Strategies is where you assemble a client’s decarbonisation plan — choose from the shared library, align each to an SRS requirement, and set a reduction estimate."},
+    {sel:"#proj-chart",t:"Three trajectories, honestly separated",b:"Measured is solid; the projection is a dashed estimate; the target is a neutral reference line. An estimate never wears the colour of a measured fact."},
+    {sel:"#help-btn",t:"Help is always here",b:"Replay any page tour, ask the assistant, or search the team’s knowledge library — from the same button, on every page."}
+  ];
+  var ti=0;
+  window.startTour=function(){ti=0;$("#tour").classList.add("on");paint()};
+  window.endTour=function(){$("#tour").classList.remove("on")};
+  window.tourStep=function(d){ti+=d;if(ti<0)ti=0;if(ti>=steps.length){endTour();if(steps.length)openHint();return}paint()};
+  function openHint(){/* end of tour: nudge toward help */ $("#help-btn").classList.add("pulse");}
+  function paint(){
+    var s=steps[ti],el=document.querySelector(s.sel);if(!el)return;
+    var r=el.getBoundingClientRect(),pad=8;
+    var sp=$("#spot");
+    sp.style.left=(r.left-pad)+"px";sp.style.top=(r.top-pad)+"px";
+    sp.style.width=(r.width+pad*2)+"px";sp.style.height=(r.height+pad*2)+"px";
+    $("#stepn").textContent="Step "+(ti+1)+" / "+steps.length;
+    $("#stepbar").style.width=Math.round((ti+1)/steps.length*100)+"%";
+    $("#coach-t").textContent=s.t;$("#coach-b").textContent=s.b;
+    $("#bk").style.visibility=ti===0?"hidden":"visible";
+    $("#nx").textContent=ti===steps.length-1?"Done":"Next";
+    // position coach under or above the spot
+    var c=$("#coach"),cw=Math.min(320,window.innerWidth*.86);
+    var top=r.bottom+14, left=Math.min(Math.max(12,r.left),window.innerWidth-cw-12);
+    if(top+180>window.innerHeight)top=Math.max(12,r.top-190);
+    c.style.top=top+"px";c.style.left=left+"px";
+  }
+  window.addEventListener("resize",function(){if($("#tour").classList.contains("on"))paint()});
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){endTour();closeDrawer();}
+    if($("#tour").classList.contains("on")){if(e.key==="ArrowRight")tourStep(1);if(e.key==="ArrowLeft")tourStep(-1);}
+  });
+
+  /* first-visit auto-run would fire here in the real app (per-user, server-side).
+     In the prototype we leave it manual so the page shows at rest. */
+})();
+</script>

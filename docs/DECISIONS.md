@@ -1313,3 +1313,56 @@ either way.
 **The acceptance debt is not settled by this.** These are the two surfaces that reached staging
 without the acceptance pass the rollout document requires. Having a gate is not the same as having
 been accepted, and the backlog rows say so.
+
+### NZC-081 — The knowledge library: NZI-wide, two-tier, and never written by the AI alone [Confirmed 16 Sep 2026]
+
+**What shipped (0a).** The spine of the help system (`docs/_handoff_HELP_SYSTEM_design.md`): a governed
+knowledge library with duplicate-safe capture, two-tier approval, and the capabilities that gate it.
+Migrations `0086` (model) and `0087` (permission matrix v4). The drawer, tours and grounding
+interface are 0b–0d and build on this.
+
+**Scope: this is NZI's own knowledge, not client data.** The tables carry `organisation_id` — the
+consultancy tenant, the same column every table uses — and **deliberately no `client_id`**. An
+answer written while working on one client is meant to be found by everyone; a client column would
+silently partition the library and defeat its purpose. The absence is load-bearing, so a test
+asserts it structurally rather than trusting a reviewer to notice one arriving later.
+
+**A draft is an entry, not a separate table.** A draft has the same shape as the thing it becomes.
+A second table would duplicate every column, need its own versioning, and require a copy on
+approval — which is exactly where the reviewed text and the approved text drift apart. One table,
+one lifecycle: `draft → internal → public`.
+
+**Three capabilities, not two.** `knowledge.capture` is held by **every role**: anyone who answers a
+question should be able to offer it, and writing to the library is its own act rather than something
+that rides an unrelated gate. `knowledge.approve` (Admin + Consultant) makes an entry live for staff
+and citable by the help AI. `knowledge.publish` is **Admin only** — it is what makes something
+client-facing and website-bound. A Consultant writes most of the knowledge and can approve it
+internally but cannot put anything in front of a client, which is what gives the two tiers meaning.
+(If Admin-only publishing becomes a bottleneck it widens to a named publisher set later.)
+
+**Duplicate handling surfaces; it never decides.** Capture is idempotent — one open draft per person
+per captured answer, enforced by a partial unique index rather than by the command remembering to
+look. Before a draft is created, similar approved entries **and pending drafts** are surfaced so the
+asker can open the existing answer, add their phrasing as an alias, or proceed with a draft flagged
+for the approver. Hard uniqueness applies only to an approved entry's canonical key: two people
+legitimately asking the same thing in one week must not collide, but two *approved* entries saying
+the same thing must.
+
+**Similarity is trigram today, and that is a deliberate v1.** `pg_trgm` is lexical: it catches
+shared-word rephrasings and misses semantic ones — "is the report externally verified?" will not
+match "what does reviewed not assured mean?". That is acceptable **because a person adjudicates**;
+the mechanism ranks candidates for a human and merges nothing on its own. **Embedding-based
+similarity is the known upgrade** for semantic duplicates, and lands naturally with the Phase 1
+grounding work. It is a roadmap item, not a silent gap. `pg_trgm` is this schema's first extension
+and is created explicitly, so an environment that cannot create it fails loudly rather than
+degrading to exact matching that would look like dedup and do nothing.
+
+**An edit to an approved entry does not take it offline.** The edit becomes a pending draft pointing
+at the approved entry; the approved answer stays live and keeps grounding the AI until the revision
+is approved, at which point it replaces the original and the revision closes. A correction in
+progress must never remove the answer people are relying on.
+
+**The integrity guarantee the rest of the help system rests on:** an AI-drafted answer enters as a
+draft and nothing more. The AI proposes, a named person ratifies, and the library records which —
+that is what makes a cited entry worth citing. It is also the whole write surface the AI will ever
+have; it never mutates app data.

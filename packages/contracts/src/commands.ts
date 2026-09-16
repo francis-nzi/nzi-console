@@ -48,6 +48,13 @@ export type CommandKey =
   | "client.strategy.update"
   | "client.strategy.remove"
   | "client.strategy.estimate.set"
+  | "knowledge.capture"
+  | "knowledge.alias.add"
+  | "knowledge.edit"
+  | "knowledge.approve"
+  | "knowledge.publish"
+  | "knowledge.reject"
+  | "knowledge.merge"
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
@@ -395,6 +402,31 @@ export type CommandInputMap = {
    * `estimate: null` clears it — a strategy with no estimate contributes nothing to the
    * projection and says so, which is a different fact from an estimate of zero.
    */
+  /**
+   * Offer a question and answer to the library as a **draft**.
+   *
+   * Idempotent: `sourceKey` identifies the thing being captured from, and a second capture of
+   * it by the same person reopens their existing draft rather than stacking a rival. An
+   * AI-drafted answer arrives here as a draft like any other — it is never published by the
+   * act of being written.
+   */
+  "knowledge.capture": {
+    question: string; answer: string; sourceKey: string;
+    draftedByKind?: "human" | "ai"; askedBy?: string; category?: string; area?: string;
+    /** Set when similarity surfaced a close match and the person proceeded anyway. */
+    possibleDuplicate?: boolean;
+    /** Set when this draft is a pending edit to an already-approved entry. */
+    revisesEntryId?: string | null;
+  };
+  /** Fold a rephrasing into an entry rather than letting it become a rival. */
+  "knowledge.alias.add": { entryId: string; expectedVersion: number; question: string };
+  "knowledge.edit": { entryId: string; expectedVersion: number; question: string; answer: string; category?: string; area?: string };
+  "knowledge.approve": { entryId: string; expectedVersion: number };
+  "knowledge.publish": { entryId: string; expectedVersion: number };
+  /** Rejecting carries a reason; `duplicateOfEntryId` records what it duplicated. */
+  "knowledge.reject": { entryId: string; expectedVersion: number; reason: string; duplicateOfEntryId?: string | null };
+  /** Fold a duplicate draft into a target entry: its phrasings become aliases, it closes. */
+  "knowledge.merge": { entryId: string; expectedVersion: number; intoEntryId: string };
   "client.strategy.estimate.set": {
     clientStrategyId: string; expectedVersion: number;
     estimate: {
@@ -830,6 +862,99 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     return issues;
   } },
+  // ── Knowledge library (NZC-081) ──
+  //
+  // Capture is open to every role; approval and publication are the two tiers, and they are
+  // separate capabilities because they are separate risks. Nothing here lets the library be
+  // written without a person: an AI-drafted answer enters as a draft and needs approval.
+  "knowledge.capture": {
+    key: "knowledge.capture", label: "Offer an answer to the knowledge library", permission: "knowledge.capture",
+    reasonRequired: false,
+    transaction: "idempotent draft (reopens an existing one) + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_captured",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "question", input.question);
+      required(issues, "sourceKey", input.sourceKey);
+      // The answer may be empty at capture — someone can record the question and let an
+      // approver write the answer. The question cannot: it is the entry's identity.
+      return issues;
+    },
+  },
+  "knowledge.alias.add": {
+    key: "knowledge.alias.add", label: "Add a phrasing to a library entry", permission: "knowledge.capture",
+    reasonRequired: false, transaction: "alias + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_alias_added",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "entryId", input.entryId);
+      required(issues, "question", input.question);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
+  "knowledge.edit": {
+    key: "knowledge.edit", label: "Edit a library entry", permission: "knowledge.approve",
+    reasonRequired: false, transaction: "versioned entry + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_edited",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "entryId", input.entryId);
+      required(issues, "question", input.question);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
+  "knowledge.approve": {
+    key: "knowledge.approve", label: "Approve for internal use", permission: "knowledge.approve",
+    reasonRequired: false, transaction: "status + provenance + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_approved",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "entryId", input.entryId);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
+  // Admin only, by the matrix. The tier is what makes something client-facing, so the
+  // capability that crosses it is deliberately narrower than the one that approves.
+  "knowledge.publish": {
+    key: "knowledge.publish", label: "Publish to the public tier", permission: "knowledge.publish",
+    reasonRequired: false, transaction: "status + provenance + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_published",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "entryId", input.entryId);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
+  "knowledge.reject": {
+    key: "knowledge.reject", label: "Reject a draft", permission: "knowledge.approve",
+    reasonRequired: true, transaction: "deactivation (never deletion) + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_rejected",
+    validate: (input, context) => {
+      const issues = baseIssues(context, true);
+      required(issues, "entryId", input.entryId);
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
+  "knowledge.merge": {
+    key: "knowledge.merge", label: "Merge a duplicate into an entry", permission: "knowledge.approve",
+    reasonRequired: false, transaction: "aliases moved + deactivation + version history + audit + outbox + idempotency",
+    auditAction: "knowledge_merged",
+    validate: (input, context) => {
+      const issues = baseIssues(context, false);
+      required(issues, "entryId", input.entryId);
+      required(issues, "intoEntryId", input.intoEntryId);
+      if (input.entryId && input.entryId === input.intoEntryId) {
+        issues.push({ field: "intoEntryId", code: "INVALID", message: "An entry cannot be merged into itself." });
+      }
+      if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+      return issues;
+    },
+  },
   // Reuses `strategy.manage`: entering an estimate is managing the strategy, and that
   // capability is already held by exactly Admin and Consultant. A new capability with the
   // same holders would be a matrix version that changed nobody's access.

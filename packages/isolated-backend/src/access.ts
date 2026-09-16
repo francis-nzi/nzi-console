@@ -50,6 +50,16 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.contact.update": (input) => ({ kind: "contact", id: input.contactId }),
   "client.contact.deactivate": (input) => ({ kind: "contact", id: input.contactId }),
   "client.contact.consent.record": (input) => ({ kind: "contact", id: input.contactId }),
+  // The knowledge library is NZI-wide, not per-client: there is no client to resolve access
+  // against, so these carry no subject. The capability check and the tenant policy are the
+  // whole of the gate, which is what makes the library shared rather than partitioned.
+  "knowledge.capture": organisation,
+  "knowledge.alias.add": organisation,
+  "knowledge.edit": organisation,
+  "knowledge.approve": organisation,
+  "knowledge.publish": organisation,
+  "knowledge.reject": organisation,
+  "knowledge.merge": organisation,
   "client.targets.set": client,
   "client.intensityMetric.set": client,
   "client.intensityMetric.deactivate": client,

@@ -539,3 +539,56 @@ describe("0084 — consent is recorded, never assumed", () => {
     assert.doesNotMatch(consent, /staff_role_capabilities|staff_capability_matrix_versions/);
   });
 });
+
+describe("0086 — the knowledge library is NZI's, not a client's", () => {
+  const knowledge = readFileSync(resolve(here, "../migrations/0086_knowledge_library.sql"), "utf8");
+  const ddl = knowledge.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+
+  it("carries no client column anywhere — the absence is the design", () => {
+    // The library is shared: an answer written while working on one client must be visible
+    // to everyone. A client_id would silently partition it and defeat the whole point, so
+    // this asserts the absence rather than trusting a reviewer to notice its arrival.
+    // Structural, not textual: the table comment necessarily says the words "client_id" in
+    // order to explain that there isn't one.
+    const structure = ddl.replace(/COMMENT ON [\s\S]*?;/g, "");
+    assert.doesNotMatch(structure, /\bclient_id\b/, "no client_id column");
+    assert.doesNotMatch(structure, /REFERENCES nzi_console\.clients\b/, "and no foreign key to clients");
+    assert.doesNotMatch(structure, /\bclient_id\b[^)]*REFERENCES/, "nor a client-scoped key of any shape");
+  });
+
+  it("scopes to the NZI organisation, which is what makes it shared", () => {
+    for (const table of ["knowledge_entries", "knowledge_entry_aliases", "knowledge_entry_versions"]) {
+      assert.match(ddl, new RegExp(`ALTER TABLE nzi_console\.${table} ENABLE ROW LEVEL SECURITY`), table);
+      assert.match(ddl, new RegExp(`ALTER TABLE nzi_console\.${table} FORCE ROW LEVEL SECURITY`), table);
+    }
+    assert.match(ddl, /organisation_id = current_setting\('app\.organisation_id', true\)/);
+    assert.match(ddl, /REFERENCES nzi_console\.organisations\(organisation_id\)/);
+  });
+
+  it("makes uniqueness bite only once approved, never on a raw draft", () => {
+    // Two people legitimately asking the same thing in the same week must not collide;
+    // two APPROVED entries saying the same thing must.
+    assert.match(ddl, /CREATE UNIQUE INDEX knowledge_entries_canonical_once_approved_idx[\s\S]*?WHERE status IN \('internal','public'\) AND active/);
+  });
+
+  it("makes capture idempotent in the database, not in the command's memory", () => {
+    assert.match(ddl, /CREATE UNIQUE INDEX knowledge_entries_one_open_draft_idx[\s\S]*?WHERE status = 'draft' AND active/);
+  });
+
+  it("keeps the history append-only and the entries undeletable", () => {
+    assert.match(ddl, /REVOKE UPDATE, DELETE ON nzi_console\.knowledge_entry_versions FROM nzi_console_app/);
+    assert.match(ddl, /REVOKE DELETE ON nzi_console\.knowledge_entries FROM nzi_console_app/);
+  });
+
+  it("cannot record a tier it was never granted", () => {
+    assert.match(ddl, /knowledge_entries_internal_approved CHECK \(status = 'draft' OR approved_by IS NOT NULL\)/);
+    assert.match(ddl, /knowledge_entries_public_published CHECK \(status <> 'public' OR published_by IS NOT NULL\)/);
+  });
+
+  it("creates the trigram extension explicitly rather than assuming it", () => {
+    // The first extension this schema takes. Failing loudly beats silently degrading to
+    // exact matching, which would leave duplicate detection looking present and doing nothing.
+    assert.match(ddl, /CREATE EXTENSION IF NOT EXISTS pg_trgm/);
+    assert.match(ddl, /USING gin \(canonical_key gin_trgm_ops\)/);
+  });
+});

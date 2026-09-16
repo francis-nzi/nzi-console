@@ -63,6 +63,9 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |
 | `audit.view` | ✓ | ⚑ own | R | ⚑ own | — |
 | `support.portal_impersonate` (enter a client's portal context) ⚑ | ✓ | ✓ | — | — | — |
+| `knowledge.capture` (offer a question + answer to the library as a draft) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `knowledge.approve` (draft → internal: live for staff, grounds the help AI) | ✓ | ✓ | — | — | — |
+| `knowledge.publish` (internal → public: client-facing, website-bound) | ✓ | — | — | — | — |
 
 ### Conditional notes (⚑)
 
@@ -83,6 +86,13 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   it's an operational concession on an already-granted entitlement, not a commercial re-sale;
   Finance keeps read visibility via `finance.view`.
 - `audit.view` — Consultant/Finance see the audit trail for their own clients only.
+- **Knowledge library (NZC-081).** Three capabilities, not two. Capture is held by every role —
+  anyone who answers a question can offer it to the library — because writing to the library is its
+  own act and should not ride an unrelated gate. Approval and publication are separate because they
+  are separate risks: `knowledge.approve` makes an entry live for staff and citable by the help AI;
+  `knowledge.publish` makes it client-facing and website-bound, and is **Admin only**. A Consultant
+  writes most of the knowledge and can approve it internally, but cannot put anything in front of a
+  client — which is what gives the two tiers their meaning.
 - `support.portal_impersonate` — every entry is audited and time-boxed; it grants a
   read/preview context, never portal-user credential access.
 

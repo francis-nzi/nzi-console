@@ -16,6 +16,7 @@ const matrixMigration = readFileSync(resolve(here, "../migrations/0066_permissio
 const matrixMigrationV2 = readFileSync(resolve(here, "../migrations/0073_training_capabilities.sql"), "utf8");
 // Version 3 renames actions.manage to strategy.manage for the Reduction Strategies area.
 const matrixMigrationV3 = readFileSync(resolve(here, "../migrations/0079_strategy_capability.sql"), "utf8");
+const matrixMigrationV4 = readFileSync(resolve(here, "../migrations/0087_permission_matrix_v4.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -25,7 +26,7 @@ const matrixMigrationV3 = readFileSync(resolve(here, "../migrations/0079_strateg
 // Every matrix migration, concatenated. `rowPattern` then selects only the rows for the
 // version in force, so adding a version means adding its file here and nothing else —
 // earlier versions stay readable, which is the point of versioning the matrix at all.
-const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}`;
+const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -85,7 +86,12 @@ describe("the permission matrix (NZC-022)", () => {
     assert.equal(has("reviewer", "report.edit"), undefined);
     assert.equal(has("reviewer", "scoperow.edit"), undefined);
     assert.equal(has("finance", "client.edit"), undefined);
-    assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.viewer).sort(), ["client.view", "report.view"]);
+    // Viewer gained `knowledge.capture` at v4 (NZC-081): capture is open to every role,
+    // because anyone who answers a question should be able to offer it to the library. It
+    // writes a draft and nothing else — a draft is inert until someone with
+    // `knowledge.approve` ratifies it, so this does not loosen what a Viewer can change.
+    assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.viewer).sort(), ["client.view", "knowledge.capture", "report.view"]);
+    assert.equal(has("viewer", "knowledge.approve"), undefined, "and it stops at capture");
   });
 
   it("names only enum capabilities on commands, and no legacy or ad-hoc permission string survives in source", () => {
