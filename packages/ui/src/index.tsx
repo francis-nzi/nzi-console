@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { CommandSearch } from "./CommandSearch";
+import { HelpAffordance } from "./HelpAffordance";
 
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
 export { GatedButton } from "./GatedButton";
 export { Collapsible } from "./Collapsible";
+export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from "./HelpAffordance";
 export { InfoTip } from "./InfoTip";
 
 export type IconName =
@@ -91,6 +93,10 @@ export function TopBar({ crumbs, searchPlaceholder = "Search…" }: { crumbs: Re
     <div className="nz-topbar">
       <div className="nz-crumbs">{crumbs}</div>
       <CommandSearch placeholder={searchPlaceholder} icon={<Icon name="search" />} />
+      {/* Rendered here rather than passed per page: seventeen pages compose a TopBar, and
+          "on every page" cannot depend on each of them remembering. Renders nothing when no
+          help provider is mounted. */}
+      <HelpAffordance />
     </div>
   );
 }
