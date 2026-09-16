@@ -1412,3 +1412,52 @@ performed actions would be changing someone's data in order to explain their dat
 
 **A step whose anchor is missing is skipped, not guessed at.** A spotlight on nothing — or on the
 wrong element after a refactor — teaches something false, which is worse than a shorter tour.
+
+### NZC-083 — Grounding: cited or silent, and the citation rule is a type [Confirmed 16 Sep 2026]
+
+**What shipped (0d).** The retrieval, citation and abstention contract the help assistant will
+answer from. **No model call and no generation** — Phase 1 adds that on top, Phase 2 adds
+live-data tools behind the same contract. Read-side only; no migration.
+
+**The citation rule is enforced by the type, not by discipline.** `GroundedCandidate.citation` is
+required and non-optional, and the only constructor takes the citation as an argument — so a
+candidate with nothing behind it is unrepresentable rather than merely discouraged. A test asserts
+`citation?:` never appears. Discipline is what fails inside a prompt template at 2am; a type does
+not.
+
+**Abstention is a result, not an absence.** `groundingResult` returns `abstained` when nothing
+clears the floor, and an empty grounded result is deliberately impossible — otherwise a caller
+could loop over zero candidates and emit prose anyway. The wording is a statement about the
+sources ("nothing in the approved knowledge answers this yet"), never about the asker.
+
+**Retrieved content is data, not instructions.** Every retrieved string is wrapped as
+`RetrievedText`, a tagged value rather than a bare string, so library text — and later a client's
+own records — cannot be concatenated into a prompt as though it were the system's own voice.
+Reading it back takes a named `retrievedText()` call, which makes every such place greppable and
+reviewable. The tag is a **boundary, not a sanitiser**: it does not make hostile text safe, it
+makes the moment of trusting it explicit. The boundary holds for approved entries too — "approved"
+describes who ratified the answer, not what someone typed inside it.
+
+**Only ratified knowledge grounds an answer.** Drafts and withdrawn entries are excluded. The
+integrity argument for citing the library is that a person stood behind the answer; grounding on
+drafts would let an unreviewed answer — including one the assistant proposed itself — return as
+though it were established, closing exactly the loop two-tier approval opens.
+
+**Product docs are declared and empty, on purpose.** The design names documentation as a source
+and it will be one, but **there is no corpus to index yet**, so the source returns nothing and
+says so in its label. The alternative — serving public-tier library entries as "docs" — was
+rejected: those are already returned by the library source, so re-serving them would return one
+answer under two citations and make a single source look like two corroborating ones. Manufactured
+corroboration is a subtler version of the failure this whole design exists to prevent.
+
+**A broken source is reported, never mistaken for an empty one.** "We could not read the library"
+and "the library has nothing on this" are opposite claims; abstaining on the first would tell
+someone their question is unanswered when it may well be answered, and would invite them to
+capture a duplicate of an entry that already exists. A failed source abstains with a fault message
+and suppresses the capture offer.
+
+**The contract is source-agnostic by design.** A `GroundingSource` is an id, a label and a
+`retrieve`. Phase 2's permission-checked read-model tools are a new implementation of that
+interface, not a change to anything above it — and `live-data` citations already name the read
+model that produced a figure, so an answer about a client's own data will be traceable to the same
+resolver the screen used rather than to a second path that can quietly disagree.
