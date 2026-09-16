@@ -281,3 +281,50 @@ and the easiest to miss when you only check that a thing exists.
 whole sequence twice against a real Postgres. With the old skip guard restored it fails on the
 second run and passes on the first — which is exactly the property this convention exists to
 catch, and worth verifying that way when you write one.
+
+## 15. A merged branch is deleted, and a merge is verified on `main` (locked)
+
+The mechanical complement to §14, and to the working rule **"once a PR is in review, the next
+commit goes on a new branch"**.
+
+**Enable *Automatically delete head branches* on the repository** — GitHub → Settings → General →
+Pull Requests, or:
+
+```
+gh api -X PATCH repos/francis-nzi/nzi-console -f delete_branch_on_merge=true
+```
+
+Locally, `git fetch --prune` so a deleted branch stops appearing in your own view.
+
+**The class this closes.** A squash-merge rewrites the branch's commits into one new commit, so
+git can no longer match the branch's patches against `main`. A branch that outlives its PR
+therefore invites a second commit that **silently never lands**: the PR says merged, `main` looks
+healthy, and the work is simply absent.
+
+It has bitten twice:
+
+- **#193** — the NZC-084 "docs are a distinct corpus" rule was pushed after the PR was cut, and
+  merged as part of a later PR only because it was noticed.
+- **#199** — the seed fix, its error surfacing and its real-Postgres test were pushed after review
+  started; the squash took the earlier commit, and `main` kept the bug that had just been
+  diagnosed and endorsed.
+
+Both times **nothing failed**. No test, no build, no check: the branch pushed cleanly, the PR
+merged cleanly, and the only symptom was work that was not there. That puts it in the same family
+as the committed conflict markers of NZC-086 — damage no gate can see, because every gate is
+asking whether the code works, and absent code works fine.
+
+**What deleting the branch actually buys.** Not literal impossibility: a later `git push` from a
+local clone recreates the remote branch. What it removes is the *silence* — there is no open PR
+for that push to update, and the recreated branch is visibly unmerged rather than looking like a
+contribution to something already landed.
+
+**So verify on `main`, by content, never by PR number.** A merged PR is a claim about a branch, not
+about `main`. Check the thing itself:
+
+```
+git fetch origin && git show origin/main:path/to/file | grep <the change>
+git ls-tree --name-only origin/main <dir> | grep <new file>
+```
+
+If the change is not in `main`, it did not ship — whatever the PR says.
