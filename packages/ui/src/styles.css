@@ -1444,3 +1444,16 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-help-tour .sub{font-size:12px;line-height:1.5}
 .nz-help-tour-meta{color:var(--t3);font-size:11px}
 .nz-help-tour .nz-btn{justify-self:start;margin-top:5px}
+
+/* Staff portal preview (NZC-087) — persistent, never dismissible. Amber rather than a brand
+   colour: this is a standing "you are not where you think you are" notice, and it must not read
+   as part of the client's own portal chrome. */
+.nz-preview-bar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  padding:9px 14px;border-bottom:1px solid var(--line);background:var(--amber-tint,#FFF4DC);color:var(--t1)}
+.nz-preview-tag{padding:2px 8px;border-radius:999px;background:var(--amber,#FFC24B);color:#3A2A00;
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.nz-preview-bar b{font-size:13px}
+.nz-preview-ro{padding:2px 7px;border-radius:6px;border:1px solid var(--line);font-size:10.5px;font-weight:600;color:var(--t2)}
+.nz-preview-bar .hint{flex:1 1 260px;min-width:0;font-size:11px;color:var(--t3);line-height:1.45}
+.nz-portal-preview .nz-portal-shell{display:grid;gap:14px;padding:16px;max-width:980px;margin:0 auto}
+@media (max-width:640px){.nz-preview-bar .hint{flex-basis:100%}}

@@ -8,7 +8,7 @@ import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { NAV, USER } from "../../lib/nav";
-import { useEditAccess } from "../../lib/useEditAccess";
+import { useEditAccess, useHasCapability } from "../../lib/useEditAccess";
 import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
 import { AiProfileArea } from "./AiProfileArea";
 import { AnalyticsArea } from "./AnalyticsArea";
@@ -69,6 +69,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     srs: useEditAccess("srs.manage", writeEnabled),
     actions: useEditAccess("strategy.manage", writeEnabled),
   };
+
+  const canPreviewPortal = useHasCapability("support.portal_impersonate", client.ownerUserId);
 
   const meta = clientStatusMeta[client.status];
   const source = evidence.latest.source;
@@ -144,6 +146,9 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         {/* No "Edit client" here: the record is edited one thing at a time, in its own
             drawer, from the surface that shows it (v10). */}
         <button type="button" className="nz-btn" onClick={() => openDrawer({ kind: "portal" })}>Portal access</button>
+        {/* Read-only preview of what this client sees. Gated on the capability the matrix has
+            always described as "enter a client's portal context" — see NZC-087. */}
+        {canPreviewPortal ? <Link className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/portal-preview`}>Go to portal</Link> : null}
         <Link className="nz-btn pri" href={clientJobsHref(client.id)}>Create job</Link>
       </div>
     </div></div>

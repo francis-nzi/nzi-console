@@ -16,6 +16,21 @@ surface is a disclosure, not a display bug. The criteria below are weighted acco
 > (raise a fix PR, then re-run that one criterion) · `n/a` = not reachable this run, with the
 > reason written in.
 
+> **Running this through the staff portal preview (NZC-087).** The portal enrolment and login flow
+> is erroring and is parked for revamp (NZC-088), so the walk-through uses
+> **`/clients/{id}/portal-preview`** — read-only, under your own staff identity, rendering the
+> client's own components through the client's own read models.
+>
+> That makes the **content**, **gate** and **single-tenant** criteria acceptable: they are
+> properties of what the surface renders, and the preview renders it from the same resolvers.
+>
+> It does **not** make the **portal-auth criteria** acceptable. Anything that tests the login path
+> itself — cross-tenant isolation reached *via a portal session*, the MFA flow, session-ended
+> behaviour — is **`deferred`**, not `✅`. Mark those rows `deferred (NZC-088)` and leave them
+> open. A criterion the preview structurally cannot exercise is not a criterion the preview has
+> passed, and ticking it would be the most expensive kind of wrong: a governance record asserting
+> an isolation property nobody checked.
+
 ## Run header
 
 | | |

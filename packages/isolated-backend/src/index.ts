@@ -54,6 +54,7 @@ export * from "./knowledge";
 export * from "./tourSeen";
 export * from "./grounding";
 export * from "./portalAcceptanceSeed";
+export * from "./portalPreview";
 export * from "./answering";
 export * from "./answerModel";
 export { mapClientContact, normaliseContactRoles } from "./clientContactRecords";
