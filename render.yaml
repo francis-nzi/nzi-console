@@ -93,6 +93,13 @@ services:
         sync: false
       - key: NZI_CONSOLE_MFA_ENCRYPTION_KEY
         sync: false
+      # Grounded answering (NZC-085). Declared, never valued here — `sync: false` means the
+      # secret is set in the dashboard and this file only records that the key exists.
+      # Its ABSENCE is a supported state, not a broken one: the help drawer still retrieves and
+      # still shows cited sources, and says plainly that answering is not switched on. Setting
+      # it is what turns generation on, and it is the only thing that does.
+      - key: ANTHROPIC_API_KEY
+        sync: false
 
   # ── Reminder worker ────────────────────────────────────────────────────────────────
   # Drains nzi_console.transactional_outbox on a clock and sends reduction-strategy

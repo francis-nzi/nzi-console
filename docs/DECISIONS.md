@@ -1497,3 +1497,46 @@ binds whoever populates the corpus.
 **Scope.** This binds Phase 2 as well: live-data tools cite the read model that produced a figure
 and must not also re-cite a library entry describing the same figure. Two citations must always
 mean two corpora.
+### NZC-085 — Grounded answering: the model's citations are a claim to be checked [Confirmed 16 Sep 2026]
+
+**Decision.** The help drawer answers from approved knowledge, and a model's output is treated as
+an unverified **claim** rather than a result. Every reference a draft returns is resolved against
+the exact candidate set that draft was given; an answer survives only if all of them resolve. The
+model is injected behind an `AnswerModel` interface, so the rules hold without a key, a network or
+a bill, and generation being switched off is a supported state rather than a fault.
+
+**Why a second check, when Phase 0 already made uncited candidates unrepresentable.** Those are
+different guarantees. NZC-083 made an uncited *candidate* impossible; it said nothing about an
+uncited *answer*. A model can fail in two ways that matter: prose with no citation, and — the
+harder one — prose footnoted to a reference it was never given. The second is worse, because the
+answer then *looks* sourced. A footnote to a source that does not exist manufactures the
+appearance of provenance, which is more damaging than visibly having none.
+
+**One bad reference refuses the whole answer.** The salvage — drop the unresolvable citation, keep
+the rest — was rejected. A model that invented a reference has demonstrated it is not tracking its
+sources, and the prose it produced in that state is exactly the prose whose provenance has just
+been disproved. Keeping it leaves a claim standing on whichever citations happened to survive.
+
+**A refusal is not a gap.** A withheld answer is said as a fault in the answer, explicitly not as
+an absence in the knowledge, and worded so the reader can tell which happened. Telling someone
+their question is unanswered — when in truth an answer was drafted and refused — would send them
+off to write a library entry that already exists.
+
+**The model is never handed a question it cannot source.** Retrieval runs first and decides on its
+own evidence; generation is reached only when there is something to write from. This is the
+cheapest safeguard in the design, and it also means an ungroundable question costs nothing.
+
+**Four outcomes stay visibly distinct**: answered, abstained, the request failing, and still
+waiting. Collapsing a failure into an abstention would be the platform's oldest failure mode — a
+broken query rendered as an honest-looking nothing — so a failed ask says it is a fault at our end
+and does not claim the library is empty. In every non-answered case the **retrieved sources are
+still shown**: they were real, only the prose was in doubt.
+
+**Page context is framing, never evidence.** The drawer tells the user their page will be sent, so
+it is; but it is passed as help in reading an ambiguous question and declared non-citable in the
+prompt, because it is the app's word about where someone is standing, not a ratified source.
+
+**Model.** `claude-sonnet-5` by default — a grounded lookup over a handful of short entries is not
+Opus work. `ANTHROPIC_API_KEY` is read at the composition edge (the route) and nowhere deeper,
+matching `spendImportIdentity`; `render.yaml` declares the key with `sync: false` and never a
+value. Phase 2 (permission-checked live-data tools) remains future work and NZC-069 stays held.

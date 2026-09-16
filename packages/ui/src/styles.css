@@ -1400,6 +1400,14 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-help-msg.nzi{border:1px solid var(--line);background:var(--card)}
 /* The abstention reads as a statement of fact, never as an error or a failure. */
 .nz-help-abstain{margin-top:4px;padding:6px 8px;border-radius:7px;background:var(--mint);color:var(--pine);font-size:11px;font-weight:600}
+/* Citations sit under the answer, not inside it: the claim and its sources stay separable. */
+.nz-help-cites{display:grid;gap:4px;margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
+.nz-help-cite{display:block;color:var(--t2);font-size:11px;line-height:1.45}
+.nz-help-cite b{display:inline;margin-right:4px;font-size:11px;letter-spacing:0;text-transform:none;color:var(--pine)}
+/* Shown when nothing was written from them — the sources were real, only the prose was in doubt. */
+.nz-help-sources{display:grid;gap:4px;margin:4px 0 12px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.nz-help-sources b{font-size:12.5px}
+.nz-help-sources .sub{margin:3px 0 5px}
 .nz-help-capture{margin:4px 0 12px;padding:11px 12px;border:1px dashed var(--line);border-radius:10px}
 .nz-help-capture b{font-size:12.5px}
 .nz-help-capture .sub{margin:3px 0 8px}
