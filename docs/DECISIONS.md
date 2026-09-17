@@ -1891,3 +1891,50 @@ missed edit.
 
 **Related.** The list's Owner column now reads "Client manager" (NZC-092), so the column and the
 form use one word for one thing.
+
+### NZC-095 — Only a family that reports on a period has one [Confirmed 17 Sep 2026]
+
+**Decision.** `familyHasReportingPeriod(family)` — currently `family === "crp"` — is the single
+predicate behind three gates: whether the create form asks for a reporting period, whether the
+command requires one, and whether a job gets an emissions config. A job of any other family records
+its start and end and nothing else. With no period there is no `reporting_year`: the derivation
+returns null rather than a number taken from a start date.
+
+**What this corrects.** Part 1 required all four dates of every family, reading "all four required"
+as a rule about dates when it was a rule about carbon reporting. The result was a training course
+carrying an emissions reporting year — a value that reads as a fact, that no reader could act on,
+and that nothing it produced was ever labelled by.
+
+**One predicate rather than three literals.** The three gates each tested the family separately, so
+a second family adopting reporting would have needed three edits, of which the one in the form looks
+like presentation and is the one most likely to be missed. The gate in `createJob` was changed to
+call the predicate even though it is behaviour-identical today, because a literal that agrees by
+coincidence is the kind that stops agreeing silently.
+
+**The requirement is family-driven; the validation is value-driven.** A training job needs no
+period, so its absence is not an issue — but a period supplied anyway is held to exactly the same
+plausible window and ordering as a CRP job's. Keeping those separate is what stops "this family
+need not have a period" becoming "this family's dates are not checked" (NZC-093 is unchanged: still
+every family, still whenever a date is present).
+
+**The stored period is now read.** `jobs.reporting_period_start`/`reporting_period_end` were
+write-only when `0091` added them: the create path wrote both columns and every reader used
+`job_emissions_config` instead, so the same fact sat in two places with only one of them consulted
+— the redundancy NZC-092 argues against for `client_manager_name`, in the migration that argues it.
+The job read model now carries `reportingPeriod` from those columns, and they are the source of
+record for what a job reports on.
+
+**The equivalence anchor.** For a client whose period is its statutory financial year, the window
+stored by the new path equals the window the old reconstruction produced — asserted against
+`reportingPeriodForYear` for a December, March, September and unset year end. **Window only.** The
+*label* differs by one year for a non-December year end, correctly and by design, and pinning the
+two conventions together would fail the moment either is used as intended. #210 owns the label
+difference; this owns the window identity.
+
+**Not fixed here.** `spendImportIdentity.ts` falls back to a calendar year when a job has no config
+window, ignoring the client's financial year end. It is a real defect, and it is an **idempotency
+identity** — changing it would change how a re-import reconciles and could duplicate rows. It needs
+its own reconcile-by-reading analysis and is tracked separately, not folded in.
+
+**Related.** NZC-092 (the period is recorded, the year derived from its end); NZC-093 (the plausible
+window); NZC-070 (a reporting window is the client's financial year, now read rather than inferred).

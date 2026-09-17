@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { jobDateIssues, plausibleYearRange, reportingYearForPeriod, validateCommand, commandGrantForRole } from "../src/index";
+import { familyHasReportingPeriod, jobDateIssues, plausibleYearRange, reportingYearForPeriod, validateCommand, commandGrantForRole } from "../src/index";
 
 /**
  * The four dates a job carries (Part 1, Task E) and the year derived from two of them.
@@ -23,17 +23,17 @@ const codes = (issues: { code: string }[]) => issues.map((issue) => issue.code);
 
 describe("a job's dates must be plausible, complete and ordered", () => {
   it("accepts a sensible set", () => {
-    assert.deepEqual(jobDateIssues(ok, new Date("2026-06-01T00:00:00Z")), []);
+    assert.deepEqual(jobDateIssues(ok, { today: new Date("2026-06-01T00:00:00Z") }), []);
   });
 
   it("requires all four, naming each one", () => {
-    assert.deepEqual(fields(jobDateIssues({}, new Date("2026-06-01T00:00:00Z"))),
+    assert.deepEqual(fields(jobDateIssues({}, { today: new Date("2026-06-01T00:00:00Z") })),
       ["dueDate", "reportingPeriodEnd", "reportingPeriodStart", "startDate"]);
   });
 
   it("refuses the year that got through on live", () => {
     // 98655-11-22 parses as a real date. It is the five digits that give it away.
-    const issues = jobDateIssues({ ...ok, startDate: "98655-11-22" }, new Date("2026-06-01T00:00:00Z"));
+    const issues = jobDateIssues({ ...ok, startDate: "98655-11-22" }, { today: new Date("2026-06-01T00:00:00Z") });
     assert.deepEqual(fields(issues), ["startDate"]);
     assert.deepEqual(codes(issues), ["INVALID"]);
   });
@@ -41,9 +41,9 @@ describe("a job's dates must be plausible, complete and ordered", () => {
   it("floors at 2000 and ceilings five years ahead of today", () => {
     const today = new Date("2026-06-01T00:00:00Z");
     assert.deepEqual(plausibleYearRange(today), { min: 2000, max: 2031 });
-    assert.deepEqual(codes(jobDateIssues({ ...ok, startDate: "1999-12-31" }, today)), ["IMPLAUSIBLE_YEAR"]);
-    assert.deepEqual(jobDateIssues({ ...ok, startDate: "2000-01-01", dueDate: "2000-06-01" }, today), []);
-    assert.deepEqual(codes(jobDateIssues({ ...ok, dueDate: "2032-01-01" }, today)), ["IMPLAUSIBLE_YEAR"]);
+    assert.deepEqual(codes(jobDateIssues({ ...ok, startDate: "1999-12-31" }, { today })), ["IMPLAUSIBLE_YEAR"]);
+    assert.deepEqual(jobDateIssues({ ...ok, startDate: "2000-01-01", dueDate: "2000-06-01" }, { today }), []);
+    assert.deepEqual(codes(jobDateIssues({ ...ok, dueDate: "2032-01-01" }, { today })), ["IMPLAUSIBLE_YEAR"]);
   });
 
   it("computes the ceiling from today rather than carrying a written-down year", () => {
@@ -57,20 +57,20 @@ describe("a job's dates must be plausible, complete and ordered", () => {
 
   it("refuses a job and a period that end before they start, and an instant one", () => {
     const today = new Date("2026-06-01T00:00:00Z");
-    assert.deepEqual(fields(jobDateIssues({ ...ok, dueDate: "2026-01-04" }, today)), ["dueDate"]);
-    assert.deepEqual(fields(jobDateIssues({ ...ok, reportingPeriodEnd: "2025-03-31" }, today)), ["reportingPeriodEnd"]);
-    assert.deepEqual(codes(jobDateIssues({ ...ok, dueDate: ok.startDate }, today)), ["INVALID_RANGE"]);
+    assert.deepEqual(fields(jobDateIssues({ ...ok, dueDate: "2026-01-04" }, { today })), ["dueDate"]);
+    assert.deepEqual(fields(jobDateIssues({ ...ok, reportingPeriodEnd: "2025-03-31" }, { today })), ["reportingPeriodEnd"]);
+    assert.deepEqual(codes(jobDateIssues({ ...ok, dueDate: ok.startDate }, { today })), ["INVALID_RANGE"]);
   });
 
   it("does not complain twice about one mistake", () => {
     // An unparseable end date is one problem. Reporting that it is also out of order would be the
     // form inventing a second fault from the same keystroke.
-    const issues = jobDateIssues({ ...ok, dueDate: "not-a-date" }, new Date("2026-06-01T00:00:00Z"));
+    const issues = jobDateIssues({ ...ok, dueDate: "not-a-date" }, { today: new Date("2026-06-01T00:00:00Z") });
     assert.deepEqual(codes(issues), ["INVALID"]);
   });
 
   it("speaks dd/mm/yyyy, because that is the format on screen (NZC-040)", () => {
-    const issues = jobDateIssues({ ...ok, startDate: "5/1/2026" }, new Date("2026-06-01T00:00:00Z"));
+    const issues = jobDateIssues({ ...ok, startDate: "5/1/2026" }, { today: new Date("2026-06-01T00:00:00Z") });
     assert.ok(issues[0]!.message.includes("dd/mm/yyyy"));
     assert.ok(!issues[0]!.message.includes("yyyy-mm-dd"), "the wire format is not the consultant's problem");
   });
@@ -116,6 +116,66 @@ describe("the command is the guard, not the form", () => {
       assert.ok(!definition.includes(`isoDate(input.${field})`),
         `${field} must be validated by jobDateIssues, not by a second bespoke check`);
     }
-    assert.ok(definition.includes("jobDateIssues(input)"), "job.create delegates to the shared rules");
+    assert.ok(definition.includes("jobDateIssues(input, { family:"), "job.create delegates to the shared rules, family and all");
+  });
+});
+
+describe("which dates are required depends on the family; which are valid does not", () => {
+  const today = new Date("2026-06-01T00:00:00Z");
+  const jobOnly = { startDate: "2026-02-02", dueDate: "2026-02-27" };
+
+  it("asks a reporting family for its period", () => {
+    assert.deepEqual(fields(jobDateIssues(jobOnly, { family: "crp", today })),
+      ["reportingPeriodEnd", "reportingPeriodStart"]);
+  });
+
+  it("asks every other family for nothing beyond its own two dates", () => {
+    for (const family of ["consultancy", "lca", "pcf", "training"] as const) {
+      assert.deepEqual(jobDateIssues(jobOnly, { family, today }), [], `${family} reports on no period`);
+    }
+  });
+
+  it("still requires the two dates every job has", () => {
+    assert.deepEqual(fields(jobDateIssues({}, { family: "training", today })), ["dueDate", "startDate"]);
+  });
+
+  it("holds a non-reporting family's dates to the same window", () => {
+    // The requirement is family-driven; the validation is value-driven. "This family need not have
+    // a period" must never quietly become "this family's dates are not checked".
+    assert.deepEqual(codes(jobDateIssues({ ...jobOnly, dueDate: "98655-11-22" }, { family: "training", today })), ["INVALID"]);
+    assert.deepEqual(codes(jobDateIssues({ ...jobOnly, startDate: "1999-12-31" }, { family: "training", today })), ["IMPLAUSIBLE_YEAR"]);
+  });
+
+  it("checks a period supplied by a family that did not need one", () => {
+    const issues = jobDateIssues({ ...jobOnly, reportingPeriodStart: "2026-03-31", reportingPeriodEnd: "2025-04-01" },
+      { family: "training", today });
+    assert.deepEqual(codes(issues), ["INVALID_RANGE"]);
+  });
+
+  it("treats an absent family as 'validate the whole shape'", () => {
+    // The default has to be the strict one: a caller that forgets to say which family must not
+    // silently get the weakest rule.
+    assert.deepEqual(fields(jobDateIssues(jobOnly, { today })), ["reportingPeriodEnd", "reportingPeriodStart"]);
+  });
+
+  it("names the one predicate the three gates share", () => {
+    assert.equal(familyHasReportingPeriod("crp"), true);
+    for (const family of ["consultancy", "lca", "pcf", "training"] as const) {
+      assert.equal(familyHasReportingPeriod(family), false);
+    }
+  });
+});
+
+describe("no period, no year", () => {
+  it("derives nothing from an absent period end", () => {
+    // A training job labelled with an emissions reporting year it never reported against is a
+    // value that reads as a fact and is not one.
+    assert.equal(reportingYearForPeriod(null), null);
+    assert.equal(reportingYearForPeriod(undefined), null);
+    assert.equal(reportingYearForPeriod(""), null);
+  });
+
+  it("still derives from a real one", () => {
+    assert.equal(reportingYearForPeriod("2026-03-31"), 2026);
   });
 });

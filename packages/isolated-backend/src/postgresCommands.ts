@@ -18,6 +18,7 @@ import {
   type SnapshotProvenanceStamp,
   type WorkflowJobFamily,
   reportingYearForPeriod,
+  familyHasReportingPeriod,
 } from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
@@ -471,19 +472,22 @@ export async function createJob(
         input.clientManagerUserId?.trim() || null,
         input.startDate,
         input.dueDate,
-        input.reportingPeriodStart,
-        input.reportingPeriodEnd,
+        input.reportingPeriodStart ?? null,
+        input.reportingPeriodEnd ?? null,
         JSON.stringify(detail),
       ],
     );
-    if (input.family === "crp") {
+    if (familyHasReportingPeriod(input.family)) {
       // NZC-070 asked that a reporting window be the client's financial year rather than
       // 1 Jan–31 Dec, and this reconstructed one from the labelled year plus the client's
       // financial_year_end_month. Since NZC-092 the consultant enters the period itself, so the
       // window is read rather than inferred — and a job reporting on something other than the
       // client's statutory year is now expressible, which the reconstruction could not do.
-      const reportingFrom = input.reportingPeriodStart;
-      const reportingTo = input.reportingPeriodEnd;
+      // The validator requires both for a reporting family, so these are present by the time the
+      // gate above is true; the assertion states that rather than leaving a `!` to be read as a
+      // shrug.
+      const reportingFrom = input.reportingPeriodStart!;
+      const reportingTo = input.reportingPeriodEnd!;
       await db.query(
         `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
         [context.organisationId, jobId, reportingFrom, reportingTo],

@@ -122,6 +122,21 @@ export const jobWorkflowStages = {
   training: ["Course setup", "Bookings", "Delivery", "Attendance", "Certificates"],
 } as const;
 export type WorkflowJobFamily = keyof typeof jobWorkflowStages;
+
+/**
+ * Whether a job of this family reports on a period (NZC-092).
+ *
+ * Carbon reporting does; a training course, an LCA study or a consultancy engagement does not —
+ * they have a start and an end, and nothing they produce is labelled by a reporting year. Part 1
+ * first required a period of every family, which gave a training job an emissions reporting year
+ * and no window to go with it.
+ *
+ * **One predicate, three gates.** The form asks for the period, the command requires it, and the
+ * emissions config is created — each of those used to test the family separately, and a literal
+ * `family === "crp"` in three places is three chances to disagree the day a second family starts
+ * reporting. Change this function and all three move together.
+ */
+export const familyHasReportingPeriod = (family: WorkflowJobFamily): boolean => family === "crp";
 export type ScopeQualityTier = "measured" | "estimated" | "spend-based" | "survey";
 export type MonthlyActivitySlot = { month:string; quantity:number|null };
 export const crpScopeOptions = [
@@ -343,7 +358,7 @@ export type CommandInputMap = {
    *
    * `reportingYear` is absent on purpose: it is derived from `reportingPeriodEnd` and never sent.
    */
-  "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; clientManagerUserId?: string | null; startDate: string; dueDate: string; reportingPeriodStart: string; reportingPeriodEnd: string };
+  "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; clientManagerUserId?: string | null; startDate: string; dueDate: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
@@ -695,7 +710,7 @@ const clientContactIssues = (input: ClientContactWriteFields) => {
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.create": { key: "client.create", label: "Create client", permission: "client.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)] },
   "client.update": { key: "client.update", label: "Update client", permission: "client.edit", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
-  "job.create": { key: "job.create", label: "Create job", permission: "job.manage", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); issues.push(...jobDateIssues(input)); return issues; } },
+  "job.create": { key: "job.create", label: "Create job", permission: "job.manage", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); issues.push(...jobDateIssues(input, { family: oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const) ? input.family : undefined })); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "job.manage", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.update": { key: "scope.row.update", label: "Update scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + audit + outbox + idempotency", auditAction: "scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },

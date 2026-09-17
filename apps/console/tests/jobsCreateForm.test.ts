@@ -105,8 +105,10 @@ describe("the create-job form asks about the job, then its dates", () => {
 });
 
 describe("the form checks the dates before it asks the server to", () => {
-  it("calls the same shared rules the command runs", () => {
-    assert.ok(jobsCode().includes("jobDateIssues(draft)"), "one implementation, both sides");
+  it("calls the same shared rules the command runs, told the same family", () => {
+    // The family decides which dates are required, so passing it is what keeps the form and the
+    // command agreeing about a training job — not just about what a plausible date is.
+    assert.ok(jobsCode().includes("jobDateIssues(draft, { family: draft.family })"), "one implementation, both sides");
   });
 
   it("puts each complaint beside its own field", () => {
@@ -128,5 +130,36 @@ describe("the form checks the dates before it asks the server to", () => {
     // banner naming one of four problems.
     assert.ok(jobsCode().includes(`result.state === "validation_failed"`));
     assert.ok(jobsCode().includes("result.issues.map((issue) => [issue.field, issue.message])"));
+  });
+});
+
+describe("only a reporting family is asked for a period", () => {
+  it("gates the period fields on the shared predicate, not a literal", () => {
+    // A `family === "crp"` here would be a fourth place to change the day a second family starts
+    // reporting, and the one most likely to be missed because it looks like presentation.
+    const code = jobsCode();
+    assert.ok(code.includes("familyHasReportingPeriod(draft.family)"), "the form asks the predicate");
+    assert.ok(code.includes("{hasPeriod ? <>"), "and hides the block when it says no");
+    // Exactly one literal may remain, and it must be the stat tile — a count of CRP jobs is
+    // genuinely about CRP, not about whether a family reports on a period. Identified by what it
+    // is rather than by a character offset, so reformatting the line does not fail this.
+    const literal = code.split("\n").filter((line) => line.includes(`family === "crp"`));
+    assert.equal(literal.length, 1, `expected one remaining literal, found:\n  ${literal.join("\n  ")}`);
+    assert.ok(literal[0]!.includes("activeCrp"), `the survivor must be the stat tile, not: ${literal[0]!.trim()}`);
+  });
+
+  it("clears a period already typed when the family stops needing one", () => {
+    // Otherwise a consultant who fills in a CRP period and then switches to Training submits a
+    // period the job does not have, and the row carries a window nothing reports against.
+    assert.ok(jobsCode().includes("reportingPeriodStart: null, reportingPeriodEnd: null"),
+      "switching away from a reporting family drops the period");
+  });
+
+  it("keeps the derived year beside the period it is derived from", () => {
+    // The label belongs to the period; when there is no period there is no label to show.
+    const code = jobsCode();
+    const block = code.slice(code.indexOf("{hasPeriod ? <>"), code.indexOf("</> : null}"));
+    assert.ok(block.includes("Reporting year"), "the year sits inside the gated block");
+    assert.ok(block.includes("reportingPeriodEnd"), "beside the date it comes from");
   });
 });

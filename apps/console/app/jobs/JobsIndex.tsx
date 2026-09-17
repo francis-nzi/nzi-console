@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { jobDateIssues, jobWorkflowStages, plausibleYearRange, reportingYearForPeriod, type CommandInputMap } from "@nzi/contracts";
+import { familyHasReportingPeriod, jobDateIssues, jobWorkflowStages, plausibleYearRange, reportingYearForPeriod, type CommandInputMap } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type FamilyJob, type JobFamily } from "@nzi/mock-data";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
@@ -73,15 +73,18 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
   }
 
   /** Derived, never entered — the calendar year the reporting period ends in (NZC-092). */
-  const reportingYear = draft.reportingPeriodEnd.length === 10 ? reportingYearForPeriod(draft.reportingPeriodEnd) : null;
+  const reportingYear = draft.reportingPeriodEnd?.length === 10 ? reportingYearForPeriod(draft.reportingPeriodEnd) : null;
   const { min: yearMin, max: yearMax } = plausibleYearRange();
+  // Only a carbon-reporting job reports on a period. A training course has a start and an end and
+  // nothing it produces is labelled by a reporting year, so asking for one invents a fact.
+  const hasPeriod = familyHasReportingPeriod(draft.family);
 
   async function createJob(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving || !draft.clientId) return;
     // The same function the command runs, so the form cannot disagree with the server about what a
     // plausible date is. The server still decides — this only spares a round trip.
-    const issues = jobDateIssues(draft);
+    const issues = jobDateIssues(draft, { family: draft.family });
     if (issues.length > 0) {
       setFieldIssues(Object.fromEntries(issues.map((issue) => [issue.field, issue.message])));
       setNotice({ kind: "warn", text: "Check the dates below." });
@@ -109,7 +112,7 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
     return <label className="nz-fl" style={{ margin: 0 }}>{label}
       <input className="nz-inp" type="date" required min={`${yearMin}-01-01`} max={`${yearMax}-12-31`}
         aria-invalid={issue ? true : undefined} aria-describedby={describedBy}
-        value={draft[field]}
+        value={draft[field] ?? ""}
         onChange={(e) => { setDraft({ ...draft, [field]: e.target.value }); setFieldIssues(({ [field]: _removed, ...rest }) => rest); }} />
       {issue ? <small className="nz-field-issue" id={describedBy} role="alert">{issue}</small> : null}
     </label>;
@@ -138,7 +141,7 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
           <legend>About the job</legend>
           <div className="nz-job-create-grid">
             <label className="nz-fl" style={{ margin: 0 }}>Client<select className="nz-sel" required value={draft.clientId} onChange={(e) => selectClient(e.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-            <label className="nz-fl" style={{ margin: 0 }}>Job family<select className="nz-sel" value={draft.family} onChange={(e) => { const family = e.target.value as JobFamily; setDraft({ ...draft, family, workflowStage: initialStage[family] }); }}>{Object.entries(jobFamilyMeta).map(([id, meta]) => <option key={id} value={id}>{meta.code} · {meta.label}</option>)}</select></label>
+            <label className="nz-fl" style={{ margin: 0 }}>Job family<select className="nz-sel" value={draft.family} onChange={(e) => { const family = e.target.value as JobFamily; setDraft({ ...draft, family, workflowStage: initialStage[family], ...(familyHasReportingPeriod(family) ? {} : { reportingPeriodStart: null, reportingPeriodEnd: null }) }); setFieldIssues({}); }}>{Object.entries(jobFamilyMeta).map(([id, meta]) => <option key={id} value={id}>{meta.code} · {meta.label}</option>)}</select></label>
             <SmartSearch label="Client manager" options={team.options} emptyHint={team.emptyHint} required
               value={draft.clientManagerUserId ?? ""}
               onChange={(id, option) => setDraft({ ...draft, clientManagerUserId: id || null, owner: option?.label ?? "" })} />
@@ -152,12 +155,14 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
           <div className="nz-job-create-grid">
             {dateField("startDate", "Job start")}
             {dateField("dueDate", "Job end")}
-            {dateField("reportingPeriodStart", "Reporting period start")}
-            {dateField("reportingPeriodEnd", "Reporting period end")}
-            <label className="nz-fl" style={{ margin: 0 }}>Reporting year
-              <input className="nz-inp" readOnly aria-describedby="reporting-year-help" value={reportingYear ?? "—"} />
-              <small className="nz-hint" id="reporting-year-help">The year the reporting period ends in.</small>
-            </label>
+            {hasPeriod ? <>
+              {dateField("reportingPeriodStart", "Reporting period start")}
+              {dateField("reportingPeriodEnd", "Reporting period end")}
+              <label className="nz-fl" style={{ margin: 0 }}>Reporting year
+                <input className="nz-inp" readOnly aria-describedby="reporting-year-help" value={reportingYear ?? "—"} />
+                <small className="nz-hint" id="reporting-year-help">The year the reporting period ends in.</small>
+              </label>
+            </> : null}
           </div>
         </fieldset>
 
