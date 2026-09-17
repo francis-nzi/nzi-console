@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Dates read dd/mm/yyyy, everywhere a person sees one (NZC-040).
@@ -22,25 +22,39 @@ import { join } from "node:path";
  */
 
 /**
- * Repo-root-relative, not cwd-relative.
+ * Located from this file, not from the working directory and not from git.
  *
- * `git ls-files <path>` resolves its pathspec against the working directory, so this found the
- * whole console from the repo root and **nothing** from `apps/console` — and the empty run
- * passed, because a scanner with nothing to scan finds nothing wrong. A vacuous pass is worse
- * than a failure: it reports safety it never checked. So the root is resolved explicitly, and
- * every assertion below first checks it actually looked at something.
+ * Two failure modes are designed out here, both of which pass silently rather than failing:
+ *
+ * `git ls-files <path>` resolves its pathspec against the **working directory**, so an earlier
+ * version scanned the whole console from the repo root and **nothing** from `apps/console` —
+ * where it passed, having looked at no files at all. A vacuous pass is worse than a failure: it
+ * reports safety it never checked.
+ *
+ * And shelling out to git at all is a liability in CI, where a checkout the runner does not own
+ * makes `git rev-parse` fail outright with "dubious ownership" — a test that cannot run is a test
+ * that cannot protect anything. This file knows where it is, so it walks the tree itself: no
+ * subprocess, no git, no cwd.
+ *
+ * Every assertion still checks it actually looked at something before asserting what it found.
  */
-const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+const SCANNED = ["apps/console/app", "packages/ui/src"];
 
 const files = () => {
-  const listed = execFileSync("git", ["ls-files", "apps/console/app", "packages/ui/src"], { cwd: ROOT, encoding: "utf8" })
-    .split("\n").filter((name) => name.endsWith(".tsx") || name.endsWith(".ts"))
-    .map((name) => join(ROOT, name));
+  const listed = SCANNED.flatMap((area) =>
+    readdirSync(join(ROOT, area), { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".tsx") || name.endsWith(".ts"))
+      .map((name) => join(ROOT, area, name)));
   assert.ok(listed.length > 50, `expected to scan the console and ui sources, found ${listed.length} files`);
   return listed;
 };
 
 const read = (name: string) => readFileSync(name, "utf8");
+
+/** Repo-relative, so a CI log names a file someone can open. */
+const where = (name: string) => relative(ROOT, name).split("\\").join("/");
 
 /**
  * Fields that hold a date or timestamp, named explicitly.
@@ -69,7 +83,7 @@ describe("every date a person sees is formatted", () => {
       for (const match of text.matchAll(interpolation)) {
         if (/=\s*$/.test(text.slice(Math.max(0, match.index - 40), match.index))) continue;
         if (!field.test(match[2]!)) continue;
-        leaks.push(`${name}:${text.slice(0, match.index).split("\n").length}  {${match[2]}}`);
+        leaks.push(`${where(name)}:${text.slice(0, match.index).split("\n").length}  {${match[2]}}`);
       }
     }
 
@@ -84,7 +98,7 @@ describe("every date a person sees is formatted", () => {
       let text: string;
       try { text = read(name); } catch { continue; }
       for (const match of text.matchAll(/message:\s*[`"']([^`"']*)[`"']/g)) {
-        if (match[1]!.includes("YYYY-MM-DD")) leaks.push(`${name}: ${match[1]}`);
+        if (match[1]!.includes("YYYY-MM-DD")) leaks.push(`${where(name)}: ${match[1]}`);
       }
     }
     assert.deepEqual(leaks, [], `user-facing messages naming the wire format:\n  ${leaks.join("\n  ")}`);
