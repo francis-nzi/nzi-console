@@ -99,3 +99,7 @@ jobs:
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
         run: npx tsx --test packages/isolated-backend/tests/clientReferenceBackfill.test.ts
+      # Resolution against the real dry-run population: five naming variants and a junk value that
+      # match nothing, and an archived industry that must still resolve for the clients that chose it.
+      - name: Client references resolve, and fall back
+        run: npx tsx --test packages/isolated-backend/tests/clientReferenceRead.test.ts
