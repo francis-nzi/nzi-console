@@ -1,3 +1,4 @@
+import { dateOnly } from "./dates";
 import type { Queryable } from "./postgres";
 import { listClientSites } from "./siteBoundary";
 import { resolveFloorAreaDenominator, type ClientSiteReadModel, type IntensityMetricDefinition, type IntensityMetricValue, type ReportingPeriod } from "@nzi/contracts";
@@ -23,18 +24,32 @@ export async function listClientIntensityMetrics(db: Queryable, clientId: string
   })).sort((a, b) => Number(b.isStandard) - Number(a.isStandard) || a.ordering - b.ordering);
 }
 
-/** Every annual value recorded on this client's jobs, by reporting year. */
+/**
+ * Every annual value recorded on this client's jobs, each carrying the period its job reports on.
+ *
+ * **The period travels with the value (NZC-096).** This used to project only the reporting year,
+ * which made it impossible for any consumer to tell two of a client's jobs apart when they shared
+ * that label — the identity was dropped here, before anything downstream could have used it. The
+ * period comes from the job's own stored dates, falling back to the emissions-config window for
+ * jobs created before those columns existed; a job with neither leaves it null and the reader
+ * matches on the label, which is all such a job has ever had.
+ */
 export async function listClientIntensityValues(db: Queryable, clientId: string): Promise<IntensityMetricValue[]> {
-  const { rows } = await db.query<{ metric_key: string; reporting_year: number; period_key: string; value: string | null; overrides_resolved: boolean; note: string; version: number }>(
-    `SELECT v.metric_key,v.reporting_year,v.period_key,v.value::text,v.overrides_resolved,v.note,v.version
+  const { rows } = await db.query<{ metric_key: string; reporting_year: number; period_key: string; value: string | null; overrides_resolved: boolean; note: string; version: number; period_from: Date | string | null; period_to: Date | string | null }>(
+    `SELECT v.metric_key,v.reporting_year,v.period_key,v.value::text,v.overrides_resolved,v.note,v.version,
+            coalesce(j.reporting_period_start, c.reporting_from) AS period_from,
+            coalesce(j.reporting_period_end,   c.reporting_to)   AS period_to
      FROM nzi_console.job_intensity_values v
      JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(v.organisation_id,v.job_id)
+     LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id)
      WHERE j.client_id=$1
-     ORDER BY v.reporting_year DESC, v.metric_key`, [clientId]);
+     ORDER BY coalesce(j.reporting_period_end, c.reporting_to) DESC NULLS LAST, v.reporting_year DESC, v.metric_key`, [clientId]);
   return rows.map((row) => ({
     metricKey: row.metric_key, reportingYear: row.reporting_year, periodKey: row.period_key,
     value: row.value === null ? null : Number(row.value),
     overridesResolved: row.overrides_resolved, note: row.note, version: row.version,
+    period: row.period_from === null || row.period_to === null ? null
+      : { from: dateOnly(row.period_from), to: dateOnly(row.period_to) },
   }));
 }
 

@@ -1938,3 +1938,67 @@ its own reconcile-by-reading analysis and is tracked separately, not folded in.
 
 **Related.** NZC-092 (the period is recorded, the year derived from its end); NZC-093 (the plausible
 window); NZC-070 (a reporting window is the client's financial year, now read rather than inferred).
+
+### NZC-096 — The reporting year is a label; the period is the identity [Confirmed 17 Sep 2026]
+
+**Decision.** `reporting_year` is a display label and nothing else. Every read that groups, dedupes
+or looks a value up by reporting period keys on the **period** — the two dates — not on the year.
+The end-year derivation from NZC-092 is retained; it is a good label and it was never the problem.
+
+**Forward-only kept each job's own label stable, which is necessary and not sufficient.** NZC-092
+ensured an existing job keeps the year it was stored with and a new one derives from its period
+end. Each job is therefore internally consistent. The collision is not within a job: it is **two
+jobs meeting in one map**. The start-year and end-year conventions disagree by a year for any
+non-December financial year end, so one client can hold
+
+```
+legacy job   01/10/2025 → 30/09/2026   reporting_year 2025
+new job      01/10/2024 → 30/09/2025   reporting_year 2025
+```
+
+— adjacent, non-overlapping, and indistinguishable to anything keyed by the number. Only making the
+period the identity closes that, and it stays closed for a part-year period ending in the same
+calendar year as a full one, which needs no legacy row at all.
+
+**What the collision did before this.** A year of reviewed emissions vanished from a client's
+history when the second job overwrote the first in a year-keyed map, with nothing reporting the
+loss. An intensity denominator resolved by `.find()` on the year returned whichever row came first,
+dividing one period's emissions by another period's turnover and presenting the result as a figure.
+Both silent; neither detectable from the output.
+
+**Adjacent periods are two; overlapping periods are one.** The year key prevented a client that
+changed its financial year end from showing 01/01/2024–31/12/2024 beside 01/04/2024–31/03/2025 —
+nine of the same months described twice — but only as a side effect of being coarse. Keying by
+period alone would have let both through, so the rule is now stated: among **overlapping** periods
+the latest end wins, which is the preference NZC-067 already expressed. The pre-existing NZC-067
+test passes unchanged against it.
+
+**Stored period first, reconstruction only when there is none.** Every re-keyed read resolves the
+period from `jobs.reporting_period_start`/`_end` (NZC-095), falling back to the emissions-config
+window, and only then to the financial-year-end reconstruction. **A job that has a period never
+reconstructs one.** Where a legacy job has neither, the label still separates the rows — that is all
+such a job has ever had, and matching it on the label changes nothing about it.
+
+**Where the year is structurally the only key, ambiguity is reported rather than guessed.** The
+portal trend carries a year, not a period, so its period lookup is keyed by year. A year naming two
+periods now resolves to **null** — the denominator says it is unavailable, with a reason — instead
+of taking whichever row was read last. Truth before apparent availability. Carrying the period
+through the trend itself would resolve it properly and is the larger change this does not make.
+
+**Category C is unchanged and must stay that way.** `job_intensity_values` is keyed by
+`(organisation_id, job_id, reporting_year, metric_key, period_key)`, so no two jobs can collide
+there. It does mean a job's own `reporting_year` is a real key for its recorded values: **it must
+never become editable while values exist against it**, or those rows orphan. There is no job edit
+path today, and this is the reason to think before adding one.
+
+**Ordering by period rather than by year is not done here.** The prior-job selection for
+rollforward (NZC-063) and the prior-year reads that compare `< currentYear` still order by label.
+That is a change of carbon output, it is retroactive because the selection is recomputed on read
+rather than persisted, and it is taken separately with its own characterisation and review.
+
+**Not fixed here, flagged.** `spendImportIdentity.ts` falls back to a calendar year ignoring the
+client's year end. Real defect, but an idempotency identity — changing it could duplicate on
+re-import. Its own reconcile-by-reading analysis, tracked separately.
+
+**Related.** NZC-092 (the period is recorded, the year derived forward only); NZC-095 (the stored
+period is the read source); NZC-067 (a job stands for a reporting year); NZC-063 (rollforward).
