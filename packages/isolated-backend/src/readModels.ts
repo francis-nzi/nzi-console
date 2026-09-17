@@ -56,6 +56,12 @@ export type JobScreenReadModel = {
     id: string; version: number; sequence: number; number: string; family: JobFamily; clientId: string; client: string;
     title: string; reportingYear?: number; status: "draft" | "open" | "on-hold" | "complete" | "cancelled";
     workflowStage: string; owner: string; startDate: string; dueDate: string; quoteId?: string; progressPct: number;
+    /**
+     * The period the job reports on, as the consultant entered it (NZC-092), or null for a family
+     * that does not report on one. The stored dates are the source of record — this is not derived
+     * from `reportingYear`, which is a label on this period rather than evidence of it.
+     */
+    reportingPeriod: { from: string; to: string } | null;
   };
   detail: JobDetail;
   stageHistory: JobStageEvent[];
@@ -117,6 +123,7 @@ type JobRow = {
   job_id: string; version: number; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
   title: string; reporting_year: number | null; status: JobScreenReadModel["header"]["status"]; workflow_stage: string;
   owner_name: string; start_date: Date | string; due_date: Date | string; quote_id: string | null;
+  reporting_period_start: Date | string | null; reporting_period_end: Date | string | null;
   progress_percent: number; detail_json: unknown; stage_history: JobStageEvent[] | null;
 };
 const footprint = (value: string | null) => value === null ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
@@ -456,6 +463,7 @@ export async function listReportVersionRegister(db:Queryable):Promise<ReportVers
 export async function listJobs(db: Queryable): Promise<JobScreenReadModel[]> {
   const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.version, j.client_id, c.name AS client_name, j.sequence, j.job_number,
       j.job_family, j.title, j.reporting_year, j.status, j.workflow_stage, j.owner_name, j.start_date, j.due_date,
+      j.reporting_period_start, j.reporting_period_end,
       j.quote_id, j.progress_percent, j.detail_json,
       coalesce((SELECT jsonb_agg(jsonb_build_object('id', h.stage_event_id, 'fromStage', h.from_stage,
         'toStage', h.to_stage, 'actorId', h.actor_id, 'note', h.note, 'occurredAt', h.occurred_at)
@@ -468,6 +476,8 @@ export async function listJobs(db: Queryable): Promise<JobScreenReadModel[]> {
     family: row.job_family, clientId: row.client_id, client: row.client_name, title: row.title,
     ...(row.reporting_year === null ? {} : { reportingYear: row.reporting_year }), status: row.status,
     workflowStage: row.workflow_stage, owner: row.owner_name, startDate: dateOnly(row.start_date), dueDate: dateOnly(row.due_date),
+    reportingPeriod: row.reporting_period_start === null || row.reporting_period_end === null ? null
+      : { from: dateOnly(row.reporting_period_start), to: dateOnly(row.reporting_period_end) },
     ...(row.quote_id === null ? {} : { quoteId: row.quote_id }), progressPct: row.progress_percent },
     detail: asDetail(row.job_family, row.detail_json), stageHistory: row.stage_history ?? [] }));
 }

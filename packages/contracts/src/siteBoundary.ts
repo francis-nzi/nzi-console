@@ -76,9 +76,15 @@ export function reportingPeriodForYear(labelYear: number, financialYearEndMonth:
  * Forward only: this derives the year of a period being entered now. An existing job's year is
  * read from the row, never re-derived. The characterisation test pinned in #210 states the
  * difference in full and fails if either rule moves.
+ *
+ * **No period, no year.** A family that does not report on a period has nothing to label, so this
+ * returns null rather than a number invented from a start date. A training job carrying a reporting
+ * year it never reported against is a value that reads as a fact and is not one.
  */
-export function reportingYearForPeriod(periodEnd: string): number {
-  return Number(periodEnd.slice(0, 4));
+export function reportingYearForPeriod(periodEnd: string | null | undefined): number | null {
+  if (!periodEnd) return null;
+  const year = Number(periodEnd.slice(0, 4));
+  return Number.isInteger(year) ? year : null;
 }
 
 export type SiteLifecycleStatus =

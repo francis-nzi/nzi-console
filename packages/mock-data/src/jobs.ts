@@ -31,6 +31,12 @@ export type JobHeader = {
   dueDate: string;
   quoteId?: string;
   progressPct: number;
+  /**
+   * The period the job reports on, as entered (NZC-092); absent for a family that reports on none.
+   * Optional here because the illustrative fixtures predate the columns — the backend read model
+   * types it as required-or-null, which is the shape a real job has.
+   */
+  reportingPeriod?: { from: string; to: string } | null;
 };
 
 export type CrpDetail = { kind: "crp"; reportingPeriod: string; includedScopes: string[]; reviewedRows: number; totalRows: number };

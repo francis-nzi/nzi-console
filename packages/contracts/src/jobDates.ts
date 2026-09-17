@@ -1,4 +1,4 @@
-import type { CommandIssue } from "./commands";
+import { familyHasReportingPeriod, type CommandIssue, type WorkflowJobFamily } from "./commands";
 
 /**
  * The four dates a job carries, and what counts as a plausible one (Part 1, Task E).
@@ -29,9 +29,13 @@ export function plausibleYearRange(today: Date = new Date()): { min: number; max
 export type JobDateFields = {
   startDate: string;
   dueDate: string;
-  reportingPeriodStart: string;
-  reportingPeriodEnd: string;
+  /** Present only for a family that reports on a period — see `familyHasReportingPeriod`. */
+  reportingPeriodStart?: string | null;
+  reportingPeriodEnd?: string | null;
 };
+
+/** The two dates every job has, whatever it is for. The other two belong to a reporting family. */
+const ALWAYS_REQUIRED = ["startDate", "dueDate"] as const;
 
 /** What each field is called on screen, so a message names the field the consultant sees. */
 export const JOB_DATE_LABELS: Record<keyof JobDateFields, string> = {
@@ -60,10 +64,22 @@ const ORDERED_PAIRS = [
 ] as const;
 
 /**
- * Every issue with a job's four dates, as command issues, for the create path and any edit path
- * that ever exists. Returns an empty array when all four are present, real, plausible and ordered.
+ * Every issue with a job's dates, as command issues, for the create path and any edit path that
+ * ever exists.
+ *
+ * **Which dates are required depends on the family; whether a date is valid does not.** A training
+ * job needs no reporting period, so its absence is not an issue — but if one is supplied anyway,
+ * it is held to exactly the same window and ordering as a CRP job's. The requirement is
+ * family-driven and the validation is value-driven, and keeping those separate is what stops "this
+ * family need not have a period" from quietly becoming "this family's dates are not checked".
  */
-export function jobDateIssues(input: Partial<JobDateFields>, today: Date = new Date()): CommandIssue[] {
+export function jobDateIssues(
+  input: Partial<JobDateFields>,
+  options: { family?: WorkflowJobFamily; today?: Date } = {},
+): CommandIssue[] {
+  const today = options.today ?? new Date();
+  // No family named means every date is required — the caller is validating a shape, not a job.
+  const periodRequired = options.family === undefined || familyHasReportingPeriod(options.family);
   const issues: CommandIssue[] = [];
   const { min, max } = plausibleYearRange(today);
   const valid = new Set<keyof JobDateFields>();
@@ -71,8 +87,9 @@ export function jobDateIssues(input: Partial<JobDateFields>, today: Date = new D
   for (const field of Object.keys(JOB_DATE_LABELS) as (keyof JobDateFields)[]) {
     const label = JOB_DATE_LABELS[field];
     const value = input[field];
+    const required = (ALWAYS_REQUIRED as readonly string[]).includes(field) || periodRequired;
     if (value === undefined || value === null || value === "") {
-      issues.push({ field, code: "REQUIRED", message: `${label} is required.` });
+      if (required) issues.push({ field, code: "REQUIRED", message: `${label} is required.` });
       continue;
     }
     if (!isRealIsoDate(value)) {

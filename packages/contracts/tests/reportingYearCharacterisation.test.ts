@@ -17,8 +17,14 @@ import { reportingPeriodForYear } from "../src/siteBoundary";
  * about which of hundreds of stored `reporting_year` values still mean what they used to.
  *
  * **The instruction it serves: forward-derive only.** Existing jobs keep the reporting year they
- * were stored with, and their period dates are back-filled to be consistent with it. Nothing below
- * may change when Part 1 lands; if something does, the change has reached backwards.
+ * were stored with, and their period stays **null** — `0091` backfills nothing (NZC-092). An
+ * earlier draft of this comment said the periods were back-filled to be consistent; they are not,
+ * and deliberately so. A period computed from a stored year would be invented under the start-year
+ * convention and then read back under the end-year one, moving a March year end's FY24 to FY25
+ * without anyone touching it. A null period says "not recorded", which is true; a fabricated one
+ * would say something false in the same shape as a fact.
+ *
+ * Nothing below may change when Part 1 lands; if something does, the change has reached backwards.
  */
 
 /** Every financial-year end the system supports, against a spread of years. */
