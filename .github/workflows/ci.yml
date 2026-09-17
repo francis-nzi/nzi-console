@@ -32,6 +32,7 @@ jobs:
       # build and every test, which is exactly how one reached a PR on #194 (NZC-086). It costs
       # a second and it fails fast.
       - run: npm run check:conflicts
+      - run: npm run check:decisions
       - run: npm run typecheck
       - run: npm run build
       - run: npm test -w @nzi/contracts
