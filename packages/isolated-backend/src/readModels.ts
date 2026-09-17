@@ -7,7 +7,7 @@ import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues }
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
-import { clientReferences } from "./clientReference";
+import { clientReferences, type ClientReferences } from "./clientReference";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly } from "./dates";
@@ -27,6 +27,14 @@ export type ClientScreenReadModel = {
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   /** NZC-022 "own clients" — the staff user who owns the client. */
   ownerUserId: string | null;
+  /**
+   * NZC-090 — the four identity references, each already resolved to a label a surface can render
+   * without checking anything first. `sector`, `owner` and the profile's `referral` and
+   * `clientManager` carry the same labels, so nothing has to read this to display correctly; it
+   * is here for a surface that wants the id, or wants to say that a value is the client's own text
+   * rather than a curated one.
+   */
+  references: ClientReferences;
   /** The uploaded logo; null = show the monogram. */
   logoAssetId: string | null;
   jobs: Array<{ number: string; year: number; status: string }>;
