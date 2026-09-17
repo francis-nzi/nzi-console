@@ -15,7 +15,8 @@
     "migrate:baseline": "node scripts/migrate.mjs baseline",
     "reminder-worker": "tsx scripts/reminder-worker.ts",
     "seed:portal-acceptance": "tsx scripts/seed-portal-acceptance.ts",
-    "seed:reference-data": "tsx scripts/seed-reference-data.ts"
+    "seed:reference-data": "tsx scripts/seed-reference-data.ts",
+    "backfill:client-references": "tsx scripts/backfill-client-references.ts"
   },
   "dependencies": {
     "@nzi/charts": "*",

@@ -95,3 +95,7 @@ jobs:
       # file, an edited list, a later loader — and every one arrives as state the first run left.
       - name: The reference-data import is idempotent and converges
         run: npx tsx --test packages/isolated-backend/tests/referenceDataImport.test.ts
+      # Carrying the free-text client fields onto the references (NZC-090). The assertions that
+      # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
+      - name: The client reference backfill loses nothing
+        run: npx tsx --test packages/isolated-backend/tests/clientReferenceBackfill.test.ts
