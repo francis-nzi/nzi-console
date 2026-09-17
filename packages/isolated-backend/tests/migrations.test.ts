@@ -625,3 +625,45 @@ describe("0088 — tour seen-state is per person, and per version", () => {
     assert.match(ddl, /REVOKE DELETE ON nzi_console\.help_tour_seen FROM nzi_console_app/);
   });
 });
+
+describe("0091 — a job records the period it reports on", () => {
+  const ddl = readFileSync(resolve(here, "../migrations/0091_job_reporting_period.sql"), "utf8");
+
+  it("stores the period the consultant entered, rather than recomputing it", () => {
+    // reporting_year alone cannot answer "which period is this?" for a non-December year end, and
+    // the reconstruction from year + financial_year_end_month is only correct while every job's
+    // period is exactly the client's financial year.
+    assert.match(ddl, /ADD COLUMN reporting_period_start date/);
+    assert.match(ddl, /ADD COLUMN reporting_period_end date/);
+  });
+
+  it("leaves every existing job's period null rather than inventing one", () => {
+    // Forward-derive only (#210). A backfill would compute dates under the start-year convention
+    // that Part 1 then reads back under the end-year one, silently moving FY24 to FY25.
+    assert.doesNotMatch(ddl, /UPDATE nzi_console\.jobs/);
+    // Per added column, not per file: the partial index legitimately says IS NOT NULL, and a
+    // blanket search for those two words finds it and calls the migration wrong.
+    const added = ddl.split("\n").filter((line) => line.includes("ADD COLUMN"));
+    assert.equal(added.length, 3, "three columns are added");
+    for (const line of added) assert.ok(!line.includes("NOT NULL"), `${line.trim()} must stay nullable`);
+  });
+
+  it("refuses a period that ends before it starts, in the database", () => {
+    // The server validator can be bypassed by a future writer; this cannot.
+    assert.match(ddl, /CONSTRAINT jobs_reporting_period_ordered/);
+    assert.match(ddl, /reporting_period_start < reporting_period_end/);
+  });
+
+  it("makes the client manager a real member, the way 0090 did for clients", () => {
+    assert.match(ddl, /CONSTRAINT jobs_manager_membership_fk/);
+    assert.match(ddl, /REFERENCES nzi_console\.memberships \(organisation_id, user_id\)/);
+  });
+
+  it("adds no second column meaning what owner_name already means", () => {
+    // owner_name is a name typed when there was no roster — exactly the text half of the NZC-090
+    // pattern. A client_manager_name beside it would be two columns for one fact, and two columns
+    // for one fact drift apart.
+    assert.doesNotMatch(ddl, /ADD COLUMN client_manager_name/);
+    assert.match(ddl, /ADD COLUMN client_manager_user_id text/);
+  });
+});
