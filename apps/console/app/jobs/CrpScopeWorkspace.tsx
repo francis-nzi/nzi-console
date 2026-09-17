@@ -45,7 +45,7 @@ import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion"
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
-import { formatDateTime } from "../lib/formatDate";
+import { formatDate, formatDateTime } from "../lib/formatDate";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -542,7 +542,7 @@ function DatasetPanel({
         </div>
         {datasets[0] && (
           <span className="nz-st done">
-            {datasets[0].reportingFrom} → {datasets[0].reportingTo} ·{" "}
+            {formatDate(datasets[0].reportingFrom)} → {formatDate(datasets[0].reportingTo)} ·{" "}
             {datasets[0].jobCountryCode}
           </span>
         )}

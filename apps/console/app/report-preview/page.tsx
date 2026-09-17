@@ -15,6 +15,7 @@ import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
+import { formatDateTime } from "../lib/formatDate";
 import {validateManifest} from "@nzi/charts";
 import {ReportValidationAction} from "./ReportValidationAction";
 
@@ -88,7 +89,7 @@ function LiveSnapshotPreview({
   return (
     <main className="nz-preview-canvas">
       <section className="nz-preview-sheet">
-        <header className="nz-preview-head"><span className="nz-eyebrow">Database-backed reviewed snapshot · {snapshot.jobNumber}</span><h1>{snapshot.reportingYear} Carbon performance</h1><p>Snapshot v{snapshot.version} · created {snapshot.createdAt}</p><span className={`nz-st ${validation.valid?"done":"nof"}`}>{validation.valid?"Manifest ready":"Validation blocked"}</span><div className="nz-preview-hash"><span>Evidence hash</span><b className="num">{snapshot.dataHash}</b></div></header>
+        <header className="nz-preview-head"><span className="nz-eyebrow">Database-backed reviewed snapshot · {snapshot.jobNumber}</span><h1>{snapshot.reportingYear} Carbon performance</h1><p>Snapshot v{snapshot.version} · created {formatDateTime(snapshot.createdAt)}</p><span className={`nz-st ${validation.valid?"done":"nof"}`}>{validation.valid?"Manifest ready":"Validation blocked"}</span><div className="nz-preview-hash"><span>Evidence hash</span><b className="num">{snapshot.dataHash}</b></div></header>
         <div className="nz-banner warn">
           <div>
             <b>Preview only — publication remains controlled.</b>
