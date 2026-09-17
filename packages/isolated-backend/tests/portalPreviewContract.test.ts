@@ -123,17 +123,34 @@ describe("the staff portal preview renders against its contract", { skip: DATABA
   });
 
   it("audits the open against the staff actor, never the client", async () => {
-    const before = await pool.query<{ n: string }>(
-      `SELECT count(*) n FROM nzi_console.audit_events WHERE organisation_id=$1 AND action='portal.preview.open'`, [ORG]);
+    // Identified by set difference, not by ordering.
+    //
+    // `audit_event_id` is `audit-<randomUUID()>` — random text. `ORDER BY audit_event_id` sorts it
+    // alphabetically, which has nothing to do with when anything happened, so "the last row" was
+    // an arbitrary row. With events present for both this client and the bare one, the wrong event
+    // sorted last often enough to fail intermittently.
+    //
+    // The difference between the ids before and after is exactly the event this call wrote, which
+    // needs no ordering at all. It is also self-adjudicating: scoping the query to CLIENT would
+    // have made the client_id assertion tautological, whereas this still fails if the production
+    // path writes the wrong client.
+    const ids = async () => new Set((await pool.query<{ audit_event_id: string }>(
+      `SELECT audit_event_id FROM nzi_console.audit_events
+        WHERE organisation_id=$1 AND action='portal.preview.open'`, [ORG])).rows.map((row) => row.audit_event_id));
+
+    const before = await ids();
     await getPortalPreview(pool, staff(), { clientId: CLIENT, today: today() });
-    const rows = await pool.query<{ actor_id: string; principal_type: string; client_id: string }>(
+    const after = await ids();
+
+    const written = [...after].filter((id) => !before.has(id));
+    assert.equal(written.length, 1, "one event per open");
+
+    const event = (await pool.query<{ actor_id: string; principal_type: string; client_id: string }>(
       `SELECT actor_id, principal_type, client_id FROM nzi_console.audit_events
-        WHERE organisation_id=$1 AND action='portal.preview.open' ORDER BY audit_event_id`, [ORG]);
-    assert.equal(rows.rows.length, Number(before.rows[0]!.n) + 1, "one event per open");
-    const latest = rows.rows.at(-1)!;
-    assert.equal(latest.actor_id, ACTOR);
-    assert.equal(latest.principal_type, "staff");
-    assert.equal(latest.client_id, CLIENT, "the client is the subject, never the actor");
+        WHERE organisation_id=$1 AND audit_event_id=$2`, [ORG, written[0]])).rows[0]!;
+    assert.equal(event.actor_id, ACTOR);
+    assert.equal(event.principal_type, "staff");
+    assert.equal(event.client_id, CLIENT, "the client is the subject, never the actor");
   });
 
   it("refuses a staff member without the capability", async () => {
