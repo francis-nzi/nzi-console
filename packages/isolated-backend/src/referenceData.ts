@@ -1,3 +1,4 @@
+import { DEFAULT_STAFF_ROLE } from "@nzi/contracts";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -64,6 +65,14 @@ export type ImportOutcome = {
 };
 
 const normalise = (label: string) => label.trim().toLowerCase();
+
+/**
+ * Where a newly-rostered person starts.
+ *
+ * DEFAULT_STAFF_ROLE is the project's own least-privilege answer — "a new staff user starts
+ * read-only" — and the import uses it rather than the role the source list claims.
+ */
+const LEAST_PRIVILEGE_ROLE = DEFAULT_STAFF_ROLE;
 
 /** A stable id from the category and the value's identity — readable in a URL and in a log. */
 function valueIdFor(categoryKey: string, input: ReferenceValueInput): string {
@@ -252,17 +261,40 @@ export async function listTeamMembers(db: Queryable, options: { activeOnly?: boo
  */
 export async function importTeamMembers(
   pool: PoolLike,
-  input: { organisationId: string; actorId: string; members: readonly TeamMemberInput[] },
-): Promise<{ updated: number; unchanged: number; unknown: string[] }> {
+  input: {
+    organisationId: string; actorId: string; members: readonly TeamMemberInput[];
+    /**
+     * Create a membership for someone the roster names but this system does not know.
+     *
+     * Off by default, because creating access is not an import's job. On — which the first seed
+     * needs, since none of the firm's people exist here yet — the membership is created at the
+     * **least-privilege default role**, never at whatever role the source list claims. The live
+     * export says Admin and SuperAdmin; carrying those across would let a transcribed text file
+     * hand out administrative capability, and elevation stays a deliberate, audited act in this
+     * system. Being on the roster is being nameable as a client's manager; it is not permission.
+     */
+    createMissing?: boolean;
+  },
+): Promise<{ updated: number; unchanged: number; created: number; unknown: string[] }> {
   return withTenantWrite(pool, input.organisationId, async (db: Queryable) => {
     const existing = await listTeamMembers(db, { activeOnly: false });
     const byId = new Map(existing.map((member) => [member.userId, member]));
 
-    let updated = 0, unchanged = 0;
+    let updated = 0, unchanged = 0, created = 0;
     const unknown: string[] = [];
 
     for (const member of input.members) {
-      const current = byId.get(member.userId);
+      let current = byId.get(member.userId);
+      if (!current && input.createMissing) {
+        await db.query(
+          `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email)
+           VALUES ($1,$2,$3,'active',$4,$5)
+           ON CONFLICT (organisation_id, user_id) DO NOTHING`,
+          [input.organisationId, member.userId, LEAST_PRIVILEGE_ROLE, member.displayName.trim(),
+            member.email?.trim().toLowerCase() || null]);
+        created += 1;
+        continue;
+      }
       if (!current) { unknown.push(member.userId); continue; }
       const displayName = member.displayName.trim();
       const email = member.email?.trim().toLowerCase() || null;
@@ -279,9 +311,9 @@ export async function importTeamMembers(
          (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, after_json)
        VALUES ($1,$2,$3,'staff','team.roster.imported','organisation',$1,$2,$4::jsonb)`,
       [input.organisationId, `audit-team-${Date.now()}`, input.actorId,
-        JSON.stringify({ updated, unchanged, unknown })]);
+        JSON.stringify({ updated, unchanged, created, unknown })]);
 
-    return { updated, unchanged, unknown };
+    return { updated, unchanged, created, unknown };
   });
 }
 

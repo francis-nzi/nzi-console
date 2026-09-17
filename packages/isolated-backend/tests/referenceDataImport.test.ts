@@ -8,6 +8,7 @@ import {
   importReferenceValues, importTeamMembers, listReferenceCategories,
   readReferenceValues, readTeamMembers,
 } from "../src/referenceData";
+import { readSeedLists } from "../src/referenceSeedSource";
 import { withTenantRead } from "../src/postgres";
 
 /**
@@ -213,5 +214,86 @@ describe("the team roster", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_UR
     const after = await pool.query<{ role_id: string; status: string }>(
       `SELECT role_id, status FROM nzi_console.memberships WHERE organisation_id=$1 AND user_id='m.osei'`, [ORG]);
     assert.deepEqual(after.rows[0], before.rows[0], "names and emails only");
+  });
+});
+
+describe("the real seed lists", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let pool: pg.Pool;
+  const ORG2 = "ci-seed-org";
+
+  before(async () => {
+    const admin = new pg.Client({ connectionString: DATABASE_URL });
+    await admin.connect();
+    await admin.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1,$2)
+                       ON CONFLICT DO NOTHING`, [ORG2, "CI Seed"]);
+    await admin.end();
+    pool = new pg.Pool({ connectionString: DATABASE_URL, max: 3, application_name: "nzi-seed-lists-ci" });
+  });
+  after(async () => { await pool?.end(); });
+
+  it("reads the transcription rather than a second copy of it", () => {
+    // docs/_seed_reference_data.md is the source. Restating these lists in TypeScript would be two
+    // hand-transcribed copies of the same thing, which is the drift this project keeps warning about.
+    const lists = readSeedLists();
+    assert.equal(lists.industries.length, 54);
+    assert.equal(lists.referrals.length, 25);
+    assert.equal(lists.team.length, 12, "13 legible, less the test account");
+    assert.deepEqual(lists.excluded.map((e) => e.email), ["teastadmin@netzero.international"]);
+  });
+
+  it("seeds industries with no SIC, because live has none", async () => {
+    // Inventing a code would put a wrong SIC on a client's record — the class of reporting error
+    // this redesign exists to remove. Null is the honest answer and the auto-fill stays off.
+    const lists = readSeedLists();
+    await importReferenceValues(pool, { organisationId: ORG2, actorId: ACTOR, categoryKey: "industries", values: lists.industries });
+    const values = await readReferenceValues(pool, ORG2, "industries");
+    assert.equal(values.length, 54);
+    assert.ok(values.every((v) => v.code === null), "no invented codes");
+    assert.ok(values.some((v) => v.label === "Waste Management"));
+  });
+
+  it("keeps a referral that happens to be a person's name", async () => {
+    // "David Hawes" is both a referral source and a team member. They are different facts about
+    // different things, and collapsing them would lose how a client actually arrived.
+    const lists = readSeedLists();
+    await importReferenceValues(pool, { organisationId: ORG2, actorId: ACTOR, categoryKey: "referrals", values: lists.referrals });
+    const referrals = await readReferenceValues(pool, ORG2, "referrals");
+    assert.equal(referrals.length, 25);
+    assert.ok(referrals.some((v) => v.label === "David Hawes"), "a person's name is a referral source here");
+    assert.ok(referrals.some((v) => v.label === "Website"));
+  });
+
+  it("rosters the team at least privilege, never at the live role", async () => {
+    // The transcription says Admin and SuperAdmin. Carrying those across would let a text file
+    // hand out administrative capability.
+    const lists = readSeedLists();
+    const outcome = await importTeamMembers(pool, { organisationId: ORG2, actorId: ACTOR, members: lists.team, createMissing: true });
+    assert.equal(outcome.created, 12);
+
+    const roster = await readTeamMembers(pool, ORG2);
+    const david = roster.find((m) => m.userId === "david")!;
+    assert.equal(david.displayName, "David Hawes", "the handle problem, fixed");
+    assert.equal(david.named, true);
+
+    const roles = await pool.query<{ role_id: string }>(
+      `SELECT DISTINCT role_id FROM nzi_console.memberships WHERE organisation_id=$1`, [ORG2]);
+    assert.deepEqual(roles.rows.map((r) => r.role_id), ["viewer"], "everyone starts read-only");
+    assert.ok(!roster.some((m) => m.email === "teastadmin@netzero.international"), "the test account is not selectable");
+  });
+
+  it("re-seeds the whole document without changing anything", async () => {
+    // §14 over the real lists, not just the fixtures.
+    const lists = readSeedLists();
+    const before = await readReferenceValues(pool, ORG2, "industries");
+    const industries = await importReferenceValues(pool, { organisationId: ORG2, actorId: ACTOR, categoryKey: "industries", values: lists.industries });
+    const referrals = await importReferenceValues(pool, { organisationId: ORG2, actorId: ACTOR, categoryKey: "referrals", values: lists.referrals });
+    const team = await importTeamMembers(pool, { organisationId: ORG2, actorId: ACTOR, members: lists.team, createMissing: true });
+
+    assert.equal(industries.created + industries.updated, 0);
+    assert.equal(referrals.created + referrals.updated, 0);
+    assert.equal(team.created + team.updated, 0);
+    const after = await readReferenceValues(pool, ORG2, "industries");
+    assert.deepEqual(after.map((v) => v.version), before.map((v) => v.version), "no version churn");
+    assert.equal(after.length, 54, "counted, not assumed");
   });
 });
