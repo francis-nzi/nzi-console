@@ -7,7 +7,7 @@ import {
   reportingPeriodDays,
   resolveBaseline,
   selectReportingYearJob,
-  yearsAfterBaseline,
+  periodsAfterBaseline,
   type ClientBaselineRecord,
 } from "../src/index";
 
@@ -142,16 +142,40 @@ describe("resolveBaseline (NZC-067)", () => {
   });
 });
 
-describe("yearsAfterBaseline (NZC-067)", () => {
+describe("periodsAfterBaseline (NZC-067, ordered by period per NZC-098)", () => {
+  /** A candidate with no recorded period is all the old signature ever had: a year. */
+  const y = (year: number) => ({ year });
+  /** A candidate that records the period it covers. */
+  const p = (year: number, from: string, to: string) => ({ year, period: { from, to } });
+
   it("never looks earlier than the baseline in force", () => {
-    assert.deepEqual(yearsAfterBaseline([2021, 2022, 2023, 2024], "2022-12-31"), [2023, 2024]);
+    assert.deepEqual(periodsAfterBaseline([y(2021), y(2022), y(2023), y(2024)], "2022-12-31").map((c) => c.year), [2023, 2024]);
   });
 
-  it("keeps every year when there is no baseline", () => {
-    assert.deepEqual(yearsAfterBaseline([2021, 2022], null), [2021, 2022]);
+  it("keeps every candidate when there is no baseline", () => {
+    assert.deepEqual(periodsAfterBaseline([y(2021), y(2022)], null).map((c) => c.year), [2021, 2022]);
   });
 
   it("excludes the baseline year itself — it is the start of the record, not a prior", () => {
-    assert.deepEqual(yearsAfterBaseline([2024], "2024-12-31"), []);
+    assert.deepEqual(periodsAfterBaseline([y(2024)], "2024-12-31"), []);
+  });
+
+  it("keeps a period that starts after the baseline even though its label does not", () => {
+    // The correction. A March year end: 01/04/2023-31/03/2024 is labelled 2023 under the
+    // convention every stored job used, so a baseline ending 31/12/2022 excluded it on the label
+    // while the period plainly starts fifteen months after the baseline ended.
+    const march = p(2023, "2023-04-01", "2024-03-31");
+    assert.deepEqual(periodsAfterBaseline([march], "2022-12-31"), [march]);
+  });
+
+  it("still excludes a period that genuinely starts before the baseline ends", () => {
+    // Correcting the label comparison must not turn into keeping everything.
+    assert.deepEqual(periodsAfterBaseline([p(2023, "2022-04-01", "2023-03-31")], "2022-12-31"), []);
+  });
+
+  it("is unchanged for a client whose periods are calendar years", () => {
+    // The regular case: period and label agree, so the same set survives either comparison.
+    const years = [p(2021, "2021-01-01", "2021-12-31"), p(2022, "2022-01-01", "2022-12-31"), p(2023, "2023-01-01", "2023-12-31")];
+    assert.deepEqual(periodsAfterBaseline(years, "2022-12-31").map((c) => c.year), [2023]);
   });
 });

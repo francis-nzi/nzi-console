@@ -3,6 +3,9 @@
 // four-flag integrity gap engine, and a governed sign-off that freezes the same
 // content-addressed reviewed snapshot the Report track consumes.
 
+
+/** The two dates a reporting period runs between. Structural, so any period shape satisfies it. */
+export type ReportingPeriodDates = { from: string; to: string };
 import { crpScopeCategoryLabel } from "./commands";
 
 // ── DA1a · baseline / prior-year resolution ─────────────────────────────────
@@ -45,26 +48,69 @@ export type CrpReportingChain = {
   entries: ReportingChainEntry[];
 };
 
-/** Build the ordered chain from the resolved parts. Pure. */
+/**
+ * Build the ordered chain from the resolved parts. Pure.
+ *
+ * **Ordered by period where there is one, by year where there is not (NZC-098).** "Earlier than
+ * this job" is a question about time, and the reporting year is a label: the start-year convention
+ * names a period by the year it begins and the end-year convention by the year it ends, so
+ * comparing labels asks whether one number is smaller than another and calls that chronology. For
+ * a client with an irregular period — a part-year first engagement, a transition after a year-end
+ * change — that answer is wrong, and wrong in the direction of showing a client a prior year that
+ * is not prior.
+ *
+ * Where either side has no recorded period the comparison falls back to the label, which is all
+ * such a job has ever had. For a client with one regular period per year the two tests select the
+ * same set, so nothing moves for anyone whose periods were never irregular.
+ */
 export function buildReportingChain(input: {
   jobId: string;
   clientId: string;
   currentYear: number;
   baselineYear: number | null;
-  priorSnapshots: ReadonlyArray<{ year: number; snapshotId: string; dataHash: string }>;
+  priorSnapshots: ReadonlyArray<{ year: number; snapshotId: string; dataHash: string; period?: ReportingPeriodDates | null }>;
   currentSnapshot: { snapshotId: string; dataHash: string } | null;
   priorYearCount?: number;
+  /** The period this job reports on, when it records one. */
+  currentPeriod?: ReportingPeriodDates | null;
+  /** The last day of the baseline period, when the client records one. */
+  baselinePeriodEnd?: string | null;
 }): CrpReportingChain {
   const priorYearCount = input.priorYearCount ?? 3;
-  const byYear = new Map(input.priorSnapshots.map((snap) => [snap.year, snap]));
+
+  /**
+   * Keyed by period, falling back to the year (NZC-096). Two of a client's jobs can carry the same
+   * reporting year and mean different periods, and the query feeding this already separates them —
+   * a year-keyed map here would silently put one back on top of the other.
+   */
+  const byPeriod = new Map<string, typeof input.priorSnapshots[number]>();
+  for (const snap of input.priorSnapshots) {
+    const key = snap.period ? `${snap.period.from}|${snap.period.to}` : `year:${snap.year}`;
+    if (!byPeriod.has(key)) byPeriod.set(key, snap);
+  }
 
   // A baseline is the start of the measured record, so nothing at or before it
   // belongs in the trend — priors are strictly between baseline and current.
-  const priorYears = [...byYear.keys()]
-    .filter((year) => year < input.currentYear && (input.baselineYear == null || year > input.baselineYear))
-    .sort((a, b) => b - a)
+  const isBeforeCurrent = (snap: { year: number; period?: ReportingPeriodDates | null }) =>
+    snap.period && input.currentPeriod
+      ? snap.period.to < input.currentPeriod.from
+      : snap.year < input.currentYear;
+  const isAfterBaseline = (snap: { year: number; period?: ReportingPeriodDates | null }) =>
+    snap.period && input.baselinePeriodEnd
+      ? snap.period.from > input.baselinePeriodEnd
+      : input.baselineYear == null || snap.year > input.baselineYear;
+  /** Chronological where periods allow it, by label where they do not. */
+  const endOf = (snap: { year: number; period?: ReportingPeriodDates | null }) =>
+    snap.period ? snap.period.to : `${snap.year}-12-31`;
+
+  const priors = [...byPeriod.values()]
+    .filter((snap) => isBeforeCurrent(snap) && isAfterBaseline(snap))
+    .sort((a, b) => (endOf(a) < endOf(b) ? 1 : endOf(a) > endOf(b) ? -1 : 0))
     .slice(0, priorYearCount)
-    .sort((a, b) => a - b);
+    .reverse();
+  // The baseline entry is looked up across every snapshot, not only the selected priors: the
+  // baseline is excluded from the priors by definition, so a map of priors could never hold it.
+  const byYearAll = new Map(input.priorSnapshots.map((snap) => [snap.year, snap]));
 
   const entries: ReportingChainEntry[] = [];
 
@@ -75,7 +121,7 @@ export function buildReportingChain(input: {
   const baselineIsCurrentYear = input.baselineYear != null && input.baselineYear >= input.currentYear;
 
   if (input.baselineYear != null && !baselineIsCurrentYear) {
-    const snap = byYear.get(input.baselineYear) ?? null;
+    const snap = byYearAll.get(input.baselineYear) ?? null;
     entries.push({
       year: input.baselineYear,
       kind: "baseline",
@@ -85,9 +131,8 @@ export function buildReportingChain(input: {
     });
   }
 
-  for (const year of priorYears) {
-    const snap = byYear.get(year)!;
-    entries.push({ year, kind: "prior", snapshotId: snap.snapshotId, dataHash: snap.dataHash, source: "reviewed-snapshot" });
+  for (const snap of priors) {
+    entries.push({ year: snap.year, kind: "prior", snapshotId: snap.snapshotId, dataHash: snap.dataHash, source: "reviewed-snapshot" });
   }
 
   entries.push({

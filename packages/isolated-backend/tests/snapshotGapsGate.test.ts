@@ -43,6 +43,10 @@ function gatePool(opts: { mapped: boolean }) {
       if (sql.includes("INSERT INTO nzi_console.command_idempotency")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.audit_events")) return { rows: [] };
       if (sql.includes("INSERT INTO nzi_console.transactional_outbox")) return { rows: [] };
+      // resolveCrpReportingChain, matched on the baseline-period join that only it has — it also
+      // LEFT JOINs job_emissions_config, so the NZC-070 stub below would otherwise answer it and
+      // the job would read as a non-CRP job with no family at all.
+      if (sql.includes("c.baseline_period_end")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp", period_from: null, period_to: null, baseline_period_end: null }] };
       // NZC-070 — the job's reporting period and its client's sites
       if (sql.includes("LEFT JOIN nzi_console.job_emissions_config")) return { rows: [{client_id:"client-a",reporting_from:"2026-01-01",reporting_to:"2026-12-31",start_date:"2026-01-01",due_date:"2026-12-31"}] };
       if (sql.includes("FROM nzi_console.client_sites WHERE client_id")) return { rows: [] };
@@ -56,7 +60,6 @@ function gatePool(opts: { mapped: boolean }) {
       if (sql.includes("coalesce(max(snapshot_version)")) return { rows: [{ version: 1 }] };
       if (sql.includes("SELECT snapshot_id,snapshot_version")) return { rows: [] };
       // resolveCrpReportingChain (via getAssuranceScreen → resolveAssuranceTrend)
-      if (sql.includes("FROM nzi_console.jobs WHERE job_id")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp" }] };
       if (sql.includes("SELECT baseline_year FROM")) return { rows: [] };
       if (sql.includes("DISTINCT ON") && sql.includes("reviewed_crp_snapshots")) return { rows: [] };
       if (sql.includes("ORDER BY snapshot_version DESC LIMIT 1")) return { rows: [] };

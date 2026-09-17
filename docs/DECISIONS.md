@@ -2040,3 +2040,54 @@ still never staging.
 
 **Related.** NZC-091 (a red main is not mergeable-past — this is what makes a red mean something);
 §14 (run twice, and over a dirtied database).
+
+### NZC-098 — "Earlier than this job" is a question about time, not about which number is smaller [Confirmed 17 Sep 2026]
+
+**Decision.** The assurance chain selects prior years by **period**: a job is prior when its
+reporting period ended before this job's period started, and after the baseline when its period
+starts after the baseline period ends. Where either side records no period the comparison falls
+back to the reporting year, which is all such a job has ever had.
+
+**Why the label cannot answer it.** NZC-096 established that the reporting year is a label: the
+start-year convention names a period by the year it begins, the end-year convention by the year it
+ends. `reportingYear < currentYear` therefore asks whether one number is smaller than another and
+calls the answer chronology. On one September-year-end client the two conventions meet:
+
+```
+current job (start-year label)   01/10/2025 – 30/09/2026   labelled 2025
+prior job   (end-year label)     01/10/2024 – 30/09/2025   labelled 2025
+```
+
+Adjacent, non-overlapping, one plainly after the other — and `2025 < 2025` is false, so the
+immediately preceding year was dropped out of the client's assurance trend with nothing reporting
+the omission. The same comparison in the other direction admits an *overlapping* period because its
+label happens to be smaller.
+
+**This changes existing output for irregular clients, and that is the point.** A client whose
+periods have ever been irregular — a part-year first engagement, a transition after a year-end
+change, a job created under one convention beside one created under the other — will see a
+different prior-year set than before. That set is the correct one; the previous one was wrong.
+For a client with one calendar period per job, both comparisons select the same jobs in the same
+order, so nothing moves. Every test states both halves.
+
+**The baseline is compared to a date it already had.** `yearsAfterBaseline` received the baseline's
+period **end** and immediately discarded the day and month — `Number(baselinePeriodEnd.slice(0, 4))`
+— then compared years. It had the exact date in hand and reduced it to the one part that cannot
+answer the question. It is now `periodsAfterBaseline`, comparing a candidate's start against the
+baseline's end. It had **no production caller**, only tests, so this corrects an exported helper
+rather than a behaviour — and leaving a known-wrong helper for someone to pick up later is the same
+mistake as a decision record nobody wrote.
+
+**The chain's own map was keyed by year too.** NZC-096 made the feeding query separate periods; a
+year-keyed map one function downstream put them straight back together. It is keyed by period now,
+so that fix survives the trip.
+
+**Not in this change: the rollforward's prior-job selection.** That is recomputed on read rather
+than persisted, so changing its basis is retroactive — and STEP 0 of that work established that a
+rollforward is a **per-act** relationship, not a per-job one: `scope.row.rollforward` takes a prior
+job and a row subset per call, and nothing stops two calls naming different prior jobs. A single
+`prior_job_id` on `jobs` would be a lossy, authoritative-looking wrong answer. It is taken
+separately, reading the recorded origins rather than a second copy of them.
+
+**Related.** NZC-096 (the period is the identity); NZC-059 / NZC-067 (the chain and the 300–400 day
+rule, both unchanged); NZC-063 (rollforward, deliberately not touched here).

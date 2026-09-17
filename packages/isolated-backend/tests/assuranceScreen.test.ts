@@ -20,7 +20,7 @@ function screenPool(opts: { depot?: boolean } = {}) {
   const client = {
     async query(sql: string, values: readonly unknown[] = []) {
       if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
-      if (sql.includes("FROM nzi_console.jobs WHERE job_id")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp" }] };
+      if (sql.includes("FROM nzi_console.jobs j")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp" }] };
       if (sql.includes("job_emissions_targets")) return { rows: [{ baseline_year: 2022 }] };
       if (sql.includes("DISTINCT ON") && sql.includes("reviewed_crp_snapshots")) return { rows: [{ snapshot_id: "s-2025", data_hash: "sha256:2025", reporting_year: 2025 }] };
       if (sql.includes("ORDER BY snapshot_version DESC LIMIT 1")) return { rows: [] }; // no current snapshot → live
@@ -94,7 +94,7 @@ describe("getAssuranceScreen (DA3a)", () => {
   });
 
   it("returns null for a non-CRP job", async () => {
-    const client = { async query(sql: string) { return sql.includes("FROM nzi_console.jobs WHERE job_id") ? { rows: [{ client_id: "c", reporting_year: 2026, start_date: "2026-01-01", job_family: "lca" }] } : { rows: [] }; }, release() {} };
+    const client = { async query(sql: string) { return sql.includes("FROM nzi_console.jobs j") ? { rows: [{ client_id: "c", reporting_year: 2026, start_date: "2026-01-01", job_family: "lca" }] } : { rows: [] }; }, release() {} };
     assert.equal(await withTenantRead({ connect: async () => client } as never, "org-a", (db) => getAssuranceScreen(db, "job-a")), null);
   });
 });
