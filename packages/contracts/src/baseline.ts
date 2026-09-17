@@ -155,10 +155,25 @@ export function resolveBaseline(input: {
 
 /**
  * Never look earlier than the baseline in force. A baseline is the start of the measured
- * record, so a year at or before it is not a "prior year" — it is outside the record.
+ * record, so a period at or before it is not a "prior year" — it is outside the record.
+ *
+ * **Compared by period, not by label (NZC-098).** This took the baseline's period end and
+ * immediately threw the day and month away — `Number(baselinePeriodEnd.slice(0, 4))` — then asked
+ * whether one year number exceeded another. It had the exact date in its hand and reduced it to
+ * the one part that cannot answer the question: for a March year end, a period running
+ * 01/04/2024–31/03/2025 is labelled 2024 under the convention every stored job used, so a baseline
+ * ending 31/12/2024 would exclude a period that in fact starts after it.
+ *
+ * A period is after the baseline when it **starts** after the baseline ends. Where a candidate has
+ * no recorded period the label is all it has, and the old comparison is kept for it.
  */
-export function yearsAfterBaseline(years: readonly number[], baselinePeriodEnd: string | null): number[] {
-  if (baselinePeriodEnd === null) return [...years];
+export function periodsAfterBaseline<T extends { year: number; period?: { from: string; to: string } | null }>(
+  candidates: readonly T[],
+  baselinePeriodEnd: string | null,
+): T[] {
+  if (baselinePeriodEnd === null) return [...candidates];
   const baselineYear = Number(baselinePeriodEnd.slice(0, 4));
-  return years.filter((year) => year > baselineYear);
+  return candidates.filter((candidate) => candidate.period
+    ? candidate.period.from > baselinePeriodEnd
+    : candidate.year > baselineYear);
 }

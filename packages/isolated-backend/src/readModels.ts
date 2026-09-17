@@ -10,9 +10,9 @@ import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, Assu
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
-import { dateOnly } from "./dates";
+import { dateOnly, periodKeyOf, samePeriod } from "./dates";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
-export { dateOnly } from "./dates";
+export { dateOnly, periodKeyOf, samePeriod } from "./dates";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -234,8 +234,17 @@ export function resolveYearDenominators(input: {
 }): Record<string, ClientYearDenominator> {
   const out: Record<string, ClientYearDenominator> = {};
   for (const definition of input.definitions) {
-    const recorded = input.values.find((value) =>
-      value.metricKey === definition.key && value.reportingYear === input.reportingYear && value.periodKey === "year");
+    // Matched by period where both sides have one, and by the label only where they do not
+    // (NZC-096). Two of a client's jobs can carry the same reporting year and mean different
+    // periods, and `.find()` on the label alone then returns whichever row happened to come first —
+    // a turnover from one year divided into another year's emissions, reported as an intensity
+    // figure with nothing to show it is wrong.
+    //
+    // For a client with one job per year the two tests select the same row, so this changes no
+    // output that was already correct.
+    const forMetric = input.values.filter((value) => value.metricKey === definition.key && value.periodKey === "year");
+    const recorded = forMetric.find((value) => samePeriod(value.period, input.period))
+      ?? forMetric.find((value) => value.period == null && value.reportingYear === input.reportingYear);
     const { value, source, reason } = denominatorFor({ definition, recorded, sites: input.sites, period: input.period });
     out[definition.key] = reason === undefined ? { value, source } : { value, source, reason };
   }
@@ -428,22 +437,57 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
 }
 
 /**
- * The snapshot that stands for each reporting year, newest year first. A job stands for
- * a year only if its reporting period — set from the client's financial year end at
- * issue — is 300–400 days (NZC-067); among eligible jobs the latest period end wins,
- * then the highest job id, then the job's latest snapshot version.
+ * The snapshot that stands for each reporting **period**, newest period first. A job stands for a
+ * period only if that period is 300–400 days (NZC-067); among snapshots of one period the highest
+ * job id wins, then the job's latest snapshot version.
+ *
+ * **Keyed by the period, not the year (NZC-096).** This used to key by
+ * `payload_json.reportingYear`, which is a label: the start-year convention names a period by the
+ * year it begins and the end-year convention by the year it ends, so one client can hold two
+ * different periods under one number. Keyed by the year, the second silently replaced the first and
+ * a year of reviewed emissions left the client's history with nothing reporting that it had.
+ *
+ * For a client whose periods do not collide — the ordinary case — this returns exactly what it
+ * always did, because one period per year means the two keys partition the rows identically.
  */
 export function reportingYearSnapshots<T extends { job_id: string; snapshot_version: number; payload_json: { reportingYear: number }; reporting_from: Date | string | null; reporting_to: Date | string | null }>(rows: readonly T[]): T[] {
-  const byYear = new Map<number, T>();
+  const byPeriod = new Map<string, T>();
   for (const row of rows) {
     if (row.reporting_from == null || row.reporting_to == null) continue;
     const from = dateOnly(row.reporting_from), to = dateOnly(row.reporting_to);
     if (!isEligibleReportingYear(from, to)) continue;
-    const year = Number(row.payload_json.reportingYear), held = byYear.get(year);
-    const heldTo = held ? dateOnly(held.reporting_to!) : "";
-    if (!held || to > heldTo || (to === heldTo && (row.job_id > held.job_id || (row.job_id === held.job_id && row.snapshot_version > held.snapshot_version)))) byYear.set(year, row);
+    const key = periodKeyOf(from, to), held = byPeriod.get(key);
+    if (!held || row.job_id > held.job_id || (row.job_id === held.job_id && row.snapshot_version > held.snapshot_version)) byPeriod.set(key, row);
   }
-  return [...byYear.entries()].sort(([a], [b]) => b - a).map(([, row]) => row);
+  // Newest period first, by the date it **ends** — the same order the year gave for a client with
+  // one job per year, and the right one when two periods share a label. Sorting the key itself
+  // would order by start date, which differs the moment a part-year period is in play.
+  const ordered = [...byPeriod.values()].sort((a, b) => {
+    const [aTo, bTo] = [dateOnly(a.reporting_to!), dateOnly(b.reporting_to!)];
+    if (aTo !== bTo) return aTo < bTo ? 1 : -1;
+    const [aFrom, bFrom] = [dateOnly(a.reporting_from!), dateOnly(b.reporting_from!)];
+    return aFrom < bFrom ? 1 : aFrom > bFrom ? -1 : 0;
+  });
+
+  /**
+   * Distinct periods, but never two that describe the same span.
+   *
+   * Keying by period is what lets two **adjacent** periods sharing a label both stand — the
+   * collision NZC-096 closes. It must not also let two **overlapping** periods both stand: a
+   * client that changed its financial year end can hold 01/01/2024–31/12/2024 and
+   * 01/04/2024–31/03/2025, which are different periods covering nine of the same months, and
+   * showing both would describe that time twice in one history.
+   *
+   * The year key used to prevent this as a side effect of being coarse. Stated properly: among
+   * overlapping periods the latest end wins, which is the preference NZC-067 already expressed.
+   */
+  const kept: T[] = [];
+  for (const row of ordered) {
+    const from = dateOnly(row.reporting_from!), to = dateOnly(row.reporting_to!);
+    const overlapped = kept.some((held) => from <= dateOnly(held.reporting_to!) && dateOnly(held.reporting_from!) <= to);
+    if (!overlapped) kept.push(row);
+  }
+  return kept;
 }
 
 /**
@@ -608,23 +652,57 @@ export async function listReportSections(db:Queryable,jobId:string):Promise<Repo
  * (< current); current year is this job's own reviewed snapshot or `live`.
  */
 export async function resolveCrpReportingChain(db: Queryable, jobId: string): Promise<CrpReportingChain | null> {
-  const jobResult = await db.query<{ client_id: string; reporting_year: number | null; start_date: Date | string; job_family: string }>(
-    `SELECT client_id, reporting_year, start_date, job_family FROM nzi_console.jobs WHERE job_id=$1`, [jobId],
+  const jobResult = await db.query<{
+    client_id: string; reporting_year: number | null; start_date: Date | string; job_family: string;
+    period_from: Date | string | null; period_to: Date | string | null; baseline_period_end: Date | string | null;
+  }>(
+    // The job's own period (its stored dates, else its emissions-config window) and the client's
+    // baseline period end, so "earlier than this job" and "after the baseline" are both asked of
+    // dates rather than of labels (NZC-098).
+    `SELECT j.client_id, j.reporting_year, j.start_date, j.job_family,
+            coalesce(j.reporting_period_start, ec.reporting_from) AS period_from,
+            coalesce(j.reporting_period_end,   ec.reporting_to)   AS period_to,
+            c.baseline_period_end
+       FROM nzi_console.jobs j
+       LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id, ec.job_id) = (j.organisation_id, j.job_id)
+       JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
+      WHERE j.job_id=$1`, [jobId],
   );
   const job = jobResult.rows[0];
   if (!job || job.job_family !== "crp") return null;
   const currentYear = job.reporting_year ?? Number((job.start_date instanceof Date ? job.start_date.toISOString() : String(job.start_date)).slice(0, 4));
+  const currentPeriod = job.period_from && job.period_to
+    ? { from: dateOnly(job.period_from), to: dateOnly(job.period_to) }
+    : null;
+  const baselinePeriodEnd = job.baseline_period_end ? dateOnly(job.baseline_period_end) : null;
 
   const [targetResult, priorResult, currentResult] = await Promise.all([
     db.query<{ baseline_year: number }>(`SELECT baseline_year FROM nzi_console.job_emissions_targets WHERE job_id=$1`, [jobId]),
-    db.query<{ snapshot_id: string; data_hash: string; reporting_year: number }>(
-      `SELECT DISTINCT ON ((s.payload_json->>'reportingYear')::integer)
-         s.snapshot_id, s.data_hash, (s.payload_json->>'reportingYear')::integer AS reporting_year
+    db.query<{ snapshot_id: string; data_hash: string; reporting_year: number; period_from: Date | string | null; period_to: Date | string | null }>(
+      // One snapshot per prior reporting **period**, not per label (NZC-096). Two of a client's
+      // jobs can carry the same reportingYear and mean different periods; DISTINCT ON the label
+      // kept one of them and dropped the other's assured total out of the comparison silently.
+      // The period is the job's own recorded dates, else its emissions-config window — a job that
+      // has a period never reconstructs one. Where neither exists the label still separates the
+      // rows, which is all such a job has ever had.
+      //
+      // Candidates come back **with their periods** and are filtered chronologically by the chain
+      // builder (NZC-098). The SQL no longer excludes by label: under the end-year convention a
+      // job whose period ends before this one starts can carry a *larger* reporting year, and
+      // `reportingYear < currentYear` would have hidden exactly the prior year being looked for.
+      `SELECT DISTINCT ON (coalesce(pj.reporting_period_start, ec.reporting_from, make_date((s.payload_json->>'reportingYear')::integer, 1, 1)),
+                           coalesce(pj.reporting_period_end,   ec.reporting_to,   make_date((s.payload_json->>'reportingYear')::integer, 12, 31)))
+         s.snapshot_id, s.data_hash, (s.payload_json->>'reportingYear')::integer AS reporting_year,
+         coalesce(pj.reporting_period_start, ec.reporting_from) AS period_from,
+         coalesce(pj.reporting_period_end,   ec.reporting_to)   AS period_to
        FROM nzi_console.reviewed_crp_snapshots s
        JOIN nzi_console.jobs pj ON (pj.organisation_id, pj.job_id) = (s.organisation_id, s.job_id)
-       WHERE pj.client_id = $1 AND pj.job_family = 'crp' AND (s.payload_json->>'reportingYear')::integer < $2
-       ORDER BY (s.payload_json->>'reportingYear')::integer, s.snapshot_version DESC`,
-      [job.client_id, currentYear],
+       LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id, ec.job_id) = (pj.organisation_id, pj.job_id)
+       WHERE pj.client_id = $1 AND pj.job_family = 'crp' AND pj.job_id <> $2
+       ORDER BY coalesce(pj.reporting_period_start, ec.reporting_from, make_date((s.payload_json->>'reportingYear')::integer, 1, 1)),
+                coalesce(pj.reporting_period_end,   ec.reporting_to,   make_date((s.payload_json->>'reportingYear')::integer, 12, 31)),
+                s.snapshot_version DESC`,
+      [job.client_id, jobId],
     ),
     db.query<{ snapshot_id: string; data_hash: string }>(
       `SELECT snapshot_id, data_hash FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC LIMIT 1`, [jobId],
@@ -636,7 +714,12 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
     clientId: job.client_id,
     currentYear,
     baselineYear: targetResult.rows[0]?.baseline_year ?? null,
-    priorSnapshots: priorResult.rows.map((row) => ({ year: row.reporting_year, snapshotId: row.snapshot_id, dataHash: row.data_hash })),
+    priorSnapshots: priorResult.rows.map((row) => ({
+      year: row.reporting_year, snapshotId: row.snapshot_id, dataHash: row.data_hash,
+      period: row.period_from && row.period_to ? { from: dateOnly(row.period_from), to: dateOnly(row.period_to) } : null,
+    })),
+    currentPeriod,
+    baselinePeriodEnd,
     currentSnapshot: currentResult.rows[0] ? { snapshotId: currentResult.rows[0].snapshot_id, dataHash: currentResult.rows[0].data_hash } : null,
   });
 }

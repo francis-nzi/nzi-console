@@ -32,10 +32,21 @@ export type IntensityMetricDefinition = {
   ordering: number;
 };
 
-/** One recorded value: this job, this reporting year, this metric. */
+/** One recorded value: this job, this reporting period, this metric. */
 export type IntensityMetricValue = {
   metricKey: string;
+  /**
+   * The label the value was stored under. Kept because it is what the capture screen shows and
+   * what the row is keyed by within its own job — but **not** what a client-wide read matches on:
+   * two of a client's jobs can share this number and mean different periods (NZC-096).
+   */
   reportingYear: number;
+  /**
+   * The period the owning job reports on — the identity a client-wide read matches by. Null only
+   * when the job records no period and none can be resolved for it, in which case the reader falls
+   * back to the label.
+   */
+  period?: { from: string; to: string } | null;
   /** `year` today. The seam for monthly/quarterly capture, which arrives through the job. */
   periodKey: string;
   value: number | null;

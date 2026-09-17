@@ -1,6 +1,7 @@
 import { reportingPeriodForYear, type IntensityMetricDefinition, type ReportingPeriod } from "@nzi/contracts";
 import { listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { getPortalAssuredDashboard } from "./portalAnalytics";
+import { dateOnly, samePeriod } from "./dates";
 import type { Queryable } from "./postgres";
 import { listGrantedPortalJobs, resolveYearDenominators, type ClientYearDenominator } from "./readModels";
 import { listClientSites } from "./siteBoundary";
@@ -51,7 +52,7 @@ export type PortalIntensityReadModel = {
 type ClientRow = { name: string; financial_year_end_month: number | null };
 type PeriodRow = { reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null };
 
-const dateOnly = (value: Date | string) => (value instanceof Date ? value.toISOString() : String(value)).slice(0, 10);
+
 
 export async function getPortalClientIntensity(
   db: Queryable,
@@ -67,7 +68,7 @@ export async function getPortalClientIntensity(
     // the same boundary the console uses. Grant-joined: a job this user cannot see cannot
     // contribute a period.
     db.query<PeriodRow>(
-      `SELECT j.reporting_year,c.reporting_from,c.reporting_to
+      `SELECT j.reporting_year,coalesce(j.reporting_period_start,c.reporting_from) AS reporting_from,coalesce(j.reporting_period_end,c.reporting_to) AS reporting_to
        FROM nzi_console.portal_access_grants g
        JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id,j.client_id)=(g.organisation_id,g.job_id,g.client_id)
        LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id)
@@ -105,10 +106,26 @@ export async function getPortalClientIntensity(
     }
   }
 
-  const periods = new Map<number, ReportingPeriod>();
+  /**
+   * The period each published year stands for — and nothing at all for a year that names two
+   * (NZC-096).
+   *
+   * The portal trend carries a year, not a period, so this lookup is keyed by the year it is asked
+   * for. That is safe only while one year means one period, and it does not: the start-year and
+   * end-year conventions put two of a client's periods under one label. This used to take the last
+   * row it happened to read, which silently divided one period's emissions by another's turnover.
+   *
+   * An ambiguous year resolves to **null**, so the denominator reports itself unavailable with a
+   * reason rather than confidently wrong — truth before apparent availability. Carrying the period
+   * through the trend itself would resolve both, and is the larger change this does not make.
+   */
+  const periods = new Map<number, ReportingPeriod | null>();
   for (const row of periodRows.rows) {
     if (row.reporting_year === null || row.reporting_from === null || row.reporting_to === null) continue;
-    periods.set(row.reporting_year, { from: dateOnly(row.reporting_from), to: dateOnly(row.reporting_to) });
+    const period = { from: dateOnly(row.reporting_from), to: dateOnly(row.reporting_to) };
+    if (!periods.has(row.reporting_year)) { periods.set(row.reporting_year, period); continue; }
+    const held = periods.get(row.reporting_year);
+    if (held !== null && !samePeriod(held, period)) periods.set(row.reporting_year, null);
   }
 
   const years: PortalIntensityYear[] = [...totals.entries()]
@@ -117,10 +134,13 @@ export async function getPortalClientIntensity(
       year, totalTco2e: total, basis,
       denominators: resolveYearDenominators({
         definitions: metrics, values, reportingYear: year, sites,
-        // What the job recorded, else the period the client's financial year end implies
-        // for that year (NZC-067) — the same fallback the client workspace uses.
-        period: periods.get(year)
-          ?? (client?.financial_year_end_month ? reportingPeriodForYear(year, client.financial_year_end_month) : null),
+        // What the job recorded, else the period the client's financial year end implies for that
+        // year (NZC-067) — the same fallback the client workspace uses. A job that **has** a period
+        // never reconstructs one, and an ambiguous year (mapped to null above) stays null rather
+        // than falling through to a reconstruction that would answer for only one of its periods.
+        period: periods.has(year)
+          ? periods.get(year)!
+          : (client?.financial_year_end_month ? reportingPeriodForYear(year, client.financial_year_end_month) : null),
       }),
     }));
 
