@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace";
+export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -38,6 +38,16 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // and the module says so in its own words rather than showing a bare empty screen.
   training: { key: "training", validate: (value) => rows(value, "runs"), isEmpty: () => false },
   portal: { key: "portal", validate: record, isEmpty: () => false },
+  // The staff portal preview (NZC-087). Its own contract because it is its own payload: reusing
+  // clientWorkspace's key validated the preview against a shape describing a different screen —
+  // sites, reportingPeriods and evidence, none of which a portal preview has — and the honest
+  // guard correctly refused to render it.
+  //
+  // Never empty. A client with no plan and no assessment still has a portal, and their own
+  // components say so in their own words; collapsing that to the console's generic "Nothing here
+  // yet" would show the consultant something the client never sees, which is the one thing the
+  // preview exists not to do.
+  portalPreview: { key: "portalPreview", validate: (value) => record(value) && record(value.client) && record(value.strategies) && record(value.readiness), isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.
   clientWorkspace: { key: "clientWorkspace", validate: (value) => record(value) && rows(value, "sites") && rows(value, "reportingPeriods") && (value.client === null || (record(value.client) && record(value.evidence))), isEmpty: (value) => record(value) && value.client === null },
