@@ -43,7 +43,11 @@ describe("client profile persistence (NZC-064)", () => {
     assert.equal(insert!.values?.length, placeholders);
     assert.ok(insert!.values?.includes("https://www.8doorsdistillery.com/"));
     assert.ok(insert!.values?.includes(2045));
-    assert.deepEqual(insert!.values?.at(-3), ["SECR"]);
+    // Found rather than counted from the end: the point is that an array column is bound as an
+    // array, and a positional index only held until the next column was added (NZC-090 added
+    // three), which made a correct change look like a broken one.
+    assert.ok(insert!.values?.some((value) => Array.isArray(value) && value.length === 1 && value[0] === "SECR"),
+      "reportingFrameworks is bound as an array");
   });
 
   it("defaults reporting frequency, currency and billing flag when the wizard skips them", async () => {

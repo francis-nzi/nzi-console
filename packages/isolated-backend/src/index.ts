@@ -57,6 +57,7 @@ export * from "./portalAcceptanceSeed";
 export * from "./portalPreview";
 export * from "./referenceData";
 export * from "./referenceSeedSource";
+export * from "./clientReference";
 export * from "./clientReferenceBackfill";
 export * from "./answering";
 export * from "./answerModel";

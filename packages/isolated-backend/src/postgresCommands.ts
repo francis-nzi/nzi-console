@@ -225,7 +225,7 @@ export async function createClient(
           input.sector.trim(),
           input.location.trim(),
           input.owner.trim(),
-          context.actorId,
+          input.ownerUserId?.trim() || context.actorId,
           ...profile,
         ],
       );
@@ -262,6 +262,10 @@ const CLIENT_PROFILE_COLUMNS = [
   "billing_same_as_registered", "billing_company",
   "billing_address_line1", "billing_address_line2", "billing_city", "billing_region", "billing_postcode", "billing_country",
   "parent_company", "group_structure", "reporting_frameworks", "certifications", "primary_scope3_categories",
+  // NZC-090 — the references behind sector, referral and client manager. They sit beside their
+  // text rather than replacing it: the id is what makes a lookup rename reach every client that
+  // chose the value, and the text is what a client keeps when its value never was in the list.
+  "sector_value_id", "referral_value_id", "client_manager_user_id",
 ] as const;
 
 const trimmed = (value: string | null | undefined) => value?.trim() || null;
@@ -287,6 +291,7 @@ function clientProfileValues(input: ClientProfileFields): unknown[] {
     trimmed(input.billingRegion), trimmed(input.billingPostcode), trimmed(input.billingCountry),
     trimmed(input.parentCompany), input.groupStructure ?? null,
     input.reportingFrameworks ?? [], input.certifications ?? [], input.primaryScope3Categories ?? [],
+    trimmed(input.sectorValueId), trimmed(input.referralValueId), trimmed(input.clientManagerUserId),
   ];
   if (values.length !== CLIENT_PROFILE_COLUMNS.length) throw new Error("Client profile column/value mismatch.");
   return values;

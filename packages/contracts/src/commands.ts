@@ -249,6 +249,8 @@ export const clientCertifications = ["ISO 14001", "ISO 50001", "B Corp", "SBTi p
 /** Firmographics and reporting settings — the live CRM's Details tab. */
 export type ClientDetailsFields = {
   portfolio?: string | null; clientManager?: string | null; website?: string | null;
+  /** NZC-090 — the references behind `clientManager` and `referral`, alongside their text. */
+  clientManagerUserId?: string | null; referralValueId?: string | null; sectorValueId?: string | null;
   industrySic?: string | null; companyRegistration?: string | null; headquarters?: string | null;
   financialYearEndMonth?: number | null; dataReportingFrequency?: ClientReportingFrequency;
   currency?: string; logoUrl?: string | null; companyDescription?: string | null; referral?: string | null;
@@ -316,7 +318,18 @@ export const forwardTargetLabels: Record<(typeof forwardTargetFields)[number], s
 export const clientLogoContentTypes = ["image/png", "image/svg+xml"] as const;
 export type ClientLogoContentType = (typeof clientLogoContentTypes)[number];
 export const CLIENT_LOGO_MAX_BYTES = 256 * 1024;
-export type ClientIdentityFields = { name: string; status: "active" | "onboarding" | "at-risk" | "prospect"; sector: string; location: string; owner: string };
+/**
+ * `sector` and `owner` still carry the text shown on the record; the `*Id` fields carry the
+ * curated reference behind it (NZC-090). Both, not either: the id is what makes a rename in the
+ * lookup reach every client that chose it, and the text is what a client keeps when its value was
+ * never in the list — which the first backfill showed is most of them.
+ */
+export type ClientIdentityFields = {
+  name: string; status: "active" | "onboarding" | "at-risk" | "prospect";
+  sector: string; location: string; owner: string;
+  sectorValueId?: string | null;
+  ownerUserId?: string | null;
+};
 
 export type CommandInputMap = {
   "client.create": ClientIdentityFields & ClientProfileFields;
