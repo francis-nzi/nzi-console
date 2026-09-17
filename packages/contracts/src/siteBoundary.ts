@@ -60,6 +60,27 @@ export function reportingPeriodForYear(labelYear: number, financialYearEndMonth:
   };
 }
 
+/**
+ * The year a reporting period is labelled by, from the date it **ends** (NZC-092).
+ *
+ * A new job records the period the consultant entered, and this names it: a period ending
+ * 31/12/2024 is 2024, one ending 31/03/2025 is 2025. The consultant never types the year.
+ *
+ * **This is not `reportingPeriodForYear` inverted, and must never be used as though it were.**
+ * That function labels a period by the year it *starts* — FY24 with a March year end runs
+ * 01/04/2024–31/03/2025 — which is the convention every job stored before Part 1 was written
+ * under, and which four existing readers still depend on. The two rules agree for a December or
+ * unset year end and differ by exactly one year for every other, so feeding a stored period back
+ * through this would move a March-year-end client's FY24 to FY25 without anyone touching it.
+ *
+ * Forward only: this derives the year of a period being entered now. An existing job's year is
+ * read from the row, never re-derived. The characterisation test pinned in #210 states the
+ * difference in full and fails if either rule moves.
+ */
+export function reportingYearForPeriod(periodEnd: string): number {
+  return Number(periodEnd.slice(0, 4));
+}
+
 export type SiteLifecycleStatus =
   | { kind: "planned"; label: "Planned"; startsOn: string }
   | { kind: "in-service"; label: "In service"; vacatesOn: string | null }

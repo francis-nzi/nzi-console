@@ -5,7 +5,7 @@ import { addManualDataset,approveScopeRow,archiveClientFactor,calculateScopeRow,
 import { commandGrantForRole } from "@nzi/contracts";
 
 const context = { organisationId: "org-a", actorId: "staff-a", principal: "staff" as const, grant: commandGrantForRole("admin", "org-a", "staff-a"), idempotencyKey: "create-job-1", correlationId: "corr-create-job-1" };
-const input = { clientId: "client-a", family: "crp" as const, title: "Synthetic CRP", workflowStage: "Setup", owner: "A. Owner", startDate: "2026-08-25", dueDate: "2026-12-31", reportingYear: 2026 };
+const input = { clientId: "client-a", family: "crp" as const, title: "Synthetic CRP", workflowStage: "Setup", owner: "A. Owner", startDate: "2026-08-25", dueDate: "2026-12-31", reportingPeriodStart: "2026-01-01", reportingPeriodEnd: "2026-12-31" };
 
 function commandPool() {
   const calls: string[] = [];
