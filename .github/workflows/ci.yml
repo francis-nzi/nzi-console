@@ -90,3 +90,8 @@ jobs:
       # between the response and its contract — a place no test of a part can see.
       - name: The portal preview satisfies its screen contract
         run: npx tsx --test packages/isolated-backend/tests/portalPreviewContract.test.ts
+      # The reference-data import (NZC-089), held to §14: run twice, and once over a dirtied
+      # database. The lists come from a live export, so a second import is routine — a corrected
+      # file, an edited list, a later loader — and every one arrives as state the first run left.
+      - name: The reference-data import is idempotent and converges
+        run: npx tsx --test packages/isolated-backend/tests/referenceDataImport.test.ts

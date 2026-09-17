@@ -1664,3 +1664,63 @@ session, so it works whether or not the portal login does.
 the preview. The criteria that depend on the portal auth path itself — cross-tenant isolation
 *via portal login*, the login/MFA flow, session-ended behaviour — are **deferred to this decision
 and marked deferred on those rows, never silently ticked**.
+
+### NZC-089 — Reference data is one governed subsystem, seeded from a live export [Confirmed 17 Sep 2026]
+
+**Decision.** The lookups the client and job smart-searches resolve against live in a single
+reference-data subsystem: `reference_categories` (the catalogue) and `reference_values` (the
+curated values), plus a team roster on `memberships`. Migration `0089`. First slice: **Industries,
+Referrals, Team**, with read APIs and one shared smart-search component.
+
+**One table, not eighteen.** Eighteen categories are coming. A table each would be eighteen
+migrations, eighteen read models and eighteen admin screens differing only in their labels — and
+the nineteenth category would need all of it again. So a category is a row and its values are rows:
+adding "Payment Terms" later is an INSERT, not a migration. The one thing categories genuinely do
+not share — the SIC an industry carries — is a nullable column, because one optional column is
+cheaper than a jsonb blob nobody can index or constrain.
+
+**Scope describes who curates, not where it lives.** Shared standards (Industries, Currencies, UoM)
+and firm configuration (Referrals, Job Types, Portfolios) differ in who may edit them and how they
+are seeded, and that is recorded on the category. **Storage stays organisation-partitioned for
+every category.** The alternative — a nullable `organisation_id` with a policy that special-cases
+it — is a second RLS shape, and an organisation-scoped row that some policy lets another tenant
+read is exactly the failure the isolation model exists to prevent. Shared categories are
+provisioned into each organisation, as levers and the SRS framework already are.
+
+**Archive is deactivation.** The live admin's "Archive" is `active = false`, and `DELETE` is
+revoked. A client record pointing at an industry must stay explicable after that industry stops
+being offered: it still renders where it was chosen, and simply leaves the search.
+
+**Reconcile by reading, not by idempotency key** — the rule NZC-085's seed was rebuilt around, for
+the same reason. An import is not a one-off: a corrected export, an edited list, a later loader.
+Matching prefers the export's own `source_ref` and falls back to the normalised label, so a
+**rename is an update** and the records pointing at the value stay pointed at it. Matching ignores
+`active`, so re-importing something archived reinstates it rather than inserting a second copy
+beside it. A re-run bumps no versions: version churn on an unchanged import would make every load
+look like an edit in the audit trail.
+
+**`archiveMissing` is opt-in.** Treating the export as the whole truth is right when it *is* the
+whole truth and catastrophic when it is a partial file — it would archive the firm's entire list.
+The destructive reading of an ambiguous input is never the default.
+
+**The roster carries names, and never grants access.** `memberships` had `user_id`, `role_id`,
+`status` and nothing else — portal users have had a `display_name` since 0018, staff never did,
+because nothing had needed one until a form asked a consultant to pick a colleague. The import
+fills names and emails **only**: role and status are this system's access decisions, audited here,
+and letting a reference-data file overwrite them would make an import a permission grant. A person
+in the export with no membership is reported, not created.
+
+**Live is production and export-only.** The curated lists arrive through the live admin's
+Import/Export, run by Francis, never a database dump — a dump would carry secrets and would mean
+writing to a system this repo may not touch. The loader is built and CI-tested against synthetic
+fixtures first, then pointed at the real export.
+
+**No matrix change in this slice.** The lookup-admin capability belongs with the admin surface,
+which follows; nothing here is reachable except through existing staff reads.
+
+**One smart-search, extracted.** The app had two typeaheads and no primitive: `TemplateSearchBar`,
+welded to the job factor library and the command behind it, and a bare `<datalist>` in data entry.
+A `<datalist>` cannot return an **id** (it yields the text typed, so "Maya Osei" would be stored
+rather than `m.osei` — the whole point of moving owner and manager off free text), cannot show a
+second line, and behaves differently per browser. `SmartSearch` in `@nzi/ui` is the one
+implementation all four fields will use.
