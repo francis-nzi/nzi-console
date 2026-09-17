@@ -64,7 +64,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled }: {
 
       {runs.length === 0
         ? <section className="nz-panel"><div className="nz-card-b">
-          <p className="sub" style={{ margin: "8px 0" }}>No course run has been set up for this engagement yet. A run is one delivery of a product — its sessions, its bookings and its certificates all hang off it.</p>
+          <p className="sub" style={{ margin: "8px 0" }}>No course run has been set up for this job yet. A run is one delivery of a product — its sessions, its bookings and its certificates all hang off it.</p>
           <p className="nz-maps">Nothing is shown here rather than an empty register that could be mistaken for a run with no one booked.</p>
         </div></section>
         : null}
@@ -101,7 +101,7 @@ function RunView({ record, today, manage, review, places, onNotice, onError }: {
   const reviewed = run.reviewStatus === "approved";
 
   return <>
-    {/* The run's own stages — a job is the engagement, a run is one delivery of it. */}
+    {/* The run's own stages — a job is the piece of work, a run is one delivery of it. */}
     <section className="nz-panel nz-run-stage">
       {trainingRunStages.map((entry, index) => <div key={entry}
         className={`nz-run-step${index < stageIndex ? " done" : index === stageIndex ? " now" : ""}`}>

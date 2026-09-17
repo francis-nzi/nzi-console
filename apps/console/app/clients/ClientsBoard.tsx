@@ -28,7 +28,7 @@ function ClientDrawer({ c }: { c: Client }) {
     c.status === "at-risk"
       ? { kind: "warn" as const, text: "At risk — a report is overdue or data is stalled. Prioritise for outreach." }
       : c.status === "prospect"
-      ? { kind: "warn" as const, text: "Prospect — proposal sent, not yet onboarded. No live engagement." }
+      ? { kind: "warn" as const, text: "Prospect — proposal sent, not yet onboarded. No live job." }
       : c.status === "onboarding"
       ? { kind: "warn" as const, text: "Onboarding — baseline in progress; data still being collected." }
       : { kind: "ok" as const, text: "Active client — no relationship risk flag is recorded." };

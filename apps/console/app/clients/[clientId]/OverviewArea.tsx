@@ -49,7 +49,7 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
         <Link className="nz-editlink" href={clientJobsHref(client.id)}>New job →</Link>
       </div>
       {jobs.length === 0
-        ? <Empty text="No engagements have been created for this client." />
+        ? <Empty text="No jobs have been created for this client." />
         : <table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Stage</th><th>Progress</th><th>Owner</th><th>Due</th></tr></thead><tbody>
           {jobs.map((job) => <tr key={job.header.id}>
             <td><Link href={`/jobs/${job.header.id}`} className="nz-table-link">{job.header.number}</Link><div className="muted">{job.header.title}</div></td>
@@ -61,7 +61,7 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
           </tr>)}
         </tbody></table>}
       <div className="nz-card-b"><div className="nz-client-signals">
-        <Signal label="CRP engagements" value={String(crp.length)} tone="ok" />
+        <Signal label="CRP jobs" value={String(crp.length)} tone="ok" />
         <Signal label="Rows awaiting review" value={String(reviewGaps)} tone={reviewGaps ? "warn" : "ok"} />
         <Signal label="Open jobs" value={String(openJobs.length)} tone="ok" />
       </div></div>

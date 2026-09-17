@@ -2,7 +2,7 @@ import type { ClientAreaGroup } from "@nzi/ui";
 
 /**
  * The client workspace areas (v10). Grouped as the prototype groups them: Client — what
- * the engagement produces; Manage — how it is run; Record — what the client is.
+ * the job produces; Manage — how it is run; Record — what the client is.
  *
  * `built` marks the areas this phase renders for real. The rest are in the nav because
  * they are part of the approved information architecture, and each says plainly that it

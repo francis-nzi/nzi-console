@@ -24,7 +24,7 @@ export default function PortalTrainingPage() {
             last forever, so this page shows what is still available and when it expires.
           </p>
         </div>
-        <Link className="nz-btn" href="/portal">Back to your engagements</Link>
+        <Link className="nz-btn" href="/portal">Back to your jobs</Link>
       </div>
       <PortalTraining />
     </main>

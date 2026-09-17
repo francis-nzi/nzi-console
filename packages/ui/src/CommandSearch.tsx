@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 
 const destinations = [
   ["Control Room", "/", "Portfolio overview and priority actions"], ["Clients", "/clients", "Relationships and delivery health"],
-  ["Jobs", "/jobs", "All delivery engagements"], ["Emissions", "/charts", "Visual evidence and chart library"],
+  ["Jobs", "/jobs", "All delivery jobs"], ["Emissions", "/charts", "Visual evidence and chart library"],
   ["Datasets & factors", "/datasets", "Governed emissions data"], ["Reports", "/reports", "Validation and publication"],
   ["LCA / PCF / CBAM", "/lca", "Product impact assessments"], ["Sales", "/sales", "Growth pipeline"],
   ["Platform & audit", "/platform", "Access, services and audit history"],

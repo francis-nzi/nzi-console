@@ -28,7 +28,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     factorsEnabled={dataEntryAdapterEnabled("client-factors")}
     initialArea={typeof area === "string" ? area : undefined}
   />;
-  // No jobs anywhere is a real, empty engagements list — not a reason to blank the client.
+  // No jobs anywhere is a real, empty jobs list — not a reason to blank the client.
   return <ScreenState result={workspaceResult}>{(workspace) => jobResult.state === "empty"
     ? render(workspace, [])
     : <ScreenState result={jobResult}>{(jobData) => render(workspace, jobData.jobs)}</ScreenState>}
