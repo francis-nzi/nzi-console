@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { ensureDisposableDatabase } from "./support/database";
 
 /**
  * Every migration, applied in order, against a real Postgres.
@@ -22,7 +23,9 @@ import pg from "pg";
  */
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
+// This suite builds its schema in a database of its own, so a suite running beside it cannot
+// drop that schema midway through (NZC-097). Its setup below is unchanged.
+const DATABASE_URL = await ensureDisposableDatabase("migrationsrun");
 
 /**
  * This suite DROPS the schema before it runs. That is correct for a throwaway database and

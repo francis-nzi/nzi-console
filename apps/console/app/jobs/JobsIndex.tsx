@@ -142,9 +142,15 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
           <div className="nz-job-create-grid">
             <label className="nz-fl" style={{ margin: 0 }}>Client<select className="nz-sel" required value={draft.clientId} onChange={(e) => selectClient(e.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
             <label className="nz-fl" style={{ margin: 0 }}>Job family<select className="nz-sel" value={draft.family} onChange={(e) => { const family = e.target.value as JobFamily; setDraft({ ...draft, family, workflowStage: initialStage[family], ...(familyHasReportingPeriod(family) ? {} : { reportingPeriodStart: null, reportingPeriodEnd: null }) }); setFieldIssues({}); }}>{Object.entries(jobFamilyMeta).map(([id, meta]) => <option key={id} value={id}>{meta.code} · {meta.label}</option>)}</select></label>
-            <SmartSearch label="Client manager" options={team.options} emptyHint={team.emptyHint} required
-              value={draft.clientManagerUserId ?? ""}
-              onChange={(id, option) => setDraft({ ...draft, clientManagerUserId: id || null, owner: option?.label ?? "" })} />
+            {/* The label is the caller's, in the same shape as the fields either side of it, so
+                this row looks and reads like the rest of the block. */}
+            <div className="nz-fl" style={{ margin: 0 }}>
+              <label htmlFor="job-client-manager">Client manager</label>
+              <SmartSearch id="job-client-manager" label="Client manager" options={team.options}
+                emptyHint={team.emptyHint} required
+                value={draft.clientManagerUserId ?? ""}
+                onChange={(id, option) => setDraft({ ...draft, clientManagerUserId: id || null, owner: option?.label ?? "" })} />
+            </div>
             <label className="nz-fl" style={{ margin: 0, gridColumn: "span 2" }}>Title<input className="nz-inp" required placeholder={jobFamilyMeta[draft.family].description} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
             <label className="nz-fl" style={{ margin: 0 }}>Initial stage<input className="nz-inp" required readOnly value={draft.workflowStage} aria-describedby="initial-stage-help"/><small className="nz-hint" id="initial-stage-help">Set by the selected family workflow.</small></label>
           </div>

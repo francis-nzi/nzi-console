@@ -137,8 +137,15 @@ function Lookup({ form, onChange, errors, name, idField, label, list, required }
     ?? list.options.find((option) => option.label === stored);
   return (
     <Field label={label} name={String(name)} errors={errors} required={required}
-      control={() => (
+      control={(a11y, invalid) => (
+        // The field row owns the label, the id and the description — the same as every other
+        // control on the step. Discarding `a11y` here is what left the row's <label htmlFor>
+        // pointing at an id the smart-search never used, while the smart-search rendered a second
+        // label of its own on top.
         <SmartSearch
+          id={a11y.id}
+          describedBy={a11y["aria-describedby"]}
+          invalid={invalid}
           label={label}
           options={list.options}
           value={selected?.id ?? ""}
