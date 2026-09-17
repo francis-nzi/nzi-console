@@ -170,4 +170,40 @@ describe("two periods under one label reach the chain intact", () => {
     });
     assert.equal(priors(result).length, 2, "two periods, two entries, whatever they are labelled");
   });
+
+  it("keeps each period distinct however many snapshots share the label", () => {
+    // The tripwire proper. The query feeding this does DISTINCT ON (period) — it hands over one
+    // snapshot per period, already separated. Anything here that groups by year silently rejoins
+    // them, and the loss is invisible downstream because the chain simply has fewer entries than
+    // the client has years. Three periods sharing two labels must come back as three.
+    const result = chain({
+      currentYear: 2028,
+      currentPeriod: { from: "2027-10-01", to: "2028-09-30" },
+      priorSnapshots: [
+        snap(2025, "2024-10-01", "2025-09-30"),
+        snap(2025, "2025-10-01", "2026-09-30"),
+        snap(2026, "2026-10-01", "2027-09-30"),
+      ],
+      priorYearCount: 5,
+    });
+    assert.equal(priors(result).length, 3, "three periods in, three periods out");
+    // Each keeps its own snapshot too: a year-keyed map would not only drop one, it would leave
+    // the surviving entry carrying evidence belonging to a different period.
+    const ids = result.entries.filter((entry) => entry.kind === "prior").map((entry) => entry.snapshotId);
+    assert.equal(new Set(ids).size, 3, "three distinct snapshots, one per period");
+  });
+
+  it("still collapses two snapshots of the same period to one entry", () => {
+    // The other half, so "keep everything" is not mistaken for the rule. One period is one entry
+    // however many times it was snapshotted.
+    const result = chain({
+      currentYear: 2027,
+      currentPeriod: { from: "2026-10-01", to: "2027-09-30" },
+      priorSnapshots: [
+        snap(2025, "2024-10-01", "2025-09-30"),
+        snap(2025, "2024-10-01", "2025-09-30"),
+      ],
+    });
+    assert.equal(priors(result).length, 1, "one period, one entry");
+  });
 });
