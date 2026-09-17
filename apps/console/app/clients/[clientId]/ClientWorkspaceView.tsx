@@ -155,7 +155,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
 
     <div className="nz-body" style={{ paddingTop: 16 }}>
       {area === "overview" ? <div className="nz-metrics">
-        <Metric label="Open jobs" value={String(jobs.filter((job) => ["draft", "open", "on-hold"].includes(job.header.status)).length)} note={`${jobs.length} total engagements`} />
+        <Metric label="Open jobs" value={String(jobs.filter((job) => ["draft", "open", "on-hold"].includes(job.header.status)).length)} note={`${jobs.length} total jobs`} />
         <MetricEvidence label={`Latest emissions${fy ? ` · ${fy}` : ""}`} note={latestNote} tone={yoy.value !== null ? (yoy.value <= 0 ? "ok" : "up") : undefined} onEvidence={() => setEvidenceKey("latest")}>
           {evidence.latest.value === null ? "Not reported" : <>{evidence.latest.value.toLocaleString("en-GB", { maximumFractionDigits: 0 })}<small> tCO₂e</small></>}
         </MetricEvidence>

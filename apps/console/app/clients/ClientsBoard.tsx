@@ -196,7 +196,7 @@ export function ClientsBoard({ clients }: { clients: Client[] }) {
               })}
             </tbody>
           </table>
-          {rows.length===0?<div className="nz-engagement-empty"><b>No clients match this relationship stage</b><span>Choose another filter to return to the recorded portfolio.</span></div>:null}
+          {rows.length===0?<div className="nz-list-empty"><b>No clients match this relationship stage</b><span>Choose another filter to return to the recorded portfolio.</span></div>:null}
         </div>
       </div>
     </AppShell>
