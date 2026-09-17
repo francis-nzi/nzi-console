@@ -2,7 +2,8 @@
 
 // The client record's field groups, shared by the create wizard (/clients/new)
 // and the edit tabs (/clients/[id]/edit) so the two surfaces cannot drift.
-import { InfoTip } from "@nzi/ui";
+import {InfoTip, SmartSearch } from "@nzi/ui";
+import type { OptionList } from "./useReferenceOptions";
 import {
   clientCertifications, clientGroupStructures, clientReportingFrameworks, clientReportingFrequencies,
   emissionCategoryTaxonomy,
@@ -35,6 +36,8 @@ export function normaliseClientForm(form: ClientFormState): ClientFormState {
 }
 
 type GroupProps = { form: ClientFormState; onChange: (patch: Partial<ClientFormState>) => void; errors: FieldErrors };
+
+export type ClientLookups = { team: OptionList; industries: OptionList; referrals: OptionList };
 
 /**
  * Hint and error text are wired through aria-describedby rather than nested in the
@@ -114,15 +117,47 @@ function Legend({ title, about }: { title: string; about: React.ReactNode }) {
  * managed on the client record itself; the create form captures the first contact,
  * which becomes the primary contact.
  */
-export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?: string }) {
-  const { form, onChange, errors, editing, clientId } = props;
+/**
+ * A field backed by one of the curated lists (NZC-089).
+ *
+ * `SmartSearch` speaks ids, which is what makes it a reference rather than a suggestion. The
+ * client record still stores the chosen **label** — `sector`, `referral`, `owner` and
+ * `clientManager` are text columns holding names today, and existing clients hold names in them.
+ * Converting those columns to hold ids, and carrying the existing values across, is Part 1's
+ * migration (the reconciliation of the free-text `clients.client_manager` from 0060). Until then
+ * the value is chosen from the curated list rather than typed, which is the change that removes the
+ * typos and the near-duplicates.
+ */
+function Lookup({ form, onChange, errors, name, label, list, required }: GroupProps & {
+  name: keyof ClientFormState; label: string; list: OptionList; required?: boolean;
+}) {
+  const stored = (form[name] as string | null) ?? "";
+  const selected = list.options.find((option) => option.label === stored);
+  return (
+    <Field label={label} name={String(name)} errors={errors} required={required}
+      control={() => (
+        <SmartSearch
+          label={label}
+          options={list.options}
+          value={selected?.id ?? ""}
+          emptyHint={list.emptyHint}
+          required={required}
+          placeholder={list.state === "loading" ? "Loading…" : "Search…"}
+          onChange={(_id, option) => onChange({ [name]: option?.label ?? "" } as Partial<ClientFormState>)}
+        />
+      )} />
+  );
+}
+
+export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?: string; lookups: ClientLookups }) {
+  const { form, onChange, errors, editing, clientId, lookups } = props;
   return (
     <>
       <div className="nz-client-create-grid">
         <Text {...props} name="name" label="Client name" required />
         <Text {...props} name="portfolio" label="Portfolio" />
-        <Text {...props} name="owner" label="Client owner" required />
-        <Text {...props} name="clientManager" label="Client manager" />
+        <Lookup {...props} name="owner" label="Client owner" list={lookups.team} required />
+        <Lookup {...props} name="clientManager" label="Client manager" list={lookups.team} />
         <Field label="Relationship stage" name="status" errors={errors} hint="Controls portfolio health and job eligibility."
           control={(a11y, invalid) => (
             <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.status} onChange={(event) => onChange({ status: event.target.value as ClientFormState["status"] })}>
@@ -131,9 +166,9 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
             </select>
           )} />
         <Text {...props} name="website" label="Website" placeholder="https://example.com" />
-        <Text {...props} name="sector" label="Industry" required />
+        <Lookup {...props} name="sector" label="Industry" list={lookups.industries} required />
         <Text {...props} name="industrySic" label="Industry code (SIC)" />
-        <Text {...props} name="referral" label="Referral" />
+        <Lookup {...props} name="referral" label="Referral" list={lookups.referrals} />
         <Text {...props} name="companyRegistration" label="Company registration" />
         <Text {...props} name="location" label="Location" placeholder="City, country" required />
         <Field label="Financial year end" name="financialYearEndMonth" errors={errors}
