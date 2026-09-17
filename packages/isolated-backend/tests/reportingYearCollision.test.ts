@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { reportingYearSnapshots, resolveYearDenominators } from "../src/readModels";
+import { dateOnly, periodKeyOf, samePeriod } from "../src/dates";
 import type { IntensityMetricDefinition, IntensityMetricValue } from "@nzi/contracts";
 
 /**
@@ -181,5 +182,48 @@ describe("adjacent periods are two; overlapping periods are one", () => {
       snapshot("second", 2025, "2024-10-01", "2025-09-30"),
     ]);
     assert.equal(kept.length, 2, "a period starting the day after another ends does not overlap it");
+  });
+});
+
+describe("a calendar date carries no time zone", () => {
+  /**
+   * The bug this pins was mine, in the first draft of this work: `portalIntensity` had its own
+   * `dateOnly` built on `toISOString()`. node-postgres materialises a SQL `date` as **local**
+   * midnight, so under BST 30/09/2026 came back as `2026-09-29` — a day earlier, silently.
+   *
+   * That was survivable while the value only reached a screen. It is not survivable now that the
+   * same dates form the period identity: a period shifted by one day does not compare equal to
+   * itself, so a denominator recorded against a period stops matching the period it belongs to and
+   * reads as "not recorded" — the collision's symptom, produced by a formatting helper.
+   *
+   * These run under whatever zone the machine is in. To exercise the failure deliberately, run
+   * with `TZ="Europe/London"`; the July date is the one that was wrong.
+   */
+  it("reads a summer date as the day it is, whatever the server's offset", () => {
+    // A Date at local midnight is exactly what pg hands back for a `date` column.
+    const july = new Date(2026, 6, 31);        // 31 July 2026, local midnight
+    const september = new Date(2026, 8, 30);   // 30 September 2026, local midnight
+    assert.equal(dateOnly(july), "2026-07-31", "a BST date must not slip to the 30th");
+    assert.equal(dateOnly(september), "2026-09-30");
+  });
+
+  it("reads a winter date the same way, so neither half of the year is special-cased", () => {
+    assert.equal(dateOnly(new Date(2026, 0, 1)), "2026-01-01");
+    assert.equal(dateOnly(new Date(2025, 11, 31)), "2025-12-31");
+  });
+
+  it("makes a period compare equal to itself across the summer boundary", () => {
+    // The assertion that matters: the identity built from Date objects and the identity built
+    // from the strings a consultant entered must be the same string.
+    const fromDates = periodKeyOf(new Date(2025, 9, 1), new Date(2026, 8, 30));
+    assert.equal(fromDates, periodKeyOf("2025-10-01", "2026-09-30"));
+    assert.equal(fromDates, "2025-10-01|2026-09-30");
+  });
+
+  it("matches a denominator recorded on a period spanning the clock change", () => {
+    // End to end: the period identity survives a read that goes through Date objects.
+    const period = { from: dateOnly(new Date(2025, 9, 1)), to: dateOnly(new Date(2026, 8, 30)) };
+    assert.equal(samePeriod(period, { from: "2025-10-01", to: "2026-09-30" }), true,
+      "a period read out of the database is the period that was entered");
   });
 });

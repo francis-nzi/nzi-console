@@ -299,3 +299,26 @@ versioned table not columns — required for audit + the NZC-068 hold.
   loading state.
 - **Permission names belong in the matrix.** `finance.manage` (and any others) must be
   defined in the NZC-022 permission matrix, not invented ad hoc — NZC-022 is still open.
+
+## Tracked follow-ups from NZC-096 (period is the identity)
+
+- **Carry the reporting period through the portal trend.** `getPortalAssuredDashboard`'s trend
+  entries carry a `year` and no period, so `portalIntensity`'s period lookup is keyed by year — the
+  one site NZC-096 could not re-key. Until the trend carries the period, a year that names two
+  periods resolves to **null** and the affected denominator reports itself unavailable with a
+  reason rather than dividing one period's emissions by another period's turnover. That is honest
+  but weaker than the other six sites: a client in that state loses an intensity figure it could
+  have had. Fixing it means threading the period through the dashboard's trend shape and the
+  snapshot payload that feeds it. **Tier: Should** — no wrong number is produced today, so it is
+  not a go-live blocker, but it is the last place a reporting year is still doing an identity's job.
+- **`spendImportIdentity.ts` calendar-year fallback.** Falls back to `${year}-01-01`…`${year}-12-31`
+  when a job has no config window, ignoring the client's financial year end — so a September
+  year-end client's re-import reconciles against the wrong window. It is an **idempotency identity**:
+  changing it changes how a re-import matches existing rows and can duplicate them. Needs its own
+  reconcile-by-reading analysis before any change. **Tier: Go-live** (it can duplicate spend rows).
+- **Prior-job selection is recomputed on read, not persisted.** `listSpendRollforwardPreview` and
+  `listScopeRowRollforwardPreview` each re-derive "the prior job" on every read using the same
+  year-order predicate as the command, and only the *outcome* of a rollforward is stored
+  (`rolled_forward_from_source_id`), never the choice. Switching the basis to period order is
+  therefore retroactive until the choice is persisted. Tracked as its own piece of work with a
+  migration and a review stop. **Tier: Go-live** (carbon path, NZC-063).
