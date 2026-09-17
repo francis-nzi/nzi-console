@@ -33,15 +33,22 @@ const valid=(value:unknown):value is PortalReadinessReadModel=>{
 /** A short readiness has its gaps open; a long one opens collapsed so the page stays scannable. */
 const EXPAND_UP_TO=6;
 
-export function PortalReadiness(){
-  const [model,setModel]=useState<PortalReadinessReadModel|null>(null),[error,setError]=useState("");
-  useEffect(()=>{fetch("/api/portal/readiness",{cache:"no-store"}).then(async response=>{
+/**
+ * Rendered two ways from one implementation: the client fetches its own data, and the staff
+ * preview passes the same read model straight in. Forking a second component for the preview
+ * would have been easier and wrong — the claim "this is what your client sees" is only true
+ * while there is one renderer to be wrong in.
+ */
+export function PortalReadiness({model:provided}:{model?:PortalReadinessReadModel}={}){
+  const [model,setModel]=useState<PortalReadinessReadModel|null>(provided??null),[error,setError]=useState("");
+  useEffect(()=>{if(provided!==undefined){setModel(provided);return;}
+    fetch("/api/portal/readiness",{cache:"no-store"}).then(async response=>{
     if(await redirectIfPortalSessionEnded(response))return;
     const body:unknown=await response.json();
     if(!response.ok)throw new Error((body as {message?:string})?.message??"Your readiness assessment could not be loaded.");
     if(!valid(body))throw new Error("Your readiness assessment returned an unexpected response.");
     setModel(body);
-  }).catch(cause=>{setError(cause instanceof Error?cause.message:"Your readiness assessment could not be loaded.")})},[]);
+  }).catch(cause=>{setError(cause instanceof Error?cause.message:"Your readiness assessment could not be loaded.")})},[provided]);
 
   if(error)return <section className="nz-panel"><div className="nz-portal-state failed" role="alert"><i>!</i><div>
     <b>Your readiness assessment could not be loaded</b><span>{error} Nothing about your assessment has changed.</span></div></div></section>;

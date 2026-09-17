@@ -31,15 +31,22 @@ const valid=(value:unknown):value is PortalStrategiesReadModel=>{
 /** A long plan opens collapsed so the page stays scannable; a short one is just shown. */
 const EXPAND_UP_TO=8;
 
-export function PortalReductionPlan(){
-  const [model,setModel]=useState<PortalStrategiesReadModel|null>(null),[error,setError]=useState("");
-  useEffect(()=>{fetch("/api/portal/strategies",{cache:"no-store"}).then(async response=>{
+/**
+ * Rendered two ways from one implementation: the client fetches its own data, and the staff
+ * preview passes the same read model straight in. Forking a second component for the preview
+ * would have been easier and wrong — the claim "this is what your client sees" is only true
+ * while there is one renderer to be wrong in.
+ */
+export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesReadModel}={}){
+  const [model,setModel]=useState<PortalStrategiesReadModel|null>(provided??null),[error,setError]=useState("");
+  useEffect(()=>{if(provided!==undefined){setModel(provided);return;}
+    fetch("/api/portal/strategies",{cache:"no-store"}).then(async response=>{
     if(await redirectIfPortalSessionEnded(response))return;
     const body:unknown=await response.json();
     if(!response.ok)throw new Error((body as {message?:string})?.message??"Your reduction plan could not be loaded.");
     if(!valid(body))throw new Error("Your reduction plan returned an unexpected response.");
     setModel(body);
-  }).catch(cause=>{setError(cause instanceof Error?cause.message:"Your reduction plan could not be loaded.")})},[]);
+  }).catch(cause=>{setError(cause instanceof Error?cause.message:"Your reduction plan could not be loaded.")})},[provided]);
 
   if(error)return <section className="nz-panel"><div className="nz-portal-state failed" role="alert"><i>!</i><div>
     <b>Your reduction plan could not be loaded</b><span>{error} Nothing about your plan has changed.</span></div></div></section>;

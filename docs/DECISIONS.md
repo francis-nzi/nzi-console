@@ -1585,3 +1585,82 @@ cost credibility.
 **Not a hook.** Nothing is installed into anyone's working copy: a local hook can be skipped with
 `--no-verify` and cannot be relied on for the guarantee. CI blocks the merge, which is where the
 guarantee has to live.
+
+### NZC-087 — The staff portal preview is the capability the matrix already had [Confirmed 16 Sep 2026]
+
+**Decision.** Staff open a **read-only preview** of a client's portal from the client Overview
+("Go to portal"), rendered **under their own identity**. It is gated on the **existing**
+`support.portal_impersonate` capability. **No new capability, and the permission matrix stays at
+v4.**
+
+**The reconciliation, which changed the plan.** The brief called for a new `portal.preview` at a
+new matrix version, and asked first whether the `support_portal_impersonate` already in the matrix
+made that a duplicate. It does. The capability is spelled **`support.portal_impersonate`** and has
+been in the matrix since v1, described there as:
+
+> "enter a client's portal context … every entry is audited and time-boxed; it grants a
+> **read/preview context, never portal-user credential access**."
+
+That is this feature, written down before it was built — declared, carried through four matrix
+versions, and never enforced, because nothing had yet existed to enforce it. Adding
+`portal.preview` beside it would have split one concept in two and left the older name meaning
+nothing while the newer one did its work. So the preview enforces the capability that was waiting
+for it, and the matrix does not move.
+
+**Holders.** Admin and Consultant, at scope `all` — unchanged. There is **no CRM role** in this
+system (`admin, consultant, reviewer, finance, viewer`), so "client-facing staff" is those two.
+The scope matters less than the comparison: it is the *same* scope both roles hold `client.view`
+at, so anyone who can preview a client could already open that client in the staff console. The
+preview therefore grants **no new data reach**, and a test asserts the preview scope never exceeds
+the `client.view` scope rather than trusting that to stay true.
+
+**Preview, not impersonation.** No portal session, no client principal, nothing attributable to
+the client. The audit records `portal.preview.open` with the staff actor. This is not pedantry:
+impersonation makes the audit trail lie, and an action recorded against a client who was not at
+their desk is worse than no record, because it looks like evidence.
+
+**One read path.** The plan and readiness come from `getPortalClientStrategies` and
+`getPortalClientReadiness` — the client portal's own resolvers, not a staff-side copy. Every rule
+they carry (`include_in_report`, withdrawn excluded, drafts withheld, as-at and provenance)
+applies by construction rather than by imitation. The **UI is shared too**: the preview renders
+`PortalReductionPlan` and `PortalReadiness` with the model passed in, so there is one renderer, not
+two. "This is what your client sees" is only true while there is a single thing to be wrong.
+
+**Read-only is structural.** One write exists in the whole path — the audit row — and a test
+counts the SQL statements to keep it that way. The feature-flag gates are applied exactly as
+`PortalHome` applies them, so a surface switched off for clients is absent from the preview too;
+without that a consultant could walk a client through a page the client cannot open.
+
+**A GET with one side effect**, deliberately: the thing being audited *is* the looking, so there
+is no later action to hang the record on. Splitting it into a POST-to-open and a GET-to-read would
+allow a client's portal to be read with no record of who read it.
+
+### NZC-088 — The portal enrolment and login flow needs a revamp [Parked 16 Sep 2026]
+
+**Status: parked, not started.** Recorded so it is tracked rather than remembered.
+
+**What is wrong.** The enrolment and sign-in path — invite → single-use setup link →
+password/TOTP → `/portal/login` — is unreliable on staging: "Register unavailable" and "Sign-in
+could not be completed" across the panels. It is the reason NZC-080's walk-through could not
+proceed through a real portal login, and the reason the staff preview (NZC-087) was built.
+
+**First thing to check.** **`NZI_WRITE_API_ENABLED` is very likely not `true` on staging.** The
+invitation endpoint returns `503 WRITE_API_DISABLED` when it is unset, which would produce exactly
+these symptoms on exactly these panels. The variable is **absent from `render.yaml`**, so it is a
+dashboard-only setting and nothing in the repo would show its value. Confirm that before treating
+anything else as a bug.
+
+**Also in scope when this is picked up.** The single-use setup link is shown once, on screen, and
+staging cannot email it (`NZI_DATABASE_BOUNDARY=isolated-non-production` makes mail
+suppress-and-log, NZC-076). A person who navigates away has no way back to the token and must
+issue another invitation. That is a trap rather than a safeguard, and the recovery path's
+"immediately ends all sessions and suspends credentials" wording makes re-issuing feel more
+destructive than it is.
+
+**Not built here.** The preview deliberately does not depend on any of it: it uses the staff
+session, so it works whether or not the portal login does.
+
+**Consequence for NZC-080.** The content, gate and single-tenant criteria are acceptable through
+the preview. The criteria that depend on the portal auth path itself — cross-tenant isolation
+*via portal login*, the login/MFA flow, session-ended behaviour — are **deferred to this decision
+and marked deferred on those rows, never silently ticked**.

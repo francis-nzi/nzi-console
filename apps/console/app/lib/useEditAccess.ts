@@ -71,3 +71,20 @@ export function useEditAccess(capability: Capability, writeEnabled: boolean, cli
   if (me === null) return { state: "unavailable", reason: UNCHECKED };
   return accessFor(me, capability, clientOwnerUserId);
 }
+
+/**
+ * Whether the signed-in staff member holds a capability, for a **read-only** affordance.
+ *
+ * Deliberately not `useEditAccess`: that gates on `writeEnabled` as well, which is right for an
+ * editing control and wrong for a read one. The staff portal preview changes nothing, so an
+ * environment with the write API switched off should still show it — and switching writes off is
+ * exactly the state the portal login trouble may have left staging in.
+ *
+ * Returns `false` while the check is in flight. An affordance that appears and then vanishes is
+ * worse than one that appears a moment late.
+ */
+export function useHasCapability(capability: Capability, clientOwnerUserId?: string | null): boolean {
+  const me = useStaffMe(true);
+  if (me === undefined || me === "signed-out" || me === null) return false;
+  return accessFor(me, capability, clientOwnerUserId).state === "allowed";
+}
