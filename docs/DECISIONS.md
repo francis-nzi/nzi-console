@@ -1938,3 +1938,42 @@ its own reconcile-by-reading analysis and is tracked separately, not folded in.
 
 **Related.** NZC-092 (the period is recorded, the year derived from its end); NZC-093 (the plausible
 window); NZC-070 (a reporting window is the client's financial year, now read rather than inferred).
+
+### NZC-097 — A test suite owns its database, so isolation is structural rather than scheduled [Confirmed 17 Sep 2026]
+
+**Decision.** Every test that builds a real schema gets a database of its own, created and dropped
+by `tests/support/database.ts` from the base `NZI_TEST_DATABASE_URL`. No suite shares a database
+with another, and the runner may schedule them however it likes.
+
+**The failure this removes.** Nine suites each ran `DROP SCHEMA nzi_console CASCADE` against the one
+database the environment named, and `node --test` runs files in parallel processes. Each one's drop
+deleted the tables the others were partway through using, so the result depended on which finished
+first: `reportFreeze` passed alone and failed beside `portalPreviewContract`, and which of the nine
+failed varied per run.
+
+**This is worse than a flaky test, because it is indistinguishable from a real one.** A red on a
+pull request touching a carbon path has to mean something. While the suites could clobber each
+other, every red needed a re-run to classify, and a re-run that goes green teaches the habit of
+re-running — which is how the intermittent failure behind NZC-091 survived long enough to be merged
+past.
+
+**A database each, not a schema each.** The schema name is written into the migrations
+(`CREATE SCHEMA … nzi_console`, and every statement is `nzi_console.`-qualified), so isolating by
+schema would mean rewriting the SQL under test — and the point of these suites is that they run the
+real migrations. A database costs nothing here and needs no change to the thing being tested.
+
+**Two shapes, deliberately.** `createDisposableDatabase` builds and migrates for a suite that wants
+that done for it; `ensureDisposableDatabase` hands back an empty database for a suite that already
+knows how to build its own fixture. Seven of the nine took the second, because their setup was
+working and correct, and rewriting nine careful fixtures on a carbon path to fix a scheduling
+problem would be a larger change with more ways to be wrong.
+
+**Databases are left behind after a run.** They are recreated from nothing next time, and a failed
+suite's rows are the first thing anyone wants to look at.
+
+**The boundary guard is not weakened.** Each derived name is checked by the same disposable-name
+rule as the base, and refused if it matches `NZI_ISOLATED_DATABASE_URL` — a per-suite database is
+still never staging.
+
+**Related.** NZC-091 (a red main is not mergeable-past — this is what makes a red mean something);
+§14 (run twice, and over a dirtied database).

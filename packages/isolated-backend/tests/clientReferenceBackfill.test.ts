@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { ensureDisposableDatabase } from "./support/database";
 import { backfillClientReferences } from "../src/clientReferenceBackfill";
 import { importReferenceValues, importTeamMembers } from "../src/referenceData";
 
@@ -16,7 +17,9 @@ import { importReferenceValues, importTeamMembers } from "../src/referenceData";
  */
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
+// This suite builds its schema in a database of its own, so a suite running beside it cannot
+// drop that schema midway through (NZC-097). Its setup below is unchanged.
+const DATABASE_URL = await ensureDisposableDatabase("clientrefbackfill");
 const ORG = "ci-backfill-org";
 const ACTOR = "ci-backfill-staff";
 
