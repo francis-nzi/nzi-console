@@ -7,6 +7,7 @@ import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues }
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
+import { clientReferences } from "./clientReference";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly } from "./dates";
@@ -80,10 +81,10 @@ type ClientRow = {
 };
 const numeric = (value: string | null) => value === null ? null : Number(value);
 const clientProfile = (row: ClientRow): ClientProfileFields => ({
-  portfolio: row.portfolio, clientManager: row.client_manager, website: row.website, industrySic: row.industry_sic,
+  portfolio: row.portfolio, clientManager: clientReferences(row).clientManager.label, website: row.website, industrySic: row.industry_sic,
   companyRegistration: row.company_registration, headquarters: row.headquarters,
   financialYearEndMonth: row.financial_year_end_month, dataReportingFrequency: row.data_reporting_frequency,
-  currency: row.currency, logoUrl: row.logo_url, companyDescription: row.company_description, referral: row.referral,
+  currency: row.currency, logoUrl: row.logo_url, companyDescription: row.company_description, referral: clientReferences(row).referral.label,
   contactName: row.contact_name, contactRole: row.contact_role, contactEmail: row.contact_email,
   netZeroTargetYear: row.net_zero_target_year, netZeroTargetReductionPct: numeric(row.net_zero_target_reduction_pct),
   baselinePeriodStart: row.baseline_period_start === null ? null : dateOnly(row.baseline_period_start),
@@ -133,6 +134,18 @@ export async function listClients(db: Queryable, clientId?: string): Promise<Cli
       c.billing_city, c.billing_region, c.billing_postcode, c.billing_country,
       c.parent_company, c.group_structure, c.reporting_frameworks, c.certifications, c.primary_scope3_categories,
       c.owner_user_id, c.logo_asset_id,
+      c.sector_value_id, c.referral_value_id, c.client_manager_user_id,
+      /* NZC-090 — the curated label for each reference, or null when the client's value predates
+         the lookups, was archived out of them, or never matched. The fallback to the stored text
+         happens where these are mapped, so every reader gets it. */
+      (SELECT rv.label FROM nzi_console.reference_values rv
+        WHERE (rv.organisation_id, rv.value_id) = (c.organisation_id, c.sector_value_id)) AS sector_label,
+      (SELECT rv.label FROM nzi_console.reference_values rv
+        WHERE (rv.organisation_id, rv.value_id) = (c.organisation_id, c.referral_value_id)) AS referral_label,
+      (SELECT m.display_name FROM nzi_console.memberships m
+        WHERE (m.organisation_id, m.user_id) = (c.organisation_id, c.owner_user_id)) AS owner_label,
+      (SELECT m.display_name FROM nzi_console.memberships m
+        WHERE (m.organisation_id, m.user_id) = (c.organisation_id, c.client_manager_user_id)) AS client_manager_label,
       (SELECT jsonb_build_object('name', k.full_name, 'role', coalesce(k.job_title, ''), 'email', coalesce(k.email, '')) FROM nzi_console.client_contacts k
         WHERE (k.organisation_id, k.client_id) = (c.organisation_id, c.client_id) AND k.is_primary AND k.status = 'active' LIMIT 1) AS primary_contact,
       count(j.job_id) FILTER (WHERE j.status IN ('draft','open','on-hold'))::text AS open_jobs,
@@ -145,8 +158,8 @@ export async function listClients(db: Queryable, clientId?: string): Promise<Cli
     ${clientId ? "WHERE c.client_id=$1" : ""}
     GROUP BY c.organisation_id, c.client_id
     ORDER BY lower(c.name), c.client_id`, clientId ? [clientId] : []);
-  return rows.map((row) => ({ id: row.client_id, version: row.version, name: row.name, sector: row.sector, location: row.location,
-    status: row.status, owner: row.owner_name, memberSince: String(row.member_since),
+  return rows.map((row) => ({ id: row.client_id, version: row.version, name: row.name, sector: clientReferences(row).sector.label, location: row.location,
+    status: row.status, owner: clientReferences(row).owner.label, references: clientReferences(row), memberSince: String(row.member_since),
     latestFootprint: footprint(row.latest_footprint_tco2e), yoy: percentage(row.yoy_percent),
     completeness: row.completeness_percent, openJobs: Number(row.open_jobs), nextReportDue: row.next_report_due_label,
     // The primary contact from the contacts list; the legacy single-contact columns only when the list is not read.

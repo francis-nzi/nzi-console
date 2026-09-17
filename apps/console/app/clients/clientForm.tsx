@@ -128,11 +128,13 @@ function Legend({ title, about }: { title: string; about: React.ReactNode }) {
  * the value is chosen from the curated list rather than typed, which is the change that removes the
  * typos and the near-duplicates.
  */
-function Lookup({ form, onChange, errors, name, label, list, required }: GroupProps & {
-  name: keyof ClientFormState; label: string; list: OptionList; required?: boolean;
+function Lookup({ form, onChange, errors, name, idField, label, list, required }: GroupProps & {
+  name: keyof ClientFormState; idField: keyof ClientFormState; label: string; list: OptionList; required?: boolean;
 }) {
   const stored = (form[name] as string | null) ?? "";
-  const selected = list.options.find((option) => option.label === stored);
+  const storedId = (form[idField] as string | null) ?? "";
+  const selected = list.options.find((option) => option.id === storedId)
+    ?? list.options.find((option) => option.label === stored);
   return (
     <Field label={label} name={String(name)} errors={errors} required={required}
       control={() => (
@@ -143,7 +145,12 @@ function Lookup({ form, onChange, errors, name, label, list, required }: GroupPr
           emptyHint={list.emptyHint}
           required={required}
           placeholder={list.state === "loading" ? "Loading…" : "Search…"}
-          onChange={(_id, option) => onChange({ [name]: option?.label ?? "" } as Partial<ClientFormState>)}
+          onChange={(id, option) => onChange({
+            [name]: option?.label ?? "",
+            // Both, deliberately: the id makes a rename in the lookup reach this client, and the
+            // label is what stays readable if the value is later archived out of the list.
+            [idField]: id || null,
+          } as Partial<ClientFormState>)}
         />
       )} />
   );
@@ -156,8 +163,8 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
       <div className="nz-client-create-grid">
         <Text {...props} name="name" label="Client name" required />
         <Text {...props} name="portfolio" label="Portfolio" />
-        <Lookup {...props} name="owner" label="Client owner" list={lookups.team} required />
-        <Lookup {...props} name="clientManager" label="Client manager" list={lookups.team} />
+        <Lookup {...props} name="owner" idField="ownerUserId" label="Client owner" list={lookups.team} required />
+        <Lookup {...props} name="clientManager" idField="clientManagerUserId" label="Client manager" list={lookups.team} />
         <Field label="Relationship stage" name="status" errors={errors} hint="Controls portfolio health and job eligibility."
           control={(a11y, invalid) => (
             <select {...a11y} className={invalid ? "nz-sel bad" : "nz-sel"} value={form.status} onChange={(event) => onChange({ status: event.target.value as ClientFormState["status"] })}>
@@ -166,9 +173,9 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
             </select>
           )} />
         <Text {...props} name="website" label="Website" placeholder="https://example.com" />
-        <Lookup {...props} name="sector" label="Industry" list={lookups.industries} required />
+        <Lookup {...props} name="sector" idField="sectorValueId" label="Industry" list={lookups.industries} required />
         <Text {...props} name="industrySic" label="Industry code (SIC)" />
-        <Lookup {...props} name="referral" label="Referral" list={lookups.referrals} />
+        <Lookup {...props} name="referral" idField="referralValueId" label="Referral" list={lookups.referrals} />
         <Text {...props} name="companyRegistration" label="Company registration" />
         <Text {...props} name="location" label="Location" placeholder="City, country" required />
         <Field label="Financial year end" name="financialYearEndMonth" errors={errors}
