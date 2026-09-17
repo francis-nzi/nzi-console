@@ -135,7 +135,6 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
         <Text {...props} name="industrySic" label="Industry code (SIC)" />
         <Text {...props} name="referral" label="Referral" />
         <Text {...props} name="companyRegistration" label="Company registration" />
-        <Text {...props} name="headquarters" label="Headquarters" />
         <Text {...props} name="location" label="Location" placeholder="City, country" required />
         <Field label="Financial year end" name="financialYearEndMonth" errors={errors}
           control={(a11y, invalid) => (
