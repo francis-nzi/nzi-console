@@ -22,7 +22,7 @@ const NO_PREVIEW = null as unknown as PortalPreviewReadModel;
 export default async function PortalPreviewPage({ params }: { params: Promise<{ clientId: string }> }) {
   const { clientId } = await params;
   const result = await loadScreen<PortalPreviewReadModel>(
-    "clientWorkspace", NO_PREVIEW, `clients/${encodeURIComponent(clientId)}/portal-preview`);
+    "portalPreview", NO_PREVIEW, `clients/${encodeURIComponent(clientId)}/portal-preview`);
   if (result.state === "failed" && result.error.code === "HTTP_404") notFound();
 
   return <ScreenState result={result}>

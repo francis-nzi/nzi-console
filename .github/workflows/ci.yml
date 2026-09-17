@@ -85,3 +85,8 @@ jobs:
       # was a runtime-only rule, so only executing the commands against a database catches them.
       - name: The portal acceptance seed runs end to end, and is re-runnable
         run: npx tsx --test packages/isolated-backend/tests/portalAcceptanceSeed.test.ts
+      # The staff portal preview, against the contract the page serves it under. Thirteen unit
+      # tests passed while the screen could not render at all, because the fault was in the join
+      # between the response and its contract — a place no test of a part can see.
+      - name: The portal preview satisfies its screen contract
+        run: npx tsx --test packages/isolated-backend/tests/portalPreviewContract.test.ts
