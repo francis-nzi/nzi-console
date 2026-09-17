@@ -10,7 +10,7 @@ import { crumbTrail, workspaceCrumbs } from "../../lib/crumbTrail";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, emptyClientForm, normaliseClientForm, type ClientFormState, type FieldErrors } from "../clientForm";
 
 const STEPS = [
-  { id: "details", label: "Identity", blurb: "Who the client is, who owns the relationship, and how they report." },
+  { id: "details", label: "Identity" },
   { id: "targets", label: "Targets", blurb: "The net-zero trajectory reports and portal dashboards are measured against." },
   { id: "address", label: "Address", blurb: "Registered trading address and where invoices should go." },
   { id: "compliance", label: "Compliance", blurb: "Obligations, certifications and the Scope 3 categories material to this client." },
@@ -90,7 +90,7 @@ export function ClientCreateWizard() {
           <div style={{ marginBottom: 16 }}>
             <span className="nz-eyebrow">Step {step + 1} of {STEPS.length}</span>
             <h2 style={{ fontSize: 17, margin: "4px 0 2px" }}>{active.label}</h2>
-            <div className="sub">{active.blurb}</div>
+            {"blurb" in active ? <div className="sub">{active.blurb}</div> : null}
           </div>
           {step === 0 ? <DetailsGroup form={form} onChange={change} errors={errors} /> : null}
           {step === 1 ? <TargetsGroup form={form} onChange={change} errors={errors} /> : null}
@@ -102,7 +102,6 @@ export function ClientCreateWizard() {
               ? <button type="button" className="nz-btn pri" disabled={saving} onClick={submit}>{saving ? "Creating…" : "Create client"}</button>
               : <button type="button" className="nz-btn pri" onClick={next}>Continue →</button>}
           </div>
-          {!last ? <p className="sub" style={{ margin: "10px 2px 0" }}>Only identity is required — later steps can be completed now or from the client&apos;s edit tabs afterwards.</p> : null}
         </section>
       </div>
     </AppShell>
