@@ -7,6 +7,7 @@ export { Drawer } from "./Drawer";
 export { GatedButton } from "./GatedButton";
 export { Collapsible } from "./Collapsible";
 export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from "./HelpAffordance";
+export { SmartSearch, type SmartSearchOption } from "./SmartSearch";
 export { InfoTip } from "./InfoTip";
 
 export type IconName =

@@ -1457,3 +1457,16 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-preview-bar .hint{flex:1 1 260px;min-width:0;font-size:11px;color:var(--t3);line-height:1.45}
 .nz-portal-preview .nz-portal-shell{display:grid;gap:14px;padding:16px;max-width:980px;margin:0 auto}
 @media (max-width:640px){.nz-preview-bar .hint{flex-basis:100%}}
+
+/* The one smart-search (NZC-089). Positioned relative so the results hang off the field rather
+   than the page, and the list sits above sibling fields without a portal. */
+.nz-smart{position:relative}
+.nz-smart-results{position:absolute;z-index:30;top:100%;left:0;right:0;max-height:260px;overflow:auto;
+  margin:3px 0 0;padding:4px;list-style:none;border:1px solid var(--line);border-radius:10px;
+  background:var(--card);box-shadow:0 10px 28px rgba(11,27,43,.14)}
+.nz-smart-results li{display:grid;gap:1px;padding:7px 9px;border-radius:7px;cursor:pointer}
+.nz-smart-results li.on{background:var(--mint)}
+.nz-smart-results li b{font-size:12.5px;font-weight:600}
+.nz-smart-results li span{color:var(--t3);font-size:11px}
+.nz-smart-empty{cursor:default;color:var(--t3);font-size:11.5px}
+.nz-smart-chosen{margin-top:3px;color:var(--t3);font-size:11px}
