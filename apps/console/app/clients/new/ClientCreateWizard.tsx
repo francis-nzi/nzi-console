@@ -8,6 +8,7 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { NAV, USER } from "../../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../../lib/crumbTrail";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, emptyClientForm, normaliseClientForm, type ClientFormState, type FieldErrors } from "../clientForm";
+import { useReferenceOptions } from "../useReferenceOptions";
 
 const STEPS = [
   { id: "details", label: "Identity" },
@@ -18,6 +19,9 @@ const STEPS = [
 
 export function ClientCreateWizard() {
   const router = useRouter();
+  // The curated lists the Identity step searches (NZC-089). Fetched once for the wizard rather
+  // than per field, so the four smart-searches cannot disagree about who is on the team.
+  const lookups = useReferenceOptions();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<ClientFormState>(emptyClientForm());
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -92,7 +96,7 @@ export function ClientCreateWizard() {
             <h2 style={{ fontSize: 17, margin: "4px 0 2px" }}>{active.label}</h2>
             {"blurb" in active ? <div className="sub">{active.blurb}</div> : null}
           </div>
-          {step === 0 ? <DetailsGroup form={form} onChange={change} errors={errors} /> : null}
+          {step === 0 ? <DetailsGroup lookups={lookups} form={form} onChange={change} errors={errors} /> : null}
           {step === 1 ? <TargetsGroup form={form} onChange={change} errors={errors} /> : null}
           {step === 2 ? <AddressGroup form={form} onChange={change} errors={errors} /> : null}
           {step === 3 ? <ComplianceGroup form={form} onChange={change} errors={errors} /> : null}
