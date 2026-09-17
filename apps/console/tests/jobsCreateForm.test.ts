@@ -78,7 +78,10 @@ describe("the create-job form asks about the job, then its dates", () => {
 
   it("picks the client manager from the roster, not from free text", () => {
     const code = jobsCode();
-    assert.ok(code.includes(`<SmartSearch label="Client manager"`), "the same component Part 2 used");
+    // The component and its name, not the order its props happen to be written in — adding an
+    // `id` before `label` is not a change this test is about.
+    assert.ok(code.includes("<SmartSearch"), "the same component Part 2 used");
+    assert.match(code, /<SmartSearch[^>]*label="Client manager"/, "and it is the client manager");
     assert.ok(code.includes("useTeamOptions"), "and the same roster");
     assert.ok(!code.includes(">Owner<"), "Owner is no longer a field on this form");
   });
