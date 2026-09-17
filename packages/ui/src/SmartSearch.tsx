@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * The one smart-search (NZC-089).
@@ -28,6 +28,19 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
  * announces the highlighted option rather than a focus move. Up/Down move, Enter selects, Escape
  * closes without selecting, and a click outside closes. The chosen value is echoed under the field
  * so the state is readable, not just inferred from the input's text.
+ *
+ * ## It does not render its own `<label>`
+ *
+ * It used to, and on a form whose field rows render one as well that produced two — visibly, on all
+ * four smart-search fields of the Add-client Identity step and on none of the others. The second
+ * label was the tell for something quieter: the wrapper's `<label htmlFor="client-owner">` pointed
+ * at an id this component never used, because it generated its own. So the visible duplicate was a
+ * cosmetic symptom of a label that was not attached to anything.
+ *
+ * The caller owns the label, because the caller owns the layout it has to sit in. `id` is therefore
+ * **required**: a caller that has an id to pass has a label to point at it, and one that does not
+ * cannot render this at all. `label` remains, as the accessible name of the results listbox — the
+ * popup needs its own name and it is not the one the visible `<label>` provides.
  */
 
 export type SmartSearchOption = {
@@ -38,8 +51,10 @@ export type SmartSearchOption = {
 };
 
 export function SmartSearch({
-  label, options, value, onChange, placeholder, required, disabled, emptyHint, id: providedId,
+  label, options, value, onChange, placeholder, required, disabled, emptyHint,
+  id: fieldId, describedBy, invalid,
 }: {
+  /** The accessible name of the results listbox. The visible `<label>` is the caller's. */
   label: string;
   options: readonly SmartSearchOption[];
   /** The selected option's id, or "" for none. */
@@ -50,10 +65,12 @@ export function SmartSearch({
   disabled?: boolean;
   /** Said when the list itself is empty — a different fact from "nothing matched what you typed". */
   emptyHint?: string;
-  id?: string;
+  /** Required: the caller's `<label htmlFor>` must be able to reach this input. */
+  id: string;
+  /** Hint and error ids from the caller's field row, so the control keeps one description. */
+  describedBy?: string;
+  invalid?: boolean;
 }) {
-  const generatedId = useId();
-  const fieldId = providedId ?? generatedId;
   const listId = `${fieldId}-list`;
 
   const selected = useMemo(() => options.find((option) => option.id === value) ?? null, [options, value]);
@@ -108,11 +125,12 @@ export function SmartSearch({
   }
 
   return (
-    <div className="nz-fl nz-smart" ref={root}>
-      <label htmlFor={fieldId}>{label}{required ? <span aria-hidden="true"> *</span> : null}</label>
+    <div className="nz-smart" ref={root}>
       <input
         id={fieldId}
-        className="nz-inp"
+        className={invalid ? "nz-inp bad" : "nz-inp"}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
         type="text"
         role="combobox"
         aria-expanded={open}
