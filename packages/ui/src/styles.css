@@ -1457,3 +1457,8 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-preview-bar .hint{flex:1 1 260px;min-width:0;font-size:11px;color:var(--t3);line-height:1.45}
 .nz-portal-preview .nz-portal-shell{display:grid;gap:14px;padding:16px;max-width:980px;margin:0 auto}
 @media (max-width:640px){.nz-preview-bar .hint{flex-basis:100%}}
+
+/* An action that serves two lever themes is listed under both (DESIGN_CONVENTIONS §3.3). Quiet,
+   not a badge: it explains a repeat, and must not compete with the action itself. */
+.nz-portal-plan-also{margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
+  color:var(--t3);font-size:11px;line-height:1.45;font-style:italic}

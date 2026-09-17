@@ -82,6 +82,12 @@ export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesRea
       <p className="sub" style={{marginTop:0}}>
         Agreed with your NZI consultant and kept up to date by them. Grouped by the theme each action
         sits under.
+        {/* Levers are many-to-many with actions (DESIGN_CONVENTIONS §3.3), so an action that serves
+            two themes is listed under both. The count above is of actions, not of rows — said here
+            rather than left for a reader to reconcile from a total that looks wrong. */}
+        {model.plan.some(group=>group.strategies.some(strategy=>strategy.alsoUnder.length>0))
+          ? " A few actions serve more than one theme, so you will see them listed under each — the count above is of actions, not of entries."
+          : null}
       </p>
       <div className="nz-portal-plan">
         {model.plan.map(group=><Group key={group.key} group={group} defaultOpen={expanded}/>)}
@@ -117,6 +123,11 @@ function Strategy({strategy}:{strategy:PortalPlanStrategy}){
       <span className="track"><span className="fill" style={{width:`${strategy.progressPct}%`}}/></span>
       <span className="num">{strategy.progressPct}%</span>
     </div>
+    {/* The same action under another theme is not a second action. Saying so on the row is what
+        stops it reading as a duplicated entry — and as a plan padded to look busier. */}
+    {strategy.alsoUnder.length>0?<p className="nz-portal-plan-also">
+      Also listed under {strategy.alsoUnder.join(" and ")} — it is the same action, counted once.
+    </p>:null}
     {/* The client-facing half of the shared spine: what this action moves in your reporting. */}
     {strategy.srsRequirements.length>0?<div className="nz-portal-plan-srs">
       <span className="l">Supports your UK SRS reporting</span>

@@ -200,3 +200,56 @@ describe("the portal plan view", () => {
     assert.ok(!entry.controlLevelLabel.includes("_"), "never the underlying key");
   });
 });
+
+describe("an action under two themes is listed twice and counted once", () => {
+  /**
+   * The NZC-080 walk-through finding: the header read "7 actions on your plan" while the theme
+   * badges summed to 9. Both numbers were right and they counted different things — levers are
+   * many-to-many with actions (DESIGN_CONVENTIONS §3.3, locked), so an action serving two themes
+   * appears under both.
+   *
+   * Nothing was broken. What was missing was any way for a reader to tell that a repeated row is
+   * the same action rather than a second one — and a plan that looks padded is a plan a client
+   * trusts less, which is the opposite of what a transparent plan is for.
+   */
+  const twoThemes = () => world({
+    strategies: [
+      strategy({ client_strategy_id: "cs-both", lever_ids: ["lever-energy", "lever-travel"] }),
+      strategy({ client_strategy_id: "cs-one", lever_ids: ["lever-energy"] }),
+    ],
+  });
+
+  it("counts actions, not entries", async () => {
+    const model = await read(twoThemes());
+    const appearances = model.plan.reduce((sum, group) => sum + group.strategies.length, 0);
+    assert.equal(model.total, 2, "two actions");
+    assert.equal(appearances, 3, "three rows — the difference the client could see and not explain");
+  });
+
+  it("names the other theme on each repeated row", async () => {
+    const model = await read(twoThemes());
+    const energy = model.plan.find((group) => group.label === "Energy")!;
+    const travel = model.plan.find((group) => group.label === "Travel")!;
+    assert.deepEqual(energy.strategies.find((s) => s.id === "cs-both")!.alsoUnder, ["Travel"]);
+    assert.deepEqual(travel.strategies.find((s) => s.id === "cs-both")!.alsoUnder, ["Energy"]);
+  });
+
+  it("says nothing on an action that sits under one theme", async () => {
+    // The note explains a repeat. On a row that is not repeated it would be noise.
+    const model = await read(twoThemes());
+    const energy = model.plan.find((group) => group.label === "Energy")!;
+    assert.deepEqual(energy.strategies.find((s) => s.id === "cs-one")!.alsoUnder, []);
+  });
+
+  it("describes a withdrawn theme as the client actually sees it", async () => {
+    // A strategy on a withdrawn lever groups under "Other". Naming the dead lever would tell the
+    // client about a theme that is not on their plan; `alsoUnder` is built from the groups that
+    // were rendered, not from the raw lever ids.
+    const model = await read(world({
+      strategies: [strategy({ client_strategy_id: "cs-gone", lever_ids: ["lever-gone", "lever-energy"] })],
+    }));
+    const energy = model.plan.find((group) => group.label === "Energy");
+    assert.ok(energy, "it still appears under its live theme");
+    assert.deepEqual(energy.strategies[0]!.alsoUnder, [], "the withdrawn theme is not named to the client");
+  });
+})

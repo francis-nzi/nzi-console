@@ -70,6 +70,18 @@ export type PortalPlanStrategy = {
   /** The same read-time derivation the signals above use, so the two cannot disagree. */
   deadline: StrategyDeadline;
   /** The readiness gaps this strategy closes — the client-facing half of the shared spine. */
+  /**
+   * The other lever themes this same action appears under, in this client's plan.
+   *
+   * Levers are many-to-many with strategies (DESIGN_CONVENTIONS §3.3), so one action can
+   * legitimately sit under two themes — and then the plan shows nine rows for seven actions. Both
+   * numbers are right and they count different things, which is exactly the situation a reader
+   * cannot be expected to work out unaided. Naming the other themes on the row turns an apparent
+   * duplicate into an action that does two jobs.
+   *
+   * Empty for the ordinary single-lever case.
+   */
+  alsoUnder: string[];
   srsRequirements: PortalPlanRequirement[];
 };
 
@@ -151,7 +163,19 @@ function portalPlanGroups(
   today: string,
 ): PortalPlanGroup[] {
   const descriptions = new Map(library.map((entry) => [entry.id, entry.description]));
-  const forClient = (strategy: ClientStrategy): PortalPlanStrategy => ({
+
+  // Which themes each action appears under, worked out once from the same grouping the rows are
+  // built from — not from `leverIds`, so a lever that is withdrawn (and therefore groups under
+  // "Other") is described to the client the way they actually see it.
+  const byLever = strategyPlanByLever(plan, levers);
+  const appearsUnder = new Map<string, string[]>();
+  for (const group of byLever) {
+    for (const strategy of group.strategies) {
+      appearsUnder.set(strategy.id, [...(appearsUnder.get(strategy.id) ?? []), group.lever.title]);
+    }
+  }
+
+  const forClient = (groupLabel: string) => (strategy: ClientStrategy): PortalPlanStrategy => ({
     id: strategy.id,
     title: strategy.title,
     // A bespoke strategy has no catalogue entry, so it has no description. Falling back to
@@ -165,17 +189,18 @@ function portalPlanGroups(
     progressPct: strategy.progressPct,
     targetDate: strategy.targetDate === null || strategy.targetDate === "" ? null : strategy.targetDate,
     deadline: strategyDeadline(strategy, today),
+    alsoUnder: (appearsUnder.get(strategy.id) ?? []).filter((label) => label !== groupLabel),
     srsRequirements: strategy.srsRequirementIds
       .map((id) => requirements.get(id))
       .filter((entry): entry is PortalPlanRequirement => entry !== undefined)
       .sort((a, b) => a.code.localeCompare(b.code)),
   });
 
-  const groups: PortalPlanGroup[] = strategyPlanByLever(plan, levers)
-    .map((group) => ({ key: group.lever.id, label: group.lever.title, strategies: group.strategies.map(forClient) }));
+  const groups: PortalPlanGroup[] = byLever
+    .map((group) => ({ key: group.lever.id, label: group.lever.title, strategies: group.strategies.map(forClient(group.lever.title)) }));
   const unallocated = strategiesWithoutLever(plan, levers);
   if (unallocated.length > 0) {
-    groups.push({ key: "__other", label: "Other", strategies: unallocated.map(forClient) });
+    groups.push({ key: "__other", label: "Other", strategies: unallocated.map(forClient("Other")) });
   }
   return groups;
 }
