@@ -4,3 +4,16 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# The decision register is append-only in practice: every branch adds entries at the end, so two
+# branches in flight always collide there even though neither touched the other's text. The union
+# driver keeps both sides, which is the resolution we reach by hand every time.
+#
+# This helps a LOCAL merge or rebase only. GitHub computes mergeability on its own servers and does
+# not read .gitattributes, so a pull request can still show a conflict here — the branch is rebased
+# locally and force-pushed, and the union driver makes that rebase resolve itself.
+#
+# Union is safe here and would not be for code: the file is a list of independent sections, so
+# concatenating both sides is meaningful. It cannot detect two branches minting the same NZC
+# number — `npm run check:decisions` does that.
+docs/DECISIONS.md merge=union
