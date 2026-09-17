@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { ensureDisposableDatabase } from "./support/database";
 import { commandGrantForRole, reportingPeriodForYear, reportingYearForPeriod } from "@nzi/contracts";
 import { CommandValidationError, createJob } from "../src/index";
 
@@ -34,7 +35,9 @@ import { CommandValidationError, createJob } from "../src/index";
 pg.types.setTypeParser(1082, (value: string) => value);
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
+// This suite builds its schema in a database of its own, so a suite running beside it cannot
+// drop that schema midway through (NZC-097). Its setup below is unchanged.
+const DATABASE_URL = await ensureDisposableDatabase("jobcreate");
 const ORG = "ci-jobcreate-org";
 const ACTOR = "ci-jobcreate-consultant";
 const MANAGER = "ci-jobcreate-manager";

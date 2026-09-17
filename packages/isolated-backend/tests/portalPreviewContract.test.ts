@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { commandGrantForRole, contractFor, roleCapabilityGrants, type StaffRole } from "@nzi/contracts";
 import { getPortalPreview } from "../src/portalPreview";
 import { seedPortalAcceptance } from "../src/portalAcceptanceSeed";
@@ -28,8 +26,7 @@ import type { StaffPrincipal } from "../src/auth";
  * Skips without a throwaway database; CI always provides one.
  */
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
+const DATABASE_URL = TEST_DATABASE_URL;
 const ORG = "ci-preview-org";
 const ACTOR = "ci-preview-staff";
 const CLIENT = "ci-preview-client";
@@ -55,21 +52,18 @@ const staff = (role: StaffRole = "admin"): StaffPrincipal => ({
 
 describe("the staff portal preview renders against its contract", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let pool: pg.Pool;
+  let database: DisposableDatabase;
 
   before(async () => {
-    assertDisposable(DATABASE_URL!);
-    const admin = new pg.Client({ connectionString: DATABASE_URL });
-    await admin.connect();
-    await admin.query(`DROP SCHEMA IF EXISTS nzi_console CASCADE`);
-    for (const role of ["nzi_console_app", "nzi_console_worker", "nzi_console_auth"]) {
-      await admin.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    }
-    for (const filename of readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql")).sort()) {
-      await admin.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
-      if (filename.startsWith("0001_")) {
-        await admin.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`, [ORG, "CI"]);
-      }
-    }
+    // Its own database, so a parallel suite cannot drop the schema underneath it.
+    database = (await createDisposableDatabase("portalpreview", {
+      onMigration: async (filename, db) => {
+        if (filename.startsWith("0001_")) {
+          await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $2)`, [ORG, "CI"]);
+        }
+      },
+    }))!;
+    const admin = await database.admin();
     await admin.query(`SELECT nzi_console.provision_organisation($1)`, [ORG]);
     for (const [id, name] of [[CLIENT, "CI Preview Client"], [BARE_CLIENT, "CI Bare Client"]]) {
       await admin.query(
@@ -82,13 +76,13 @@ describe("the staff portal preview renders against its contract", { skip: DATABA
        ON CONFLICT (organisation_id, user_id) DO UPDATE SET role_id='admin', status='active'`, [ORG, ACTOR]);
     await admin.end();
 
-    pool = new pg.Pool({ connectionString: DATABASE_URL, max: 4, application_name: "nzi-preview-ci" });
+    pool = database.pool;
     // The same fixture the acceptance walk-through uses, so the contract is checked against the
     // data a person will actually be looking at.
     await seedPortalAcceptance(pool, { organisationId: ORG, actorId: ACTOR, clientId: CLIENT });
   });
 
-  after(async () => { await pool?.end(); });
+  after(async () => { await database?.end(); });
 
   const contract = contractFor("portalPreview");
   const today = () => new Date().toISOString().slice(0, 10);

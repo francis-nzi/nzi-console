@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import pg from "pg";
-// @ts-expect-error — plain ESM runner, sharing its disposable-database guard.
-import { assertDisposable } from "../scripts/migrate.mjs";
+import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { freezeReportComposition, getReportComposition } from "../src/reportCompositions";
 import { composeReportPlan, reportAssurance, strategyControlLevelLabels, strategyControlLevels, type ClientStrategy, type ReportComposition } from "@nzi/contracts";
 
@@ -25,8 +21,7 @@ import { composeReportPlan, reportAssurance, strategyControlLevelLabels, strateg
 
 const EVIDENCE_HASH = `sha256:${"a".repeat(64)}`;
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-const DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
+const DATABASE_URL = TEST_DATABASE_URL;
 
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", strategyId: null, leverIds: ["lever-energy"],
@@ -40,18 +35,12 @@ const CODES = new Map([["req-1", "S2 M2"]]);
 
 describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let client: pg.Client;
+  let database: DisposableDatabase;
 
   before(async () => {
-    assertDisposable(DATABASE_URL!, process.env.NZI_ISOLATED_DATABASE_URL);
-    client = new pg.Client({ connectionString: DATABASE_URL });
-    await client.connect();
-    await client.query(`DROP SCHEMA IF EXISTS nzi_console CASCADE`);
-    for (const role of ["nzi_console_app", "nzi_console_worker", "nzi_console_auth"]) {
-      await client.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    }
-    for (const file of readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql")).sort()) {
-      await client.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-    }
+    // This suite owns its own database, so a parallel suite cannot drop the schema underneath it.
+    database = (await createDisposableDatabase("reportfreeze"))!;
+    client = await database.admin();
     // Enough of a world to hang a report version off. The composition itself is built here
     // rather than through publish: publish's own wiring is asserted separately, and what
     // this test is about is whether a frozen composition survives its sources changing.
@@ -76,7 +65,7 @@ describe("an issued report does not move", { skip: DATABASE_URL ? false : "NZI_T
       [EVIDENCE_HASH]);
   });
 
-  after(async () => { await client?.end(); });
+  after(async () => { await client?.end(); await database?.end(); });
 
   it("returns what was frozen after the plan underneath it changes", async () => {
     const plan = composeReportPlan([strategy("s1", { status: "in_progress", progressPct: 60 }), strategy("s2")], LEVERS, CODES);
