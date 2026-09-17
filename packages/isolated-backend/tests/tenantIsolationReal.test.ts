@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -168,7 +165,9 @@ describe("every tenant table is protected, not just the ones with tests", { skip
     // column to the current tenant would leave provisioning unable to create a row. The
     // application never queries it — asserted below — so the grant it holds is unused surface
     // rather than an open path.
-    organisations: "the tenant registry; the application never queries it",
+    // Its primary key IS organisation_id, so a tenant policy could not admit the row being
+    // provisioned. Protected by privilege instead: the application role holds none (0092).
+    organisations: "the tenant registry; the application role holds no privilege on it",
   };
 
   it("enables and forces row-level security on every table carrying an organisation_id", async () => {
@@ -217,16 +216,40 @@ describe("every tenant table is protected, not just the ones with tests", { skip
     assert.deepEqual(rows, [], "the application role holds no privilege on the authentication tables");
   });
 
-  it("notes that the tenant registry is reachable by the application role, and unused", async () => {
-    // Stated rather than hidden. `organisations` has no policy and the application role does hold
-    // privileges on it, so the only thing standing between a tenant and the list of every
-    // organisation is that nothing queries it. That is a property of today's code, not of the
-    // schema — so it is asserted, and the day a read model joins this table the assertion fails
-    // and points at the missing policy rather than shipping a cross-tenant read.
-    const grants = await db.query(
-      `SELECT 1 FROM information_schema.role_table_grants
+  it("gives the application role no way to reach the tenant registry", async () => {
+    // `organisations` cannot carry the usual policy — organisation_id is its primary key, so a
+    // tenant policy could not admit the row being provisioned — so it is protected by privilege
+    // instead: the application role holds none (0092, NZC-100).
+    //
+    // This replaced a weaker assertion. NZC-099 pinned the fact that *nothing queried* the table,
+    // which was true but was a property of the source rather than of the schema: it held only
+    // until someone wrote the first query. The privilege is the thing that decides.
+    const { rows } = await db.query<{ privilege_type: string }>(
+      `SELECT privilege_type FROM information_schema.role_table_grants
         WHERE table_schema='nzi_console' AND grantee='nzi_console_app' AND table_name='organisations'`);
-    assert.ok((grants.rowCount ?? 0) > 0, "the grant exists — if this fails, the grant was closed and this test should go");
+    assert.deepEqual(rows, [], "the application role must hold no privilege on the tenant registry");
+  });
+
+  it("requires a confining policy of any table the application can reach", async () => {
+    // The rule the exception now rests on, stated once for every table rather than for this one.
+    // A table the application role can read must either confine what it returns with a policy, or
+    // have no organisation_id to confine — so granting access back to the registry means adding a
+    // policy in the same change, not afterwards.
+    const { rows } = await db.query<{ tablename: string; privs: string }>(
+      `SELECT c.relname AS tablename, string_agg(DISTINCT g.privilege_type, ',') AS privs
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         JOIN information_schema.role_table_grants g
+           ON g.table_schema = n.nspname AND g.table_name = c.relname AND g.grantee = 'nzi_console_app'
+        WHERE n.nspname = 'nzi_console' AND c.relkind = 'r'
+          AND EXISTS (SELECT 1 FROM information_schema.columns col
+                       WHERE col.table_schema='nzi_console' AND col.table_name=c.relname
+                         AND col.column_name='organisation_id')
+          AND NOT (c.relrowsecurity AND c.relforcerowsecurity
+                   AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid))
+        GROUP BY c.relname ORDER BY c.relname`);
+    assert.deepEqual(rows.map((row) => `${row.tablename} (${row.privs})`), [],
+      "the application role can reach a tenant table that has no policy confining what it returns");
   });
 
   it("leaves no tenant table readable by the application role without a policy", async () => {
@@ -236,41 +259,5 @@ describe("every tenant table is protected, not just the ones with tests", { skip
       `SELECT c.relname AS tablename FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname='nzi_console' AND c.relkind='r' AND c.relrowsecurity AND NOT c.relforcerowsecurity`);
     assert.deepEqual(rows.map((row) => row.tablename), [], "ENABLE without FORCE leaves the owner unrestricted");
-  });
-});
-
-describe("the tenant registry stays unqueried while it has no policy", () => {
-  /**
-   * `nzi_console.organisations` has no row-level security — its primary key *is* the tenant id, so
-   * a policy comparing that column to the current tenant would stop provisioning creating a row —
-   * and the application role holds full DML on it. The only thing preventing a tenant from reading
-   * every organisation's name is that no application code queries the table.
-   *
-   * That is a fact about today's source, not about the schema, so it is asserted here. The day
-   * someone joins this table into a read model, this fails and names the decision that has to be
-   * taken first: give it a policy, or narrow the grant.
-   */
-  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-  /** Application source only — migrations create the table and tests seed it, both legitimately. */
-  const AREAS = ["packages/isolated-backend/src", "packages/contracts/src", "apps/console/app"];
-  const sources = () => AREAS.flatMap((area) =>
-    readdirSync(join(ROOT, area), { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".ts") || name.endsWith(".tsx"))
-      .map((name) => ({ area, name, path: join(ROOT, area, name) })));
-
-  it("scans something", () => {
-    // A scanner with nothing to scan finds nothing wrong, which reads as safety it never checked.
-    assert.ok(sources().length > 100, `expected the application sources, found ${sources().length}`);
-  });
-
-  it("is referenced by no application source", () => {
-    // Walked rather than shelled out: every other scanner in this repo reads the filesystem, and a
-    // test that spawns a process fails for reasons that have nothing to do with what it asserts.
-    const offenders = sources()
-      .filter((source) => readFileSync(source.path, "utf8").includes("nzi_console.organisations"))
-      .map((source) => `${source.area}/${source.name.split("\\").join("/")}`);
-    assert.deepEqual(offenders, [],
-      "application code now reads the tenant registry, which has no tenant policy — give "
-      + "nzi_console.organisations a policy, or narrow the application role's grant, before this ships");
   });
 });
