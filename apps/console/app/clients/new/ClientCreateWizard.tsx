@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -9,6 +9,7 @@ import { NAV, USER } from "../../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../../lib/crumbTrail";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, emptyClientForm, normaliseClientForm, type ClientFormState, type FieldErrors } from "../clientForm";
 import { useReferenceOptions } from "../useReferenceOptions";
+import { useStaffMe } from "../../lib/useEditAccess";
 
 const STEPS = [
   { id: "details", label: "Identity" },
@@ -28,6 +29,30 @@ export function ClientCreateWizard() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const submissionKey = useRef<string | null>(null);
+  const me = useStaffMe(true);
+
+  /**
+   * Client owner defaults to whoever is creating the client, and is overridable.
+   *
+   * Create-and-own is the common case and should cost nothing; handing a client to a colleague
+   * stays a deliberate change to a field that is already filled in. Only ever fills a blank — once
+   * someone has chosen an owner, this must not reach back in and change it, which is why it is
+   * guarded on both the label and the id rather than on the label alone.
+   *
+   * If the creator is not on the roster the field stays empty and required, rather than defaulting
+   * to a person who cannot be resolved.
+   */
+  useEffect(() => {
+    if (lookups.team.state !== "ready") return;
+    if (!me || me === "signed-out") return;
+    if (form.owner.trim() !== "" || form.ownerUserId) return;
+    const mine = lookups.team.options.find((option) => option.id === me.userId);
+    if (!mine) return;
+    setForm((current) =>
+      current.owner.trim() === "" && !current.ownerUserId
+        ? { ...current, owner: mine.label, ownerUserId: mine.id }
+        : current);
+  }, [lookups.team, me, form.owner, form.ownerUserId]);
   function change(patch: Partial<ClientFormState>) {
     setForm((current) => ({ ...current, ...patch }));
     setErrors((current) => {

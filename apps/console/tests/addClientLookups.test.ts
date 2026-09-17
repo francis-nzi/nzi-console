@@ -63,6 +63,30 @@ describe("the Identity step searches curated lists", () => {
     assert.doesNotMatch(wizard, /Who the client is, who owns the relationship/);
   });
 
+  it("defaults the owner to whoever is creating, and only into a blank", () => {
+    // Create-and-own should cost nothing; handing a client to a colleague stays a deliberate edit
+    // to a field already filled in. The guard is on both the label and the id, so a chosen owner
+    // can never be reached back into and replaced.
+    // Exact strings rather than patterns: these contain `.`, `(`, `|` and `!`, every one of which
+    // means something else in a regex, and a pattern that quietly matches more than it should is
+    // no guard at all.
+    const wizard = readFileSync(join(ROOT, "apps/console/app/clients/new/ClientCreateWizard.tsx"), "utf8");
+    assert.ok(wizard.includes("useStaffMe"), "the default comes from the signed-in user");
+    assert.ok(wizard.includes(`form.owner.trim() !== "" || form.ownerUserId`), "never overwrites a chosen owner");
+    assert.ok(wizard.includes(`current.owner.trim() === "" && !current.ownerUserId`), "and re-checks inside the update");
+  });
+
+  it("records the id beside the label for all four", () => {
+    // The id is what makes a rename in the lookup reach the client; the label is what the client
+    // keeps if the value later leaves the list.
+    const lines = formLines();
+    for (const [field, idField] of [["owner", "ownerUserId"], ["clientManager", "clientManagerUserId"],
+      ["sector", "sectorValueId"], ["referral", "referralValueId"]] as const) {
+      const rendered = lines.find((line) => line.includes(`name="${field}"`))!;
+      assert.ok(rendered.includes(`idField="${idField}"`), `${field} must record ${idField}`);
+    }
+  });
+
   it("says a failed list is a fault, never an empty one", () => {
     // The platform's oldest failure mode, applied to a dropdown: a consultant hunting for a
     // missing industry when the request actually failed.
