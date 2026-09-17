@@ -1724,3 +1724,75 @@ A `<datalist>` cannot return an **id** (it yields the text typed, so "Maya Osei"
 rather than `m.osei` — the whole point of moving owner and manager off free text), cannot show a
 second line, and behaves differently per browser. `SmartSearch` in `@nzi/ui` is the one
 implementation all four fields will use.
+
+### NZC-090 — Client identity fields are references, with the stored text as a first-class fallback [Confirmed 17 Sep 2026]
+
+**Decision.** `sector`, `referral`, `client_manager` and the client owner become references to the
+curated lookups (NZC-089) and the team roster. Migration `0090` adds `sector_value_id`,
+`referral_value_id` and `client_manager_user_id` with real foreign keys; the owner reuses
+`owner_user_id`, which has existed since `0066`. The existing text columns keep their values.
+
+**Recorded late.** This was cited in eleven files before it was written down here, which is its own
+small lesson: a code comment naming a decision is a pointer, and a pointer to nothing is worse than
+no pointer, because it reads as though the reasoning exists somewhere.
+
+**The fallback is the path, not the safety net.** Every field resolves id → curated label → the
+client's own text, unconditionally. The first dry run settled the question: on the demo org nearly
+every sector, owner and manager resolved to stored text, and staging is smaller and more synthetic
+than live. Three reasons it stays true after the lists improve — archive is deactivation, so a
+client keeps pointing at a value that has left the search; every client predating the lookups holds
+text typed against nothing; and "Food & beverage" and "Food and Drink" are one industry to a person
+and two strings to a matcher. Aliases will shrink that population, not empty it.
+
+**Resolution happens in the read.** Scalar subselects beside the existing `primary_contact` one, so
+`sector`, `owner`, `referral` and `clientManager` already carry the resolved label and no call site
+can implement two of the three steps and forget the third. A `references` block carries the id and
+which step produced the label, for a surface that wants to flag an unresolved value.
+
+**A script may fill an owner; it may never move one.** `owner_user_id` is what `own_clients`
+resolves against, so writing it decides who holds certain powers over a client. The backfill fills
+a null one from an unambiguous name and never changes one already set; a disagreement between the
+stored owner and the name on the record is reported for a person to settle. Re-pointing ownership
+is a deliberate, audited act.
+
+**What ownership actually costs, measured rather than assumed.** Assigning a client to a colleague
+does **not** take it out of the creator's sight: no role holds `client.view` at `own_clients`, so
+visibility is organisation-wide. Exactly three consultant capabilities follow the owner —
+`baseline.rebaseline`, `portal.admin`, `audit.view`. Narrowing visibility to owned clients was
+considered and **declined**: it is a confidentiality-model change, not a side effect of this one.
+
+**The create form defaults the owner to whoever is creating**, overridable, filling only a blank.
+Create-and-own should cost nothing; handing a client over stays a deliberate edit.
+
+**Referential integrity came cheaply.** `value_id` is unique within an organisation by construction
+— `"<category>:<slug>"` — so one unique constraint lets `clients` carry real foreign keys, instead
+of three redundant category columns to satisfy composite ones.
+
+### NZC-091 — A red main is not mergeable-past [Confirmed 17 Sep 2026]
+
+**Decision.** The repository requires both CI jobs — `typecheck · build · tests` and
+`migrations apply to a real Postgres` — to pass before a pull request may merge, and requires a
+branch to be **up to date with `main`** before merging.
+
+**Why, with the evidence.** A real-Postgres test introduced by #203 failed roughly one run in
+eight, and #205 merged on top of it. Nothing stopped that: the check was advisory, so a red main
+stayed mergeable-past, and an intermittent failure is the kind most likely to be re-run away rather
+than investigated. Two further pull requests queued behind a failure nobody was obliged to fix.
+
+**Why "up to date before merging" as well.** The two checks answer "is this branch green?", not "is
+`main` green with this branch in it", and those differ whenever two branches are in flight. This
+repository makes that concrete: migrations are numbered, so two branches can each add a `0090`,
+each pass alone, and collide only once both are in. Requiring the branch to be current turns that
+from a broken `main` into a rebase.
+
+**The cost, stated.** Requiring up-to-date means rebasing whenever `main` moves, which at the
+current cadence is often. That is the trade: a little more rebasing against never having to work
+out which of the last four merges broke the build.
+
+**What this does not do.** It is a repository setting, so nothing in this repo enforces or records
+it — the same class as NZC-086's conflict markers and §15's auto-delete: guarantees that cannot
+live in the code they protect. If the setting is ever removed, no test will notice, which is the
+reason it is written down here.
+
+**Related.** NZC-086 (the gate scans the files, not just what they compile to); DESIGN_CONVENTIONS
+§15 (a merged branch is deleted, and a merge is verified on `main` by content).
