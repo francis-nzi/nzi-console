@@ -1796,3 +1796,45 @@ reason it is written down here.
 
 **Related.** NZC-086 (the gate scans the files, not just what they compile to); DESIGN_CONVENTIONS
 §15 (a merged branch is deleted, and a merge is verified on `main` by content).
+
+### NZC-092 — A job records the period it reports on, and its year is derived forward only [Confirmed 17 Sep 2026]
+
+**Decision.** Migration `0091` gives `jobs` a `reporting_period_start` and `reporting_period_end`.
+From Part 1, a new job's `reporting_year` is the calendar year its reporting period **ends** —
+31/12/2024 → 2024, 31/03/2025 → 2025 — derived by a new helper and never typed. Existing jobs keep
+the year they were stored with, and their periods stay null.
+
+**Why the period has to be stored.** `reporting_year` alone cannot say which period a job covers
+for any client whose financial year does not end in December: FY2024 for a March year end is
+01/04/2024–31/03/2025. Four places reconstruct that from the year plus the client's
+`financial_year_end_month`, which is correct only while every job's period is exactly the client's
+financial year. It stops being correct for a part-year first engagement, a transition period after
+a year-end change, or a client reporting on a different basis from its statutory accounts. Storing
+the two dates the consultant entered makes the period recorded rather than recomputed.
+
+**The two rules cannot both label the same period**, and #210 measured the gap rather than
+estimating it: identical for a December or unset year end, and off by exactly one year for every
+other. A March year end's FY24 would start reading as FY25. So the new rule applies **forward
+only** — a new job records the period entered and the year derived from its end; an existing job
+keeps what it was stored with. Nothing re-derives an old job's year.
+
+**Which is why `0091` backfills nothing.** Computing a period from an existing `reporting_year`
+would invent dates under the start-year convention that Part 1 then reads back under the end-year
+one, moving the label silently. A null period says "not recorded", which is true and which a read
+can state honestly. The characterisation test from #210 is the tripwire: if it moves, the change
+has reached backwards.
+
+**The database enforces the ordering**, not only the validator. `jobs_reporting_period_ordered`
+refuses a period ending on or before it starts, because a server validator can be bypassed by the
+next writer and a CHECK constraint cannot.
+
+**The job's client manager is one column, not two.** `client_manager_user_id` arrives with the same
+membership foreign key `0090` gave `clients`. No `client_manager_name` comes with it: `owner_name`
+is already a name typed when there was no roster to choose from — exactly the text half of the
+NZC-090 pattern — and a second column meaning the same thing is two copies that drift. The resolver
+reads the id and falls back to `owner_name`, so historical jobs keep showing the person they named.
+The column keeps its historical name; renaming it is neither trivial nor safe, and the name is a
+fact about when it was added rather than a claim about what it means now.
+
+**Related.** NZC-090 (id beside the text, the text as a first-class fallback); NZC-040 (dd/mm/yyyy);
+the #210 characterisation test.
