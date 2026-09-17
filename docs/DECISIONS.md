@@ -2091,3 +2091,42 @@ separately, reading the recorded origins rather than a second copy of them.
 
 **Related.** NZC-096 (the period is the identity); NZC-059 / NZC-067 (the chain and the 300–400 day
 rule, both unchanged); NZC-063 (rollforward, deliberately not touched here).
+### NZC-099 — A trust boundary is tested against a database, never against a fake [Confirmed 17 Sep 2026]
+
+**Standing testing decision, not one suite.** Any guarantee enforced by the database — row-level
+security, a foreign key, a check constraint, a grant, a unique index — and any gate that decides
+whether a caller may reach a record, is covered by a test that runs against a real Postgres. A
+fake-pool test may stand beside it to drive logic quickly; it may never be the only evidence.
+
+**Why: a fake cannot be wrong about RLS, because a fake has none.** The suite that claimed to cover
+tenant isolation asserted that `withTenantRead` issues `BEGIN READ ONLY`, `SET LOCAL ROLE
+nzi_console_app`, `set_config('app.organisation_id')` and `COMMIT`. That proves the adapter says the
+right words. Whether the database acts on them was never asked, and could not be: row-level
+security is a property of Postgres, and the test had no Postgres. Every cross-tenant refusal
+asserted in this repo was, until now, a refusal by a mock configured by the same test that asserted
+it — including `tests/support/access.ts`, which answers the tenant-and-ownership probe for four
+suites, `permissions` among them.
+
+**What the real tests found.** Enforcement is sound: a tenant sees only its own rows; another
+tenant's row is unreachable even when named by primary key; an unset tenant sees nothing rather
+than everything; `WITH CHECK` refuses writing or moving a row across the boundary; and the probe
+refuses a cross-tenant record even for an admin holding every capability at `all` scope. **No
+breach was found.** Two things were:
+
+- Seven tables carry an `organisation_id` with no policy. Six are the authentication tables, and
+  they are correct: authentication runs *before* a tenant context exists, so a policy keyed on
+  `app.organisation_id` could never admit a row — they are protected by **grant** instead, reachable
+  only by `nzi_console_auth`, with no privilege for the application role. That is now asserted
+  rather than assumed.
+- `organisations` has no policy **and** the application role holds full DML on it. Nothing exposed
+  today, because no application code queries the table — but that is a fact about today's source,
+  not about the schema. It is pinned by a scan, so the day a read model joins the tenant registry
+  the test fails and names the decision: give it a policy, or narrow the grant.
+
+**A test that cannot fail must prove it can.** These run as `nzi_console_app`, because a superuser
+always bypasses RLS and an owner bypasses it without `FORCE` — a test that forgot the role would
+see everything and pass while proving the opposite of its name. One assertion deliberately shows
+the superuser seeing both tenants, so the guard has a witness.
+
+**Related.** NZC-097 (a suite owns its database, which is what makes these runnable in parallel);
+NZC-091 (a red main is not mergeable-past — worth having only if a red means something).
