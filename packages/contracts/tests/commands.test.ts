@@ -23,7 +23,7 @@ describe("command contracts", () => {
   });
   it("validates client and job creation before transport", () => {
     assert.equal(validateCommand("client.create", { name: "", status: "active", sector: "Services", location: "London", owner: "A" }, context).some((issue) => issue.field === "name"), true);
-    assert.equal(validateCommand("job.create", { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "A", startDate: "2026-12-31", dueDate: "2026-01-01" }, context).some((issue) => issue.code === "INVALID_RANGE"), true);
+    assert.equal(validateCommand("job.create", { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "A", startDate: "2026-12-31", dueDate: "2026-01-01", reportingPeriodStart: "2026-01-01", reportingPeriodEnd: "2026-12-31" }, context).some((issue) => issue.code === "INVALID_RANGE"), true);
   });
   it("validates canonical scope-row quantity, scope and factor provenance", () => {
     const base = { jobId: "job-a", scope: "3.1", sourceLabel: "Purchased goods", quantity: 100, unit: "GBP", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "2026 v1", factorLabel: "Synthetic factor", qualityTier: "spend-based" as const };

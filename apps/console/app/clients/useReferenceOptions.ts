@@ -39,15 +39,19 @@ async function fetchOptions(url: string, map: (body: never) => SmartSearchOption
   }
 }
 
-export function useReferenceOptions(): { team: OptionList; industries: OptionList; referrals: OptionList } {
+/**
+ * The staff roster on its own.
+ *
+ * The Add-client form picks an owner and a client manager from it; the Create-job form picks a
+ * client manager from it (redesign Part 1). One hook rather than two, so a job's client manager and
+ * a client's can never resolve against different rosters — which would make "default the job from
+ * the client" resolve to somebody the other list has never heard of.
+ */
+export function useTeamOptions(): OptionList {
   const [team, setTeam] = useState<OptionList>(LOADING);
-  const [industries, setIndustries] = useState<OptionList>(LOADING);
-  const [referrals, setReferrals] = useState<OptionList>(LOADING);
 
   useEffect(() => {
     let live = true;
-    const settle = (set: (value: OptionList) => void) => (value: OptionList) => { if (live) set(value); };
-
     void fetchOptions("/api/isolated/team", (body: { members?: Array<{ userId: string; displayName: string; role: string; named: boolean }> }) =>
       (body.members ?? []).map((member) => ({
         id: member.userId,
@@ -55,7 +59,21 @@ export function useReferenceOptions(): { team: OptionList; industries: OptionLis
         // The role is the useful second line when picking a colleague; when the roster has no name
         // for someone the label is their handle, and saying so beats letting it pass as a name.
         hint: member.named ? member.role : `${member.role} · no name on the roster yet`,
-      }))).then(settle(setTeam));
+      }))).then((value) => { if (live) setTeam(value); });
+    return () => { live = false; };
+  }, []);
+
+  return team;
+}
+
+export function useReferenceOptions(): { team: OptionList; industries: OptionList; referrals: OptionList } {
+  const team = useTeamOptions();
+  const [industries, setIndustries] = useState<OptionList>(LOADING);
+  const [referrals, setReferrals] = useState<OptionList>(LOADING);
+
+  useEffect(() => {
+    let live = true;
+    const settle = (set: (value: OptionList) => void) => (value: OptionList) => { if (live) set(value); };
 
     const values = (body: { values?: Array<{ valueId: string; label: string; code: string | null }> }) =>
       (body.values ?? []).map((value) => ({

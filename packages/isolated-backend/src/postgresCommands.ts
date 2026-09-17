@@ -17,6 +17,7 @@ import {
   type ScopeRowWriteFields,
   type SnapshotProvenanceStamp,
   type WorkflowJobFamily,
+  reportingYearForPeriod,
 } from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
@@ -453,8 +454,8 @@ export async function createJob(
                 };
     const inserted = await db.query<{ job_number: string }>(
       `INSERT INTO nzi_console.jobs
-      (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year, owner_name, start_date, due_date, progress_percent, detail_json)
-      VALUES ($1,$2,$3,$4,$5,$6,'open',$7,$8,$9,$10,$11,0,$12::jsonb) RETURNING job_number`,
+      (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year, owner_name, client_manager_user_id, start_date, due_date, reporting_period_start, reporting_period_end, progress_percent, detail_json)
+      VALUES ($1,$2,$3,$4,$5,$6,'open',$7,$8,$9,$10,$11,$12,$13,$14,0,$15::jsonb) RETURNING job_number`,
       [
         context.organisationId,
         jobId,
@@ -463,26 +464,26 @@ export async function createJob(
         input.family,
         input.title.trim(),
         input.workflowStage.trim(),
-        input.reportingYear ?? null,
+        // Derived here, never sent (NZC-092). The client cannot choose a job's reporting year, so
+        // a tampered or stale payload cannot label a period as a year it does not end in.
+        reportingYearForPeriod(input.reportingPeriodEnd),
         input.owner.trim(),
+        input.clientManagerUserId?.trim() || null,
         input.startDate,
         input.dueDate,
+        input.reportingPeriodStart,
+        input.reportingPeriodEnd,
         JSON.stringify(detail),
       ],
     );
     if (input.family === "crp") {
-      // NZC-070 — a labelled reporting year is the client's financial year, not 1 Jan–31 Dec.
-      const financialYearEnd = input.reportingYear
-        ? (await db.query<{ financial_year_end_month: number | null }>(
-            `SELECT financial_year_end_month FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
-            [context.organisationId, input.clientId],
-          )).rows[0]?.financial_year_end_month ?? null
-        : null;
-      const period = input.reportingYear
-        ? reportingPeriodForYear(input.reportingYear, financialYearEnd)
-        : { from: input.startDate, to: input.dueDate };
-      const reportingFrom = period.from;
-      const reportingTo = period.to;
+      // NZC-070 asked that a reporting window be the client's financial year rather than
+      // 1 Jan–31 Dec, and this reconstructed one from the labelled year plus the client's
+      // financial_year_end_month. Since NZC-092 the consultant enters the period itself, so the
+      // window is read rather than inferred — and a job reporting on something other than the
+      // client's statutory year is now expressible, which the reconstruction could not do.
+      const reportingFrom = input.reportingPeriodStart;
+      const reportingTo = input.reportingPeriodEnd;
       await db.query(
         `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
         [context.organisationId, jobId, reportingFrom, reportingTo],

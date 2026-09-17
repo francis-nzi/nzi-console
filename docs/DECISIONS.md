@@ -1838,3 +1838,56 @@ fact about when it was added rather than a claim about what it means now.
 
 **Related.** NZC-090 (id beside the text, the text as a first-class fallback); NZC-040 (dd/mm/yyyy);
 the #210 characterisation test.
+
+### NZC-093 — A job's dates are checked against a plausible window, and the server is the check [Confirmed 17 Sep 2026]
+
+**Decision.** All four of a job's dates — job start, job end, reporting period start, reporting
+period end — are required, must be real calendar dates written as four-digit years, must fall
+between 2000 and five years after today, and must be ordered within each pair. One exported
+function, `jobDateIssues`, holds the rules; the create form calls it and the command calls it.
+
+**The bug is on record.** A job on live starts in the year 98655. A native `<input type="date">`
+accepts whatever year is typed into it, and nothing behind the form disagreed. So the browser check
+is a courtesy that saves a round trip and the **command decides** — a client-side guard is one
+devtools panel away from irrelevant, and this is the same reasoning as every other validation in
+the command layer, applied to a field that had been trusted.
+
+**Plausible, not correct.** A window cannot know whether a period is the right one; it can only
+refuse one nobody meant. 2000 is the floor because carbon accounting at this firm does not predate
+it. The ceiling is five years ahead so that a job planned for a future reporting cycle is accepted
+while a typo three digits wide is not.
+
+**The ceiling is computed, never written down.** A hardcoded year is a bug with a delayed fuse:
+correct until the January it silently begins refusing next year's work, with no test failing and
+nobody thinking to look at a constant.
+
+**One implementation, so the two sides cannot drift.** A second bespoke date check beside the shared
+one is how a form comes to accept what the server refuses. `dueDate` is deliberately not treated as
+a job-only word — `srs.assessment.item.set` has one too, for when a client action is due, and an
+SRS action is rightly not held to a job's reporting window.
+
+**Every path, of which there is currently one.** The brief asks that create and edit both validate.
+This console has no job-date edit command — `createJob` is the only writer of `start_date` and
+`due_date` — so the guarantee is made structurally rather than by repetition, and a test fails if a
+second copy of the rules appears.
+
+### NZC-094 — The jobs list opens on the work, not on a statement about it [Confirmed 17 Sep 2026]
+
+**Decision.** The dark "NZI delivery command" band and its ✓ trust pills are removed from the jobs
+list. The page opens on the four stat tiles and the table. The tiles stay; they were never the
+problem.
+
+**Why.** The band restated the platform's own assurances — official numbering, named ownership,
+audited workflow — above the work rather than showing any of it, and a consultant opening the jobs
+list is looking for jobs. A ✓ that is present whenever any job exists is not evidence of anything;
+it reports that the list is non-empty in the vocabulary of assurance.
+
+**Only on Jobs, deliberately, and this leaves a visible inconsistency.** The same pattern renders on
+Clients, Datasets, LCA, Platform and Sales. Part 1's brief covers the jobs list, and removing a
+shared component from five screens nobody asked about is a larger change wearing a smaller one's
+clothes. The shared style stays in place and untouched. Whether the other five follow is a decision
+of its own; until it is taken, the two treatments coexist and that is a known state rather than a
+missed edit.
+
+**Related.** The list's Owner column now reads "Client manager" (NZC-092), so the column and the
+form use one word for one thing.
