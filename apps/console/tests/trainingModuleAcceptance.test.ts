@@ -150,7 +150,7 @@ describe("training module", () => {
     // A training job can hold places before anything is scheduled, so zero runs is not
     // "empty" — the module says so in its own words.
     assert.match(read("packages/contracts/src/index.ts"), /training: \{ key: "training"[^}]*isEmpty: \(\) => false/);
-    assert.match(workspace, /No course run has been set up for this engagement yet/);
+    assert.match(workspace, /No course run has been set up for this job yet/);
   });
 
   it("uses the curated icon set and dd\/mm\/yyyy dates, not emoji or raw ISO", () => {

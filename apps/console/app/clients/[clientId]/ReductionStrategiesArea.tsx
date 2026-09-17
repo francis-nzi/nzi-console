@@ -74,7 +74,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
 
   return <>
     <section className="nz-panel">
-      <CardHead eyebrow="Engagement" title="Reduction strategies" />
+      <CardHead eyebrow="Job" title="Reduction strategies" />
       <div className="nz-card-b">
         <div className="nz-actions-head">
           <p className="sub" style={{ margin: 0, flex: 1 }}>

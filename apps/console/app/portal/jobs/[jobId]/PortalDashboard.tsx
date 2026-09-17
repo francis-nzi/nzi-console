@@ -76,7 +76,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
       <i>✓</i>
       <div>
         <b>Your first assured report will appear here</b>
-        <span>Once your NZI team publishes a verified report for this engagement, your emissions totals, scope split and trend will show on this page — always from the assured figures, never a work-in-progress draft.</span>
+        <span>Once your NZI team publishes a verified report for this job, your emissions totals, scope split and trend will show on this page — always from the assured figures, never a work-in-progress draft.</span>
       </div>
     </div>
   );

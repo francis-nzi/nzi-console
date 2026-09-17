@@ -4,7 +4,7 @@
 // between the global WorkspaceRail and the content. The rail says which workspace you are
 // in; this says which area of *this client* you are looking at.
 //
-// Areas are grouped — Client (what the engagement produces), Manage (how it is run),
+// Areas are grouped — Client (what the job produces), Manage (how it is run),
 // Record (what the client is) — and each carries an optional count, and an optional
 // "unavailable" marker for an area whose backend is not built yet. An area that cannot
 // show anything truthful says so here rather than looking like an empty one.

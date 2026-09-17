@@ -76,7 +76,7 @@ function PortalTrainingView({ model }: { model: PortalTrainingReadModel }) {
     return <div className="nz-portal-state" role="status"><i>◈</i><div>
       <b>Your training records will appear here</b>
       <span>
-        Once your team has trained with NZI — or your engagement includes training places — this page shows
+        Once your team has trained with NZI — or your job includes training places — this page shows
         what you hold, what has been completed and who holds which certificate. Nothing is shown from work
         still in progress.
       </span>
@@ -101,7 +101,7 @@ function PortalTrainingView({ model }: { model: PortalTrainingReadModel }) {
             <span className="nz-ent-icon"><NziIcon name="ticket" size={18} /></span>
             <div className="nz-ent-main">
               <div className="nm">{group.courseLabel || "Training places"}</div>
-              <div className="sub">From your {group.sourceJobNumber} engagement · {group.summary.granted} place{group.summary.granted === 1 ? "" : "s"}</div>
+              <div className="sub">From your {group.sourceJobNumber} job · {group.summary.granted} place{group.summary.granted === 1 ? "" : "s"}</div>
               <div className="nz-places">
                 {group.places.map((state, index) => <i key={index}
                   className={`nz-dot${state === "consumed" ? " used" : state === "reserved" ? " resv" : state === "lapsed" ? " lapsed" : ""}`} />)}

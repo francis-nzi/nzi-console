@@ -432,7 +432,7 @@ export function CrpScopeWorkspace({
       <div className="nz-body">
         <section className="nz-command-hero">
           <div className="nz-command-summary">
-            <div className="nz-eyebrow light">Engagement command centre</div>
+            <div className="nz-eyebrow light">Job command centre</div>
             <h2>{qa.readyForReporting ? "Evidence complete. Ready to create the reporting snapshot." : "One clear route from evidence to an assured report."}</h2>
             <p>Live reporting controls, calculation provenance and independent review are joined in one governed workspace.</p>
             <div className="nz-command-next"><span>Recommended next action</span><strong>{nextAction}</strong></div>

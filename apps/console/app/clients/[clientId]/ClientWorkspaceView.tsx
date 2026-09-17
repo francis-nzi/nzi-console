@@ -159,7 +159,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         <MetricEvidence label={`Latest emissions${fy ? ` · ${fy}` : ""}`} note={latestNote} tone={yoy.value !== null ? (yoy.value <= 0 ? "ok" : "up") : undefined} onEvidence={() => setEvidenceKey("latest")}>
           {evidence.latest.value === null ? "Not reported" : <>{evidence.latest.value.toLocaleString("en-GB", { maximumFractionDigits: 0 })}<small> tCO₂e</small></>}
         </MetricEvidence>
-        <Metric label="Data completeness" value={`${client.completeness}%`} note="across engagements" />
+        <Metric label="Data completeness" value={`${client.completeness}%`} note="across jobs" />
         <Metric label="Sites in service" value={String(sites.filter((site) => siteLifecycleStatus(site, today).kind === "in-service").length)} note={`${sites.length} recorded · effective-dated`} />
       </div> : null}
 
