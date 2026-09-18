@@ -1,18 +1,17 @@
 "use client";
 // UX1a — the one shared capture component (NZC-046 / DATA_ENTRY_UX.md §3).
-// Renders `buildEmissionEntryFields` verbatim so the CRP workspace and the client
+// Renders the governed input spec (NZC-102) so the CRP workspace and the client
 // portal are the same process: identical field order, progressive disclosure keyed
 // on the category kind, the portal a constrained mirror that never shows the
 // factor / quality / confidence / lineage fields. Endpoint wiring is the caller's
 // job (UX1b CRP accordion, UX1d portal accordion) — this component is presentational.
 import { type FormEvent, useId, useMemo, useState } from "react";
+import { renderInputSpec, type InputSpecCategory } from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
-  buildEmissionEntryFields,
   emissionEntryActions,
   isRegistrationKind,
   isSpendKind,
-  manualEntryHint,
   matchFactorByActivity,
   type EmissionEntryDraft,
   type EmissionEntryLineageStep,
@@ -25,6 +24,12 @@ import {
 export * from "./emissionEntryModel";
 
 export type EmissionEntryFormProps = {
+  /**
+   * The governed spec for this category (NZC-102), loaded server-side and passed down. Null when
+   * the spec could not be read — the form then renders no fields rather than falling back to a
+   * second definition of them, because a fallback is the dual source this replaced.
+   */
+  spec: InputSpecCategory | null;
   category: EmissionCategory;
   audience: EntryAudience;
   /** Site is context (§2) — chosen at the top of data entry, shown here read-only. */
@@ -86,7 +91,7 @@ const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null, 
 });
 
 export function EmissionEntryForm(props: EmissionEntryFormProps) {
-  const { category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [], leanCapture = false } = props;
+  const { spec, category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [], leanCapture = false } = props;
   const mode: EntryMode = entry ? "existing" : "new";
   const lean = leanCapture && audience === "crm" && mode === "new";
   const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry, lean));
@@ -98,7 +103,12 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   >({ state: "idle" });
   const listId = useId();
 
-  const fields = useMemo(() => buildEmissionEntryFields(category, audience, mode, leanCapture), [category, audience, mode, leanCapture]);
+  // The fields are read from the governed spec (NZC-102), not built in code. `spec` is loaded
+  // server-side and passed down; when it is absent the form renders nothing rather than falling
+  // back to a second definition — a fallback would be the dual source this migration removes.
+  const fields = useMemo(
+    () => (spec ? renderInputSpec(spec, audience, mode, leanCapture) : []),
+    [spec, audience, mode, leanCapture]);
   const actions = useMemo(() => emissionEntryActions(audience, mode), [audience, mode]);
   const spend = isSpendKind(category);
   const reg = isRegistrationKind(category);
@@ -183,7 +193,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   </div>
                 ) : null}
                 <p className="nz-ef-manual-link">
-                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({manualEntryHint(category)}).
+                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({(spec?.manualEntryHint ?? "")}).
                 </p>
                 {draft.manualMode ? (
                   <label className="nz-fl">

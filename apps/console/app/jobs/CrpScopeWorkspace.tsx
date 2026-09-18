@@ -1,5 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
+import type { InputSpecCategory } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
 import {
   patchBrowserCommand,
@@ -133,6 +134,7 @@ function ImportMethods({ idBase, tabs }: { idBase: string; tabs: Array<{ id: str
 }
 
 export function CrpScopeWorkspace({
+  specs,
   job,
   rows,
   qa,
@@ -144,6 +146,8 @@ export function CrpScopeWorkspace({
   purchasedGoodsCategories,
   writeEnabled,
 }: {
+  /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
+  specs: Record<string, InputSpecCategory>;
   job: FamilyJob;
   rows: ScopeRowReadModel[];
   qa: ScopeQaReadiness;
@@ -299,6 +303,7 @@ export function CrpScopeWorkspace({
   const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} notice={setNotice}/>;
   const dataEntrySurface = accordionOn ? (
     <CrpDataEntryAccordion
+      specs={specs}
       jobId={job.header.id}
       rows={rows}
       selectedRowId={selected?.id ?? ""}

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PortalDataEntryRecord } from "@nzi/isolated-backend";
 import { EmissionEntryForm } from "../jobs/EmissionEntryForm";
+import type { InputSpecCategory } from "@nzi/contracts";
 import {
   emissionEntryDraftToPortalRecord,
   type EmissionEntryDraft,
@@ -15,11 +16,14 @@ import type { PortalAccordionSection, PortalBucket } from "./portalEntryGrouping
 import { redirectIfPortalSessionEnded } from "./portalSessionClient";
 
 export function PortalCategoryEntry({
+  specs,
   jobId,
   section,
   buckets,
   reportingMonths,
 }: {
+  /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
+  specs: Record<string, InputSpecCategory>;
   jobId: string;
   section: PortalAccordionSection;
   buckets: PortalBucket[];
@@ -148,6 +152,7 @@ export function PortalCategoryEntry({
         </label>
       ) : null}
       <EmissionEntryForm
+        spec={specs[section.category.code] ?? null}
         key={bucket.bucketGrantId}
         category={section.category}
         audience="portal"

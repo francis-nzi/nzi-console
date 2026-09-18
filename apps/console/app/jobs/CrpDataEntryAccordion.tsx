@@ -15,7 +15,8 @@ import {
   buildDataEntryAccordion,
 } from "./dataEntryAccordion";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { emissionEntryDraftToScopeRow, entryUnitsForCategory, type EntryFactorRef } from "./emissionEntryModel";
+import type { InputSpecCategory } from "@nzi/contracts";
+import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 import { TemplateSearchBar } from "./TemplateSearchBar";
 import { ReuseYearPanel } from "./ReuseYearPanel";
@@ -39,6 +40,8 @@ export type SiteContextOption = { id: string; label: string };
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 
 type Props = {
+  /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
+  specs: Record<string, InputSpecCategory>;
   jobId: string;
   rows: ScopeRowReadModel[];
   selectedRowId: string;
@@ -69,7 +72,7 @@ type Props = {
   notice: Notice;
 };
 
-export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
+export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
@@ -252,12 +255,13 @@ export function CrpDataEntryAccordion({ jobId, rows, selectedRowId, onOpenRow, o
                         {addingCode === code ? (
                           <div className="nz-acc-extra">
                             <EmissionEntryForm
+                              spec={specs[entry.category.code] ?? null}
                               key={code}
                               category={entry.category}
                               audience="crm"
                               site={{ id: siteContext.id, label: siteContext.label ?? "Unallocated" }}
                               factors={factors.filter(option => option.scope === entry.category.scope)}
-                              units={entryUnitsForCategory(entry.category)}
+                              units={specs[entry.category.code]?.units ?? []}
                               reportingMonths={reportingMonths}
                               spendCategories={purchasedGoodsCategories}
                               busy={entryBusy}
