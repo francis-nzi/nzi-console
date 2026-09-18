@@ -76,6 +76,7 @@ export * from "./trainingFamily";
 export * from "./consultancyFamily";
 export * from "./evidence";
 export * from "./siteBoundary";
+export * from "./inputSpec";
 export * from "./jobDates";
 export * from "./permissions";
 export * from "./targets";

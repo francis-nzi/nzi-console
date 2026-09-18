@@ -27,6 +27,7 @@ export {
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./readModels";
+export * from "./inputSpecRecords";
 export * from "./spendImportIdentity";
 export * from "./spendImport";
 export * from "./scopeRowHistory";

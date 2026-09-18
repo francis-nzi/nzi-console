@@ -2163,3 +2163,64 @@ seeds, operator scripts and every test fixture connect as the owner, so all cont
 **Related.** NZC-099 (a trust boundary is tested against a database — this is what that test found);
 NZC-022 (the permission matrix, which governs what a *person* may do; this governs what the
 *connection* may reach).
+
+### NZC-102 — The input spec is governed data, and the interpreter holds only what data cannot [Confirmed 18 Sep 2026]
+
+**Decision.** What a consultant or a client is asked for when recording an emission — which fields,
+in what order, with which controls, labels, hints and reveal conditions — is rows in
+`input_spec_categories` and `input_spec_fields` (migration `0093`), not TypeScript. All 20
+categories are seeded, versioned, provenanced, and deactivated rather than deleted.
+
+**Why it had to move.** The model was 488 lines that both surfaces already read, and it was correct
+— but ungoverned: no version, no provenance, no audit, a deploy to change, and no way to retire a
+category except deleting code. Everything else this platform treats as reference data is governed;
+this was the exception, and it is the part a client sees.
+
+**Not `reference_values`.** `0089` deliberately chose a flat shape — "one optional column is cheaper
+than a jsonb blob nobody can index". A field spec has order, controls, reveal conditions and label
+variants; pushing that through `code`/`source_ref` is the blob that design refused. The vocabulary
+still stays one: `reference_category_key` points at an `emission_category` row registered in
+`reference_categories` beside industries and referrals.
+
+**Global, not per-organisation.** The GHG taxonomy is the same for every client of every firm. A
+per-tenant copy would be twenty identical rows per organisation that nobody edits, and a tenant
+policy protecting nothing.
+
+**Seeded per category, not per kind.** Kind and spend are resolved when the spec is seeded, so each
+category owns its own rows. A kind-generic spec would mean editing Company Vehicles also edited
+Business Travel and Employee Commuting — precisely wrong for what comes next, which is per-category
+specs from the diagrams, each edited alone. It costs ~226 rows and buys independence.
+
+**The split, and the principle behind it.** Content is data unless the literal would duplicate
+another governed source; then the row holds a placeholder and the interpreter substitutes.
+
+- **Interpreter, because storing it would duplicate the taxonomy:** `{scopedTo}` and
+  `{manualHint}`. Twenty literal copies of "Scope 1 · Company Vehicles" would drift from the
+  taxonomy the first time a category was renamed.
+- **Interpreter, because it is a computed guard rather than content:** `lean`, which is
+  `leanCapture AND crm AND new`. The data says which fields survive it; deciding it is not the
+  spec's business.
+- **Data, everything else**, including the label variants — one row with explicit variants, never
+  near-duplicate rows differing in a single string.
+
+**The variant key needed a third axis.** The brief said audience and mode. The factor field also
+changes under lean capture — `factor-select` becomes `factor-review`, with a different hint,
+because it stops being a required pick and becomes a shown result. That is content, so it belongs
+in the data, and the key is audience, mode and lean.
+
+**`optional` is three-valued, which was not obvious.** The hand-written model emits
+`optional: false` explicitly on the unit field and omits the property everywhere else, and the
+golden records both. A two-valued column changed 136 of the 160 renders — caught by the pin, not by
+review.
+
+**The proof is the pin, and it was written first.** 160 renders were recorded before anything
+moved, and the spec read back out of a real Postgres reproduces every one. The golden records what
+the product does rather than what is right: a later correctness fix regenerates it in its own
+commit with the reason stated, and this migration left it untouched.
+
+**Read-only to the application.** A governed vocabulary is not editable by the surface that consumes
+it: `SELECT` for `nzi_console_app`, writes through a migration or a future admin command with its
+own capability and audit event.
+
+**Related.** NZC-089 (the reference-data subsystem this sits beside, and does not bend);
+NZC-103 (what the spec collects about an asset).

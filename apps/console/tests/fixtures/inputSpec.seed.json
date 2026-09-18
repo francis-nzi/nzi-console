@@ -1,0 +1,3997 @@
+[
+  {
+    "categoryCode": "1.natural-gas",
+    "scope": "1",
+    "name": "Natural Gas",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 1 · Direct · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "1.company-vehicles",
+    "scope": "1",
+    "name": "Company Vehicles",
+    "kind": "vehicle",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "registrationFinder",
+        "ordering": 20,
+        "control": "registration",
+        "label": "Vehicle",
+        "hint": "DVLA registration lookup, or enter {manualHint} manually.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 30,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 40,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 50,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 60,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 1 · Direct · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "1.refrigerants",
+    "scope": "1",
+    "name": "Refrigerants",
+    "kind": "fugitive",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 1 · Direct · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "2.purchased-electricity",
+    "scope": "2",
+    "name": "Purchased Electricity",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 2 · Purchased energy · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "2.renewable-electricity",
+    "scope": "2",
+    "name": "Renewable Electricity",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 2 · Purchased energy · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.1",
+    "scope": "3",
+    "name": "Purchased Goods and Services",
+    "kind": "spend",
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Supplier / description"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Supplier / description"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Net value (£)",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "number",
+        "label": "VAT %",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "spendDetails",
+        "ordering": 60,
+        "control": "spend-group",
+        "label": "Spend details",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          }
+        ]
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.2",
+    "scope": "3",
+    "name": "Capital Goods",
+    "kind": "spend",
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Supplier / description"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Supplier / description"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Net value (£)",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "number",
+        "label": "VAT %",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "spendDetails",
+        "ordering": 60,
+        "control": "spend-group",
+        "label": "Spend details",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          }
+        ]
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.3",
+    "scope": "3",
+    "name": "Fuel & Energy Related",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.4",
+    "scope": "3",
+    "name": "Upstream Transportation & Distribution",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.5",
+    "scope": "3",
+    "name": "Waste in Operations",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.6",
+    "scope": "3",
+    "name": "Business Travel",
+    "kind": "travel",
+    "units": [
+      "passenger.km",
+      "passenger.mi",
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "air · rail · hotel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "registrationFinder",
+        "ordering": 20,
+        "control": "registration",
+        "label": "Vehicle",
+        "hint": "DVLA registration lookup, or enter {manualHint} manually.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 30,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 40,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 50,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 60,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.7",
+    "scope": "3",
+    "name": "Employee Commuting",
+    "kind": "commuting",
+    "units": [
+      "passenger.km",
+      "passenger.mi",
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "mode · WFH days",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "registrationFinder",
+        "ordering": 20,
+        "control": "registration",
+        "label": "Vehicle / mode",
+        "hint": "DVLA registration lookup, or enter {manualHint} manually.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 30,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 40,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 50,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 60,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.8",
+    "scope": "3",
+    "name": "Upstream Leased Assets",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.9",
+    "scope": "3",
+    "name": "Downstream Transportation & Distribution",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.10",
+    "scope": "3",
+    "name": "Processing of Sold Products",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.11",
+    "scope": "3",
+    "name": "Use of Sold Products",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.12",
+    "scope": "3",
+    "name": "End-of-Life Treatment",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.13",
+    "scope": "3",
+    "name": "Downstream Leased Assets",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.14",
+    "scope": "3",
+    "name": "Franchises",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
+    "categoryCode": "3.15",
+    "scope": "3",
+    "name": "Investments",
+    "kind": "spend",
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Supplier / description"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Supplier / description"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Net value (£)",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "number",
+        "label": "VAT %",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "spendDetails",
+        "ordering": 60,
+        "control": "spend-group",
+        "label": "Spend details",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "GL / nominal code and your authorised purchased-goods category."
+          }
+        ]
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 70,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 80,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 90,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 100,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 110,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 120,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  }
+]
