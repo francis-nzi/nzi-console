@@ -322,3 +322,29 @@ versioned table not columns — required for audit + the NZC-068 hold.
   (`rolled_forward_from_source_id`), never the choice. Switching the basis to period order is
   therefore retroactive until the choice is persisted. Tracked as its own piece of work with a
   migration and a review stop. **Tier: Go-live** (carbon path, NZC-063).
+
+## Erasure / DSAR — a first-class workstream, not a task (NZC-103)
+
+**Tier: Go-live.** The platform has **no erasure or DSAR mechanism of any kind**, and its standing
+principle is deactivate-not-delete, which is correct for audit and pulls directly against erasure.
+Several columns hold personal data — `asset_identifier` (a registration, or an employee's name),
+client contacts, portal users, `owner_name` — and none of them has a route to being erased on
+request.
+
+This is a design job before it is an implementation job. It needs:
+
+- **Retention and lawful basis** stated per personal-data column, so "how long, and why" has an
+  answer before a mechanism is built to enforce it.
+- **Erasure reconciled with immutable hashed evidence.** Reviewed snapshots are content-addressed:
+  `dataHash` is a SHA-256 over the whole payload, and a published report's trustworthiness rests on
+  it. Deleting from a snapshot breaks that hash. The two workable shapes are **crypto-shredding** —
+  personal fields encrypted under a per-subject key that is destroyed on erasure, leaving the
+  ciphertext and therefore the hash intact — or **pseudonymisation**, where the snapshot holds a
+  token and the mapping lives in a separately-erasable store. Deletion is not on the table.
+- **Coverage of `asset_identifier`** specifically (NZC-103), since it is the column most likely to
+  hold an identifiable person's vehicle.
+- **A DSAR read path**, not just erasure: "what do you hold about me" needs to be answerable across
+  rows, snapshots and audit events.
+
+Not started. Nothing in NZC-103 or NZC-104 addresses it; those record the posture and close one
+over-disclosure, and both say so explicitly.
