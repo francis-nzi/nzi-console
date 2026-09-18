@@ -1858,7 +1858,15 @@ export async function createReviewedCrpSnapshot(
           scope: row.scope.split(".")[0],
           scopeCode:row.scope,
           sourceLabel: row.source_label,
-          assetIdentifier:row.asset_identifier??null,
+          // `asset_identifier` is deliberately NOT carried into the snapshot (NZC-104). It holds
+          // the asset's identity — a vehicle registration, an employee name, a meter id — which is
+          // internal audit detail and often personal data, and the snapshot payload is returned
+          // wholesale to the client by the portal's published-report endpoint. The report shows
+          // the factor label; the plate stays on the row, where the editor and the audit trail
+          // read it from. Nothing has ever read it back out of a snapshot.
+          //
+          // Forward-only: `dataHash` is taken over the whole payload, so issued snapshots keep
+          // theirs and stay verifiable. Only snapshots issued from here on omit the field.
           factorSource:row.factor_source,clientFactorId:row.client_factor_id,isCustomEntry:row.is_custom_entry,applyPct:Number(row.apply_pct),dataConfidence:row.data_confidence,sourceQuantity:row.source_quantity===null?null:Number(row.source_quantity),sourceUnit:row.source_unit,columnText:row.column_text,
           reportLabel:row.report_label,
           categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),
