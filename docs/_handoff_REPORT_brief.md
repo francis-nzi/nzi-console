@@ -37,8 +37,21 @@ their "report icon" pieces are now unblocked. (Recorded in DESIGN_CONVENTIONS.)
    immutable store. Otherwise editing next week's plan silently rewrites a report the client
    already holds, the exact failure immutability exists to prevent. (This is a migration →
    stops for review.) Every figure still resolves from assured/reviewed sources, never captured
-   by hand. New issues use the client target model (net zero carries its residual, not zero —
-   the earlier report-pathway fix); already-issued reports are untouched.
+   by hand; already-issued reports are untouched.
+   **The governing rule (what freezes when):** the reviewed **snapshot _is_ the measurement** —
+   footprint, scope split and the prior-year comparison freeze at *review* time and are read
+   from the snapshot. **Everything else the report quotes — intensity, the plan, SRS readiness,
+   and the target model + pathway — is a live record that a client edits between reports, so it
+   resolves at *issue* and freezes into the composition then.** A section must never read a live
+   record's value out of the snapshot: targets in particular resolve from `getClientTargets` +
+   `getBenchmarkInForce` at issue (NOT the superseded job-level `snapshot.target`), and the
+   resolved trajectory — including the net-zero **residual read from the trajectory the client
+   actually set**, never assumed — is what freezes. The benchmark freezes alongside, with its
+   source and reference.
+   **Held-benchmark honesty (NZC-068):** when `benchmarkStale` is set (a re-baseline that holds
+   targets rather than restating them), the report says so and shows the pathway the client
+   agreed — never a pathway measured against a benchmark that no longer applies, presented as
+   though nothing moved.
 🟡 4. **Provenance in the report:** each data section carries factor set + version + data hash
    + as-at + quality tiers; the Methodology page states the assurance basis honestly —
    **"reviewed snapshot (internal review); not third-party assured"** (the platform records

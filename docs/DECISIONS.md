@@ -2224,3 +2224,46 @@ own capability and audit event.
 
 **Related.** NZC-089 (the reference-data subsystem this sits beside, and does not bend);
 NZC-103 (what the spec collects about an asset).
+
+### NZC-103 — The asset identifier is a deliberate, minimised persistence of asset identity [Confirmed 18 Sep 2026]
+
+**Decision.** `job_scope_rows.asset_identifier` — a vehicle registration, an employee name, a meter
+id, an asset code — is kept as legible text. **No cryptographic treatment**: hashing a registration
+is brute-forceable over a small keyspace and so protects nothing, and encrypting it destroys the
+legibility the field exists for, which is that a consultant can read a row and know which vehicle it
+describes. It is protected by access control, not by arithmetic.
+
+**Dual-use, said out loud.** It is simultaneously the identity of a measured asset and, often,
+personal data. Stated so it is mistaken for neither: **not a leak** — it is deliberate, it is what
+makes a CRP row auditable, and the editor round-trips it so a row is readable without calling the
+DVLA again; and **not a free-text PII field** — it holds an identifier, it is minimised to one
+column, and nothing invites narrative into it.
+
+**What guards it**, each asserted rather than asserted-about:
+
+- Row-level security and tenant isolation on every table carrying it (NZC-099).
+- The lookup that produces it is transient: no write, no log, and no plate in its own result.
+- The plate stops at the lookup boundary — `resolveVehicleFactor` receives a `VehicleSpec` of make,
+  fuel and capacity, never a registration, so nothing database-facing has one to mishandle.
+- Capability-gated editing, through the one governed command path.
+- Not surfaced in client-facing reports — **as of NZC-104, and not before it.**
+
+**Two gaps are open, and this record does not pretend otherwise.**
+
+**Over-disclosure, now fixed forward.** Until NZC-104 the identifier was copied into the reviewed
+snapshot and returned to the client in the published-report payload. Issued snapshots still carry
+it, because their hashes cannot change. So "the plate stays internal" is true of new reports and
+**false of every report issued before that change** — which is a fact about the data, not a caveat
+about the wording.
+
+**No erasure path exists at all.** The platform has no DSAR or erasure mechanism, and its standing
+principle is deactivate-not-delete, which is right for audit and pulls against erasure. A column
+that can hold an employee's name therefore has no route to being erased on request. That is a
+first-class, go-live-blocking workstream of its own — retention and lawful basis, and erasure
+reconciled with immutable hashed snapshots by crypto-shredding a per-subject key or pseudonymising
+into a separately-erasable store, never by deletion, which would break the hash. It must cover
+`asset_identifier` when it is built. It is **not** solved here and nothing in this record should be
+read as solving it.
+
+**Related.** NZC-104 (the report no longer carries it); NZC-099 (tenant isolation proved against a
+database); NZC-102 (the governed input spec that collects it).
