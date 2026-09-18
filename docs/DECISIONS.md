@@ -2296,3 +2296,45 @@ incident.
 
 **Related.** NZC-103 (the asset identifier's posture); NZC-060 (the integrity gate the snapshot
 passes through); the reviewed-snapshot immutability that makes this forward-only.
+
+### NZC-105 — A calendar date is read by its local components, never through UTC [Confirmed 18 Sep 2026]
+
+**Decision.** Converting a `date` column to a `YYYY-MM-DD` string goes through the shared `dateOnly`
+in `isolated-backend/src/dates.ts`, which reads the Date's local components. `toISOString()` must
+not be used for this, anywhere.
+
+**The defect this fixes was live.** `resolveMonthlyActivity` and `resolveSourceMonthlyActivity` each
+defined their own `dateOnly` using `toISOString()`. node-postgres materialises a `date` as a Date at
+**local** midnight, so on any server ahead of UTC that reads a day early — `2025-04-01` becomes
+`2025-03-31`. Both functions derive, from exactly those two dates, the set of months a monthly entry
+must match. For an April–March reporting period the expected set became **March 2025 to March
+2026 — thirteen months**, and a consultant entering the correct twelve was refused with
+`REPORTING_PERIOD_MISMATCH`.
+
+**Seasonal, which is why nothing caught it.** Correct under GMT and wrong under BST: it appears and
+disappears with the clocks, and a UTC continuous-integration runner never sees it. Every existing
+test of these functions passes month strings rather than Date objects, so the conversion under
+suspicion was never exercised. It took a real Postgres, a real `date` column and a non-calendar
+reporting period together.
+
+**Not solved by standardising the server on UTC.** `DEPLOYMENT.md` already records that "today" is
+London rather than UTC, deliberately, so a client's device clock cannot decide whether their plan is
+late — this platform does not assume UTC and should not start. The fix makes the conversion
+zone-independent instead, proved by running the same suite under UTC, Europe/London,
+Pacific/Auckland and America/Los_Angeles.
+
+**The tripwire asserts the correct answer, not the current one.** Unlike the migration goldens,
+which pin what the product does so a refactor can prove it changed nothing, this one states what
+twelve months of an April-to-March period should be: red before the fix, green after. A pin of the
+existing behaviour would have recorded a bug and been machine-dependent besides.
+
+**Nine copies, one of them right.** The shared helper was written for exactly this during NZC-096,
+and the same pattern is duplicated across `certificateVerification`, `portalTraining`,
+`reductionStrategies`, `reportCompositions`, `spendImport`, `spendImportIdentity` and
+`traineePortal`. Those are classified and consolidated separately, with a lint rule so a tenth copy
+fails the gate. **`spendImportIdentity` is held**: its date feeds an idempotency identity, and a
+day-shift changes the key, so re-import would duplicate rather than reconcile. It needs its own
+reconcile-by-reading analysis and is exempted from the rule with that reason recorded.
+
+**Related.** NZC-096 (the same defect in `portalIntensity`, where a shifted date broke period
+identity rather than month derivation).
