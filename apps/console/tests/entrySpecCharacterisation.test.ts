@@ -21,6 +21,12 @@ import { COMPANY_VEHICLE, ELECTRICITY, renderMatrix } from "./support/entryRende
  * reasoning — not something to slip inside a migration. That distinction is the point of pinning
  * first rather than writing the spec and hoping the diff looks plausible.
  *
+ * **So the golden changes explicitly, never silently.** A later correctness fix regenerates it in
+ * its own commit, with the reason recorded there: which render changed, why the old one was wrong,
+ * and what a consultant or client will now see. The spec migration itself leaves it untouched — if
+ * this file needs editing to make that migration pass, the migration has changed behaviour and the
+ * migration is what should change.
+ *
  * The two exemplars are additionally spelled out inline below. A golden file proves equality and
  * shows nothing; a reader reviewing the spec migration needs to see what electricity and company
  * vehicle actually produce without opening a 300KB fixture.
