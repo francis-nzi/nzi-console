@@ -2130,3 +2130,36 @@ the superuser seeing both tenants, so the guard has a witness.
 
 **Related.** NZC-097 (a suite owns its database, which is what makes these runnable in parallel);
 NZC-091 (a red main is not mergeable-past — worth having only if a red means something).
+
+### NZC-100 — The tenant registry is protected by privilege, because it cannot be protected by policy [Confirmed 17 Sep 2026]
+
+**Decision.** `nzi_console_app` holds no privilege on `nzi_console.organisations` (migration `0092`).
+Granting any access back requires giving the table a confining policy **in the same change**.
+
+**Why not a policy.** `organisations` is the one table with an `organisation_id` that cannot carry
+the usual `tenant_isolation` rule: that column is its primary key, so a policy comparing it to the
+current tenant could not admit the row being provisioned. A policy here would have to be written as
+an exception to itself.
+
+**What was actually wrong was the privilege.** NZC-099 found the table had no policy *and* that the
+application role held full DML on it, inherited from `0002`'s blanket
+`GRANT … ON ALL TABLES IN SCHEMA`. Nothing exposed anything, because no application code queries
+the table — organisations "arrive by script or by hand" (`0080`) and the provisioning trigger runs
+as the inserting role, never as the app. But that was a fact about the source, true only until
+somebody wrote the first query, and it was pinned by a scan of the source rather than by the
+schema. Removing an unused privilege closes the path completely; a policy would have left the
+privilege in place and hoped.
+
+**The rule replaces a weaker guard.** NZC-099 asserted that nothing queried the table. That has
+been deleted rather than kept alongside: with no privilege, a query fails regardless, and two
+guards for one fact drift apart. In its place the suite asserts the general rule — **a tenant table
+the application role can reach must have a policy confining what it returns** — which holds for
+every table rather than for this one, and which is what makes granting `SELECT` back a deliberate
+two-part change instead of a one-line convenience.
+
+**Unaffected.** `nzi_console_worker` and `nzi_console_auth` never had privileges here. Migrations,
+seeds, operator scripts and every test fixture connect as the owner, so all continue to work.
+
+**Related.** NZC-099 (a trust boundary is tested against a database — this is what that test found);
+NZC-022 (the permission matrix, which governs what a *person* may do; this governs what the
+*connection* may reach).
