@@ -1,3 +1,4 @@
+import { dateOnlyOrNull } from "./dates";
 import type { Queryable } from "./postgres";
 
 /**
@@ -79,7 +80,7 @@ type SnapshotPayload = {
   certificates: Array<{ bookingId: string; certificateNumber: string; verifyCode: string }>;
 };
 
-const dateOnly = (value: Date | string | null) => value === null ? null : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+// `session_date` and `end_date` are SQL `date` columns (0048): days, not instants.
 
 export async function getTraineePortal(
   db: Queryable,
@@ -153,7 +154,7 @@ export async function getTraineePortal(
 
     const attended = attendanceRows.rows.filter((row) => row.booking_id === booking.booking_id && row.attendance_status === "present").length;
     const delivered = runSessions.filter((session) => session.status === "delivered");
-    const lastDelivered = delivered.map((session) => dateOnly(session.session_date)).filter((date): date is string => date !== null).sort().at(-1) ?? null;
+    const lastDelivered = delivered.map((session) => dateOnlyOrNull(session.session_date)).filter((date): date is string => date !== null).sort().at(-1) ?? null;
 
     const shared: TraineeTrainingEntry = {
       courseRunId: booking.course_run_id,
@@ -165,7 +166,7 @@ export async function getTraineePortal(
       sessionsAttended: attended,
       attendancePct: entry?.attendancePct ?? (runSessions.length === 0 ? 0 : Math.round((attended / runSessions.length) * 100)),
       cpdHours: booking.total_hours === null ? null : Number(booking.total_hours),
-      completedOn: confirmed ? lastDelivered ?? dateOnly(booking.end_date) : null,
+      completedOn: confirmed ? lastDelivered ?? dateOnlyOrNull(booking.end_date) : null,
       certificate: null,
       standing: confirmed ? "confirmed" : "in-progress",
       remaining: null,
@@ -204,7 +205,7 @@ export async function getTraineePortal(
   const courseByRun = new Map(bookingRows.rows.map((row) => [row.course_run_id, row.course_name]));
   const upcoming: TraineeUpcomingSession[] = sessionRows.rows
     .filter((session) => session.status !== "delivered" && session.status !== "cancelled")
-    .map((session) => ({ ...session, date: dateOnly(session.session_date) }))
+    .map((session) => ({ ...session, date: dateOnlyOrNull(session.session_date) }))
     .filter((session): session is typeof session & { date: string } => session.date !== null && session.date >= input.asAt)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? "").localeCompare(b.start_time ?? ""))
     .map((session) => ({

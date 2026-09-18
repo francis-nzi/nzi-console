@@ -2338,3 +2338,75 @@ reconcile-by-reading analysis and is exempted from the rule with that reason rec
 
 **Related.** NZC-096 (the same defect in `portalIntensity`, where a shifted date broke period
 identity rather than month derivation).
+
+### NZC-106 — A day is not an instant, and the difference is said once [Confirmed 18 Sep 2026]
+
+**Decision.** Every conversion between a calendar day and a `Date` goes through one of three named
+helpers in `packages/contracts/src/dayValues.ts`, and `toISOString().slice(…)` is refused in product
+code by `npm run check:dates`:
+
+- **`dateOnly`** — the day a SQL `date` denotes. node-postgres materialises a `date` as *local*
+  midnight, so reading it as an instant answers with the previous day wherever the process runs
+  ahead of UTC.
+- **`utcDay`** — the day an instant deliberately anchored to UTC falls on. A training place expires at
+  `<day>T23:59:59Z`; that day is recoverable *only* in UTC, and reading it locally would move the
+  expiry forward and leave a lapsed place looking available.
+- **`todayInLondon`** — the platform's operating day, per NZC-105's ruling that "today" is London,
+  resolved on the server. `new Date().toISOString().slice(0, 10)` answers in UTC, which is yesterday
+  between midnight and 01:00 BST.
+
+`monthsBetween` joins them: a month-range walker that existed in five copies and is what a reporting
+period's month count is derived from.
+
+**Why the helper was not enough.** NZC-105's defect was not a missing helper. The correct one existed
+and was exported; a local `const dateOnly = …` in the same file quietly took precedence over it. So
+the guard refuses the expression *and* refuses a declaration that shadows a shared helper's name —
+which is what found the twelfth copy, in `trainingRunRecords`, invisible to a search for
+`toISOString().slice` because it sliced the timestamp helper's output instead.
+
+**The copies were not all harmless.** Classified before changing anything: of thirteen day
+conversions, **nine carried a live defect**, one was dead code, two were correct in UTC and now say so
+by name, and one is held. Alongside them, eight copies of "today" resolved in UTC rather than in
+London, and five duplicates of the month-range walker. The two defects worth naming:
+
+- **Client edits were refused during BST.** `comparable` compared a stored `baseline_period_start`
+  (a `date`, arriving as a Date) against the identical input string by reading the stored one as an
+  instant. They differed, so every save of a client with a baseline period was treated as a
+  *re-baseline* — which demands a reason and writes to `baseline_change_events`. Proved against a
+  real database: `REASON_REQUIRED`, "A re-baseline needs a reason", on a save that changed nothing.
+  With a reason supplied it instead recorded a rebaseline that never happened, from a day that was
+  never the baseline.
+- **`listJobReportingMonths` returned thirteen months** for an April–March period, including the
+  March *before* it — NZC-105's defect in a second read, which the monthly-entry fix did not reach.
+
+Also: a certificate stated the day before it was issued; a spend import accepted a transaction from
+the month before the reporting period; dataset-coverage warnings could be invented or suppressed; and
+a job starting 1 January fell back to the *previous* reporting year, which selects the historical
+snapshots an annual comparison is built from.
+
+**Held, with the reason in the code.** `spendImportIdentity` feeds a spend-import idempotency
+identity: moving the day moves the key, and every previously imported row would come back as new. It
+needs its own reconcile-by-reading analysis of the keys already stored, and is exempted inline with
+that reason — not quietly left behind.
+
+**Also held, and this one is a defect.** `PortalAccessAdmin`'s `local()` renders a `datetime-local`
+input from UTC wall-clock, so a portal access window expiring 18:00 London shows as 17:00 and each
+save walks it back by the offset. It is an *hour*, not a day, on an authorisation boundary, and the
+fix is a round trip needing its own submit-and-reload test. Exempted with that reason; its own PR.
+
+**Exemptions must say why.** Two expressions are correct and cannot be expressed by the helpers —
+`isoDate` in `commands.ts` and `isRealIsoDate` in `jobDates.ts` both parse a string at a fixed UTC anchor
+and compare it with itself, which is how `2026-02-30` is caught. They carry `date-helper-exempt` with
+the reasoning, because the marker's purpose is to tell the next reader what not to "fix".
+
+**The gate refuses to pass on an empty scan.** Written and immediately caught reporting a tick over
+zero files: the repository path contains a space, and a URL pathname percent-encodes it. A check that
+scans nothing is worse than no check, so it now fails unless it has read the product.
+
+**Proved where it matters, not where it is convenient.** The real-database tripwire is red on the
+pre-fix code under `Europe/London` and green after, and the suites run under UTC, Europe/London,
+Pacific/Auckland and America/Los_Angeles. Four fake-pool suites already asserted these paths; none
+could have caught any of it, because a fake pool returns the string the fixture author typed.
+
+**Related.** NZC-105 (the same defect in monthly entry, and the ruling that the platform's day is
+London), NZC-096 (the same defect in period identity).

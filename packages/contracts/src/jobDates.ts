@@ -56,6 +56,9 @@ export const JOB_DATE_LABELS: Record<keyof JobDateFields, string> = {
 const isRealIsoDate = (value: unknown): value is string =>
   typeof value === "string"
   && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  // date-helper-exempt: not a conversion — a round trip. The string is parsed at a fixed UTC
+  // anchor and compared with itself, which is how 2025-02-30 is caught. Zone-independent by
+  // construction, and the day helpers cannot express it (NZC-106).
   && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
 const ORDERED_PAIRS = [

@@ -33,6 +33,11 @@ jobs:
       # a second and it fails fast.
       - run: npm run check:conflicts
       - run: npm run check:decisions
+      # A day is not an instant. Two defects shipped on that confusion (NZC-096, NZC-105) and
+      # both compiled, passed review and passed every test that did not happen to run in BST.
+      # This one reads the expression rather than its result, which is the only way to catch
+      # the next copy before it is written (NZC-106).
+      - run: npm run check:dates
       - run: npm run typecheck
       - run: npm run build
       - run: npm test -w @nzi/contracts

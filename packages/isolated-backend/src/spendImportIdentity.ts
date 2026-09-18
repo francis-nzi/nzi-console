@@ -53,6 +53,11 @@ type JobIdentityRow = {
   reporting_to: Date | string | null;
 };
 
+// date-helper-exempt: this day feeds a spend-import idempotency identity, and the identity
+// is what makes a re-import recognise rows it has already taken. Moving the day by one moves
+// the key, and every previously imported row would come back as new. Correcting it needs its
+// own reconcile-by-reading analysis of the keys already in the database, not a sweep — so it
+// stays as it is, deliberately, until that lands (NZC-106; held per the standing ruling).
 const day = (value: Date | string | null, fallback: string): string =>
   value == null ? fallback : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 
