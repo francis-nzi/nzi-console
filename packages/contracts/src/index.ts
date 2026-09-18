@@ -1,4 +1,4 @@
-export type ScreenKey = "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -47,6 +47,9 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // components say so in their own words; collapsing that to the console's generic "Nothing here
   // yet" would show the consultant something the client never sees, which is the one thing the
   // preview exists not to do.
+  // The governed input spec (NZC-102). A screen with no categories is genuinely empty — a client
+  // with no authorised categories is a real state — so `isEmpty` is honest rather than a failure.
+  inputSpec: { key: "inputSpec", validate: (value) => record(value) && Array.isArray((value as { spec?: unknown }).spec), isEmpty: (value) => ((value as { spec: unknown[] }).spec ?? []).length === 0 },
   portalPreview: { key: "portalPreview", validate: (value) => record(value) && record(value.client) && record(value.strategies) && record(value.readiness), isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.

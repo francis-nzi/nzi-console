@@ -6,6 +6,7 @@
 // `data-entry-accordion` flag.
 import { useState } from "react";
 import { buildPortalDataEntryAccordion, type PortalBucket } from "./portalEntryGrouping";
+import type { InputSpecCategory } from "@nzi/contracts";
 import { PortalCategoryEntry } from "./PortalCategoryEntry";
 import { PortalSpendEntry } from "./PortalSpendEntry";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
@@ -21,10 +22,13 @@ const KIND_NOTE: Record<string, string> = {
 };
 
 export function PortalDataEntryAccordion({
+  specs,
   jobId,
   buckets,
   reportingMonths,
 }: {
+  /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
+  specs: Record<string, InputSpecCategory>;
   jobId: string;
   buckets: PortalBucket[];
   reportingMonths: string[];
@@ -70,7 +74,7 @@ export function PortalDataEntryAccordion({
                         <PortalSpendEntry jobId={jobId} buckets={section.spendBuckets} reportingMonths={reportingMonths} />
                       ) : null}
                       {(spendOn ? section.otherBuckets : section.buckets).length ? (
-                        <PortalCategoryEntry jobId={jobId} section={section} buckets={spendOn ? section.otherBuckets : section.buckets} reportingMonths={reportingMonths} />
+                        <PortalCategoryEntry specs={specs} jobId={jobId} section={section} buckets={spendOn ? section.otherBuckets : section.buckets} reportingMonths={reportingMonths} />
                       ) : null}
                     </div>
                   ) : null}
