@@ -2224,34 +2224,6 @@ own capability and audit event.
 
 **Related.** NZC-089 (the reference-data subsystem this sits beside, and does not bend);
 NZC-103 (what the spec collects about an asset).
-### NZC-104 — A plate does not leave with the report [Confirmed 18 Sep 2026]
-
-**Decision.** `asset_identifier` is no longer copied into a reviewed snapshot's `measurements`.
-It stays on the scope row. Snapshots issued before this change keep the field and keep their
-hashes; only snapshots issued from here on omit it.
-
-**What was wrong.** The snapshot payload is returned **wholesale** by the portal's published-report
-endpoint, so every client with a granted report received every plate on every row, as JSON, on a
-report that renders none of them. Neither the print page nor the PDF shows the field — both project
-a narrower set — so nothing looked wrong from the outside.
-
-**Forward-only, and the reason is arithmetic rather than caution.** `dataHash` is a SHA-256 over the
-whole payload. Stripping the field from an issued snapshot changes its hash and breaks the
-verification that makes a published report worth anything. So issued snapshots are left exactly as
-they are. The read model still types `assetIdentifier` optional for that reason — a type denying it
-would make every already-issued snapshot unrepresentable.
-
-**Safe because nothing read it back.** Every consumer of the asset identifier reads the **row** —
-the data-entry accordion, the scope workspace, the row detail panel, the source register. The only
-snapshot-side occurrences were the write and the type. Confirmed before changing anything.
-
-**Severity, stated plainly.** In most cases the client is the controller for their own fleet, so
-their own plates reaching them is not obviously a breach. This is a least-disclosure failure against
-a stated design — the report shows the factor label, the identifier stays internal — rather than an
-incident.
-
-**Related.** NZC-103 (the asset identifier's posture); NZC-060 (the integrity gate the snapshot
-passes through); the reviewed-snapshot immutability that makes this forward-only.
 
 ### NZC-103 — The asset identifier is a deliberate, minimised persistence of asset identity [Confirmed 18 Sep 2026]
 
@@ -2295,3 +2267,32 @@ read as solving it.
 
 **Related.** NZC-104 (the report no longer carries it); NZC-099 (tenant isolation proved against a
 database); NZC-102 (the governed input spec that collects it).
+
+### NZC-104 — A plate does not leave with the report [Confirmed 18 Sep 2026]
+
+**Decision.** `asset_identifier` is no longer copied into a reviewed snapshot's `measurements`.
+It stays on the scope row. Snapshots issued before this change keep the field and keep their
+hashes; only snapshots issued from here on omit it.
+
+**What was wrong.** The snapshot payload is returned **wholesale** by the portal's published-report
+endpoint, so every client with a granted report received every plate on every row, as JSON, on a
+report that renders none of them. Neither the print page nor the PDF shows the field — both project
+a narrower set — so nothing looked wrong from the outside.
+
+**Forward-only, and the reason is arithmetic rather than caution.** `dataHash` is a SHA-256 over the
+whole payload. Stripping the field from an issued snapshot changes its hash and breaks the
+verification that makes a published report worth anything. So issued snapshots are left exactly as
+they are. The read model still types `assetIdentifier` optional for that reason — a type denying it
+would make every already-issued snapshot unrepresentable.
+
+**Safe because nothing read it back.** Every consumer of the asset identifier reads the **row** —
+the data-entry accordion, the scope workspace, the row detail panel, the source register. The only
+snapshot-side occurrences were the write and the type. Confirmed before changing anything.
+
+**Severity, stated plainly.** In most cases the client is the controller for their own fleet, so
+their own plates reaching them is not obviously a breach. This is a least-disclosure failure against
+a stated design — the report shows the factor label, the identifier stays internal — rather than an
+incident.
+
+**Related.** NZC-103 (the asset identifier's posture); NZC-060 (the integrity gate the snapshot
+passes through); the reviewed-snapshot immutability that makes this forward-only.
