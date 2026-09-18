@@ -69,7 +69,7 @@ describe("electricity — the exemplar, spelled out", () => {
   it("gives the client none of the factor internals", () => {
     // The portal parity rule: the same renderer, a narrower field set. A client never sees or sets
     // the factor, the quality tier or the data confidence.
-    const portal = fields("portal", "new");
+    const portal: string[] = fields("portal", "new");
     for (const withheld of ["factor", "qualityTier", "dataConfidence", "lineage"]) {
       assert.ok(!portal.includes(withheld), `the portal must not render ${withheld}`);
     }
