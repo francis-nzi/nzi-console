@@ -1170,8 +1170,18 @@ export type SpendRollforwardLine = {
   pinnedFactorVersion: string | null; currentFactorVersion: string | null; factorVersionMoved: boolean;
   datasetInJobSelection: boolean; alreadyRolledForward: boolean;
 };
+/**
+ * A prior job this job has ACTUALLY rolled work forward from, read back from the rows themselves
+ * (NZC-101). Distinct from `priorJob`, which is the candidate suggested for the NEXT rollforward:
+ * the lineage is recorded and stable, the candidate is derived and may move.
+ */
+export type RollforwardOrigin = { id: string; number: string; reportingYear: number | null; rows: number };
+
 export type SpendRollforwardPreview = {
+  /** The candidate for the NEXT rollforward, by period order. */
   priorJob: { id: string; number: string; reportingYear: number } | null;
+  /** What this job has already rolled forward from. Recorded, not derived. */
+  origins: RollforwardOrigin[];
   lines: SpendRollforwardLine[];
 };
 
@@ -1187,6 +1197,9 @@ export type ScopeRowRollforwardLine = {
   datasetInJobSelection: boolean; alreadyRolledForward: boolean;
 };
 export type ScopeRowRollforwardPreview = {
+  /** The candidate for the NEXT rollforward, by period order. */
   priorJob: { id: string; number: string; reportingYear: number } | null;
+  /** What this job has already rolled forward from. Recorded, not derived. */
+  origins: RollforwardOrigin[];
   rows: ScopeRowRollforwardLine[];
 };

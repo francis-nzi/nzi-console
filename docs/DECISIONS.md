@@ -2130,3 +2130,46 @@ the superuser seeing both tenants, so the guard has a witness.
 
 **Related.** NZC-097 (a suite owns its database, which is what makes these runnable in parallel);
 NZC-091 (a red main is not mergeable-past — worth having only if a red means something).
+
+### NZC-101 — What a job rolled forward from is recorded; what it should roll forward next is derived [Confirmed 18 Sep 2026]
+
+**Decision.** The rollforward previews answer two questions separately. **What this job has already
+drawn from** is read back from the rows themselves — `rolled_forward_from_source_id` (0039) and
+`rolled_forward_from_row_id` (0055), resolved to their jobs — and reported as `origins`. **Which job
+the next rollforward should draw from** is derived by period order (NZC-098): the job whose
+reporting period ends most recently before this job's period starts, ties broken on `created_at`
+then `sequence`. The command's automatic selection uses the same selector as the preview.
+
+**Conflating them is what made a basis change retroactive.** The previews re-derived "the prior job"
+on every read and then reported *that* job's rows and their lineage. Change the derivation and a
+completed job appeared to change with it: rows genuinely rolled forward from job X stopped being
+listed once the candidate became job Y, `alreadyRolledForward` read false for work that had plainly
+been done, and the screen offered to roll the same rows forward again from a different year. Only
+the *outcome* of a rollforward was persisted, never the *choice*, so nothing could tell the two
+apart.
+
+**"The prior job" is a property of each rollforward act, not of a job.** `scope.row.rollforward`
+takes a prior job and a row subset per call, and `emission.source.rollforward` accepts an explicit
+`fromJobId`; neither refuses a second call naming a different prior job, and the unique indexes
+constrain one copy per *origin row*, saying nothing about how many distinct jobs those rows belong
+to. That is deliberate and is not being forbidden.
+
+**No new column and no backfill.** A `prior_job_id` on `jobs` would be a second copy of a fact the
+rows already carry (NZC-092), and lossy for a job with two origins — it would have to pick one, and
+would look authoritative doing it. Reading the origins back is exact, stable under any change of
+basis, and multi-prior by construction. The staging data confirmed the reconcile would have been
+unambiguous today — one job, two rows, a single prior job — which makes this the cheaper *and* the
+more honest option rather than a trade between them.
+
+**The label could not order this correctly.** Under the end-year rule an earlier period can carry a
+larger reporting year, so `reporting_year < targetYear` excluded the immediately preceding job for
+a September-year-end client whose target still carried a start-year label — the candidate silently
+skipped a year. Where either job records no period the selection falls back to the label, which is
+all a job created before the period columns has.
+
+**Carbon path.** The candidate decides which job's pinned factor versions are re-pinned (NZC-063),
+so this changes which factors a new rollforward carries for a client with an irregular period. It
+does not change anything already rolled forward: that lineage is read, not recomputed.
+
+**Related.** NZC-063 (rollforward and factor-version continuity); NZC-098 (period order, not label
+order); NZC-092 (one copy of a fact); NZC-096 (the year is a label).

@@ -80,9 +80,11 @@ describe("listScopeRowRollforwardPreview (NZC-063)", () => {
   it("finds the prior CRP job for this client and flags a moved factor + already-rolled-forward row", async () => {
     const client = {
       async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
+        // listRollforwardOrigins (NZC-101): this job has no recorded origins.
+        if (sql.includes("GROUP BY o.job_id")) return { rows: [] };
         if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
-        if (sql.includes("SELECT client_id,reporting_year,start_date FROM nzi_console.jobs")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01" }] };
-        if (sql.includes("EXISTS(SELECT 1 FROM nzi_console.job_scope_rows r WHERE")) return { rows: [{ job_id: "job-2025", job_number: "J000700", reporting_year: 2025 }] };
+        if (sql.includes("AS period_from")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", period_from: "2026-01-01", period_to: "2026-12-31" }] };
+        if (sql.includes("ORDER BY CASE WHEN $3::date")) return { rows: [{ job_id: "job-2025", job_number: "J000700", reporting_year: 2025 }] };
         if (sql.includes("r.scope_row_id AS prior_row_id")) {
           return { rows: [
             { prior_row_id: "row-moved", source_label: "Grid electricity", scope: "2", category_code: null, site_id: "site-hq", site_label: "HQ", factor_source: "dataset", factor_label: "UK grid average", pinned_version: "2025.1", current_version: "2026.1", dataset_in_selection: true, already_rolled_forward: false },
@@ -108,12 +110,15 @@ describe("listScopeRowRollforwardPreview (NZC-063)", () => {
     const client = {
       async query(sql: string) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
         if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
-        if (sql.includes("SELECT client_id,reporting_year,start_date FROM nzi_console.jobs")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01" }] };
+        if (sql.includes("AS period_from")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", period_from: "2026-01-01", period_to: "2026-12-31" }] };
         return { rows: [] };
       },
       release() {},
     };
     const preview = await withTenantRead({ connect: async () => client } as never, "org-a", (db) => listScopeRowRollforwardPreview(db, "job-2026"));
-    assert.deepEqual(preview, { priorJob: null, rows: [] });
+    // `origins` is reported even with no candidate (NZC-101): what this job has already rolled
+    // forward is a separate question from what it should roll forward next, and "no candidate"
+    // must not erase the lineage.
+    assert.deepEqual(preview, { priorJob: null, origins: [], rows: [] });
   });
 });

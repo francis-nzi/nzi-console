@@ -21,6 +21,8 @@ import {
   familyHasReportingPeriod,
 } from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
+import { selectPriorJobByPeriod } from "./rollforwardSelection";
+import { dateOnly } from "./dates";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { VersionConflictError } from "./errors";
@@ -794,7 +796,7 @@ export async function syncEmissionSourceToScope(pool:PoolLike,input:CommandInput
 
 export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMap["emission.source.rollforward"],context:CommandContext):Promise<StoredOutcome<{rolledForward:number;skipped:number;priorJobId:string|null;priorJobNumber:string|null}>>{return runPostgresCommand(pool,"emission.source.rollforward",input,context,async db=>{
   await requireCrpJob(db,context.organisationId,input.jobId);
-  const targetRes=await db.query<{client_id:string;reporting_year:number|null;start_date:Date|string}>(`SELECT client_id,reporting_year,start_date FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),target=targetRes.rows[0]!;
+  const targetRes=await db.query<{client_id:string;reporting_year:number|null;start_date:Date|string;period_from:Date|string|null}>(`SELECT j.client_id,j.reporting_year,j.start_date,coalesce(j.reporting_period_start,ec.reporting_from) AS period_from FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.organisation_id=$1 AND j.job_id=$2`,[context.organisationId,input.jobId]),target=targetRes.rows[0]!;
   const targetYear=target.reporting_year??Number((target.start_date instanceof Date?target.start_date.toISOString():String(target.start_date)).slice(0,4));
   let priorJobId:string,priorJobNumber:string,priorYear:number;
   if(input.fromJobId){
@@ -802,9 +804,11 @@ export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMa
     if(!fj.rows[0])throw new CommandValidationError([{field:"fromJobId",code:"NOT_FOUND",message:"Source job must be a prior-year CRP job for the same client."}]);
     priorJobId=input.fromJobId;priorJobNumber=fj.rows[0].job_number;priorYear=fj.rows[0].reporting_year;
   }else{
-    const pj=await db.query<{job_id:string;job_number:string;reporting_year:number}>(`SELECT j.job_id,j.job_number,coalesce(j.reporting_year,extract(year from j.start_date)::int) AS reporting_year FROM nzi_console.jobs j WHERE j.organisation_id=$1 AND j.client_id=$2 AND j.job_family='crp' AND j.job_id<>$3 AND coalesce(j.reporting_year,extract(year from j.start_date)::int)<$4 AND EXISTS(SELECT 1 FROM nzi_console.job_emission_sources s WHERE s.organisation_id=j.organisation_id AND s.job_id=j.job_id AND s.source_type='spend' AND s.enabled=true) ORDER BY coalesce(j.reporting_year,extract(year from j.start_date)::int) DESC,j.sequence DESC LIMIT 1`,[context.organisationId,target.client_id,input.jobId,targetYear]);
-    if(!pj.rows[0])throw new CommandValidationError([{field:"jobId",code:"NO_PRIOR_YEAR",message:"No prior-year CRP job with spend sources was found for this client."}]);
-    priorJobId=pj.rows[0].job_id;priorJobNumber=pj.rows[0].job_number;priorYear=pj.rows[0].reporting_year;
+    // The same selector the preview offers (NZC-101). Two copies of this rule is how a screen
+    // comes to show one lineage while the command pins factors from another.
+    const pj=await selectPriorJobByPeriod(db,{clientId:target.client_id,year:targetYear,periodStart:target.period_from?dateOnly(target.period_from):null},input.jobId,"spend");
+    if(!pj)throw new CommandValidationError([{field:"jobId",code:"NO_PRIOR_YEAR",message:"No prior-year CRP job with spend sources was found for this client."}]);
+    priorJobId=pj.id;priorJobNumber=pj.number;priorYear=pj.reportingYear;
   }
   const priorSources=await db.query<{source_id:string;source_name:string;source_subtype:string|null;scope:string;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;unit:string|null;apply_pct:string;detail_json:unknown;notes:string|null}>(`SELECT s.source_id,s.source_name,s.source_subtype,s.scope,s.purchased_goods_category_id,s.dataset_id,s.factor_id,s.factor_source,s.client_factor_id,s.unit,s.apply_pct,s.detail_json,s.notes FROM nzi_console.job_emission_sources s WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.source_type='spend' AND s.enabled=true AND NOT EXISTS(SELECT 1 FROM nzi_console.job_emission_sources rf WHERE rf.organisation_id=s.organisation_id AND rf.job_id=$3 AND rf.rolled_forward_from_source_id=s.source_id) ORDER BY lower(s.source_name),s.source_id`,[context.organisationId,priorJobId,input.jobId]);
   let rolledForward=0,skipped=0;

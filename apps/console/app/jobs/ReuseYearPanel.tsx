@@ -90,6 +90,17 @@ export function ReuseYearPanel({ jobId, onRowsCreated, notice }: { jobId: string
             From <b>{preview.priorJob.number}</b> · FY{preview.priorJob.reportingYear}
             {moved > 0 ? <> · <span className="nz-reuse-moved">{moved} factor version{moved === 1 ? "" : "s"} moved — re-check</span></> : null}
           </p>
+          {preview.origins.length > 0 ? (
+            /* What this job has already drawn from, read back from the rows (NZC-101). Separate
+               from the suggestion above, which is about the next rollforward rather than the
+               work already done — and which may name a different job. */
+            <p className="muted" style={{ fontSize: 12 }}>
+              Already carried forward from{" "}
+              {preview.origins.map((origin, index) => (
+                <span key={origin.id}>{index > 0 ? ", " : ""}<b>{origin.number}</b> ({origin.rows} row{origin.rows === 1 ? "" : "s"})</span>
+              ))}
+            </p>
+          ) : null}
           <div className="nz-reuse-list">
             <label className="nz-reuse-row nz-reuse-all">
               <input type="checkbox" checked={allSelected} disabled={pending.length === 0} onChange={toggleAll} />

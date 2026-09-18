@@ -80,6 +80,17 @@ export function SpendRollforwardPanel({ jobId, notice }: { jobId: string; notice
             From <b>{preview.priorJob.number}</b> · FY{preview.priorJob.reportingYear}
             {moved > 0 ? <> · <span style={{ color: "#8A6410" }}>{moved} factor version{moved === 1 ? "" : "s"} moved since — flagged for re-review</span></> : null}
           </p>
+          {preview.origins.length > 0 ? (
+            /* What this job has already drawn from, read back from the rows (NZC-101). Separate
+               from the suggestion above, which is about the next rollforward rather than the work
+               already done — and which may name a different job. */
+            <p className="muted" style={{ fontSize: 12 }}>
+              Already carried forward from{" "}
+              {preview.origins.map((origin, index) => (
+                <span key={origin.id}>{index > 0 ? ", " : ""}<b>{origin.number}</b> ({origin.rows} row{origin.rows === 1 ? "" : "s"})</span>
+              ))}
+            </p>
+          ) : null}
           <div style={{ overflowX: "auto" }}>
             <table className="nz-tbl">
               <thead>
