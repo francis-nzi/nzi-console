@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import type {PoolLike} from "./postgres";
+import { monthsBetween } from "./dates";
 import {withTenantRead,withTenantWrite} from "./postgres";
 import type {PortalPrincipal,StaffPrincipal} from "./auth";
 import {requireCapability} from "./auth";
@@ -8,7 +9,9 @@ import {assertCapabilityOnClient,ownerFilterFor} from "./access";
 export type PortalAccessJob={jobId:string;jobNumber:string;title:string;reportingYear:number|null;granted:boolean;grantId:string|null;dataEntryStartsAt:string|null;dataEntryExpiresAt:string|null};
 export type PortalDataEntryAccess={jobId:string;startsAt:string;expiresAt:string;state:"scheduled"|"open";reportingMonths:string[]};
 /** Reporting-period-aligned month keys (YYYY-MM, in order) — the vector B2's monthly editor expects (NZC-032). */
-function reportingMonthKeys(from:string|null,to:string|null):string[]{if(!from||!to)return[];const result:string[]=[],cursor=new Date(`${from.slice(0,7)}-01T00:00:00Z`),end=to.slice(0,7);while(cursor.toISOString().slice(0,7)<=end&&result.length<24){result.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return result;}
+// The 24-month cap is this surface's own: a grant's entry grid is drawn from it, and an
+// unbounded period would draw an unusable one. The walk itself is the shared helper.
+const reportingMonthKeys=(from:string|null,to:string|null):string[]=>!from||!to?[]:monthsBetween(from,to,24);
 export type PortalAccessUser={portalUserId:string;clientId:string;clientName:string;email:string;displayName:string;status:"invited"|"active"|"disabled";jobs:PortalAccessJob[]};
 export class PortalAccessValidationError extends Error{constructor(message:string){super(message);this.name="PortalAccessValidationError";}}
 

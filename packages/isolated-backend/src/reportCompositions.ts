@@ -35,9 +35,6 @@ const stable = (value: unknown): unknown => {
 };
 const hashOf = (payload: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(stable(payload))).digest("hex")}`;
 
-const dateOnly = (value: Date | string | null) =>
-  value === null ? null : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
-
 /** What the snapshot rested on, gathered once and shared by the sections that quote it. */
 function provenanceFrom(snapshot: SnapshotForComposition): ReportProvenance {
   const tiers = new Map<string, number>();

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { orderedRequirements, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsRequirement } from "@nzi/contracts";
+import { orderedRequirements, todayInLondon, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsRequirement } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -18,7 +18,9 @@ const errorText = (result: BrowserCommandResult<unknown>) =>
 export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: {
   clientId: string; framework: SrsFramework; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  // The prefilled assessment date is the platform's day, so it agrees with the day the
+  // server will record — not the browser's UTC one, which is yesterday after midnight BST.
+  const today = todayInLondon();
   const [assessedOn, setAssessedOn] = useState(today);
   const [prefill, setPrefill] = useState(true);
   const [notes, setNotes] = useState("");

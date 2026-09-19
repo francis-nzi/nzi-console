@@ -1,9 +1,12 @@
-// node-postgres materialises a SQL `date` as local midnight, so toISOString() shifts it
-// a day earlier wherever the server runs ahead of UTC (BST included). Read the local
-// components instead — a `date` carries no time or zone and must not acquire one.
-export const dateOnly = (value: Date | string) => value instanceof Date
-  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
-  : String(value).slice(0, 10);
+// The day helpers live in @nzi/contracts, because the console's own pages and routes need
+// the same answers and cannot import a package that speaks to Postgres. Re-exported here so
+// every existing caller keeps its import — one definition, reachable from both sides, rather
+// than a second copy free to drift (NZC-106).
+export {
+  dateOnly, dateOnlyOrNull, utcDay, utcDayOrNull, todayInLondon, monthKey, monthsBetween,
+  PLATFORM_TIME_ZONE,
+} from "@nzi/contracts";
+import { dateOnly } from "@nzi/contracts";
 
 export const isoTimestamp = (value: Date | string) => value instanceof Date ? value.toISOString() : String(value);
 

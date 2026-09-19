@@ -1,3 +1,4 @@
+import { dateOnlyOrNull } from "./dates";
 import type { Queryable } from "./postgres";
 import type {
   TrainingBooking, TrainingCertificate, TrainingCourseRun, TrainingCourseSession,
@@ -11,7 +12,6 @@ import type {
  */
 
 const iso = (value: Date | string | null) => value === null ? null : value instanceof Date ? value.toISOString() : String(value);
-const dateOnly = (value: Date | string | null) => { const text = iso(value); return text === null ? null : text.slice(0, 10); };
 
 /** A booking, with the person it belongs to resolved and its employer-of-the-day intact. */
 export type TrainingBookingRecord = TrainingBooking & {
@@ -102,7 +102,7 @@ export async function listTrainingRunsForJob(db: Queryable, jobId: string): Prom
         totalHours: row.total_hours === null ? null : Number(row.total_hours),
         deliveryMode: row.delivery_mode, capacity: row.capacity, minAttendees: row.min_attendees,
         status: row.status, workflowStageKey: row.workflow_stage_key,
-        startDate: dateOnly(row.start_date), endDate: dateOnly(row.end_date),
+        startDate: dateOnlyOrNull(row.start_date), endDate: dateOnlyOrNull(row.end_date),
         venueName: row.venue_name, venueAddress: row.venue_address,
         onlineMeetingUrl: row.online_meeting_url, onlineMeetingId: row.online_meeting_id, onlinePasscode: row.online_passcode,
         notes: row.notes, version: row.version, reviewStatus: row.review_status, reviewedVersion: row.reviewed_version,
@@ -115,7 +115,7 @@ export async function listTrainingRunsForJob(db: Queryable, jobId: string): Prom
       } as TrainingProduct,
       sessions: sessions.rows.filter((session) => session.course_run_id === row.course_run_id).map((session) => ({
         id: session.session_id, courseRunId: session.course_run_id, sessionTitle: session.session_title,
-        sessionDate: dateOnly(session.session_date), startTime: session.start_time, endTime: session.end_time,
+        sessionDate: dateOnlyOrNull(session.session_date), startTime: session.start_time, endTime: session.end_time,
         sessionHours: session.session_hours === null ? null : Number(session.session_hours),
         deliveryMode: session.delivery_mode, venueName: session.venue_name, venueAddress: session.venue_address,
         onlineMeetingUrl: session.online_meeting_url, onlinePasscode: session.online_passcode,

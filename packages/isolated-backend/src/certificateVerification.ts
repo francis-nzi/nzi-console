@@ -1,3 +1,4 @@
+import { dateOnly, dateOnlyOrNull } from "./dates";
 import type { Queryable } from "./postgres";
 
 /**
@@ -28,7 +29,9 @@ export type CertificateVerification =
     issuer: string;
   };
 
-const dateOnly = (value: Date | string | null) => value === null ? null : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+// `completed_on`, `issued_on` and `revoked_on` are SQL `date` columns (the function's own
+// return list, 0072), so the shared helper reads them as days rather than as instants — a
+// certificate must not state the day before the one it was issued on (NZC-106).
 
 export async function verifyTrainingCertificate(db: Queryable, verifyCode: string): Promise<CertificateVerification> {
   const trimmed = verifyCode.trim();
@@ -47,11 +50,11 @@ export async function verifyTrainingCertificate(db: Queryable, verifyCode: strin
     state: row.status === "issued" ? "valid" : "revoked",
     personName: row.person_name,
     courseName: row.course_name,
-    completedOn: dateOnly(row.completed_on),
+    completedOn: dateOnlyOrNull(row.completed_on),
     attendancePct: Number(row.attendance_pct),
     certificateNumber: row.certificate_number,
-    issuedOn: dateOnly(row.issued_on)!,
-    revokedOn: dateOnly(row.revoked_on),
+    issuedOn: dateOnly(row.issued_on),
+    revokedOn: dateOnlyOrNull(row.revoked_on),
     issuer: row.issuer,
   };
 }

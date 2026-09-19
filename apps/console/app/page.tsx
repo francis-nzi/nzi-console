@@ -2,6 +2,7 @@ import type {ReactNode} from "react";
 import Link from "next/link";
 import {AppShell,TopBar,WorkspaceRail} from "@nzi/ui";
 import {clients as fixtureClients,jobs as fixtureJobs,jobFamilyMeta} from "@nzi/mock-data";
+import {todayInLondon} from "@nzi/contracts";
 import type {ClientScreenReadModel,JobScreenReadModel} from "@nzi/isolated-backend";
 import {loadScreen} from "./lib/loadScreen";
 import {ScreenState} from "./lib/ScreenState";
@@ -9,7 +10,9 @@ import {NAV,USER} from "./lib/nav";
 import { crumbTrail, workspaceCrumbs } from "./lib/crumbTrail";
 
 export const dynamic="force-dynamic";
-const today=new Date().toISOString().slice(0,10);
+// Which jobs are overdue turns on this, so it is the platform's day rather than the
+// process's: read in UTC, the hour after midnight in summer counted yesterday (NZC-105).
+const today=todayInLondon();
 const dateLabel=(value:string)=>new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"Europe/London"}).format(new Date(`${value}T12:00:00Z`));
 const greeting=()=>{const hour=Number(new Intl.DateTimeFormat("en-GB",{hour:"2-digit",hour12:false,timeZone:"Europe/London"}).format(new Date()));return hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";};
 

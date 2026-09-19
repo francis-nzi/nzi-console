@@ -1,6 +1,7 @@
 import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { DatasetOption,EmissionsTargetReadModel,FactorOption,IntensityTargetReadModel,LcaAssessment,LcaComponentOption,PurchasedGoodsCategoryOption,SiteOption,ScopeQaReadiness,ScopeRowReadModel } from "@nzi/contracts";
 import type { InputSpecCategory } from "@nzi/contracts";
+import { todayInLondon } from "@nzi/contracts";
 import { notFound } from "next/navigation";
 import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
@@ -43,7 +44,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     // Track C — the training module, behind `job-module-training`; FamilyWorkspace still
     // serves training jobs while the flag is off. `today` is resolved here, on the server,
     // so every place's expiry is judged against one date rather than the viewer's clock.
-    if (job.header.family === "training" && jobModuleEnabled("job-module-training")) return <ScreenState result={training}>{(trainingData) => <TrainingWorkspace job={job} runs={trainingData.runs} today={new Date().toISOString().slice(0, 10)} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>;
+    if (job.header.family === "training" && jobModuleEnabled("job-module-training")) return <ScreenState result={training}>{(trainingData) => <TrainingWorkspace job={job} runs={trainingData.runs} today={todayInLondon()} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>;
     return <FamilyWorkspace job={job} />;
   }}</ScreenState>;
 }

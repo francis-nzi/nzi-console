@@ -9,6 +9,7 @@ import {
 } from "./reductionStrategies";
 import { completeSrsAssessment, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
 import { getSrsAssessment, getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
+import { utcDay } from "./dates";
 import { withTenantRead } from "./postgres";
 import type { PoolLike, Queryable } from "./postgres";
 
@@ -92,10 +93,12 @@ function idempotencyKey(caseId: string, payload: unknown): string {
   return `seed:portal-acceptance:${caseId}:${createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 16)}`;
 }
 
+// Acceptance fixtures, offset in UTC from now and read back in UTC — one frame throughout,
+// so the dates a seeded case asserts on do not depend on where it is run.
 export const dayOffset = (days: number, from = new Date()): string => {
   const date = new Date(from);
   date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+  return utcDay(date);
 };
 
 /**

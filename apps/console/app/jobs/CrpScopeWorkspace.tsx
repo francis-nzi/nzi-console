@@ -22,6 +22,7 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
+import { monthsBetween } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -729,7 +730,7 @@ function Fields({
   );
 }
 
-function reportingMonthKeys(from:string,to:string){const result:string[]=[];const cursor=new Date(`${from.slice(0,7)}-01T00:00:00Z`),end=to.slice(0,7);while(cursor.toISOString().slice(0,7)<=end){result.push(cursor.toISOString().slice(0,7));cursor.setUTCMonth(cursor.getUTCMonth()+1);}return result;}
+const reportingMonthKeys=monthsBetween;
 function MonthlyActivityEditor({value,change,reportingFrom,reportingTo}:{value:ScopeRowWriteFields;change:(value:ScopeRowWriteFields)=>void;reportingFrom:string;reportingTo:string}){
   const slots=value.monthlyActivity??[],months=reportingMonthKeys(reportingFrom,reportingTo),populated=slots.filter(slot=>slot.quantity!==null).length;
   const update=(next:typeof slots)=>change({...value,monthlyActivity:next,quantity:next.some(slot=>slot.quantity!==null)?next.reduce((sum,slot)=>sum+(slot.quantity??0),0):null});

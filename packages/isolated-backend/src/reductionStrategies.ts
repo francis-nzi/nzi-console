@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
 import { resolveEstimateTco2e } from "@nzi/contracts";
 import { getBenchmarkInForce } from "./clientTargetRecords";
+import { dateOnlyOrNull } from "./dates";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -88,8 +89,8 @@ type ClientStrategyRow = {
   include_in_report: boolean;
 };
 
-const dateOnly = (value: Date | string | null) =>
-  value === null ? null : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+// `target_date` is a SQL `date` (0075, 0083). It reaches the audit trail as well as the
+// screen, so a shifted read would be written down as history.
 
 const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   id: row.client_strategy_id, clientId: row.client_id, strategyId: row.strategy_id,
@@ -105,7 +106,7 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   srsRequirementIds: row.srs_requirement_ids ?? [],
   includeInReport: row.include_in_report,
   status: row.status as StrategyStatus, owner: row.owner,
-  targetDate: dateOnly(row.target_date), progressPct: row.progress_pct,
+  targetDate: dateOnlyOrNull(row.target_date), progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
   estimate: mapEstimate(row),
 });
@@ -371,7 +372,7 @@ export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["cli
     return {
       data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version },
       entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.updated",
-      before: { status: action.status, progressPct: action.progress_pct, owner: action.owner, targetDate: dateOnly(action.target_date) },
+      before: { status: action.status, progressPct: action.progress_pct, owner: action.owner, targetDate: dateOnlyOrNull(action.target_date) },
       after: { status: input.status, progressPct: input.progressPct, owner: input.owner?.trim() ?? "", targetDate: input.targetDate ?? null },
     };
   });

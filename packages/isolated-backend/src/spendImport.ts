@@ -8,6 +8,7 @@ import {
   type SpendImportPreflightState,
   type SpendImportRow,
 } from "@nzi/contracts";
+import { dateOnly } from "./dates";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantRead } from "./postgres";
 
@@ -27,7 +28,6 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
   );
   const row = config.rows[0];
   if (!row) return null;
-  const day = (value: Date | string) => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10));
   const categories = await db.query<{ category_id: string }>(
     `SELECT c.category_id FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE c.organisation_id=$1 AND j.job_id=$2`,
     [organisationId, jobId],
@@ -45,8 +45,10 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
     [organisationId, jobId],
   );
   return {
-    reportingFrom: day(row.reporting_from),
-    reportingTo: day(row.reporting_to),
+    // `date` columns, and they decide whether an imported row falls inside the reporting
+    // period — a shifted window silently accepts a row from the month before it.
+    reportingFrom: dateOnly(row.reporting_from),
+    reportingTo: dateOnly(row.reporting_to),
     categoryIds: new Set(categories.rows.map((r) => r.category_id)),
     factorIds: new Set(factors.rows.map((r) => r.factor_id)),
     clientFactorIds: new Set(clientFactors.rows.map((r) => r.client_factor_id)),

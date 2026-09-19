@@ -1,3 +1,4 @@
+import { dateOnlyOrNull, utcDay, utcDayOrNull } from "./dates";
 import type { Queryable } from "./postgres";
 import { trainingPlaceGroups, type TrainingPlaceGroup } from "@nzi/contracts";
 
@@ -58,15 +59,15 @@ type SnapshotPayload = {
   certificates: Array<{ bookingId: string; certificateNumber: string; verifyCode: string }>;
 };
 
-const dateOnly = (value: Date | string | null) => value === null ? null : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
-
 /** `months` on from a date, clamped to the end of the month so 31 Jan + 1 month is 28/29 Feb. */
 function addMonths(day: string, months: number): string {
   const [year, month, date] = day.split("-").map(Number) as [number, number, number];
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(date, lastDay));
-  return target.toISOString().slice(0, 10);
+  // Built with Date.UTC and read back in UTC: the arithmetic never leaves that frame, so no
+  // zone can move the answer.
+  return utcDay(target);
 }
 
 export async function getPortalClientTraining(
@@ -105,7 +106,8 @@ export async function getPortalClientTraining(
     const courseLabel = payload.product?.name ?? "Training";
     // "Completed" is the last session the run actually delivered, not the run's planned end.
     const delivered = payload.sessions.filter((session) => session.status === "delivered" && session.date !== null).map((session) => session.date!);
-    const completedOn = delivered.length > 0 ? delivered.sort().at(-1)! : dateOnly(row.end_date);
+    // `end_date` is a SQL `date` — the day the run was planned to finish, not an instant.
+    const completedOn = delivered.length > 0 ? delivered.sort().at(-1)! : dateOnlyOrNull(row.end_date);
     const issued = new Map(payload.certificates.map((certificate) => [certificate.bookingId, certificate]));
     const validMonths = payload.product ? validityByProduct.get(payload.product.id) ?? null : null;
 
@@ -157,7 +159,11 @@ export async function getPortalClientTraining(
     places: trainingPlaceGroups(entitlementRows.rows.map((row) => ({
       id: row.entitlement_id, sourceJobId: row.source_job_id, sourceJobNumber: row.source_job_number,
       courseLabel: row.course_label ?? "", status: row.status as never,
-      expiresAt: dateOnly(row.expires_at), defaultFromJobEnd: row.default_from_job_end,
+      // Deliberately UTC, unlike `end_date` above: an entitlement's expiry is a timestamptz
+      // written as `<day>T23:59:59Z`, so the day it was granted for is only recoverable in
+      // UTC. Read locally it would land a day later at a positive offset and leave a lapsed
+      // place looking available (NZC-106).
+      expiresAt: utcDayOrNull(row.expires_at), defaultFromJobEnd: row.default_from_job_end,
     })), input.asAt),
     records,
     skills: { people, courses, cells },

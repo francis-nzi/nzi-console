@@ -544,7 +544,13 @@ export type CommandDefinition<K extends CommandKey = CommandKey> = {
 const text = (value: unknown) => typeof value === "string" && value.trim().length > 0;
 const positive = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0;
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): value is T => typeof value === "string" && allowed.includes(value as T);
-/** A real calendar date — 2026-02-30 is rejected rather than rolled over. */
+/**
+ * A real calendar date — 2026-02-30 is rejected rather than rolled over.
+ *
+ * date-helper-exempt: a round trip, not a conversion. The string is parsed at a fixed UTC
+ * anchor and compared with itself, which is what catches an impossible day. Zone-independent
+ * by construction (NZC-106).
+ */
 const isoDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const positiveArea = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
 const baseIssues = (context: CommandContext, reasonRequired: boolean) => {

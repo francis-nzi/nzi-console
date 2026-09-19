@@ -1,4 +1,5 @@
 import { getPortalClientTraining, withTenantRead } from "@nzi/isolated-backend";
+import { todayInLondon } from "@nzi/contracts";
 import { portalAuthFailure } from "../../../lib/authResponse";
 import { isolatedPool } from "../../../lib/isolatedDatabase";
 import { currentPortalUserForData } from "../../../lib/portalSession";
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
   try {
     const user = await currentPortalUserForData(request);
     const training = await withTenantRead(isolatedPool(), user.organisationId, (db) =>
-      getPortalClientTraining(db, { portalUserId: user.userId, clientId: user.clientId, asAt: new Date().toISOString().slice(0, 10) }),
+      getPortalClientTraining(db, { portalUserId: user.userId, clientId: user.clientId, asAt: todayInLondon() }),
     );
     return Response.json(training, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
