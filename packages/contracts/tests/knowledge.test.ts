@@ -5,7 +5,7 @@ import {
   flagsAsDuplicate, knowledgeKey, knowledgeTransitions, transitionRefusal,
   type KnowledgeSimilarCandidate,
 } from "../src/knowledge";
-import { ROLE_CAPABILITY_MATRIX, PERMISSION_MATRIX_VERSION } from "../src/permissions";
+import { ROLE_CAPABILITY_MATRIX, PERMISSION_MATRIX_VERSION, capabilities } from "../src/permissions";
 
 /**
  * The knowledge library's rules. The ones that matter: nothing reaches the client-facing
@@ -79,8 +79,16 @@ describe("who holds what", () => {
     }
   });
 
-  it("ships as a new matrix version rather than an edit to the last one", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 4);
+  it("shipped as a new matrix version rather than an edit to the last one", () => {
+    // The knowledge capabilities arrived at version 4, and the matrix is versioned precisely so
+    // that an earlier version keeps meaning what it meant. So the claim is that they arrived at a
+    // version of their own and every later one carries them — not that 4 is still the current
+    // version, which pinned this suite to an unrelated number and failed it the day the matrix
+    // moved for something else entirely.
+    assert.ok(PERMISSION_MATRIX_VERSION >= 4, `knowledge shipped at matrix version 4, not after ${PERMISSION_MATRIX_VERSION}`);
+    for (const capability of ["knowledge.capture", "knowledge.approve", "knowledge.publish"] as const) {
+      assert.ok(capabilities.includes(capability), `${capability} is in the current matrix`);
+    }
   });
 });
 

@@ -777,6 +777,47 @@ async function requirePurchasedGoodsCategory(db:Queryable,organisationId:string,
 export async function createPurchasedGoodsCategory(pool:PoolLike,input:CommandInputMap["purchased.goods.category.create"],context:CommandContext):Promise<StoredOutcome<{categoryId:string;name:string}>>{return runPostgresCommand(pool,"purchased.goods.category.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),categoryId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.purchased_goods_categories(organisation_id,category_id,client_id,name,created_by) VALUES($1,$2,$3,$4,$5)`,[context.organisationId,categoryId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That purchased-goods category already exists."}]);throw error;}return{data:{categoryId,name},entityType:"purchased_goods_category",entityId:categoryId,topic:"purchased.goods.category.created"};});}
 
 /**
+ * Decide whether a client sees a category, or withdraw the decision (NZC-110).
+ *
+ * The default is visible, so a row exists only where somebody decided. Withdrawing deactivates
+ * rather than deletes: the category returns to the default, and the record of having decided
+ * survives — which is what lets the CRM answer "why did this client not see that?" about a period
+ * when they did not.
+ *
+ * Recording `visible: true` is not a no-op. It is the default said deliberately, by somebody, on a
+ * date — a different thing from nobody having considered it, and the register keeps both.
+ */
+export async function setClientCategoryVisibility(pool:PoolLike,input:CommandInputMap["client.category.visibility.set"],context:CommandContext):Promise<StoredOutcome<{clientId:string;categoryCode:string;visible:boolean|null}>>{return runPostgresCommand(pool,"client.category.visibility.set",input,context,async db=>{
+  const client=await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,[context.organisationId,input.clientId]);
+  if(!client.rows[0])throw new CommandValidationError([{field:"clientId",code:"NOT_FOUND",message:"Client was not found."}]);
+  // The category must be one the spec actually has, or the decision applies to nothing and sits in
+  // the register looking as though it does.
+  const category=await db.query(`SELECT 1 FROM nzi_console.input_spec_categories WHERE category_code=$1 AND active`,[input.categoryCode]);
+  if(!category.rows[0])throw new CommandValidationError([{field:"categoryCode",code:"NOT_FOUND",message:"That category is not in the input spec."}]);
+
+  const existing=await db.query<{visible:boolean;note:string;active:boolean}>(`SELECT visible,note,active FROM nzi_console.client_category_visibility WHERE organisation_id=$1 AND client_id=$2 AND category_code=$3`,[context.organisationId,input.clientId,input.categoryCode]);
+  const previous=existing.rows[0];
+  const before=previous?{visible:previous.visible,note:previous.note,active:previous.active}:null;
+  const decision=(value:boolean|null)=>({clientId:input.clientId,categoryCode:input.categoryCode,visible:value});
+
+  if(input.visible===null){
+    if(previous?.active){
+      await db.query(`UPDATE nzi_console.client_category_visibility SET active=false,decided_by=$4,decided_at=now() WHERE organisation_id=$1 AND client_id=$2 AND category_code=$3`,[context.organisationId,input.clientId,input.categoryCode,context.actorId]);
+    }
+    return{data:decision(null),entityType:"client_category_visibility",entityId:`${input.clientId}|${input.categoryCode}`,topic:"client.category.visibility.withdrawn",...(before?{before}:{})};
+  }
+
+  await db.query(
+    `INSERT INTO nzi_console.client_category_visibility(organisation_id,client_id,category_code,visible,note,decided_by)
+     VALUES($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (organisation_id,client_id,category_code)
+     DO UPDATE SET visible=EXCLUDED.visible,note=EXCLUDED.note,active=true,decided_by=EXCLUDED.decided_by,decided_at=now()`,
+    [context.organisationId,input.clientId,input.categoryCode,input.visible,input.note?.trim()??"",context.actorId]);
+
+  return{data:decision(input.visible),entityType:"client_category_visibility",entityId:`${input.clientId}|${input.categoryCode}`,topic:"client.category.visibility.set",...(before?{before}:{})};
+});}
+
+/**
  * Set or withdraw what a client calls a shared dataset factor (NZC-109).
  *
  * Upsert rather than create-then-edit: there is one name per client per factor, and a consultant
