@@ -2712,3 +2712,59 @@ command would refuse.
 **Related.** NZC-102 (the governed spec a proposal targets), NZC-103 and NZC-104 (the registration,
 transient at the lookup and absent from the report), NZC-081 (the staff help system, whose model
 adapter is the shape this follows).
+
+### NZC-112 — The spec decides when an entry is complete, not the model [Confirmed 19 Sep 2026]
+
+**Decision.** A gap is a field the governed input spec renders for this surface, that collects a
+value, that is not explicitly optional, and that is still empty. It is computed by `entryGaps` from
+the spec (NZC-102), never reported by the extractor. The model proposes values; the spec defines
+what a complete entry needs and therefore what is missing.
+
+**Why this is the same decision as "the assistant never writes".** Whether an entry may be
+committed and whether an entry is complete are one governed question asked twice. A model asked
+"what else do you need?" would answer from its own idea of a complete entry, which can differ
+between two runs of the same input and cannot be reviewed. So the extractor's output no longer has
+a field for it: `EntryProposal` carries values, in the spec's own field keys, and nothing else. The
+model may later phrase the question that fills a gap; it never decides that the gap exists.
+
+**Conditional requirements do real work here.** `factor`, `qualityTier`, `dataConfidence` and
+`lineage` are consultant-only in the spec, so a client is never asked for them and their absence is
+never a gap on the portal — which falls out of `renderInputSpec` rather than being restated
+anywhere. The same extraction therefore produces different questions on the two surfaces, from one
+source of truth.
+
+**Silence is required, not optional.** The spec's `optional` is three-valued: absent says nothing,
+`false` says explicitly required, `true` says explicitly optional. Only an explicit `true` excuses a
+field. `quantity` carries no `optional` at all, and reading silence as permission would let an entry
+commit without the number it is about.
+
+**A banner is not a blank.** Fields whose control only displays — `banner`, `lineage` — can never be
+gaps, excluded by control rather than by a list of field names, so a new banner in the spec needs no
+change here.
+
+**The loop always terminates.** After `MAX_ASSIST_ROUNDS` questions the assistant stops and hands
+over to the ordinary form, pre-filled with everything gathered. A confused extractor could otherwise
+keep asking, and from the outside "one more question" is indistinguishable from "this is broken".
+Falling back is a normal outcome rather than an error: the assistant is a shortcut, and a shortcut
+that is not working should get out of the way. Being complete beats being out of rounds, so a
+finished entry is never sent to the form.
+
+The turn is re-derived from the draft and the round count each time rather than held as conversation
+state, so a refresh, a retry or a second tab cannot leave a dialogue in a state nothing can explain.
+
+**Two assistants, keyed and configured apart, now rather than later.** The consultant-facing and
+client-facing entry assistants have their own credential and their own configuration
+(`NZI_ASSIST_CONSOLE_API_KEY`, `NZI_ASSIST_PORTAL_API_KEY`), and neither is the staff help system's
+key, which is a third concern again. They can be rate-limited, monitored and configured
+independently, and a leaked or misconfigured credential is contained to one surface. The seam costs
+one variable and one object each while both are stubbed and is expensive afterwards, because by then
+something depends on the shared credential. A config object names the variable and never holds a
+value — the key enters at the composition edge, as `answerModel.ts` established.
+
+**Tenant scoping stays structural.** Even the stub proposes only from the datasets the job has
+selected, proved by putting a factor in the same organisation that the job did not select and
+finding it unreachable. A proposal cannot carry a factor to the confirm boundary that the ordinary
+command would refuse.
+
+**Related.** NZC-111 (the confirm boundary this asks questions in front of), NZC-102 (the governed
+spec that answers what a category needs).

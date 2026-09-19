@@ -57,8 +57,15 @@ export type EntryProposal = {
   /** The versioned factor the entry would use. Proposed from the job's own datasets, never invented. */
   datasetId: string | null;
   factorId: string | null;
-  /** What the assistant could not determine, named so a surface can ask about exactly those. */
-  gaps: string[];
+  /**
+   * The same values in the governed spec's own terms, so completeness can be judged against the
+   * spec rather than against this shape (NZC-112).
+   *
+   * There is deliberately no field here for what the assistant thinks is missing. A gap is derived
+   * from the spec by `entryGaps`, because whether an entry is complete is the same governed
+   * question as whether it may be committed — not something a model gets an opinion about.
+   */
+  values: Record<string, unknown>;
 };
 
 /** The assistant declining, which is a first-class answer rather than an empty proposal. */

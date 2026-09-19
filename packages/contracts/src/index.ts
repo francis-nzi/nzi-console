@@ -92,5 +92,8 @@ export * from "./reportComposition";
 export * from "./dayValues";
 export * from "./entryProvenance";
 export * from "./aiAssist";
+export * from "./entryCompleteness";
+export * from "./assistDialogue";
+export * from "./assistConfig";
 export * from "./activityDistribution";
 export * from "./reportLabelResolution";

@@ -63,6 +63,9 @@ export function entryExtractionStub(db: Queryable): EntryExtractionModel {
           ORDER BY f.factor_id`, [request.jobId]);
       const factor = rows.find((row) => hint.factorHint.test(row.label)) ?? null;
 
+      // The same values twice over: once in the shape the commit takes, once in the governed
+      // spec's field keys so completeness is judged against the spec (NZC-112). The extractor
+      // reports what it found and says nothing about what is missing — that is derived.
       const proposal = {
         categoryCode: hint.categoryCode,
         scope: hint.scope,
@@ -71,12 +74,13 @@ export function entryExtractionStub(db: Queryable): EntryExtractionModel {
         unit: factor?.activity_unit ?? hint.unit,
         datasetId: factor?.dataset_id ?? null,
         factorId: factor?.factor_id ?? null,
-        gaps: [] as string[],
+        values: {
+          activity: factor?.label ?? null,
+          quantity,
+          unit: factor?.activity_unit ?? hint.unit,
+          factor: factor?.factor_id ?? null,
+        } as Record<string, unknown>,
       };
-      // What it could not determine, named — so a surface can ask about exactly those rather than
-      // presenting a confident blank.
-      proposal.gaps = (["quantity", "datasetId", "factorId", "sourceLabel"] as const)
-        .filter((field) => proposal[field] === null);
 
       return { kind: "proposal", proposal };
     },

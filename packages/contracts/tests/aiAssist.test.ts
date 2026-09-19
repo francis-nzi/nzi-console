@@ -13,7 +13,8 @@ import { readEntryOrigin } from "../src/entryProvenance";
 
 const proposal = (over: Partial<EntryProposal> = {}): EntryProposal => ({
   categoryCode: "1.company-vehicles", scope: "1", sourceLabel: "Diesel — LGV",
-  quantity: 1200, unit: "litres", datasetId: "ds-1", factorId: "f-diesel", gaps: [],
+  quantity: 1200, unit: "litres", datasetId: "ds-1", factorId: "f-diesel",
+  values: { activity: "Diesel — LGV", quantity: 1200, unit: "litres", factor: "f-diesel" },
   ...over,
 });
 
