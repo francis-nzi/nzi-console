@@ -71,7 +71,7 @@ export async function decidePortalDataEntryReview(pool:PoolLike,principal:StaffP
       const factor=await db.query<{dataset_id:string;label:string;version:string}>(`SELECT f.dataset_id,f.label,d.version FROM nzi_console.emission_factors f JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id) JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND f.factor_id=$3 AND f.activity_unit=$4 AND f.active=true`,[principal.organisationId,row.job_id,row.factor_id,row.unit]);
       if(!factor.rows[0])throw new PortalAccessValidationError("The submitted factor is no longer active for this job.");
       const spend=row.entry_kind==="spend"?readSpendDetail(row.detail_json):null;
-      let qualityTier:string|null=null,pgsCategoryId:string|null=null,monthlyJson="[]";const provenance:Record<string,unknown>={source:"client-portal",portalUserId:row.portal_user_id,recordId:row.record_id,submittedVersion:row.submitted_version};
+      let qualityTier:string|null=null,pgsCategoryId:string|null=null,monthlyJson="[]";const provenance:Record<string,unknown>={capturedAs:"client-portal",capturedVia:"manual",source:"client-portal",portalUserId:row.portal_user_id,recordId:row.record_id,submittedVersion:row.submitted_version};
       if(spend){
         const category=await db.query<{name:string}>(`SELECT name FROM nzi_console.purchased_goods_categories WHERE organisation_id=$1 AND category_id=$2`,[principal.organisationId,spend.pgsCategoryId]);
         if(!category.rows[0])throw new PortalAccessValidationError("The submitted purchased-goods category is no longer configured for this client.");

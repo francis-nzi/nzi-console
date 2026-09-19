@@ -632,6 +632,11 @@ const scopeEvidence = (
   provenance: {
     capturedBy: context.actorId,
     capturedAt: new Date().toISOString(),
+    // How it got here, and where it came from (NZC-111). `capturedAs` is "staff" on this path
+    // because this path *is* the console: a client's figures reach the store through the portal
+    // review, which records "client-portal" for itself.
+    capturedVia: input.capturedVia ?? "manual",
+    capturedAs: "staff",
     datasetId: input.datasetId,
     factorId: input.factorId,
     factorVersion: input.factorVersion,
@@ -1179,7 +1184,9 @@ export async function createScopeRow(
         ],
       );
       return {
-        data: { rowId, jobId: input.jobId, version: 1 },
+        // The command's data becomes the audit event's after_json, so an assisted entry carries
+        // what was proposed and what the person changed — structured, never the raw text (NZC-111).
+        data: { rowId, jobId: input.jobId, version: 1, ...(input.assistRecord ? { assist: input.assistRecord } : {}) },
         entityType: "scope_row",
         entityId: rowId,
         topic: "scope.row.created",
