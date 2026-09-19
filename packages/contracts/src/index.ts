@@ -90,3 +90,4 @@ export * from "./reductionStrategies";
 export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./dayValues";
+export * from "./activityDistribution";

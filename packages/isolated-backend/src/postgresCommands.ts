@@ -21,6 +21,10 @@ import {
   familyHasReportingPeriod,
 } from "@nzi/contracts";
 import { dateOnly, monthsBetween, todayInLondon } from "./dates";
+import {
+  distributeActivity, figureCountFor, totalOfSlots,
+  type ActivityFrequency, type MonthSlot,
+} from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
@@ -691,9 +695,81 @@ async function requireCrpJob(
       },
     ]);
 }
-const reportingMonths=(from:string,to:string):string[]=>monthsBetween(from,to);
-async function resolveMonthlyActivity(db:Queryable,organisationId:string,jobId:string,input:ScopeRowWriteFields){const slots=input.monthlyActivity??[];if(!slots.length)return{slots:[],quantity:input.quantity};const config=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,[organisationId,jobId]);const row=config.rows[0];if(!row)throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISSING",message:"Configure the CRP reporting period before entering monthly activity."}]);const expected=reportingMonths(dateOnly(row.reporting_from),dateOnly(row.reporting_to)),actual=slots.map(slot=>slot.month);if(expected.length!==actual.length||expected.some((month,index)=>month!==actual[index]))throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISMATCH",message:"Monthly activity must contain each reporting-period month once, in order."}]);const populated=slots.filter(slot=>slot.quantity!==null);return{slots,quantity:populated.length?populated.reduce((sum,slot)=>sum+(slot.quantity??0),0):null};}
-async function resolveSourceMonthlyActivity(db:Queryable,organisationId:string,jobId:string,quantity:number|null,slots:CommandInputMap["emission.source.activity.update"]["monthlyActivity"]){if(!slots.length)return{slots,quantity};const config=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,[organisationId,jobId]),row=config.rows[0];if(!row)throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISSING",message:"Configure the CRP reporting period before entering monthly activity."}]);const expected=reportingMonths(dateOnly(row.reporting_from),dateOnly(row.reporting_to)),actual=slots.map(slot=>slot.month);if(expected.length!==actual.length||expected.some((month,index)=>month!==actual[index]))throw new CommandValidationError([{field:"monthlyActivity",code:"REPORTING_PERIOD_MISMATCH",message:"Monthly source activity must contain each reporting-period month once, in order."}]);const populated=slots.filter(slot=>slot.quantity!==null);return{slots,quantity:populated.length?populated.reduce((sum,slot)=>sum+(slot.quantity??0),0):null};}
+/**
+ * One reporting-period vector, whichever store is asking (NZC-107).
+ *
+ * The scope row (0031) and the source register (0036) each kept their own copy of this, differing
+ * only in the wording of one error. PR 2 adds distribution to both, and two copies of arithmetic
+ * that decides a client's monthly numbers is how the register and the canonical row come to
+ * disagree — the same reasoning that consolidated the date helpers in NZC-106. One function, two
+ * call sites.
+ *
+ * Three shapes arrive here:
+ *
+ * - **Nothing monthly.** The annual quantity stands on its own, exactly as before.
+ * - **Month by month.** The vector must name each reporting-period month once, in order; this is
+ *   the pre-existing guard and it is unchanged. Nothing was derived, so nothing is flagged.
+ * - **A coarser grain.** One annual figure, or one per quarter, expanded here across the months
+ *   each covers. The expansion is `distributeActivity`, which is where the remainder rules and the
+ *   exact round-trip live, and the row records that its months were derived rather than supplied.
+ *
+ * In every case the stored annual quantity is the sum of the populated months — the derivation
+ * 0031 has always described — so a distributed figure and the total it came from stay in step.
+ */
+type ActivityInput = {
+  quantity: number | null;
+  monthlyActivity?: MonthSlot[] | null;
+  activityFrequency?: ActivityFrequency | null;
+  activityFigures?: (number | null)[] | null;
+};
+
+/** The months this job reports on, refusing rather than guessing when the period is not configured. */
+async function reportingMonthsFor(db: Queryable, organisationId: string, jobId: string): Promise<string[]> {
+  const config = await db.query<{ reporting_from: Date | string; reporting_to: Date | string }>(
+    `SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,
+    [organisationId, jobId]);
+  const row = config.rows[0];
+  if (!row) {
+    throw new CommandValidationError([{ field: "monthlyActivity", code: "REPORTING_PERIOD_MISSING", message: "Configure the CRP reporting period before entering monthly activity." }]);
+  }
+  return monthsBetween(dateOnly(row.reporting_from), dateOnly(row.reporting_to));
+}
+
+async function resolveActivityVector(
+  db: Queryable, organisationId: string, jobId: string, input: ActivityInput, subject: string,
+): Promise<{ slots: MonthSlot[]; quantity: number | null; frequency: ActivityFrequency | null; distributed: boolean }> {
+  const frequency = input.activityFrequency ?? null;
+  const figures = input.activityFigures ?? null;
+  const slots = input.monthlyActivity ?? [];
+  const spreading = figures !== null && frequency !== null && frequency !== "monthly";
+
+  if (!spreading && slots.length === 0) {
+    return { slots: [], quantity: input.quantity, frequency, distributed: false };
+  }
+
+  const months = await reportingMonthsFor(db, organisationId, jobId);
+
+  if (spreading) {
+    const expected = figureCountFor(frequency, months);
+    if (figures.length !== expected) {
+      throw new CommandValidationError([{ field: "activityFigures", code: "FIGURE_COUNT_MISMATCH", message: `A ${frequency} period of ${months.length} month(s) takes ${expected} figure(s), not ${figures.length}.` }]);
+    }
+    const spread = distributeActivity({ frequency, figures, months });
+    return { slots: spread.slots, quantity: totalOfSlots(spread.slots), frequency, distributed: spread.distributed };
+  }
+
+  const actual = slots.map((slot) => slot.month);
+  if (months.length !== actual.length || months.some((month, index) => month !== actual[index])) {
+    throw new CommandValidationError([{ field: "monthlyActivity", code: "REPORTING_PERIOD_MISMATCH", message: `${subject} must contain each reporting-period month once, in order.` }]);
+  }
+  return { slots, quantity: totalOfSlots(slots), frequency, distributed: false };
+}
+
+const resolveMonthlyActivity = (db: Queryable, organisationId: string, jobId: string, input: ScopeRowWriteFields) =>
+  resolveActivityVector(db, organisationId, jobId, input, "Monthly activity");
+
+const resolveSourceMonthlyActivity = (db: Queryable, organisationId: string, jobId: string, input: ActivityInput) =>
+  resolveActivityVector(db, organisationId, jobId, input, "Monthly source activity");
 async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);}
 
 
@@ -791,9 +867,9 @@ export async function syncEmissionSourceGroupToScope(pool:PoolLike,input:Command
   return{data:{groupId:input.groupId,rowId:result?.rowId??null,enabledMemberCount:result?.enabledMemberCount??0,summedQuantity:result?.summedQuantity??null},entityType:"scope_row",entityId:result?.rowId??input.groupId,topic:"emission.source.group.synced"};
 });}
 
-export async function createEmissionSource(pool:PoolLike,input:CommandInputMap["emission.source.create"],context:CommandContext):Promise<StoredOutcome<{sourceId:string;sourceName:string}>>{return runPostgresCommand(pool,"emission.source.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);if(input.groupId){const group=await db.query(`SELECT 1 FROM nzi_console.job_emission_groups WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3`,[context.organisationId,input.jobId,input.groupId]);if(!group.rows[0])throw new CommandValidationError([{field:"groupId",code:"NOT_FOUND",message:"Source group was not found for this job."}]);}await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId);if(input.factorSource==="client"&&input.clientFactorId){const factor=await db.query(`SELECT 1 FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,input.clientFactorId]);if(!factor.rows[0])throw new CommandValidationError([{field:"clientFactorId",code:"NOT_FOUND",message:"Client factor was not found for this job."}]);}if(input.factorSource==="dataset"&&input.factorId){const factor=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND f.factor_id=$3 AND f.dataset_id=$4 AND f.active=true`,[context.organisationId,input.jobId,input.factorId,input.datasetId]);if(!factor.rows[0])throw new CommandValidationError([{field:"factorId",code:"NOT_FOUND",message:"Factor was not found in the job's selected datasets."}]);}if(input.purchasedGoodsCategoryId){const category=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE c.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[context.organisationId,input.jobId,input.purchasedGoodsCategoryId]);if(!category.rows[0])throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"NOT_FOUND",message:"Purchased-goods category was not found for this job's client."}]);}const activity=await resolveSourceMonthlyActivity(db,context.organisationId,input.jobId,input.quantity,input.monthlyActivity),sourceId=randomUUID(),sourceName=input.sourceName.trim();await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,import_batch_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22::jsonb,$23,$24)`,[context.organisationId,sourceId,input.jobId,input.groupId,input.scope,input.sourceType,input.sourceSubtype?.trim()||null,input.siteId,sourceName,input.assetIdentifier?.trim()||null,input.purchasedGoodsCategoryId,input.datasetId,input.factorId,input.factorSource,input.clientFactorId,activity.quantity,input.unit?.trim()||null,input.applyPct,input.dataSource.trim(),input.dataConfidence,JSON.stringify(activity.slots),JSON.stringify(input.detail),input.notes?.trim()||null,input.importBatchId?.trim()||null]);return{data:{sourceId,sourceName},entityType:"emission_source",entityId:sourceId,topic:"emission.source.created"};});}
+export async function createEmissionSource(pool:PoolLike,input:CommandInputMap["emission.source.create"],context:CommandContext):Promise<StoredOutcome<{sourceId:string;sourceName:string}>>{return runPostgresCommand(pool,"emission.source.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);if(input.groupId){const group=await db.query(`SELECT 1 FROM nzi_console.job_emission_groups WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3`,[context.organisationId,input.jobId,input.groupId]);if(!group.rows[0])throw new CommandValidationError([{field:"groupId",code:"NOT_FOUND",message:"Source group was not found for this job."}]);}await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId);if(input.factorSource==="client"&&input.clientFactorId){const factor=await db.query(`SELECT 1 FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,input.clientFactorId]);if(!factor.rows[0])throw new CommandValidationError([{field:"clientFactorId",code:"NOT_FOUND",message:"Client factor was not found for this job."}]);}if(input.factorSource==="dataset"&&input.factorId){const factor=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND f.factor_id=$3 AND f.dataset_id=$4 AND f.active=true`,[context.organisationId,input.jobId,input.factorId,input.datasetId]);if(!factor.rows[0])throw new CommandValidationError([{field:"factorId",code:"NOT_FOUND",message:"Factor was not found in the job's selected datasets."}]);}if(input.purchasedGoodsCategoryId){const category=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE c.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[context.organisationId,input.jobId,input.purchasedGoodsCategoryId]);if(!category.rows[0])throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"NOT_FOUND",message:"Purchased-goods category was not found for this job's client."}]);}const activity=await resolveSourceMonthlyActivity(db,context.organisationId,input.jobId,input),sourceId=randomUUID(),sourceName=input.sourceName.trim();await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,import_batch_id,activity_frequency,activity_distributed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22::jsonb,$23,$24,$25,$26)`,[context.organisationId,sourceId,input.jobId,input.groupId,input.scope,input.sourceType,input.sourceSubtype?.trim()||null,input.siteId,sourceName,input.assetIdentifier?.trim()||null,input.purchasedGoodsCategoryId,input.datasetId,input.factorId,input.factorSource,input.clientFactorId,activity.quantity,input.unit?.trim()||null,input.applyPct,input.dataSource.trim(),input.dataConfidence,JSON.stringify(activity.slots),JSON.stringify(input.detail),input.notes?.trim()||null,input.importBatchId?.trim()||null,activity.frequency,activity.distributed]);return{data:{sourceId,sourceName},entityType:"emission_source",entityId:sourceId,topic:"emission.source.created"};});}
 
-export async function updateEmissionSourceActivity(pool:PoolLike,input:CommandInputMap["emission.source.activity.update"],context:CommandContext):Promise<StoredOutcome<{sourceId:string;version:number}>>{return runPostgresCommand(pool,"emission.source.activity.update",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const activity=await resolveSourceMonthlyActivity(db,context.organisationId,input.jobId,input.quantity,input.monthlyActivity),updated=await db.query<{version:number}>(`UPDATE nzi_console.job_emission_sources SET quantity=$5,unit=$6,apply_pct=$7,data_confidence=$8,monthly_activity_json=$9::jsonb,notes=$10,calculated_tco2e=NULL,review_status='pending',version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3 AND version=$4 AND enabled=true RETURNING version`,[context.organisationId,input.jobId,input.sourceId,input.expectedVersion,activity.quantity,input.unit?.trim()||null,input.applyPct,input.dataConfidence,JSON.stringify(activity.slots),input.notes?.trim()||null]);if(!updated.rows[0]){const current=await db.query<{version:number}>(`SELECT version FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(current.rows[0])throw new VersionConflictError(input.expectedVersion,current.rows[0].version);throw new CommandValidationError([{field:"sourceId",code:"NOT_FOUND",message:"Enabled emission source was not found for this job."}]);}const grouped=await db.query<{group_id:string|null}>(`SELECT group_id FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(grouped.rows[0]?.group_id){const hasRollup=await db.query(`SELECT 1 FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3`,[context.organisationId,input.jobId,grouped.rows[0].group_id]);if(hasRollup.rows[0])await reaggregateGroupRollup(db,context.organisationId,input.jobId,grouped.rows[0].group_id,context.actorId);}return{data:{sourceId:input.sourceId,version:updated.rows[0].version},entityType:"emission_source",entityId:input.sourceId,topic:"emission.source.activity.updated"};});}
+export async function updateEmissionSourceActivity(pool:PoolLike,input:CommandInputMap["emission.source.activity.update"],context:CommandContext):Promise<StoredOutcome<{sourceId:string;version:number}>>{return runPostgresCommand(pool,"emission.source.activity.update",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const activity=await resolveSourceMonthlyActivity(db,context.organisationId,input.jobId,input),updated=await db.query<{version:number}>(`UPDATE nzi_console.job_emission_sources SET quantity=$5,unit=$6,apply_pct=$7,data_confidence=$8,monthly_activity_json=$9::jsonb,notes=$10,activity_frequency=$11,activity_distributed=$12,calculated_tco2e=NULL,review_status='pending',version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3 AND version=$4 AND enabled=true RETURNING version`,[context.organisationId,input.jobId,input.sourceId,input.expectedVersion,activity.quantity,input.unit?.trim()||null,input.applyPct,input.dataConfidence,JSON.stringify(activity.slots),input.notes?.trim()||null,activity.frequency,activity.distributed]);if(!updated.rows[0]){const current=await db.query<{version:number}>(`SELECT version FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(current.rows[0])throw new VersionConflictError(input.expectedVersion,current.rows[0].version);throw new CommandValidationError([{field:"sourceId",code:"NOT_FOUND",message:"Enabled emission source was not found for this job."}]);}const grouped=await db.query<{group_id:string|null}>(`SELECT group_id FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(grouped.rows[0]?.group_id){const hasRollup=await db.query(`SELECT 1 FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3`,[context.organisationId,input.jobId,grouped.rows[0].group_id]);if(hasRollup.rows[0])await reaggregateGroupRollup(db,context.organisationId,input.jobId,grouped.rows[0].group_id,context.actorId);}return{data:{sourceId:input.sourceId,version:updated.rows[0].version},entityType:"emission_source",entityId:input.sourceId,topic:"emission.source.activity.updated"};});}
 
 export async function updateEmissionSourceStatus(pool:PoolLike,input:CommandInputMap["emission.source.status.update"],context:CommandContext):Promise<StoredOutcome<{sourceId:string;version:number;enabled:boolean}>>{return runPostgresCommand(pool,"emission.source.status.update",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const updated=await db.query<{version:number}>(`UPDATE nzi_console.job_emission_sources SET enabled=$5,review_status='pending',version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3 AND version=$4 RETURNING version`,[context.organisationId,input.jobId,input.sourceId,input.expectedVersion,input.enabled]);if(!updated.rows[0]){const current=await db.query<{version:number}>(`SELECT version FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(current.rows[0])throw new VersionConflictError(input.expectedVersion,current.rows[0].version);throw new CommandValidationError([{field:"sourceId",code:"NOT_FOUND",message:"Emission source was not found for this job."}]);}const grouped=await db.query<{group_id:string|null}>(`SELECT group_id FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId]);if(grouped.rows[0]?.group_id){const hasRollup=await db.query(`SELECT 1 FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3`,[context.organisationId,input.jobId,grouped.rows[0].group_id]);if(hasRollup.rows[0])await reaggregateGroupRollup(db,context.organisationId,input.jobId,grouped.rows[0].group_id,context.actorId);}else await db.query(`UPDATE nzi_console.job_scope_rows SET enabled=$4,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3`,[context.organisationId,input.jobId,input.sourceId,input.enabled]);return{data:{sourceId:input.sourceId,version:updated.rows[0].version,enabled:input.enabled},entityType:"emission_source",entityId:input.sourceId,topic:"emission.source.status.updated"};});}
 
@@ -978,8 +1054,8 @@ export async function createScopeRow(
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)`,
         [
           context.organisationId,
           rowId,
@@ -1014,6 +1090,8 @@ export async function createScopeRow(
           input.sourceUnit?.trim()||null,
           input.columnText?.trim()||null,
           categoryCode,
+          activity.frequency,
+          activity.distributed,
         ],
       );
       return {
@@ -1055,7 +1133,7 @@ export async function updateScopeRow(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
       provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
+      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,activity_frequency=$36,activity_distributed=$37,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -1092,6 +1170,8 @@ export async function updateScopeRow(
           input.sourceUnit?.trim()||null,
           input.columnText?.trim()||null,
           categoryCode,
+          activity.frequency,
+          activity.distributed,
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
