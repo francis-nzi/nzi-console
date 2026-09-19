@@ -28,6 +28,7 @@ export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./categoryVisibility";
 export * from "./entryExtractionStub";
+export * from "./registrationProposal";
 export * from "./dates";
 export * from "./readModels";
 export * from "./inputSpecRecords";

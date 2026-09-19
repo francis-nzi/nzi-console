@@ -2768,3 +2768,43 @@ command would refuse.
 
 **Related.** NZC-111 (the confirm boundary this asks questions in front of), NZC-102 (the governed
 spec that answers what a category needs).
+
+### NZC-113 — A registration proposes an entry, and the plate does not come with it [Confirmed 19 Sep 2026]
+
+**Decision.** A number plate is a second way into the same loop. `proposeFromRegistration` composes
+the two pieces that already exist — `lookupVehicleByRegistration` turns a plate into a vehicle,
+`resolveVehicleFactor` turns that vehicle into a factor from the datasets *this job* selected — and
+returns an ordinary proposal. Everything after that is unchanged: a person confirms, and the one
+governed commit takes it.
+
+**Both pieces reused, neither altered.** The lookup was already written so the plate does not
+survive the call, and `registrationTransience.test.ts` already pins that it logs nothing, writes
+nothing and hands the database a vehicle rather than a registration. Composing it rather than
+writing a second path is what makes the assisted route carry the *same* guarantees as the manual
+one instead of similar-looking ones.
+
+**The plate reaches the row and not the audit record.** A registration typed into an entry is
+stored as the row's `asset_identifier`, by design and documented for it (NZC-103). What must not
+happen is the plate travelling inside the **assist record** — the structured proposal and diff that
+land in the audit event's `after_json` — because that record is permanent. So the proposal carries
+no plate field at all: not omitted carefully on each path, absent from the type. The asset
+identifier arrives the way it always has, from the field the person typed it into.
+
+Proved by serialising rather than field-checking: a plate reaching a field added later would pass a
+test that only looked at the fields present when it was written.
+
+**A refusal does not repeat the input.** The abstention carries the lookup's own wording, which
+does not contain the registration — error strings are precisely what gets logged, and a
+"couldn't find AB12 CDE" would put the plate in one. Asserted for an implausible plate and for the
+unkeyed, unstubbed misconfiguration.
+
+**It does not invent the distance.** A registration cannot say how far a vehicle went, so `quantity`
+is null and the spec finds it missing — the loop asks (NZC-112). A plausible number supplied because
+one was expected is the failure this avoids.
+
+**It abstains rather than reaching further.** A job with no dataset selection gets a refusal, not a
+factor from somewhere else — tenant and job scoping by construction, as with the text extractor.
+
+**Related.** NZC-111 (the confirm boundary and the structured-only assist record), NZC-112 (the spec
+deciding what is still missing), NZC-103 (the asset identifier, stored by design), NZC-104 (and kept
+out of the published report).
