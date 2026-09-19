@@ -2411,6 +2411,71 @@ could have caught any of it, because a fake pool returns the string the fixture 
 **Related.** NZC-105 (the same defect in monthly entry, and the ruling that the platform's day is
 London), NZC-096 (the same defect in period identity).
 
+### NZC-107 — An entry records the grain it came at, and a figure spreads across the months it covers [Confirmed 19 Sep 2026]
+
+**Decision.** A figure may be supplied annually, quarterly or month by month. The grain is recorded
+on the entry (`activity_frequency`, migration 0094), a coarser figure is expanded to the reporting
+period's months by one shared mechanism, and a vector whose months were derived rather than supplied
+says so (`activity_distributed`). Both monthly stores — `job_scope_rows` (0031) and
+`job_emission_sources` (0036) — carry the columns and call the same resolver.
+
+**Two frequencies, and the relationship between them stated.** `clients.data_reporting_frequency`
+(0060) already existed with the same three values. It is the cadence the *engagement* agreed to
+report on — a property of the client. `activity_frequency` is the basis on which *this particular
+figure* was supplied — a property of the entry. The client's setting is the default offered when an
+entry is captured, read at that moment and stored; changing it later never reaches back and rewrites
+what a stored entry claims about itself. The shared vocabulary is deliberate: annual, quarterly and
+monthly mean the same three things in both places. What was missing was this paragraph.
+
+**Distribution is not a quality tier.** `quality_tier` (0008) is the documented taxonomy — measured,
+estimated, spend-based, survey — and it travels with every measurement and every chart. Distribution
+is orthogonal: a spend-based figure can be distributed and so can a measured one. A fifth tier would
+have made a distributed meter reading indistinguishable from an estimate, which is a different claim
+about the world.
+
+**Nullable frequency, backfilled flag, and the difference is the whole discipline.** Existing rows
+keep a null `activity_frequency`: a row with twelve populated months was *probably* captured monthly,
+and "probably" written into a provenance column becomes a false fact the moment something reads it.
+`activity_distributed` is backfilled `false` because that is not a guess about the data — it is a
+statement about the code that wrote it, which had no way to distribute anything. Assert what is
+known; leave null what would be guessed.
+
+**Value is neither lost nor invented.** The split runs in integer minor units (millionths), so the
+remainder is *allocated* — one spare unit to each of the earliest months, deterministically — rather
+than truncated away. The parts are then divided back into JavaScript numbers, where a tenth of a
+penny is not a binary fraction, so the final month absorbs the residue: that subtraction is exact
+because the operands are within a factor of two, and the resolver's own left-to-right sum therefore
+returns the figure exactly. £120,001 across twelve months comes back as £120,001, proved against a
+real database rather than in arithmetic alone.
+
+**The guarantee is per figure, deliberately.** One annual figure's twelve months sum back to it
+exactly; each quarter's three months account for that quarter exactly; across a whole vector no minor
+unit is lost or invented. Aggregating independent figures afterwards is ordinary arithmetic and costs
+what adding those numbers costs whether they were distributed or not. Value is never smeared between
+quarters to tidy a grand total — a quarter has to account for itself, and a prettier total bought
+with a wrong quarter is a worse answer. The first test written here asserted the stronger, false
+version; the assertion was corrected rather than the resolver, because a pin is a hypothesis too.
+
+**Quarters are counted from the reporting period, not from January.** An April–March year has its
+first quarter in April. The period is the frame of reference everywhere else in this platform, and
+calendar quarters shatter at exactly the periods it exists to handle: a fourteen-month transition
+year or a first engagement starting in February would hand one figure a one-month span and another a
+three-month one. A trailing span shorter than three months is a real thing and divides by the months
+it actually covers — a figure against a one-month stub lands whole, not a third of it.
+
+**One mechanism, two stores.** `resolveMonthlyActivity` and `resolveSourceMonthlyActivity` were
+near-identical copies differing in one error message; they are now two call sites of one resolver.
+The reasoning is NZC-106's: two copies of arithmetic that decides a client's monthly numbers is how
+the source register comes to disagree with the canonical row.
+
+**Refusals rather than guesses.** A period that is not configured has nothing to spread across, and
+inventing twelve calendar months would be a guess about the client's year. The wrong number of
+figures for the period's grain is refused rather than padded or truncated. Month-by-month capture
+arriving with figures to spread is two answers to one question, and is refused.
+
+**Related.** NZC-105 and NZC-106 (the reporting period's months, read zone-independently, which this
+builds on), NZC-096 (the period is the identity), 0031 and 0036 (the two monthly stores).
+
 ### NZC-108 — A name a consultant chose is not taken back off by a sync [Confirmed 19 Sep 2026]
 
 **Decision.** The two paths that regenerate a scope row from something else — the emission-source
