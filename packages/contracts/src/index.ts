@@ -91,3 +91,4 @@ export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./dayValues";
 export * from "./activityDistribution";
+export * from "./reportLabelResolution";

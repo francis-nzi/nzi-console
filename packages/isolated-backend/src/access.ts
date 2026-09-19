@@ -95,6 +95,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "site.floorArea.record": site,
   "emissions.intensity.upsert": job,
   "purchased.goods.category.create": job,
+  "client.factor.alias.set": client,
   "client.factor.create": job,
   "client.factor.update": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
   "client.factor.archive": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
