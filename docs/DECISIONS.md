@@ -2410,3 +2410,53 @@ could have caught any of it, because a fake pool returns the string the fixture 
 
 **Related.** NZC-105 (the same defect in monthly entry, and the ruling that the platform's day is
 London), NZC-096 (the same defect in period identity).
+
+### NZC-108 — A name a consultant chose is not taken back off by a sync [Confirmed 19 Sep 2026]
+
+**Decision.** The two paths that regenerate a scope row from something else — the emission-source
+sync and the group roll-up — no longer overwrite `report_label`. They set it only while it still
+equals `source_label`, which is true exactly while nobody has renamed the row.
+
+**It was live data loss.** `report_label` is the name the client's report prints: the reviewed
+snapshot carries it, and the portal's published-report endpoint returns that payload to the client.
+A consultant could set it — `createScopeRow` and `updateScopeRow` have always honoured a
+`reportLabel` — but for any row generated from an emission source, both regenerating paths assigned
+`report_label` the same parameter as `source_label`. A sync runs on every edit to the source behind
+the row, so the name survived only until the next time anyone touched the source. Nothing errored,
+and nothing in the audit trail said the label had been replaced.
+
+Proved against a real database before the fix, on an ordinary sequence rather than a contrived one:
+
+```
+after first sync:                  source="Site boiler"  report="Site boiler"
+after the consultant renames it:   source="Site boiler"  report="What the client calls it"
+after a second sync:               source="Site boiler"  report="Site boiler"
+```
+
+**Both halves, or it is a different bug.** Freezing every label at creation would trade silent loss
+for silent staleness: a renamed source would keep printing its old name in a client's report. So an
+untouched label still follows its source, and only a label somebody chose is left alone. The
+comparison with `source_label` is what tells them apart, and it is made in SQL where both sides read
+the row's pre-update values. The test asserting the following half passes before and after the fix,
+deliberately — it is there to catch an over-correction, not the original defect.
+
+**Assert-correct, not pin-current.** The current behaviour is the bug, so there was nothing worth
+pinning. An earlier branch had recorded it as characterisation; that pin was lifted rather than
+carried, because a pin asserting a defect forces the fix to edit a test to go green, which is the
+one move the pin discipline exists to prevent.
+
+**Not the whole of the per-client label question.** This fixes a row-level name being destroyed. It
+does not give a client a durable name for a factor across jobs — that is the alias table keyed
+`(client_id, dataset_id, factor_id)`, which follows separately. Shipped first and on its own because
+stopping active data loss outranks shipping a feature, and because it needs no migration, no new
+capability and no matrix version.
+
+**Superseded.** An earlier ruling proposed reusing `client_factors.report_label` as a per-client
+override layer. `client_factors` (0034) is a standalone client-specific factor carrying its own
+`kgco2e_per_unit`, unit, geography, vintage and evidence, with no reference to a dataset factor —
+so renaming a shared dataset factor through it would mint a client factor as a renaming device and
+fork the emission value away from the dataset. Nothing was built on that ruling; it is recorded here
+as withdrawn so the reasoning is not rediscovered.
+
+**Related.** NZC-030 (the factor version a row pins), NZC-102 (the governed input spec), and the
+per-client label alias table that follows this.
