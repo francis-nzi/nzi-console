@@ -22,7 +22,7 @@ import {
 } from "@nzi/contracts";
 import { dateOnly, monthsBetween, todayInLondon } from "./dates";
 import {
-  distributeActivity, figureCountFor, totalOfSlots,
+  distributeActivity, figureCountFor, resolveReportLabel, totalOfSlots,
   type ActivityFrequency, type MonthSlot,
 } from "@nzi/contracts";
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
@@ -775,6 +775,49 @@ async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string
 
 async function requirePurchasedGoodsCategory(db:Queryable,organisationId:string,jobId:string,scope:string,categoryId:string|null){if(!categoryId)return;if(scope!=="3.1")throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"WRONG_SCOPE",message:"Purchased-goods categories apply only to Scope 3.1 rows."}]);const found=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[organisationId,jobId,categoryId]);if(!found.rows[0])throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"NOT_FOUND",message:"Purchased-goods category was not found for this client."}]);}
 export async function createPurchasedGoodsCategory(pool:PoolLike,input:CommandInputMap["purchased.goods.category.create"],context:CommandContext):Promise<StoredOutcome<{categoryId:string;name:string}>>{return runPostgresCommand(pool,"purchased.goods.category.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),categoryId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.purchased_goods_categories(organisation_id,category_id,client_id,name,created_by) VALUES($1,$2,$3,$4,$5)`,[context.organisationId,categoryId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That purchased-goods category already exists."}]);throw error;}return{data:{categoryId,name},entityType:"purchased_goods_category",entityId:categoryId,topic:"purchased.goods.category.created"};});}
+
+/**
+ * Set or withdraw what a client calls a shared dataset factor (NZC-109).
+ *
+ * Upsert rather than create-then-edit: there is one name per client per factor, and a consultant
+ * naming it twice means the second name, not a conflict. Withdrawing deactivates rather than
+ * deletes, so a report issued while the name was in force stays explicable — and re-naming it later
+ * revives the same row, which keeps the audit trail for that client and factor in one place.
+ *
+ * The factor must exist. A name attached to nothing would sit in the table looking authoritative
+ * and resolve for no row.
+ */
+export async function setClientFactorAlias(pool:PoolLike,input:CommandInputMap["client.factor.alias.set"],context:CommandContext):Promise<StoredOutcome<{clientId:string;datasetId:string;factorId:string;label:string|null}>>{return runPostgresCommand(pool,"client.factor.alias.set",input,context,async db=>{
+  const client=await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,[context.organisationId,input.clientId]);
+  if(!client.rows[0])throw new CommandValidationError([{field:"clientId",code:"NOT_FOUND",message:"Client was not found."}]);
+  const factor=await db.query<{label:string}>(`SELECT label FROM nzi_console.emission_factors WHERE organisation_id=$1 AND dataset_id=$2 AND factor_id=$3`,[context.organisationId,input.datasetId,input.factorId]);
+  if(!factor.rows[0])throw new CommandValidationError([{field:"factorId",code:"NOT_FOUND",message:"That factor was not found in this dataset."}]);
+
+  const existing=await db.query<{label:string;active:boolean}>(`SELECT label,active FROM nzi_console.client_factor_aliases WHERE organisation_id=$1 AND client_id=$2 AND dataset_id=$3 AND factor_id=$4`,[context.organisationId,input.clientId,input.datasetId,input.factorId]);
+  const before=existing.rows[0]?{label:existing.rows[0].label,active:existing.rows[0].active}:null;
+  const label=input.label===null?null:input.label.trim();
+  // One shape for both outcomes: inside the withdraw branch TypeScript narrows `label` to null,
+  // which would otherwise make the two returns disagree about what this command produces.
+  const aliasData=(value:string|null)=>({clientId:input.clientId,datasetId:input.datasetId,factorId:input.factorId,label:value});
+
+  if(label===null){
+    if(!before||!before.active){
+      // Withdrawing a name nobody gave is not an error, and not an event either.
+      return{data:aliasData(label),entityType:"client_factor_alias",entityId:`${input.clientId}|${input.datasetId}|${input.factorId}`,topic:"client.factor.alias.withdrawn",...(before?{before}:{})};
+    }
+    await db.query(`UPDATE nzi_console.client_factor_aliases SET active=false,updated_by=$5,updated_at=now() WHERE organisation_id=$1 AND client_id=$2 AND dataset_id=$3 AND factor_id=$4`,[context.organisationId,input.clientId,input.datasetId,input.factorId,context.actorId]);
+    return{data:aliasData(label),entityType:"client_factor_alias",entityId:`${input.clientId}|${input.datasetId}|${input.factorId}`,topic:"client.factor.alias.withdrawn",...(before?{before}:{})};
+  }
+
+  await db.query(
+    `INSERT INTO nzi_console.client_factor_aliases(organisation_id,client_id,dataset_id,factor_id,label,created_by)
+     VALUES($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (organisation_id,client_id,dataset_id,factor_id)
+     DO UPDATE SET label=EXCLUDED.label,active=true,updated_by=EXCLUDED.created_by,updated_at=now()`,
+    [context.organisationId,input.clientId,input.datasetId,input.factorId,label,context.actorId]);
+
+  return{data:aliasData(label),entityType:"client_factor_alias",entityId:`${input.clientId}|${input.datasetId}|${input.factorId}`,topic:"client.factor.alias.set",...(before?{before}:{})};
+});}
 
 export async function createClientFactor(pool:PoolLike,input:CommandInputMap["client.factor.create"],context:CommandContext):Promise<StoredOutcome<{clientFactorId:string;label:string}>>{return runPostgresCommand(pool,"client.factor.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),clientFactorId=randomUUID(),label=input.reportLabel.trim();await db.query(`INSERT INTO nzi_console.client_factors(organisation_id,client_factor_id,client_id,job_id,scope,category_path_json,report_label,description,unit,ghg_unit,kgco2e_per_unit,geography,vintage_year,source,evidence_file_name,evidence_storage_provider,evidence_url,evidence_external_item_id,evidence_hash,created_by) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,'kgCO2e',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,[context.organisationId,clientFactorId,job.rows[0]!.client_id,input.reusable?null:input.jobId,input.scope,JSON.stringify(crpScopeCategoryPath(input.scope)),label,input.description.trim(),input.unit.trim(),input.kgco2ePerUnit,input.geography.trim().toUpperCase(),input.vintageYear,input.source.trim(),input.evidenceFileName?.trim()||null,input.evidenceStorageProvider,input.evidenceUrl?.trim()||null,input.evidenceExternalItemId?.trim()||null,input.evidenceHash?.trim()||null,context.actorId]);return{data:{clientFactorId,label},entityType:"client_factor",entityId:clientFactorId,topic:"client.factor.created"};});}
 
@@ -1843,8 +1886,9 @@ export async function createReviewedCrpSnapshot(
         dataset_version: string | null;
         client_factor_label: string | null;
         client_factor_version: string | null;
+        alias_label: string | null;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.dataset_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.dataset_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site
@@ -1950,7 +1994,7 @@ export async function createReviewedCrpSnapshot(
           // Forward-only: `dataHash` is taken over the whole payload, so issued snapshots keep
           // theirs and stay verifiable. Only snapshots issued from here on omit the field.
           factorSource:row.factor_source,clientFactorId:row.client_factor_id,isCustomEntry:row.is_custom_entry,applyPct:Number(row.apply_pct),dataConfidence:row.data_confidence,sourceQuantity:row.source_quantity===null?null:Number(row.source_quantity),sourceUnit:row.source_unit,columnText:row.column_text,
-          reportLabel:row.report_label,
+          reportLabel:resolveReportLabel({rowReportLabel:row.report_label,sourceLabel:row.source_label,factorSource:row.factor_source,alias:row.alias_label,clientFactorLabel:row.client_factor_label}).label,
           categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),
           monthlyActivity:row.monthly_activity_json??[],
           notes:row.notes??null,

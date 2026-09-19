@@ -11,6 +11,7 @@ import { clientReferences, type ClientReferences } from "./clientReference";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
+import { resolveReportLabel } from "@nzi/contracts";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
@@ -533,6 +534,7 @@ type ScopeRow = {
   reviewed_row_version:number|null;reviewed_by:string|null;reviewed_at:Date|string|null;reviewer_note:string|null;
   provenance_json: Record<string, unknown>; lineage_json: ScopeRowReadModel["lineage"];
   site_id:string|null;site_label:string|null;purchased_goods_category_id:string|null;purchased_goods_category_label:string|null;
+  alias_label:string|null;client_factor_label:string|null;
   report_label:string;level_1:string;level_2:string;level_3:string|null;level_4:string|null;
   monthly_activity_json:ScopeRowReadModel["monthlyActivity"];
   notes:string|null;asset_identifier:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;data_confidence:"H"|"M"|"L"|null;source_quantity:string|null;source_unit:string|null;column_text:string|null;client_factor_version_moved:boolean;category_code:string|null;
@@ -542,15 +544,17 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
   const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
       r.unit, r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
       r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status,r.reviewed_row_version,r.reviewed_by,r.reviewed_at,r.reviewer_note, r.version, r.enabled,
-      r.provenance_json, r.lineage_json,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.category_code,
+      r.provenance_json, r.lineage_json,r.report_label,cfa.label AS alias_label,cfl.report_label AS client_factor_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.category_code,
       (r.factor_source='client' AND r.client_factor_id IS NOT NULL AND EXISTS(SELECT 1 FROM nzi_console.client_factors cf WHERE cf.organisation_id=r.organisation_id AND cf.client_factor_id=r.client_factor_id AND 'v'||cf.version::text <> coalesce(r.factor_version,''))) AS client_factor_version_moved
     FROM nzi_console.job_scope_rows r
     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
     LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
     LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id)
+    LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.dataset_id,cfa.factor_id)=(r.organisation_id,j.client_id,r.dataset_id,r.factor_id) AND cfa.active
+    LEFT JOIN nzi_console.client_factors cfl ON (cfl.organisation_id,cfl.client_factor_id)=(r.organisation_id,r.client_factor_id)
     WHERE r.job_id=$1 AND j.job_family='crp'
     ORDER BY r.enabled DESC, split_part(r.scope,'.',1)::int, nullif(split_part(r.scope,'.',2),'')::int NULLS FIRST, lower(r.source_label), r.scope_row_id`, [jobId]);
-  return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,assetIdentifier:row.asset_identifier??null,factorSource:row.factor_source??"dataset",clientFactorId:row.client_factor_id??null,isCustomEntry:row.is_custom_entry??false,applyPct:Number(row.apply_pct??100),dataConfidence:row.data_confidence??null,sourceQuantity:row.source_quantity==null?null:Number(row.source_quantity),sourceUnit:row.source_unit??null,columnText:row.column_text??null,reportLabel:row.report_label??row.source_label,notes:row.notes??null,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),categoryCode:row.category_code??null,monthlyActivity:row.monthly_activity_json??[],siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
+  return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,assetIdentifier:row.asset_identifier??null,factorSource:row.factor_source??"dataset",clientFactorId:row.client_factor_id??null,isCustomEntry:row.is_custom_entry??false,applyPct:Number(row.apply_pct??100),dataConfidence:row.data_confidence??null,sourceQuantity:row.source_quantity==null?null:Number(row.source_quantity),sourceUnit:row.source_unit??null,columnText:row.column_text??null,reportLabel:resolveReportLabel({rowReportLabel:row.report_label,sourceLabel:row.source_label,factorSource:row.factor_source,alias:row.alias_label,clientFactorLabel:row.client_factor_label}).label,notes:row.notes??null,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),categoryCode:row.category_code??null,monthlyActivity:row.monthly_activity_json??[],siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
     quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
     factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
     calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e), clientFactorVersionMoved: row.client_factor_version_moved === true,

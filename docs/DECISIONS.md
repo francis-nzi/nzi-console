@@ -2525,3 +2525,62 @@ as withdrawn so the reasoning is not rediscovered.
 
 **Related.** NZC-030 (the factor version a row pins), NZC-102 (the governed input spec), and the
 per-client label alias table that follows this.
+### NZC-109 — What a client calls a factor is a label, kept where a label belongs [Confirmed 19 Sep 2026]
+
+**Decision.** A client may have its own name for a shared dataset factor. It lives in
+`client_factor_aliases` (migration 0095), keyed `(organisation_id, client_id, dataset_id, factor_id)`,
+carries a label and nothing else, and is resolved when a screen or a report is built rather than
+copied onto any row.
+
+**Why not somewhere that already exists.** Not on `emission_factors`: one client's wording is not a
+property of a dataset every client shares. Not through `client_factors` (0034): that is a
+*standalone* client-specific factor carrying its own kgco2e_per_unit, unit, geography, vintage and
+evidence, with no reference to a dataset factor, so renaming a dataset factor through it would mint
+a client factor as a renaming device and fork the emission value away from the dataset — the dataset
+gets corrected, the renamed copy does not. Not on the scope row: a row is one job's artefact, so a
+name kept there dies at rollforward and must be re-typed every year.
+
+**Label and nothing else, structurally.** The table has no column that could carry a quantity, a
+factor value or a unit. That is the property that makes it safe in a way reusing `client_factors`
+could not be: a row here *cannot* change a number. The worst a wrong entry does is print the wrong
+words, and the audit trail says who chose them.
+
+**Precedence: the narrowest decision wins.** A name chosen on the row, then the client's name for the
+factor, then the source label. A consultant who renamed one line meant that line — two sites on one
+grid factor, one of which the client calls something particular — while the client-level name is the
+durable one that applies wherever the factor appears and survives into next year's job.
+
+**How "chosen on the row" is known.** There is no flag, and adding one would leave two facts to keep
+in step. A row's `report_label` and its `source_label` are written together and are equal exactly
+while nobody has intervened, so they differ if and only if somebody chose a name. This is the same
+test the sync paths use to decide what they may overwrite (NZC-108): the rule that protects a chosen
+name is the rule that recognises it.
+
+**A client's own factor names itself.** A factor from `client_factors` already belongs to one client
+and carries its own `report_label`; there is nothing to alias, so the alias table answers only for
+shared dataset factors. Different factor kinds, different sources, no conflict.
+
+**Resolved on read, frozen at issue.** Live screens resolve on every read, so renaming retitles every
+view at once with no rows to migrate and nothing to fall out of step — proved by the row's `version`
+being unchanged after a rename. The issued snapshot is the deliberate exception: it is
+content-hashed evidence a client or auditor holds, it already freezes the factor label and everything
+else, and a published report must not silently reword itself. Renaming a factor today does not
+retitle a report published last year.
+
+**No new capability, and the reasoning matters more than the answer.** It carries
+`clientfactor.manage`, which already permits creating a client factor *with its own emission value* —
+so a label that cannot change a number is strictly weaker than what its holders may already do, and
+a new capability would produce an identical row in the permission matrix: a name, not a control. No
+new matrix version.
+
+**Deactivate, never delete.** Withdrawing a name deactivates the row and re-naming revives the same
+one, so there is one record per client per factor rather than a pile of them, and a report issued
+while a name was in force stays explicable. `DELETE` is revoked from the application role, which
+makes that a property rather than a convention somebody has to remember.
+
+**An unknown client is refused as out of tenancy, not as a typo.** The access layer resolves which
+client a command touches before the handler runs, so the answer is the same whether the client does
+not exist or belongs to somebody else — the command cannot be used to find out which.
+
+**Related.** NZC-108 (the clobber fix, and the withdrawn ruling this replaces), NZC-030 (the factor
+version a row pins), NZC-096 (identity versus label, the same distinction one level up).
