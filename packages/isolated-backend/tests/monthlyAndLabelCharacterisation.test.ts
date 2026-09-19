@@ -3,7 +3,10 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { commandGrantForRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { CommandValidationError, createScopeRow, updateScopeRow } from "../src/index";
+import {
+  CommandValidationError, createEmissionSource, createReviewedCrpSnapshot, createScopeRow,
+  syncEmissionSourceToScope, updateEmissionSourceActivity, updateScopeRow, utcDay,
+} from "../src/index";
 
 /**
  * What monthly activity (`0031`) and the report label (`0030`) do today, pinned before PR 2 extends
@@ -30,6 +33,14 @@ const context = (key: string) => ({
   idempotencyKey: key, correlationId: `corr-${key}`,
   grant: commandGrantForRole("admin", ORG, ACTOR),
 });
+
+/** The reporting period's months, as both resolvers demand them: in order, none missing. */
+const months = (from: number, count: number, quantity: number | null = null) =>
+  Array.from({ length: count }, (_, index) => {
+    // Built and read in UTC, so the month keys do not depend on where the suite runs (NZC-106).
+    const date = new Date(Date.UTC(2025, from - 1 + index, 1));
+    return { month: utcDay(date).slice(0, 7), quantity };
+  });
 
 /** The minimum a scope row needs, with the factor provenance the calculation gate expects. */
 const row = (over: Record<string, unknown> = {}) => ({
@@ -74,12 +85,6 @@ describe("monthly activity today (0031)", { skip: DATABASE_URL ? false : "NZI_TE
   });
 
   after(async () => { await db?.end(); await database?.end(); });
-
-  const months = (from: number, count: number, quantity: number | null = null) =>
-    Array.from({ length: count }, (_, index) => {
-      const date = new Date(Date.UTC(2025, from - 1 + index, 1));
-      return { month: date.toISOString().slice(0, 7), quantity };
-    });
 
   it("stores nothing monthly when none is given, and keeps the annual figure", async () => {
     const created = await createScopeRow(pool, row(), context("m-none"));
@@ -224,5 +229,214 @@ describe("the report label today (0030)", { skip: DATABASE_URL ? false : "NZI_TE
         `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2)
          VALUES ($1,'blank',$2,'1','Source','   ','Scope 1','Direct')`, [ORG, JOB]),
       /report_label_present/);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────────────────
+ * The source register's own monthly vector (0036), pinned alongside the scope row's (0031).
+ *
+ * PR 2 distributes an annual or quarterly figure across the reporting period's months, and the
+ * ruling is that one shared mechanism serves both stores — not two implementations that drift
+ * until the register disagrees with the row. Pinning the second store's *current* behaviour is
+ * what makes "the shared mechanism changed nothing" a claim either side can be checked against.
+ * ──────────────────────────────────────────────────────────────────────────────────────── */
+
+describe("monthly activity on the source register today (0036)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let pool: pg.Pool;
+  let db: pg.Client;
+
+  before(async () => {
+    database = (await createDisposableDatabase("sourcemonthly"))!;
+    pool = database.pool;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,'Org')`, [ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status) VALUES ($1,$2,'admin','active')`,
+      [ORG, ACTOR]);
+    await db.query(
+      `INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Client','active')`,
+      [ORG, CLIENT]);
+    await db.query(
+      `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end)
+       VALUES ($1,$2,$3,1,'crp','CRP','open','Data entry',2025,'2025-04-01','2026-03-31')`, [ORG, JOB, CLIENT]);
+    await db.query(
+      `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code)
+       VALUES ($1,$2,'2025-04-01','2026-03-31','GB')`, [ORG, JOB]);
+    await db.query(
+      `INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+       VALUES ($1,'ds-1','Synthetic GB','2025.1','2025-01-01','2026-12-31','GB','active','Synthetic','OGL')`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
+       VALUES ($1,'ds-1','f-diesel','Diesel — LGV','litres',2.5,ARRAY['1'])`, [ORG]);
+    // A source's factor must sit in a dataset the job selected — the register refuses one that does not.
+    await db.query(
+      `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
+       VALUES ($1,$2,'ds-1','automatic','Fixture',$3)`, [ORG, JOB, ACTOR]);
+  });
+
+  after(async () => { await db?.end(); await database?.end(); });
+
+  /** The minimum an asset source needs to exist on this job. */
+  const source = (over: Record<string, unknown> = {}) => ({
+    jobId: JOB, groupId: null, scope: "1", sourceType: "asset" as const, sourceSubtype: null,
+    siteId: null, sourceName: "Site boiler", assetIdentifier: null, purchasedGoodsCategoryId: null,
+    datasetId: "ds-1", factorId: "f-diesel", factorSource: "dataset" as const, clientFactorId: null,
+    quantity: 1200, unit: "litres", applyPct: 100, dataSource: "Meter read",
+    dataConfidence: "H" as const, monthlyActivity: [], detail: { kind: "asset" as const },
+    notes: null, ...over,
+  });
+
+  const storedSource = async (sourceId: string) =>
+    (await db.query<{ monthly_activity_json: Array<{ month: string; quantity: number | null }>; quantity: string | null; version: number }>(
+      `SELECT monthly_activity_json, quantity::text, version FROM nzi_console.job_emission_sources WHERE source_id=$1`,
+      [sourceId])).rows[0]!;
+
+  it("keeps the annual figure when no monthly vector is given", async () => {
+    const created = await createEmissionSource(pool, source(), context("s-none"));
+    const stored = await storedSource(created.data.sourceId);
+    assert.deepEqual(stored.monthly_activity_json, []);
+    assert.equal(Number(stored.quantity), 1200);
+  });
+
+  it("accepts the full twelve months of an April-to-March period and derives the annual figure", async () => {
+    const created = await createEmissionSource(pool, source({
+      sourceName: "Metered boiler", monthlyActivity: months(4, 12, 100),
+    }), context("s-full"));
+    const stored = await storedSource(created.data.sourceId);
+    assert.equal(stored.monthly_activity_json.length, 12);
+    assert.equal(stored.monthly_activity_json[0]!.month, "2025-04");
+    assert.equal(stored.monthly_activity_json.at(-1)!.month, "2026-03");
+    // The annual figure is the sum of the months, not whatever was passed alongside them.
+    assert.equal(Number(stored.quantity), 1200);
+  });
+
+  it("requires every reporting month, in order, when any is given", async () => {
+    const created = await createEmissionSource(pool, source({ sourceName: "Short vector" }), context("s-short"));
+    const stored = await storedSource(created.data.sourceId);
+    await assert.rejects(() => updateEmissionSourceActivity(pool, {
+      jobId: JOB, sourceId: created.data.sourceId, expectedVersion: stored.version,
+      quantity: 1200, unit: "litres", applyPct: 100, dataConfidence: "H",
+      monthlyActivity: months(4, 11, 100), notes: null,
+    }, context("s-short-2")), CommandValidationError);
+    await assert.rejects(() => updateEmissionSourceActivity(pool, {
+      jobId: JOB, sourceId: created.data.sourceId, expectedVersion: stored.version,
+      quantity: 1200, unit: "litres", applyPct: 100, dataConfidence: "H",
+      monthlyActivity: months(1, 12, 100), notes: null,
+    }, context("s-wrong-start")), CommandValidationError);
+  });
+
+  it("treats an all-empty vector as no annual figure rather than as zero", async () => {
+    // The distinction PR 2's distribution must preserve: a period nobody has filled in is not a
+    // period of zero emissions.
+    const created = await createEmissionSource(pool, source({ sourceName: "Empty vector", monthlyActivity: months(4, 12) }), context("s-empty"));
+    const stored = await storedSource(created.data.sourceId);
+    assert.equal(stored.monthly_activity_json.length, 12);
+    assert.equal(stored.quantity, null);
+  });
+
+  it("sums only the populated months when the vector is partly filled", async () => {
+    const partial = months(4, 12).map((slot, index) => (index < 3 ? { ...slot, quantity: 50 } : slot));
+    const created = await createEmissionSource(pool, source({ sourceName: "Partial vector", monthlyActivity: partial }), context("s-partial"));
+    const stored = await storedSource(created.data.sourceId);
+    assert.equal(Number(stored.quantity), 150);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────────────────
+ * Which label the client's report actually renders.
+ *
+ * The Q2 verify, settled against the database rather than by reading: the two labels are given
+ * deliberately different values and the issued snapshot is inspected. Whatever a per-client
+ * override resolves to has to reach *this* field, or it renames something nobody sees.
+ * ──────────────────────────────────────────────────────────────────────────────────────── */
+
+describe("which label the report renders today (0030)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let pool: pg.Pool;
+  let db: pg.Client;
+
+  before(async () => {
+    database = (await createDisposableDatabase("labelrender"))!;
+    pool = database.pool;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,'Org')`, [ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status) VALUES ($1,$2,'admin','active')`,
+      [ORG, ACTOR]);
+    await db.query(
+      `INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Client','active')`,
+      [ORG, CLIENT]);
+    await db.query(
+      `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end)
+       VALUES ($1,$2,$3,1,'crp','CRP','open','Review & QA',2025,'2025-01-01','2025-12-31')`, [ORG, JOB, CLIENT]);
+    await db.query(
+      `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code)
+       VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [ORG, JOB]);
+    await db.query(
+      `INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+       VALUES ($1,'ds-1','Synthetic GB','2025.1','2025-01-01','2025-12-31','GB','active','Synthetic','OGL')`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
+       VALUES ($1,'ds-1','f-diesel','Diesel — LGV','litres',2.5,ARRAY['1'])`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
+       VALUES ($1,$2,'ds-1','automatic','Fixture',$3)`, [ORG, JOB, ACTOR]);
+    // The two labels deliberately different, so the snapshot cannot agree with both.
+    await db.query(
+      `INSERT INTO nzi_console.job_scope_rows
+         (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,
+          quantity,unit,calculated_tco2e,quality_tier,review_status,reviewed_by,reviewed_row_version,
+          reviewed_at,dataset_id,factor_id,factor_label,factor_version,enabled,version)
+       VALUES ($1,'row-a',$2,'1','Diesel — fleet','What the client calls it','Scope 1','Direct',
+               1000,'litres',2.5,'measured','approved',$3,1,now(),'ds-1','f-diesel','Diesel — LGV','2025.1',true,1)`,
+      [ORG, JOB, ACTOR]);
+  });
+
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("renders the scope row's report label, not its source label", async () => {
+    const created = await createReviewedCrpSnapshot(pool, { jobId: JOB, expectedJobVersion: 1 }, context("render-1"));
+    const { rows } = await db.query<{ payload_json: { measurements: Array<Record<string, unknown>> } }>(
+      `SELECT payload_json FROM nzi_console.reviewed_crp_snapshots WHERE snapshot_id=$1`, [created.data.snapshotId]);
+    const measurement = rows[0]!.payload_json.measurements[0]!;
+    // The answer a per-client override has to aim at: this is the field the portal's published
+    // report returns to the client, and it comes from `job_scope_rows.report_label`.
+    assert.equal(measurement.reportLabel, "What the client calls it");
+    assert.equal(measurement.sourceLabel, "Diesel — fleet");
+    // And the factor travels unrenamed — the label is display, the factor is the measurement.
+    assert.equal(measurement.factorSet, "Diesel — LGV · 2025.1");
+  });
+
+  it("loses a row label set by hand when the source behind the row is synced again", async () => {
+    // Current behaviour, pinned because it decides where a per-client label can live: a scope row
+    // generated from an emission source has its report label overwritten with the source label on
+    // every sync (`report_label=$5`, the same parameter as `source_label`). Any edit to the source
+    // re-syncs the row, so a label set on a source-backed row survives only until the next edit.
+    //
+    // Not asserted as correct. It is why a per-client label has to resolve from somewhere the sync
+    // does not own, rather than being stored on the row.
+    const source = await createEmissionSource(pool, {
+      jobId: JOB, groupId: null, scope: "1", sourceType: "asset", sourceSubtype: null, siteId: null,
+      sourceName: "Site boiler", assetIdentifier: null, purchasedGoodsCategoryId: null,
+      datasetId: "ds-1", factorId: "f-diesel", factorSource: "dataset", clientFactorId: null,
+      quantity: 1200, unit: "litres", applyPct: 100, dataSource: "Meter read", dataConfidence: "H",
+      monthlyActivity: [], detail: { kind: "asset" }, notes: null,
+    }, context("sync-create"));
+    const synced = await syncEmissionSourceToScope(pool, { jobId: JOB, sourceId: source.data.sourceId }, context("sync-1"));
+
+    const labelOf = async () => (await db.query<{ report_label: string }>(
+      `SELECT report_label FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [synced.data.rowId])).rows[0]!.report_label;
+
+    assert.equal(await labelOf(), "Site boiler", "the sync names the row after the source");
+    await db.query(
+      `UPDATE nzi_console.job_scope_rows SET report_label='What the client calls it' WHERE scope_row_id=$1`,
+      [synced.data.rowId]);
+    assert.equal(await labelOf(), "What the client calls it");
+
+    await syncEmissionSourceToScope(pool, { jobId: JOB, sourceId: source.data.sourceId }, context("sync-2"));
+    assert.equal(await labelOf(), "Site boiler", "the second sync takes the hand-set label back off");
   });
 });
