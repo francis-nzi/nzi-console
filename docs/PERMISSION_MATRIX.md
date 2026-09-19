@@ -58,6 +58,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `finance.view` | ✓ | R | — | ✓ | — |
 | `finance.manage` (quotes/invoices/credit notes) | ✓ | — | — | ✓ | — |
 | `portal.admin` (invite, reset MFA/pw, job access, data-entry windows) ⚑ | ✓ | ✓ | — | — | — |
+| `category.visibility` (what a client sees of the category list) | ✓ | ⚑ own | — | — | — |
 | `clientfactor.manage` | ✓ | ✓ | — | — | — |
 | `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | — | — | — | — |
 | `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |

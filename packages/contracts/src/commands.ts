@@ -75,6 +75,7 @@ export type CommandKey =
   | "site.floorArea.record"
   | "emissions.intensity.upsert"
   | "purchased.goods.category.create"
+  | "client.category.visibility.set"
   | "client.factor.alias.set"
   | "client.factor.create"
   | "client.factor.update"
@@ -498,6 +499,11 @@ export type CommandInputMap = {
   "site.floorArea.record": {siteId:string;floorAreaM2:number;effectiveFrom:string|null;expectedVersion:number};
   "emissions.intensity.upsert":{jobId:string;metric:"turnover"|"employee"|"floor-area";denominatorUnit:string;/** null for the floor-area metric, which derives it from site floor areas (NZC-071). */reportingDenominator:number|null;baselineYear:number;baselineIntensity:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;expectedVersion:number};
   "purchased.goods.category.create":{jobId:string;name:string};
+  /**
+   * Whether this client sees a category at all. `visible: null` withdraws the decision and returns
+   * the category to the default, which is visible.
+   */
+  "client.category.visibility.set":{clientId:string;categoryCode:string;visible:boolean|null;note?:string|null};
   /** What this client calls a shared dataset factor. `label: null` withdraws the alias. */
   "client.factor.alias.set":{clientId:string;datasetId:string;factorId:string;label:string|null};
   "client.factor.create":{jobId:string;scope:string;reportLabel:string;description:string;unit:string;kgco2ePerUnit:number;geography:string;vintageYear:number;source:string;reusable:boolean;evidenceFileName:string|null;evidenceStorageProvider:"local"|"sharepoint"|null;evidenceUrl:string|null;evidenceExternalItemId:string|null;evidenceHash:string|null};
@@ -1111,6 +1117,13 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "site.floorArea.record":{key:"site.floorArea.record",label:"Record site floor area",permission:"site.manage",reasonRequired:false,transaction:"effective-dated floor-area record + versioned site + audit + outbox + idempotency",auditAction:"client_site_floor_area_recorded",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"siteId",input.siteId);if(!positiveArea(input.floorAreaM2))issues.push({field:"floorAreaM2",code:"INVALID",message:"Floor area must be greater than zero."});if(input.effectiveFrom!==null&&!isoDate(input.effectiveFrom))issues.push({field:"effectiveFrom",code:"INVALID",message:"Enter a real effective-from date, as dd/mm/yyyy."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
   "emissions.intensity.upsert":{key:"emissions.intensity.upsert",label:"Save intensity target",permission:"target.edit",reasonRequired:false,transaction:"versioned intensity target + audit + outbox",auditAction:"intensity_target_saved",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"denominatorUnit",input.denominatorUnit);if(!oneOf(input.metric,["turnover","employee","floor-area"] as const))issues.push({field:"metric",code:"INVALID",message:"Intensity metric is invalid."});if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});if(input.metric==="floor-area"){if(input.reportingDenominator!=null)issues.push({field:"reportingDenominator",code:"INVALID",message:"Floor-area intensity derives its denominator from the in-boundary sites' floor area (NZC-071); do not type one."});}else if(!(typeof input.reportingDenominator==="number"&&input.reportingDenominator>0))issues.push({field:"reportingDenominator",code:"INVALID",message:"Reporting denominator must be greater than zero."});if(!(input.baselineIntensity>0))issues.push({field:"baselineIntensity",code:"INVALID",message:"Baseline intensity must be greater than zero."});if(!Number.isInteger(input.baselineYear)||!Number.isInteger(input.interimYear)||!Number.isInteger(input.netZeroYear)||!(input.baselineYear<input.interimYear&&input.interimYear<input.netZeroYear))issues.push({field:"interimYear",code:"INVALID_RANGE",message:"Years must run baseline, interim, then net zero."});if(!(input.interimReductionPercent>0&&input.interimReductionPercent<100))issues.push({field:"interimReductionPercent",code:"INVALID",message:"Interim reduction must be between 0 and 100 percent."});return issues;}},
   "purchased.goods.category.create":{key:"purchased.goods.category.create",label:"Create purchased-goods category",permission:"scoperow.edit",reasonRequired:false,transaction:"client category + audit + outbox",auditAction:"purchased_goods_category_created",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"name",input.name);return issues;}},
+  /**
+   * Its own capability (NZC-110). Deciding what a client is shown is a disclosure decision about
+   * that client's view, not administration of their portal users, and holding one has never implied
+   * the other — so it is `category.visibility`, own-clients for a consultant, and a new matrix
+   * version rather than a stretch of `portal.admin`.
+   */
+  "client.category.visibility.set":{key:"client.category.visibility.set",label:"Decide whether a client sees a category",permission:"category.visibility",reasonRequired:false,transaction:"client category visibility + audit + outbox + idempotency",auditAction:"client_category_visibility_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"categoryCode",input.categoryCode);if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   /**
    * Naming, not measuring. It carries `clientfactor.manage` rather than a capability of its own:
    * that permission already allows creating a client factor *with its own emission value*, so a

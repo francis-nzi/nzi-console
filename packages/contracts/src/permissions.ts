@@ -31,6 +31,12 @@ export const capabilities = [
   "finance.view",
   "finance.manage",
   "portal.admin",
+  // ── Client-facing disclosure (NZC-110) ──
+  // Its own capability rather than a stretch of portal.admin: deciding what a client sees of the
+  // category list is a disclosure decision about that client's report, not administration of their
+  // portal users. Holding one has never implied the other, and a consultant who may invite a portal
+  // user is not thereby entitled to decide what the client is shown.
+  "category.visibility",
   "clientfactor.manage",
   "dataset.manage",
   "factor.manage",
@@ -62,7 +68,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 4;
+export const PERMISSION_MATRIX_VERSION = 5;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -81,6 +87,9 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
       "knowledge.capture", "knowledge.approve"),
     "baseline.rebaseline": "own_clients",
     "portal.admin": "own_clients",
+    // Own clients only, like the other two decisions a consultant makes *about* a client rather
+    // than within one.
+    "category.visibility": "own_clients",
     "audit.view": "own_clients",
   },
   reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture"),
