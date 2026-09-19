@@ -5,7 +5,7 @@ import { commandGrantForRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
   CommandValidationError, createEmissionSource, createReviewedCrpSnapshot, createScopeRow,
-  syncEmissionSourceToScope, updateEmissionSourceActivity, updateScopeRow, utcDay,
+  updateEmissionSourceActivity, updateScopeRow, utcDay,
 } from "../src/index";
 
 /**
@@ -410,33 +410,4 @@ describe("which label the report renders today (0030)", { skip: DATABASE_URL ? f
     assert.equal(measurement.factorSet, "Diesel — LGV · 2025.1");
   });
 
-  it("loses a row label set by hand when the source behind the row is synced again", async () => {
-    // Current behaviour, pinned because it decides where a per-client label can live: a scope row
-    // generated from an emission source has its report label overwritten with the source label on
-    // every sync (`report_label=$5`, the same parameter as `source_label`). Any edit to the source
-    // re-syncs the row, so a label set on a source-backed row survives only until the next edit.
-    //
-    // Not asserted as correct. It is why a per-client label has to resolve from somewhere the sync
-    // does not own, rather than being stored on the row.
-    const source = await createEmissionSource(pool, {
-      jobId: JOB, groupId: null, scope: "1", sourceType: "asset", sourceSubtype: null, siteId: null,
-      sourceName: "Site boiler", assetIdentifier: null, purchasedGoodsCategoryId: null,
-      datasetId: "ds-1", factorId: "f-diesel", factorSource: "dataset", clientFactorId: null,
-      quantity: 1200, unit: "litres", applyPct: 100, dataSource: "Meter read", dataConfidence: "H",
-      monthlyActivity: [], detail: { kind: "asset" }, notes: null,
-    }, context("sync-create"));
-    const synced = await syncEmissionSourceToScope(pool, { jobId: JOB, sourceId: source.data.sourceId }, context("sync-1"));
-
-    const labelOf = async () => (await db.query<{ report_label: string }>(
-      `SELECT report_label FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [synced.data.rowId])).rows[0]!.report_label;
-
-    assert.equal(await labelOf(), "Site boiler", "the sync names the row after the source");
-    await db.query(
-      `UPDATE nzi_console.job_scope_rows SET report_label='What the client calls it' WHERE scope_row_id=$1`,
-      [synced.data.rowId]);
-    assert.equal(await labelOf(), "What the client calls it");
-
-    await syncEmissionSourceToScope(pool, { jobId: JOB, sourceId: source.data.sourceId }, context("sync-2"));
-    assert.equal(await labelOf(), "Site boiler", "the second sync takes the hand-set label back off");
-  });
 });

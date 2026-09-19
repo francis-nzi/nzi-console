@@ -145,6 +145,24 @@ test("a quarterly period whose last span is short spreads over the months it act
   assert.equal(resolverSum(slots), 1300);
 });
 
+test("a quarterly figure on a one-month stub lands whole in that month", () => {
+  // Thirteen months: four full quarters and a single trailing month. A quarterly figure divides by
+  // the months its span actually covers, not by three — so the stub's figure lands whole rather
+  // than a third of it landing and two thirds going nowhere. The combination is defined, not
+  // refused: a thirteen-month transition period is a real period, and the figure entered against
+  // its last month is a real figure.
+  const months = monthsBetween("2025-01-01", "2026-01-31");
+  assert.equal(months.length, 13);
+  const spans = monthSpansFor("quarterly", months);
+  assert.equal(spans.length, 5);
+  assert.deepEqual(spans.at(-1), ["2026-01"]);
+
+  const { slots } = distributeActivity({ frequency: "quarterly", figures: [300, 300, 300, 300, 90], months });
+  assert.equal(slots.length, 13);
+  assert.equal(slots.at(-1)!.quantity, 90, "the whole figure, not a third of it");
+  assert.equal(resolverSum(slots.slice(-1)), 90);
+});
+
 test("a figure that was not supplied stays unsupplied, and is not a zero", () => {
   // The distinction both resolvers already make and distribution must not erase: a quarter nobody
   // has filled in is not a quarter of no emissions.
