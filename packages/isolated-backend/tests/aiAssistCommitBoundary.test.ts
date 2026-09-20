@@ -119,8 +119,14 @@ describe("the assistant proposes, a person commits (NZC-111)", { skip: DATABASE_
   });
 
   it("records how it was captured, and where it came from", async () => {
+    // Selected by what it is, not by being the newest. "Latest" depends on what every earlier
+    // test happened to create, so inserting a test above this one would silently change what it
+    // reads — and `now()` is identical across statements in one transaction, so recency is not
+    // even a tiebreak where a command writes more than one row.
     const { rows } = await db.query<{ provenance_json: Record<string, unknown> }>(
-      `SELECT provenance_json FROM nzi_console.job_scope_rows WHERE job_id=$1 ORDER BY created_at DESC LIMIT 1`, [JOB]);
+      `SELECT provenance_json FROM nzi_console.job_scope_rows
+        WHERE job_id=$1 AND provenance_json->>'capturedVia'='ai-assisted'`, [JOB]);
+    assert.equal(rows.length, 1, "one assisted entry so far");
     const origin = readEntryOrigin(rows[0]!.provenance_json);
     assert.equal(origin.via, "ai-assisted");
     assert.equal(origin.as, "staff");
@@ -128,7 +134,9 @@ describe("the assistant proposes, a person commits (NZC-111)", { skip: DATABASE_
 
   it("makes an assisted entry as auditable as a typed one, without keeping the prose", async () => {
     const { rows } = await db.query<{ after_json: { assist?: { proposed: Record<string, unknown>; changed: unknown[] } } }>(
-      `SELECT after_json FROM nzi_console.audit_events WHERE action='scope_row_created' ORDER BY occurred_at DESC LIMIT 1`);
+      `SELECT after_json FROM nzi_console.audit_events
+        WHERE action='scope_row_created' AND after_json ? 'assist'`);
+    assert.equal(rows.length, 1, "one assisted entry, one audit event carrying its proposal");
     const assist = rows[0]!.after_json.assist;
     assert.ok(assist, "the audit event carries what was proposed");
     assert.equal(assist!.proposed.factorId, "f-diesel");

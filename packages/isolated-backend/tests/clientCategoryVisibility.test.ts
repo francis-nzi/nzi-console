@@ -132,11 +132,13 @@ describe("a category a client does not see (NZC-110)", { skip: DATABASE_URL ? fa
     await setClientCategoryVisibility(pool, { clientId: CLIENT, categoryCode: aCategory, visible: true }, context("v-3"));
     const { rows } = await db.query<{ action: string; before_json: { visible?: boolean } | null }>(
       `SELECT action, before_json FROM nzi_console.audit_events
-        WHERE entity_type='client_category_visibility' ORDER BY occurred_at`);
+        WHERE entity_type='client_category_visibility'`);
     assert.ok(rows.length >= 3, `expected each decision to be audited, saw ${rows.length}`);
-    const last = rows.at(-1)!;
-    assert.equal(last.action, "client_category_visibility_set");
-    assert.equal(last.before_json?.visible, false, "the audit says what the decision was before");
+    // The event this test is about, identified by what it records rather than by being last: the
+    // decision just made turned a hidden category back on, so its "before" says hidden.
+    const turnedBackOn = rows.filter((row) => row.action === "client_category_visibility_set" && row.before_json?.visible === false);
+    assert.equal(turnedBackOn.length, 1, "exactly one decision so far reversed a hiding");
+    assert.equal(turnedBackOn[0]!.before_json?.visible, false, "the audit says what the decision was before");
   });
 
   it("withdraws to the default without erasing that a decision was made", async () => {
