@@ -5,6 +5,7 @@ import {
   encodeImportIdentity,
   type SpendImportIdentity,
 } from "@nzi/contracts";
+import { dateOnly, dateOnlyOrNull } from "./dates";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantRead } from "./postgres";
 
@@ -53,14 +54,6 @@ type JobIdentityRow = {
   reporting_to: Date | string | null;
 };
 
-// date-helper-exempt: this day feeds a spend-import idempotency identity, and the identity
-// is what makes a re-import recognise rows it has already taken. Moving the day by one moves
-// the key, and every previously imported row would come back as new. Correcting it needs its
-// own reconcile-by-reading analysis of the keys already in the database, not a sweep — so it
-// stays as it is, deliberately, until that lands (NZC-106; held per the standing ruling).
-const day = (value: Date | string | null, fallback: string): string =>
-  value == null ? fallback : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
-
 export async function buildSpendImportIdentity(db: Queryable, organisationId: string, jobId: string): Promise<SpendImportIdentity | null> {
   const { rows } = await db.query<JobIdentityRow>(
     `SELECT j.job_number,j.title,c.name AS client_name,j.reporting_year,j.start_date,cfg.reporting_from,cfg.reporting_to
@@ -72,15 +65,17 @@ export async function buildSpendImportIdentity(db: Queryable, organisationId: st
   );
   const row = rows[0];
   if (!row) return null;
-  const reportingYear = row.reporting_year ?? Number(day(row.start_date, "1970-01-01").slice(0, 4));
+  const reportingYear = row.reporting_year ?? Number(dateOnly(row.start_date).slice(0, 4));
   return {
     jobId,
     jobNumber: row.job_number,
     clientName: row.client_name,
     jobName: row.title,
     reportingYear,
-    reportingFrom: day(row.reporting_from, `${reportingYear}-01-01`),
-    reportingTo: day(row.reporting_to, `${reportingYear}-12-31`),
+    // The same days, read the same way, as `loadSpendImportContext` reads them — because
+    // `commitSpendImport` compares the two and refuses the import when they differ (NZC-115).
+    reportingFrom: dateOnlyOrNull(row.reporting_from) ?? `${reportingYear}-01-01`,
+    reportingTo: dateOnlyOrNull(row.reporting_to) ?? `${reportingYear}-12-31`,
     domain: "spend",
     templateVersion: SPEND_IMPORT_TEMPLATE_VERSION,
   };

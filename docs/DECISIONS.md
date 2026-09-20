@@ -2384,10 +2384,17 @@ the month before the reporting period; dataset-coverage warnings could be invent
 a job starting 1 January fell back to the *previous* reporting year, which selects the historical
 snapshots an annual comparison is built from.
 
-**Held, with the reason in the code.** `spendImportIdentity` feeds a spend-import idempotency
-identity: moving the day moves the key, and every previously imported row would come back as new. It
-needs its own reconcile-by-reading analysis of the keys already stored, and is exempted inline with
-that reason — not quietly left behind.
+**Held, with the reason in the code — and the reason was wrong.** `spendImportIdentity` was held
+on the grounds that its day feeds an idempotency identity, so moving it would make re-imported rows
+look new. That is not what it does: the identity is minted into a downloaded template as a signed
+token and never stored, and row-level dedup keys on `description | netValue | glCode` with no date
+in it. Nothing could have duplicated.
+
+Worse, the hold caused the failure it was meant to avoid. The period in that token is compared at
+commit against the period from `loadSpendImportContext` — which this sweep *did* correct — so
+fixing one side of a pair and holding the other made them disagree, and spend imports were refused
+wherever the period touched British Summer Time. Corrected, with the pairing bound by a test, in
+NZC-115.
 
 **Also held, and this one is a defect.** `PortalAccessAdmin`'s `local()` renders a `datetime-local`
 input from UTC wall-clock, so a portal access window expiring 18:00 London shows as 17:00 and each
@@ -2769,3 +2776,51 @@ the code; that comment is removed and `check:dates` passes without it.
 
 **Related.** NZC-106 (the sweep that found and deliberately held this), NZC-105 (the platform's
 clock is London, server-resolved).
+
+### NZC-115 — A paired invariant is fixed as a pair, or held as a pair [Confirmed 20 Sep 2026]
+
+**Decision.** Where two pieces of code must agree for something to work, they are corrected together
+or not at all, and a test binds them. `buildSpendImportIdentity` and `loadSpendImportContext` now
+read a job's reporting period the same way, and `spendImportPeriodPairing.test.ts` fails the moment
+they diverge again, for any reason.
+
+**The outage.** `commitSpendImport` accepts an import only when the period signed into the
+downloaded template equals the period read from the job at commit time. NZC-106's sweep corrected
+the context side and deliberately held the token side, so the two began to disagree and every
+affected spend import was refused with `WRONG_PERIOD` — telling the consultant to download a fresh
+template, which did not help, because a fresh template disagreed too. Both sides had been wrong
+before, identically, which is exactly why the equality had held and why nothing noticed.
+
+```
+stored period                 2025-04-01 .. 2026-03-31
+token (spendImportIdentity)   2025-03-31 .. 2026-03-30
+context (spendImport)         2025-04-01 .. 2026-03-31
+commitSpendImport verdict     REFUSED — WRONG_PERIOD
+```
+
+**Seasonal per period, not per server**, which is the part that makes it hard to report. A job whose
+reporting period falls entirely in GMT was unaffected; one touching British Summer Time at either end
+was refused. Two of the five pairing cases pass on the pre-fix code for that reason — a calendar year
+and a 1 January start — and three fail.
+
+**The held reason was false, and the hold was the harm.** The site was exempted on the grounds that
+its day feeds an idempotency key, so changing it would make already-imported rows look new. It does
+not: the identity is a signed token embedded in a downloaded template and never stored, and the
+row-level dedup key is `description | netValue | glCode`, which contains no date. There were no
+stored keys to reconcile. The reconcile-by-reading analysis that was supposed to precede the fix had
+nothing to read — and the analysis, when finally done, found an outage rather than a risk.
+
+**The general principle, which is the part worth keeping.** An invariant held jointly by two pieces
+of code is a pair. Correcting one side is not a partial improvement; it is a change of behaviour from
+"consistently wrong" to "inconsistent", and inconsistent is the one that fails. So: fix both, or hold
+both, and leave behind a test that asserts the agreement rather than trusting whoever reads the code
+next to notice the coupling. A pairing test is cheap and it is the only form of the guarantee that
+survives someone fixing half of it in good faith — which is precisely what happened here.
+
+**Forward-only, with no reconciliation.** Templates downloaded before this fix carry the old reading
+and fail `WRONG_PERIOD`, which is the existing designed behaviour for a stale template and already
+tells the user to download a fresh one. During BST they were failing anyway, so the change strictly
+improves. Nothing stored needs migrating, because nothing was stored.
+
+**Related.** NZC-106 (the sweep, whose held-site paragraph is corrected above), NZC-105 and NZC-096
+(the same day-shift, in other reads), NZC-036 (the signed import template).
