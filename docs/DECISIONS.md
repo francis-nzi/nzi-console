@@ -2936,6 +2936,11 @@ names, read out of Postgres rather than guessed, with the uniqueness they carrie
 digest. `memberships`' index was partial and its replacement is partial too: a null digest for an
 absent address, so members without one do not collide.
 
+**0100 and 0101 apply as a unit, never 0100 alone.** 0100 gave the operational addresses a blind
+index and no ciphertext, which 0101 corrects; a database left between them has every login address
+matchable and still readable, and shredding a key would not erase them. The ledger enforces the
+order (0098 → 0100 → 0101) but cannot enforce "do not stop in the middle", so it is stated here.
+
 **The backfill is separate and resumable.** A migration that rewrites every personal field in one
 transaction cannot be run twice and cannot be watched while it runs. Plaintext columns and their old
 unique indexes stay and keep enforcing until every row is encrypted and every reader repointed;
@@ -2984,12 +2989,26 @@ surface as a wrong password rather than as an error.
 ciphertext. An index makes an address matchable; only ciphertext makes it unreadable, so shredding a
 key would have left every login address in the clear. 0101 adds the sealed columns.
 
-**A privilege test that proved nothing.** Three tests asserted "this table cannot be deleted from" by
-connecting as `nzi_console_app` and expecting a rejection. The runtime roles are created `NOLOGIN`,
-so the rejection was the *login* failing and the grant was never exercised. They now assert the
-grant through `has_table_privilege` and the behaviour through `SET LOCAL ROLE`, and were checked by
-granting the privilege deliberately to confirm both assertions then fail. Same family as a gate that
-scanned zero files: a test that cannot fail is indistinguishable from one that passes.
+**A privilege test that proved nothing, and the class it belongs to.** Three tests asserted "this
+table cannot be deleted from" by connecting as `nzi_console_app` and expecting a rejection. The
+runtime roles are created `NOLOGIN`, so the rejection was the *login* failing and the grant was
+never exercised. Granting DELETE would not have failed any of them.
+
+They now assert the grant through `has_table_privilege` and the behaviour through
+`SET LOCAL ROLE`, verified by granting the privilege deliberately and confirming both assertions
+then fail.
+
+**The sweep found the class was exactly those three, plus the one being written when it was
+noticed** — and the uncomfortable part is that the correct technique was already in this repository:
+`tenantIsolationReal` has used `SET LOCAL ROLE` from the start, and its own docblock warns that a
+test forgetting it would run as the owner. The newer tests did not follow the established pattern.
+Every other `pg.Client` in the suites connects as the owner for setup, which is legitimate.
+
+So the shape is now banned by a tripwire in that same file: it scans the test sources for a
+connection built as a runtime role and fails, naming the file and the role. Its needles are
+assembled from fragments so it does not match itself — a check whose own text trips it needs an
+exemption, and an exemption is where the next one hides. Proved by reintroducing the banned shape
+and watching it fail.
 
 **Related.** NZC-117 (the encryption this links across), NZC-116 (the linker), NZC-100 (privilege
 where policy cannot reach).

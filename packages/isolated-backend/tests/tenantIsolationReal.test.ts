@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
@@ -250,6 +253,38 @@ describe("every tenant table is protected, not just the ones with tests", { skip
         GROUP BY c.relname ORDER BY c.relname`);
     assert.deepEqual(rows.map((row) => `${row.tablename} (${row.privs})`), [],
       "the application role can reach a tenant table that has no policy confining what it returns");
+  });
+
+  it("has no test that proves a denial by connecting as a runtime role", () => {
+    /**
+     * The tripwire for a whole class of test that cannot fail.
+     *
+     * Three suites asserted "this table cannot be deleted from" by opening a connection as
+     * `nzi_console_app` and expecting it to be rejected. The rejection was real — but it was the
+     * *login* being refused, because the runtime roles are created NOLOGIN, so the privilege the
+     * test was about was never exercised. Granting DELETE would not have failed any of them.
+     *
+     * The technique that works is the one this file has used all along: become the role for a
+     * statement with `SET LOCAL ROLE`, or ask the catalogue with `has_table_privilege`. So the
+     * shape that does not work is banned here rather than left to be rediscovered.
+     *
+     * The needles are assembled from fragments so that this test does not match itself — a check
+     * whose own text trips it is a check that has to be exempted, and an exemption is where the
+     * next one hides.
+     */
+    const here = dirname(fileURLToPath(import.meta.url));
+    const roles = ["app", "worker", "auth"].map((suffix) => `nzi_${"console"}_${suffix}@`);
+    const connectAs = `${"connection"}String`;
+
+    const offenders: string[] = [];
+    for (const file of readdirSync(here).filter((name) => name.endsWith(".test.ts"))) {
+      const source = readFileSync(resolve(here, file), "utf8");
+      for (const role of roles) {
+        if (source.includes(role)) offenders.push(`${file}: builds a ${connectAs} as ${role.slice(0, -1)}`);
+      }
+    }
+    assert.deepEqual(offenders, [],
+      "a denial proved by connecting as a runtime role proves nothing: those roles are NOLOGIN, so the connection fails before any privilege is checked. Use SET LOCAL ROLE, or has_table_privilege.");
   });
 
   it("leaves no tenant table readable by the application role without a policy", async () => {
