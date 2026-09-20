@@ -90,6 +90,7 @@ export * from "./reductionStrategies";
 export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./dayValues";
+export * from "./dataSubjects";
 export * from "./entryProvenance";
 export * from "./aiAssist";
 export * from "./activityDistribution";

@@ -37,6 +37,11 @@ export const capabilities = [
   // portal users. Holding one has never implied the other, and a consultant who may invite a portal
   // user is not thereby entitled to decide what the client is shown.
   "category.visibility",
+  // ── Erasure / DSAR (NZC-116) ──
+  // Deciding who two rows are is an identity judgement, and the questions span organisations
+  // because a person is not confined to one. Admin alone, and the tenant-crossing read behind it
+  // is a SECURITY DEFINER function returning pointers and counts — never a name.
+  "subject.review",
   "clientfactor.manage",
   "dataset.manage",
   "factor.manage",
@@ -68,7 +73,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 5;
+export const PERMISSION_MATRIX_VERSION = 6;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 

@@ -95,6 +95,9 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "site.floorArea.record": site,
   "emissions.intensity.upsert": job,
   "purchased.goods.category.create": job,
+  // The question spans organisations, so it is not scoped to a client. The capability is Admin
+  // alone and the handler resolves the review's own tenant.
+  "subject.review.decide": organisation,
   "client.category.visibility.set": client,
   "client.factor.alias.set": client,
   "client.factor.create": job,

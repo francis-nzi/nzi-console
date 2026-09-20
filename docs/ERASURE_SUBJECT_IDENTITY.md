@@ -1,9 +1,11 @@
 # NZI Console — Subject identity (erasure / DSAR, PR 0)
 
-> **Status: proposed, not confirmed.** This is the design for PR 0 of the erasure workstream, written
-> for Francis and design authority to rule on. Nothing here is built. The still-open decisions — the
-> legal fork on legacy snapshots, phasing, and retention windows — are deliberately *not* settled
-> here; this document is what they key off.
+> **Status: confirmed and built (NZC-116).** The registry, linker and review queue are migration
+> 0098; the reviewing capability is permission-matrix version 6 (0099). What follows is the design
+> as it was ruled on, kept because it explains the reasoning the code assumes.
+>
+> **Still open, and deliberately not settled here:** the legal fork on legacy snapshots, phasing,
+> and retention windows. This document is what those decisions key off.
 
 **Why this comes first.** The reconciliation for erasure is crypto-shred: personal data is encrypted
 under a per-subject key, and erasure destroys the key. That requires a subject. The PII inventory

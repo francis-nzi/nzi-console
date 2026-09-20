@@ -782,6 +782,75 @@ async function requirePurchasedGoodsCategory(db:Queryable,organisationId:string,
 export async function createPurchasedGoodsCategory(pool:PoolLike,input:CommandInputMap["purchased.goods.category.create"],context:CommandContext):Promise<StoredOutcome<{categoryId:string;name:string}>>{return runPostgresCommand(pool,"purchased.goods.category.create",input,context,async db=>{await requireCrpJob(db,context.organisationId,input.jobId);const job=await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),categoryId=randomUUID(),name=input.name.trim();try{await db.query(`INSERT INTO nzi_console.purchased_goods_categories(organisation_id,category_id,client_id,name,created_by) VALUES($1,$2,$3,$4,$5)`,[context.organisationId,categoryId,job.rows[0]!.client_id,name,context.actorId]);}catch(error){if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505")throw new CommandValidationError([{field:"name",code:"DUPLICATE",message:"That purchased-goods category already exists."}]);throw error;}return{data:{categoryId,name},entityType:"purchased_goods_category",entityId:categoryId,topic:"purchased.goods.category.created"};});}
 
 /**
+ * Rule on an identity question (NZC-116).
+ *
+ * `linked` joins the review's members into one subject — the rows that already have one keep it,
+ * and the rest join it, so a ruling never orphans a link that erasure may already depend on.
+ * `distinct` records that they are different people, which matters as much as linking: a decision
+ * that is not remembered is asked again on every run, and a reviewer who has to re-answer the same
+ * question eventually stops reading it.
+ *
+ * The basis is stored with the decision. Not for tidiness — this is the record that explains, to
+ * somebody months later or to a regulator, why two people were treated as one.
+ *
+ * Spans organisations by design, so it resolves the review's own tenant rather than taking one from
+ * the caller. The capability behind it (`subject.review`) is Admin alone.
+ */
+export async function decideSubjectReview(pool:PoolLike,input:CommandInputMap["subject.review.decide"],context:CommandContext):Promise<StoredOutcome<{reviewId:string;decision:string;subjectId:string|null;linked:number}>>{return runPostgresCommand(pool,"subject.review.decide",input,context,async db=>{
+  const found=await db.query<{organisation_id:string;reason:string;status:string}>(
+    `SELECT organisation_id,reason,status FROM nzi_console.data_subject_reviews WHERE review_id=$1`,[input.reviewId]);
+  const review=found.rows[0];
+  if(!review)throw new CommandValidationError([{field:"reviewId",code:"NOT_FOUND",message:"That review was not found."}]);
+  if(review.status==="decided")throw new CommandValidationError([{field:"reviewId",code:"ALREADY_DECIDED",message:"That question has already been answered."}]);
+
+  const members=await db.query<{source_table:string;source_id:string}>(
+    `SELECT source_table,source_id FROM nzi_console.data_subject_review_members WHERE organisation_id=$1 AND review_id=$2 ORDER BY source_table,source_id`,
+    [review.organisation_id,input.reviewId]);
+
+  let subjectId:string|null=null,linkedCount=0;
+  if(input.decision==="linked"){
+    // Join whichever subject the members already have, rather than minting a rival one: a link may
+    // already be carrying an encryption key, and replacing it would strand what it protects.
+    const existing=await db.query<{subject_id:string}>(
+      `SELECT subject_id FROM nzi_console.data_subject_links
+        WHERE organisation_id=$1 AND (source_table,source_id) IN (${members.rows.map((_,index)=>`($${index*2+2},$${index*2+3})`).join(",")||"(NULL,NULL)"})
+        ORDER BY linked_at LIMIT 1`,
+      [review.organisation_id,...members.rows.flatMap(row=>[row.source_table,row.source_id])]);
+    subjectId=existing.rows[0]?.subject_id??randomUUID();
+    if(!existing.rows[0]){
+      await db.query(`INSERT INTO nzi_console.data_subjects (organisation_id,subject_id,created_by) VALUES ($1,$2,$3)`,
+        [review.organisation_id,subjectId,context.actorId]);
+    }
+    for(const member of members.rows){
+      const moved=await db.query<{source_id:string}>(
+        `INSERT INTO nzi_console.data_subject_links (organisation_id,subject_id,source_table,source_id,link_method,linked_by)
+         VALUES ($1,$2,$3,$4,'reviewed',$5)
+         ON CONFLICT (organisation_id,source_table,source_id)
+         DO UPDATE SET subject_id=EXCLUDED.subject_id,link_method='reviewed',linked_at=now(),linked_by=EXCLUDED.linked_by
+         WHERE nzi_console.data_subject_links.subject_id<>EXCLUDED.subject_id
+         RETURNING source_id`,
+        [review.organisation_id,subjectId,member.source_table,member.source_id,context.actorId]);
+      // Counted from what came back rather than from a row count, because the Queryable contract
+      // exposes rows and nothing else — and a count that is always zero looks like a working one.
+      linkedCount+=moved.rows.length;
+    }
+  }
+
+  await db.query(
+    `UPDATE nzi_console.data_subject_reviews
+        SET status=$3,decision=$4,basis=$5,decided_at=now(),decided_by=$6
+      WHERE organisation_id=$1 AND review_id=$2`,
+    [review.organisation_id,input.reviewId,input.decision==="deferred"?"open":"decided",
+     input.decision==="deferred"?null:input.decision,input.basis?.trim()??"",context.actorId]);
+
+  return{
+    data:{reviewId:input.reviewId,decision:input.decision,subjectId,linked:linkedCount},
+    entityType:"data_subject_review",entityId:input.reviewId,topic:"subject.review.decided",
+    before:{status:review.status,reason:review.reason,members:members.rows.map(row=>`${row.source_table}:${row.source_id}`)},
+  };
+});}
+
+/**
  * Decide whether a client sees a category, or withdraw the decision (NZC-110).
  *
  * The default is visible, so a row exists only where somebody decided. Withdrawing deactivates
