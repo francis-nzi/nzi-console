@@ -77,6 +77,7 @@ export type CommandKey =
   | "site.floorArea.record"
   | "emissions.intensity.upsert"
   | "purchased.goods.category.create"
+  | "subject.review.decide"
   | "client.category.visibility.set"
   | "client.factor.alias.set"
   | "client.factor.create"
@@ -506,6 +507,12 @@ export type CommandInputMap = {
   "site.floorArea.record": {siteId:string;floorAreaM2:number;effectiveFrom:string|null;expectedVersion:number};
   "emissions.intensity.upsert":{jobId:string;metric:"turnover"|"employee"|"floor-area";denominatorUnit:string;/** null for the floor-area metric, which derives it from site floor areas (NZC-071). */reportingDenominator:number|null;baselineYear:number;baselineIntensity:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;expectedVersion:number};
   "purchased.goods.category.create":{jobId:string;name:string};
+  /**
+   * A ruling on an identity question (NZC-116). `linked` joins the members into one subject,
+   * `distinct` records that they are different people, `deferred` leaves it open for now.
+   * The basis is required for the first two: a decision nobody can explain later is not one.
+   */
+  "subject.review.decide":{reviewId:string;decision:"linked"|"distinct"|"deferred";basis:string};
   /**
    * Whether this client sees a category at all. `visible: null` withdraws the decision and returns
    * the category to the default, which is visible.
@@ -1124,6 +1131,11 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "site.floorArea.record":{key:"site.floorArea.record",label:"Record site floor area",permission:"site.manage",reasonRequired:false,transaction:"effective-dated floor-area record + versioned site + audit + outbox + idempotency",auditAction:"client_site_floor_area_recorded",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"siteId",input.siteId);if(!positiveArea(input.floorAreaM2))issues.push({field:"floorAreaM2",code:"INVALID",message:"Floor area must be greater than zero."});if(input.effectiveFrom!==null&&!isoDate(input.effectiveFrom))issues.push({field:"effectiveFrom",code:"INVALID",message:"Enter a real effective-from date, as dd/mm/yyyy."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
   "emissions.intensity.upsert":{key:"emissions.intensity.upsert",label:"Save intensity target",permission:"target.edit",reasonRequired:false,transaction:"versioned intensity target + audit + outbox",auditAction:"intensity_target_saved",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"denominatorUnit",input.denominatorUnit);if(!oneOf(input.metric,["turnover","employee","floor-area"] as const))issues.push({field:"metric",code:"INVALID",message:"Intensity metric is invalid."});if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});if(input.metric==="floor-area"){if(input.reportingDenominator!=null)issues.push({field:"reportingDenominator",code:"INVALID",message:"Floor-area intensity derives its denominator from the in-boundary sites' floor area (NZC-071); do not type one."});}else if(!(typeof input.reportingDenominator==="number"&&input.reportingDenominator>0))issues.push({field:"reportingDenominator",code:"INVALID",message:"Reporting denominator must be greater than zero."});if(!(input.baselineIntensity>0))issues.push({field:"baselineIntensity",code:"INVALID",message:"Baseline intensity must be greater than zero."});if(!Number.isInteger(input.baselineYear)||!Number.isInteger(input.interimYear)||!Number.isInteger(input.netZeroYear)||!(input.baselineYear<input.interimYear&&input.interimYear<input.netZeroYear))issues.push({field:"interimYear",code:"INVALID_RANGE",message:"Years must run baseline, interim, then net zero."});if(!(input.interimReductionPercent>0&&input.interimReductionPercent<100))issues.push({field:"interimReductionPercent",code:"INVALID",message:"Interim reduction must be between 0 and 100 percent."});return issues;}},
   "purchased.goods.category.create":{key:"purchased.goods.category.create",label:"Create purchased-goods category",permission:"scoperow.edit",reasonRequired:false,transaction:"client category + audit + outbox",auditAction:"purchased_goods_category_created",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"name",input.name);return issues;}},
+  /**
+   * Admin alone, and spanning organisations — a person is not confined to one tenant. The
+   * tenant-crossing read behind it returns pointers and counts rather than names; this decides.
+   */
+  "subject.review.decide":{key:"subject.review.decide",label:"Rule on an identity question",permission:"subject.review",reasonRequired:false,transaction:"subject links + review decision + audit + outbox + idempotency",auditAction:"subject_review_decided",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reviewId",input.reviewId);if(!(["linked","distinct","deferred"] as const).includes(input.decision))issues.push({field:"decision",code:"INVALID",message:"A review is linked, distinct or deferred."});if(input.decision!=="deferred"&&!String(input.basis??"").trim())issues.push({field:"basis",code:"REQUIRED",message:"Record why — a decision about who somebody is has to be explicable later."});if(String(input.basis??"").length>1000)issues.push({field:"basis",code:"TOO_LONG",message:"A basis is at most 1000 characters."});return issues;}},
   /**
    * Its own capability (NZC-110). Deciding what a client is shown is a disclosure decision about
    * that client's view, not administration of their portal users, and holding one has never implied

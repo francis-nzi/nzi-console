@@ -19,6 +19,8 @@ const matrixMigrationV3 = readFileSync(resolve(here, "../migrations/0079_strateg
 const matrixMigrationV4 = readFileSync(resolve(here, "../migrations/0087_permission_matrix_v4.sql"), "utf8");
 // Version 5 adds category.visibility — what a client sees of the category list (NZC-110).
 const matrixMigrationV5 = readFileSync(resolve(here, "../migrations/0097_permission_matrix_v5.sql"), "utf8");
+// Version 6 adds subject.review — identity questions for the erasure spine (NZC-116).
+const matrixMigrationV6 = readFileSync(resolve(here, "../migrations/0099_permission_matrix_v6.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -28,7 +30,7 @@ const matrixMigrationV5 = readFileSync(resolve(here, "../migrations/0097_permiss
 // Every matrix migration, concatenated. `rowPattern` then selects only the rows for the
 // version in force, so adding a version means adding its file here and nothing else —
 // earlier versions stay readable, which is the point of versioning the matrix at all.
-const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}`;
+const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 

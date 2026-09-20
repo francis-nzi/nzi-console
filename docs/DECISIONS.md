@@ -2824,3 +2824,78 @@ improves. Nothing stored needs migrating, because nothing was stored.
 
 **Related.** NZC-106 (the sweep, whose held-site paragraph is corrected above), NZC-105 and NZC-096
 (the same day-shift, in other reads), NZC-036 (the signed import template).
+
+### NZC-116 — A person is an identifier, so that erasing one is a well-defined act [Confirmed 20 Sep 2026]
+
+**Decision.** `data_subjects` is the registry (migration 0098): a subject is a UUID and a status.
+`data_subject_links` says which source rows are that person, as pointers. `data_subject_reviews`
+holds the questions the linker will not answer alone, and the rulings — with their basis — that
+settle them. PR 0 of the erasure workstream; nothing is encrypted or erased yet.
+
+**Why identity comes before crypto-shred.** Erasure reconciles by encrypting personal data under a
+per-subject key and destroying the key. That needs a subject, and there was none: `trainees`,
+`client_contacts`, `portal_users` and `memberships` each key a person their own way with no foreign
+key between them, so the same human can exist three times under three unrelated identifiers.
+"Destroy the key" would have destroyed one facet of a person and left the others intact.
+
+**The registry holds no personal data, and that is the point.** A registry that copied names and
+addresses in order to match them would become one more place to erase from — the worst kind,
+because it is the place erasure is run from. So links and reviews carry `(source_table, source_id)`
+and anything that shows a name reads it from the source row as it renders it. The same instinct as
+`verify_certificate_attempts` counting against a salted hash so that verifying a certificate leaves
+no address behind. A test serialises the registry and asserts no fixture name or address appears in
+it, so a column added later cannot quietly start holding one.
+
+**Linked only on exact normalised-email equality, and only where no two rows sit in the same source
+table.** One trainee plus one contact plus one portal user is a person; two contacts on one address
+is a mailbox, and fusing them would make a single erasure take both people. Everything else is a
+question, under four named reasons: shared mailbox, history-only match, repeated name, no key.
+
+**Normalisation is kept although the probe found nothing it collapsed.** It costs nothing, and the
+day it matters it matters silently — one mixed-case address would split a person into two subjects
+with nothing reporting it. The same argument as the shared date helpers.
+
+**A row with no address gets a subject immediately.** The probe found two. They cannot be matched on
+anything, and leaving them unlinked would leave those people *unerasable* — a request with no handle
+to pull. Each becomes its own singleton, flagged `unlinked-no-key` and raised for optional merge.
+Erasure works from the first run; merging is an improvement, not a precondition.
+
+**Re-running changes nothing.** The linker proposes and never unlinks; a question is recognised by
+its fingerprint — reason plus members — so an open one is not duplicated and a decided one is not
+reopened. Asserted by running it twice and comparing the whole table.
+
+**Decisions persist with the basis recorded**, including "these are different people". A decision
+that is not remembered is asked again on every run, and a reviewer who must re-answer the same
+question stops reading it. The basis is required for a ruling and refused when blank: this is the
+record that explains, months later or to a regulator, why two people were treated as one.
+
+**Review is Admin-only and crosses tenants, through a function rather than a policy exception.** A
+person is not confined to one organisation, and RLS cannot express that — so `open_subject_reviews()`
+is `SECURITY DEFINER`, exactly as `verify_training_certificate` is, **deliberately a function so its
+return list is the whole contract**. It returns pointers, reasons and counts, and cannot leak a name
+across a tenant boundary because it does not select one. A reviewer who needs to see the person
+reads the source row through the ordinary tenant-scoped path. The capability is `subject.review`,
+matrix version 6, generated rather than edited.
+
+**Staff are subjects.** `memberships` describes employees, and an employee is a data subject.
+
+**`link_method` describes how a row attached, not how a pairing was settled.** When a ruling joins
+two rows, the row that moved records `reviewed` and the row that was already there keeps
+`deterministic-email` — which remains true, and overwriting it would erase a fact rather than record
+one. Why the two are one person is the review's business, and the review says so. A test asserted
+the stronger, wrong version first; the assertion was corrected rather than the code.
+
+**Carried to go-live, not solved.** `trainees` was empty when the linkage probe ran, so the
+history-only class — a link existing solely through a superseded address — has never been exercised
+against real data. It is covered by tests here, but only against data we invented, and **a
+production-representative check is required before the erasure path is relied on.** A class tested
+only against our own fixtures is a class we have assumed, not verified.
+
+Two notes for whoever reads the counts: the ambiguity classes **overlap** — one row can be both a
+history match and a repeated name — so they must never be summed; and a subject is **per
+organisation**, because everything else is, with `subject_id` left globally unique so a later
+cross-tenant resolution layer is a mapping rather than a rewrite.
+
+**Related.** `docs/ERASURE_SUBJECT_IDENTITY.md` (the design this builds), NZC-100 (privilege where
+policy cannot reach), NZC-072 (`trainees` as a person-centric record), NZC-103 and NZC-104 (the
+asset identifier), NZC-022 (the permission matrix).

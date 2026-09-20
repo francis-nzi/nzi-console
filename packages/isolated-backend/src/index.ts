@@ -27,6 +27,7 @@ export {
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./categoryVisibility";
+export * from "./dataSubjects";
 export * from "./entryExtractionStub";
 export * from "./dates";
 export * from "./readModels";
