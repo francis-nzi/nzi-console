@@ -144,6 +144,59 @@ export function blindIndex(column: IndexedColumn, value: string | null | undefin
     .digest("base64url");
 }
 
+/* ── The linkage digest ──────────────────────────────────────────────────────────────── */
+
+/**
+ * One digest for one address, shared across the person-tables — and confined to the linker
+ * (NZC-118).
+ *
+ * The column digests above are domain-separated on purpose, so a digest taken from
+ * `client_contacts` cannot confirm who holds a staff login. That separation is what makes them
+ * safe, and it is also why the subject linker cannot use them: the same address in two tables
+ * produces two different digests, which is exactly the comparison the linker needs to make.
+ *
+ * So linkage gets its own digest, deliberately *not* domain-separated by table — and it is confined
+ * three ways instead:
+ *
+ * 1. **Its own key.** Holding the column-index key does not let anyone compute a linkage digest, so
+ *    the ability to log someone in does not carry the ability to correlate them across the estate.
+ * 2. **Its own table**, which the application role cannot read. It is reachable only through the
+ *    privileged function the linker and the DPO path use — the `NZC-100` lineage: where a policy
+ *    cannot confine a thing, privilege does.
+ * 3. **Nulled on erasure**, alongside the operational digests, so an erased person leaves no
+ *    correlatable trace either.
+ *
+ * It normalises the same way the columns do, because it has to agree with them about what "the
+ * same address" means.
+ */
+export const LINKAGE_DOMAIN = "subject-linkage";
+
+export function linkageDigest(value: string | null | undefined, linkageKey: string): string | null {
+  const normalised = String(value ?? "").trim().toLowerCase();
+  if (normalised === "") return null;
+  return createHmac("sha256", keyFrom(linkageKey, "The linkage key"))
+    .update(`${LINKAGE_DOMAIN}:${normalised}`)
+    .digest("base64url");
+}
+
+/* ── Normalisation at rest ───────────────────────────────────────────────────────────── */
+
+/**
+ * The form an address is stored in (NZC-118).
+ *
+ * Four database CHECKs used to assert that an address equalled its own lower-cased, trimmed form.
+ * Ciphertext cannot satisfy that, so 0100 dropped them — which moved an invariant out of the
+ * database and into the application, where nothing was holding it.
+ *
+ * It is held here, and the choice is to **keep normalising at rest** rather than to store what was
+ * typed. Every write path already normalises before writing, and the portal session hands
+ * `email_normalized` to the application as the user's address, so storing the as-entered form would
+ * change what a signed-in user sees — a behaviour change smuggled inside an encryption migration,
+ * which is the one thing this work must not do. The digest normalises too, so the two agree by
+ * construction rather than by coincidence.
+ */
+export const normaliseEmailAtRest = (email: string): string => email.trim().toLowerCase();
+
 /** Compare two digests without leaking where they differ. */
 export const sameIndex = (a: string | null, b: string | null): boolean => {
   if (a === null || b === null) return false;
