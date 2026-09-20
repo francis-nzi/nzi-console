@@ -238,11 +238,17 @@ describe("a category a client does not see (NZC-110)", { skip: DATABASE_URL ? fa
   });
 
   it("cannot be deleted, only deactivated", async () => {
-    const app = new pg.Client({ connectionString: database.url.replace(/\/\/[^@]*@/, "//nzi_console_app@") });
-    await assert.rejects(async () => {
-      await app.connect();
-      await app.query(`DELETE FROM nzi_console.client_category_visibility`);
-    });
-    await app.end().catch(() => {});
+    // Asserted two ways, because the first version of this test connected as `nzi_console_app` and
+    // caught the *connection* being refused — the runtime roles are NOLOGIN, so the privilege was
+    // never exercised at all and the test passed for the wrong reason.
+    const { rows } = await db.query<{ granted: boolean }>(
+      `SELECT has_table_privilege('nzi_console_app','nzi_console.client_category_visibility','DELETE') AS granted`);
+    assert.equal(rows[0]!.granted, false, "the grant is not there");
+
+    // And the behaviour, by actually becoming that role for one statement.
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await assert.rejects(() => db.query(`DELETE FROM nzi_console.client_category_visibility`), /permission denied/i);
+    await db.query("ROLLBACK");
   });
 });

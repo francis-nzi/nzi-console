@@ -2899,3 +2899,97 @@ cross-tenant resolution layer is a mapping rather than a rewrite.
 **Related.** `docs/ERASURE_SUBJECT_IDENTITY.md` (the design this builds), NZC-100 (privilege where
 policy cannot reach), NZC-072 (`trainees` as a person-centric record), NZC-103 and NZC-104 (the
 asset identifier), NZC-022 (the permission matrix).
+
+### NZC-117 — Personal data is ciphertext, and erasure is the loss of a key [Confirmed 20 Sep 2026]
+
+**Decision.** Live personal data is encrypted at rest under a per-subject key (migration 0100).
+Erasure destroys that key rather than deleting rows, so a person's data becomes unreadable
+everywhere at once while foreign keys, history and audit stay intact. Snapshots and certificates
+are **out of scope by ruling** — frozen, content-hashed artefacts whose treatment is counsel-gated.
+
+**Two mechanisms, because personal data is used two ways.** A field that is only ever shown — a
+phone number, an employer, a postcode — is ciphertext under the subject's own key and nothing else.
+A field that a login resolves or a unique constraint enforces also carries a **blind index**: a
+keyed HMAC over that column's own normalisation, so equal addresses give equal digests and the
+digest reveals nothing. The lineage is `verify_certificate_attempts`, which counts rate-limit
+attempts against a salted hash precisely so that verifying a certificate leaves no address behind.
+
+**The index key is global, and the consequence is stated rather than discovered.** A per-subject
+index key would give the same address a different digest in every row, which is the same as having
+no index — so one key serves the estate. Anyone holding it can therefore ask "is this address
+present?" of everything. They cannot read an address and cannot enumerate, but a guess is
+confirmable. That is the price of being able to log somebody in.
+
+**Which is why erasure nulls the index.** Shredding the key alone would leave a digest behind, and a
+person who asked to be forgotten would remain findable by anyone able to guess their address. So
+erasure is **shred the key, null the index, tombstone the subject**, and the irreversibility test
+asserts all of it: after erasure a *correct* guess at the address matches nothing. A second test
+asserts erasure does not depend on deleting the ciphertext — the row may stay exactly where it is.
+
+**Digests are domain-separated by column.** The same address in `client_contacts` and
+`staff_credentials` produces different digests, because the first is readable by far more people
+than the second and a shared digest would let a contact list confirm who holds a staff login.
+
+**Four CHECK constraints had to move.** They asserted an address equals its own lower-cased trimmed
+form, which ciphertext does not — so they rejected the very thing this stores. Dropped by their real
+names, read out of Postgres rather than guessed, with the uniqueness they carried restated on the
+digest. `memberships`' index was partial and its replacement is partial too: a null digest for an
+absent address, so members without one do not collide.
+
+**The backfill is separate and resumable.** A migration that rewrites every personal field in one
+transaction cannot be run twice and cannot be watched while it runs. Plaintext columns and their old
+unique indexes stay and keep enforcing until every row is encrypted and every reader repointed;
+dropping them in 0100 would have made it the migration that broke the application.
+
+**Related.** NZC-116 (the subject this keys on), NZC-118 (the linkage digest and normalisation at
+rest), NZC-100 (privilege where policy cannot reach), NZC-103 and NZC-104 (the asset identifier).
+
+### NZC-118 — Linkage is one digest, confined rather than separated [Confirmed 20 Sep 2026]
+
+**Decision.** The subject linker matches on a **linkage digest** (migration 0101): one keyed HMAC
+per address, shared across the person-tables, held in a table the application role cannot read and
+reachable only through a `SECURITY DEFINER` function. It is nulled on erasure alongside the
+operational digests.
+
+**Why not the column digests.** NZC-117 domain-separates them per column, which is what makes them
+safe — and also what makes them useless for linking: the same address in `trainees` and
+`client_contacts` gives two different digests, which is exactly the comparison the linker exists to
+make. The plan of record said "repoint the linker onto the index"; it could not have worked, and the
+contradiction was introduced here rather than found in review.
+
+**Confined three ways instead of separated.** Its own key, so holding the column-index key — the
+ability to log somebody in — does not carry the ability to correlate them across the estate. Its own
+table, which `nzi_console_app` may write and may never read, because reading a digest *is* the
+correlating act; that is the NZC-100 lineage, where a policy cannot confine a thing and privilege
+does. And nulled on erasure, so an erased person is not merely unreadable but uncorrelatable.
+
+**The function returns groups, not digests.** The linker needs to know which rows match and never
+needs the value they matched on, so a caller cannot take the correlatable value away and compare it
+against a guess.
+
+**Names are not indexed, by ruling.** A name digest would be a standing estate-wide oracle for "do
+these two people share a name". The name-suggestion class is a tenant-scoped transient decrypt at
+review time that stores nothing; cross-tenant matching happens only in the privileged admin
+adjudication. Name linkage is best-effort by design, with address and history as the reliable spine.
+
+**Normalisation at rest, now that the database no longer checks it.** 0100 dropped four CHECKs and
+so moved an invariant out of the database into the application, where nothing held it. The ruling is
+to **keep normalising at rest**: every write path already does, and the portal session hands
+`email_normalized` to the application as the user's address, so storing the as-entered form would
+change what a signed-in user sees — a behaviour change smuggled inside an encryption migration. It
+is pinned, including that it agrees with what the digests normalise, because a mismatch there would
+surface as a wrong password rather than as an error.
+
+**An operational address is encrypted too.** 0100 gave the operational columns an index and no
+ciphertext. An index makes an address matchable; only ciphertext makes it unreadable, so shredding a
+key would have left every login address in the clear. 0101 adds the sealed columns.
+
+**A privilege test that proved nothing.** Three tests asserted "this table cannot be deleted from" by
+connecting as `nzi_console_app` and expecting a rejection. The runtime roles are created `NOLOGIN`,
+so the rejection was the *login* failing and the grant was never exercised. They now assert the
+grant through `has_table_privilege` and the behaviour through `SET LOCAL ROLE`, and were checked by
+granting the privilege deliberately to confirm both assertions then fail. Same family as a gate that
+scanned zero files: a test that cannot fail is indistinguishable from one that passes.
+
+**Related.** NZC-117 (the encryption this links across), NZC-116 (the linker), NZC-100 (privilege
+where policy cannot reach).

@@ -221,11 +221,17 @@ describe("the subject registry (NZC-116)", { skip: DATABASE_URL ? false : "NZI_T
   });
 
   it("cannot be deleted, only superseded", async () => {
-    const app = new pg.Client({ connectionString: database.url.replace(/\/\/[^@]*@/, "//nzi_console_app@") });
-    await assert.rejects(async () => {
-      await app.connect();
-      await app.query(`DELETE FROM nzi_console.data_subject_links`);
-    });
-    await app.end().catch(() => {});
+    // Asserted two ways, because the first version of this test connected as `nzi_console_app` and
+    // caught the *connection* being refused — the runtime roles are NOLOGIN, so the privilege was
+    // never exercised at all and the test passed for the wrong reason.
+    const { rows } = await db.query<{ granted: boolean }>(
+      `SELECT has_table_privilege('nzi_console_app','nzi_console.data_subject_links','DELETE') AS granted`);
+    assert.equal(rows[0]!.granted, false, "the grant is not there");
+
+    // And the behaviour, by actually becoming that role for one statement.
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await assert.rejects(() => db.query(`DELETE FROM nzi_console.data_subject_links`), /permission denied/i);
+    await db.query("ROLLBACK");
   });
 });
