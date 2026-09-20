@@ -2712,3 +2712,60 @@ command would refuse.
 **Related.** NZC-102 (the governed spec a proposal targets), NZC-103 and NZC-104 (the registration,
 transient at the lookup and absent from the report), NZC-081 (the staff help system, whose model
 adapter is the shape this follows).
+
+### NZC-114 — A portal access window keeps its hour [Confirmed 20 Sep 2026]
+
+**Decision.** A `datetime-local` value carries no zone, so whoever fills the input and whoever reads
+it back must agree on which clock it is. Both directions now go through one pair of helpers in
+`dayValues.ts` — `platformDateTimeLocal` and `instantFromPlatformDateTimeLocal` — and both use the
+platform's clock, London, per NZC-105.
+
+**It was a compounding defect, not an off-by-one.** `PortalAccessAdmin` filled the input with UTC
+wall-clock and submitted it back parsed as *browser*-local. The two disagreed by the offset, so a
+window did not merely display wrongly — it moved by an hour **every time it was saved**, with no
+error anywhere. Reproduced on the pre-fix code, in London, saving an untouched form three times:
+
+```
+stored          2026-07-01T17:00:00.000Z  (18:00 London)
+after save 1    2026-07-01T16:00:00.000Z   shown as 17:00
+after save 2    2026-07-01T15:00:00.000Z   shown as 16:00
+after save 3    2026-07-01T14:00:00.000Z   shown as 15:00
+```
+
+That is an authorisation boundary walking backwards: a client's data-entry window closing hours
+earlier than the consultant who set it believes, and nothing reporting it.
+
+**The zone is the platform's, not the browser's.** A consultant in Madrid editing a UK client's
+window must not move it because of where they were sitting. The browser-local parse was the half of
+the bug that made the defect depend on the reader.
+
+**The two days a year, decided rather than left to fall out.** The offset depends on the answer, so
+both candidate instants are computed — from the offsets in force half a day either side of the
+reading — and checked by formatting them back:
+
+- **The hour that happens twice** (clocks back): both read back, because the reading genuinely names
+  two instants. The **earlier** is taken. It is the usual convention for an overlap and here it is
+  also the safe one — on an access window, the earlier instant can only close access sooner, never
+  extend it past what was intended.
+- **The hour that never happens** (clocks forward): neither reads back. The later is taken, the
+  moment the clock jumps to. A window an hour from where it was typed is bad; a window with no time
+  at all is worse.
+
+Sampling the offset *at* the reading finds only one candidate during an overlap, so the choice above
+would never be made. Taking it from either side is what makes both visible.
+
+**One consequence, stated rather than hidden.** For the single repeated hour each year, an instant
+re-rendered and re-submitted moves to the earlier of the two. It shifts by an hour **once**, never
+repeatedly, and in the direction that closes access. Every other hour of the year round-trips
+exactly, pinned hour by hour across both transitions.
+
+**Proved as a round trip, because that is where it compounded.** The tests show the value, save it
+untouched, and show it again — five times over for good measure — and run under UTC, London,
+Pacific/Auckland, America/Los_Angeles and Europe/Madrid, since a result that depended on the local
+zone would disagree between them.
+
+**The exemption is gone.** NZC-106 held this site out of the day sweep with its reason recorded in
+the code; that comment is removed and `check:dates` passes without it.
+
+**Related.** NZC-106 (the sweep that found and deliberately held this), NZC-105 (the platform's
+clock is London, server-resolved).
