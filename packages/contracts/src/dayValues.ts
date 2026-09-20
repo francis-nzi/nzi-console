@@ -137,26 +137,29 @@ export function platformDateTimeLocal(instant: Date | string): string {
  * them back. On all but two days a year exactly one candidate reads back as the reading given, and
  * that is the answer.
  *
- * ## The two days a year, decided rather than left to fall out
+ * ## The two days a year, and why the caller has to say which way to lean
  *
- * **The hour that happens twice** (clocks back, an autumn Sunday): both candidates read back
- * correctly, because the reading genuinely names two instants. The **earlier** is taken. That is
- * the usual convention for an overlap, and here it is also the safe one: this value is an access
- * window, and taking the earlier instant can only end access sooner or start it sooner — it can
- * never extend a window past what somebody intended.
+ * Twice a year a reading is not one instant. **The hour that happens twice** (clocks back) names
+ * two, and both read back correctly. **The hour that never happens** (clocks forward) names none,
+ * and neither does. Either way there are two candidates and something has to choose.
  *
- * **The hour that never happens** (clocks forward, a spring Sunday): neither candidate reads back,
- * because the reading names no instant at all. The later candidate is taken, which is the moment
- * the clock jumps to. A window an hour from where it was typed is bad; a window with no time at all
- * is worse.
+ * There is no safe default, which is why `prefer` is required rather than defaulted. A portal
+ * access window has two ends, and the cautious choice is the opposite at each: leaning **later** on
+ * a start and **earlier** on an end shrinks the window, so an ambiguous hour can only give less
+ * access than was intended. Leaning the same way at both ends would be fail-closed at one and
+ * fail-open at the other — an access window that quietly opened an hour early is exactly the
+ * failure this kind of care exists to prevent.
  *
  * One consequence is stated plainly because it cannot be designed away: for the single repeated
- * hour each year, an instant that is re-rendered and re-submitted moves to the earlier of the two —
- * it can shift by an hour once, in the direction that closes access rather than opens it, and never
- * repeatedly. Every other hour of the year round-trips exactly, which is pinned across both
- * transitions.
+ * hour each year, an instant that is re-rendered and re-submitted moves to whichever end `prefer`
+ * names. It shifts by an hour once, never repeatedly, and — with the leanings above — always in the
+ * direction that narrows access. Every other hour of the year round-trips exactly, pinned across
+ * both transitions.
  */
-export function instantFromPlatformDateTimeLocal(value: string): string | null {
+export function instantFromPlatformDateTimeLocal(
+  value: string,
+  prefer: "earlier" | "later",
+): string | null {
   const reading = String(value ?? "");
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(reading);
   if (!match) return null;
@@ -178,9 +181,11 @@ export function instantFromPlatformDateTimeLocal(value: string): string | null {
   ];
   const options = [...new Set(offsets.map((offset) => readingAsUtc - offset * 60_000))].sort((a, b) => a - b);
   const readsBack = options.filter((instant) => platformDateTimeLocal(new Date(instant)) === wanted);
-  // Ambiguous: earliest, which can only close a window sooner. Impossible: the later, which is the
-  // instant the clock jumps to. Ordinary: the only one that reads back.
-  const chosen = readsBack.length > 0 ? readsBack[0]! : options[options.length - 1]!;
+  // An ordinary reading leaves exactly one candidate that reads back, and `prefer` does not arise.
+  // The two ambiguous cases leave two candidates — both valid for the repeated hour, neither valid
+  // for the skipped one — and the caller's leaning decides between them.
+  const pool = readsBack.length > 0 ? readsBack : options;
+  const chosen = prefer === "earlier" ? pool[0]! : pool[pool.length - 1]!;
   return new Date(chosen).toISOString();
 }
 

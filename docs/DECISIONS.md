@@ -2739,25 +2739,29 @@ earlier than the consultant who set it believes, and nothing reporting it.
 window must not move it because of where they were sitting. The browser-local parse was the half of
 the bug that made the defect depend on the reader.
 
-**The two days a year, decided rather than left to fall out.** The offset depends on the answer, so
-both candidate instants are computed — from the offsets in force half a day either side of the
-reading — and checked by formatting them back:
+**The two days a year, and the direction decided per end.** Twice a year a reading is not one
+instant: the hour that happens twice (clocks back) names two, and the hour that never happens
+(clocks forward) names none. Either way there are two candidates, computed from the offsets in
+force half a day either side of the reading and checked by formatting them back — and something has
+to choose between them.
 
-- **The hour that happens twice** (clocks back): both read back, because the reading genuinely names
-  two instants. The **earlier** is taken. It is the usual convention for an overlap and here it is
-  also the safe one — on an access window, the earlier instant can only close access sooner, never
-  extend it past what was intended.
-- **The hour that never happens** (clocks forward): neither reads back. The later is taken, the
-  moment the clock jumps to. A window an hour from where it was typed is bad; a window with no time
-  at all is worse.
+**The window has two ends, so the cautious choice is the opposite at each.** A portal access grant
+bounds both sides (`data_entry_starts_at` from 0025 and `data_entry_expires_at` from 0001, both
+enforced at read time), so a start leans **later** and an end leans **earlier**. That shrinks the
+window: an ambiguous hour can only give less access than was intended. Leaning the same way at both
+ends — the first version of this fix — would have been fail-closed on the expiry and **fail-open on
+the start**, quietly opening access an hour early, which is the failure this care exists to prevent.
 
-Sampling the offset *at* the reading finds only one candidate during an overlap, so the choice above
-would never be made. Taking it from either side is what makes both visible.
+The leaning is a required argument rather than a default, because there is no default that is safe
+for both ends.
+
+Sampling the offset *at* the reading finds only one candidate during an overlap, so the choice would
+never be made at all. Taking it from either side is what makes both visible.
 
 **One consequence, stated rather than hidden.** For the single repeated hour each year, an instant
-re-rendered and re-submitted moves to the earlier of the two. It shifts by an hour **once**, never
-repeatedly, and in the direction that closes access. Every other hour of the year round-trips
-exactly, pinned hour by hour across both transitions.
+re-rendered and re-submitted moves to whichever end its leaning names. It shifts by an hour **once**,
+never repeatedly, and always in the direction that narrows access. Every other hour of the year
+round-trips exactly, pinned hour by hour across both transitions and from both ends.
 
 **Proved as a round trip, because that is where it compounded.** The tests show the value, save it
 untouched, and show it again — five times over for good measure — and run under UTC, London,
