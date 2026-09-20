@@ -81,6 +81,109 @@ export const todayInLondon = (now: Date = new Date()): string =>
     day: "2-digit",
   }).format(now);
 
+/**
+ * An instant as the platform's clock shows it, in the form a `datetime-local` input takes
+ * (`YYYY-MM-DDTHH:mm`) — and back again (NZC-114).
+ *
+ * A `datetime-local` value carries no zone. Whoever renders it and whoever parses it must therefore
+ * agree on which clock it is, and if they disagree the value moves by the difference *every time it
+ * is saved* — a drift that compounds rather than a one-off error.
+ *
+ * Both directions are stated here, together, for that reason: they are one contract, and splitting
+ * them across two files is how they came to disagree in the first place.
+ *
+ * **The zone is the platform's, not the browser's.** A consultant in Madrid editing a UK client's
+ * access window must not move it by an hour because of where they happened to be sitting. NZC-105
+ * settled that the platform's clock is London; these follow it.
+ */
+const ZONE_PARTS = new Intl.DateTimeFormat("en-GB", {
+  timeZone: PLATFORM_TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+/** The wall-clock reading in the platform's zone, as numbers. */
+function platformClockParts(instant: Date): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  const parts = Object.fromEntries(
+    ZONE_PARTS.formatToParts(instant).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]),
+  ) as Record<string, number>;
+  return {
+    year: parts.year!, month: parts.month!, day: parts.day!,
+    hour: parts.hour!, minute: parts.minute!, second: parts.second!,
+  };
+}
+
+/** How far ahead of UTC the platform's clock is at a given instant, in minutes. */
+function platformOffsetMinutes(instant: Date): number {
+  const clock = platformClockParts(instant);
+  const asIfUtc = Date.UTC(clock.year, clock.month - 1, clock.day, clock.hour, clock.minute, clock.second);
+  return (asIfUtc - instant.getTime()) / 60_000;
+}
+
+/** An instant, written as the platform's clock shows it: `YYYY-MM-DDTHH:mm`. */
+export function platformDateTimeLocal(instant: Date | string): string {
+  const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) return "";
+  const clock = platformClockParts(date);
+  return `${clock.year}-${pad(clock.month)}-${pad(clock.day)}T${pad(clock.hour)}:${pad(clock.minute)}`;
+}
+
+/**
+ * A `YYYY-MM-DDTHH:mm` reading of the platform's clock, as the instant it names.
+ *
+ * The offset depends on the answer, so two candidates are computed — one using the offset at the
+ * reading taken as UTC, one using the offset at where that lands — and then checked by formatting
+ * them back. On all but two days a year exactly one candidate reads back as the reading given, and
+ * that is the answer.
+ *
+ * ## The two days a year, decided rather than left to fall out
+ *
+ * **The hour that happens twice** (clocks back, an autumn Sunday): both candidates read back
+ * correctly, because the reading genuinely names two instants. The **earlier** is taken. That is
+ * the usual convention for an overlap, and here it is also the safe one: this value is an access
+ * window, and taking the earlier instant can only end access sooner or start it sooner — it can
+ * never extend a window past what somebody intended.
+ *
+ * **The hour that never happens** (clocks forward, a spring Sunday): neither candidate reads back,
+ * because the reading names no instant at all. The later candidate is taken, which is the moment
+ * the clock jumps to. A window an hour from where it was typed is bad; a window with no time at all
+ * is worse.
+ *
+ * One consequence is stated plainly because it cannot be designed away: for the single repeated
+ * hour each year, an instant that is re-rendered and re-submitted moves to the earlier of the two —
+ * it can shift by an hour once, in the direction that closes access rather than opens it, and never
+ * repeatedly. Every other hour of the year round-trips exactly, which is pinned across both
+ * transitions.
+ */
+export function instantFromPlatformDateTimeLocal(value: string): string | null {
+  const reading = String(value ?? "");
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(reading);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match.map(Number) as unknown as number[];
+  const readingAsUtc = Date.UTC(year!, month! - 1, day!, hour!, minute!);
+  if (Number.isNaN(readingAsUtc)) return null;
+
+  // The reading as given, to compare a candidate against: already zero-padded by the pattern.
+  const wanted = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`;
+
+  // The offsets in force on either side of the reading, half a day out in each direction — far
+  // enough to be clear of any transition, close enough that no other one intervenes. Sampling the
+  // offset *at* the reading would find only one of them, which is exactly how an overlapping hour
+  // ends up with a single candidate and the choice below never gets made.
+  const HALF_DAY = 12 * 60 * 60 * 1000;
+  const offsets = [
+    platformOffsetMinutes(new Date(readingAsUtc - HALF_DAY)),
+    platformOffsetMinutes(new Date(readingAsUtc + HALF_DAY)),
+  ];
+  const options = [...new Set(offsets.map((offset) => readingAsUtc - offset * 60_000))].sort((a, b) => a - b);
+  const readsBack = options.filter((instant) => platformDateTimeLocal(new Date(instant)) === wanted);
+  // Ambiguous: earliest, which can only close a window sooner. Impossible: the later, which is the
+  // instant the clock jumps to. Ordinary: the only one that reads back.
+  const chosen = readsBack.length > 0 ? readsBack[0]! : options[options.length - 1]!;
+  return new Date(chosen).toISOString();
+}
+
 /** The month a day belongs to, as `YYYY-MM`. */
 export const monthKey = (day: string): string => day.slice(0, 7);
 
