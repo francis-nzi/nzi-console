@@ -112,12 +112,50 @@ const CONNECTION_GUARDS = {
  * Building a database is half a dozen distinct things and "it hung" does not say which. The label is
  * carried into the error, so the next run reports the stage rather than a line number in a helper.
  */
-async function phase<T>(label: string, work: () => Promise<T>): Promise<T> {
+/** How long any one stage may take before the server is asked what it is doing. */
+const PHASE_WATCHDOG_MS = 45_000;
+
+/**
+ * What the server is doing, when a stage takes too long.
+ *
+ * The timeouts above catch a statement that blocks. They cannot catch work that never blocks — a loop
+ * issuing fast queries for ever looks exactly like a slow suite, and no timeout fires. So when a stage
+ * overruns, a separate connection reads `pg_stat_activity` and the answer goes into the error: a lock
+ * wait names its wait event, and a spinning loop shows the same query over and over.
+ */
+async function serverActivity(): Promise<string> {
+  const client = new pg.Client({ connectionString: TEST_DATABASE_URL, ...CONNECTION_GUARDS });
   try {
-    return await work();
+    await client.connect();
+    const { rows } = await client.query<Record<string, unknown>>(
+      `SELECT pid, datname, usename, state, wait_event_type, wait_event,
+              left(query, 140) AS query
+         FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY state, pid`);
+    return rows.map((row) => JSON.stringify(row)).join("\n      ");
+  } catch (error) {
+    return `(could not read pg_stat_activity: ${error instanceof Error ? error.message : String(error)})`;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+async function phase<T>(label: string, work: () => Promise<T>): Promise<T> {
+  let overran: NodeJS.Timeout | undefined;
+  const watchdog = new Promise<never>((_, reject) => {
+    overran = setTimeout(() => {
+      void serverActivity().then((activity) => reject(new Error(
+        `while ${label}: still running after ${PHASE_WATCHDOG_MS}ms. No statement timed out, so nothing ` +
+        `is blocked — the server sees:
+      ${activity}`)));
+    }, PHASE_WATCHDOG_MS);
+  });
+  try {
+    return await Promise.race([work(), watchdog]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`while ${label}: ${message}`, { cause: error });
+    throw message.startsWith(`while ${label}`) ? error : new Error(`while ${label}: ${message}`, { cause: error });
+  } finally {
+    if (overran) clearTimeout(overran);
   }
 }
 
