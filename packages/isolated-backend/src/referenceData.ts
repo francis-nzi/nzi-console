@@ -1,5 +1,6 @@
 import { DEFAULT_STAFF_ROLE } from "@nzi/contracts";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
+import { sealMembershipRow } from "./piiWriteThrough";
 
 /**
  * Reference data — the lookups the client and job smart-searches resolve against (NZC-089).
@@ -286,12 +287,18 @@ export async function importTeamMembers(
     for (const member of input.members) {
       let current = byId.get(member.userId);
       if (!current && input.createMissing) {
-        await db.query(
+        const inserted = await db.query<{ display_name: string | null; email: string | null }>(
           `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email)
            VALUES ($1,$2,$3,'active',$4,$5)
-           ON CONFLICT (organisation_id, user_id) DO NOTHING`,
+           ON CONFLICT (organisation_id, user_id) DO NOTHING
+           RETURNING display_name, email`,
           [input.organisationId, member.userId, LEAST_PRIVILEGE_ROLE, member.displayName.trim(),
             member.email?.trim().toLowerCase() || null]);
+        // Sealed from what was written, so a conflict that wrote nothing seals nothing (NZC-119).
+        if (inserted.rows[0]) {
+          await sealMembershipRow({ db, organisationId: input.organisationId, actorId: input.actorId },
+            { userId: member.userId, displayName: inserted.rows[0].display_name, email: inserted.rows[0].email });
+        }
         created += 1;
         continue;
       }
@@ -303,6 +310,8 @@ export async function importTeamMembers(
         `UPDATE nzi_console.memberships SET display_name=$3, email=$4
           WHERE organisation_id=$1 AND user_id=$2`,
         [input.organisationId, member.userId, displayName, email]);
+      await sealMembershipRow({ db, organisationId: input.organisationId, actorId: input.actorId },
+        { userId: member.userId, displayName, email });
       updated += 1;
     }
 

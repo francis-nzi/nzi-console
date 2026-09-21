@@ -75,12 +75,68 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Sealing keys for this run, minted here and thrown away with it (NZC-119).
+      #
+      # Writing personal data seals it, and an unset key **refuses the write** rather than skipping it —
+      # skipping is the hole that work exists to close, so this job failing without keys was the guard
+      # doing its job rather than a defect. The suites below write personal data, so they need keys.
+      #
+      # Fresh random ones per run, never committed values and never the real ones: this repository is
+      # public, and the Postgres this job talks to is created and dropped inside the run. Every seal and
+      # every read-back happens within that window, so a key that exists only for the run is both safer
+      # than a fixture and sufficient. `GITHUB_ENV` so that one set is shared by every step, rather than
+      # each step minting its own and a later suite being unable to read what an earlier one sealed.
+      #
+      # 32 bytes base64 is what `subjectCrypto` requires, and openssl wraps at 64 characters, so 44
+      # characters stay on one line — which is what `GITHUB_ENV` can carry.
+      - name: Mint throwaway sealing keys for this run
+        run: |
+          {
+            echo "NZI_SUBJECT_MASTER_KEY=$(openssl rand -base64 32)"
+            echo "NZI_SUBJECT_INDEX_KEY=$(openssl rand -base64 32)"
+            echo "NZI_SUBJECT_LINKAGE_KEY=$(openssl rand -base64 32)"
+          } >> "$GITHUB_ENV"
       - name: Apply every migration in order
         run: npx tsx --test packages/isolated-backend/tests/migrationsRun.test.ts
+      # The standing invariant: no row holds personal data without ciphertext beside it. It has to run
+      # here, because it is the only place with a real Postgres — and a check that never executes is the
+      # same thing as a check that cannot fail.
+      - name: Personal data has ciphertext beside it
+        run: npx tsx --test packages/isolated-backend/tests/piiEncryptionCoverage.test.ts
       # The keystone property of an issued report: it does not move when its sources do.
       # Needs a real database, so it runs in this job rather than the unit suite.
       - name: An issued report does not move
         run: npx tsx --test packages/isolated-backend/tests/reportFreeze.test.ts
+      # ── The proofs that were passing locally and proving nothing in CI ──────────────────
+      #
+      # Each of these existed, was green for whoever had a local Postgres, and was not run by the only
+      # job that has one. They are the guarantees most worth guarding, so they go first: what the
+      # database refuses, who a person is, what the linker may correlate, what an issued artefact
+      # carries, and which period a template belongs to.
+      #
+      # A red here is more likely a regression that has been sitting unnoticed than a break introduced
+      # by wiring the step up. Triage it as the former first.
+      #
+      # Tenancy is enforced by policy, not by remembering a WHERE clause — which can only be shown by
+      # becoming the role and watching the database refuse.
+      - name: The database enforces tenant isolation
+        run: npx tsx --test packages/isolated-backend/tests/tenantIsolationReal.test.ts
+      # Who a person is, and the privileged cross-tenant read that is the review queue's whole
+      # contract. A SECURITY DEFINER function's return list is only a boundary if something runs it.
+      - name: The subject registry, and its privileged read
+        run: npx tsx --test packages/isolated-backend/tests/dataSubjectRegistry.test.ts
+      # The linkage digest is confined by a grant and a function rather than by a policy, and a grant
+      # that is never exercised is a comment. This is the suite that exercises it.
+      - name: The linkage digest stays confined
+        run: npx tsx --test packages/isolated-backend/tests/subjectLinkage.test.ts
+      # What an issued snapshot carries. The assertion is negative — that a personal identifier is
+      # absent — and a negative over a fixture nobody built is satisfied by an empty database.
+      - name: An issued snapshot carries no asset identifier
+        run: npx tsx --test packages/isolated-backend/tests/snapshotOmitsAssetIdentifier.test.ts
+      # The pairing that a live BST outage was made of: the template's period and the job's period are
+      # one invariant, and it is only checkable where a zone can actually shift a day.
+      - name: A spend template's period equals its job's period
+        run: npx tsx --test packages/isolated-backend/tests/spendImportPeriodPairing.test.ts
       # Idempotency is a property of a unique index and a claim taken before a send, so it
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing

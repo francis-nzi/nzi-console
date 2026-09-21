@@ -2963,6 +2963,12 @@ table, which `nzi_console_app` may write and may never read, because reading a d
 correlating act; that is the NZC-100 lineage, where a policy cannot confine a thing and privilege
 does. And nulled on erasure, so an erased person is not merely unreadable but uncorrelatable.
 
+> **Amended by NZC-121 (21 Sep 2026).** "May write and may never read" is no longer accurate: the write
+> grant is revoked too, and the table now has no direct privilege at all. The first code to touch it
+> proved the middle ground untenable — an upsert needs SELECT on its conflict target, so the write
+> grant did not actually permit the write, and widening it would have permitted the correlating read.
+> Both directions go through a SECURITY DEFINER function instead.
+
 **The function returns groups, not digests.** The linker needs to know which rows match and never
 needs the value they matched on, so a caller cannot take the correlatable value away and compare it
 against a guess.
@@ -2993,3 +2999,175 @@ scanned zero files: a test that cannot fail is indistinguishable from one that p
 
 **Related.** NZC-117 (the encryption this links across), NZC-116 (the linker), NZC-100 (privilege
 where policy cannot reach).
+
+### NZC-119 — Personal data is sealed as it is written, and the backfill's queue is the work itself [Confirmed 21 Sep 2026]
+
+**Decision.** Every write path that stores personal data seals it in the same transaction, through one
+shared sealing path (`piiSealing.ts`); the existing rows are then encrypted by a resumable backfill;
+and a standing check asserts, per column, that no row holds plaintext with null ciphertext.
+
+**Dual-write comes first, and the order is the whole point.** A row created while the backfill is
+running would land behind the point the backfill had already passed: plaintext, no ciphertext,
+therefore unencrypted and unerasable — and nothing anywhere saying so. So the writers seal before the
+backfill runs, and the check afterwards proves the pair held.
+
+**One sealing path, for the application and the operator alike.** The provisioning script and the
+backfill call the same `sealRowPii` the command layer does. Two implementations would agree on the day
+they were written and drift afterwards, and the symptom of drift here is not an error but a row that
+looks encrypted and cannot be read back.
+
+**A write resolves a subject, which makes the write path the primary assigner of subjects.** A field is
+encrypted under *that person's* key, and a row being created has not been seen by the linker yet. So
+the writer applies the linker's own rule inline — join an existing subject only where the address
+already appears in a *different* source table under exactly one subject — and mints one otherwise. A
+shared mailbox still fuses nobody: an address repeated inside one table is a mailbox, not a person, and
+two rival subjects across tables is a question rather than an answer. The linker stays what it was, the
+reconciler, skipping anything already linked.
+
+**The backfill needs no progress table, because the outstanding work is the queue.** A row is
+outstanding exactly when it has plaintext and no ciphertext. An interrupted run has simply left more to
+do; a second run continues; a finished run selects nothing. Nothing is recorded about where it got to,
+so nothing can be wrong about where it got to — and a progress row disagreeing with the data is its own
+species of outage. Each batch is its own transaction, so a crash costs a batch and never half a row.
+
+**"Present" had to be defined once, or the queue never empties.** Several of these columns are
+`NOT NULL DEFAULT ''` — `trainees.phone` and `current_employer_name` among them — so a person who gave
+no phone number has an empty string. Sealing an empty string writes null ciphertext, which a naive
+`IS NOT NULL AND … IS NULL` would select again on the next pass, for ever. Blank-after-trim means
+absent, in the sealing and in the predicate, from one definition.
+
+**The standing check is guarded against passing over nothing.** Three ways: the columns checked are
+counted against the inventory, every column the backfill can fill must appear in that inventory, and
+one column is deliberately emptied so the query is seen to report it. That is the lesson of a date gate
+that went green over zero files and of three privilege tests that proved a denial by connecting as a
+`NOLOGIN` role — a check that cannot fail is indistinguishable from one that passes.
+
+**The inventory names what is *not* sealed, with the reason.** A column left off a list reads as
+handled. Three stages instead: `sealed`, `awaiting-auth-bridge`, and `deferred`. Two findings sit
+behind them.
+
+**`nzi_console_auth` structurally cannot seal.** Trainee self-service, the trainee email change and
+`provisionStaffCredential` run under `withAuthTransaction`, which is the role `nzi_console_auth` and the
+pseudo-tenant `'authentication'`. That role holds no privilege on the registry, the key store or the
+linkage table, and the pseudo-tenant fails their RLS policies, so a write from those paths cannot seal
+at all. The backfill reaches those rows (it runs as the owner); the writers cannot. Held for a ruling
+rather than resolved by widening the auth role's reach to the key store, which is not a change to make
+in passing. The same reading surfaced a pre-existing defect, recorded and not fixed here: those
+trainee statements target `trainees`, which has forced RLS on the real organisation, so under the
+`'authentication'` context they match no rows — trainee self-service has no real-Postgres test and
+appears not to work.
+
+**Deferred means no subject exists to key it to.** A vehicle registration identifies a keeper who is
+not in our data; a site address belongs to a client; a free-text `jobs.owner_name` is the
+name-suggestion class, which by ruling has no index and no reliable subject. Sealing those anyway would
+produce ciphertext no erasure could ever reach, which reads as handled and is not. Others are only a
+link away — `clients.owner_user_id`, `report_versions.signee_contact_id` and
+`portal_report_comments.author_id` each name the person — and `training_bookings` and `lca_suppliers`
+hold real people the registry's `source_table` CHECK cannot name. Those want a ruling and a migration,
+not a guess. `strategy_automation_log.recipient_email` is operational rather than display-only: it is
+part of a unique constraint, so its plaintext cannot be dropped until that moves to a digest.
+
+**And one column has no ciphertext to write to at all.** `client_contact_versions.snapshot_json` holds
+every contact's name, address, job title and phone in the clear, one row per version. 0100 sealed the
+live contact and left its history, so shredding a key today would leave every previous value of the
+same fields readable. Named in the code (`UNSEALED_PII_FOUND`) rather than left out, because an
+inventory that lists only what it covers is how this was missed the first time.
+
+**Related.** NZC-117 (what the ciphertext is), NZC-118 (the linkage digest this writes), NZC-116 (the
+subject it resolves), NZC-100 (privilege where policy cannot reach).
+
+### NZC-121 — The linkage table gets no direct privilege at all [Confirmed 21 Sep 2026]
+
+**Decision.** `data_subject_linkage` is reachable only through `SECURITY DEFINER` functions (migration
+0103). `nzi_console_app` keeps no SELECT, INSERT or UPDATE on it — 0101's write grants are revoked — and
+two narrow functions replace them: one records the digest for the row in hand and returns nothing, one
+answers which subject already holds a supplied digest and returns no digest.
+
+**What ran, and what it proved.** The seal path touched the table directly, twice, and both were wrong.
+Neither was discoverable until the suite met a real Postgres for the first time, because it was one of
+the seventeen that CI never ran. That is the argument for emptying that list rather than living with it:
+the gap did not hide a flaky test, it hid a design contradiction.
+
+**The write was a privilege slip.** `INSERT … ON CONFLICT (…) DO UPDATE` needs SELECT on the
+conflict-target columns, and 0101 revoked SELECT while granting INSERT and UPDATE. So the statement read
+as permitted and was refused — `permission denied for table data_subject_linkage`.
+
+**The read was the real fault.** Resolving a subject at write time joined `data_subject_linkage` to find
+the same address in another table. That is precisely the correlating read NZC-118 confined, performed by
+the role it was confined against. The grant refused it, which is the case for a confinement being a
+privilege rather than a convention: a comment would have been read as satisfied by the intent.
+
+**So the grant narrowed rather than widened.** A grant that made the failing upsert legal would also
+have made the correlating read legal, which is the thing being prevented. Zero direct privilege, two
+doors.
+
+**Narrow, stated as limits rather than intentions.** The write function takes one row's worth of
+arguments and returns `void`, so no digest can come back through it. The read function answers about **at
+most four digests at a time** — a row has two addresses; four is a lookup and forty thousand is an
+enumeration — and returns a subject id and whether the match was in the caller's own table, never a
+digest. The caller already holds the linkage key, because it must compute the digests it writes, so being
+able to ask about a digest it computed itself is not a new capability. What stays withheld is reading
+*stored* digests, which is how an estate gets correlated.
+
+**Integrity the table cannot express.** `data_subject_linkage` has no foreign keys to the person-tables,
+because it is written by a role that cannot read it. So the write function checks the row it is asked
+about exists — per table, written out rather than as dynamic SQL, because dynamic SQL inside a definer
+function is where injection lives.
+
+**This is not the auth bridge, and the reason is worth recording.** A `SECURITY DEFINER` function **does
+not bypass row-level security**. The table has `FORCE ROW LEVEL SECURITY` and a policy on
+`app.organisation_id`, so a write for a real organisation from the authentication context — where that
+setting is the pseudo-tenant `'authentication'` — is refused by the policy no matter who owns the
+function. Granting EXECUTE to `nzi_console_auth` would buy nothing and imply otherwise, so it is not
+granted. The authentication writers stay `awaiting-auth-bridge`, and their bridge has a **policy**
+question to answer rather than a privilege one: what the tenant context means for a transaction that is
+cross-tenant by nature. That is its own decision and its own review stop.
+
+**Related.** NZC-118 (the confinement this makes absolute), NZC-119 (the seal path that broke it),
+NZC-100 (privilege where policy cannot reach), NZC-116 (the subject being resolved).
+
+### NZC-122 — The cross-tenant reads work because of a provider default nobody wrote down [Confirmed 21 Sep 2026]
+
+**The dependency, recorded before the fix rather than after.** Two `SECURITY DEFINER` functions read
+across tenants on purpose — `open_subject_reviews` (the DPO review queue) and
+`verify_training_certificate` (public certificate checking). Both read tables carrying
+`FORCE ROW LEVEL SECURITY`, and **FORCE applies to the table's owner**. A definer function runs as its
+owner, not as a superuser, so neither function can cross a tenant boundary unless its owner holds
+`BYPASSRLS`.
+
+Production is Supabase. The owner is `postgres`, and Supabase gives that role `rolbypassrls = true`. So
+both functions work today — and they work because of a managed-provider default that no migration
+grants, no document states and no test exercises.
+
+**What this means about the confinement.** Row-level security is not what confines those two functions;
+for their owner it is switched off entirely. What actually confines them is the **grant** — EXECUTE to
+`nzi_console_app` and to nobody else — and the **explicit guards inside them**, which is the NZC-100
+lineage arriving somewhere it was not expected. That is a sound arrangement and an undocumented one, and
+undocumented is how it becomes false: a migration owner on a different provider, or a Supabase change of
+default, turns a working feature into one that silently returns nothing.
+
+**Which is why the CI owner changes first.** CI connects as `postgres` on the official image, a
+superuser, so every one of these paths is exercised with RLS switched off — the same class as a test
+asserting a denial while holding too much privilege, and of the `NOLOGIN` roles whose refused *login*
+was mistaken for a refused *privilege*. In all three the database identity the assertion runs under is
+what makes it vacuous. A CI database built and owned by a **non-superuser** role mirrors the shape that
+matters, and then a function that only works for a bypassing owner fails loudly instead of passing
+quietly. The policy fix is written against that, not before it.
+
+**What will and will not break under a non-bypassing owner, stated so the result is a check rather than
+a surprise.** `record_subject_linkage`, `subjects_sharing_linkage`, `subject_linkage_groups`,
+`revoke_portal_user_sessions` and `revoke_trainee_sessions` all filter to one organisation and guard that
+it matches the caller's context, so every row they touch satisfies the policy and they need no bypass.
+Only the two deliberate tenant-crossers do. The fix for those is an explicit cross-tenant clause, not a
+grant of `BYPASSRLS`.
+
+**`claim_verify_attempt` is not a third one.** It is the verify rate-limiter (0074), and its table
+`verify_rate_limit` has no `organisation_id` and no policy *by design* — an unauthenticated caller has no
+organisation, so there is nothing to scope it by, and it is confined by the definer and the grant in the
+same shape as the verification read. A survey that flagged it as tenant-crossing was using "does not
+mention organisation_id" as its test, which conflates having no tenant dimension with crossing one. The
+heuristic was wrong; the function is as designed.
+
+**Related.** NZC-100 (privilege where policy cannot reach), NZC-121 (the confinement that is a grant
+rather than a convention), NZC-116 (the review queue this read serves), NZC-118 (the linkage functions
+that need no bypass).

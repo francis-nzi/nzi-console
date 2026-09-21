@@ -20,8 +20,12 @@
  */
 import { Pool } from "pg";
 import { encryptTotpSecret, generateTotpSecret, hashPassword } from "../src/index";
+import { resolveSealingKeys } from "../src/piiSealingKeys";
+import { sealPortalUserRow, sealStaffCredentialRow } from "../src/piiWriteThrough";
 
 const ORG = process.env.ACCEPTANCE_ORG_ID ?? "demo-nzi-console";
+/** Who the registry records as having created these subjects. */
+const ACTOR = "acceptance-provisioning";
 const STAFF_USER_ID = "acceptance-admin";
 const STAFF_EMAIL = process.env.ACCEPTANCE_STAFF_EMAIL ?? "acceptance-admin@synthetic.invalid";
 const PORTAL_USER_ID = "acceptance-portal";
@@ -86,6 +90,10 @@ async function main(): Promise<void> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // The tenant context every writer needs, so the registry writes below are policy-checked the
+      // same way the application's are rather than relying on this connection's privileges.
+      await client.query("SELECT set_config('app.organisation_id', $1, true)", [ORG]);
+      const seal = { db: client, organisationId: ORG, actorId: ACTOR, keys: resolveSealingKeys() };
 
       // --- Staff principal: membership (admin) + credential ---
       await client.query(
@@ -105,6 +113,9 @@ async function main(): Promise<void> {
            enabled = true, failed_attempts = 0, locked_until = NULL, password_changed_at = now()`,
         [ORG, STAFF_USER_ID, STAFF_EMAIL.toLowerCase(), staffPw.salt, staffPw.hash, staffTotpEnc.ciphertext, staffTotpEnc.iv, staffTotpEnc.tag],
       );
+      // Sealed through the same helper the application uses (NZC-119) — never a second sealing
+      // implementation, which would agree today and drift into unreadable ciphertext later.
+      await sealStaffCredentialRow(seal, { userId: STAFF_USER_ID, emailNormalized: STAFF_EMAIL.toLowerCase() });
 
       // --- Portal principal: user + credential + a durable job grant ---
       const { jobId, clientId } = await pickPortalJob(pool, null);
@@ -115,6 +126,7 @@ async function main(): Promise<void> {
            client_id = EXCLUDED.client_id, email_normalized = EXCLUDED.email_normalized, status = 'active'`,
         [ORG, PORTAL_USER_ID, clientId, PORTAL_EMAIL.toLowerCase()],
       );
+      await sealPortalUserRow(seal, { portalUserId: PORTAL_USER_ID, emailNormalized: PORTAL_EMAIL.toLowerCase(), displayName: "Acceptance Portal User" });
       await client.query(
         `INSERT INTO nzi_console.portal_credentials
            (organisation_id, portal_user_id, password_salt, password_hash, totp_ciphertext, totp_iv, totp_tag, enabled)

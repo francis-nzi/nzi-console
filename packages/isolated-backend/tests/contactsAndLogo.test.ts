@@ -7,21 +7,28 @@ import {
   updateClientContact, validateCrpReport, VersionConflictError,
 } from "../src/index";
 import { withAccess } from "./support/access";
+import { answeringSubjectRegistry } from "./support/subjectRegistryStub";
 
 type Call = { sql: string; values?: readonly unknown[] };
 const context = (key: string, role: StaffRole = "consultant", actorId = "consultant-a") => ({ organisationId: "org-a", actorId, principal: "staff" as const, idempotencyKey: key, correlationId: `corr-${key}`, grant: commandGrantForRole(role, "org-a", actorId) });
 const contactRow = (over: Record<string, unknown> = {}) => ({ contact_id: "contact-a", client_id: "client-a", full_name: "Dawn Fletcher", job_title: "Operations director", email: "dawn@synthetic.invalid", phone: null, is_primary: false, roles: ["report_signee"], status: "active", version: 2, updated_at: "2026-09-11T10:00:00.000Z", updated_by: "consultant-a", ...over });
 
 function contactPool(calls: Call[], current: Record<string, unknown> | null = contactRow()) {
+  // Writing a contact now seals it, which resolves a subject and mints its key. Those queries are
+  // answered by the shared registry stub rather than by this fixture, so a suite about the contact
+  // contract stays about the contact contract — and they are not recorded as calls, so the assertions
+  // below still read the statements they were written about.
   const client = {
-    async query(sql: string, values?: readonly unknown[]) {
+    query: answeringSubjectRegistry(async (sql: string, values?: readonly unknown[]) => {
       calls.push({ sql, values });
       if (sql.includes("INSERT INTO nzi_console.client_contacts")) return { rows: [contactRow({ contact_id: String(values?.[1]), full_name: values?.[3], is_primary: values?.[7], roles: values?.[8], version: 1 })] };
       if (sql.includes("FROM nzi_console.client_contacts WHERE organisation_id=$1 AND contact_id=$2 FOR UPDATE")) return { rows: current ? [current] : [] };
       if (sql.includes("UPDATE nzi_console.client_contacts SET status='inactive'")) return { rows: [contactRow({ status: "inactive", is_primary: false, version: 3 })] };
-      if (sql.includes("UPDATE nzi_console.client_contacts SET full_name")) return { rows: [contactRow({ full_name: values?.[3], is_primary: values?.[7], roles: values?.[8], version: 3 })] };
+      // Anchored on the plaintext assignment: the sealing statement that follows it begins
+      // `SET full_name_sealed=`, which a looser match would answer with a contact row.
+      if (sql.includes("UPDATE nzi_console.client_contacts SET full_name=")) return { rows: [contactRow({ full_name: values?.[3], is_primary: values?.[7], roles: values?.[8], version: 3 })] };
       return { rows: [] };
-    },
+    }),
     release() {},
   };
   return withAccess({ connect: async () => client } as never);
