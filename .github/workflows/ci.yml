@@ -192,6 +192,11 @@ jobs:
       # digest, and that the append-only claim the manifest rests on agrees with the actual privileges.
       - name: An erasure leaves nothing on any path, and says what it could not finish
         run: npx tsx --test packages/isolated-backend/tests/subjectErasureReal.test.ts
+      # Trainee self-service, which has never been run against a real Postgres. The suite exists to
+      # find out whether the authentication context can reach a trainee row at all under forced RLS, and
+      # it can only answer that here — in the unit job it skips, which is not an answer.
+      - name: Trainee self-service, against the policies that govern it
+        run: npx tsx --test packages/isolated-backend/tests/traineeSelfServiceReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
