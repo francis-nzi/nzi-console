@@ -16,10 +16,22 @@ on:
     branches: [main]
   pull_request:
 
+# One run per branch. Nothing cancelled a superseded run, so a push onto a branch whose previous run
+# was stuck left both going: the old one grinding towards the six-hour default while the new one
+# queued behind it, and the pull request showing an in-progress check that belonged to neither head.
+#
+# Never on main, though. A superseded pull-request run is noise; a superseded main run is the record
+# of what was actually proven about the commit that shipped.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   checks:
     name: typecheck · build · tests
     runs-on: ubuntu-latest
+    # It finishes in about a minute. Anything approaching this is stuck, not slow.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +62,10 @@ jobs:
   migrations:
     name: migrations apply to a real Postgres
     runs-on: ubuntu-latest
+    # The default is six hours, which is how a hang came to look like a slow pass for fourteen minutes
+    # and would have for a great deal longer. This job builds a database per suite and normally takes
+    # a few minutes; a quarter of an hour is generous and still fails while somebody is watching.
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -137,6 +153,11 @@ jobs:
       # one invariant, and it is only checkable where a zone can actually shift a day.
       - name: A spend template's period equals its job's period
         run: npx tsx --test packages/isolated-backend/tests/spendImportPeriodPairing.test.ts
+      # Public certificate verification, which is live, user-facing and had no database test at all
+      # until now. It is also one of the two reads that cross a tenant boundary on purpose, so before
+      # 0104 a test of it would have proved nothing: the property was switched off underneath it.
+      - name: A stranger can verify a certificate, and see only the contract
+        run: npx tsx --test packages/isolated-backend/tests/certificateVerificationReal.test.ts
       # Idempotency is a property of a unique index and a claim taken before a send, so it
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing

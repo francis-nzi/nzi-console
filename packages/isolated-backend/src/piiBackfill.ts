@@ -118,6 +118,18 @@ export async function backfillSealedPii(pool: PoolLike, options: BackfillOptions
           if (batch.sealed === 0) break;
           sealed += batch.sealed;
           options.onProgress?.({ table: descriptor.table, sealed, outstanding: Math.max(outstandingBefore - sealed, 0) });
+
+          // A row that is sealed stops matching the queue, so the total sealed cannot exceed what was
+          // outstanding — one batch of slack for rows a live writer adds while this runs. Past that, the
+          // loop is re-selecting rows its own writes did not clear, and it would spin here for ever
+          // issuing fast queries: no statement blocks, no timeout fires, and it looks like a slow pass
+          // rather than a stuck one. Say which table, and stop.
+          if (sealed > outstandingBefore + batchSize) {
+            throw new Error(
+              `${descriptor.table}: sealed ${sealed} rows with only ${outstandingBefore} outstanding, so ` +
+              `sealing is not clearing the queue and this would not terminate. The predicate and the write ` +
+              `disagree about what counts as sealed.`);
+          }
         }
       }
 

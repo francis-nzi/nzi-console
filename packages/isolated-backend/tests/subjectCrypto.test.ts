@@ -125,7 +125,12 @@ describe("the blind index", () => {
   it("does not reveal the address it indexes", () => {
     const key = indexKey();
     const digest = blindIndex("trainees.personal_email", "ada@example.test", key)!;
-    assert.ok(!digest.toLowerCase().includes("ada"));
+    // The address, not a fragment of it. A digest is base64url, and lower-cased it contains "ada"
+    // about once in every seven hundred and eighty-five — matching the encoding rather than a leak,
+    // and failing a run in a way that says the opposite of what happened. What the claim is actually
+    // about is that the address cannot be read out of the digest.
+    assert.match(digest, /^[A-Za-z0-9_-]+$/, "base64url, which is why a three-character needle says nothing here");
+    assert.ok(!digest.toLowerCase().includes("ada@example.test"));
     assert.ok(!digest.toLowerCase().includes("example"));
     // Fixed width regardless of input length, so the digest does not leak the size of the address.
     const longer = blindIndex("trainees.personal_email", "a".repeat(200) + "@example.test", key)!;

@@ -3146,6 +3146,16 @@ lineage arriving somewhere it was not expected. That is a sound arrangement and 
 undocumented is how it becomes false: a migration owner on a different provider, or a Supabase change of
 default, turns a working feature into one that silently returns nothing.
 
+> **Amended 21 Sep 2026, by running it.** The paragraph below proposed a non-bypassing CI owner. It was
+> built, and it worked — it found the extension installed into a schema the migrations do not search,
+> and it found the two cross-tenant reads resting on this dependency. Then it found that 0070 seeds a
+> framework row per organisation, which a role subject to tenant policies cannot do and migrations are
+> frozen. Production applies migrations as a bypassing role, so an owner that cannot bypass tests
+> something the system never claimed. The owner now mirrors production — `NOSUPERUSER`, which still
+> refuses superuser-only DDL, but `BYPASSRLS` — and the guarantee moved to where it belongs: NZC-123
+> gives the two functions an owner that is `NOBYPASSRLS` by its own definition, in every environment,
+> stated by a migration rather than by a test harness.
+
 **Which is why the CI owner changes first.** CI connects as `postgres` on the official image, a
 superuser, so every one of these paths is exercised with RLS switched off — the same class as a test
 asserting a denial while holding too much privilege, and of the `NOLOGIN` roles whose refused *login*
@@ -3171,3 +3181,91 @@ heuristic was wrong; the function is as designed.
 **Related.** NZC-100 (privilege where policy cannot reach), NZC-121 (the confinement that is a grant
 rather than a convention), NZC-116 (the review queue this read serves), NZC-118 (the linkage functions
 that need no bypass).
+
+### NZC-123 — Crossing a tenant boundary is a policy that names a role, not an owner who ignores policies [Confirmed 21 Sep 2026]
+
+**Decision.** The two reads that deliberately cross tenants — `open_subject_reviews` and
+`verify_training_certificate` — are owned by `nzi_console_definer` (migration 0104), a role that cannot
+log in, is no superuser and **does not bypass row-level security**. Each table they read gains a policy
+naming that role, and only that role. Nothing anywhere holds `BYPASSRLS`.
+
+**What was holding them up before.** A `SECURITY DEFINER` function runs as its owner and `FORCE ROW
+LEVEL SECURITY` applies to a table's owner, so neither function could cross a boundary unless its owner
+bypassed policies. Every owner they had ever run under did: `postgres` on the CI image, and `postgres`
+on Supabase by provider default (NZC-122). Row-level security was not confining them; it was switched
+off underneath them, and nothing said so.
+
+**The permission is now a line of SQL.** `CREATE POLICY … FOR SELECT TO nzi_console_definer USING (…)`
+can be read, reviewed and revoked. An attribute of whoever happened to run the migrations cannot. And
+because the role bypasses nothing, the policies are load-bearing rather than decorative — which a test
+asserts directly by checking `rolbypassrls` is false, since if it were true every other assertion about
+this would pass for the wrong reason.
+
+**Narrow where narrowing is cheap, and honest where it is not.** The review queue's policy is limited to
+open reviews, which is exactly what the function returns, so widening the function cannot widen the
+disclosure without the policy changing too; its members table is limited to members of an open review.
+The five training tables get an unrestricted read for this role, because a stranger holding a verify
+code reaches one certificate and its joins and correlating each join back in a policy would cost more
+than it confines. The contract there remains the function's `RETURNS TABLE`, unchanged.
+
+**So the boundary moved to the ownership list, and is asserted there.** Those tables carry a person's
+name, and a third function owned by this role would inherit every one of these reads silently. A test
+asserts the role owns exactly two functions, so adding to that list is a deliberate act that fails a
+check rather than a quiet inheritance.
+
+**The live function finally has a test.** `verify_training_certificate` is user-facing —
+`/verify/[verifyCode]` is in the deployed build — and had no database test at all. It now has one, and
+it had to arrive with this migration rather than before it: under a bypassing owner the property being
+tested is switched off, so the test would have passed while proving nothing. It establishes that a
+stranger with no tenant context can verify a code, that they reach another organisation's certificate
+too, that the returned columns are exactly the contracted nine, that a wrong code yields nothing rather
+than a hint, and that reading the tables directly yields nothing at all.
+
+**Ordering, and why this is one merge unit.** The test-owner change had to land first, because it is what
+made the failure possible — run locally against a real Postgres it produced, in order, the extension
+schema fault, this one, and a frozen data migration that cannot run under tenant policies at all. The fix
+ships on the same branch, so the red is never a state anybody has to live with or explain.
+
+The owner itself ended up mirroring production rather than exceeding it (see the amendment on NZC-122),
+which does not weaken this: `nzi_console_definer` is `NOBYPASSRLS` by its own definition in every
+environment, so the policies here are load-bearing wherever the schema is applied, not only where a
+harness is configured a particular way.
+
+**Related.** NZC-122 (the dependency this replaces), NZC-100 (privilege where policy cannot reach),
+NZC-121 (the confinement that is a grant rather than a convention), NZC-116 (the review queue).
+
+### NZC-124 — The platform provides the extensions; the application only uses them [Confirmed 21 Sep 2026]
+
+**Decision.** The schema's required extensions are enumerated (`REQUIRED_EXTENSIONS`, currently
+`pg_trgm`), provisioned by the privileged bootstrap, and checked for availability before anything is
+built. The role that owns the database and applies the migrations installs nothing.
+
+**What made this explicit.** Migration 0086 indexes the knowledge library with `gin_trgm_ops`, which
+`pg_trgm` supplies, and that migration installs the extension itself. It has always worked, because
+every owner it ran under could install extensions. Supabase pre-provisions `pg_trgm`, so production has
+never depended on that line doing anything — another implicit platform dependency of exactly the NZC-122
+kind, and one nothing enumerated until the non-superuser test owner arrived.
+
+**The failure was the schema it went into, not the privilege to create it.** Provisioning it as the
+superuser *before* the migrations put `gin_trgm_ops` in `public`, and 0086 then could not see it: an
+operator class is resolved through the search path, every migration runs on one connection, and a
+session-level `SET search_path` in one file is still in force in the next. 0060 sets it to `nzi_console`
+alone, with no `public`, and 0086 comes after. The error — "operator class gin_trgm_ops does not exist"
+— reads like a missing extension and was a missing *schema on the path*.
+
+So it is installed `WITH SCHEMA nzi_console`, and after 0001 rather than before the run, because
+`nzi_console` does not exist until 0001 creates it.
+
+**Worth recording precisely, because the obvious reading is wrong.** `pg_trgm` has been a *trusted*
+extension since PostgreSQL 13, so a non-superuser owner with CREATE on the database can install it
+unaided — the least-privilege owner was never blocked from creating it, and 0086 would have succeeded
+untouched. The provisioning here is not a workaround for a privilege the owner lacks; it is the
+production shape made explicit, so the harness does not depend on a property (trustedness) that a future
+platform might not grant.
+
+**And it fails fast.** Availability is checked once against `pg_available_extensions`, on the cluster
+connection, before any database is built — so an image without the contrib package says so in one line
+instead of surfacing as a failing index in every suite in turn.
+
+**Related.** NZC-122 (the same class: a platform default nothing enumerated), NZC-123 (the cross-tenant
+reads stated in policy), NZC-100 (privilege where policy cannot reach).
