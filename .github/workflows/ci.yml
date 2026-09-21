@@ -107,6 +107,16 @@ jobs:
       # Needs a real database, so it runs in this job rather than the unit suite.
       - name: An issued report does not move
         run: npx tsx --test packages/isolated-backend/tests/reportFreeze.test.ts
+      # The linkage confinement is a grant and two functions, and a grant that is never exercised is a
+      # comment. This suite is here because 0103 needs somewhere to prove its doors: that no role can
+      # reach the table directly, that the write door records the row in hand and refuses one that names
+      # nobody, and that the read door answers about supplied digests and returns none.
+      #
+      # The other four security proofs stay on the backlog deliberately. They are unrelated to this
+      # change, they have never run, and wiring them here would let a pre-existing red in any of them
+      # block encryption work that has nothing to do with it.
+      - name: The linkage digest stays confined
+        run: npx tsx --test packages/isolated-backend/tests/subjectLinkage.test.ts
       # Idempotency is a property of a unique index and a claim taken before a send, so it
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing

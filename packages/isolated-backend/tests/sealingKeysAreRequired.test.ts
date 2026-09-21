@@ -50,7 +50,6 @@ const NOT_RUN_IN_CI: ReadonlyArray<string> = [
   "reportLabelSurvivesSync",
   "snapshotOmitsAssetIdentifier",
   "spendImportPeriodPairing",
-  "subjectLinkage",
   "tenantIsolationReal",
 ];
 
