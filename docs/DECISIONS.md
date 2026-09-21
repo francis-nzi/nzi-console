@@ -3495,3 +3495,35 @@ would destroy the present and leave the past — which is precisely the complete
 exists to close, and exactly the sort of thing that goes unnoticed when a report says "done".
 
 **Related.** NZC-125 (the axis), NZC-120 (the migration this waits on), NZC-117 (what a shred reaches).
+
+### NZC-131 — Review, export and erase are three capabilities with no implication between them [Confirmed 21 Sep 2026]
+
+**Decision.** Matrix version 7 adds `subject.export` and `subject.erase` beside `subject.review`. None
+implies another; the matrix decides which roles hold which, and admin holds all three today. Each is
+enforced **at the point of privilege** rather than at the command above it: `resolveSubjectData` requires
+`subject.export` to decrypt and `subject.review` merely to reach, the export command requires
+`subject.export`, and the erasure command will require `subject.erase`.
+
+**Why not one capability.** They are different acts on different scales of consequence. Reviewing an
+identity question shows pointers and counts and never a name. Exporting reads a person's data back in
+the clear — the largest disclosure this system performs. Erasing destroys a key irreversibly, for us as
+well. A single "DSAR" capability would have made the mildest of them the key to the gravest.
+
+**Why not a chain.** It is tempting to let erase imply export imply review, and it would be wrong: the
+right to see is not the right to destroy, and an operator trusted to answer a subject access request is
+not thereby trusted to erase. Assignment belongs to the matrix, which is versioned and reviewed, rather
+than to an ordering baked into the code. The test asserts both directions — a principal holding only
+`subject.review` is refused a decrypting read, and one holding only `subject.export` is refused the
+reaching read.
+
+**Enforced where the privilege is, not where the caller is.** The gate lives inside the read path, so no
+caller can obtain decrypted personal data by holding the milder capability, whatever that caller calls
+itself. Gating only the command above would have left the decrypting function reachable by anything that
+imported it.
+
+**Generated, not edited.** The migration comes from `generate-matrix.ts` over `ROLE_CAPABILITY_MATRIX`,
+so the code copy and the migration cannot disagree by transcription, and version 7 is a new version
+rather than an edit of 6 — a principal resolved against an earlier version keeps meaning what it meant
+when it was resolved.
+
+**Related.** NZC-128 (the read path these gate), NZC-116 (`subject.review`), NZC-022 (the matrix).

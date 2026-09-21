@@ -60,6 +60,8 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `portal.admin` (invite, reset MFA/pw, job access, data-entry windows) ⚑ | ✓ | ✓ | — | — | — |
 | `category.visibility` (what a client sees of the category list) | ✓ | ⚑ own | — | — | — |
 | `subject.review` (identity questions, spans organisations) ⚑ | ✓ | — | — | — | — |
+| `subject.export` (reads a person's data back in the clear) ⚑ | ✓ | — | — | — | — |
+| `subject.erase` (destroys a person's key, irreversibly) ⚑ | ✓ | — | — | — | — |
 | `clientfactor.manage` | ✓ | ✓ | — | — | — |
 | `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | — | — | — | — |
 | `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |
