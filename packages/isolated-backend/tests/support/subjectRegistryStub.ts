@@ -40,9 +40,12 @@ export function answeringSubjectRegistry(inner: Query): Query {
       keys.set(id, wrapped);
       return { rows: [{ wrapped_key: wrapped }] };
     }
-    if (sql.includes("INSERT INTO nzi_console.data_subjects")
-      || sql.includes("FROM nzi_console.data_subject_linkage")
-      || sql.includes("INSERT INTO nzi_console.data_subject_linkage")) {
+    // The linkage table is reached only through its definer functions (NZC-121), so these are what a
+    // fake pool has to answer. No subject is offered back: a stub that claimed a match would make the
+    // suites depend on linkage behaviour they are not about.
+    if (sql.includes("nzi_console.subjects_sharing_linkage")
+      || sql.includes("nzi_console.record_subject_linkage")
+      || sql.includes("INSERT INTO nzi_console.data_subjects")) {
       return { rows: [] };
     }
     return inner(sql, values);
