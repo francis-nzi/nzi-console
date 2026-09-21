@@ -3171,3 +3171,50 @@ heuristic was wrong; the function is as designed.
 **Related.** NZC-100 (privilege where policy cannot reach), NZC-121 (the confinement that is a grant
 rather than a convention), NZC-116 (the review queue this read serves), NZC-118 (the linkage functions
 that need no bypass).
+
+### NZC-123 — Crossing a tenant boundary is a policy that names a role, not an owner who ignores policies [Confirmed 21 Sep 2026]
+
+**Decision.** The two reads that deliberately cross tenants — `open_subject_reviews` and
+`verify_training_certificate` — are owned by `nzi_console_definer` (migration 0104), a role that cannot
+log in, is no superuser and **does not bypass row-level security**. Each table they read gains a policy
+naming that role, and only that role. Nothing anywhere holds `BYPASSRLS`.
+
+**What was holding them up before.** A `SECURITY DEFINER` function runs as its owner and `FORCE ROW
+LEVEL SECURITY` applies to a table's owner, so neither function could cross a boundary unless its owner
+bypassed policies. Every owner they had ever run under did: `postgres` on the CI image, and `postgres`
+on Supabase by provider default (NZC-122). Row-level security was not confining them; it was switched
+off underneath them, and nothing said so.
+
+**The permission is now a line of SQL.** `CREATE POLICY … FOR SELECT TO nzi_console_definer USING (…)`
+can be read, reviewed and revoked. An attribute of whoever happened to run the migrations cannot. And
+because the role bypasses nothing, the policies are load-bearing rather than decorative — which a test
+asserts directly by checking `rolbypassrls` is false, since if it were true every other assertion about
+this would pass for the wrong reason.
+
+**Narrow where narrowing is cheap, and honest where it is not.** The review queue's policy is limited to
+open reviews, which is exactly what the function returns, so widening the function cannot widen the
+disclosure without the policy changing too; its members table is limited to members of an open review.
+The five training tables get an unrestricted read for this role, because a stranger holding a verify
+code reaches one certificate and its joins and correlating each join back in a policy would cost more
+than it confines. The contract there remains the function's `RETURNS TABLE`, unchanged.
+
+**So the boundary moved to the ownership list, and is asserted there.** Those tables carry a person's
+name, and a third function owned by this role would inherit every one of these reads silently. A test
+asserts the role owns exactly two functions, so adding to that list is a deliberate act that fails a
+check rather than a quiet inheritance.
+
+**The live function finally has a test.** `verify_training_certificate` is user-facing —
+`/verify/[verifyCode]` is in the deployed build — and had no database test at all. It now has one, and
+it had to arrive with this migration rather than before it: under a bypassing owner the property being
+tested is switched off, so the test would have passed while proving nothing. It establishes that a
+stranger with no tenant context can verify a code, that they reach another organisation's certificate
+too, that the returned columns are exactly the contracted nine, that a wrong code yields nothing rather
+than a hint, and that reading the tables directly yields nothing at all.
+
+**Ordering, and why this is one merge unit.** The non-bypassing test owner had to land first, because it
+is what makes the failure possible; it correctly turns `dataSubjectRegistry` red, which is the proof the
+guard works. The fix that makes it green ships on the same branch, so the red is never a state anybody
+has to live with or explain.
+
+**Related.** NZC-122 (the dependency this replaces), NZC-100 (privilege where policy cannot reach),
+NZC-121 (the confinement that is a grant rather than a convention), NZC-116 (the review queue).

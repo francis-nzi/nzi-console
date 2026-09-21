@@ -137,6 +137,11 @@ jobs:
       # one invariant, and it is only checkable where a zone can actually shift a day.
       - name: A spend template's period equals its job's period
         run: npx tsx --test packages/isolated-backend/tests/spendImportPeriodPairing.test.ts
+      # Public certificate verification, which is live, user-facing and had no database test at all
+      # until now. It is also one of the two reads that cross a tenant boundary on purpose, so before
+      # 0104 a test of it would have proved nothing: the property was switched off underneath it.
+      - name: A stranger can verify a certificate, and see only the contract
+        run: npx tsx --test packages/isolated-backend/tests/certificateVerificationReal.test.ts
       # Idempotency is a property of a unique index and a claim taken before a send, so it
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing
