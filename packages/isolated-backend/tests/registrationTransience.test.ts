@@ -59,7 +59,9 @@ describe("the lookup keeps nothing", () => {
     assert.equal(result.ok, true);
     const serialised = JSON.stringify(result).toUpperCase();
     assert.ok(!serialised.includes(PLATE), `the plate must not appear in the result: ${serialised}`);
-    assert.ok(!serialised.includes("AB12"), "nor any recognisable fragment of it");
+    // The spaced spelling too, rather than a four-character prefix: "AB12" is hexadecimal and the
+    // payload carries hex hashes, so the fragment check found the hash and called it the plate.
+    assert.ok(!serialised.includes("AB12 CDE"), "nor the spaced spelling of it");
   });
 
   it("still uses the plate to resolve a vehicle, so the absence is not indifference", async () => {

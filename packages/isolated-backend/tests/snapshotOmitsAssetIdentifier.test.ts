@@ -99,7 +99,12 @@ describe("a snapshot issued now carries no asset identifier", { skip: DATABASE_U
     // Serialised and searched, not field-checked: a plate reaching a field added later would pass
     // a test that only looked at the fields present when it was written.
     const serialised = JSON.stringify(payload).toUpperCase();
-    assert.ok(!serialised.includes("AB12"), `the payload must not carry the plate: ${serialised.slice(0, 400)}`);
+    // Both spellings of the whole plate, never its first four characters: "AB12" is four hexadecimal
+    // digits and this payload is full of hex hashes, so that needle matched an evidence hash roughly
+    // one run in two hundred and reported it as a leaked registration.
+    for (const spelling of [PLATE, PLATE.replace(/\s/g, "")]) {
+      assert.ok(!serialised.includes(spelling), `the payload must not carry the plate: ${serialised.slice(0, 400)}`);
+    }
     const measurements = payload.measurements as Array<Record<string, unknown>>;
     assert.equal(measurements.length, 1, "the row is in the snapshot");
     assert.ok(!("assetIdentifier" in measurements[0]!), "the field is absent, not merely null");
@@ -141,8 +146,10 @@ describe("a snapshot issued now carries no asset identifier", { skip: DATABASE_U
 
     const report = await getGrantedPublishedCrpReport(db, { portalUserId: "portal-a", clientId: CLIENT, jobId: JOB });
     assert.ok(report, "the client can fetch their published report");
-    assert.ok(!JSON.stringify(report).toUpperCase().includes("AB12"),
-      "and it contains no registration anywhere in the response");
+    const response = JSON.stringify(report).toUpperCase();
+    for (const spelling of [PLATE, PLATE.replace(/\s/g, "")]) {
+      assert.ok(!response.includes(spelling), "and it contains no registration anywhere in the response");
+    }
   });
 });
 

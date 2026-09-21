@@ -103,12 +103,39 @@ describe("the subject registry (NZC-116)", { skip: DATABASE_URL ? false : "NZI_T
     assert.ok(reviews.rows.some((row) => row.reason === "no-key"));
   });
 
+  /**
+   * An identifier, checked as one and then removed before any search for a name.
+   *
+   * These assertions look for personal data by searching serialised rows for "ada". A UUID is
+   * hexadecimal and "ada" is three hexadecimal digits, so about one random identifier in a hundred and
+   * seventy contains it — which made the search match an id rather than a leak, in roughly one run in
+   * twenty. That is exactly the failure that passed here and failed in CI, and neither result was about
+   * the property under test.
+   *
+   * Removing them would weaken the check, so the shape is asserted first: an identifier that is a UUID
+   * cannot be carrying a name, and one that has stopped being a UUID fails here rather than silently
+   * escaping the search.
+   */
+  const withoutIdentifiers = (row: Record<string, unknown>, columns: readonly string[]): Record<string, unknown> => {
+    const rest = { ...row };
+    for (const column of columns) {
+      const value = rest[column];
+      if (value !== null && value !== undefined) {
+        assert.match(String(value), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+          `${column} must be an opaque identifier — anything else could carry a name past this check`);
+      }
+      delete rest[column];
+    }
+    return rest;
+  };
+
   it("stores no personal data of its own", async () => {
     // The property the whole design rests on: the registry must not become one more place to erase
     // from. Serialised and searched, so a column added later cannot quietly start holding a name.
-    const dump = await db.query(
+    const dump = await db.query<{ subject: Record<string, unknown> }>(
       `SELECT to_jsonb(s.*) AS subject FROM nzi_console.data_subjects s WHERE organisation_id=$1`, [ORG]);
-    const serialised = JSON.stringify(dump.rows).toLowerCase();
+    const subjects = dump.rows.map((row) => withoutIdentifiers(row.subject, ["subject_id", "merged_into"]));
+    const serialised = JSON.stringify(subjects).toLowerCase();
     for (const personal of ["ada", "lovelace", "example.test", "grace", "hopper", "info@"]) {
       assert.ok(!serialised.includes(personal), `the registry must not hold "${personal}"`);
     }
@@ -150,7 +177,8 @@ describe("the subject registry (NZC-116)", { skip: DATABASE_URL ? false : "NZI_T
     const open = await listOpenSubjectReviews(db);
     assert.ok(open.some((review) => review.organisationId === ORG), "this tenant has questions");
     assert.ok(open.every((review) => review.memberCount >= 1));
-    const serialised = JSON.stringify(open).toLowerCase();
+    const serialised = JSON.stringify(
+      open.map((review) => withoutIdentifiers({ ...review }, ["reviewId"]))).toLowerCase();
     for (const personal of ["ada", "grace", "info@", "example.test"]) {
       assert.ok(!serialised.includes(personal), `the queue must not carry "${personal}"`);
     }
