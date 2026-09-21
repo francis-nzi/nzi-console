@@ -3218,3 +3218,39 @@ has to live with or explain.
 
 **Related.** NZC-122 (the dependency this replaces), NZC-100 (privilege where policy cannot reach),
 NZC-121 (the confinement that is a grant rather than a convention), NZC-116 (the review queue).
+
+### NZC-124 — The platform provides the extensions; the application only uses them [Confirmed 21 Sep 2026]
+
+**Decision.** The schema's required extensions are enumerated (`REQUIRED_EXTENSIONS`, currently
+`pg_trgm`), provisioned by the privileged bootstrap, and checked for availability before anything is
+built. The role that owns the database and applies the migrations installs nothing.
+
+**What made this explicit.** Migration 0086 indexes the knowledge library with `gin_trgm_ops`, which
+`pg_trgm` supplies, and that migration installs the extension itself. It has always worked, because
+every owner it ran under could install extensions. Supabase pre-provisions `pg_trgm`, so production has
+never depended on that line doing anything — another implicit platform dependency of exactly the NZC-122
+kind, and one nothing enumerated until the non-superuser test owner arrived.
+
+**The failure was the schema it went into, not the privilege to create it.** Provisioning it as the
+superuser *before* the migrations put `gin_trgm_ops` in `public`, and 0086 then could not see it: an
+operator class is resolved through the search path, every migration runs on one connection, and a
+session-level `SET search_path` in one file is still in force in the next. 0060 sets it to `nzi_console`
+alone, with no `public`, and 0086 comes after. The error — "operator class gin_trgm_ops does not exist"
+— reads like a missing extension and was a missing *schema on the path*.
+
+So it is installed `WITH SCHEMA nzi_console`, and after 0001 rather than before the run, because
+`nzi_console` does not exist until 0001 creates it.
+
+**Worth recording precisely, because the obvious reading is wrong.** `pg_trgm` has been a *trusted*
+extension since PostgreSQL 13, so a non-superuser owner with CREATE on the database can install it
+unaided — the least-privilege owner was never blocked from creating it, and 0086 would have succeeded
+untouched. The provisioning here is not a workaround for a privilege the owner lacks; it is the
+production shape made explicit, so the harness does not depend on a property (trustedness) that a future
+platform might not grant.
+
+**And it fails fast.** Availability is checked once against `pg_available_extensions`, on the cluster
+connection, before any database is built — so an image without the contrib package says so in one line
+instead of surfacing as a failing index in every suite in turn.
+
+**Related.** NZC-122 (the same class: a platform default nothing enumerated), NZC-123 (the cross-tenant
+reads stated in policy), NZC-100 (privilege where policy cannot reach).

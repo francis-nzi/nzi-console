@@ -52,6 +52,40 @@ const RUNTIME_ROLES = ["nzi_console_app", "nzi_console_worker", "nzi_console_aut
  * missing tenant context would fail in a great many places, and mixing the two would leave neither
  * result legible.
  */
+/**
+ * Extensions the schema needs, which the platform provides and the application only uses
+ * (NZC-124).
+ *
+ * `pg_trgm` supplies the `gin_trgm_ops` operator class that 0086 indexes the knowledge library with.
+ * Supabase pre-provisions it; here the superuser bootstrap does, so the owner never installs anything
+ * and the shape matches production rather than working by a privilege production does not grant.
+ *
+ * ## Installed into `nzi_console`, and the reason is not cosmetic
+ *
+ * An operator class is found through the search path, and every migration runs on one connection, so
+ * a session-level `SET search_path` in one file is still in force in the next. 0060 sets it to
+ * `nzi_console` alone, with no `public`, and 0086 comes after. Installing into `public` therefore puts
+ * `gin_trgm_ops` somewhere 0086 cannot see, and the index fails with "operator class does not exist"
+ * — which reads like a missing extension and is a missing *schema on the path*.
+ *
+ * That is also why this runs after 0001 rather than before the migrations: `nzi_console` does not
+ * exist until 0001 creates it.
+ */
+const REQUIRED_EXTENSIONS = ["pg_trgm"] as const;
+
+/** Install the extensions as the superuser, into the schema the migrations actually search. */
+async function provisionExtensions(url: string): Promise<void> {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    for (const extension of REQUIRED_EXTENSIONS) {
+      await client.query(`CREATE EXTENSION IF NOT EXISTS ${extension} WITH SCHEMA nzi_console`);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 const OWNER_ROLE = "nzi_console_test_owner";
 const OWNER_PASSWORD = "nzi_console_test_owner";
 
@@ -169,6 +203,18 @@ export async function createDisposableDatabase(
     // one did not create — they were made just above, as the superuser.
     await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
 
+    // Checked once, here, rather than discovered as a failing index in every suite in turn. An image
+    // without the extension is an environment problem and should say so in one line.
+    const available = await cluster.query<{ name: string }>(
+      `SELECT name FROM pg_available_extensions WHERE name = ANY($1::text[])`,
+      [[...REQUIRED_EXTENSIONS]]);
+    const missing = REQUIRED_EXTENSIONS.filter((name) => !available.rows.some((row) => row.name === name));
+    if (missing.length > 0) {
+      throw new Error(
+        `This PostgreSQL has no ${missing.join(", ")} available to install. The schema needs it for ` +
+        `gin_trgm_ops (0086). Install the contrib package, or use an image that ships it.`);
+    }
+
     await cluster.query(`DROP DATABASE IF EXISTS "${name}"`);
     // UTF8 explicitly: the cluster default on Windows is WIN1252, under which a migration
     // containing a "→" fails to apply at all.
@@ -177,19 +223,14 @@ export async function createDisposableDatabase(
     await cluster.end();
   }
 
-  // pg_trgm is a trusted extension and the owner could install it. Installing it here as the superuser
-  // keeps this change about who owns things rather than about what an owner may install.
-  const seeder = new pg.Client({ connectionString: target.toString() });
-  await seeder.connect();
-  await seeder.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
-  await seeder.end();
-
   // Applied as the owner, so every table, policy and SECURITY DEFINER function belongs to a role that
   // cannot bypass row-level security.
   const owner = new pg.Client({ connectionString: asOwner(target.toString()) });
   await owner.connect();
   for (const filename of readdirSync(MIGRATIONS_DIR).filter((entry) => entry.endsWith(".sql")).sort()) {
     await owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
+    // As soon as the schema exists, and before anything indexes with an operator class from one.
+    if (filename.startsWith("0001_")) await provisionExtensions(target.toString());
     await options.onMigration?.(filename, owner);
   }
   await owner.end();
