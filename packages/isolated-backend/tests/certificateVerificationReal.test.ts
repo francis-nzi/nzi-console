@@ -45,8 +45,8 @@ describe("a stranger can verify a certificate, and see only what the contract sa
       `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage)
        VALUES ($1,'j','c',$2,'training','Course','open','setup')`, [org, sequence]);
     await db.query(
-      `INSERT INTO nzi_console.training_course_runs (organisation_id,course_run_id,job_id,run_name)
-       VALUES ($1,'run','j','Carbon Literacy')`, [org]);
+      `INSERT INTO nzi_console.training_course_runs (organisation_id,course_run_id,job_id,run_name,workflow_stage_key,created_by)
+       VALUES ($1,'run','j','Carbon Literacy','certified','seed')`, [org]);
     await db.query(
       `INSERT INTO nzi_console.training_course_sessions (organisation_id,session_id,course_run_id,session_date,status,created_by)
        VALUES ($1,'sess','run',DATE '2026-06-01','delivered','seed')`, [org]);

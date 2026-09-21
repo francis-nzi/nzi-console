@@ -65,6 +65,16 @@ GRANT nzi_console_definer TO CURRENT_USER;
 COMMENT ON ROLE nzi_console_definer IS
   'Owns the two functions that read across tenants on purpose, and nothing else. It cannot log in and does not bypass row-level security: everything it may read is a policy naming it, so the permission to cross a tenant boundary is reviewable rather than an attribute of whoever ran the migrations.';
 
+-- Owning an object in a schema requires CREATE on that schema — the check is on the *new* owner, and
+-- a superuser executing the ALTER does not waive it. Without this, `ALTER FUNCTION … OWNER TO` fails
+-- with "permission denied for schema nzi_console", which names the schema and not the role that lacks
+-- the privilege on it.
+--
+-- It confers nothing in practice: the role cannot log in, and the only way to run anything as it is to
+-- call one of the two functions below. But it is a widening, so it is stated here rather than folded
+-- into a grant that looks like it is about reading.
+GRANT USAGE, CREATE ON SCHEMA nzi_console TO nzi_console_definer;
+
 -- ── The review queue ─────────────────────────────────────────────────────────────────
 ALTER FUNCTION nzi_console.open_subject_reviews() OWNER TO nzi_console_definer;
 

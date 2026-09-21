@@ -25,32 +25,41 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..",
 const RUNTIME_ROLES = ["nzi_console_app", "nzi_console_worker", "nzi_console_auth"];
 
 /**
- * The role that owns the test database and applies its migrations — deliberately **not** a superuser
- * (NZC-122).
+ * The role that owns the test database and applies its migrations: **not a superuser, but it does
+ * bypass row-level security** — which is what production does (NZC-122).
  *
- * ## Why the owner is the thing that matters
+ * ## What it started as, and why that was wrong
  *
- * A `SECURITY DEFINER` function runs as its owner, and `FORCE ROW LEVEL SECURITY` applies to a table's
- * owner. So whether such a function can read across tenants turns on one property of whoever ran the
- * migrations: does that role hold `BYPASSRLS`.
+ * This began as `NOBYPASSRLS`, to make a `SECURITY DEFINER` function that only works for a bypassing
+ * owner fail here rather than on the day a provider changes a default. It did exactly that, twice:
+ * it found `gin_trgm_ops` installed into a schema the migrations do not search, and it found the two
+ * cross-tenant reads resting on an implicit `BYPASSRLS` (NZC-123, NZC-124).
  *
- * CI connects as `postgres` on the official image, which does. Production is Supabase, where `postgres`
- * also does — by a provider default that no migration grants and nothing stated until NZC-122. So every
- * definer function has always been exercised with row-level security switched off underneath it, and one
- * that works only for a bypassing owner has never had anywhere to fail.
+ * Then it found a third thing, which was itself: 0070 seeds a framework row per organisation with
+ * `INSERT … SELECT FROM organisations`. That inserts nothing when no organisation exists yet, which is
+ * why fourteen suites never noticed — and the one suite whose fixture creates an organisation part-way
+ * through the migrations got "new row violates row-level security policy". A data migration that writes
+ * tenant rows cannot run under a role subject to tenant policies, and migrations are frozen.
  *
- * Owning the database with a role that cannot bypass makes that failure happen here, on a throwaway
- * database, rather than on the day a provider changes a default. Same family as the `NOLOGIN` roles
- * whose refused *login* was mistaken for a refused *privilege*, and as the suite whose fixture never set
- * a tenant context and passed because a superuser did not need one: in each, the database identity the
- * work ran under is what made the result meaningless.
+ * ## So the owner mirrors production instead of exceeding it
  *
- * ## What this increment deliberately does not do
+ * Production applies migrations as Supabase's `postgres`, which bypasses. A CI owner that cannot is not
+ * a stricter test of the same thing, it is a test of something the system has never claimed. Keeping it
+ * would have meant either granting the owner nothing and editing frozen migrations, or keeping a red
+ * that says "your migrations assume what production actually gives them".
  *
- * The suites' own connections stay as they were. Moving those to a non-superuser role as well is worth
- * doing and is a different change: it makes every fixture insert subject to the policies at once, so a
- * missing tenant context would fail in a great many places, and mixing the two would leave neither
- * result legible.
+ * `NOSUPERUSER` stays, and earns its place: it is what caught the extension being installed where the
+ * migrations could not see it, and it still refuses superuser-only DDL.
+ *
+ * ## And the property that mattered is pinned where it belongs
+ *
+ * The guarantee was never about who owns the database — it was about who owns the two functions that
+ * cross tenants. 0104 gives them `nzi_console_definer`, which is `NOBYPASSRLS` by its own definition and
+ * stays that way in production, where this role's attributes are irrelevant. A test asserts
+ * `rolbypassrls` is false on it, so the policies naming it are doing the work rather than decorating it.
+ *
+ * That is the better place for the assertion: a migration states it, every environment gets it, and it
+ * does not depend on how anybody's test harness happens to be configured.
  */
 /**
  * Extensions the schema needs, which the platform provides and the application only uses
@@ -277,7 +286,7 @@ export async function createDisposableDatabase(
     // attributes this one does not expect. NOBYPASSRLS is the point; CREATEROLE is what the migrations
     // need, and it confers no exemption from a policy.
     await cluster.query(
-      `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER NOBYPASSRLS CREATEROLE NOCREATEDB`);
+      `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER BYPASSRLS CREATEROLE NOCREATEDB`);
     // The migrations grant the runtime roles to CURRENT_USER, which needs ADMIN OPTION on roles this
     // one did not create — they were made just above, as the superuser.
     await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
@@ -308,15 +317,21 @@ export async function createDisposableDatabase(
   // cannot bypass row-level security.
   const owner = new pg.Client({ connectionString: asOwner(target.toString()), ...CONNECTION_GUARDS });
   await phase(`connecting as ${OWNER_ROLE}`, () => owner.connect());
-  for (const filename of readdirSync(MIGRATIONS_DIR).filter((entry) => entry.endsWith(".sql")).sort()) {
-    await phase(`applying ${filename}`, () => owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8")));
-    // As soon as the schema exists, and before anything indexes with an operator class from one.
-    if (filename.startsWith("0001_")) {
-      await phase("provisioning extensions", () => provisionExtensions(target.toString()));
+  try {
+    for (const filename of readdirSync(MIGRATIONS_DIR).filter((entry) => entry.endsWith(".sql")).sort()) {
+      await phase(`applying ${filename}`, () => owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8")));
+      // As soon as the schema exists, and before anything indexes with an operator class from one.
+      if (filename.startsWith("0001_")) {
+        await phase("provisioning extensions", () => provisionExtensions(target.toString()));
+      }
+      await phase(`the fixture hook after ${filename}`, async () => { await options.onMigration?.(filename, owner); });
     }
-    await phase(`the fixture hook after ${filename}`, async () => { await options.onMigration?.(filename, owner); });
+  } finally {
+    // Closed however the run ends. A migration that throws leaves its transaction open and aborted, and
+    // without this the connection stays attached — so the *next* run cannot drop the database and fails
+    // saying it is in use, which describes the previous failure rather than its own.
+    await owner.end().catch(() => undefined);
   }
-  await owner.end();
 
   const pool = new pg.Pool({ connectionString: target.toString(), max: 4, application_name: `nzi-${suite}-ci`, ...CONNECTION_GUARDS });
   return {

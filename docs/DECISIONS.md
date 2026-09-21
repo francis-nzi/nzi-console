@@ -3146,6 +3146,16 @@ lineage arriving somewhere it was not expected. That is a sound arrangement and 
 undocumented is how it becomes false: a migration owner on a different provider, or a Supabase change of
 default, turns a working feature into one that silently returns nothing.
 
+> **Amended 21 Sep 2026, by running it.** The paragraph below proposed a non-bypassing CI owner. It was
+> built, and it worked — it found the extension installed into a schema the migrations do not search,
+> and it found the two cross-tenant reads resting on this dependency. Then it found that 0070 seeds a
+> framework row per organisation, which a role subject to tenant policies cannot do and migrations are
+> frozen. Production applies migrations as a bypassing role, so an owner that cannot bypass tests
+> something the system never claimed. The owner now mirrors production — `NOSUPERUSER`, which still
+> refuses superuser-only DDL, but `BYPASSRLS` — and the guarantee moved to where it belongs: NZC-123
+> gives the two functions an owner that is `NOBYPASSRLS` by its own definition, in every environment,
+> stated by a migration rather than by a test harness.
+
 **Which is why the CI owner changes first.** CI connects as `postgres` on the official image, a
 superuser, so every one of these paths is exercised with RLS switched off — the same class as a test
 asserting a denial while holding too much privilege, and of the `NOLOGIN` roles whose refused *login*
@@ -3211,10 +3221,15 @@ stranger with no tenant context can verify a code, that they reach another organ
 too, that the returned columns are exactly the contracted nine, that a wrong code yields nothing rather
 than a hint, and that reading the tables directly yields nothing at all.
 
-**Ordering, and why this is one merge unit.** The non-bypassing test owner had to land first, because it
-is what makes the failure possible; it correctly turns `dataSubjectRegistry` red, which is the proof the
-guard works. The fix that makes it green ships on the same branch, so the red is never a state anybody
-has to live with or explain.
+**Ordering, and why this is one merge unit.** The test-owner change had to land first, because it is what
+made the failure possible — run locally against a real Postgres it produced, in order, the extension
+schema fault, this one, and a frozen data migration that cannot run under tenant policies at all. The fix
+ships on the same branch, so the red is never a state anybody has to live with or explain.
+
+The owner itself ended up mirroring production rather than exceeding it (see the amendment on NZC-122),
+which does not weaken this: `nzi_console_definer` is `NOBYPASSRLS` by its own definition in every
+environment, so the policies here are load-bearing wherever the schema is applied, not only where a
+harness is configured a particular way.
 
 **Related.** NZC-122 (the dependency this replaces), NZC-100 (privilege where policy cannot reach),
 NZC-121 (the confinement that is a grant rather than a convention), NZC-116 (the review queue).

@@ -24,3 +24,6 @@ playwright/.cache/
 # Scratch copies of handoff briefs. Untracked working notes — and they have carried
 # credential values in the past, which must never reach the repository.
 Claude outputs/
+
+# Scratch PR bodies, written for pasting into GitHub and never part of the tree.
+pr-*-body.md
