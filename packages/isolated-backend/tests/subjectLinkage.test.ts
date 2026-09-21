@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 import pg from "pg";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { blindIndex, linkageDigest, normaliseEmailAtRest } from "../src/subjectCrypto";
@@ -28,9 +28,48 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
     db = await database.admin();
     await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,'Org')`, [ORG]);
     await db.query(`SELECT nzi_console.provision_organisation($1)`, [ORG]);
+    // The tenant context. Every statement in this suite used to work without one because CI connects
+    // as a superuser, which bypasses row-level security — so the policies were never the thing being
+    // satisfied. 0103's functions check the context explicitly and a superuser gets no exemption from
+    // an `IF … RAISE`, which is how their first run found this missing.
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
   });
 
   after(async () => { await db?.end(); await database?.end(); });
+
+  afterEach(async () => {
+    /**
+     * Nothing may leave a transaction behind.
+     *
+     * A test that threw between `BEGIN` and `ROLLBACK` left an aborted transaction on the shared
+     * client, and every statement after it failed with 25P02 — "current transaction is aborted" —
+     * including in tests that had nothing to do with the fault. The run then reported six failures
+     * whose visible error was the cascade, and the one real error was five subtests earlier.
+     *
+     * A rollback outside a transaction is a no-op with a notice, so this is safe to run unconditionally
+     * and cheap enough to run always.
+     */
+    await db.query("ROLLBACK").catch(() => undefined);
+  });
+
+  /**
+   * Become the application role for a block, and never leave a transaction open however it ends.
+   *
+   * `SET LOCAL ROLE` rather than connecting as the role: the runtime roles are NOLOGIN, so connecting
+   * would fail before any privilege was checked and the test would pass without exercising anything.
+   */
+  const asAppRole = async <T>(work: () => Promise<T>, options: { commit?: boolean } = {}): Promise<T> => {
+    await db.query("BEGIN");
+    try {
+      await db.query("SET LOCAL ROLE nzi_console_app");
+      const result = await work();
+      await db.query(options.commit ? "COMMIT" : "ROLLBACK");
+      return result;
+    } catch (error) {
+      await db.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
+  };
 
   it("is the same across tables, which the column digests deliberately are not", () => {
     // The whole reason this exists. Ada in `trainees` and Ada in `client_contacts` must look like
@@ -81,12 +120,9 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
     // The behaviour, by becoming the role for one statement rather than connecting as it — the
     // runtime roles are NOLOGIN, so connecting would fail for a reason that has nothing to do with
     // privilege, and the test would pass without exercising it.
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    await assert.rejects(
+    await asAppRole(() => assert.rejects(
       () => db.query(`SELECT linkage_bidx FROM nzi_console.data_subject_linkage`),
-      /permission denied/i, "the application role cannot read a linkage digest");
-    await db.query("ROLLBACK");
+      /permission denied/i, "the application role cannot read a linkage digest"));
 
     await db.query(
       `INSERT INTO nzi_console.data_subject_linkage (organisation_id,source_table,source_id,linkage_bidx)
@@ -103,38 +139,30 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
        VALUES ($1,'c-fn','client-fn','Grace Hopper','seed','seed')`, [ORG]);
     const digest = linkageDigest("grace@example.test", linkageKey)!;
 
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    await db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]);
-    await db.query("COMMIT");
+    await asAppRole(() =>
+      db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]),
+      { commit: true });
 
     const stored = await db.query<{ linkage_bidx: string }>(
       `SELECT linkage_bidx FROM nzi_console.data_subject_linkage WHERE source_id='c-fn'`);
     assert.equal(stored.rows[0]!.linkage_bidx, digest, "the row the arguments named, written as the owner");
 
     // Idempotent, which is what the failing upsert was for: sealing the same row twice must not raise.
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    await db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]);
-    await db.query("COMMIT");
+    await asAppRole(() =>
+      db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]),
+      { commit: true });
   });
 
   it("refuses to record linkage for a person who does not exist, or another tenant's", async () => {
     // The integrity the table cannot express: it has no foreign keys to the person-tables, because it is
     // written by a role that cannot read it. A linkage row for nobody is one the linker reconciles for ever.
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    await assert.rejects(
+    await asAppRole(() => assert.rejects(
       () => db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','no-such','email','deadbeef')`, [ORG]),
-      /No client_contacts row/i);
-    await db.query("ROLLBACK");
+      /No client_contacts row/i));
 
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    await assert.rejects(
+    await asAppRole(() => assert.rejects(
       () => db.query(`SELECT nzi_console.record_subject_linkage('other-org','client_contacts','c-fn','email','deadbeef')`),
-      /outside the current organisation/i, "a definer function's first job is to refuse what its privilege would allow");
-    await db.query("ROLLBACK");
+      /outside the current organisation/i, "a definer function's first job is to refuse what its privilege would allow"));
   });
 
   it("answers about digests the caller supplied, a few at a time, and returns no digest", async () => {
@@ -148,21 +176,19 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
       `INSERT INTO nzi_console.data_subject_links (organisation_id,subject_id,source_table,source_id,link_method,linked_by)
        VALUES ($1,$2,'client_contacts','c-fn','deterministic-email','seed')`, [ORG, subject.rows[0]!.subject_id]);
 
-    await db.query("BEGIN");
-    await db.query("SET LOCAL ROLE nzi_console_app");
-    const found = await db.query<{ subject_id: string; same_table: boolean }>(
+    const found = await asAppRole(() => db.query<{ subject_id: string; same_table: boolean }>(
       `SELECT subject_id, same_table FROM nzi_console.subjects_sharing_linkage($1,'trainees',ARRAY[$2]::text[])`,
-      [ORG, digest]);
+      [ORG, digest]));
     assert.equal(found.rows.length, 1, "the address is known, under one subject");
     assert.equal(found.rows[0]!.same_table, false, "and the match was in another table, which is what makes it the same person");
     assert.ok(!JSON.stringify(found.rows).includes(digest), "the answer carries no digest");
 
     // A cap, because asking about four digests you already hold is a lookup and asking about forty
-    // thousand is an enumeration. This is what keeps the door from being an oracle.
-    await assert.rejects(
+    // thousand is an enumeration. This is what keeps the door from being an oracle. Its own block: a
+    // refusal aborts the transaction, and the assertions above must not be sharing it.
+    await asAppRole(() => assert.rejects(
       () => db.query(`SELECT * FROM nzi_console.subjects_sharing_linkage($1,'trainees',ARRAY['a','b','c','d','e']::text[])`, [ORG]),
-      /one and four digests/i);
-    await db.query("ROLLBACK");
+      /one and four digests/i));
   });
 
   it("tells the linker which rows match, and never what they matched on", async () => {
