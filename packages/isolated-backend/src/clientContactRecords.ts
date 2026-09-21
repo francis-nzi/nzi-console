@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { clientContactRoles, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext, type ContactConsentState } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
+import { sealClientContactRow } from "./piiWriteThrough";
 
 export type ClientContactRow = {
   contact_id: string; client_id: string; full_name: string; job_title: string | null; email: string | null; phone: string | null;
@@ -53,7 +54,21 @@ export async function insertClientContact(db: Queryable, context: CommandContext
   );
   const row = inserted.rows[0]!;
   await recordContactVersion(db, context, row);
+  await sealContact(db, context, row);
   return row;
+}
+
+/**
+ * Ciphertext for the four personal fields, in the same transaction as the plaintext (NZC-119).
+ *
+ * Sealed from the row as it now stands rather than from the input, so a statement that leaves a
+ * field alone leaves its ciphertext alone too — and the two can never describe different values.
+ */
+export function sealContact(db: Queryable, context: CommandContext, row: ClientContactRow) {
+  return sealClientContactRow(
+    { db, organisationId: context.organisationId, actorId: context.actorId },
+    { contactId: row.contact_id, fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone },
+  );
 }
 
 /** A client's contacts — active first (primary on top), then removed ones for the record. */

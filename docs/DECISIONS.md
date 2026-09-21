@@ -2993,3 +2993,79 @@ scanned zero files: a test that cannot fail is indistinguishable from one that p
 
 **Related.** NZC-117 (the encryption this links across), NZC-116 (the linker), NZC-100 (privilege
 where policy cannot reach).
+
+### NZC-119 — Personal data is sealed as it is written, and the backfill's queue is the work itself [Confirmed 21 Sep 2026]
+
+**Decision.** Every write path that stores personal data seals it in the same transaction, through one
+shared sealing path (`piiSealing.ts`); the existing rows are then encrypted by a resumable backfill;
+and a standing check asserts, per column, that no row holds plaintext with null ciphertext.
+
+**Dual-write comes first, and the order is the whole point.** A row created while the backfill is
+running would land behind the point the backfill had already passed: plaintext, no ciphertext,
+therefore unencrypted and unerasable — and nothing anywhere saying so. So the writers seal before the
+backfill runs, and the check afterwards proves the pair held.
+
+**One sealing path, for the application and the operator alike.** The provisioning script and the
+backfill call the same `sealRowPii` the command layer does. Two implementations would agree on the day
+they were written and drift afterwards, and the symptom of drift here is not an error but a row that
+looks encrypted and cannot be read back.
+
+**A write resolves a subject, which makes the write path the primary assigner of subjects.** A field is
+encrypted under *that person's* key, and a row being created has not been seen by the linker yet. So
+the writer applies the linker's own rule inline — join an existing subject only where the address
+already appears in a *different* source table under exactly one subject — and mints one otherwise. A
+shared mailbox still fuses nobody: an address repeated inside one table is a mailbox, not a person, and
+two rival subjects across tables is a question rather than an answer. The linker stays what it was, the
+reconciler, skipping anything already linked.
+
+**The backfill needs no progress table, because the outstanding work is the queue.** A row is
+outstanding exactly when it has plaintext and no ciphertext. An interrupted run has simply left more to
+do; a second run continues; a finished run selects nothing. Nothing is recorded about where it got to,
+so nothing can be wrong about where it got to — and a progress row disagreeing with the data is its own
+species of outage. Each batch is its own transaction, so a crash costs a batch and never half a row.
+
+**"Present" had to be defined once, or the queue never empties.** Several of these columns are
+`NOT NULL DEFAULT ''` — `trainees.phone` and `current_employer_name` among them — so a person who gave
+no phone number has an empty string. Sealing an empty string writes null ciphertext, which a naive
+`IS NOT NULL AND … IS NULL` would select again on the next pass, for ever. Blank-after-trim means
+absent, in the sealing and in the predicate, from one definition.
+
+**The standing check is guarded against passing over nothing.** Three ways: the columns checked are
+counted against the inventory, every column the backfill can fill must appear in that inventory, and
+one column is deliberately emptied so the query is seen to report it. That is the lesson of a date gate
+that went green over zero files and of three privilege tests that proved a denial by connecting as a
+`NOLOGIN` role — a check that cannot fail is indistinguishable from one that passes.
+
+**The inventory names what is *not* sealed, with the reason.** A column left off a list reads as
+handled. Three stages instead: `sealed`, `awaiting-auth-bridge`, and `deferred`. Two findings sit
+behind them.
+
+**`nzi_console_auth` structurally cannot seal.** Trainee self-service, the trainee email change and
+`provisionStaffCredential` run under `withAuthTransaction`, which is the role `nzi_console_auth` and the
+pseudo-tenant `'authentication'`. That role holds no privilege on the registry, the key store or the
+linkage table, and the pseudo-tenant fails their RLS policies, so a write from those paths cannot seal
+at all. The backfill reaches those rows (it runs as the owner); the writers cannot. Held for a ruling
+rather than resolved by widening the auth role's reach to the key store, which is not a change to make
+in passing. The same reading surfaced a pre-existing defect, recorded and not fixed here: those
+trainee statements target `trainees`, which has forced RLS on the real organisation, so under the
+`'authentication'` context they match no rows — trainee self-service has no real-Postgres test and
+appears not to work.
+
+**Deferred means no subject exists to key it to.** A vehicle registration identifies a keeper who is
+not in our data; a site address belongs to a client; a free-text `jobs.owner_name` is the
+name-suggestion class, which by ruling has no index and no reliable subject. Sealing those anyway would
+produce ciphertext no erasure could ever reach, which reads as handled and is not. Others are only a
+link away — `clients.owner_user_id`, `report_versions.signee_contact_id` and
+`portal_report_comments.author_id` each name the person — and `training_bookings` and `lca_suppliers`
+hold real people the registry's `source_table` CHECK cannot name. Those want a ruling and a migration,
+not a guess. `strategy_automation_log.recipient_email` is operational rather than display-only: it is
+part of a unique constraint, so its plaintext cannot be dropped until that moves to a digest.
+
+**And one column has no ciphertext to write to at all.** `client_contact_versions.snapshot_json` holds
+every contact's name, address, job title and phone in the clear, one row per version. 0100 sealed the
+live contact and left its history, so shredding a key today would leave every previous value of the
+same fields readable. Named in the code (`UNSEALED_PII_FOUND`) rather than left out, because an
+inventory that lists only what it covers is how this was missed the first time.
+
+**Related.** NZC-117 (what the ciphertext is), NZC-118 (the linkage digest this writes), NZC-116 (the
+subject it resolves), NZC-100 (privilege where policy cannot reach).

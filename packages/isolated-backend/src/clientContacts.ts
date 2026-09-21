@@ -2,7 +2,7 @@
 // Each role feeds a downstream picker — see `contactsWithRole`.
 import { randomUUID } from "node:crypto";
 import type { CommandContext, CommandInputMap, ContactConsentEvent } from "@nzi/contracts";
-import { CLIENT_CONTACT_COLUMNS, demoteOtherPrimary, insertClientContact, normaliseContactRoles, recordContactVersion, type ClientContactRow } from "./clientContactRecords";
+import { CLIENT_CONTACT_COLUMNS, demoteOtherPrimary, insertClientContact, normaliseContactRoles, recordContactVersion, sealContact, type ClientContactRow } from "./clientContactRecords";
 export { contactsWithRole, listClientContacts, listJobReportSignees } from "./clientContactRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
@@ -47,6 +47,7 @@ export function updateClientContact(pool: PoolLike, input: CommandInputMap["clie
     const row = updated.rows[0];
     if (!row) throw new VersionConflictError();
     await recordContactVersion(db, context, row);
+    await sealContact(db, context, row);
     return { ...result(row, "client.contact.updated"), before: { fullName: current.full_name, isPrimary: current.is_primary, roles: normaliseContactRoles(current.roles ?? []) } };
   });
 }
