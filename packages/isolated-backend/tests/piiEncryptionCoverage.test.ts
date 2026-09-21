@@ -57,9 +57,14 @@ describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_UR
     await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'client-1','Acme','active')`, [ORG]);
 
     // A staff member: the membership is the subject, the credential is their login.
+    //
+    // `consultant` as a literal, because there is no roles table to read one from: `role_id` is text
+    // governed by a CHECK, whose list 0066 replaced — 'administrator' became 'admin' and the rest moved to
+    // ('admin','consultant','reviewer','finance','viewer'). An earlier draft selected from a
+    // roles table that has never existed in this schema — which is what the reference guard now catches.
     await db.query(
       `INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status,display_name,email)
-       VALUES ($1,'user-1',(SELECT role_id FROM nzi_console.roles ORDER BY role_id LIMIT 1),'active','Ada Lovelace','ada@nzi.test')`, [ORG]);
+       VALUES ($1,'user-1','consultant','active','Ada Lovelace','ada@nzi.test')`, [ORG]);
     await db.query(
       `INSERT INTO nzi_console.staff_credentials
          (organisation_id,user_id,email_normalized,password_salt,password_hash,totp_ciphertext,totp_iv,totp_tag)
