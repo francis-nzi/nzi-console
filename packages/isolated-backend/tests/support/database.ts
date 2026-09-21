@@ -24,6 +24,45 @@ import pg from "pg";
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations");
 const RUNTIME_ROLES = ["nzi_console_app", "nzi_console_worker", "nzi_console_auth"];
 
+/**
+ * The role that owns the test database and applies its migrations — deliberately **not** a superuser
+ * (NZC-122).
+ *
+ * ## Why the owner is the thing that matters
+ *
+ * A `SECURITY DEFINER` function runs as its owner, and `FORCE ROW LEVEL SECURITY` applies to a table's
+ * owner. So whether such a function can read across tenants turns on one property of whoever ran the
+ * migrations: does that role hold `BYPASSRLS`.
+ *
+ * CI connects as `postgres` on the official image, which does. Production is Supabase, where `postgres`
+ * also does — by a provider default that no migration grants and nothing stated until NZC-122. So every
+ * definer function has always been exercised with row-level security switched off underneath it, and one
+ * that works only for a bypassing owner has never had anywhere to fail.
+ *
+ * Owning the database with a role that cannot bypass makes that failure happen here, on a throwaway
+ * database, rather than on the day a provider changes a default. Same family as the `NOLOGIN` roles
+ * whose refused *login* was mistaken for a refused *privilege*, and as the suite whose fixture never set
+ * a tenant context and passed because a superuser did not need one: in each, the database identity the
+ * work ran under is what made the result meaningless.
+ *
+ * ## What this increment deliberately does not do
+ *
+ * The suites' own connections stay as they were. Moving those to a non-superuser role as well is worth
+ * doing and is a different change: it makes every fixture insert subject to the policies at once, so a
+ * missing tenant context would fail in a great many places, and mixing the two would leave neither
+ * result legible.
+ */
+const OWNER_ROLE = "nzi_console_test_owner";
+const OWNER_PASSWORD = "nzi_console_test_owner";
+
+/** The same target, reached as the owning role rather than as the cluster superuser. */
+const asOwner = (url: string): string => {
+  const owned = new URL(url);
+  owned.username = OWNER_ROLE;
+  owned.password = OWNER_PASSWORD;
+  return owned.toString();
+};
+
 export const TEST_DATABASE_URL = process.env.NZI_TEST_DATABASE_URL;
 
 /** A suite name is part of a database name, so it may only contain what an identifier may. */
@@ -119,21 +158,41 @@ export async function createDisposableDatabase(
     for (const role of RUNTIME_ROLES) {
       await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
     }
+    await cluster.query(
+      `DO $$ BEGIN CREATE ROLE ${OWNER_ROLE} LOGIN PASSWORD '${OWNER_PASSWORD}'; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+    // Stated every run rather than only at creation, so a role left from an earlier run cannot carry
+    // attributes this one does not expect. NOBYPASSRLS is the point; CREATEROLE is what the migrations
+    // need, and it confers no exemption from a policy.
+    await cluster.query(
+      `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER NOBYPASSRLS CREATEROLE NOCREATEDB`);
+    // The migrations grant the runtime roles to CURRENT_USER, which needs ADMIN OPTION on roles this
+    // one did not create — they were made just above, as the superuser.
+    await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
+
     await cluster.query(`DROP DATABASE IF EXISTS "${name}"`);
     // UTF8 explicitly: the cluster default on Windows is WIN1252, under which a migration
     // containing a "→" fails to apply at all.
-    await cluster.query(`CREATE DATABASE "${name}" ENCODING 'UTF8' TEMPLATE template0`);
+    await cluster.query(`CREATE DATABASE "${name}" ENCODING 'UTF8' TEMPLATE template0 OWNER ${OWNER_ROLE}`);
   } finally {
     await cluster.end();
   }
 
-  const admin = new pg.Client({ connectionString: target.toString() });
-  await admin.connect();
+  // pg_trgm is a trusted extension and the owner could install it. Installing it here as the superuser
+  // keeps this change about who owns things rather than about what an owner may install.
+  const seeder = new pg.Client({ connectionString: target.toString() });
+  await seeder.connect();
+  await seeder.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+  await seeder.end();
+
+  // Applied as the owner, so every table, policy and SECURITY DEFINER function belongs to a role that
+  // cannot bypass row-level security.
+  const owner = new pg.Client({ connectionString: asOwner(target.toString()) });
+  await owner.connect();
   for (const filename of readdirSync(MIGRATIONS_DIR).filter((entry) => entry.endsWith(".sql")).sort()) {
-    await admin.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
-    await options.onMigration?.(filename, admin);
+    await owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
+    await options.onMigration?.(filename, owner);
   }
-  await admin.end();
+  await owner.end();
 
   const pool = new pg.Pool({ connectionString: target.toString(), max: 4, application_name: `nzi-${suite}-ci` });
   return {
