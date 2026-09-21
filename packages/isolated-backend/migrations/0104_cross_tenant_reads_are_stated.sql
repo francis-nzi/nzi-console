@@ -23,8 +23,9 @@
 --
 -- The permission to cross a tenant boundary is now a line of SQL that can be read, reviewed, and
 -- revoked, rather than an attribute of whoever happened to run the migrations. Nothing here needs
--- `BYPASSRLS`, which a non-superuser could not grant anyway — the test database is now owned by exactly
--- such a role, which is what made this visible.
+-- `BYPASSRLS` at all: the role that owns these two functions is `NOBYPASSRLS` by its own definition, in
+-- every environment, so the policies below are what lets them cross and not a property of the account
+-- that applied this file.
 --
 -- ## Why this is narrow, and where the narrowness actually lives
 --
@@ -59,8 +60,18 @@ EXCEPTION
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nzi_console_definer') THEN RAISE; END IF;
 END $$;
 
--- The current owner must be a member of the new owner to hand a function over.
-GRANT nzi_console_definer TO CURRENT_USER;
+-- Handing a function to a new owner requires being able to SET ROLE to it — that is, membership.
+--
+-- Granted only when it is missing, because granting a role requires ADMIN OPTION on it and the role
+-- may have been created by somebody else. A superuser is implicitly a member of everything, so on
+-- Supabase this does nothing and the ALTERs below simply work. Where the platform has already made
+-- this role and granted it, this does nothing either. Where neither is true, the GRANT runs — and if
+-- that is refused, the migration says so rather than failing later on an ALTER that looks unrelated.
+DO $$ BEGIN
+  IF NOT pg_has_role(current_user, 'nzi_console_definer', 'MEMBER') THEN
+    EXECUTE 'GRANT nzi_console_definer TO CURRENT_USER';
+  END IF;
+END $$;
 
 COMMENT ON ROLE nzi_console_definer IS
   'Owns the two functions that read across tenants on purpose, and nothing else. It cannot log in and does not bypass row-level security: everything it may read is a policy naming it, so the permission to cross a tenant boundary is reviewable rather than an attribute of whoever ran the migrations.';

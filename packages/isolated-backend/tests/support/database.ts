@@ -25,6 +25,27 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..",
 const RUNTIME_ROLES = ["nzi_console_app", "nzi_console_worker", "nzi_console_auth"];
 
 /**
+ * The role that owns the two cross-tenant functions (0104), bootstrapped here rather than left to the
+ * migration that needs it.
+ *
+ * Roles are cluster-wide and databases are not, so in a job that builds one database per suite the role
+ * is created once — by whichever suite runs first — and every later suite finds it already there. The
+ * two helpers apply migrations as different identities: `ensureDisposableDatabase` as the superuser,
+ * `createDisposableDatabase` as the owner. So the first suite to run decides who owns the role, and in
+ * CI that is the superuser, leaving the owner unable to grant it or to reassign a function to it:
+ * "permission denied to grant role".
+ *
+ * Locally it passed for the opposite accident — the owner happened to run first and kept admin on what
+ * it had created. A green that depends on which suite ran first is not a green, and the fix is to stop
+ * the question being asked: the role exists before any migration runs, and the owner is a member of it
+ * with admin, whichever helper goes first.
+ */
+const DEFINER_ROLE = "nzi_console_definer";
+
+/** Every role the platform provides before a migration asks for it. */
+const BOOTSTRAP_ROLES = [...RUNTIME_ROLES, DEFINER_ROLE];
+
+/**
  * The role that owns the test database and applies its migrations: **not a superuser, but it does
  * bypass row-level security** — which is what production does (NZC-122).
  *
@@ -227,7 +248,7 @@ export async function ensureDisposableDatabase(suite: string): Promise<string | 
   await phase("connecting to the cluster", () => cluster.connect());
   try {
     await phase("creating the runtime roles", async () => {
-      for (const role of RUNTIME_ROLES) {
+      for (const role of BOOTSTRAP_ROLES) {
         await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
       }
     });
@@ -276,7 +297,7 @@ export async function createDisposableDatabase(
   await phase("connecting to the cluster", () => cluster.connect());
   try {
     await phase("creating the runtime roles", async () => {
-      for (const role of RUNTIME_ROLES) {
+      for (const role of BOOTSTRAP_ROLES) {
         await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
       }
     });
@@ -289,7 +310,10 @@ export async function createDisposableDatabase(
       `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER BYPASSRLS CREATEROLE NOCREATEDB`);
     // The migrations grant the runtime roles to CURRENT_USER, which needs ADMIN OPTION on roles this
     // one did not create — they were made just above, as the superuser.
-    await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
+    // Membership is what `ALTER FUNCTION … OWNER TO` requires of whoever runs it, and admin is what a
+    // GRANT of the same role requires. Both, for every bootstrapped role, so the migration works
+    // whatever created the role first.
+    await cluster.query(`GRANT ${BOOTSTRAP_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
 
     // Checked once, here, rather than discovered as a failing index in every suite in turn. An image
     // without the extension is an environment problem and should say so in one line.
