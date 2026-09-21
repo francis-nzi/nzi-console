@@ -30,10 +30,16 @@ const WORKFLOW = resolve(here, "..", "..", "..", ".github", "workflows", "ci.yml
  * Real-database suites the CI job does not run, recorded rather than hidden.
  *
  * Every name here is a test that exists, passes for whoever has a local Postgres, and proves nothing in
- * CI. Several are load-bearing — tenant isolation, the subject registry, the linkage confinement, the
- * spend-import period pairing — so this is a list to empty, one job step at a time, not a list to live
- * with. It is spelled out so that the gap is a tracked decision and so that a *new* suite cannot join it
- * by accident: adding one fails this test until it is either run by CI or named here with a reason.
+ * CI. A list to empty, a few steps per change, not a list to live with.
+ *
+ * The five load-bearing ones went first and have left it: tenant isolation, the subject registry, the
+ * linkage confinement, the asset identifier a snapshot must not carry, and the spend-import period
+ * pairing. Those were guarantees this repository believed it had and was not checking.
+ *
+ * What remains is the ordinary backlog. It is spelled out so the gap stays a tracked decision, and so a
+ * *new* suite cannot join it by accident: adding one fails this test until it is either run by CI or
+ * named here on purpose. The list may not outlive its entries either — a suite CI now runs has to leave
+ * it, which is what forced this edit rather than leaving five stale names behind.
  */
 const NOT_RUN_IN_CI: ReadonlyArray<string> = [
   "accessProbeReal",
@@ -41,17 +47,12 @@ const NOT_RUN_IN_CI: ReadonlyArray<string> = [
   "aiAssistCommitBoundary",
   "clientCategoryVisibility",
   "clientFactorAlias",
-  "dataSubjectRegistry",
   "dateShiftGuards",
   "inputSpecReproducesGolden",
   "jobCreateContract",
   "monthlyAndLabelCharacterisation",
   "reportingChainOrdering",
   "reportLabelSurvivesSync",
-  "snapshotOmitsAssetIdentifier",
-  "spendImportPeriodPairing",
-  "subjectLinkage",
-  "tenantIsolationReal",
 ];
 
 describe("sealing keys are required, and the suites that need a database are run", () => {
