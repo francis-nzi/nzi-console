@@ -37,7 +37,30 @@ async function main(): Promise<void> {
   const keys = resolveSealingKeys();
   const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-pii-backfill" });
   try {
+    // Which organisations exist, before claiming anything about one of them.
+    //
+    // This runs per organisation and `NZI_DEMO_ORGANISATION_ID` has a default, so a name matching
+    // nothing would count zero rows in every table and print "every row with personal data now has
+    // ciphertext beside it" — a clean report of work that did not happen. Same shape as a gate that
+    // passed over no files, and it would be believed, because the operator asked for exactly this.
+    const known = await pool.query<{ organisation_id: string }>(
+      `SELECT organisation_id FROM nzi_console.organisations ORDER BY organisation_id`);
+    const names = known.rows.map((row) => row.organisation_id);
+    if (!names.includes(ORG)) {
+      throw new Error(
+        `Organisation '${ORG}' does not exist on this database, so there is nothing to seal and a ` +
+        `success here would mean nothing. Set NZI_DEMO_ORGANISATION_ID to one of: ` +
+        `${names.join(", ") || "(none — this database has no organisations)"}.`);
+    }
+
+    const others = names.filter((name) => name !== ORG);
     log(`\n${DRY_RUN ? "Dry run" : "Sealing"} · organisation ${ORG} · batches of ${BATCH}\n`);
+    if (others.length > 0) {
+      // Personal data in an organisation this run does not touch is personal data still in the clear.
+      log(`  ${others.length} other organisation(s) on this database, each needing a run of its own:`);
+      for (const name of others) log(`    ${name}`);
+      log("");
+    }
     const outcome = await backfillSealedPii(pool, {
       organisationId: ORG, actorId: ACTOR, keys, batchSize: BATCH, dryRun: DRY_RUN,
       onProgress: ({ table, sealed, outstanding }) =>
