@@ -110,12 +110,12 @@ async function resolveSubject(
   let subjectId: string | null = null;
 
   if (digests.length > 0) {
+    // Through the privileged door, never the table (NZC-121). An earlier version of this joined
+    // `data_subject_linkage` directly, which is the correlating read NZC-118 confined — done by the very
+    // role it was confined against. The grant refused it, which is the argument for a confinement being
+    // a privilege rather than a convention.
     const peers = await db.query<{ subject_id: string; same_table: boolean }>(
-      `SELECT DISTINCT l.subject_id, (k.source_table = $2) AS same_table
-         FROM nzi_console.data_subject_linkage k
-         JOIN nzi_console.data_subject_links l
-           ON (l.organisation_id, l.source_table, l.source_id) = (k.organisation_id, k.source_table, k.source_id)
-        WHERE k.organisation_id = $1 AND k.linkage_bidx = ANY($3::text[])`,
+      `SELECT subject_id, same_table FROM nzi_console.subjects_sharing_linkage($1,$2,$3::text[])`,
       [organisationId, subject.sourceTable, digests]);
     const candidates = new Set(peers.rows.map((row) => row.subject_id));
     if (candidates.size === 1 && peers.rows.every((row) => !row.same_table)) {
@@ -219,15 +219,13 @@ export async function sealRowPii(
     await db.query(`UPDATE nzi_console.${table} SET ${assignments.join(",")} WHERE ${where}`, params);
   }
 
-  // The linkage digest lives in its own table, which the application may write and never read.
+  // The linkage digest lives in its own table, which no role may touch directly at all: one function
+  // writes the row in hand and returns nothing, so a digest cannot come back out (NZC-121).
   const linkageTable = request.linkageTable ?? subject.sourceTable;
   const linkageId = request.linkageId ?? subject.sourceId;
   for (const field of operational) {
     await db.query(
-      `INSERT INTO nzi_console.data_subject_linkage (organisation_id,source_table,source_id,field,linkage_bidx)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (organisation_id,source_table,source_id,field)
-       DO UPDATE SET linkage_bidx=EXCLUDED.linkage_bidx, computed_at=now()`,
+      `SELECT nzi_console.record_subject_linkage($1,$2,$3,$4,$5)`,
       [organisationId, linkageTable, linkageId, field.field, linkageDigest(field.value, keys.linkageKey)]);
   }
 

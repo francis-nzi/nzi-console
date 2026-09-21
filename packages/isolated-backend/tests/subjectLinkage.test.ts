@@ -57,18 +57,26 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
     assert.equal(linkageDigest("   ", linkageKey), null);
   });
 
-  it("cannot be read by the application role, only written", async () => {
-    // The confinement that matters, and it is a grant rather than a convention: reading a digest is
-    // the correlating act, and it has exactly one entry point.
+  it("cannot be read or written directly by the application role", async () => {
+    // 0101 granted INSERT and UPDATE and revoked SELECT, and the seal path then found the gap between
+    // those: `INSERT … ON CONFLICT DO UPDATE` needs SELECT on the conflict target, so a statement that
+    // looked permitted was not. Widening the grant to fix it would also have made the correlating read
+    // legal, so 0103 took the other direction — no direct privilege at all, two definer doors (NZC-121).
     await db.query(
       `INSERT INTO nzi_console.data_subject_linkage (organisation_id,source_table,source_id,linkage_bidx)
        VALUES ($1,'trainees','t-1',$2)`, [ORG, linkageDigest("ada@example.test", linkageKey)]);
 
-    const granted = await db.query<{ sel: boolean; ins: boolean }>(
+    const granted = await db.query<{ sel: boolean; ins: boolean; upd: boolean; exec_write: boolean; exec_read: boolean }>(
       `SELECT has_table_privilege('nzi_console_app','nzi_console.data_subject_linkage','SELECT') AS sel,
-              has_table_privilege('nzi_console_app','nzi_console.data_subject_linkage','INSERT') AS ins`);
+              has_table_privilege('nzi_console_app','nzi_console.data_subject_linkage','INSERT') AS ins,
+              has_table_privilege('nzi_console_app','nzi_console.data_subject_linkage','UPDATE') AS upd,
+              has_function_privilege('nzi_console_app','nzi_console.record_subject_linkage(text,text,text,text,text)','EXECUTE') AS exec_write,
+              has_function_privilege('nzi_console_app','nzi_console.subjects_sharing_linkage(text,text,text[])','EXECUTE') AS exec_read`);
     assert.equal(granted.rows[0]!.sel, false, "reading a digest is the correlating act, and is not granted");
-    assert.equal(granted.rows[0]!.ins, true, "writing one is, because the linker computes them");
+    assert.equal(granted.rows[0]!.ins, false, "nor is writing one directly");
+    assert.equal(granted.rows[0]!.upd, false, "nor updating one");
+    assert.equal(granted.rows[0]!.exec_write, true, "the write goes through the function");
+    assert.equal(granted.rows[0]!.exec_read, true, "and so does the only read a write path needs");
 
     // The behaviour, by becoming the role for one statement rather than connecting as it — the
     // runtime roles are NOLOGIN, so connecting would fail for a reason that has nothing to do with
@@ -83,6 +91,78 @@ describe("the linkage digest (NZC-118)", { skip: DATABASE_URL ? false : "NZI_TES
     await db.query(
       `INSERT INTO nzi_console.data_subject_linkage (organisation_id,source_table,source_id,linkage_bidx)
        VALUES ($1,'client_contacts','c-1',$2)`, [ORG, linkageDigest("ada@example.test", linkageKey)]);
+  });
+
+  it("records a digest through the function, for the row in hand and no other", async () => {
+    // The write door. Becoming the role for the statement, because the runtime roles are NOLOGIN and
+    // connecting as one would fail before any privilege was checked.
+    await db.query(
+      `INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'client-fn','Acme','active')`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.client_contacts (organisation_id,contact_id,client_id,full_name,created_by,updated_by)
+       VALUES ($1,'c-fn','client-fn','Grace Hopper','seed','seed')`, [ORG]);
+    const digest = linkageDigest("grace@example.test", linkageKey)!;
+
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]);
+    await db.query("COMMIT");
+
+    const stored = await db.query<{ linkage_bidx: string }>(
+      `SELECT linkage_bidx FROM nzi_console.data_subject_linkage WHERE source_id='c-fn'`);
+    assert.equal(stored.rows[0]!.linkage_bidx, digest, "the row the arguments named, written as the owner");
+
+    // Idempotent, which is what the failing upsert was for: sealing the same row twice must not raise.
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','c-fn','email',$2)`, [ORG, digest]);
+    await db.query("COMMIT");
+  });
+
+  it("refuses to record linkage for a person who does not exist, or another tenant's", async () => {
+    // The integrity the table cannot express: it has no foreign keys to the person-tables, because it is
+    // written by a role that cannot read it. A linkage row for nobody is one the linker reconciles for ever.
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await assert.rejects(
+      () => db.query(`SELECT nzi_console.record_subject_linkage($1,'client_contacts','no-such','email','deadbeef')`, [ORG]),
+      /No client_contacts row/i);
+    await db.query("ROLLBACK");
+
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    await assert.rejects(
+      () => db.query(`SELECT nzi_console.record_subject_linkage('other-org','client_contacts','c-fn','email','deadbeef')`),
+      /outside the current organisation/i, "a definer function's first job is to refuse what its privilege would allow");
+    await db.query("ROLLBACK");
+  });
+
+  it("answers about digests the caller supplied, a few at a time, and returns no digest", async () => {
+    // The read door. It exists so a write path can avoid minting a rival subject for somebody already
+    // known, without being able to correlate the estate.
+    const digest = linkageDigest("grace@example.test", linkageKey)!;
+    const subject = await db.query<{ subject_id: string }>(
+      `INSERT INTO nzi_console.data_subjects (organisation_id,subject_id,created_by)
+       VALUES ($1,gen_random_uuid(),'seed') RETURNING subject_id`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.data_subject_links (organisation_id,subject_id,source_table,source_id,link_method,linked_by)
+       VALUES ($1,$2,'client_contacts','c-fn','deterministic-email','seed')`, [ORG, subject.rows[0]!.subject_id]);
+
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE nzi_console_app");
+    const found = await db.query<{ subject_id: string; same_table: boolean }>(
+      `SELECT subject_id, same_table FROM nzi_console.subjects_sharing_linkage($1,'trainees',ARRAY[$2]::text[])`,
+      [ORG, digest]);
+    assert.equal(found.rows.length, 1, "the address is known, under one subject");
+    assert.equal(found.rows[0]!.same_table, false, "and the match was in another table, which is what makes it the same person");
+    assert.ok(!JSON.stringify(found.rows).includes(digest), "the answer carries no digest");
+
+    // A cap, because asking about four digests you already hold is a lookup and asking about forty
+    // thousand is an enumeration. This is what keeps the door from being an oracle.
+    await assert.rejects(
+      () => db.query(`SELECT * FROM nzi_console.subjects_sharing_linkage($1,'trainees',ARRAY['a','b','c','d','e']::text[])`, [ORG]),
+      /one and four digests/i);
+    await db.query("ROLLBACK");
   });
 
   it("tells the linker which rows match, and never what they matched on", async () => {

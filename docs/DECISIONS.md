@@ -2963,6 +2963,12 @@ table, which `nzi_console_app` may write and may never read, because reading a d
 correlating act; that is the NZC-100 lineage, where a policy cannot confine a thing and privilege
 does. And nulled on erasure, so an erased person is not merely unreadable but uncorrelatable.
 
+> **Amended by NZC-121 (21 Sep 2026).** "May write and may never read" is no longer accurate: the write
+> grant is revoked too, and the table now has no direct privilege at all. The first code to touch it
+> proved the middle ground untenable — an upsert needs SELECT on its conflict target, so the write
+> grant did not actually permit the write, and widening it would have permitted the correlating read.
+> Both directions go through a SECURITY DEFINER function instead.
+
 **The function returns groups, not digests.** The linker needs to know which rows match and never
 needs the value they matched on, so a caller cannot take the correlatable value away and compare it
 against a guess.
@@ -3069,3 +3075,53 @@ inventory that lists only what it covers is how this was missed the first time.
 
 **Related.** NZC-117 (what the ciphertext is), NZC-118 (the linkage digest this writes), NZC-116 (the
 subject it resolves), NZC-100 (privilege where policy cannot reach).
+
+### NZC-121 — The linkage table gets no direct privilege at all [Confirmed 21 Sep 2026]
+
+**Decision.** `data_subject_linkage` is reachable only through `SECURITY DEFINER` functions (migration
+0103). `nzi_console_app` keeps no SELECT, INSERT or UPDATE on it — 0101's write grants are revoked — and
+two narrow functions replace them: one records the digest for the row in hand and returns nothing, one
+answers which subject already holds a supplied digest and returns no digest.
+
+**What ran, and what it proved.** The seal path touched the table directly, twice, and both were wrong.
+Neither was discoverable until the suite met a real Postgres for the first time, because it was one of
+the seventeen that CI never ran. That is the argument for emptying that list rather than living with it:
+the gap did not hide a flaky test, it hid a design contradiction.
+
+**The write was a privilege slip.** `INSERT … ON CONFLICT (…) DO UPDATE` needs SELECT on the
+conflict-target columns, and 0101 revoked SELECT while granting INSERT and UPDATE. So the statement read
+as permitted and was refused — `permission denied for table data_subject_linkage`.
+
+**The read was the real fault.** Resolving a subject at write time joined `data_subject_linkage` to find
+the same address in another table. That is precisely the correlating read NZC-118 confined, performed by
+the role it was confined against. The grant refused it, which is the case for a confinement being a
+privilege rather than a convention: a comment would have been read as satisfied by the intent.
+
+**So the grant narrowed rather than widened.** A grant that made the failing upsert legal would also
+have made the correlating read legal, which is the thing being prevented. Zero direct privilege, two
+doors.
+
+**Narrow, stated as limits rather than intentions.** The write function takes one row's worth of
+arguments and returns `void`, so no digest can come back through it. The read function answers about **at
+most four digests at a time** — a row has two addresses; four is a lookup and forty thousand is an
+enumeration — and returns a subject id and whether the match was in the caller's own table, never a
+digest. The caller already holds the linkage key, because it must compute the digests it writes, so being
+able to ask about a digest it computed itself is not a new capability. What stays withheld is reading
+*stored* digests, which is how an estate gets correlated.
+
+**Integrity the table cannot express.** `data_subject_linkage` has no foreign keys to the person-tables,
+because it is written by a role that cannot read it. So the write function checks the row it is asked
+about exists — per table, written out rather than as dynamic SQL, because dynamic SQL inside a definer
+function is where injection lives.
+
+**This is not the auth bridge, and the reason is worth recording.** A `SECURITY DEFINER` function **does
+not bypass row-level security**. The table has `FORCE ROW LEVEL SECURITY` and a policy on
+`app.organisation_id`, so a write for a real organisation from the authentication context — where that
+setting is the pseudo-tenant `'authentication'` — is refused by the policy no matter who owns the
+function. Granting EXECUTE to `nzi_console_auth` would buy nothing and imply otherwise, so it is not
+granted. The authentication writers stay `awaiting-auth-bridge`, and their bridge has a **policy**
+question to answer rather than a privilege one: what the tenant context means for a transaction that is
+cross-tenant by nature. That is its own decision and its own review stop.
+
+**Related.** NZC-118 (the confinement this makes absolute), NZC-119 (the seal path that broke it),
+NZC-100 (privilege where policy cannot reach), NZC-116 (the subject being resolved).
