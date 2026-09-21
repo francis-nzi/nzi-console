@@ -75,7 +75,7 @@ const REQUIRED_EXTENSIONS = ["pg_trgm"] as const;
 
 /** Install the extensions as the superuser, into the schema the migrations actually search. */
 async function provisionExtensions(url: string): Promise<void> {
-  const client = new pg.Client({ connectionString: url });
+  const client = new pg.Client({ connectionString: url, ...CONNECTION_GUARDS });
   await client.connect();
   try {
     for (const extension of REQUIRED_EXTENSIONS) {
@@ -83,6 +83,41 @@ async function provisionExtensions(url: string): Promise<void> {
     }
   } finally {
     await client.end();
+  }
+}
+
+/**
+ * Timeouts on every connection this helper opens, so a block surfaces as an error naming the
+ * statement rather than as a step that runs until CI kills it.
+ *
+ * A hang and a slow pass look identical from outside, and a fourteen-minute one teaches everybody to
+ * stop reading the step. Same principle as checking `pg_available_extensions` before building
+ * anything: an environment problem should say what it is, once, quickly.
+ *
+ * `lock_timeout` is deliberately much shorter than `statement_timeout`, because they separate two
+ * faults. A statement that runs long is doing work; one that waits ten seconds for a lock is waiting
+ * on something that is not going to let go, and the error names the relation.
+ * `connectionTimeoutMillis` covers the third case — a server that accepts a socket and never answers,
+ * which `pg` will otherwise wait on for ever.
+ */
+const CONNECTION_GUARDS = {
+  connectionTimeoutMillis: 10_000,
+  statement_timeout: 60_000,
+  lock_timeout: 10_000,
+} as const;
+
+/**
+ * Name the stage a failure happened in.
+ *
+ * Building a database is half a dozen distinct things and "it hung" does not say which. The label is
+ * carried into the error, so the next run reports the stage rather than a line number in a helper.
+ */
+async function phase<T>(label: string, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`while ${label}: ${message}`, { cause: error });
   }
 }
 
@@ -141,13 +176,17 @@ export async function ensureDisposableDatabase(suite: string): Promise<string | 
   target.pathname = `/${name}`;
   assertDisposable(target.toString());
 
-  const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL });
-  await cluster.connect();
+  const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL, ...CONNECTION_GUARDS });
+  await phase("connecting to the cluster", () => cluster.connect());
   try {
-    for (const role of RUNTIME_ROLES) {
-      await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    }
-    await cluster.query(`DROP DATABASE IF EXISTS "${name}"`);
+    await phase("creating the runtime roles", async () => {
+      for (const role of RUNTIME_ROLES) {
+        await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+      }
+    });
+    // The classic block: DROP DATABASE waits on any session still attached to it. With a lock
+    // timeout it says so in ten seconds instead of waiting for the job to be killed.
+    await phase(`dropping the previous ${name}`, () => cluster.query(`DROP DATABASE IF EXISTS "${name}"`));
     await cluster.query(`CREATE DATABASE "${name}" ENCODING 'UTF8' TEMPLATE template0`);
   } finally {
     await cluster.end();
@@ -186,12 +225,14 @@ export async function createDisposableDatabase(
 
   // DROP DATABASE cannot run inside a transaction or against a database in use, so this is done
   // from the base database, which this suite never connects to for anything else.
-  const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL });
-  await cluster.connect();
+  const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL, ...CONNECTION_GUARDS });
+  await phase("connecting to the cluster", () => cluster.connect());
   try {
-    for (const role of RUNTIME_ROLES) {
-      await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    }
+    await phase("creating the runtime roles", async () => {
+      for (const role of RUNTIME_ROLES) {
+        await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+      }
+    });
     await cluster.query(
       `DO $$ BEGIN CREATE ROLE ${OWNER_ROLE} LOGIN PASSWORD '${OWNER_PASSWORD}'; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
     // Stated every run rather than only at creation, so a role left from an earlier run cannot carry
@@ -215,7 +256,9 @@ export async function createDisposableDatabase(
         `gin_trgm_ops (0086). Install the contrib package, or use an image that ships it.`);
     }
 
-    await cluster.query(`DROP DATABASE IF EXISTS "${name}"`);
+    // The classic block: DROP DATABASE waits on any session still attached to it. With a lock
+    // timeout it says so in ten seconds instead of waiting for the job to be killed.
+    await phase(`dropping the previous ${name}`, () => cluster.query(`DROP DATABASE IF EXISTS "${name}"`));
     // UTF8 explicitly: the cluster default on Windows is WIN1252, under which a migration
     // containing a "→" fails to apply at all.
     await cluster.query(`CREATE DATABASE "${name}" ENCODING 'UTF8' TEMPLATE template0 OWNER ${OWNER_ROLE}`);
@@ -225,22 +268,24 @@ export async function createDisposableDatabase(
 
   // Applied as the owner, so every table, policy and SECURITY DEFINER function belongs to a role that
   // cannot bypass row-level security.
-  const owner = new pg.Client({ connectionString: asOwner(target.toString()) });
-  await owner.connect();
+  const owner = new pg.Client({ connectionString: asOwner(target.toString()), ...CONNECTION_GUARDS });
+  await phase(`connecting as ${OWNER_ROLE}`, () => owner.connect());
   for (const filename of readdirSync(MIGRATIONS_DIR).filter((entry) => entry.endsWith(".sql")).sort()) {
-    await owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
+    await phase(`applying ${filename}`, () => owner.query(readFileSync(join(MIGRATIONS_DIR, filename), "utf8")));
     // As soon as the schema exists, and before anything indexes with an operator class from one.
-    if (filename.startsWith("0001_")) await provisionExtensions(target.toString());
-    await options.onMigration?.(filename, owner);
+    if (filename.startsWith("0001_")) {
+      await phase("provisioning extensions", () => provisionExtensions(target.toString()));
+    }
+    await phase(`the fixture hook after ${filename}`, async () => { await options.onMigration?.(filename, owner); });
   }
   await owner.end();
 
-  const pool = new pg.Pool({ connectionString: target.toString(), max: 4, application_name: `nzi-${suite}-ci` });
+  const pool = new pg.Pool({ connectionString: target.toString(), max: 4, application_name: `nzi-${suite}-ci`, ...CONNECTION_GUARDS });
   return {
     pool,
     url: target.toString(),
     admin: async () => {
-      const client = new pg.Client({ connectionString: target.toString() });
+      const client = new pg.Client({ connectionString: target.toString(), ...CONNECTION_GUARDS });
       await client.connect();
       return client;
     },
