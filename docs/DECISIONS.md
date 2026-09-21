@@ -3125,3 +3125,49 @@ cross-tenant by nature. That is its own decision and its own review stop.
 
 **Related.** NZC-118 (the confinement this makes absolute), NZC-119 (the seal path that broke it),
 NZC-100 (privilege where policy cannot reach), NZC-116 (the subject being resolved).
+
+### NZC-122 — The cross-tenant reads work because of a provider default nobody wrote down [Confirmed 21 Sep 2026]
+
+**The dependency, recorded before the fix rather than after.** Two `SECURITY DEFINER` functions read
+across tenants on purpose — `open_subject_reviews` (the DPO review queue) and
+`verify_training_certificate` (public certificate checking). Both read tables carrying
+`FORCE ROW LEVEL SECURITY`, and **FORCE applies to the table's owner**. A definer function runs as its
+owner, not as a superuser, so neither function can cross a tenant boundary unless its owner holds
+`BYPASSRLS`.
+
+Production is Supabase. The owner is `postgres`, and Supabase gives that role `rolbypassrls = true`. So
+both functions work today — and they work because of a managed-provider default that no migration
+grants, no document states and no test exercises.
+
+**What this means about the confinement.** Row-level security is not what confines those two functions;
+for their owner it is switched off entirely. What actually confines them is the **grant** — EXECUTE to
+`nzi_console_app` and to nobody else — and the **explicit guards inside them**, which is the NZC-100
+lineage arriving somewhere it was not expected. That is a sound arrangement and an undocumented one, and
+undocumented is how it becomes false: a migration owner on a different provider, or a Supabase change of
+default, turns a working feature into one that silently returns nothing.
+
+**Which is why the CI owner changes first.** CI connects as `postgres` on the official image, a
+superuser, so every one of these paths is exercised with RLS switched off — the same class as a test
+asserting a denial while holding too much privilege, and of the `NOLOGIN` roles whose refused *login*
+was mistaken for a refused *privilege*. In all three the database identity the assertion runs under is
+what makes it vacuous. A CI database built and owned by a **non-superuser** role mirrors the shape that
+matters, and then a function that only works for a bypassing owner fails loudly instead of passing
+quietly. The policy fix is written against that, not before it.
+
+**What will and will not break under a non-bypassing owner, stated so the result is a check rather than
+a surprise.** `record_subject_linkage`, `subjects_sharing_linkage`, `subject_linkage_groups`,
+`revoke_portal_user_sessions` and `revoke_trainee_sessions` all filter to one organisation and guard that
+it matches the caller's context, so every row they touch satisfies the policy and they need no bypass.
+Only the two deliberate tenant-crossers do. The fix for those is an explicit cross-tenant clause, not a
+grant of `BYPASSRLS`.
+
+**`claim_verify_attempt` is not a third one.** It is the verify rate-limiter (0074), and its table
+`verify_rate_limit` has no `organisation_id` and no policy *by design* — an unauthenticated caller has no
+organisation, so there is nothing to scope it by, and it is confined by the definer and the grant in the
+same shape as the verification read. A survey that flagged it as tenant-crossing was using "does not
+mention organisation_id" as its test, which conflates having no tenant dimension with crossing one. The
+heuristic was wrong; the function is as designed.
+
+**Related.** NZC-100 (privilege where policy cannot reach), NZC-121 (the confinement that is a grant
+rather than a convention), NZC-116 (the review queue this read serves), NZC-118 (the linkage functions
+that need no bypass).
