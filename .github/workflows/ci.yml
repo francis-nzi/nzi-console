@@ -158,6 +158,10 @@ jobs:
       # 0104 a test of it would have proved nothing: the property was switched off underneath it.
       - name: A stranger can verify a certificate, and see only the contract
         run: npx tsx --test packages/isolated-backend/tests/certificateVerificationReal.test.ts
+      # The shared read under both the subject access export and erasure. What it reaches decides what
+      # either can claim, so it is checked against a real schema rather than a fake pool.
+      - name: Everything belonging to one person, resolved once
+        run: npx tsx --test packages/isolated-backend/tests/subjectResolutionReal.test.ts
       # Idempotency is a property of a unique index and a claim taken before a send, so it
       # is only really tested against a database that can refuse the second one.
       - name: Reminders send once, and the outbox backlog sends nothing

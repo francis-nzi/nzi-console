@@ -3404,3 +3404,94 @@ is recorded as its own item and not answered here.
 
 **Related.** NZC-125 (the inventory that carries the treatment), NZC-116 (the tombstone), NZC-117 (the
 shred these dangle from).
+
+### NZC-128 — One read path under both the export and the erasure [Confirmed 21 Sep 2026]
+
+**Decision.** `resolveSubjectData` gathers everything belonging to one person — the registry's links, the
+person-rows they name, those rows' history, and the associations that point at them — and both the
+subject access export and the erasure command read through it. It takes the inventory's word for which
+columns hold personal data and has no opinion of its own.
+
+**Why one path rather than two.** An export that found a row erasure did not would be a promise the
+erasure then broke, and neither operation could see that from the inside. Sharing the traversal makes
+them agree by construction rather than by review. The test asserts it directly: the same rows and the
+same columns come back in both modes.
+
+**Two modes, and the difference is reading rather than reaching.** Export decrypts; erasure does not,
+because it is about to destroy the key and decrypting first would put the plaintext somewhere for no
+reason. `decrypt` switches what is read and never what is visited.
+
+**Every datum is answered, including the ones it cannot read.** A column that is absent, unreadable,
+deliberately not read, or not yet sealed comes back with the reason. A missing entry would be
+indistinguishable from a column nobody thought of, which is the failure this workstream exists to close.
+The same applies at the level of the inventory: columns no subject path reaches are returned with their
+reason rather than dropped.
+
+**The linkage digests are enumerated without being read.** `data_subject_linkage` is confined and no role
+holds a direct privilege on it (NZC-121). Nothing here needs one: which rows hold a digest, and under
+which field, follows from the inventory and the links. So they are reported by key, never by value, and
+this path needs no privilege on that table at all — which a test checks from the other side, by
+asserting the stored digest appears nowhere in the answer.
+
+**Cross-tenant is answered with "not here".** A `subject_id` is unique across the estate, so one subject
+is one organisation by construction; the same person in two organisations is two subjects, and finding
+that out means comparing linkage digests across tenants. That is the privileged adjudication NZC-118
+confined, and a controllership question before it is a technical one. Saying so is the honest answer
+rather than an omission.
+
+**Authorised and audited, without becoming another copy.** It requires `subject.review`, which is
+admin-only and estate-spanning. Export and erasure are stronger acts than reviewing a queue and want
+capabilities of their own in a later matrix version; this is the floor rather than the ceiling. The act
+is recorded with counts — rows, data, linkage entries, whether it decrypted — and no values, because the
+audit of a subject access must not become one more place the data lives.
+
+**Related.** NZC-125 (the inventory it reads), NZC-116 (the registry it traverses), NZC-121 (the
+confinement it respects), NZC-117 (the keys it opens).
+
+### NZC-129 — Data nobody uses is dropped, not sealed [Confirmed 21 Sep 2026]
+
+**Decision.** Where a column or table holds personal data that nothing reads and nothing writes, the
+default is to **drop it by migration**, not to seal it, attribute it, or carry it through the export and
+erasure paths. Something kept has to earn its place by somebody naming a use for it.
+
+**Why dropping beats sealing.** Data held and unused is pure liability: it has to be enumerated,
+exported, erased, and proven erased, for ever, and none of that work makes anybody better off. Dropped
+data needs no export path, no erasure treatment and no coverage proof. Minimisation is the cheaper
+engineering answer as well as the better privacy one.
+
+**The current candidates.** `lca_suppliers` in full — it holds a supplier company with an individual's
+contact beside it, and **nothing in the application writes it or reads it**, so the table is empty by
+construction. `training_bookings.person_phone`, which no statement in `src` sets.
+`client_sites.postcode` and `address_lines_json`, which `siteLifecycle` cannot write. Each goes to the
+retention conversation with drop as the recommendation, and whatever survives keeps its place in the
+inventory.
+
+**A migration, so it stops for review.** Dropping a column is irreversible in the way that matters — the
+data is gone — so it is the kind of change that gets read before it runs, and the review is where
+"nobody uses it" is confirmed by somebody other than the person who checked the code.
+
+**Related.** NZC-125 (the inventory these leave), NZC-117 (what sealing costs to maintain).
+
+### NZC-130 — Erasure renders what it cannot yet reach as an explicit gap [Confirmed 21 Sep 2026]
+
+**Decision.** Where the inventory marks a column `pending` — the subject is known, the datum is theirs,
+and the column that would be shredded does not exist yet — the erasure record shows it as an explicit
+*cannot yet shred* line naming the change it waits on. It is never counted as complete, and never
+omitted.
+
+**The distinction this rests on.** `pending` is not `not-attributable`. Not-attributable means no subject
+path exists and none is planned; pending means everything is in place except the ciphertext column, and
+a named migration supplies it. Collapsing the two would turn a gap with a date on it into one nobody is
+tracking.
+
+**Why the erasure command needs no change when the gap closes.** It derives its plan from the inventory,
+so the moment a migration flips an entry from `pending` to `shred-key` the command covers it. The
+prerequisite is operational rather than structural: erasure goes live for real subjects only once no
+`pending` column remains for a table it covers.
+
+**The case that prompted it.** `client_contact_versions.snapshot_json` holds every previous value of a
+contact's name, address, job title and phone. Until 0102 seals it under the live record's key, an erasure
+would destroy the present and leave the past — which is precisely the completeness hole this workstream
+exists to close, and exactly the sort of thing that goes unnoticed when a report says "done".
+
+**Related.** NZC-125 (the axis), NZC-120 (the migration this waits on), NZC-117 (what a shred reaches).

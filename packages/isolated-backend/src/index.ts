@@ -30,6 +30,7 @@ export * from "./categoryVisibility";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";
 export * from "./piiInventory";
+export * from "./subjectResolution";
 export * from "./piiSealing";
 export * from "./piiSealingKeys";
 export * from "./piiWriteThrough";
