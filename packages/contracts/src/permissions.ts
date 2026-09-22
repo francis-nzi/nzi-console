@@ -37,11 +37,25 @@ export const capabilities = [
   // portal users. Holding one has never implied the other, and a consultant who may invite a portal
   // user is not thereby entitled to decide what the client is shown.
   "category.visibility",
-  // ── Erasure / DSAR (NZC-116) ──
+  // ── Erasure / DSAR (NZC-116, NZC-131) ──
+  // Three capabilities, and deliberately no implication chain between them: holding one grants
+  // nothing about the others, and the matrix decides which roles hold which. They are different acts
+  // on different scales of consequence, and a single "DSAR" capability would have made the mildest
+  // of them the key to the gravest.
+  //
   // Deciding who two rows are is an identity judgement, and the questions span organisations
-  // because a person is not confined to one. Admin alone, and the tenant-crossing read behind it
-  // is a SECURITY DEFINER function returning pointers and counts — never a name.
+  // because a person is not confined to one. The tenant-crossing read behind it is a SECURITY
+  // DEFINER function returning pointers and counts — never a name.
   "subject.review",
+  // Reading a person's data back in the clear. The review queue shows pointers and counts; this
+  // decrypts. It is a larger disclosure than anything else in this list, so it is its own capability
+  // rather than a mode of the one above — and it gates the decrypting read path itself, not merely
+  // the command that calls it.
+  "subject.export",
+  // Destroying a person's key, which is irreversible by design and for us as well. Separate from
+  // export because the right to see is not the right to destroy, and an operator trusted to answer
+  // a subject access request is not thereby trusted to erase.
+  "subject.erase",
   "clientfactor.manage",
   "dataset.manage",
   "factor.manage",
@@ -73,7 +87,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 6;
+export const PERMISSION_MATRIX_VERSION = 7;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 

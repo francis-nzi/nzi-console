@@ -3495,3 +3495,73 @@ would destroy the present and leave the past — which is precisely the complete
 exists to close, and exactly the sort of thing that goes unnoticed when a report says "done".
 
 **Related.** NZC-125 (the axis), NZC-120 (the migration this waits on), NZC-117 (what a shred reaches).
+
+### NZC-131 — Review, export and erase are three capabilities with no implication between them [Confirmed 21 Sep 2026]
+
+**Decision.** Matrix version 7 adds `subject.export` and `subject.erase` beside `subject.review`. None
+implies another; the matrix decides which roles hold which, and admin holds all three today. Each is
+enforced **at the point of privilege** rather than at the command above it: `resolveSubjectData` requires
+`subject.export` to decrypt and `subject.review` merely to reach, the export command requires
+`subject.export`, and the erasure command will require `subject.erase`.
+
+**Why not one capability.** They are different acts on different scales of consequence. Reviewing an
+identity question shows pointers and counts and never a name. Exporting reads a person's data back in
+the clear — the largest disclosure this system performs. Erasing destroys a key irreversibly, for us as
+well. A single "DSAR" capability would have made the mildest of them the key to the gravest.
+
+**Why not a chain.** It is tempting to let erase imply export imply review, and it would be wrong: the
+right to see is not the right to destroy, and an operator trusted to answer a subject access request is
+not thereby trusted to erase. Assignment belongs to the matrix, which is versioned and reviewed, rather
+than to an ordering baked into the code. The test asserts both directions — a principal holding only
+`subject.review` is refused a decrypting read, and one holding only `subject.export` is refused the
+reaching read.
+
+**Enforced where the privilege is, not where the caller is.** The gate lives inside the read path, so no
+caller can obtain decrypted personal data by holding the milder capability, whatever that caller calls
+itself. Gating only the command above would have left the decrypting function reachable by anything that
+imported it.
+
+**Generated, not edited.** The migration comes from `generate-matrix.ts` over `ROLE_CAPABILITY_MATRIX`,
+so the code copy and the migration cannot disagree by transcription, and version 7 is a new version
+rather than an edit of 6 — a principal resolved against an earlier version keeps meaning what it meant
+when it was resolved.
+
+**Related.** NZC-128 (the read path these gate), NZC-116 (`subject.review`), NZC-022 (the matrix).
+
+### NZC-132 — The auth bridge is a prerequisite for complete staff-subject export and erasure, not only for sealing [Confirmed 21 Sep 2026]
+
+**Decision.** The `awaiting-auth-bridge` gap is wider than it was first recorded. It was scoped as a
+*sealing* problem: paths running as `nzi_console_auth` cannot write ciphertext, so those columns stay
+plaintext until a bridge exists. Running the subject-resolution traversal showed the same boundary
+blocks **reading** as well. Until the bridge lands, a staff subject's export is incomplete and their
+erasure is partial, and both say so rather than pretending otherwise.
+
+**What running it showed.** `staff_credentials` is granted to `nzi_console_auth` alone. The resolution
+path runs as the tenant role, so Postgres refuses it — correctly, and by a design decision made long
+before any of this. The traversal reaches the table, is refused, and reports the refusal as a datum
+carrying its reason: *held, but this path cannot read `staff_credentials`*. The person is told their
+staff sign-in address exists and was not read here.
+
+**Why that is the right answer and not a workaround.** Dropping the table from the traversal would make
+an export quietly complete and an erasure quietly partial — the exact failure this workstream exists to
+close. Widening the tenant role's grant to reach it would undo a boundary that predates the erasure work
+and exists for its own reasons. So the gap is carried, named, and visible in the output of both
+operations.
+
+**A third place, which is what makes it a scope expansion rather than an incident.** The authentication
+context has now blocked sealing (NZC-119), the linkage write (NZC-121), and this read. It is one
+boundary, met three times, and the bridge that answers it has to answer all three — which is a different
+thing from the bridge that was scoped to let a trainee's email change seal itself.
+
+**And it is a policy question before it is a privilege one.** A `SECURITY DEFINER` function does not
+bypass row-level security, so the bridge cannot be built by granting the auth role more; it has to
+decide what a tenant context means for a transaction that is cross-tenant by nature. That decision is
+counsel-adjacent and waits on the controllership determination.
+
+**Meanwhile it is tracked, not forgotten.** Every affected column carries `stage:
+"awaiting-auth-bridge"` in the inventory, the coverage invariant tolerates it by enumeration rather than
+by silence, and both the export and the erasure record render it as an explicit gap.
+
+**Related.** NZC-119 (where the gap was first recorded, as sealing), NZC-121 (the linkage write it also
+blocks), NZC-128 (the read path that found this), NZC-130 (how a known gap is rendered rather than
+skipped).

@@ -160,10 +160,15 @@ export async function resolveSubjectData(
   input: { organisationId: string; subjectId: string; requestRef?: string },
   options: ResolveOptions,
 ): Promise<ResolvedSubject> {
-  // Admin-only and estate-spanning, which is what a subject identity question is (NZC-116). Export and
-  // erasure are stronger acts than reviewing a queue and want capabilities of their own in a later
-  // matrix version; this is the one that exists, and it is the floor rather than the ceiling.
-  requireCapability(principal, "subject.review");
+  // Gated at the point of privilege rather than at the command above it (NZC-131).
+  //
+  // Reaching a person's rows is the identity question `subject.review` exists for. Reading them back in
+  // the clear is a larger disclosure and has its own capability, checked *here* — so no caller can
+  // obtain decrypted personal data by holding the milder one, whatever it chooses to call itself.
+  //
+  // There is deliberately no implication chain: `subject.export` does not confer `subject.review` and
+  // neither confers `subject.erase`. The matrix decides which roles hold which.
+  requireCapability(principal, options.decrypt ? "subject.export" : "subject.review");
 
   return withTenantWrite(pool, input.organisationId, async (db) => {
     const subject = await db.query<{ status: string }>(
@@ -220,10 +225,39 @@ export async function resolveSubjectData(
         }
         if (!where || !reach) continue;
 
-        const found = await db.query<Record<string, unknown>>(
-          `SELECT ${selectList(table, definition)} FROM nzi_console.${table}
-            WHERE organisation_id=$1 AND ${where}`,
-          [input.organisationId, link.source_id]);
+        let found: { rows: Record<string, unknown>[] };
+        // A savepoint, because a privilege refusal aborts the whole transaction and every statement
+        // after it fails with "current transaction is aborted" — the same cascade that once hid a root
+        // cause five subtests earlier. Rolling back to here keeps the refusal local to the one table.
+        await db.query("SAVEPOINT reach");
+        try {
+          found = await db.query<Record<string, unknown>>(
+            `SELECT ${selectList(table, definition)} FROM nzi_console.${table}
+              WHERE organisation_id=$1 AND ${where}`,
+            [input.organisationId, link.source_id]);
+          await db.query("RELEASE SAVEPOINT reach");
+        } catch (error) {
+          await db.query("ROLLBACK TO SAVEPOINT reach");
+          // A table this role cannot read is reported as unreadable, not skipped.
+          //
+          // `staff_credentials` is the case that found this: it is granted to `nzi_console_auth` alone,
+          // so the tenant role this path runs under is refused — correctly. Dropping the table would
+          // make an export quietly complete and an erasure quietly partial, which is the failure this
+          // workstream exists to close. So the person is told their staff sign-in address is held and
+          // could not be read here, and the gap is visible instead of absent.
+          //
+          // Only a privilege refusal is caught. Anything else is a fault and is raised.
+          if ((error as { code?: string }).code !== "42501") throw error;
+          rows.push({
+            table, keys: {}, reach,
+            data: columnsOf(table).map((column) => ({
+              table: column.table, column: column.column, label: column.label,
+              storage: column.storage.kind,
+              unavailable: `held, but this path cannot read ${table}: it is granted to the authentication role alone`,
+            })),
+          });
+          continue;
+        }
 
         for (const row of found.rows) {
           rows.push({ table, keys: keysOf(definition, row), reach, data: readRow(columns, row, subjectKey, options) });
