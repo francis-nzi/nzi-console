@@ -110,8 +110,8 @@ export function StrategyProjection({ workspace }: { workspace: ClientWorkspaceRe
         {model.vsActual ? <div><span className="l">Measured against plan, {model.vsActual.year}</span>
           <span className="v num">{model.vsActual.state === "tracking" ? "Tracking" : `${round(model.vsActual.differenceTco2e)} above`}</span>
           <span className="sub">{model.vsActual.state === "tracking"
-            ? "the measured footprint is at or below what the plan projected"
-            : "the projected reduction has not shown up in the measured footprint"}</span></div> : null}
+            ? "the measured emissions are at or below what the plan projected"
+            : "the projected reduction has not shown up in the measured emissions"}</span></div> : null}
       </div>
 
       <Flags excluded={model.excluded} />

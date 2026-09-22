@@ -503,6 +503,19 @@ All user-facing copy across every workspace and the client portal uses **“carb
 module**, where it is the correct term of art. Applies to labels, headings, buttons, chart titles, tooltips,
 empty/help text, generated report and PDF copy, and email/notification text. Confirmed by Francis, 29 Aug 2026.
 
+**Enforced by a gate, from 22 Sep 2026.** The decision held for a month and the code drifted from it
+anyway: thirty-four separate strings across the client board, the SRS forms and readiness reasons, the
+portal, the report composer, the default report prose and the CRP chart catalogue. `check:terminology`
+now scans user-facing copy in the console app and the label-producing packages, and every exception is
+stated with its reason in one allowlist — the PCF term of art, the identifiers Francis has held pending a
+separate call on scope, and comment continuations. Same shape as the conflict-marker and date gates: a
+rule nobody checks is a rule that holds until somebody types the other word.
+
+**One question the sweep raised.** This entry names the **PCF** module as the sanctioned home for the
+term and says nothing about **LCA**, which shares that surface — so `${noun} footprint` and "Footprint by
+life-cycle module" are allowlisted pending a ruling rather than rewritten, because they are carbon-adjacent
+copy and go through the review gate.
+
 ### NZC-040 — Date format: dd/mm/yyyy [Confirmed 29 Aug 2026]
 All dates render as **dd/mm/yyyy** across every screen, the client portal, and generated documents/PDFs (UK
 convention), from a single shared date formatter as the one source — no locale-default or ISO date rendering

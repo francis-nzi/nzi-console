@@ -68,7 +68,7 @@ export type ReportCompositionSectionKey = (typeof reportCompositionSections)[num
 export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> = {
   cover: { eyebrow: "", title: "Carbon Reduction Plan" },
   "executive-summary": { eyebrow: "Overview", title: "Executive summary" },
-  emissions: { eyebrow: "Footprint", title: "Emissions by scope" },
+  emissions: { eyebrow: "Emissions", title: "Emissions by scope" },
   intensity: { eyebrow: "Performance", title: "Emissions intensity" },
   targets: { eyebrow: "Trajectory", title: "Targets & reduction pathway" },
   plan: { eyebrow: "Plan", title: "Decarbonisation actions" },
@@ -334,15 +334,15 @@ export function composeReportPlan(
  * "Down 0%" against nothing is a claim, not a neutral default.
  */
 export function reportHeadline(emissions: ReportEmissionsSection | ReportSectionGap, reportingYear: number): string {
-  if (isReportGap(emissions)) return "No assured footprint was available when this report was issued.";
+  if (isReportGap(emissions)) return "No assured emissions figure was available when this report was issued.";
   const total = emissions.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 0 });
   if (emissions.priorYear === null) {
-    return `FY${reportingYear} assured footprint: ${total} tCO₂e. This is the first assured year, so there is no prior year to compare against.`;
+    return `FY${reportingYear} assured emissions: ${total} tCO₂e. This is the first assured year, so there is no prior year to compare against.`;
   }
-  if (emissions.priorYear.totalTco2e === 0) return `FY${reportingYear} assured footprint: ${total} tCO₂e.`;
+  if (emissions.priorYear.totalTco2e === 0) return `FY${reportingYear} assured emissions: ${total} tCO₂e.`;
   const change = ((emissions.totalTco2e - emissions.priorYear.totalTco2e) / emissions.priorYear.totalTco2e) * 100;
   const direction = change < 0 ? "down" : "up";
-  return `FY${reportingYear} assured footprint: ${total} tCO₂e, ${direction} ${Math.abs(change).toFixed(1)}% against FY${emissions.priorYear.year}.`;
+  return `FY${reportingYear} assured emissions: ${total} tCO₂e, ${direction} ${Math.abs(change).toFixed(1)}% against FY${emissions.priorYear.year}.`;
 }
 
 /**

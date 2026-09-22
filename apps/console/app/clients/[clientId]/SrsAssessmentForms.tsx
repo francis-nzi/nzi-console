@@ -54,7 +54,7 @@ export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: 
       </label>
       <label className="nz-check"><input type="checkbox" checked={prefill} onChange={(event) => setPrefill(event.target.checked)} />
         Answer what this client&apos;s record already answers</label>
-      <span className="nz-hint">{fromNzi} requirements read the assured footprint, its targets and its intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>
+      <span className="nz-hint">{fromNzi} requirements read the assured emissions, their targets and their intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>
       <label className="nz-fl" style={{ marginTop: 10 }}><span>Notes</span>
         <input className="nz-inp" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for this assessment — optional" />
       </label>
@@ -132,8 +132,8 @@ export function SrsItemForm({ framework, assessment, requirement, item, access, 
       <p className="nz-hint" style={{ marginTop: 0 }}>{requirement.helpText}</p>
       {requirement.source === "nzi-data" ? <div className="nz-banner ok" role="status" style={{ marginBottom: 10 }}>
         <div><b>This one reads the client&apos;s own record.</b><div style={{ marginTop: 4 }}>{item?.source === "auto"
-          ? "Answered from the assured footprint, targets or intensity already held for this client. Override it if the disclosure needs something different."
-          : "It can be answered from the assured footprint, targets or intensity already held for this client."}</div></div>
+          ? "Answered from the assured emissions, targets or intensity already held for this client. Override it if the disclosure needs something different."
+          : "It can be answered from the assured emissions, targets or intensity already held for this client."}</div></div>
       </div> : null}
 
       <div className="nz-sect">Maturity</div>

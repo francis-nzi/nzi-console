@@ -65,7 +65,7 @@ function LcaReport({ report }: { report: LcaReportReadModel }) {
       </header>
 
       <section className="report-summary">
-        <h2>Reviewed footprint</h2>
+        <h2>Reviewed emissions</h2>
         <p>Functional unit: {report.functionalUnitValue.toLocaleString("en-GB")} {report.functionalUnitUnit} · boundary {report.lifecycleBoundary.replaceAll("_", " ")} · reviewed snapshot {snapshot.id}.</p>
         <div className="report-metrics">
           <div><span>Total</span><b>{snapshot.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 4 })} tCO₂e</b></div>

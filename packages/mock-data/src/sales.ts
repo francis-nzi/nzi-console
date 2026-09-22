@@ -40,7 +40,7 @@ export const salesOpportunities: SalesOpportunity[] = [
 export const salesProspects: SalesProspect[] = [
   { id: "pro-301", company: "Helix Cold Chain", status: "under-review", reason: "SECR disclosure plus fleet transition programme", evidenceCount: 3, source: "Run PR-0826-04", runId: "PR-0826-04" },
   { id: "pro-302", company: "Crownfield Components", status: "new", reason: "Public tender requests supplier carbon reporting", evidenceCount: 2, source: "Run PR-0826-04", runId: "PR-0826-04" },
-  { id: "pro-298", company: "Solent Fabrications", status: "promoted", reason: "Verified inbound product-footprint requirement", evidenceCount: 4, source: "Inbound", runId: "IN-0822" },
+  { id: "pro-298", company: "Solent Fabrications", status: "promoted", reason: "Verified inbound product-emissions requirement", evidenceCount: 4, source: "Inbound", runId: "IN-0822" },
 ];
 
 export const prospectingRuns = [

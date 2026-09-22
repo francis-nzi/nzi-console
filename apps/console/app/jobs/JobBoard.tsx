@@ -169,7 +169,7 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
         <div className="nz-job-heading">
           <div>
             <div className="nz-eyebrow">Carbon Reduction Plan</div>
-            <h1>Job {job.number} — {job.year} carbon footprint</h1>
+            <h1>Job {job.number} — {job.year} carbon emissions</h1>
             <div className="sub">{job.client} · reporting year {job.year} · GHG Protocol · owner: {job.owner}</div>
           </div>
           <span className="nz-status">

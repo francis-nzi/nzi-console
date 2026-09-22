@@ -348,13 +348,13 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
     const years = `${facts.assuredYears} assured reporting year${facts.assuredYears === 1 ? "" : "s"}`;
     switch (requirement.nziSourceKey) {
       case "footprint.scope1":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), `Scope 1 resolved from the client's reviewed snapshot · ${years}`, "The assured footprint already reports Scope 1.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), `Scope 1 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 1.");
         break;
       case "footprint.scope2":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), `Scope 2 resolved from the client's reviewed snapshot · ${years}`, "The assured footprint already reports Scope 2.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), `Scope 2 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 2.");
         break;
       case "footprint.scope3":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), `Scope 3 resolved from the client's reviewed snapshot · ${years}`, "The assured footprint already reports Scope 3 by category.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), `Scope 3 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 3 by category.");
         break;
       case "footprint.method":
         add(requirement.id, facts.assuredYears > 0 ? 3 : null, "GHG Protocol basis and boundary recorded on the job's emissions configuration", "The measurement approach is recorded with the snapshot.");

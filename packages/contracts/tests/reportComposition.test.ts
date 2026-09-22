@@ -92,9 +92,9 @@ describe("the report composition", () => {
       assert.match(reportHeadline(emissions({ priorYear: { year: 2023, totalTco2e: 1500 } }), 2024), /up 13\.7%/);
     });
 
-    it("says so when there is no assured footprint at all", () => {
+    it("says so when there is no assured emissions figure at all", () => {
       const gap = reportHeadline({ state: "unavailable", reason: "none" }, 2024);
-      assert.match(gap, /No assured footprint/);
+      assert.match(gap, /No assured emissions figure/);
       assert.doesNotMatch(gap, /0 tCO₂e/, "a gap is never rendered as zero");
     });
   });
