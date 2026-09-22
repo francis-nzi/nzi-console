@@ -50,6 +50,7 @@ jobs:
       # This one reads the expression rather than its result, which is the only way to catch
       # the next copy before it is written (NZC-106).
       - run: npm run check:dates
+      - run: npm run check:terminology
       - run: npm run typecheck
       - run: npm run build
       - run: npm test -w @nzi/contracts

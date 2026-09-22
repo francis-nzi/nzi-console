@@ -53,7 +53,7 @@ function ClientDrawer({ c }: { c: Client }) {
       <div className="nz-kv"><span className="k">Account owner</span><span className="v">{c.owner}</span></div>
       <div className="nz-kv"><span className="k">Status</span><span className="v">{meta.label}</span></div>
       <div className="nz-kv"><span className="k">Member since</span><span className="v">{c.memberSince}</span></div>
-      <div className="nz-kv"><span className="k">Latest footprint</span><span className="v">{c.latestFootprint ?? "—"}</span></div>
+      <div className="nz-kv"><span className="k">Latest emissions</span><span className="v">{c.latestFootprint ?? "—"}</span></div>
       <div className="nz-kv"><span className="k">Change vs prior year</span><span className="v">{c.yoy ?? "—"}</span></div>
       <div className="nz-kv"><span className="k">Data completeness</span><span className="v">{c.completeness}%</span></div>
       <div className="nz-kv"><span className="k">Open jobs</span><span className="v">{c.openJobs}</span></div>

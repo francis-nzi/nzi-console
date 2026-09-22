@@ -57,7 +57,7 @@ function SrsEmpty({ framework, access, onDrawer }: { framework: SrsFramework; ac
       <CardHead eyebrow="Not assessed yet" title="No readiness assessment" />
       <div className="nz-card-b">
         <p className="sub" style={{ margin: "8px 0" }}>This client has not been assessed. An assessment works through <b>{framework.requirements.filter((requirement) => requirement.active).length} requirements</b> across {framework.pillars.length} pillars, {climate ? <>led by <b>{climate.label}</b></> : null} — scoring each on the five-step ladder with its evidence.</p>
-        <p className="nz-maps">Requirements the client&apos;s own assured record already answers — the footprint, its targets and its intensity metrics — can be filled in from that record rather than asked again, each marked as resolved from NZI data.</p>
+        <p className="nz-maps">Requirements the client&apos;s own assured record already answers — the emissions, their targets and its intensity metrics — can be filled in from that record rather than asked again, each marked as resolved from NZI data.</p>
         <div className="nz-kv"><span className="k">Framework</span><span className="v">{framework.label} · version {framework.version}</span></div>
       </div>
     </section>

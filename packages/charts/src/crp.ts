@@ -112,8 +112,8 @@ export const crpProfessionalManifest: ReportManifest = {
   sections: [
     {
       id: "footprint",
-      title: "Carbon footprint",
-      description: "Current footprint and route to net zero.",
+      title: "Carbon emissions",
+      description: "Current emissions and route to net zero.",
       layout: "two-column",
       chartIds: ["emissions_scope_donut", "reduction_pathway"],
     },
@@ -185,7 +185,7 @@ export function resolveCrpCharts(
       spec: {
         id: "emissions_scope_donut",
         type: "emissions_scope_donut",
-        title: `${snapshot.reportingYear} carbon footprint by scope`,
+        title: `${snapshot.reportingYear} carbon emissions by scope`,
         subtitle: `${snapshot.client} · ${snapshot.jobNumber}`,
         family: "crp",
         specVersion: 2,
@@ -262,7 +262,7 @@ export function resolveCrpCoreCharts(
       spec: {
         id: "emissions_scope_donut",
         type: "emissions_scope_donut",
-        title: `${snapshot.reportingYear} carbon footprint by scope`,
+        title: `${snapshot.reportingYear} carbon emissions by scope`,
         subtitle: `${snapshot.client} · ${snapshot.jobNumber}`,
         family: "crp",
         specVersion: 2,

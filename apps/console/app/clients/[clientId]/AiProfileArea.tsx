@@ -24,7 +24,7 @@ export function AiProfileArea({ workspace }: { workspace: ClientWorkspaceReadMod
     { label: "Reporting frameworks", value: (profile.reportingFrameworks ?? []).join(" · "), why: "what it must disclose against" },
     { label: "Certifications", value: (profile.certifications ?? []).join(" · "), why: "what it already holds" },
     { label: "Primary Scope 3 categories", value: (profile.primaryScope3Categories ?? []).join(" · "), why: "where its value-chain emissions sit" },
-    { label: "Sites in the boundary", value: sites.length ? `${sites.length} recorded` : "", why: "the operational footprint" },
+    { label: "Sites in the boundary", value: sites.length ? `${sites.length} recorded` : "", why: "the operational emissions" },
     { label: "Assured reporting years", value: history.length ? `${history.length} year${history.length === 1 ? "" : "s"}` : "", why: "the measured position" },
     { label: "Forward targets", value: targets.model ? "Set" : "", why: "the commitment to advise against" },
     { label: "Named contacts", value: contacts.length ? `${contacts.length} active` : "", why: "who the advice is for" },

@@ -136,7 +136,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
   return <>
     <p className="nz-pi-lead">
       <span className="nz-pi-assured">✓ Assured figures</span>
-      Every number below comes from your published, verified footprint — {fy(latest.year)}
+      Every number below comes from your published, verified emissions — {fy(latest.year)}
       {model.reportingYear !== null && model.publishedAt !== null
         ? <> and the assured years before it, published {formatDate(model.publishedAt)}.</>
         : <> and the assured years before it.</>}

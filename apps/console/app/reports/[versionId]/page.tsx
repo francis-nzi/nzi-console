@@ -81,14 +81,14 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
         {version.signee?<p className="report-signee">Signed off for {snapshot.client} by <b>{version.signee.name}</b>{version.signee.jobTitle?`, ${version.signee.jobTitle}`:""}</p>:null}
       </header>
       <section className="report-summary">
-        <h2>Reviewed footprint</h2>
+        <h2>Reviewed emissions</h2>
         <p>{snapshot.client} · {snapshot.jobNumber} · reviewed snapshot {snapshot.id}.</p>
         <div className="report-metrics">{([["Total",total],["Scope 1",scopeTotal("1")],["Scope 2",scopeTotal("2")],["Scope 3",scopeTotal("3")]] as const).map(([label,value])=><div key={label}><span>{label}</span><b>{Number(value).toLocaleString("en-GB",{maximumFractionDigits:2})} tCO₂e</b></div>)}</div>
       </section>
       {(r1||r3)&&<IntegrityBanner chart={chartVerification} tokens={tokenVerification} manifestValid={manifestValid}/>}
       {r3
         ? <ReportSections sections={snapshot.sections} snapshot={tokenSnapshot}/>
-        : <section className="report-summary"><h2>Executive summary</h2><p>{snapshot.client} recorded a reviewed {snapshot.reportingYear} footprint of {total.toLocaleString("en-GB",{maximumFractionDigits:2})} tCO₂e. This immutable report version is assembled only from snapshot {snapshot.id}.</p></section>}
+        : <section className="report-summary"><h2>Executive summary</h2><p>{snapshot.client} recorded reviewed {snapshot.reportingYear} emissions of {total.toLocaleString("en-GB",{maximumFractionDigits:2})} tCO₂e. This immutable report version is assembled only from snapshot {snapshot.id}.</p></section>}
       <ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshot.id} printSafe={r1}/>
       <section className="report-evidence">
         <div>

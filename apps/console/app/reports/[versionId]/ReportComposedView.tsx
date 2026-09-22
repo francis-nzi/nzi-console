@@ -41,7 +41,7 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
       <SectionHead n="01" section="executive-summary" />
       <p className="nzr-lede">{reportHeadline(emissions, composition.reportingYear)}</p>
       {!isReportGap(emissions) ? <div className="nzr-figures">
-        <Figure label="Assured footprint" value={tonnes(emissions.totalTco2e)} unit="tCO₂e" />
+        <Figure label="Assured emissions" value={tonnes(emissions.totalTco2e)} unit="tCO₂e" />
         {emissions.byScope.map((entry) => <Figure key={entry.scope}
           label={strategyScopeLabel(entry.scope as StrategyScope)} value={tonnes(entry.tco2e)} unit="tCO₂e" />)}
       </div> : <Gap section={emissions} />}

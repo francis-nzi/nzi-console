@@ -60,9 +60,9 @@ export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
     ordinal: 10,
     defaultBodyHtml:
       "<p>The organisation recorded total greenhouse gas emissions of <span data-token=\"total\"></span> for the <span data-token=\"reportingYear\"></span> reporting year, comprising <span data-token=\"scope1\"></span> from Scope 1, <span data-token=\"scope2\"></span> from Scope 2 and <span data-token=\"scope3\"></span> from Scope 3. This report is prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard, under the operational control boundary.</p>" +
-      "<p>Scope 3 value-chain activity represents <span data-token=\"scope3Pct\"></span> of the total footprint. The report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure in this document is derived.</p>",
+      "<p>Scope 3 value-chain activity represents <span data-token=\"scope3Pct\"></span> of the total emissions. The report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure in this document is derived.</p>",
     aiBodyHtml:
-      "<p>In the <span data-token=\"reportingYear\"></span> reporting year the organisation's measured footprint totalled <span data-token=\"total\"></span>, of which value-chain (Scope 3) emissions represent <span data-token=\"scope3Pct\"></span>. Direct emissions were modest — <span data-token=\"scope1\"></span> in Scope 1 and <span data-token=\"scope2\"></span> in Scope 2.</p>" +
+      "<p>In the <span data-token=\"reportingYear\"></span> reporting year the organisation's measured emissions totalled <span data-token=\"total\"></span>, of which value-chain (Scope 3) emissions represent <span data-token=\"scope3Pct\"></span>. Direct emissions were modest — <span data-token=\"scope1\"></span> in Scope 1 and <span data-token=\"scope2\"></span> in Scope 2.</p>" +
       "<p>This report sets a pathway to net zero by <span data-token=\"netZeroYear\"></span> with an interim milestone of <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span>, using this year as the immutable baseline for tracking reductions.</p>",
   },
   {
@@ -111,11 +111,11 @@ export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
     title: "Carbon reduction actions",
     ordinal: 60,
     defaultBodyHtml:
-      "<p>The organisation has identified a set of carbon reduction actions, classified by term, and targeted at the categories that drive the <span data-token=\"total\"></span> footprint. Each action is owned, scheduled and tracked against the baseline established by this report.</p>" +
-      "<p>Progress against these actions is reviewed at least annually alongside the recalculated footprint, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
+      "<p>The organisation has identified a set of carbon reduction actions, classified by term, and targeted at the categories that drive the <span data-token=\"total\"></span> emissions. Each action is owned, scheduled and tracked against the baseline established by this report.</p>" +
+      "<p>Progress against these actions is reviewed at least annually alongside the recalculated emissions, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
     aiBodyHtml:
-      "<p>The action plan addresses the <span data-token=\"total\"></span> footprint, concentrating effort on the categories that drive it. Each action is owned, scheduled and tracked against this year's baseline.</p>" +
-      "<p>Progress is reviewed at least annually alongside the recalculated footprint, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
+      "<p>The action plan addresses the <span data-token=\"total\"></span> emissions, concentrating effort on the categories that drive it. Each action is owned, scheduled and tracked against this year's baseline.</p>" +
+      "<p>Progress is reviewed at least annually alongside the recalculated emissions, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
   },
 ] as const;
 
