@@ -187,6 +187,11 @@ jobs:
       # that a delivered or lapsed artifact is genuinely unreadable afterwards.
       - name: A subject access export is complete, and its window closes
         run: npx tsx --test packages/isolated-backend/tests/subjectExportReal.test.ts
+      # Erasure (NZC-136, NZC-137). The irreversibility proof only means anything against real policies
+      # and real grants: that a correct guess at an erased address matches no blind index and no linkage
+      # digest, and that the append-only claim the manifest rests on agrees with the actual privileges.
+      - name: An erasure leaves nothing on any path, and says what it could not finish
+        run: npx tsx --test packages/isolated-backend/tests/subjectErasureReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

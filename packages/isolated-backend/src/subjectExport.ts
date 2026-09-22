@@ -214,16 +214,16 @@ export function buildExportDocument(
   // the traversal had missed into an affirmative statement to the subject that no such data is held.
   // That is worse than an omission — an omission is silence, this is a denial.
   //
-  // So the claim is made only where the traversal supports it: the table is one the reach model knows
-  // (it has an inventory entry, and its attribution is a reach the traversal implements), and the
-  // traversal did not query it for this subject because no link led there. Anything else falls through
-  // to `unaccountedFor` and the export refuses.
-  const considered = new Set(resolved.tablesConsidered);
+  // So the claim is made only where the traversal supports it: the table is one the reach model knows —
+  // it has an inventory entry, and its attribution is a reach the traversal implements — and it produced
+  // no datum for this subject, either because no link led there or because it was queried and held
+  // nothing. Both of those are honestly "no record of this kind"; what is not is a table outside the
+  // reach model, which falls through to `unaccountedFor` and makes the export refuse.
   const REACHED_BY_TRAVERSAL = new Set(["person-row", "history-of", "pointer"]);
   for (const column of PII_COLUMNS) {
     if (accounted.has(named(column))) continue;
     const definition = PII_TABLES[column.table];
-    if (!definition || considered.has(column.table)) continue;
+    if (!definition) continue;
     if (!REACHED_BY_TRAVERSAL.has(definition.attribution.kind)) continue;
     accounted.add(named(column));
     heldButNotShown.push({

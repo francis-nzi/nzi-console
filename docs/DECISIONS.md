@@ -3744,3 +3744,91 @@ copy of somebody's personal data left the system" one event.
 **Related.** NZC-134 (what the response contains), NZC-117 (crypto-shredding, the pattern reused here),
 NZC-131 (the capability), NZC-116 (the subject it is about), NZC-122 (the last time an unwritten
 platform dependency held something up).
+
+### NZC-136 — Erasure destroys readability, and names what it could not reach [Confirmed 22 Sep 2026]
+
+**Decision.** `subject.erase` performs the maximum destruction it can in one pass: the subject's key is
+shredded, the plaintext kept beside each ciphertext is nulled, and every blind index and linkage digest is
+nulled. Rows, foreign keys, provenance and history all survive. A column it cannot reach is written into
+the manifest as `pending`, and the subject's status becomes **`erasure-partial`** — never `erased` — while
+one remains.
+
+**A key-shred alone is not an erasure today, and that was the first real finding.** 0100 kept every
+plaintext column beside its new ciphertext, to be dropped wholesale once the ciphertext is the only copy.
+So shredding the key makes `full_name_sealed` unreadable and leaves `full_name` perfectly readable next to
+it. Erasure therefore nulls the plaintext as well — and where it cannot, it says so rather than counting
+the column as done.
+
+**The blind index is what separates erasure from deletion.** Nulling the plaintext and leaving the index
+would let anyone who can *guess* the address confirm the person was here, which is precisely the fact the
+erasure was asked to remove. So the index and the shared linkage digest are nulled too, and the proof is
+that a correct guess — recomputed with the same keys the fixture sealed with — matches nothing.
+
+**Three schema changes erasure needed, each a widening stated on its own.**
+
+  * `client_contacts.full_name`, `portal_users.display_name` and `portal_users.email_normalized` lose
+    NOT NULL, because erasure has to null them. The alternative was a tombstone string, and it fails on
+    contact: `portal_users` is UNIQUE on `(organisation_id, email_normalized)`, so the *second* erased
+    portal user in an organisation would collide with the first. NULLs do not collide. NULL is not merely
+    tidier, it is the only one of the two that works more than once.
+  * `report_versions_signee_pair` said a report has a signee contact and a signee name or neither — which
+    is exactly the shape a tombstone produces. It now forbids only the half that is still nonsense: a name
+    with no contact behind it. A contact with no name means the signee was erased.
+  * `erase_subject_linkage`, a definer function, because the application role may write a digest and never
+    read one (NZC-121) — and `UPDATE ... WHERE source_id = $1` requires SELECT on `source_id`, so the role
+    that writes digests cannot clear them. Destroying one confers no ability to read one.
+
+**Idempotent by construction rather than by a guard.** Every act is a write of NULL, so a second run nulls
+what is already null and shreds a key that is already gone. That is what makes resuming a failure and
+finishing a partial the same operation.
+
+**Related.** NZC-117 (crypto-shredding), NZC-137 (what it cannot finish, and why that is said out loud),
+NZC-128 (the traversal it shares with the export), NZC-127 (associations dangling to a tombstone),
+NZC-121 (the linkage confinement), NZC-131 (the capability).
+
+### NZC-137 — A partial erasure says so, per column, and the list of them is visible [Confirmed 22 Sep 2026]
+
+**Decision.** Erasure reports per inventory column: `erased`, `retained` with the basis, `nothing-held`, or
+`pending` with the named prerequisite. Any `pending` makes the subject `erasure-partial`, the manifest names
+each outstanding column individually, and `partiallyErasedSubjects` lists every unfinished subject so the
+residual cannot be forgotten. Re-running once a prerequisite lands is what promotes partial to complete.
+
+**The plan is about the person, not about the schema — and getting that wrong made it useless.** Computed
+from the inventory alone, the seven columns waiting on the auth bridge are pending for *every* subject,
+including people with no trainee record and no staff login. Every erasure would have been partial for ever
+and the list of partial subjects — which exists so nothing is forgotten — would have been every subject.
+So the question asked per column is "is any of this person's data here, and can this reach it", which is
+what makes `nothing-held` a distinct answer from `erased`.
+
+**A table that cannot be read is pending, not empty.** `staff_credentials` is granted to the authentication
+role alone, so this path can neither confirm what is held nor erase it. Reporting that as "nothing held"
+would turn a blind spot into a clean bill of health.
+
+**What is actually outstanding, and it is more than was assumed.** The brief named two prerequisites and
+scoped the first to `staff_credentials`. Derived from the inventory, it is nine columns:
+
+  * **`auth-bridge`** — seven: `trainees` ×4, `trainee_email_changes` ×2, `staff_credentials` ×1. All have a
+    `shred-key` treatment and none is sealed, because the write path that would seal them runs as the
+    authentication role (NZC-132). There is no ciphertext, so a shred reaches nothing.
+  * **`plaintext-drop`** — two: `client_contact_versions.snapshot_json` and
+    `portal_report_comments.author_display_name`, on the two tables no runtime role may update. Their
+    ciphertext is shredded with everything else; the plaintext cannot be nulled by anybody.
+
+**`appendOnly` is declared and then checked against the real grants.** A declaration that drifts from the
+schema would read as "erased" for a column erasure never touched — the worst direction for this particular
+mistake — so a test compares it with `information_schema.table_privileges` in both directions. Writing it
+by hand first got it wrong: `staff_credentials` and `trainee_email_changes` *are* updatable, by the
+authentication role, which is why they wait on the bridge rather than on the plaintext-drop.
+
+**An unrecognised treatment refuses.** A treatment added to the inventory and not to the planner leaves the
+column unaccounted and the erasure raises `ErasureIncompleteError` before destroying anything. Marking it
+`pending` instead would have been a guess wearing the clothes of an answer, and a half-erasure that reports
+success is worse than a refusal because nothing afterwards can say which half happened.
+
+**The manifest is the only thing that can evidence any of this**, since by construction nothing else can —
+so it is permanent, and it holds counts and reasons and no value. An erasure manifest quoting what it
+erased would be the one copy that survived the erasure.
+
+**Related.** NZC-136 (the command), NZC-134 (the same account-while-building discipline, and the same
+refusal), NZC-132 (the bridge), NZC-120 (the sealed history whose plaintext is the second prerequisite),
+NZC-130 (rendering a known gap rather than skipping it).

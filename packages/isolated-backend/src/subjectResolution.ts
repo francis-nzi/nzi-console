@@ -45,6 +45,16 @@ export type ResolveOptions = {
   /** Read the sealed values. Export does; erasure does not, because it is about to destroy the key. */
   decrypt: boolean;
   keys?: SealingKeys;
+  /**
+   * Which act this traversal is part of, and therefore which capability it is gated on.
+   *
+   * Inferring the capability from `decrypt` was right while there were two callers and wrong as soon as
+   * there were three: erasure does not decrypt, so it would have been gated on `subject.review` — and
+   * NZC-131 says holding one of the three confers none of the others, so an eraser holding exactly
+   * `subject.erase` would have been refused by the read path it depends on. The fix is for the caller to
+   * name the act rather than for the read path to guess it from a flag about ciphertext.
+   */
+  purpose?: "review" | "export" | "erase";
 };
 
 export type ResolvedDatum = {
@@ -178,7 +188,14 @@ export async function resolveSubjectData(
   //
   // There is deliberately no implication chain: `subject.export` does not confer `subject.review` and
   // neither confers `subject.erase`. The matrix decides which roles hold which.
-  requireCapability(principal, options.decrypt ? "subject.export" : "subject.review");
+  const purpose = options.purpose ?? (options.decrypt ? "export" : "review");
+  requireCapability(principal, `subject.${purpose}` as Parameters<typeof requireCapability>[1]);
+  if (purpose !== "export" && options.decrypt) {
+    // Decryption is the larger disclosure whatever the caller says it is doing, so it is gated on
+    // `subject.export` as well as on the named act — otherwise `purpose` would be a way to read a
+    // person's data in the clear while holding a capability that does not permit it.
+    requireCapability(principal, "subject.export");
+  }
 
   return withTenantWrite(pool, input.organisationId, async (db) => {
     const subject = await db.query<{ status: string }>(
