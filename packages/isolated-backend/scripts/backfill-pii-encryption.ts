@@ -19,6 +19,7 @@
  */
 import { Pool } from "pg";
 import { backfillSealedPii } from "../src/piiBackfill";
+import { SEALABLE_ROWS } from "../src/piiSealing";
 import { resolveSealingKeys, SEALING_KEY_VARIABLES } from "../src/piiSealingKeys";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 
@@ -26,6 +27,16 @@ const ORG = process.env.NZI_DEMO_ORGANISATION_ID ?? "demo-nzi-console";
 const ACTOR = process.env.SEED_ACTOR_ID ?? "pii-encryption-backfill";
 const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH = Number(process.env.NZI_BACKFILL_BATCH_SIZE ?? "200");
+
+/**
+ * Wide enough for the longest table there is, read from the inventory rather than guessed.
+ *
+ * A constant was right until `client_contact_versions` joined the sealable set (NZC-120) and ran past
+ * it, pushing every number on that row out of its column. Nobody misreads a report over one ragged
+ * line, but an operator reading these totals is the last check on this having worked, and it should not
+ * need re-tidying each time a table is added.
+ */
+const WIDTH = Math.max("table".length, ...SEALABLE_ROWS.map((row) => row.table.length));
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
 async function main(): Promise<void> {
@@ -37,16 +48,39 @@ async function main(): Promise<void> {
   const keys = resolveSealingKeys();
   const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-pii-backfill" });
   try {
+    // Which organisations exist, before claiming anything about one of them.
+    //
+    // This runs per organisation and `NZI_DEMO_ORGANISATION_ID` has a default, so a name matching
+    // nothing would count zero rows in every table and print "every row with personal data now has
+    // ciphertext beside it" — a clean report of work that did not happen. Same shape as a gate that
+    // passed over no files, and it would be believed, because the operator asked for exactly this.
+    const known = await pool.query<{ organisation_id: string }>(
+      `SELECT organisation_id FROM nzi_console.organisations ORDER BY organisation_id`);
+    const names = known.rows.map((row) => row.organisation_id);
+    if (!names.includes(ORG)) {
+      throw new Error(
+        `Organisation '${ORG}' does not exist on this database, so there is nothing to seal and a ` +
+        `success here would mean nothing. Set NZI_DEMO_ORGANISATION_ID to one of: ` +
+        `${names.join(", ") || "(none — this database has no organisations)"}.`);
+    }
+
+    const others = names.filter((name) => name !== ORG);
     log(`\n${DRY_RUN ? "Dry run" : "Sealing"} · organisation ${ORG} · batches of ${BATCH}\n`);
+    if (others.length > 0) {
+      // Personal data in an organisation this run does not touch is personal data still in the clear.
+      log(`  ${others.length} other organisation(s) on this database, each needing a run of its own:`);
+      for (const name of others) log(`    ${name}`);
+      log("");
+    }
     const outcome = await backfillSealedPii(pool, {
       organisationId: ORG, actorId: ACTOR, keys, batchSize: BATCH, dryRun: DRY_RUN,
       onProgress: ({ table, sealed, outstanding }) =>
-        log(`  ${table.padEnd(22)} sealed ${String(sealed).padStart(7)} · ~${outstanding} to go`),
+        log(`  ${table.padEnd(WIDTH)} sealed ${String(sealed).padStart(7)} · ~${outstanding} to go`),
     });
 
-    log(`\n  ${"table".padEnd(22)} ${"before".padStart(8)} ${"sealed".padStart(8)} ${"left".padStart(8)}`);
+    log(`\n  ${"table".padEnd(WIDTH)} ${"before".padStart(8)} ${"sealed".padStart(8)} ${"left".padStart(8)}`);
     for (const row of outcome.tables) {
-      log(`  ${row.table.padEnd(22)} ${String(row.outstandingBefore).padStart(8)} ${String(row.sealed).padStart(8)} ${String(row.outstandingAfter).padStart(8)}`);
+      log(`  ${row.table.padEnd(WIDTH)} ${String(row.outstandingBefore).padStart(8)} ${String(row.sealed).padStart(8)} ${String(row.outstandingAfter).padStart(8)}`);
     }
 
     const stranded = outcome.tables.filter((row) => row.outstandingAfter > 0);
