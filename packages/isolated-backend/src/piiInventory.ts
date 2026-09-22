@@ -97,6 +97,20 @@ export type PiiTable = {
   linkage?: { table: string; idColumn: string };
   /** Where this table's history lives. Sealed under the live record's key, so one shred covers both. */
   history?: string;
+  /**
+   * The runtime roles may insert but never update this table, so erasure cannot clear a plaintext
+   * column on it.
+   *
+   * A shred still reaches the ciphertext, because the key lives elsewhere. What it cannot reach is the
+   * plaintext column sitting beside it, which 0100 deliberately kept until those columns are dropped
+   * wholesale. On an ordinary table erasure nulls that plaintext itself; here it cannot, so the column is
+   * reported as still pending the plaintext-drop rather than counted as erased.
+   *
+   * Declared rather than discovered, so an erasure plan can be built without interrogating the database —
+   * and asserted against the real grants by a test, because a declaration that drifts from the schema is
+   * exactly how an erasure would start reporting a column as erased that it never touched.
+   */
+  appendOnly?: true;
 };
 
 export type PiiColumn = {
@@ -159,6 +173,8 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   // History, which belongs to whoever the live row belongs to.
   client_contact_versions: {
     keyColumns: ["contact_id", "version"], attribution: { kind: "history-of", table: "client_contacts" },
+    // 0067 revokes UPDATE from every runtime role: history that can be rewritten is not history.
+    appendOnly: true,
   },
 
   // Associations: the row is about something else, and a column on it names a person.
@@ -171,6 +187,8 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   },
   portal_report_comments: {
     keyColumns: ["comment_id"], attribution: { kind: "pointer", via: "author_id", subjectTable: "portal_users" },
+    // What a client said on their own report, which nobody may edit afterwards either.
+    appendOnly: true,
   },
 
   // Reachable once a named change lands.
@@ -209,6 +227,7 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   audit_events: {
     keyColumns: ["audit_event_id"],
     attribution: { kind: "none", because: "an audit row is about an act, not a person, and its payload names whoever the act was about" },
+    appendOnly: true,
   },
   transactional_outbox: {
     keyColumns: ["outbox_id"],
@@ -219,6 +238,7 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   data_subject_linkage: {
     keyColumns: ["source_table", "source_id", "field"],
     attribution: { kind: "via-links", because: "a digest is keyed by the source row it was computed from, so it is reached through the subject's links rather than by a column on this table" },
+    appendOnly: true,
   },
 };
 

@@ -45,6 +45,22 @@ export type ResolveOptions = {
   /** Read the sealed values. Export does; erasure does not, because it is about to destroy the key. */
   decrypt: boolean;
   keys?: SealingKeys;
+  /**
+   * Which act this traversal is part of, and therefore which capability it is gated on.
+   *
+   * Inferring the capability from `decrypt` was right while there were two callers and wrong as soon as
+   * there were three: erasure does not decrypt, so it would have been gated on `subject.review` — and
+   * NZC-131 says holding one of the three confers none of the others, so an eraser holding exactly
+   * `subject.erase` would have been refused by the read path it depends on. The fix is for the caller to
+   * name the act rather than for the read path to guess it from a flag about ciphertext.
+   *
+   * `"erase"` is additionally **targets-only**: no datum comes back with a value, whatever its storage.
+   * An erasure needs to know where a person's data is so it can destroy it, and never needs to see it —
+   * so `subject.erase` authorises finding and destroying, and reading in the clear stays behind
+   * `subject.export`. Without that, `decrypt: false` would still hand back the plaintext of every
+   * column whose ciphertext is null, which today is most of them.
+   */
+  purpose?: "review" | "export" | "erase";
 };
 
 export type ResolvedDatum = {
@@ -79,6 +95,16 @@ export type ResolvedSubject = {
   /** Personal data this system holds that no subject path reaches, with the reason for each. */
   notAttributable: ReadonlyArray<{ table: string; column: string; label: string; because: string }>;
   /**
+   * The tables this traversal actually queried for this subject.
+   *
+   * Reported rather than re-derived, because a consumer that works out for itself which tables *should*
+   * have been visited is comparing the inventory with the inventory and will agree with itself whatever
+   * the traversal did. An export uses this to tell two very different situations apart: a table with no
+   * rows for this person — where "we hold no record of this kind about you" is true — and a table the
+   * traversal never reached at all, where saying that would be an affirmative false statement.
+   */
+  tablesConsidered: readonly string[];
+  /**
    * Whether this person exists in another organisation is not answerable here, and saying so is the
    * honest answer rather than an omission.
    *
@@ -110,6 +136,15 @@ function readRow(
   return columns.map((column) => {
     const base = { table: column.table, column: column.column, label: column.label, storage: column.storage.kind };
     const sealedColumn = sealedColumnOf(column);
+
+    // Targets, not contents. An erasure locates a datum in order to destroy it, and `decrypt: false` is
+    // not enough to keep it from seeing one: the branch below reads the plaintext whenever the ciphertext
+    // beside it is null, which is the normal state of every column the backfill has not reached. That
+    // would have made `subject.erase` a way to read personal data in the clear, which is exactly the
+    // orthogonality NZC-131 exists to preserve.
+    if (options.purpose === "erase") {
+      return { ...base, unavailable: "not read: an erasure locates this datum in order to destroy it" };
+    }
 
     if (sealedColumn) {
       const sealed = row[sealedColumn] as SealedValue | null | undefined;
@@ -168,7 +203,14 @@ export async function resolveSubjectData(
   //
   // There is deliberately no implication chain: `subject.export` does not confer `subject.review` and
   // neither confers `subject.erase`. The matrix decides which roles hold which.
-  requireCapability(principal, options.decrypt ? "subject.export" : "subject.review");
+  const purpose = options.purpose ?? (options.decrypt ? "export" : "review");
+  requireCapability(principal, `subject.${purpose}` as Parameters<typeof requireCapability>[1]);
+  if (purpose !== "export" && options.decrypt) {
+    // Decryption is the larger disclosure whatever the caller says it is doing, so it is gated on
+    // `subject.export` as well as on the named act — otherwise `purpose` would be a way to read a
+    // person's data in the clear while holding a capability that does not permit it.
+    requireCapability(principal, "subject.export");
+  }
 
   return withTenantWrite(pool, input.organisationId, async (db) => {
     const subject = await db.query<{ status: string }>(
@@ -198,6 +240,7 @@ export async function resolveSubjectData(
 
     const rows: ResolvedRow[] = [];
     const linkage: Array<{ sourceTable: string; sourceId: string; field: string }> = [];
+    const considered = new Set<string>();
 
     for (const link of links.rows) {
       // Every table the inventory attributes to *this* linked person-row: the row itself, the tables
@@ -224,6 +267,7 @@ export async function resolveSubjectData(
           reach = "pointer";
         }
         if (!where || !reach) continue;
+        considered.add(table);
 
         let found: { rows: Record<string, unknown>[] };
         // A savepoint, because a privilege refusal aborts the whole transaction and every statement
@@ -310,6 +354,7 @@ export async function resolveSubjectData(
       rows,
       linkage,
       notAttributable,
+      tablesConsidered: [...considered].sort(),
       crossTenant: "not-answerable-here",
     };
   });
