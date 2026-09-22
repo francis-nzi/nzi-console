@@ -3076,6 +3076,49 @@ inventory that lists only what it covers is how this was missed the first time.
 **Related.** NZC-117 (what the ciphertext is), NZC-118 (the linkage digest this writes), NZC-116 (the
 subject it resolves), NZC-100 (privilege where policy cannot reach).
 
+### NZC-120 — History is sealed under the live record's key, and written already sealed [Confirmed 22 Sep 2026]
+
+**Decision.** `client_contact_versions.snapshot_json` is sealed into `snapshot_sealed` (0106) under the
+**live contact's** subject key — not a key of its own — and the ciphertext is written by the INSERT that
+creates the version, not by an UPDATE after it.
+
+**Why the live record's key.** The point of key-shredding is that one act erases one person. If each
+version held its own key, an erasure would have to enumerate every version of every record and shred a
+list — and the failure mode of a list is that it is one item short. Sealing the history under the key
+the live record already uses makes a person's past and present a single shred, and makes "did we get
+them all" a question with a structural answer rather than a procedural one.
+
+**Why the INSERT and not a follow-up UPDATE.** Every other sealed column is filled by an UPDATE in the
+same transaction as the plaintext write. This one cannot be: 0067 revokes UPDATE on
+`client_contact_versions` from `nzi_console_app`, `nzi_console_worker` and `nzi_console_auth`, because
+history that can be rewritten is not history. The write path therefore seals first and carries the
+ciphertext into the INSERT (`sealValuesForSubject`), which is also one statement instead of two and
+leaves no window in which a version exists unsealed.
+
+This was found by running the seal through the real command under the real role, where it failed with
+`permission denied for table client_contact_versions`. It is the fourth time on this workstream that the
+identity a test runs under decided whether a green meant anything (NZC-133), and the first time the
+answer was that the *design* was wrong rather than the harness: an append-only table is a different
+shape of seal, not a privilege to be granted.
+
+**What it closes.** `snapshot_json` leaves `UNSEALED_PII_FOUND`, and no column in the inventory carries
+`erasure: "pending"` any more. What remains on that list is not the same kind of thing: the linkage digest
+(`null-digest`) and the two JSON payloads (`redact-or-retain`) each have a stated treatment that is not a
+shred, so they are answered rather than outstanding. The operational prerequisite NZC-130 set on the
+erasure command — that it may not go live for real subjects while a `pending` column remains for a table
+it covers — is therefore satisfied, leaving `awaiting-auth-bridge` (NZC-132) as the one stage that is
+still not `sealed`.
+
+**The test that holds it.** Three real edits through `updateClientContact`, with no backfill in between,
+then every version decrypted under the live record's wrapped key and asserted to be one key rather than
+several. Driving it through the command rather than inserting history directly is the whole of the
+proof: a hand-written INSERT would have shown the backfill can seal the past and said nothing about
+whether the application seals what it writes today.
+
+**Related.** NZC-119 (sealed as it is written, where this gap was named), NZC-117 (what a shred reaches),
+NZC-130 (the pending axis this empties), NZC-125 (the inventory that now carries it), NZC-133 (the role a
+test runs under).
+
 ### NZC-121 — The linkage table gets no direct privilege at all [Confirmed 21 Sep 2026]
 
 **Decision.** `data_subject_linkage` is reachable only through `SECURITY DEFINER` functions (migration
@@ -3490,7 +3533,7 @@ prerequisite is operational rather than structural: erasure goes live for real s
 `pending` column remains for a table it covers.
 
 **The case that prompted it.** `client_contact_versions.snapshot_json` holds every previous value of a
-contact's name, address, job title and phone. Until 0102 seals it under the live record's key, an erasure
+contact's name, address, job title and phone. Until 0106 seals it under the live record's key, an erasure
 would destroy the present and leave the past — which is precisely the completeness hole this workstream
 exists to close, and exactly the sort of thing that goes unnoticed when a report says "done".
 

@@ -89,6 +89,16 @@ const asJson = (value: SealedValue | null) => (value === null ? null : JSON.stri
 const isBlank = (value: unknown): boolean => value == null || String(value).trim() === "";
 
 /**
+ * A stored value as the text to encrypt.
+ *
+ * A `jsonb` column arrives from `pg` already parsed into an object, and `String(…)` on one of those
+ * yields "[object Object]" — which would seal successfully, decrypt successfully, and have thrown the
+ * snapshot away. So anything that is not already a string is re-serialised rather than coerced.
+ */
+const asText = (value: unknown): string | null =>
+  value == null ? null : typeof value === "string" ? value : JSON.stringify(value);
+
+/**
  * The subject this row belongs to, minting one if the row is new.
  *
  * Joins an existing subject only when the address already appears **in a different source table,
@@ -184,6 +194,34 @@ async function subjectKey(db: Queryable, organisationId: string, subjectId: stri
  * committed with one and not the other. Table and key columns are passed explicitly rather than
  * inferred, because a wrong guess here writes one person's ciphertext onto another's row.
  */
+/**
+ * The ciphertext for a row that has not been written yet.
+ *
+ * Sealing normally follows the plaintext write, as an UPDATE in the same transaction. An append-only
+ * table cannot be updated at all: 0067 revokes UPDATE on `client_contact_versions` from every runtime
+ * role, because history that can be rewritten is not history. So for those tables the ciphertext has to
+ * travel in the INSERT that creates the row, and this returns it instead of writing it.
+ *
+ * Same subject, same key, same crypto as `sealRowPii` — only the statement differs. It resolves (and
+ * where necessary mints) the subject, which is a write, so it belongs inside the caller's transaction
+ * like every other part of the seal.
+ */
+export async function sealValuesForSubject(
+  db: Queryable,
+  request: { organisationId: string; subject: SubjectRef; values: Readonly<Record<string, unknown>> },
+  keys: SealingKeys,
+  actorId: string,
+): Promise<Record<string, string | null>> {
+  const offered = Object.entries(request.values).filter(([, value]) => !isBlank(value));
+  // No subject is minted for a call that seals nothing, for the same reason sealRowPii mints none.
+  if (offered.length === 0) return {};
+
+  const subjectId = await resolveSubject(db, request.organisationId, request.subject, [], keys, actorId);
+  const key = await subjectKey(db, request.organisationId, subjectId, keys);
+  return Object.fromEntries(offered.map(([column, value]) =>
+    [column, asJson(sealForSubject(asText(value)!.trim(), key))]));
+}
+
 export async function sealRowPii(
   db: Queryable, request: SealRequest, keys: SealingKeys, actorId: string,
 ): Promise<{ subjectId: string | null }> {
@@ -252,7 +290,12 @@ export async function sealRowPii(
  */
 export type SealableRow = {
   table: string;
-  keyColumn: string;
+  /**
+   * The columns that identify the row. Plural because a history row is identified by the record and
+   * the version — `(contact_id, version)`, not `contact_id` — and keying on the record alone would
+   * write one version's ciphertext onto every version of it.
+   */
+  keyColumns: readonly string[];
   subjectTable: SubjectRef["sourceTable"];
   subjectIdColumn: string;
   sealed: Readonly<Record<string, string>>;
@@ -261,11 +304,17 @@ export type SealableRow = {
 };
 
 export const SEALABLE_ROWS: ReadonlyArray<SealableRow> = Object.entries(PII_TABLES)
-  // A row is sealable when it *is* a person — a pointer names somebody whose identity lives elsewhere,
-  // and history is sealed under the key of the record it is history of.
-  .filter(([, definition]) => definition.attribution.kind === "person-row")
+  // A row is sealable when it *is* a person, or is the history of one — a pointer is excluded, because
+  // it names somebody whose identity lives elsewhere and is sealed there.
+  //
+  // History seals under the key of the record it is history of, which is what makes one shred cover a
+  // person's present and their past together. So its subject is its parent's subject, read from the
+  // parent's own attribution rather than restated here.
+  .filter(([, definition]) => definition.attribution.kind === "person-row" || definition.attribution.kind === "history-of")
   .map(([table, definition]) => {
-    const attribution = definition.attribution as { kind: "person-row"; subjectTable: SubjectTable; subjectIdColumn: string };
+    const own = definition.attribution;
+    const source = own.kind === "history-of" ? PII_TABLES[own.table]!.attribution : own;
+    const attribution = source as { kind: "person-row"; subjectTable: SubjectTable; subjectIdColumn: string };
     const columns = PII_COLUMNS.filter((column) => column.table === table);
     const sealed: Record<string, string> = {};
     for (const column of columns) {
@@ -285,7 +334,7 @@ export const SEALABLE_ROWS: ReadonlyArray<SealableRow> = Object.entries(PII_TABL
       : undefined;
     return {
       table,
-      keyColumn: definition.keyColumns[0]!,
+      keyColumns: definition.keyColumns,
       subjectTable: attribution.subjectTable,
       subjectIdColumn: attribution.subjectIdColumn,
       sealed,
@@ -311,7 +360,9 @@ export const unsealedPredicate = (row: SealableRow): string =>
   plaintextColumnsOf(row)
     .map((plaintext) => {
       const sealed = row.sealed[plaintext] ?? row.operational.find((field) => field.plaintext === plaintext)!.sealedColumn;
-      return `(nullif(btrim(${plaintext}), '') IS NOT NULL AND ${sealed} IS NULL)`;
+      // Cast before trimming: `snapshot_json` is jsonb, which btrim cannot take, and a text column is
+      // unchanged by it.
+      return `(nullif(btrim(${plaintext}::text), '') IS NOT NULL AND ${sealed} IS NULL)`;
     })
     .join(" OR ");
 
@@ -325,21 +376,25 @@ export const unsealedPredicate = (row: SealableRow): string =>
  */
 export function sealExistingRow(
   db: Queryable, organisationId: string, descriptor: SealableRow,
-  values: Record<string, string | null>, keys: SealingKeys, actorId: string,
+  values: Record<string, unknown>, keys: SealingKeys, actorId: string,
 ): Promise<{ subjectId: string | null }> {
   const sealed: Record<string, string | null> = {};
-  for (const [plaintext, column] of Object.entries(descriptor.sealed)) sealed[column] = values[plaintext] ?? null;
+  for (const [plaintext, column] of Object.entries(descriptor.sealed)) sealed[column] = asText(values[plaintext]);
+
+  const keyColumns: Record<string, string> = { organisation_id: organisationId };
+  for (const column of descriptor.keyColumns) keyColumns[column] = String(values[column]);
+
   return sealRowPii(db, {
     organisationId,
-    subject: { sourceTable: descriptor.subjectTable, sourceId: values[descriptor.subjectIdColumn]! },
+    subject: { sourceTable: descriptor.subjectTable, sourceId: String(values[descriptor.subjectIdColumn]) },
     table: descriptor.table,
-    keyColumns: { organisation_id: organisationId, [descriptor.keyColumn]: values[descriptor.keyColumn]! },
+    keyColumns,
     linkageTable: descriptor.linkageTable,
-    linkageId: descriptor.linkageTable ? values[descriptor.keyColumn]! : undefined,
+    linkageId: descriptor.linkageTable ? String(values[descriptor.keyColumns[0]!]) : undefined,
     sealed,
     operational: descriptor.operational.map((field) => ({
       column: field.column, sealedColumn: field.sealedColumn, indexColumn: field.indexColumn,
-      field: field.field, value: values[field.plaintext] ?? null,
+      field: field.field, value: asText(values[field.plaintext]),
     })),
   }, keys, actorId);
 }
