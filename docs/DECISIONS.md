@@ -3632,6 +3632,25 @@ it covers it, so a branch that forgets to emit a datum also fails to account for
 re-derived the expected set from the same inventory would agree with itself and prove nothing — the same
 class of mistake as a coverage check that enumerates only what it already covers.
 
+**"No record of this kind" is not a catch-all, and the first version of this made it one.** Sweeping every
+still-unaccounted column into that bucket left `unaccountedFor` permanently empty, so the refusal was
+unreachable — the fifth instance of a check that cannot fail on this workstream, and this time one I
+wrote after arguing that class of bug is the thing to watch for. It was also worse than a missing field:
+a column the traversal had failed to reach would have been reported to the subject as an affirmative
+statement that no such data is held. An omission is silence; that is a denial.
+
+So the claim is made only where the traversal supports it — the table has an inventory entry, its
+attribution is a reach the traversal implements, and the traversal did not query it for this subject
+because no link led there. `resolveSubjectData` therefore **reports the tables it actually queried**
+(`tablesConsidered`) rather than leaving a consumer to work out which tables should have been visited,
+which would be the same self-agreeing re-derivation again.
+
+**And the refusal is proved at the command, not at the helper.** The test that found the catch-all adds a
+column to the inventory at run time — exactly how the gap appears in practice — and asserts that
+`exportSubjectData` rejects and that neither an artifact nor an audit event was written. The earlier test
+hand-tampered a document and called the assertion directly, which passed against code whose assertion
+could never fire.
+
 **Both renderings carry the same content.** The machine-readable JSON and the human-readable document are
 the same document, including the "held but not shown, and why" section. A rendering that showed less would
 make the JSON the real answer and the readable one a courtesy, and a person who reads only the readable
@@ -3659,11 +3678,40 @@ let a later erasure retroactively destroy an access response the subject lawfull
 to keep — which is not completeness, it is destroying the subject's own copy for a reason that has nothing
 to do with this artifact's retention window.
 
-**Destruction is a shred *and* a null, for two different reasons.** Nulling the payloads is what empties
-the row, which is what "destroyed" means to anyone reading the live database. Shredding the key is what
-reaches the copies the row has already become — a backup, a replica, a WAL segment, a snapshot taken
-mid-window — none of which an UPDATE can touch. Neither alone is sufficient, so both happen in one
-statement, and a CHECK constraint makes a half-destroyed artifact unrepresentable.
+**The response and its key live in an UNLOGGED table, which is what makes the destruction claim true.**
+
+The claim wanted here is "destroying the key reaches every copy of the ciphertext, including copies no
+UPDATE can touch". Stated plainly, that was **overstated**: it holds for the live row and for streaming
+replicas, which follow the primary, but not for a point-in-time backup. A snapshot taken mid-window holds
+the pre-shred key *and* the ciphertext together, and shredding the live key does not reach it — that copy
+would outlive the window and die of backup retention instead, which is a much weaker promise wearing the
+same words.
+
+A managed platform will not exclude one table from PITR, so the exclusion has to be a property of the
+table. An `UNLOGGED` table writes nothing to the WAL, so for `subject_export_payloads`:
+
+  * it is **not in PITR** — there is no point in time to which it can be recovered;
+  * it **never reaches a replica**, so no standby holds a key or a ciphertext;
+  * it is **empty after any restore from a physical base backup**, and after any unclean shutdown,
+    because recovery truncates an unlogged relation.
+
+The pre-shred key and ciphertext therefore exist in exactly one reachable place, and destroying the row
+reaches it. The claim is now complete rather than bounded by a retention period.
+
+**The one remaining path is a logical dump.** `pg_dump` includes unlogged table *data* unless given
+`--no-unlogged-table-data`. Any dump procedure touching this database must pass that flag. It is recorded
+here and in the migration because it is the single place this arrangement depends on something outside
+the schema, and an undocumented dependency of exactly this shape is what NZC-122 was.
+
+**Destruction is the absence of a row, not a row full of nulls.** The payload row exists with all three
+columns NOT NULL, or it is gone: readable and destroyed are distinguishable by existence, with no half
+state to represent or check for. This is the one table in the schema where DELETE is granted, because
+these rows are meant to cease existing; it stays revoked on the permanent record, where a removed row
+would be indistinguishable from an export that never happened.
+
+**The cost, accepted deliberately.** An unclean restart empties an open window early and the subject
+requests again. That fails towards destroying the artifact rather than towards keeping it, and the
+compliance record is permanent and untouched either way.
 
 **On completion, not on first byte.** "Completed" means the response body was delivered in full — in an
 HTTP handler, the stream reaching `finish` with `writableFinished` true. A shred on first byte would burn
@@ -3694,4 +3742,5 @@ separate act with its own channel decision, and folding it in would make "an exp
 copy of somebody's personal data left the system" one event.
 
 **Related.** NZC-134 (what the response contains), NZC-117 (crypto-shredding, the pattern reused here),
-NZC-131 (the capability), NZC-116 (the subject it is about).
+NZC-131 (the capability), NZC-116 (the subject it is about), NZC-122 (the last time an unwritten
+platform dependency held something up).

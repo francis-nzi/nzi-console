@@ -253,6 +253,48 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     assert.doesNotThrow(() => assertExportComplete(document));
   });
 
+  it("refuses at runtime, and persists nothing when it does", async () => {
+    // The refusal that matters is the one in the command, not the one in the helper. This simulates the
+    // real way the gap appears: a column is added to the inventory and the traversal does not cover it.
+    // `PII_COLUMNS` is `ReadonlyArray` to the compiler and an ordinary array at run time, so adding one
+    // here is exactly that situation — and the export must refuse rather than hand a person a response
+    // with a field silently missing.
+    const phantom = {
+      table: "trainee_certificates", column: "awarded_to_name", label: "Name on your certificate",
+      storage: { kind: "plaintext" }, stage: "deferred", erasure: "not-attributable",
+      attribution: { kind: "person-row", subjectTable: "trainees", subjectIdColumn: "trainee_id" },
+    } as unknown as (typeof PII_COLUMNS)[number];
+
+    const before = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM nzi_console.subject_export_artifacts`);
+
+    (PII_COLUMNS as unknown as Array<typeof phantom>).push(phantom);
+    try {
+      await assert.rejects(() => produce({ requestRef: "SAR-runtime-refusal" }), ExportIncompleteError,
+        "the command itself must fail closed, not merely go red in CI");
+    } finally {
+      (PII_COLUMNS as unknown as Array<typeof phantom>).pop();
+    }
+
+    // Fail *closed*: no artifact, and no audit claiming an export happened. A refusal that had already
+    // written the row would leave a sealed copy of the person's data behind and a record saying their
+    // request was fulfilled.
+    const after = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM nzi_console.subject_export_artifacts`);
+    assert.equal(after.rows[0]!.count, before.rows[0]!.count, "a refused export left an artifact behind");
+
+    const audit = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM nzi_console.audit_events
+        WHERE action='subject.export' AND correlation_id=$1`, ["SAR-runtime-refusal"]);
+    assert.equal(Number(audit.rows[0]!.count), 0, "and recorded no export that did not happen");
+
+    // And it works again once the inventory and the traversal agree, so the refusal is about the gap
+    // rather than about this suite having run.
+    const { exportId } = await produce();
+    const { document } = await fetch(exportId);
+    assert.deepEqual(document.completeness.unaccountedFor, []);
+  });
+
   it("renders the same content for a person to read, not a summary of it", async () => {
     const { exportId } = await produce();
     const { document, html } = await fetch(exportId);
@@ -341,25 +383,23 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
 
   it("destroys the key and the payloads together, and keeps the record that it existed", async () => {
     const { exportId } = await produce({ requestRef: "SAR-2026-0009" });
-    const before = await db.query<{ wrapped_key: unknown; sealed_json: unknown; record_count: number }>(
-      `SELECT wrapped_key, sealed_json, record_count FROM nzi_console.subject_export_artifacts WHERE export_id=$1`, [exportId]);
-    assert.ok(before.rows[0]!.wrapped_key, "sealed and readable to begin with");
-    assert.ok(before.rows[0]!.record_count > 0);
+    const payload = async () => Number((await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM nzi_console.subject_export_payloads WHERE export_id=$1`,
+      [exportId])).rows[0]!.count);
+    assert.equal(await payload(), 1, "sealed and readable to begin with");
 
     await completeSubjectExportDownload(database.pool, RECIPIENT, { organisationId: ORG, exportId });
 
     const { rows } = await db.query<{
-      wrapped_key: unknown; sealed_json: unknown; sealed_html: unknown;
-      destroyed_reason: string; downloaded_at: Date | null; record_count: number; datum_count: number; subject_id: string;
-    }>(`SELECT wrapped_key, sealed_json, sealed_html, destroyed_reason, downloaded_at, record_count, datum_count, subject_id
+      destroyed_reason: string; downloaded_at: Date | null;
+      record_count: number; datum_count: number; subject_id: string;
+    }>(`SELECT destroyed_reason, downloaded_at, record_count, datum_count, subject_id
           FROM nzi_console.subject_export_artifacts WHERE export_id=$1`, [exportId]);
     const row = rows[0]!;
 
-    // The shred: the key is gone, which is what reaches any copy of the payloads already taken.
-    assert.equal(row.wrapped_key, null, "the ephemeral key is destroyed");
-    // The empty: nothing readable is left in the live row either.
-    assert.equal(row.sealed_json, null);
-    assert.equal(row.sealed_html, null);
+    // The response and its key are gone together, as one row ceasing to exist — and because that table
+    // is unlogged, there is no copy of either in the WAL, on a replica, or in a restored backup.
+    assert.equal(await payload(), 0, "the sealed response and its key are gone");
 
     // The compliance record outlives the contents, which is what lets us evidence the request was
     // fulfilled without keeping a copy of somebody's personal data to do it.
@@ -383,10 +423,13 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     await assert.rejects(() => fetch(exportId, after),
       (error: unknown) => error instanceof ExportUnavailableError && error.reason === "expired");
 
-    const { rows } = await db.query<{ destroyed_reason: string; wrapped_key: unknown }>(
-      `SELECT destroyed_reason, wrapped_key FROM nzi_console.subject_export_artifacts WHERE export_id=$1`, [exportId]);
+    const { rows } = await db.query<{ destroyed_reason: string; payloads: string }>(
+      `SELECT a.destroyed_reason,
+              (SELECT count(*)::text FROM nzi_console.subject_export_payloads p
+                WHERE (p.organisation_id,p.export_id)=(a.organisation_id,a.export_id)) AS payloads
+         FROM nzi_console.subject_export_artifacts a WHERE a.export_id=$1`, [exportId]);
     assert.equal(rows[0]!.destroyed_reason, "expired");
-    assert.equal(rows[0]!.wrapped_key, null, "a lapsed artifact is shredded, not merely refused");
+    assert.equal(rows[0]!.payloads, "0", "a lapsed artifact is destroyed, not merely refused");
   });
 
   it("sweeps the ones nobody ever read", async () => {
@@ -394,11 +437,13 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     const swept = await expireSubjectExports(database.pool, { organisationId: ORG, now: new Date(Date.now() + 61_000) });
     assert.ok(swept.destroyed.includes(exportId), "the backstop finds a lapsed artifact");
 
-    const { rows } = await db.query<{ destroyed_reason: string; wrapped_key: unknown; sealed_json: unknown }>(
-      `SELECT destroyed_reason, wrapped_key, sealed_json FROM nzi_console.subject_export_artifacts WHERE export_id=$1`, [exportId]);
+    const { rows } = await db.query<{ destroyed_reason: string; payloads: string }>(
+      `SELECT a.destroyed_reason,
+              (SELECT count(*)::text FROM nzi_console.subject_export_payloads p
+                WHERE (p.organisation_id,p.export_id)=(a.organisation_id,a.export_id)) AS payloads
+         FROM nzi_console.subject_export_artifacts a WHERE a.export_id=$1`, [exportId]);
     assert.equal(rows[0]!.destroyed_reason, "expired");
-    assert.equal(rows[0]!.wrapped_key, null);
-    assert.equal(rows[0]!.sealed_json, null);
+    assert.equal(rows[0]!.payloads, "0");
 
     // And it does not touch one whose window is still open.
     const live = await produce();
@@ -419,6 +464,22 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     // Still intact: a refused reader must not have consumed somebody else's response.
     const { document } = await fetch(exportId);
     assert.equal(document.subject.subjectId, SUBJECT);
+  });
+
+  it("keeps the response in a table nothing can back up", async () => {
+    // The whole destruction claim rests on this: an UNLOGGED table writes nothing to the WAL, so there
+    // is no PITR copy, no replica copy, and nothing left after a restore from a physical backup. If this
+    // ever became a permanent table, shredding would reach the live row and leave every snapshot holding
+    // both the key and the ciphertext until backup retention expired — a much weaker promise than the one
+    // NZC-135 makes, and nothing else here would notice the difference.
+    const { rows } = await db.query<{ relname: string; relpersistence: string }>(
+      `SELECT relname, relpersistence FROM pg_class
+        WHERE relnamespace = 'nzi_console'::regnamespace
+          AND relname IN ('subject_export_payloads','subject_export_artifacts')
+        ORDER BY relname`);
+    const persistence = Object.fromEntries(rows.map((row) => [row.relname, row.relpersistence]));
+    assert.equal(persistence.subject_export_payloads, "u", "the sealed response and its key must be unlogged");
+    assert.equal(persistence.subject_export_artifacts, "p", "and the record that it happened must be permanent");
   });
 
   it("has a window that is short and stated in one place", () => {

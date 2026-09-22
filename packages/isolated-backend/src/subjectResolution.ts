@@ -79,6 +79,16 @@ export type ResolvedSubject = {
   /** Personal data this system holds that no subject path reaches, with the reason for each. */
   notAttributable: ReadonlyArray<{ table: string; column: string; label: string; because: string }>;
   /**
+   * The tables this traversal actually queried for this subject.
+   *
+   * Reported rather than re-derived, because a consumer that works out for itself which tables *should*
+   * have been visited is comparing the inventory with the inventory and will agree with itself whatever
+   * the traversal did. An export uses this to tell two very different situations apart: a table with no
+   * rows for this person — where "we hold no record of this kind about you" is true — and a table the
+   * traversal never reached at all, where saying that would be an affirmative false statement.
+   */
+  tablesConsidered: readonly string[];
+  /**
    * Whether this person exists in another organisation is not answerable here, and saying so is the
    * honest answer rather than an omission.
    *
@@ -198,6 +208,7 @@ export async function resolveSubjectData(
 
     const rows: ResolvedRow[] = [];
     const linkage: Array<{ sourceTable: string; sourceId: string; field: string }> = [];
+    const considered = new Set<string>();
 
     for (const link of links.rows) {
       // Every table the inventory attributes to *this* linked person-row: the row itself, the tables
@@ -224,6 +235,7 @@ export async function resolveSubjectData(
           reach = "pointer";
         }
         if (!where || !reach) continue;
+        considered.add(table);
 
         let found: { rows: Record<string, unknown>[] };
         // A savepoint, because a privilege refusal aborts the whole transaction and every statement
@@ -310,6 +322,7 @@ export async function resolveSubjectData(
       rows,
       linkage,
       notAttributable,
+      tablesConsidered: [...considered].sort(),
       crossTenant: "not-answerable-here",
     };
   });

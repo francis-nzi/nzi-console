@@ -37,7 +37,10 @@ const MIGRATIONS = resolve(here, "..", "migrations");
 
 /** How an object comes into existence in a migration. */
 const CREATES = [
-  /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:nzi_console\.)?([a-z_][a-z0-9_]*)/gi,
+  // `UNLOGGED` and `TEMP` sit between CREATE and TABLE. Missing them made this guard report a table a
+  // migration plainly creates as one no migration creates — the guard firing correctly on its own blind
+  // spot rather than on a real fault.
+  /CREATE\s+(?:UNLOGGED\s+|TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:nzi_console\.)?([a-z_][a-z0-9_]*)/gi,
   /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:nzi_console\.)?([a-z_][a-z0-9_]*)/gi,
   /CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:nzi_console\.)?([a-z_][a-z0-9_]*)/gi,
   /CREATE\s+TYPE\s+(?:nzi_console\.)?([a-z_][a-z0-9_]*)/gi,

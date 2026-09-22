@@ -46,6 +46,34 @@ const DEFINER_ROLE = "nzi_console_definer";
 const BOOTSTRAP_ROLES = [...RUNTIME_ROLES, DEFINER_ROLE];
 
 /**
+ * Roles are cluster-wide, so provisioning them is provisioning one shared thing from many suites.
+ *
+ * Every real-database suite runs the same CREATE ROLE / ALTER ROLE / GRANT sequence against the same
+ * `pg_authid` and `pg_auth_members` rows, and node's runner runs the files concurrently. Two of them
+ * altering one role at the same instant fails with **"tuple concurrently updated"** — which surfaces as a
+ * `before` hook failing and every test in that file cancelled without running, so the symptom names a
+ * suite that is fine and says nothing about the collision.
+ *
+ * It is a race, so it appears when the number of concurrent suites goes up and not before: adding the
+ * sixteenth real-database suite is what produced it. An advisory lock makes the shared section one at a
+ * time. Session-level rather than transactional, because CREATE DATABASE cannot run in a transaction.
+ *
+ * A constant key, because the thing being serialised is "the cluster's roles" and there is only one.
+ */
+const ROLE_BOOTSTRAP_LOCK = 0x6e7a6931;
+
+async function withRoleBootstrapLock<T>(cluster: pg.Client, work: () => Promise<T>): Promise<T> {
+  await cluster.query(`SELECT pg_advisory_lock($1)`, [ROLE_BOOTSTRAP_LOCK]);
+  try {
+    return await work();
+  } finally {
+    // Released explicitly rather than left to the connection closing, so a suite that keeps this client
+    // for longer does not hold the whole run behind it.
+    await cluster.query(`SELECT pg_advisory_unlock($1)`, [ROLE_BOOTSTRAP_LOCK]);
+  }
+}
+
+/**
  * The role that owns the test database and applies its migrations: **not a superuser, but it does
  * bypass row-level security** — which is what production does (NZC-122).
  *
@@ -247,11 +275,11 @@ export async function ensureDisposableDatabase(suite: string): Promise<string | 
   const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL, ...CONNECTION_GUARDS });
   await phase("connecting to the cluster", () => cluster.connect());
   try {
-    await phase("creating the runtime roles", async () => {
+    await phase("creating the runtime roles", () => withRoleBootstrapLock(cluster, async () => {
       for (const role of BOOTSTRAP_ROLES) {
         await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
       }
-    });
+    }));
     // The classic block: DROP DATABASE waits on any session still attached to it. With a lock
     // timeout it says so in ten seconds instead of waiting for the job to be killed.
     await phase(`dropping the previous ${name}`, () => cluster.query(`DROP DATABASE IF EXISTS "${name}"`));
@@ -296,34 +324,37 @@ export async function createDisposableDatabase(
   const cluster = new pg.Client({ connectionString: TEST_DATABASE_URL, ...CONNECTION_GUARDS });
   await phase("connecting to the cluster", () => cluster.connect());
   try {
-    await phase("creating the runtime roles", async () => {
+    // One lock over the whole shared section: creating the roles, restating the owner's attributes and
+    // granting the roles to it all write the same catalog rows, so serialising only the CREATEs would
+    // leave the ALTER and the GRANTs racing.
+    await phase("creating the runtime roles", () => withRoleBootstrapLock(cluster, async () => {
       for (const role of BOOTSTRAP_ROLES) {
         await cluster.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
       }
-    });
-    await cluster.query(
-      `DO $$ BEGIN CREATE ROLE ${OWNER_ROLE} LOGIN PASSWORD '${OWNER_PASSWORD}'; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    // Stated every run rather than only at creation, so a role left from an earlier run cannot carry
-    // attributes this one does not expect. NOBYPASSRLS is the point; CREATEROLE is what the migrations
-    // need, and it confers no exemption from a policy.
-    await cluster.query(
-      `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER BYPASSRLS CREATEROLE NOCREATEDB`);
-    // The migrations grant the runtime roles to CURRENT_USER, which needs ADMIN OPTION on roles this
-    // one did not create — they were made just above, as the superuser.
-    // Membership is what `ALTER FUNCTION … OWNER TO` requires of whoever runs it, and admin is what a
-    // GRANT of the same role requires. Both, for every bootstrapped role, so the migration works
-    // whatever created the role first.
-    await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
-    // The definer role is granted the way PostgreSQL 16 grants a role back to whoever created it:
-    // ADMIN yes, INHERIT no, **SET no**. That is the shape staging actually has, because Supabase's
-    // `postgres` is not a superuser — it has CREATEROLE, so it creates this role and receives exactly
-    // these flags.
-    //
-    // Granting it here with the default SET would hand the migration a privilege production does not
-    // give it, and 0104 would skip the grant it needs. That is precisely what happened: CI passed while
-    // the staging deploy failed with "must be able to SET ROLE". The harness now withholds SET, so the
-    // migration has to obtain it — and a migration that assumes membership is enough fails here first.
-    await cluster.query(`GRANT ${DEFINER_ROLE} TO ${OWNER_ROLE} WITH ADMIN OPTION, SET FALSE, INHERIT FALSE`);
+      await cluster.query(
+        `DO $$ BEGIN CREATE ROLE ${OWNER_ROLE} LOGIN PASSWORD '${OWNER_PASSWORD}'; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+      // Stated every run rather than only at creation, so a role left from an earlier run cannot carry
+      // attributes this one does not expect. NOBYPASSRLS is the point; CREATEROLE is what the migrations
+      // need, and it confers no exemption from a policy.
+      await cluster.query(
+        `ALTER ROLE ${OWNER_ROLE} WITH LOGIN PASSWORD '${OWNER_PASSWORD}' NOSUPERUSER BYPASSRLS CREATEROLE NOCREATEDB`);
+      // The migrations grant the runtime roles to CURRENT_USER, which needs ADMIN OPTION on roles this
+      // one did not create — they were made just above, as the superuser.
+      // Membership is what `ALTER FUNCTION … OWNER TO` requires of whoever runs it, and admin is what a
+      // GRANT of the same role requires. Both, for every bootstrapped role, so the migration works
+      // whatever created the role first.
+      await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
+      // The definer role is granted the way PostgreSQL 16 grants a role back to whoever created it:
+      // ADMIN yes, INHERIT no, **SET no**. That is the shape staging actually has, because Supabase's
+      // `postgres` is not a superuser — it has CREATEROLE, so it creates this role and receives exactly
+      // these flags.
+      //
+      // Granting it here with the default SET would hand the migration a privilege production does not
+      // give it, and 0104 would skip the grant it needs. That is precisely what happened: CI passed while
+      // the staging deploy failed with "must be able to SET ROLE". The harness now withholds SET, so the
+      // migration has to obtain it — and a migration that assumes membership is enough fails here first.
+      await cluster.query(`GRANT ${DEFINER_ROLE} TO ${OWNER_ROLE} WITH ADMIN OPTION, SET FALSE, INHERIT FALSE`);
+    }));
 
     // Checked once, here, rather than discovered as a failing index in every suite in turn. An image
     // without the extension is an environment problem and should say so in one line.

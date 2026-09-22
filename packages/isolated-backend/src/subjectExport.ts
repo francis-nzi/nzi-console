@@ -207,11 +207,24 @@ export function buildExportDocument(
     });
   }
 
-  // 4. Everything reachable in principle that this person simply has no row for. Stated, because
-  // "nothing of this kind is held about you" is part of the answer and its absence looks like an
-  // omission.
+  // 4. A table this person has no row in — where "we hold no record of this kind about you" is true.
+  //
+  // This is emphatically **not** a catch-all, and it was one in the first draft: sweeping every
+  // unaccounted column in here made the completeness check incapable of failing, and turned a column
+  // the traversal had missed into an affirmative statement to the subject that no such data is held.
+  // That is worse than an omission — an omission is silence, this is a denial.
+  //
+  // So the claim is made only where the traversal supports it: the table is one the reach model knows
+  // (it has an inventory entry, and its attribution is a reach the traversal implements), and the
+  // traversal did not query it for this subject because no link led there. Anything else falls through
+  // to `unaccountedFor` and the export refuses.
+  const considered = new Set(resolved.tablesConsidered);
+  const REACHED_BY_TRAVERSAL = new Set(["person-row", "history-of", "pointer"]);
   for (const column of PII_COLUMNS) {
     if (accounted.has(named(column))) continue;
+    const definition = PII_TABLES[column.table];
+    if (!definition || considered.has(column.table)) continue;
+    if (!REACHED_BY_TRAVERSAL.has(definition.attribution.kind)) continue;
     accounted.add(named(column));
     heldButNotShown.push({
       label: column.label, provenance: { table: column.table, column: column.column },
@@ -220,6 +233,9 @@ export function buildExportDocument(
     });
   }
 
+  // What is left is a column this response can say nothing truthful about: its table is not in the
+  // reach model, or its attribution is a kind the traversal does not implement, or the traversal
+  // queried its table and produced no datum for it. Each of those is a defect rather than an answer.
   const unaccountedFor = PII_COLUMNS.filter((column) => !accounted.has(named(column))).map(named);
 
   return {
@@ -402,14 +418,23 @@ export async function exportSubjectData(
     await db.query(
       `INSERT INTO nzi_console.subject_export_artifacts
          (organisation_id,export_id,subject_id,requested_by,request_ref,recipient_principal,recipient_id,
-          created_at,expires_at,sealed_json,sealed_html,wrapped_key,record_count,datum_count,withheld_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)`,
+          created_at,expires_at,record_count,datum_count,withheld_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [input.organisationId, exportId, input.subjectId, principal.userId, input.requestRef ?? null,
         input.recipient.principal, input.recipient.id, producedAt, expiresAt,
+        document.records.length, datumCount, withheldCount]);
+
+    // The sealed response and its key go in the unlogged table, so no copy of either reaches the WAL,
+    // a replica, or a restored backup (NZC-135). Same transaction: an artifact recorded without a
+    // payload would be a window with nothing in it.
+    await db.query(
+      `INSERT INTO nzi_console.subject_export_payloads
+         (organisation_id,export_id,sealed_json,sealed_html,wrapped_key)
+       VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb)`,
+      [input.organisationId, exportId,
         asJson(sealForSubject(JSON.stringify(document), key)),
         asJson(sealForSubject(html, key)),
-        JSON.stringify(wrapped),
-        document.records.length, datumCount, withheldCount]);
+        JSON.stringify(wrapped)]);
 
     await auditExport(db, {
       organisationId: input.organisationId, actorId: principal.userId, action: "subject.export",
@@ -480,10 +505,12 @@ export async function readSubjectExport(
     Promise<{ ok: true; document: SubjectExportDocument; html: string; subjectId: string; expiresAt: Date }
       | { ok: false; message: string; reason: ExportUnavailableError["reason"] }> => {
     const { rows } = await db.query<ArtifactRow>(
-      `SELECT subject_id, recipient_principal, recipient_id, expires_at, destroyed_at,
-              sealed_json, sealed_html, wrapped_key
-         FROM nzi_console.subject_export_artifacts
-        WHERE organisation_id=$1 AND export_id=$2`,
+      `SELECT a.subject_id, a.recipient_principal, a.recipient_id, a.expires_at, a.destroyed_at,
+              p.sealed_json, p.sealed_html, p.wrapped_key
+         FROM nzi_console.subject_export_artifacts a
+         LEFT JOIN nzi_console.subject_export_payloads p
+           ON (p.organisation_id, p.export_id) = (a.organisation_id, a.export_id)
+        WHERE a.organisation_id=$1 AND a.export_id=$2`,
       [input.organisationId, input.exportId]);
 
     const row = rows[0];
@@ -513,8 +540,9 @@ export async function readSubjectExport(
       return { ok: false, message: "This export's window has closed.", reason: "expired" };
     }
     if (!row.wrapped_key || !row.sealed_json || !row.sealed_html) {
-      // The table's CHECK makes this unreachable; it is here because "unreadable" must never be
-      // reported as "empty".
+      // Reachable in one real case: an unclean restart empties the unlogged payload table, so the window
+      // is open and the response is gone. Reported as unreadable rather than as an empty export, which
+      // is the distinction a person on the other end cannot make for themselves.
       return { ok: false, message: "This export is no longer readable.", reason: "destroyed" };
     }
 
@@ -533,19 +561,28 @@ export async function readSubjectExport(
   return readable;
 }
 
-const destroy = (
+/**
+ * Destroy the response and keep the record of it.
+ *
+ * The payload row goes, which takes the ciphertext and the key with it in one act — and because that
+ * table is unlogged, there is no copy of either in the WAL, on a replica, or in a restored backup for a
+ * shred to have to reach afterwards (NZC-135). What remains is the permanent row saying an export
+ * happened, for whom, and why it ended.
+ */
+const destroy = async (
   db: Queryable, organisationId: string, exportId: string,
   reason: "downloaded" | "expired", at: Date,
-): Promise<unknown> =>
-  // The key and both payloads go in one statement: nulling the payloads empties this row, and shredding
-  // the key is what reaches the copies of it that already exist in a backup or a replica.
-  db.query(
+): Promise<void> => {
+  await db.query(
+    `DELETE FROM nzi_console.subject_export_payloads WHERE organisation_id=$1 AND export_id=$2`,
+    [organisationId, exportId]);
+  await db.query(
     `UPDATE nzi_console.subject_export_artifacts
-        SET wrapped_key=NULL, sealed_json=NULL, sealed_html=NULL,
-            destroyed_at=$3, destroyed_reason=$4,
+        SET destroyed_at=$3, destroyed_reason=$4,
             downloaded_at=CASE WHEN $4='downloaded' THEN $3 ELSE downloaded_at END
       WHERE organisation_id=$1 AND export_id=$2 AND destroyed_at IS NULL`,
     [organisationId, exportId, at, reason]);
+};
 
 /**
  * The download finished, so destroy it.
