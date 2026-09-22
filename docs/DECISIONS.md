@@ -3608,3 +3608,90 @@ by silence, and both the export and the erasure record render it as an explicit 
 **Related.** NZC-119 (where the gap was first recorded, as sealing), NZC-121 (the linkage write it also
 blocks), NZC-128 (the read path that found this), NZC-130 (how a known gap is rendered rather than
 skipped).
+
+### NZC-134 — An export accounts for every field, or it is not produced [Confirmed 22 Sep 2026]
+
+**Decision.** The subject access response accounts for **every column in the PII inventory**, in one of
+five ways, each stated in the artifact: shown as a value; *held but not attributable to you*, with the
+reason; *held, present but not readable here*, with the reason; *held as a one-way digest, never read
+back*; or *no record of this kind is held about you*. An export that cannot account for a column
+**refuses to be produced** (`ExportIncompleteError`) rather than shipping without it.
+
+**Why refuse rather than annotate.** A column the export forgot is indistinguishable, to the person
+reading it, from a column this organisation does not hold. There is no way for them to detect the
+difference and no reason they should have to, so the failure has to be ours to notice. It is the same
+fail-closed reasoning as the sealing keys refusing a write rather than skipping a seal (NZC-119): the
+quiet version of this bug produces a document that looks complete and is wrong.
+
+**Why "we hold nothing of this kind about you" is in the response.** Because its absence looks exactly
+like an omission. A person who receives an export with no training records cannot tell whether they have
+none or whether the export forgot to look, and only one of those is an answer.
+
+**The accounting is done while building, not checked afterwards.** Each branch records what it covered as
+it covers it, so a branch that forgets to emit a datum also fails to account for it. A second pass that
+re-derived the expected set from the same inventory would agree with itself and prove nothing — the same
+class of mistake as a coverage check that enumerates only what it already covers.
+
+**Both renderings carry the same content.** The machine-readable JSON and the human-readable document are
+the same document, including the "held but not shown, and why" section. A rendering that showed less would
+make the JSON the real answer and the readable one a courtesy, and a person who reads only the readable
+one would have received less than their right of access.
+
+**The digest is named and never valued** (NZC-118). Reading one back would turn an export into a way to
+confirm somebody's address by guessing it.
+
+**Audit.** One event per export: subject, actor, time, request reference, and counts. No exported value
+appears in it, asserted directly — the audit of a subject access must not become one more copy of the
+thing it is about. The counts are what lets the fulfilment be evidenced after the artifact is gone.
+
+**Related.** NZC-128 (the one read path it uses), NZC-125 (the inventory it accounts against), NZC-131
+(the capability), NZC-135 (how long the response exists), NZC-130 / NZC-132 (the gaps it renders).
+
+### NZC-135 — An access response is sealed under a key of its own and destroyed when it lands [Confirmed 22 Sep 2026]
+
+**Decision.** A produced export is encrypted under a **per-export ephemeral key**, retrievable only by the
+recipient recorded at creation, for a window of **24 hours**. The key and the payloads are destroyed when
+the download completes or the window expires, whichever comes first. The row is retained, empty.
+
+**Not the subject's key.** An export fulfils the right of access; erasure is the right to be forgotten by
+the controller. Different rights, different lifecycles. Sealing the response under the subject's key would
+let a later erasure retroactively destroy an access response the subject lawfully received and is entitled
+to keep — which is not completeness, it is destroying the subject's own copy for a reason that has nothing
+to do with this artifact's retention window.
+
+**Destruction is a shred *and* a null, for two different reasons.** Nulling the payloads is what empties
+the row, which is what "destroyed" means to anyone reading the live database. Shredding the key is what
+reaches the copies the row has already become — a backup, a replica, a WAL segment, a snapshot taken
+mid-window — none of which an UPDATE can touch. Neither alone is sufficient, so both happen in one
+statement, and a CHECK constraint makes a half-destroyed artifact unrepresentable.
+
+**On completion, not on first byte.** "Completed" means the response body was delivered in full — in an
+HTTP handler, the stream reaching `finish` with `writableFinished` true. A shred on first byte would burn
+the artifact on a dropped connection and force a re-request, and a re-request mints a *second* copy of
+exactly the same personal data. So within the window and before a completion the authenticated link keeps
+working: a dropped connection is a retry. The TTL is the hard backstop.
+
+**Why 24 hours.** A balance, not a maximum. The artifact is the most sensitive object this system ever
+produces, so the window should be short — but a window so short that the subject misses it produces the
+re-request above, which makes the retention position worse rather than better. It is one exported
+constant so that revisiting it is a one-line decision.
+
+**The expiry commits before the refusal.** A lapsed artifact is destroyed when it is next reached, not
+only by the sweep, so the window is the window whatever the sweep's schedule is. This was wrong first:
+the refusal was thrown from inside the transaction that performed the shred, so the rollback undid the
+destruction and the artifact stayed readable. The refusal is now an outcome that commits with the
+destruction and is raised after it — found by the test asserting `destroyed_reason` afterwards rather
+than asserting that the read was refused.
+
+**The compliance record outlives the contents.** After destruction the row still states that an export
+happened, for which subject, requested by whom, under which reference, produced and destroyed when and
+why, and how much it contained. That is the evidence the request was fulfilled, and it is precisely the
+part that holds no personal data — so it is retained while the contents are not. DELETE is revoked: a
+removed row is indistinguishable from an export that never happened.
+
+**Out of scope, deliberately.** The command produces and makes available; it does not email. Sending is a
+separate act with its own channel decision, and folding it in would make "an export was produced" and "a
+copy of somebody's personal data left the system" one event.
+
+**Related.** NZC-134 (what the response contains), NZC-117 (crypto-shredding, the pattern reused here),
+NZC-131 (the capability), NZC-116 (the subject it is about).
