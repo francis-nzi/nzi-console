@@ -3881,3 +3881,134 @@ erased would be the one copy that survived the erasure.
 **Related.** NZC-136 (the command), NZC-134 (the same account-while-building discipline, and the same
 refusal), NZC-132 (the bridge), NZC-120 (the sealed history whose plaintext is the second prerequisite),
 NZC-130 (rendering a known gap rather than skipping it).
+
+### NZC-138 — Whether a person's rights span tenants is a controllership question, not a technical one [Open — awaiting data-protection counsel, 22 Sep 2026]
+
+**Question.** Is NZI the controller across all tenants — so that one person's access or erasure request
+covers every organisation they appear in — or is each client the controller of its own records with NZI
+acting as processor, so that rights are answered per organisation and a request reaches one tenant only?
+
+**Why this is open rather than decided.** It is not answerable from the schema. Both models are
+implementable on what is built; they differ in who owes the person an answer, and that is a legal fact
+about the arrangement between NZI and its clients rather than a property of the software.
+
+**What is built, and what is deliberately not.** The per-organisation subject primitive is complete: a
+subject is an identifier within one organisation (NZC-116), resolution and erasure run inside one tenant,
+and an export states plainly that whether the same person is known elsewhere *is not answerable here*.
+The privileged cross-organisation adjudication exists — `subjects_sharing_linkage` compares digests across
+tenants for a human to rule on (NZC-118) — because a person is not confined to one tenant even when their
+records are. **Automatic cross-tenant fulfilment is not built, deliberately**: fulfilling across
+organisations before knowing who the controller is would either disclose one client's records to another
+client's request, or answer on a client's behalf without their instruction.
+
+Nothing here affects the single-tenant core, which is why the build closed without this answer.
+
+**Determination awaited.**
+
+  - NZI's role, including any split by record type or by client agreement;
+  - whether one person's request spans the organisations they appear in, or is answered per organisation;
+  - what processor assistance NZI owes a client controller receiving such a request;
+  - the lawful basis for the cross-organisation matching adjudication itself, which compares digests
+    belonging to different tenants in order to decide they are one person.
+
+**Related.** NZC-116 (a subject is an identifier inside one organisation), NZC-118 (the confined linkage
+and the adjudication), NZC-123 (crossing a tenant boundary is a policy naming a role), NZC-128 (the shared
+read path), NZC-134 (the export's stated non-answer), NZC-136 (erasure).
+
+### NZC-139 — What staff personal data survives an erasure request, and on what basis [Open — awaiting data-protection counsel, 22 Sep 2026]
+
+**Question.** When a staff member asks to be erased, which of their personal data is retained despite the
+request, on what lawful basis, and for how long?
+
+**What it gates.** Finishing the `retain-with-basis` set in the PII inventory. The erasure command already
+supports it: every column carries a treatment, `retain-with-basis` is one of them, and a retained column is
+reported with its basis rather than silently kept (NZC-136, NZC-137). What is missing is not a mechanism
+but the enumerated set — which fields, which basis, which period — and a carve-out nobody has enumerated
+cannot be applied.
+
+**Constraints already known, which the determination has to sit inside.**
+
+  - Live authentication material cannot be erased while the person is an active employee: erasing a staff
+    sign-in address does not forget somebody, it removes an active user's ability to log in.
+  - Employment and training records plausibly carry statutory or contractual retention of their own, which
+    would outlive an erasure request rather than be overridden by it.
+  - `staff_credentials` and the trainee tables are additionally blocked on the auth bridge (NZC-132), so
+    today they are reported `pending` rather than retained. The two are different answers to different
+    questions and both have to be settled before a staff erasure is complete: the bridge makes the data
+    reachable, this determines whether it should then be destroyed.
+
+**Determination awaited.**
+
+  - the enumerated field set retained despite an erasure request;
+  - the lawful basis per field;
+  - the retention period or the trigger that ends it, per field;
+  - whether NZI staff and client staff are treated alike, or split.
+
+**Related.** NZC-132 (the bridge that makes these fields reachable at all), NZC-136 and NZC-137 (the
+command and its honest-partial reporting), NZC-125 (the inventory these entries live in), NZC-117 (what a
+shred reaches).
+
+### NZC-140 — Whether the audit before-image and the outbox payload outrank an erasure [Open — awaiting data-protection counsel, 22 Sep 2026]
+
+**Question.** Do `audit_events.before_json` and `transactional_outbox.payload_json` carry a retention basis
+that overrides an erasure request, or must the personal data inside them be redacted or shredded when a
+person is erased?
+
+**Why these two and not the rest.** They are the only stores where personal data sits inside a payload
+rather than in a column of its own, so a key-shred does not reach it and nulling the column would destroy
+something other than the personal data. NZC-126 ruled that such data is redacted or retained and never
+shredded; which of the two applies to each store is the part that needs an answer.
+
+**What each actually holds, stated precisely, because the answers may differ.**
+
+  - **`audit_events.before_json`** — a before-image. `client.contact.update` is the only command that puts
+    a person's field into one, and it is a name. The sharp edge is that a before-image can *re-state* a
+    value the erasure destroyed: an audit row is a record of what changed, and here what changed was
+    somebody's name. An audit trail plausibly has a lawful retention basis of its own, which is why this is
+    a question about basis rather than a defect.
+  - **`transactional_outbox.payload_json`** — in-flight, and transient by design. The strategy reminder
+    payload carries `recipientEmail`, and nothing currently drains the table. The address duplicates
+    `strategy_automation_log`, so removing the copy may be better than redacting it — which would make this
+    a minimisation answer rather than a retention one (NZC-129).
+
+**Determination awaited.** Per store: retained under a stated basis for a stated period, or redacted or
+shredded on erasure. If retained, the inventory entry moves from `redact-or-retain` to `retain-with-basis`
+with the basis recorded; if not, it needs a redaction mechanism, which does not exist yet.
+
+**Related.** NZC-126 (the ruling this completes), NZC-125 (the inventory axis), NZC-136 (the erasure that
+reports these as retained today), NZC-129 (dropping data nobody uses).
+
+### NZC-141 — Legacy snapshots carrying minimised data, and whether name matching completes a DSAR [Open — awaiting data-protection counsel, 22 Sep 2026]
+
+**Question, in two parts.** Consolidates and supersedes the legacy-snapshot carve-out recorded as out of
+scope in NZC-117 and forward-only in NZC-104; those stay as the history of the ruling and this is the open
+question, rather than the same gap recorded twice.
+
+**(a) Snapshots issued before the minimisation.** Stored certificate and report snapshots issued before
+NZC-104 still contain hashed plates, because a snapshot is a frozen, content-hashed artefact and stripping
+a field changes the hash that makes a published report worth anything. Three options, each with a cost:
+
+  - **retain** under a documented basis, the artefacts being frozen evidence;
+  - **crypto-shred the stored copy** — after which the hash no longer self-verifies, so a tombstone has to
+    explain why an artefact that should verify does not. **The live collision to weigh:** public
+    certificate verification resolves against these artefacts (NZC-074), so shredding a stored snapshot
+    that a certificate verifies against breaks verification for a stranger holding a valid code;
+  - **re-issue a redacted successor**, superseding the original — which changes what "the report that was
+    issued" means and needs a rule for which one is authoritative.
+
+**(b) Completeness of name matching.** The subject spine matches on exact normalised email plus recorded
+history. Names are deliberately **not** indexed: a name digest would be a standing estate-wide oracle for
+"do you hold anybody called X", which NZC-118 ruled against. Best-effort name matching therefore sits on
+top of the spine as an assist for a human, and never as a lookup. The question is whether that satisfies
+DSAR completeness, or whether a controller is expected to find records reachable only by name.
+
+**Determination awaited.**
+
+  - for (a): which option, and the basis for it — including what a stranger verifying a certificate should
+    see if the artefact behind it has been shredded;
+  - for (b): confirmation that exact-identifier matching plus best-effort name assistance discharges the
+    completeness obligation, given the deliberate absence of a name oracle.
+
+**Related.** NZC-104 (the minimisation and why it was forward-only), NZC-117 (where snapshots were ruled
+out of scope pending this), NZC-103 (the asset identifier's posture), NZC-118 (the name-oracle ruling),
+NZC-074 (public certificate verification), NZC-134 (what an export claims to be complete over).
