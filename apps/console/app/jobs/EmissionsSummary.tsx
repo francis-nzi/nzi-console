@@ -95,7 +95,11 @@ export function EmissionsSummary(
       <p className="nz-es-total">
         <span className="nz-es-figure tnum">{figure(headline.tco2e)}</span>
         <span className="nz-es-unit">tCO₂e</span>
-        <span className="nz-es-basis">location-based</span>
+        {/* The qualifier travels with the figure, not with the market rows.
+            It reads the same whether or not this job has any market-based entries, because the basis of
+            the number is a property of how it was computed rather than of what happens to be in it —
+            and a reader who sees the total on a job with none should still know which basis it is on. */}
+        <span className="nz-es-basis">location-based · market-based reported separately</span>
       </p>
 
       {headline.marketTco2e > 0 ? (
