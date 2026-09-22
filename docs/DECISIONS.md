@@ -3811,14 +3811,24 @@ application's durable tables, and keeping client records out of the WAL would me
 crash recovery and replication too. Backup-aging is the mechanism, and naming it is the alternative to
 implying a completeness the storage layer does not provide.
 
-**The retention period itself is not recorded here yet, deliberately rather than by omission.** It is a
-property of the platform — the staging database is Supabase, whose project settings hold the PITR window
-and the daily-backup retention — and this repository has never written it down. Guessing it would put a
-number in a compliance document that nobody had checked, which is the same mistake as NZC-122, where the
-cross-tenant reads worked because of a provider default nobody had written down. So it is left as a
-question with a named owner: read the window from the platform, record it in this paragraph, and it
-becomes the stated maximum. Production is a separate platform and a separate number, and out of scope
-here.
+**The period, for the isolated database: seven days.** Confirmed from the Supabase project that
+`NZI_ISOLATED_DATABASE_URL` points at — **daily scheduled backups with seven-day retention, and PITR not
+enabled**. So the only copies that can outlive an erasure are the daily snapshots, and the last one taken
+before an erasure expires within seven days of it. **Seven days is therefore the maximum time-to-complete
+for any erasure on this database**, and the honest answer to "when is this person actually gone
+everywhere" is "immediately here, and within a week in total".
+
+PITR being off narrows it usefully: with it enabled the recoverable window is continuous, so every instant
+before the erasure is reachable for as long as the window lasts. Without it there are only the daily
+snapshots, which is a smaller number of copies as well as a bounded one.
+
+This number is recorded here rather than left as a platform detail because it is the *only* remaining
+qualifier on the word "erased", and somebody answering a subject's question deserves to read it in the
+same place as the claim it bounds. It also has to be re-read if the plan changes: enabling PITR, or
+lengthening retention, lengthens this bound silently and nothing in the code would notice.
+
+Production is a separate platform with its own retention, and out of scope here (it is export-only and
+holds no erasure command).
 
 **Related.** NZC-117 (crypto-shredding), NZC-137 (what it cannot finish, and why that is said out loud),
 NZC-128 (the traversal it shares with the export), NZC-127 (associations dangling to a tombstone),
