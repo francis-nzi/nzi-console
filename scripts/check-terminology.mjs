@@ -59,11 +59,14 @@ const SANCTIONED = [
   { match: "against the target and the measured footprint. */}", why: "a JSX comment" },
   { match: "as the assured footprint.", why: "a comment continuation" },
   { match: "footprint so the two can be compared", why: "a comment continuation" },
-  // The LCA module. NZC-039 names PCF as the sanctioned home for the term and says nothing about LCA,
-  // which shares the surface; whether the exemption extends to it is Francis's call, and these are
-  // carbon-adjacent copy so they go through the review gate rather than being changed here.
-  { match: "title: `${noun} footprint`", why: "LCA/PCF chart title — pending a ruling on whether LCA shares the PCF exemption" },
-  { match: "Footprint by life-cycle module", why: "LCA chart subtitle — pending the same ruling" },
+  // The LCA module, permanently. NZC-039's exemption extends to LCA impact-category **result labels**:
+  // "carbon footprint" (ISO 14067 / GWP), "water footprint" (ISO 14046) and "footprint by life-cycle
+  // module" (EN 15804) name a result, and are terms of art rather than loose synonyms for "emissions" —
+  // a water footprint is not an emission at all. The exemption is bounded to the result label: "footprint"
+  // used as a general synonym is still swept, which is why these two are listed individually rather than
+  // the LCA directories being excluded wholesale.
+  { match: "title: `${noun} footprint`", why: "LCA/PCF impact-category result label (NZC-039 boundary)" },
+  { match: "Footprint by life-cycle module", why: "EN 15804 result label (NZC-039 boundary)" },
 ];
 
 /** A comment line, which is not copy. Block-comment bodies conventionally start with `*` here. */

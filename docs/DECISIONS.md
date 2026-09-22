@@ -511,10 +511,19 @@ stated with its reason in one allowlist — the PCF term of art, the identifiers
 separate call on scope, and comment continuations. Same shape as the conflict-marker and date gates: a
 rule nobody checks is a rule that holds until somebody types the other word.
 
-**One question the sweep raised.** This entry names the **PCF** module as the sanctioned home for the
-term and says nothing about **LCA**, which shares that surface — so `${noun} footprint` and "Footprint by
-life-cycle module" are allowlisted pending a ruling rather than rewritten, because they are carbon-adjacent
-copy and go through the review gate.
+**The exemption extends to LCA impact-category result labels, and stops there [Confirmed 22 Sep 2026].**
+The sweep raised it: this entry named PCF and said nothing about **LCA**, which shares that surface.
+
+An LCA result label is a term of art naming a *result*, not a loose synonym for "emissions" — **"carbon
+footprint"** (ISO 14067 / GWP), **"water footprint"** (ISO 14046) and **"footprint by life-cycle module"**
+(EN 15804). The second settles it on its own: a water footprint is not an emission at all, so rewriting it
+would not be enforcing this decision, it would be making the label wrong.
+
+**The boundary is the result label.** "Footprint" used as a general synonym for emissions is still swept,
+inside the LCA module as much as anywhere else. So the two exempt strings — `${noun} footprint` in the LCA
+chart catalogue and "Footprint by life-cycle module" — are listed individually in the
+`check:terminology` allowlist with that rationale, rather than the LCA directories being excluded
+wholesale. Excluding the directory would have exempted the next loose use somebody wrote there.
 
 ### NZC-040 — Date format: dd/mm/yyyy [Confirmed 29 Aug 2026]
 All dates render as **dd/mm/yyyy** across every screen, the client portal, and generated documents/PDFs (UK
