@@ -4,6 +4,9 @@ import {
   type IndexedColumn, type SealedValue, type WrappedKey,
 } from "./subjectCrypto";
 import type { Queryable } from "./postgres";
+import {
+  indexColumnOf, PII_COLUMNS, PII_TABLES, sealedColumnOf, type PiiErasure, type SubjectTable,
+} from "./piiInventory";
 
 /**
  * The one path by which personal data becomes ciphertext (NZC-119).
@@ -239,55 +242,57 @@ export async function sealRowPii(
  * ciphertext. The same descriptors the standing check reads, so the thing that fills the columns and
  * the thing that proves them filled cannot disagree about what the columns are.
  */
-export const SEALABLE_ROWS: ReadonlyArray<{
+/**
+ * How the backfill reaches each row — a view over {@link PII_COLUMNS}, not a second list (NZC-125).
+ *
+ * It used to be written out beside the column inventory, and the coverage test asserted the two agreed
+ * in one direction: every column a descriptor filled appeared in the inventory. The direction it did
+ * not assert is where the gap was — sixteen tables held personal data and six had a descriptor, so ten
+ * tables' worth was unreachable from a subject and nothing said so. Deriving it removes the question.
+ */
+export type SealableRow = {
   table: string;
-  /** The row's own identifier column. */
   keyColumn: string;
-  /** The person whose key seals it, and the column naming them. */
   subjectTable: SubjectRef["sourceTable"];
   subjectIdColumn: string;
-  /** `plaintextColumn` → `sealedColumn`. */
   sealed: Readonly<Record<string, string>>;
   operational: ReadonlyArray<{ plaintext: string; column: IndexedColumn; sealedColumn: string; indexColumn: string; field: string }>;
-  /** Where linkage digests are recorded, when not the subject's own table. */
   linkageTable?: string;
-}> = [
-  {
-    table: "trainees", keyColumn: "trainee_id", subjectTable: "trainees", subjectIdColumn: "trainee_id",
-    sealed: { full_name: "full_name_sealed", phone: "phone_sealed", current_employer_name: "current_employer_name_sealed" },
-    operational: [{ plaintext: "personal_email", column: "trainees.personal_email", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email" }],
-  },
-  {
-    table: "client_contacts", keyColumn: "contact_id", subjectTable: "client_contacts", subjectIdColumn: "contact_id",
-    sealed: { full_name: "full_name_sealed", job_title: "job_title_sealed", phone: "phone_sealed" },
-    operational: [{ plaintext: "email", column: "client_contacts.email", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email" }],
-  },
-  {
-    table: "portal_users", keyColumn: "portal_user_id", subjectTable: "portal_users", subjectIdColumn: "portal_user_id",
-    sealed: { display_name: "display_name_sealed" },
-    operational: [{ plaintext: "email_normalized", column: "portal_users.email_normalized", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email" }],
-  },
-  {
-    table: "memberships", keyColumn: "user_id", subjectTable: "memberships", subjectIdColumn: "user_id",
-    sealed: { display_name: "display_name_sealed" },
-    operational: [{ plaintext: "email", column: "memberships.email", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email" }],
-  },
-  {
-    table: "staff_credentials", keyColumn: "user_id", subjectTable: "memberships", subjectIdColumn: "user_id",
-    linkageTable: "memberships", sealed: {},
-    operational: [{ plaintext: "email_normalized", column: "staff_credentials.email_normalized", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "login-email" }],
-  },
-  {
-    table: "trainee_email_changes", keyColumn: "change_id", subjectTable: "trainees", subjectIdColumn: "trainee_id",
-    linkageTable: "trainee_email_changes", sealed: {},
-    operational: [
-      { plaintext: "current_email", column: "trainee_email_changes.current_email", sealedColumn: "current_email_sealed", indexColumn: "current_email_bidx", field: "current-email" },
-      { plaintext: "new_email", column: "trainee_email_changes.new_email", sealedColumn: "new_email_sealed", indexColumn: "new_email_bidx", field: "new-email" },
-    ],
-  },
-];
+};
 
-export type SealableRow = (typeof SEALABLE_ROWS)[number];
+export const SEALABLE_ROWS: ReadonlyArray<SealableRow> = Object.entries(PII_TABLES)
+  // A row is sealable when it *is* a person — a pointer names somebody whose identity lives elsewhere,
+  // and history is sealed under the key of the record it is history of.
+  .filter(([, definition]) => definition.attribution.kind === "person-row")
+  .map(([table, definition]) => {
+    const attribution = definition.attribution as { kind: "person-row"; subjectTable: SubjectTable; subjectIdColumn: string };
+    const columns = PII_COLUMNS.filter((column) => column.table === table);
+    const sealed: Record<string, string> = {};
+    for (const column of columns) {
+      if (column.storage.kind === "sealed") sealed[column.column] = column.storage.sealed;
+    }
+    const operational = columns.flatMap((column) => column.storage.kind === "sealed-and-indexed"
+      ? [{
+          plaintext: column.column,
+          column: column.storage.indexedAs,
+          sealedColumn: column.storage.sealed,
+          indexColumn: column.storage.index,
+          field: column.storage.linkageField,
+        }]
+      : []);
+    const linkageTable = definition.linkage && definition.linkage.table !== attribution.subjectTable
+      ? definition.linkage.table
+      : undefined;
+    return {
+      table,
+      keyColumn: definition.keyColumns[0]!,
+      subjectTable: attribution.subjectTable,
+      subjectIdColumn: attribution.subjectIdColumn,
+      sealed,
+      operational,
+      ...(linkageTable ? { linkageTable } : {}),
+    };
+  });
 
 /** Every plaintext column one descriptor covers, sealed and operational alike. */
 export const plaintextColumnsOf = (row: SealableRow): string[] =>
@@ -340,104 +345,39 @@ export function sealExistingRow(
 }
 
 /**
- * Every column that holds personal data and the ciphertext column beside it — the whole inventory,
- * including the parts not yet sealed.
+ * Every column with a ciphertext column beside it — a view over {@link PII_COLUMNS} (NZC-125).
  *
- * The standing check reads this rather than keeping a list of its own, so a column present in one and
- * absent from the other cannot happen; a meta-assertion proves the check reaches all of it rather
- * than none of it, which is the lesson of a gate that passed over zero files.
- *
- * `stage` is what makes the unfinished parts visible instead of absent. A column omitted from a list
- * looks handled; a column marked `deferred` says what is still true of it. The three stages:
- *
- *   * `sealed` — a live writer dual-writes it and the backfill covers it. The invariant holds.
- *   * `awaiting-auth-bridge` — the backfill covers it, but its only writer runs as
- *     `nzi_console_auth`, which has no privilege on the registry, the key store or the linkage table
- *     and whose `'authentication'` pseudo-tenant fails their RLS policies. Until that bridge exists,
- *     a write from those paths leaves plaintext with no ciphertext.
- *   * `deferred` — no subject can be resolved for it, so there is no key to seal it under. Sealing it
- *     anyway would produce ciphertext that no erasure could ever reach, which reads as handled and is
- *     not. Named here so the gap is a decision rather than an omission.
+ * The seal-coverage invariant reads this; the export and erasure read the inventory directly, because
+ * they care about data this view drops: the linkage digests, which have no plaintext, and the personal
+ * data inside JSON payloads, which has no ciphertext column to check.
  */
 export const SEALED_COLUMNS: ReadonlyArray<{
   table: string; plaintext: string; sealed: string; index?: string;
   stage: "sealed" | "awaiting-auth-bridge" | "deferred";
-  /** Why, for anything not yet sealed. */
   because?: string;
-}> = [
-  // ── Sealed: an app-role writer dual-writes, the backfill covers the history ───────────
-  { table: "client_contacts", plaintext: "email", sealed: "email_sealed", index: "email_bidx", stage: "sealed" },
-  { table: "client_contacts", plaintext: "full_name", sealed: "full_name_sealed", stage: "sealed" },
-  { table: "client_contacts", plaintext: "job_title", sealed: "job_title_sealed", stage: "sealed" },
-  { table: "client_contacts", plaintext: "phone", sealed: "phone_sealed", stage: "sealed" },
-  { table: "portal_users", plaintext: "email_normalized", sealed: "email_sealed", index: "email_bidx", stage: "sealed" },
-  { table: "portal_users", plaintext: "display_name", sealed: "display_name_sealed", stage: "sealed" },
-  { table: "memberships", plaintext: "email", sealed: "email_sealed", index: "email_bidx", stage: "sealed" },
-  { table: "memberships", plaintext: "display_name", sealed: "display_name_sealed", stage: "sealed" },
-
-  // ── Written only from the authentication context ──────────────────────────────────────
-  { table: "trainees", plaintext: "personal_email", sealed: "email_sealed", index: "email_bidx", stage: "awaiting-auth-bridge",
-    because: "trainee self-service and email change run as nzi_console_auth" },
-  { table: "trainees", plaintext: "full_name", sealed: "full_name_sealed", stage: "awaiting-auth-bridge",
-    because: "trainee self-service runs as nzi_console_auth" },
-  { table: "trainees", plaintext: "phone", sealed: "phone_sealed", stage: "awaiting-auth-bridge",
-    because: "trainee self-service runs as nzi_console_auth" },
-  { table: "trainees", plaintext: "current_employer_name", sealed: "current_employer_name_sealed", stage: "awaiting-auth-bridge",
-    because: "trainee self-service runs as nzi_console_auth" },
-  { table: "trainee_email_changes", plaintext: "current_email", sealed: "current_email_sealed", index: "current_email_bidx", stage: "awaiting-auth-bridge",
-    because: "an email change is proposed from the authentication context" },
-  { table: "trainee_email_changes", plaintext: "new_email", sealed: "new_email_sealed", index: "new_email_bidx", stage: "awaiting-auth-bridge",
-    because: "an email change is proposed from the authentication context" },
-  { table: "staff_credentials", plaintext: "email_normalized", sealed: "email_sealed", index: "email_bidx", stage: "awaiting-auth-bridge",
-    because: "provisionStaffCredential runs as nzi_console_auth, the only role granted the table" },
-
-  // ── Deferred: a person the registry cannot name, or no person at all ──────────────────
-  { table: "training_bookings", plaintext: "person_name", sealed: "person_name_sealed", stage: "deferred",
-    because: "an attendee is a person, but data_subject_links cannot name training_bookings as a source" },
-  { table: "training_bookings", plaintext: "person_email", sealed: "person_email_sealed", stage: "deferred",
-    because: "as person_name; the address would resolve a subject, the link cannot record it" },
-  { table: "training_bookings", plaintext: "person_phone", sealed: "person_phone_sealed", stage: "deferred",
-    because: "as person_name, and no writer sets it — a drop-candidate for the retention conversation" },
-  { table: "lca_suppliers", plaintext: "contact_name", sealed: "contact_name_sealed", stage: "deferred",
-    because: "a supplier contact is a person the registry cannot name, and the table has no writer" },
-  { table: "lca_suppliers", plaintext: "contact_email", sealed: "contact_email_sealed", stage: "deferred",
-    because: "as contact_name" },
-  { table: "clients", plaintext: "contact_email", sealed: "contact_email_sealed", stage: "deferred",
-    because: "an address on the client record, resolvable to a subject but with no link to record it" },
-  { table: "clients", plaintext: "contact_name", sealed: "contact_name_sealed", stage: "deferred",
-    because: "as contact_email" },
-  { table: "clients", plaintext: "owner_name", sealed: "owner_name_sealed", stage: "deferred",
-    because: "owner_user_id names the staff member, so the subject is resolvable — pending the ruling that secondary mentions seal under the person they name" },
-  { table: "jobs", plaintext: "owner_name", sealed: "owner_name_sealed", stage: "deferred",
-    because: "free text with no user id: the name-suggestion class, which by ruling has no index and no reliable subject" },
-  { table: "report_versions", plaintext: "signee_name", sealed: "signee_name_sealed", stage: "deferred",
-    because: "signee_contact_id names the contact, so the subject is resolvable — same ruling as clients.owner_name" },
-  { table: "report_versions", plaintext: "signee_job_title", sealed: "signee_job_title_sealed", stage: "deferred",
-    because: "as signee_name" },
-  { table: "strategy_automation_log", plaintext: "recipient_email", sealed: "recipient_email_sealed", stage: "deferred",
-    because: "operational, not display-only: it is part of a unique constraint, so its plaintext cannot be dropped until that moves to a digest" },
-  { table: "portal_report_comments", plaintext: "author_display_name", sealed: "author_display_name_sealed", stage: "deferred",
-    because: "author_id and author_principal name the person; a staff author's name is the role, not a person at all" },
-  { table: "job_scope_rows", plaintext: "asset_identifier", sealed: "asset_identifier_sealed", stage: "deferred",
-    because: "a vehicle registration identifies a keeper who is not in our data: there is no subject to key it to" },
-  { table: "job_emission_sources", plaintext: "detail_json", sealed: "detail_sealed", stage: "deferred",
-    because: "as asset_identifier, which it carries" },
-  { table: "client_sites", plaintext: "postcode", sealed: "postcode_sealed", stage: "deferred",
-    because: "a site address belongs to the client, not to a data subject, and siteLifecycle cannot write it" },
-  { table: "client_sites", plaintext: "address_lines_json", sealed: "address_lines_sealed", stage: "deferred",
-    because: "as postcode" },
-];
-
+}> = PII_COLUMNS.flatMap((column) => {
+  const sealedColumn = sealedColumnOf(column);
+  if (!sealedColumn) return [];
+  const index = indexColumnOf(column);
+  return [{
+    table: column.table,
+    plaintext: column.column,
+    sealed: sealedColumn,
+    ...(index ? { index } : {}),
+    stage: column.stage,
+    ...(column.because ? { because: column.because } : {}),
+  }];
+});
 /**
- * Personal data with no ciphertext column at all — found while wiring, and not addressable here
- * because adding a column is a migration.
+ * Personal data a key-shred does not reach — a view over the inventory (NZC-125).
  *
- * `client_contact_versions.snapshot_json` holds every contact's name, address, job title and phone in
- * the clear, one row per version. 0100 sealed the live contact and left its history untouched, so
- * shredding a key today would leave every previous value of the same fields readable. Named rather
- * than left out, because an inventory that lists only what it covers is how this was missed once.
+ * It was a prose list of things found while wiring. It is now whatever the inventory says has no
+ * ciphertext column: data inside a JSON payload, and the linkage digests, which have no plaintext at
+ * all. Each carries its own erasure treatment, because none of them can be crypto-shredded — a payload
+ * is redacted or retained with a basis, and a digest is nulled.
  */
-export const UNSEALED_PII_FOUND: ReadonlyArray<{ table: string; column: string; note: string }> = [
-  { table: "client_contact_versions", column: "snapshot_json",
-    note: "fullName, jobTitle, email and phone per version — no sealed column exists; erasure would not reach it" },
-];
+export const UNSEALED_PII_FOUND: ReadonlyArray<{
+  table: string; column: string; erasure: PiiErasure; note: string;
+}> = PII_COLUMNS.flatMap((column) => column.storage.kind === "json" || column.storage.kind === "digest"
+  ? [{ table: column.table, column: column.column, erasure: column.erasure, note: column.because ?? column.label }]
+  : []);

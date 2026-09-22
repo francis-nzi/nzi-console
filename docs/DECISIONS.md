@@ -3314,3 +3314,93 @@ production has, at one more level of granularity.
 
 **Related.** NZC-122 (the provider default this assumed away), NZC-123 (the migration amended),
 NZC-121 (the confinement it implements).
+### NZC-125 — One inventory of personal data, with an explicit attributable axis [Confirmed 21 Sep 2026]
+
+**Decision.** Every datum that belongs to a person is enumerated once, in `piiInventory.ts`, and three
+operations read that list and nothing else: the seal-coverage invariant, the DSAR export, and erasure.
+`SEALED_COLUMNS` and `SEALABLE_ROWS` become views over it rather than parallel lists. No column can be
+sealed and not exported, exported and not erasable, or erasable and not covered.
+
+**What the old arrangement actually got wrong.** There were two hand-written lists, and the coverage
+test asserted they agreed in **one direction**: every column a sealing descriptor filled appeared in the
+column inventory. The direction it did not assert is where the gap was. Sixteen tables held personal
+data and six had a descriptor — so ten tables' worth was unreachable from a subject, and nothing
+anywhere said so. Both directions are asserted now, which is the whole lesson: the check you do not
+write is the one that matters.
+
+**Attribution is the axis, and it is per column, not per table.** `PiiAttribution` says whether a datum
+can be reached from a subject and, when it cannot, why. `clients` is why it cannot live on the table:
+`owner_name` is attributable through `owner_user_id`, while `contact_name` and `contact_email` on the
+same row reach nobody. Held per table, all three would have counted as attributable and an export would
+have claimed to gather two columns it cannot reach. The invariant found that, not a reading of it.
+
+**Nothing is omitted, because silence is the failure being designed against.** Non-attributable data is
+rendered to the person as *held, but not attributable to you*, and recorded by erasure as *retained —
+not attributable*, with the reason. An export that quietly dropped those columns would tell somebody
+they had seen everything. Incompleteness that says so is a fact they can act on; incompleteness that
+does not is a false assurance.
+
+**Three things the old list could not carry, now required by the invariant.** The linkage digests, which
+have no plaintext and which a key-shred leaves behind — a digest is confirmable by guess, so an erased
+person would stay findable by anyone able to guess their address. A mapping from a table to where its
+history lives, so erasure cannot shred the present and leave the past. And personal data inside JSON
+payloads, which has no ciphertext column at all.
+
+**`lca_suppliers`, verified rather than assumed.** It was a candidate for widening the registry. It
+holds a supplier company in `name` with `contact_name` and `contact_email` naming an individual at that
+supplier — structurally a data subject. But **nothing in the application writes it and nothing reads
+it**: the table is empty by construction. So it is recorded as not attributable for that reason, and
+belongs in the retention conversation as a drop candidate rather than in the subject model.
+
+**Related.** NZC-119 (the sealing path this enumerates for), NZC-116 (the subject it attributes to),
+NZC-126 and NZC-127 (two treatments this inventory records).
+
+### NZC-126 — Personal data inside a JSON payload is redacted or retained, never shredded [Confirmed 21 Sep 2026]
+
+**Decision.** A datum inside a JSON column has no key of its own, so erasure cannot reach it by
+destroying one. Its treatment is `redact-or-retain`: either the value is removed from the payload, or it
+is kept with a lawful basis recorded. The inventory states which, per column, and the erasure record
+says what was retained and why.
+
+**Why it cannot be folded into the shred.** Crypto-shredding works because a field is ciphertext under a
+key that can be destroyed. A name inside `audit_events.before_json` is not ciphertext and has no key; a
+shred of the subject's key leaves it exactly as it was. Treating the two the same would make an erasure
+report claim a person was gone while a payload still named them.
+
+**The two known cases, and why neither is a technical decision.** `audit_events.before_json` holds a
+name because `client.contact.update` is the only command that puts a person field in a before-payload —
+and an audit row plausibly has a lawful retention basis, which makes redact-versus-retain a counsel
+question rather than an engineering one. `transactional_outbox.payload_json` carries a reminder's
+recipient address, and nothing drains the table; that address duplicates
+`strategy_automation_log.recipient_email`, so removing the copy is probably better than redacting it.
+
+**Never a silent skip.** The distinction this rests on is that a retained datum is recorded as retained,
+with its basis, in the same place the shredded ones are counted. A skip that nobody sees is the failure;
+a retention somebody can read and challenge is the point.
+
+**Related.** NZC-125 (the inventory that records the treatment), NZC-117 (what shredding does reach).
+
+### NZC-127 — An association to an erased person dangles to a tombstone [Confirmed 21 Sep 2026]
+
+**Decision.** Where a row is *about something else* and a column on it names a person —
+`clients.owner_user_id`, `report_versions.signee_contact_id`, `portal_report_comments.author_id` — the
+datum is attributed to that person and exported to them, and erasure does **not** shred it separately.
+The identity is destroyed at the person-row; the association is left pointing at the tombstone.
+
+**Why attribute them at all.** They are genuinely that person's associations: a client they own, a report
+they signed, a comment they wrote. An export that omitted them would be incomplete about the person's
+relationship with the system, which is most of what a subject access request is for.
+
+**Why not shred them.** The name in `clients.owner_name` is a denormalised copy of an identity that
+lives on the membership. Shredding the membership's key makes every copy sealed under it unreadable, and
+the pointer then refers to a subject that is recorded as erased. Severing the pointer as well would
+destroy the fact that the client had an owner, which is a record of the business, not of the person.
+Unless counsel later rules that associations must be severed, they dangle.
+
+**Kept separate from a question it resembles.** A portal comment's *body* may itself contain personal
+data. That is a content-sealing question about free text, not an attribution question about `author_id`,
+and folding the two together would let a decision about pointers be read as a decision about content. It
+is recorded as its own item and not answered here.
+
+**Related.** NZC-125 (the inventory that carries the treatment), NZC-116 (the tombstone), NZC-117 (the
+shred these dangle from).
