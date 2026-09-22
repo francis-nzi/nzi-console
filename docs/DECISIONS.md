@@ -4066,3 +4066,72 @@ explained rather than noticed later.
 split a carve-out's scope would turn on), NZC-136 and NZC-137 (the command and its honest-partial
 reporting), NZC-126 (the redact-or-retain ruling being resolved into two concrete treatments), NZC-119
 (the enumerate-rather-than-skip discipline this follows).
+
+### NZC-143 — A Scope 2 row records its method, and a hidden row cannot be an uncounted one [Confirmed 22 Sep 2026]
+
+**Decision.** `job_scope_rows` gains `scope2_method` (`location` | `market`, Scope 2 only) and
+`show_in_report` (every row, default true) in `0109`. The headline emissions total is **location-based**:
+a market row contributes **0** to the headline, its scope band and its category, and remains fully
+readable so a surface can show its value alongside, tagged as not counted.
+
+**Why a read needed a migration.** The live aggregation (NZC-144) is derived and stores nothing, but the
+rule it applies had nothing to read: no column anywhere said which method a row was measured by. "Exclude
+market" would have excluded nothing, and the rule would have passed over an empty set for as long as
+nobody checked — which is the shape of a check that cannot fail.
+
+**Scope 2 only, and not a general `accounting_method`.** Location-versus-market exists because purchased
+energy can be accounted for by what the grid emitted or by what the contract bought. No other scope has
+the equivalent question, so a general column would be a field with no rule behind it on every other row —
+something that would eventually be filled in, and then read. `scope` here holds the canonical CRP code and
+Scope 2 is the single value `'2'`, so one CHECK covers electricity, heat, steam and cooling together;
+they are distinguished by `category_code` beneath it.
+
+**A null method counts, and that direction is the point.** The constraint permits a Scope 2 row with no
+method, because every row written before `0109` has none and a backfill would be inventing a fact. The
+aggregation therefore excludes only what is *explicitly* market. So a missing declaration can only ever
+**over**-count the headline, never make a row vanish from a client's total by omission — which is the
+failure that matters, and the reason for choosing this direction rather than the tidier-looking one.
+
+**`show_in_report` governs presentation and can never move a number.** It is constrained so it can only be
+false on a market row, which contributes nothing to any total in any case. Hiding a location row, or a
+Scope 1 or Scope 3 row — which would silently undercount a client's report — is unrepresentable rather
+than discouraged.
+
+**The constraint did not do that when first written, and the test is what found it.** As
+`CHECK (show_in_report = true OR scope2_method = 'market')` it behaved correctly on a Scope 2 location row
+and admitted every Scope 1 and Scope 3 row, because a null method makes the expression `false OR null`,
+which evaluates to **null**, and a CHECK admits null. It rejected the case nobody would try and allowed
+the whole class it existed to prevent. It is now `COALESCE(scope2_method, '') = 'market'`. The general
+lesson is worth the line: a CHECK mentioning a nullable column passes whenever that column is null.
+
+**Related.** NZC-144 (the read that applies the rule), NZC-008 (the canonical scope-row model), NZC-060
+(the integrity gate a snapshot passes through), NZC-111 (absence read as a stated fact rather than a
+guess — the same reasoning as the null method).
+
+### NZC-144 — The emissions total is derived on every read, never stored [Confirmed 22 Sep 2026]
+
+**Decision.** Job emissions — the headline, the per-scope bands, the per-category running totals and the
+per-site counts — are one governed, tenant-scoped read that sums the rows' own resolved tCO₂e on every
+call. Nothing is stored and nothing is maintained.
+
+**Why derived rather than maintained.** A stored total would have to be updated by every path that can
+change a row: edit, supersede, disable, recalculate, roll forward, erase. The first one that forgot would
+leave a client's headline quietly wrong, with nothing to compare it against — and the number at the top of
+the page is precisely the thing nobody re-derives by hand to check. Recomputing cannot drift from the
+entries it describes.
+
+**One read, so no tier can disagree with another.** Every tile, band total and category title bar comes
+from the same call. A test asserts the scope sums and the category sums both equal the headline, which is
+the property that would break first if a surface started computing its own.
+
+**What counts.** `enabled` rows, matching what the page has always summed. Review status is deliberately
+not a filter: a pending row is entered data, and a total that ignored it would read as progress not yet
+made while somebody was looking straight at the row. An override beats a calculation, as everywhere else.
+
+**This replaces a client-side sum.** The total was previously computed in the browser by reducing the rows
+the page happened to have loaded, which is why there was no visibility while entering and no way for the
+portal to show the same figure. Moving it to a governed read is what makes it the same number everywhere.
+
+**Related.** NZC-143 (the method column its location rule reads), NZC-008 (the scope-row model it sums),
+NZC-022 (the permission matrix that governs the read), NZC-005 (evidence-drawer-first — a number with its
+lineage one click away).
