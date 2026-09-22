@@ -10,9 +10,13 @@ import { blindIndex, linkageDigest, normaliseEmailAtRest } from "../src/subjectC
 import { AuthorizationError, type StaffPrincipal } from "../src/auth";
 import { exportSubjectData, readSubjectExport } from "../src/subjectExport";
 import {
-  eraseSubjectData, ErasureIncompleteError, outstandingByPrerequisite, partiallyErasedSubjects,
-  planErasure, readErasureRecord,
+  eraseSubjectData, ErasureIncompleteError, erasureGoLiveBlockers, outstandingByPrerequisite,
+  partiallyErasedSubjects, planErasure, readErasureRecord,
 } from "../src/subjectErasure";
+import {
+  RETENTION_CARVEOUTS, carveoutsFor, misdirectedCarveouts, pendingCarveouts,
+  unmappedCarveoutsNowMappable, type RetentionCarveout,
+} from "../src/retentionCarveouts";
 
 /**
  * Erasure against real Postgres (NZC-136, NZC-137).
@@ -170,6 +174,12 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
       "portal_report_comments.author_display_name",
     ], "both append-only tables, where no runtime role can null the plaintext beside the ciphertext");
 
+    // The third blocker, which is not waiting on engineering at all (NZC-142).
+    assert.deepEqual([...outstanding.get("counsel-determination")!].sort(), [
+      "audit_events.before_json",
+      "transactional_outbox.payload_json",
+    ], "the two payload stores whose treatment nobody has decided");
+
     // Of the append-only tables, these two are the ones where it actually blocks an erasure: the rest
     // either hold nothing attributable or are retained on their own basis anyway.
     const declared = Object.entries(PII_TABLES).filter(([, definition]) => definition.appendOnly).map(([table]) => table).sort();
@@ -195,6 +205,124 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
         assert.ok(updatable.has(table), `${table} is not declared append-only but no runtime role may UPDATE it`);
       }
     }
+  });
+
+  // ── The carve-out register, and the rules that keep it honest ───────────────────────
+
+  it("keeps one source of truth for every retention it claims", () => {
+    // A column claiming a lawful basis must point at the carve-out that states it. A basis living only
+    // in a `because` string is a retention nobody can review — it reads as settled while resting on a
+    // sentence, and there is nowhere to record who decided it or when it ends.
+    for (const column of PII_COLUMNS.filter((entry) => entry.erasure === "retain-with-basis")) {
+      const covering = carveoutsFor(column.table, column.column);
+      assert.ok(covering.length > 0,
+        `${column.table}.${column.column} is retained on a basis with no carve-out behind it`);
+    }
+
+    // And the register points at things that exist. A carve-out naming a table or column this schema
+    // does not have would be applied to nothing while reading as coverage — retention's version of a
+    // check over an empty set.
+    assert.deepEqual(misdirectedCarveouts(), []);
+
+    // And the forward half: a category recorded as "we hold none of this" stops being true silently the
+    // day somebody adds the table. Without this it would read as considered-and-dismissed rather than as
+    // never-revisited, which is the quieter of the two failures and the harder to notice.
+    assert.deepEqual(unmappedCarveoutsNowMappable(), [],
+      "an unmapped carve-out now has something in the inventory to map to — map it, or say why not");
+
+    // Proved able to fire. A tripwire nobody has seen trip is indistinguishable from one that cannot,
+    // and this one guards a condition that by definition is not true yet.
+    const financial = {
+      table: "client_invoices", column: "payment_reference", label: "Your payment reference",
+      storage: { kind: "plaintext" }, stage: "deferred", erasure: "not-attributable",
+    } as unknown as (typeof PII_COLUMNS)[number];
+    (PII_COLUMNS as unknown as Array<typeof financial>).push(financial);
+    try {
+      const resurfaced = unmappedCarveoutsNowMappable();
+      assert.deepEqual(resurfaced.map((entry) => entry.key), ["person-financial-records"],
+        "a financial column in the inventory must bring the unmapped category back for mapping");
+      assert.ok(resurfaced[0]!.matched.includes("client_invoices.payment_reference"));
+    } finally {
+      (PII_COLUMNS as unknown as Array<typeof financial>).pop();
+    }
+    assert.deepEqual(unmappedCarveoutsNowMappable(), [], "and it goes quiet again afterwards");
+  });
+
+  it("admits that every carve-out is still unanswered", () => {
+    // The scaffold's honesty check. Nothing here is decided, and the moment one is, this figure changes
+    // and somebody has to say why — which is the opposite of a determination arriving unnoticed.
+    assert.equal(pendingCarveouts().length, RETENTION_CARVEOUTS.length,
+      "a carve-out has been marked resolved; NZC-139 has either been answered or pre-empted");
+
+    for (const carveout of RETENTION_CARVEOUTS) {
+      assert.ok(carveout.basisNote.trim().length > 40,
+        `${carveout.key} has no account of what its basis would rest on`);
+      assert.ok(carveout.auditLabel.trim(),
+        `${carveout.key} would keep something without telling the person what`);
+    }
+
+    // The one thing already known, and it is a consequence of how authentication works rather than a
+    // legal judgement — so it is recorded even though the basis beside it is not.
+    const credentials = RETENTION_CARVEOUTS.find((carveout) => carveout.key === "staff-auth-credentials")!;
+    assert.deepEqual(credentials.retention, { kind: "until-trigger", trigger: "employment_ended" });
+    assert.equal(credentials.basis, "PENDING_NZC_139", "the shape is known; the ground for it is not");
+  });
+
+  it("lists what stands between this command and a real subject", () => {
+    const blockers = erasureGoLiveBlockers();
+    assert.ok(blockers.length > 0, "the gate is open, which it must not be while anything is pending");
+
+    // Derived from the inventory and the register rather than kept beside them, because a hand-maintained
+    // gate goes stale in the safe-looking direction.
+    const byPrerequisite = new Set(blockers.map((blocker) => blocker.prerequisite));
+    assert.deepEqual([...byPrerequisite].sort(), ["auth-bridge", "counsel-determination", "plaintext-drop"]);
+
+    for (const blocker of blockers) {
+      assert.ok(blocker.waitingOn.trim(), `${blocker.what} blocks go-live without naming what would clear it`);
+    }
+    assert.ok(blockers.some((blocker) => blocker.waitingOn === "NZC-139"), "the carve-outs are in the gate");
+    assert.ok(blockers.some((blocker) => blocker.waitingOn === "NZC-140"), "and so are the two payload stores");
+  });
+
+  it("blocks a column that was erasable the moment a carve-out covers it", async () => {
+    // Anti-vacuity, and the strongest form of it: take something this command currently destroys, put an
+    // unresolved carve-out over it, and prove the claim of erasure withdraws. A pending entry that cannot
+    // change an outcome is the same as no guard at all, and the other tests here would all still pass
+    // against a version of this that recorded carve-outs and ignored them.
+    const before = await eraseSubjectData(database.pool, admin, {
+      organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-anti-vacuity", keys,
+    });
+    const erasedBefore = before.entries.find((entry) => entry.column === "display_name")!;
+    assert.equal(erasedBefore.outcome, "erased", "the column this test moves must start out destroyed");
+
+    const live = RETENTION_CARVEOUTS as unknown as RetentionCarveout[];
+    live.push({
+      key: "test-only-portal-display-name",
+      appliesTo: { table: "portal_users", columns: ["display_name"], subjectClass: "any" },
+      basis: "PENDING_NZC_139",
+      basisNote: "A carve-out invented by this test, to prove an unresolved one actually withholds.",
+      retention: { kind: "PENDING_NZC_139" },
+      onErasure: "PENDING_NZC_139",
+      auditLabel: "Display name retained pending a determination",
+    });
+
+    try {
+      const after = await eraseSubjectData(database.pool, admin, {
+        organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-anti-vacuity", keys,
+      });
+      const entry = after.entries.find((candidate) => candidate.column === "display_name")!;
+      assert.equal(entry.outcome, "pending", "a covered column must stop being claimed as erased");
+      assert.equal(entry.pendingOn, "counsel-determination");
+      assert.match(entry.because, /test-only-portal-display-name/, "and must name the carve-out holding it");
+
+      assert.ok(erasureGoLiveBlockers().some((blocker) => blocker.what.includes("portal_users")),
+        "the gate must pick it up too, or the block is invisible to whoever decides go-live");
+    } finally {
+      live.splice(live.findIndex((carveout) => carveout.key === "test-only-portal-display-name"), 1);
+    }
+
+    // Withdrawn again, so nothing after this sees the invented carve-out.
+    assert.equal(carveoutsFor("portal_users", "display_name").length, 0);
   });
 
   // ── Capability ──────────────────────────────────────────────────────────────────────
@@ -294,21 +422,75 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
 
   // ── Grace: a complete erasure, which is what proves "partial" is not the only answer ─
 
-  it("completes an erasure when nothing blocks it", async () => {
+  it("cannot complete any erasure while a determination is outstanding", async () => {
+    // The blocking half of NZC-142, and the reason this is the scaffold's load-bearing behaviour: a
+    // person whose own records are all erasable still comes out partial, because two stores that may
+    // hold their name have no decided treatment. Before the scaffold this subject was reported erased,
+    // which was a claim nobody had the standing to make.
     const manifest = await eraseSubjectData(database.pool, admin, {
       organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-2026-0002", keys,
     });
 
-    assert.equal(manifest.status, "complete", "a person with only erasable data is erased, not partial");
-    assert.deepEqual(manifest.pendingOn, []);
-    assert.equal(manifest.counts.pending, 0);
-    assert.ok(manifest.counts.erased > 0, "and something was actually destroyed");
+    assert.equal(manifest.status, "partial");
+    assert.ok(manifest.pendingOn.includes("counsel-determination"));
+    assert.ok(manifest.counts.erased > 0, "everything that could be destroyed still was");
     assert.deepEqual(manifest.completeness.unaccountedFor, []);
     assert.equal(manifest.completeness.accountedFor, PII_COLUMNS.length);
 
+    const pending = manifest.entries.filter((entry) => entry.pendingOn === "counsel-determination");
+    for (const entry of pending) {
+      assert.match(entry.because, /NZC-\d{3}|carve-out/,
+        `${entry.table}.${entry.column} is pending without citing what it waits on`);
+    }
+
     const { rows } = await db.query<{ status: string }>(
       `SELECT status FROM nzi_console.data_subjects WHERE subject_id=$1`, [SIMPLE]);
-    assert.equal(rows[0]!.status, "erased");
+    assert.equal(rows[0]!.status, "erasure-partial");
+  });
+
+  it("completes once the determinations land, which is what makes the block a block", async () => {
+    // The other half. A gate that never lifts is indistinguishable from a gate that is stuck, and a test
+    // that only proves refusal would pass against code that refuses everything for ever. So this stands
+    // the answers up — the two payload columns classified, their carve-outs resolved — and asserts the
+    // same subject then comes out complete.
+    const payloadColumns = PII_COLUMNS.filter((column) => column.erasure === "pending-counsel");
+    const restore = payloadColumns.map((column) => ({ column, was: column.erasure }));
+    const originalCarveouts = RETENTION_CARVEOUTS.map((carveout) => ({ ...carveout }));
+    const resolvedCarveouts = RETENTION_CARVEOUTS.map((carveout) => ({
+      ...carveout, basis: "legal-obligation" as const,
+      retention: { kind: "fixed-period" as const, months: 72, from: "the record's creation" },
+      onErasure: "shred-after-retention" as const, resolvedBy: "NZC-139",
+    }));
+
+    try {
+      for (const { column } of restore) (column as { erasure: string }).erasure = "not-attributable";
+      const live = RETENTION_CARVEOUTS as unknown as RetentionCarveout[];
+      live.splice(0, live.length, ...resolvedCarveouts);
+
+      assert.deepEqual(erasureGoLiveBlockers().filter((blocker) => blocker.prerequisite === "counsel-determination"), [],
+        "with the determinations in, nothing counsel-shaped is left blocking");
+
+      const manifest = await eraseSubjectData(database.pool, admin, {
+        organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-2026-0002", keys,
+      });
+      assert.equal(manifest.status, "complete", "the block lifts when the questions are answered");
+      assert.deepEqual([...manifest.pendingOn], []);
+    } finally {
+      for (const { column, was } of restore) (column as { erasure: string }).erasure = was;
+      const live = RETENTION_CARVEOUTS as unknown as RetentionCarveout[];
+      live.splice(0, live.length, ...originalCarveouts);
+    }
+
+    // Restored — and proved restored by re-running, which puts the record back to partial as well as the
+    // module state. Asserting only the in-memory restore would leave this subject recorded complete for
+    // every later assertion in the file, on the strength of answers that have not actually arrived.
+    assert.ok(pendingCarveouts().length > 0, "the carve-outs are pending again after the test");
+    assert.ok(PII_COLUMNS.some((column) => column.erasure === "pending-counsel"));
+
+    const reapplied = await eraseSubjectData(database.pool, admin, {
+      organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-2026-0002", keys,
+    });
+    assert.equal(reapplied.status, "partial", "and the block re-applies the moment the answers are taken away");
   });
 
   it("leaves nothing of the completely erased person on any path", async () => {
@@ -391,13 +573,17 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
     });
 
     assert.equal(manifest.status, "partial", "a person with data this system cannot reach is not erased");
-    assert.deepEqual([...manifest.pendingOn].sort(), ["auth-bridge", "plaintext-drop"]);
+    assert.deepEqual([...manifest.pendingOn].sort(),
+      ["auth-bridge", "counsel-determination", "plaintext-drop"],
+      "all three: what cannot be reached, what cannot be written, and what nobody has decided");
 
     const pending = manifest.entries.filter((entry) => entry.outcome === "pending");
     assert.deepEqual(pending.map((entry) => `${entry.table}.${entry.column}`).sort(), [
+      "audit_events.before_json",
       "client_contact_versions.snapshot_json",
       "portal_report_comments.author_display_name",
       "staff_credentials.email_normalized",
+      "transactional_outbox.payload_json",
     ], "named individually, never rolled into a total");
     for (const entry of pending) {
       assert.ok(entry.pendingOn, `${entry.column} is pending on nothing in particular`);
@@ -456,8 +642,8 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
     const row = rows[0]!;
     assert.equal(row.status, "partial");
     assert.equal(row.completed_at, null, "not complete, so not dated complete");
-    assert.deepEqual([...row.pending_on].sort(), ["auth-bridge", "plaintext-drop"]);
-    assert.ok(row.erased_count > 0 && row.pending_count === 3);
+    assert.deepEqual([...row.pending_on].sort(), ["auth-bridge", "counsel-determination", "plaintext-drop"]);
+    assert.ok(row.erased_count > 0 && row.pending_count === 5);
 
     // No value anywhere in it. An erasure manifest quoting what it erased would be the one copy that
     // survived the erasure.
@@ -475,10 +661,15 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
   });
 
   it("lists the partial subjects, so the residual cannot be forgotten", async () => {
+    // Both, now: while a determination is outstanding nobody's erasure is finished, which is the point
+    // of the gate rather than a defect in it.
     const partial = await partiallyErasedSubjects(database.pool, { organisationId: ORG });
-    assert.deepEqual(partial.map((entry) => entry.subjectId), [FULL],
-      "the one who is not finished, and not the one who is");
-    assert.deepEqual([...partial[0]!.pendingOn].sort(), ["auth-bridge", "plaintext-drop"]);
+    assert.deepEqual(partial.map((entry) => entry.subjectId).sort(), [FULL, SIMPLE].sort());
+    const full = partial.find((entry) => entry.subjectId === FULL)!;
+    assert.deepEqual([...full.pendingOn].sort(), ["auth-bridge", "counsel-determination", "plaintext-drop"]);
+    const simple = partial.find((entry) => entry.subjectId === SIMPLE)!;
+    assert.deepEqual([...simple.pendingOn], ["counsel-determination"],
+      "a person whose own records are all erasable is held up only by the undecided stores");
   });
 
   it("is idempotent, and a re-run is how a partial is finished later", async () => {
