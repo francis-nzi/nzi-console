@@ -4,8 +4,11 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { SEALABLE_ROWS, SEALED_COLUMNS, plaintextColumnsOf, unsealedPredicate, type SealingKeys } from "../src/piiSealing";
+import { resolveSealingKeys } from "../src/piiSealingKeys";
 import { backfillSealedPii } from "../src/piiBackfill";
 import { insertClientContact } from "../src/clientContactRecords";
+import { updateClientContact } from "../src/clientContacts";
+import { staffGrant } from "./support/access";
 import { openForSubject, unwrapSubjectKey, type SealedValue, type WrappedKey } from "../src/subjectCrypto";
 
 /**
@@ -39,11 +42,16 @@ const EXPECTED_FILLED = SEALED_COLUMNS.filter((column) => column.stage !== "defe
 describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let db: pg.Client;
-  const keys: SealingKeys = {
-    masterKey: randomBytes(32).toString("base64"),
-    indexKey: randomBytes(32).toString("base64"),
-    linkageKey: randomBytes(32).toString("base64"),
-  };
+  /**
+   * The keys the *application* seals with, not a second set minted here.
+   *
+   * The write path takes its keys from the environment (`resolveSealingKeys`), so a suite that mints
+   * its own is running the backfill under one key and the dual-write under another. Nothing failed,
+   * because nothing this suite asserted ever decrypted what the application had sealed — it checked
+   * that ciphertext was present and stopped there. Sharing the source is what lets a test open a value
+   * the command wrote, and the keys are random per run regardless (see tests/support/sealingKeys.ts).
+   */
+  const keys: SealingKeys = resolveSealingKeys();
 
   before(async () => {
     database = (await createDisposableDatabase("piicover"))!;
@@ -109,7 +117,7 @@ describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_UR
 
     // The meta-assertion: a pass has to mean the columns were looked at, not that the loop was empty.
     assert.equal(checked.length, EXPECTED_FILLED.length);
-    assert.ok(checked.length >= 15, `only ${checked.length} columns checked — the inventory has shrunk or the filter is wrong`);
+    assert.ok(checked.length >= 16, `only ${checked.length} columns checked — the inventory has shrunk or the filter is wrong`);
   });
 
   it("covers every column the backfill knows how to fill", async () => {
@@ -154,6 +162,17 @@ describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_UR
         `SELECT full_name_sealed, email_bidx FROM nzi_console.client_contacts WHERE contact_id=$1`, [row.contact_id]);
       assert.ok(stored.rows[0]!.full_name_sealed, "the name was sealed in the same transaction");
       assert.ok(stored.rows[0]!.email_bidx, "and the address was indexed");
+
+      // And it is the name, not merely ciphertext: present-but-unreadable would satisfy the invariant
+      // and have lost the row.
+      const { rows } = await db.query<{ wrapped_key: WrappedKey }>(
+        `SELECT k.wrapped_key FROM nzi_console.data_subject_keys k
+           JOIN nzi_console.data_subject_links l
+             ON (l.organisation_id, l.subject_id) = (k.organisation_id, k.subject_id)
+          WHERE l.source_table='client_contacts' AND l.source_id=$1`, [row.contact_id]);
+      assert.equal(
+        openForSubject(stored.rows[0]!.full_name_sealed!, unwrapSubjectKey(rows[0]!.wrapped_key, keys.masterKey)),
+        "Katherine Johnson");
     } finally {
       client.release();
     }
@@ -173,6 +192,65 @@ describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_UR
     const row = rows[0];
     assert.ok(row, "the contact has a subject and the subject has a key");
     assert.equal(openForSubject(row.full_name_sealed, unwrapSubjectKey(row.wrapped_key, keys.masterKey)), "Grace Hopper");
+  });
+
+  it("reaches the history of a record, not only its present (NZC-120)", async () => {
+    // Sealing the live contact and leaving its versions readable means a shred erases the latest value
+    // of a person and none of the earlier ones, which has erased nobody.
+    //
+    // Three real edits through the command, not three hand-written inserts. The distinction matters: an
+    // insert into `client_contact_versions` by the test proves the *backfill* can seal history, which is
+    // the half that covers the past. Whether the application seals a version it writes today is a
+    // different claim, and only the real path can make it.
+    // A real grant, because the command is permission-checked and a context without one is refused —
+    // which is the correct behaviour and the reason this goes through the command rather than around it.
+    const context = {
+      organisationId: ORG, actorId: ACTOR, principal: "staff" as const,
+      grant: staffGrant("admin", ORG, ACTOR),
+    };
+    let version = 1;
+    for (const name of ["Grace Hopper-Smith", "Grace B Hopper", "Grace Hopper"]) {
+      const outcome = await updateClientContact(database.pool, {
+        contactId: "contact-1", expectedVersion: version, fullName: name, jobTitle: "Director",
+        email: "grace@acme.test", phone: "+44 20 7000 0000", isPrimary: false, roles: [],
+      } as never, { ...context, correlationId: `corr-${name}`, idempotencyKey: `idem-${name}` } as never);
+      version = outcome.data.version;
+    }
+
+    // No backfill in between: if the write path did not seal these, they are unsealed right now.
+    const history = await db.query<{ version: number; snapshot_sealed: SealedValue | null; wrapped_key: WrappedKey }>(
+      `SELECT v.version, v.snapshot_sealed, k.wrapped_key
+         FROM nzi_console.client_contact_versions v
+         JOIN nzi_console.data_subject_links l
+           ON (l.organisation_id, l.source_table, l.source_id) = (v.organisation_id, 'client_contacts', v.contact_id)
+         JOIN nzi_console.data_subject_keys k
+           ON (k.organisation_id, k.subject_id) = (l.organisation_id, l.subject_id)
+        WHERE v.contact_id='contact-1' ORDER BY v.version`);
+    assert.ok(history.rows.length >= 3,
+      `only ${history.rows.length} history rows — the fixture did not build a history to be wrong about`);
+
+    // Under *one* key, the live record's. This is the property that makes a single shred cover a
+    // person's present and their past together, instead of an erasure having to remember a list of keys.
+    const wrapped = new Set(history.rows.map((row) => JSON.stringify(row.wrapped_key)));
+    assert.equal(wrapped.size, 1, "the history is sealed under one key, the live record's");
+
+    const subjectKey = unwrapSubjectKey(history.rows[0]!.wrapped_key, keys.masterKey);
+    for (const row of history.rows) {
+      assert.ok(row.snapshot_sealed, `version ${row.version} was written without ciphertext`);
+      // Decrypted and parsed, not merely non-empty: a jsonb column reaches the seal already parsed, and
+      // `String(…)` on one of those seals the text "[object Object]" — which would decrypt cleanly and
+      // have thrown the snapshot away.
+      const snapshot = JSON.parse(openForSubject(row.snapshot_sealed, subjectKey));
+      assert.equal(typeof snapshot.fullName, "string", `version ${row.version} did not seal its snapshot`);
+    }
+
+    // And the past half: the backfill fills a version whose ciphertext is missing, which is what the
+    // rows written before this column existed look like.
+    const column = EXPECTED_FILLED.find((entry) => entry.table === "client_contact_versions")!;
+    await db.query(`UPDATE nzi_console.client_contact_versions SET snapshot_sealed=NULL WHERE contact_id='contact-1'`);
+    assert.ok(await violations(column) >= 3, "the standing check must see history with its ciphertext removed");
+    await backfillSealedPii(database.pool, { organisationId: ORG, actorId: ACTOR, keys, batchSize: 50 });
+    assert.equal(await violations(column), 0, "and the backfill seals every version, not just the latest");
   });
 
   it("has nothing left to do on a second run", async () => {

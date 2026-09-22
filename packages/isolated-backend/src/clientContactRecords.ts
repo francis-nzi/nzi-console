@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { clientContactRoles, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext, type ContactConsentState } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
-import { sealClientContactRow } from "./piiWriteThrough";
+import { sealClientContactRow, sealContactVersionSnapshot } from "./piiWriteThrough";
 
 export type ClientContactRow = {
   contact_id: string; client_id: string; full_name: string; job_title: string | null; email: string | null; phone: string | null;
@@ -28,9 +28,16 @@ export function mapClientContact(row: ClientContactRow): ClientContactReadModel 
 export const CLIENT_CONTACT_COLUMNS = "contact_id,client_id,full_name,job_title,email,phone,is_primary,roles,status,version,updated_at,updated_by,email_consent";
 
 export async function recordContactVersion(db: Queryable, context: CommandContext, row: ClientContactRow): Promise<void> {
+  const snapshot = JSON.stringify({ fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone, isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status });
+  // Sealed before the insert, not after it: the history table is append-only (0067 revokes UPDATE from
+  // every runtime role), so the ciphertext has to be part of the row rather than a correction to it.
+  // Under the contact's own key, so one shred reaches the live record and every version of it (NZC-120).
+  const sealed = await sealContactVersionSnapshot(
+    { db, organisationId: context.organisationId, actorId: context.actorId },
+    { contactId: row.contact_id, snapshot });
   await db.query(
-    `INSERT INTO nzi_console.client_contact_versions (organisation_id,contact_id,version,snapshot_json,changed_by,correlation_id) VALUES ($1,$2,$3,$4::jsonb,$5,$6)`,
-    [context.organisationId, row.contact_id, row.version, JSON.stringify({ fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone, isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status }), context.actorId, context.correlationId],
+    `INSERT INTO nzi_console.client_contact_versions (organisation_id,contact_id,version,snapshot_json,snapshot_sealed,changed_by,correlation_id) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7)`,
+    [context.organisationId, row.contact_id, row.version, snapshot, sealed, context.actorId, context.correlationId],
   );
 }
 

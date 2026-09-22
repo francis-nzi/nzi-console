@@ -49,6 +49,15 @@ export type PiiAttribution =
   | { kind: "pointer"; via: string; subjectTable: SubjectTable }
   /** The row is history of another table's row, and belongs to whoever that row belongs to. */
   | { kind: "history-of"; table: string }
+  /**
+   * Reached from the subject's links rather than from a column on the row.
+   *
+   * The linkage digests are keyed by `(source_table, source_id, field)`, so which person a row belongs
+   * to depends on the row and not on the table. It is genuinely theirs — an export names it and an
+   * erasure nulls it — but there is no single parent table to point at, and saying "history of" one
+   * would be a convenient untruth.
+   */
+  | { kind: "via-links"; because: string }
   /** Reachable once a named change lands, and not before. */
   | { kind: "pending"; because: string }
   /** No subject path exists. The reason is part of the record, and is shown to the person. */
@@ -209,7 +218,7 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   // The digests, which have no plaintext at all.
   data_subject_linkage: {
     keyColumns: ["source_table", "source_id", "field"],
-    attribution: { kind: "history-of", table: "(whichever person-row the digest was computed from)" },
+    attribution: { kind: "via-links", because: "a digest is keyed by the source row it was computed from, so it is reached through the subject's links rather than by a column on this table" },
   },
 };
 
@@ -253,8 +262,8 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
 
   // ── History, which dies in the same shred as the record it is history of ─────────────
   { table: "client_contact_versions", column: "snapshot_json", label: "Previous versions of your contact record",
-    stage: "deferred", erasure: "pending", storage: { kind: "json" },
-    because: "sealed under the live contact's own key by 0102, which is pending — until it lands this is personal data a shred would not reach" },
+    stage: "sealed", erasure: "shred-key", storage: sealed("snapshot_sealed"),
+    because: "sealed under the live contact's own key (0106), so one shred covers the record and every earlier version of it" },
 
   // ── Associations: attributed by pointer, erased with the identity they point at ──────
   { table: "clients", column: "owner_name", label: "A client you own", stage: "deferred", erasure: "association-to-tombstone",
@@ -325,7 +334,7 @@ export const attributionOf = (column: PiiColumn): PiiAttribution =>
 /** Whether a datum can be reached from a subject today. `pending` is not yet; `none` is not at all. */
 export const isAttributable = (column: PiiColumn): boolean => {
   const kind = attributionOf(column).kind;
-  return kind === "person-row" || kind === "pointer" || kind === "history-of";
+  return kind === "person-row" || kind === "pointer" || kind === "history-of" || kind === "via-links";
 };
 
 /** Everything an export must gather for a subject, and everything it must declare it cannot. */

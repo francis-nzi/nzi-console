@@ -107,10 +107,27 @@ describe("the PII inventory (NZC-125)", () => {
       SEALED_COLUMNS.map((c) => `${c.table}.${c.plaintext}`).sort(),
       withCiphertext.map((c) => `${c.table}.${c.column}`).sort());
 
-    const personRows = Object.entries(PII_TABLES)
-      .filter(([, definition]) => definition.attribution.kind === "person-row").map(([table]) => table);
-    assert.deepEqual(SEALABLE_ROWS.map((row) => row.table), personRows,
-      "the sealable rows are exactly the tables that are a person, in inventory order");
+    // A row is sealable when it is a person or the history of one. A pointer is not: it names somebody
+    // whose identity lives in their own row and is sealed there, so sealing the pointer too would put a
+    // second ciphertext of one person behind a key that shredding their record does not reach.
+    const sealable = Object.entries(PII_TABLES)
+      .filter(([, definition]) => definition.attribution.kind === "person-row"
+        || definition.attribution.kind === "history-of").map(([table]) => table);
+    assert.deepEqual(SEALABLE_ROWS.map((row) => row.table), sealable,
+      "the sealable rows are exactly the people and their history, in inventory order");
+
+    // History seals under its parent's subject, and the whole point of that is one key covering both.
+    // If a history table ever resolved to a different subject column than the record it is history of,
+    // shredding the person would leave their past readable.
+    for (const [table, definition] of Object.entries(PII_TABLES)) {
+      const attribution = definition.attribution;
+      if (attribution.kind !== "history-of") continue;
+      const child = SEALABLE_ROWS.find((row) => row.table === table)!;
+      const parent = SEALABLE_ROWS.find((row) => row.table === attribution.table);
+      assert.ok(parent, `${table} is history of ${attribution.table}, which is not itself sealable`);
+      assert.equal(child.subjectTable, parent.subjectTable, `${table} must seal under its parent's subject`);
+      assert.equal(child.subjectIdColumn, parent.subjectIdColumn);
+    }
 
     for (const row of SEALABLE_ROWS) {
       const columns = PII_COLUMNS.filter((column) => column.table === row.table);

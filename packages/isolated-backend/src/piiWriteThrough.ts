@@ -1,4 +1,4 @@
-import { sealRowPii, type SealingKeys } from "./piiSealing";
+import { sealRowPii, sealValuesForSubject, type SealingKeys } from "./piiSealing";
 import { resolveSealingKeys } from "./piiSealingKeys";
 import type { Queryable } from "./postgres";
 
@@ -148,4 +148,32 @@ export function sealStaffCredentialRow(
       { column: "staff_credentials.email_normalized", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "login-email", value: row.emailNormalized },
     ],
   }, keysFor(seal), seal.actorId);
+}
+
+/**
+ * A contact's version snapshot, sealed under the contact's own key (NZC-120).
+ *
+ * Under the live record's key rather than one of its own, so a single shred covers the current row and
+ * every earlier version of it. A per-version key would make erasure an enumeration, and an enumeration
+ * is a thing that can be incomplete.
+ *
+ * No linkage digest: the address inside a snapshot is a past value of the live row's address, and
+ * recording it as a second correlatable address would make one person look like several.
+ */
+/**
+ * The sealed snapshot for a contact version, under the *live contact's* subject — which is what makes
+ * one key-shred reach a person's present and their past together (NZC-120).
+ *
+ * Returned rather than written: the history table is append-only, so the value goes into the INSERT.
+ */
+export async function sealContactVersionSnapshot(
+  seal: Seal,
+  row: { contactId: string; snapshot: unknown },
+): Promise<string | null> {
+  const sealed = await sealValuesForSubject(seal.db, {
+    organisationId: seal.organisationId,
+    subject: { sourceTable: "client_contacts", sourceId: row.contactId },
+    values: { snapshot_sealed: row.snapshot },
+  }, keysFor(seal), seal.actorId);
+  return sealed.snapshot_sealed ?? null;
 }

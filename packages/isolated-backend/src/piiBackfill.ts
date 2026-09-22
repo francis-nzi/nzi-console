@@ -67,7 +67,7 @@ const countOutstanding = async (client: PoolClient, descriptor: SealableRow, org
 async function sealBatch(
   client: PoolClient, descriptor: SealableRow, options: BackfillOptions, batchSize: number,
 ): Promise<{ selected: number; sealed: number }> {
-  const columns = [descriptor.keyColumn, descriptor.subjectIdColumn, ...plaintextColumnsOf(descriptor)];
+  const columns = [...descriptor.keyColumns, descriptor.subjectIdColumn, ...plaintextColumnsOf(descriptor)];
   const selected = [...new Set(columns)].join(",");
 
   await client.query("BEGIN");
@@ -76,7 +76,7 @@ async function sealBatch(
     const { rows } = await client.query<Record<string, string | null>>(
       `SELECT ${selected} FROM nzi_console.${descriptor.table}
         WHERE organisation_id=$1 AND (${unsealedPredicate(descriptor)})
-        ORDER BY ${descriptor.keyColumn}
+        ORDER BY ${descriptor.keyColumns.join(",")}
         LIMIT ${batchSize} FOR UPDATE SKIP LOCKED`,
       [options.organisationId]);
 
