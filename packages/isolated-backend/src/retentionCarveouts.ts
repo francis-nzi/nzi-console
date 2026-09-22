@@ -78,8 +78,14 @@ export type CarveoutScope =
    * Kept rather than dropped: "we hold nothing of that kind" is a useful answer to give counsel, and a
    * category that silently disappeared would be re-raised by somebody later with no record of why it was
    * left out.
+   *
+   * `rematchOn` is what stops it staying unmapped by inertia. "Nothing of this kind exists" is true on
+   * the day it is written and silently stops being true the day somebody adds the table — at which point
+   * an unmapped carve-out reads as considered-and-dismissed rather than as never-revisited. So the
+   * category says what would make it relevant again, and a test fails when the inventory starts holding
+   * something that matches.
    */
-  | { unmapped: "PENDING_NZC_139"; note: string };
+  | { unmapped: "PENDING_NZC_139"; note: string; rematchOn: readonly string[] };
 
 export type RetentionCarveout = {
   key: string;
@@ -159,6 +165,13 @@ export const RETENTION_CARVEOUTS: ReadonlyArray<RetentionCarveout> = [
         "No financial personal data exists in this schema today — no invoice, payment, quote or fee " +
         "table, and no column in the inventory. If billing lands here later this carve-out is where its " +
         "retention goes, and it will need mapping before it can be applied.",
+      // Names that would mean this category has become real. A heuristic on names rather than a proof —
+      // it catches the ordinary case, which is somebody adding an invoice table, and it is one line to
+      // extend when it misses. The alternative is nothing, which catches none of them.
+      rematchOn: [
+        "invoice", "payment", "billing", "quote", "remittance", "iban",
+        "sort_code", "bank_account", "card_", "fee",
+      ],
     },
     basis: "PENDING_NZC_139",
     basisNote:
@@ -203,6 +216,27 @@ export const pendingCarveoutFor = (table: string, column: string): RetentionCarv
  * reading as coverage, which is the retention equivalent of a check over an empty set. Asserted by a
  * test rather than trusted.
  */
+/**
+ * Unmapped categories the inventory has since grown something for.
+ *
+ * The forward half of the same tripwire: `misdirectedCarveouts` catches a carve-out pointing at nothing,
+ * this catches nothing pointing at a carve-out. A category recorded as "we hold none of this" is true
+ * when written and stops being true silently, and the moment it does it starts reading as
+ * considered-and-dismissed rather than as never-revisited.
+ */
+export const unmappedCarveoutsNowMappable = (): ReadonlyArray<{ key: string; matched: readonly string[] }> =>
+  RETENTION_CARVEOUTS.flatMap((carveout) => {
+    if (!("unmapped" in carveout.appliesTo)) return [];
+    const hints = carveout.appliesTo.rematchOn;
+    const matched = [
+      ...Object.keys(PII_TABLES).filter((table) => hints.some((hint) => table.includes(hint))),
+      ...PII_COLUMNS
+        .filter((column) => hints.some((hint) => column.column.includes(hint)))
+        .map((column) => `${column.table}.${column.column}`),
+    ];
+    return matched.length > 0 ? [{ key: carveout.key, matched }] : [];
+  });
+
 export const misdirectedCarveouts = (): readonly string[] =>
   mappedCarveouts().flatMap((carveout) => {
     const { table, columns } = carveout.appliesTo;

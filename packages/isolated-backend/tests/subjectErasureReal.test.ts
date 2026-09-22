@@ -13,7 +13,10 @@ import {
   eraseSubjectData, ErasureIncompleteError, erasureGoLiveBlockers, outstandingByPrerequisite,
   partiallyErasedSubjects, planErasure, readErasureRecord,
 } from "../src/subjectErasure";
-import { RETENTION_CARVEOUTS, carveoutsFor, misdirectedCarveouts, pendingCarveouts, type RetentionCarveout } from "../src/retentionCarveouts";
+import {
+  RETENTION_CARVEOUTS, carveoutsFor, misdirectedCarveouts, pendingCarveouts,
+  unmappedCarveoutsNowMappable, type RetentionCarveout,
+} from "../src/retentionCarveouts";
 
 /**
  * Erasure against real Postgres (NZC-136, NZC-137).
@@ -220,6 +223,29 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
     // does not have would be applied to nothing while reading as coverage — retention's version of a
     // check over an empty set.
     assert.deepEqual(misdirectedCarveouts(), []);
+
+    // And the forward half: a category recorded as "we hold none of this" stops being true silently the
+    // day somebody adds the table. Without this it would read as considered-and-dismissed rather than as
+    // never-revisited, which is the quieter of the two failures and the harder to notice.
+    assert.deepEqual(unmappedCarveoutsNowMappable(), [],
+      "an unmapped carve-out now has something in the inventory to map to — map it, or say why not");
+
+    // Proved able to fire. A tripwire nobody has seen trip is indistinguishable from one that cannot,
+    // and this one guards a condition that by definition is not true yet.
+    const financial = {
+      table: "client_invoices", column: "payment_reference", label: "Your payment reference",
+      storage: { kind: "plaintext" }, stage: "deferred", erasure: "not-attributable",
+    } as unknown as (typeof PII_COLUMNS)[number];
+    (PII_COLUMNS as unknown as Array<typeof financial>).push(financial);
+    try {
+      const resurfaced = unmappedCarveoutsNowMappable();
+      assert.deepEqual(resurfaced.map((entry) => entry.key), ["person-financial-records"],
+        "a financial column in the inventory must bring the unmapped category back for mapping");
+      assert.ok(resurfaced[0]!.matched.includes("client_invoices.payment_reference"));
+    } finally {
+      (PII_COLUMNS as unknown as Array<typeof financial>).pop();
+    }
+    assert.deepEqual(unmappedCarveoutsNowMappable(), [], "and it goes quiet again afterwards");
   });
 
   it("admits that every carve-out is still unanswered", () => {

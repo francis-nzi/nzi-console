@@ -387,7 +387,9 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
           "restating the ground",
         "redact-on-erasure":
           "a redaction mechanism, which does not exist yet: the payload has to lose the person and keep " +
-          "the shape of what changed, or the audit row stops being evidence of anything",
+          "the shape of what changed, or the audit row stops being evidence of anything. It also requires " +
+          "reaching these rows per subject, which the traversal does not do today — an audit row would be " +
+          "found through the person-rows it refers to (entity_type, entity_id), not through a link",
       },
       note:
         "The sharp edge is that a before-image can re-state a value the erasure destroyed. Exposure is " +
@@ -405,7 +407,8 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
         "redact-on-erasure":
           "the expected answer: the row is in-flight work, so the address can go and the reminder still " +
           "knows what it was for. Redaction here is cheaper than for the audit payload because nothing " +
-          "downstream verifies the payload's contents",
+          "downstream verifies the payload's contents — but it still needs the rows reached per subject, " +
+          "which here means the aggregate key the payload was written against rather than a subject link",
         "retain-with-basis":
           "a carve-out, which would be surprising for a transient queue and would need a reason the " +
           "duplicate in strategy_automation_log does not already satisfy",
