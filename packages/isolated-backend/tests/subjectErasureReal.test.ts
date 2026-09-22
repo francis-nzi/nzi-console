@@ -223,6 +223,38 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
       (error: unknown) => error instanceof AuthorizationError && error.permission === "subject.export");
   });
 
+  it("finds a person's data without reading any of it", async () => {
+    // `subject.erase` must authorise locating and destroying, never seeing. `decrypt: false` is not
+    // enough on its own: the read path returns the plaintext of any column whose ciphertext is null,
+    // which today is every column the backfill has not reached — so an eraser would have read most of a
+    // person's data in the clear while holding a capability that does not permit it (NZC-131).
+    const targets = await resolveSubjectData(
+      database.pool, principal("subject.erase"), { organisationId: ORG, subjectId: FULL },
+      { decrypt: false, purpose: "erase" });
+
+    for (const row of targets.rows) {
+      for (const datum of row.data) {
+        assert.equal(datum.value, undefined,
+          `${datum.table}.${datum.column} came back with a value for an erasure`);
+        assert.ok(datum.unavailable, "and says why it was not read");
+      }
+    }
+
+    // It still has what it needs to destroy: the rows, and the keys that identify them.
+    const contact = targets.rows.find((row) => row.table === "client_contacts")!;
+    assert.equal(contact.keys.contact_id, "contact-1", "the target is located precisely");
+
+    // Non-vacuity, and the proof the widening was real: the same traversal under `review` — which is a
+    // milder capability than erase — does hand back the plaintext of an unsealed column. If this ever
+    // stops being true the assertion above starts passing for the wrong reason.
+    const reviewed = await resolveSubjectData(
+      database.pool, principal("subject.review"), { organisationId: ORG, subjectId: FULL },
+      { decrypt: false });
+    const leaked = reviewed.rows.flatMap((row) => row.data).filter((datum) => datum.value != null && datum.value !== "");
+    assert.ok(leaked.length > 0,
+      "no unsealed column read back at all, so this test no longer proves erase is the narrower path");
+  });
+
   // ── The plan refuses rather than half-erasing ───────────────────────────────────────
 
   it("refuses to erase anybody while a column has no treatment", async () => {

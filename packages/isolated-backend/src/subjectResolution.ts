@@ -53,6 +53,12 @@ export type ResolveOptions = {
    * NZC-131 says holding one of the three confers none of the others, so an eraser holding exactly
    * `subject.erase` would have been refused by the read path it depends on. The fix is for the caller to
    * name the act rather than for the read path to guess it from a flag about ciphertext.
+   *
+   * `"erase"` is additionally **targets-only**: no datum comes back with a value, whatever its storage.
+   * An erasure needs to know where a person's data is so it can destroy it, and never needs to see it —
+   * so `subject.erase` authorises finding and destroying, and reading in the clear stays behind
+   * `subject.export`. Without that, `decrypt: false` would still hand back the plaintext of every
+   * column whose ciphertext is null, which today is most of them.
    */
   purpose?: "review" | "export" | "erase";
 };
@@ -130,6 +136,15 @@ function readRow(
   return columns.map((column) => {
     const base = { table: column.table, column: column.column, label: column.label, storage: column.storage.kind };
     const sealedColumn = sealedColumnOf(column);
+
+    // Targets, not contents. An erasure locates a datum in order to destroy it, and `decrypt: false` is
+    // not enough to keep it from seeing one: the branch below reads the plaintext whenever the ciphertext
+    // beside it is null, which is the normal state of every column the backfill has not reached. That
+    // would have made `subject.erase` a way to read personal data in the clear, which is exactly the
+    // orthogonality NZC-131 exists to preserve.
+    if (options.purpose === "erase") {
+      return { ...base, unavailable: "not read: an erasure locates this datum in order to destroy it" };
+    }
 
     if (sealedColumn) {
       const sealed = row[sealedColumn] as SealedValue | null | undefined;

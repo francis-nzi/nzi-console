@@ -3782,9 +3782,48 @@ that a correct guess — recomputed with the same keys the fixture sealed with �
 what is already null and shreds a key that is already gone. That is what makes resuming a failure and
 finishing a partial the same operation.
 
+**Erasure authorises finding and destroying, never reading.** `subject.erase` resolves *targets*: the
+traversal it uses returns each row's table and key columns and no datum values at all. An eraser has no
+need to see what it is about to destroy, and cleartext stays behind `subject.export`.
+
+This needed fixing rather than confirming. Passing `decrypt: false` is not sufficient on its own: the read
+path returns the plaintext of any column whose ciphertext is null, which is the normal state of every
+column the backfill has not reached — so an eraser would have read most of a person's data in the clear
+while holding a capability that does not permit it, quietly undoing the orthogonality matrix v7 was built
+for. A test asserts no datum comes back with a value under the erase purpose, **and** that the same
+traversal under `subject.review` still does — so if that ever stops being true the first assertion starts
+passing for the wrong reason. Only the tests decrypt, in order to prove nothing decrypts afterwards.
+
+## The one bound the proof cannot reach: point-in-time backups
+
+The irreversibility proof covers the live database comprehensively — decryption, plaintext, blind index,
+linkage digest, history, and the export path — and it covers streaming replicas, which follow the primary
+and so receive the same nulls and the same shred. It cannot cover a **point-in-time backup**: a snapshot
+taken before the erasure holds the pre-shred key and the plaintext together, and nulling the live row does
+not reach it. Restoring that snapshot would restore the person.
+
+So, stated plainly: **erasure is immediate on the live database and its replicas, and complete everywhere
+once the backups that predate it age out.** The backup retention period is therefore the maximum
+time-to-complete for any erasure, and it is the honest upper bound on what "forgotten" means here.
+
+Unlike the export artifact (NZC-135), `UNLOGGED` is not available as a way out: these are the
+application's durable tables, and keeping client records out of the WAL would mean keeping them out of
+crash recovery and replication too. Backup-aging is the mechanism, and naming it is the alternative to
+implying a completeness the storage layer does not provide.
+
+**The retention period itself is not recorded here yet, deliberately rather than by omission.** It is a
+property of the platform — the staging database is Supabase, whose project settings hold the PITR window
+and the daily-backup retention — and this repository has never written it down. Guessing it would put a
+number in a compliance document that nobody had checked, which is the same mistake as NZC-122, where the
+cross-tenant reads worked because of a provider default nobody had written down. So it is left as a
+question with a named owner: read the window from the platform, record it in this paragraph, and it
+becomes the stated maximum. Production is a separate platform and a separate number, and out of scope
+here.
+
 **Related.** NZC-117 (crypto-shredding), NZC-137 (what it cannot finish, and why that is said out loud),
 NZC-128 (the traversal it shares with the export), NZC-127 (associations dangling to a tombstone),
-NZC-121 (the linkage confinement), NZC-131 (the capability).
+NZC-121 (the linkage confinement), NZC-131 (the capability this keeps orthogonal), NZC-135 (where
+UNLOGGED *was* available, and why not here), NZC-122 (the last unwritten platform dependency).
 
 ### NZC-137 — A partial erasure says so, per column, and the list of them is visible [Confirmed 22 Sep 2026]
 
