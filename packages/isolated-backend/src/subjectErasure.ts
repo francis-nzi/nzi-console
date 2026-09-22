@@ -6,6 +6,7 @@ import {
 } from "./piiInventory";
 import { resolveSubjectData, type ResolvedSubject } from "./subjectResolution";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
+import { carveoutsFor, pendingCarveoutFor, pendingCarveouts, type RetentionCarveout } from "./retentionCarveouts";
 import type { SealingKeys } from "./piiSealing";
 
 /**
@@ -55,7 +56,20 @@ export type ErasureOutcome =
   | "nothing-held"
   /** Theirs, still readable, and this system cannot yet reach it. The reason a subject stays partial. */
   | "pending";
-export type ErasurePrerequisite = "auth-bridge" | "plaintext-drop";
+export type ErasurePrerequisite =
+  /** The write path that would seal these columns cannot reach them yet (NZC-132). */
+  | "auth-bridge"
+  /** The ciphertext is shredded; the plaintext beside it is on a table no runtime role may update. */
+  | "plaintext-drop"
+  /**
+   * Nobody has decided what should happen to this data (NZC-139, NZC-140, NZC-142).
+   *
+   * Unlike the other two, this one is not waiting on engineering. It blocks anyway, and it blocks for
+   * the stronger reason: the other two are things we know we must do and cannot yet; this is a thing
+   * we do not yet know whether we may do. Guessing either way — shredding data that must be kept, or
+   * keeping data that must go — is a worse outcome than saying so.
+   */
+  | "counsel-determination";
 
 export type ErasureEntry = {
   table: string;
@@ -135,17 +149,89 @@ export function planColumn(
 
   // Reached, and there is nothing of theirs in it. Stated rather than left out, for the same reason the
   // export states it: an absent line looks exactly like a column somebody forgot.
-  if (held.considered && held.rows === 0 && column.erasure !== "not-attributable") {
+  // The treatments the traversal cannot speak for.
+  //
+  // A payload store is not reached by the subject traversal at all, so "the traversal found no rows" says
+  // nothing about whether the person is inside one — their name may sit in an audit before-image with no
+  // link pointing at it. Answering `nothing-held` there would be a claim made from not having looked.
+  //
+  // This is where the scaffold's block nearly failed to fire: `pending-counsel` was not on this list, so a
+  // real erasure returned `nothing-held` for both undecided stores while the worst-case helper reported
+  // them blocking. The gate would have read as armed and passed every subject through.
+  const SPOKEN_FOR_ELSEWHERE = ["not-attributable", "redact-or-retain", "redact-on-erasure", "pending-counsel"];
+  if (held.considered && held.rows === 0 && !SPOKEN_FOR_ELSEWHERE.includes(column.erasure)) {
     return { ...base, outcome: "nothing-held", because: `no ${column.table} record for this person` };
   }
-  if (!held.considered && column.erasure !== "not-attributable" && column.erasure !== "redact-or-retain") {
+  if (!held.considered && !SPOKEN_FOR_ELSEWHERE.includes(column.erasure)) {
     return {
       ...base, outcome: "nothing-held",
       because: `nothing links this person to ${column.table}`,
     };
   }
 
+  const decided = decideTreatment(column, base, sealed, appendOnly);
+  if (!decided) return null;
+
+  // An unresolved carve-out over this column, applied to whatever the treatment decided rather than
+  // instead of it.
+  //
+  // Order matters and getting it wrong lost information: checking the carve-out first moved
+  // `staff_credentials` and `trainees` out of the auth-bridge list and into this one, so a column
+  // blocked by *both* a missing bridge and an unsettled carve-out reported only the second. Landing the
+  // bridge would then have looked like it finished them. A column already pending keeps the blocker that
+  // stops it being reachable at all and gains a mention of the one that stops it being decidable; a
+  // column the treatment settled is overridden, because a carve-out that might require keeping it means
+  // erasure must not shred it, and an unstated basis means it must not be quietly retained either.
+  const carveout = pendingCarveoutFor(column.table, column.column);
+  if (!carveout) return decided;
+
+  // Only an outcome that would *destroy* something is overridden. A column already pending keeps the
+  // blocker that makes it unreachable, and one already retained stays retained — a carve-out asking
+  // "should this be kept despite an erasure" changes nothing for a column erasure was never going to
+  // touch. Flipping those to pending put `training_bookings`, which no subject path reaches at all, into
+  // the list of things blocking a person's erasure, which is noise standing where a real blocker should
+  // be. Both cases still cite the carve-out, so neither is silent about it.
+  if (decided.outcome !== "erased") {
+    return {
+      ...decided,
+      because: `${decided.because}; a retention carve-out ('${carveout.key}') over it is also unresolved`,
+    };
+  }
+  return {
+    ...base, outcome: "pending", pendingOn: "counsel-determination",
+    because: `a retention carve-out ('${carveout.key}') covers this column and is unresolved, so it is ` +
+      `neither shredded nor retained until ${carveout.resolvedBy ?? "NZC-139"} is settled`,
+  };
+}
+
+/** The inventory's instruction for a column, before any carve-out over it is considered. */
+function decideTreatment(
+  column: PiiColumn,
+  base: { table: string; column: string; treatment: PiiColumn["erasure"] },
+  sealed: string | null,
+  appendOnly: boolean,
+): Omit<ErasureEntry, "label"> | null {
   switch (column.erasure) {
+    case "pending-counsel":
+      // Neither shred nor silent-retain. The candidates differ in what they destroy, so acting on
+      // either before the answer comes back is a guess with a person's data as the stake.
+      return {
+        ...base, outcome: "pending", pendingOn: "counsel-determination",
+        because: column.pendingClassification
+          ? `awaiting ${column.pendingClassification.nzc}: the candidates are ` +
+            `${column.pendingClassification.candidates.join(" or ")}, which differ in what they destroy`
+          : "awaiting a determination that is not recorded anywhere, which is itself the defect",
+      };
+
+    case "redact-on-erasure":
+      // The resolved form of the above. No mechanism exists yet, so reaching this today means a column
+      // was promoted out of pending-counsel before the redaction it now promises was built.
+      return {
+        ...base, outcome: "pending", pendingOn: "counsel-determination",
+        because: "this column is to be redacted on erasure, and no redaction mechanism exists yet — the " +
+          "classification landed ahead of the code that performs it",
+      };
+
     case "shred-key": {
       if (column.stage !== "sealed") {
         return {
@@ -207,11 +293,17 @@ export function planColumn(
           ?? "personal data inside a payload is redacted or retained on its own basis, never shredded (NZC-126)",
       };
 
-    case "retain-with-basis":
+    case "retain-with-basis": {
+      // One source of truth. A column claiming a lawful basis has to point at the carve-out that states
+      // it; a retention whose ground lives only in a `because` string is a retention nobody can review,
+      // and it would read as settled while resting on a sentence.
+      const covering = carveoutsFor(column.table, column.column);
+      if (covering.length === 0) return null;
       return {
         ...base, outcome: "retained",
-        because: column.because ?? "retained on a stated lawful basis",
+        because: `retained under '${covering[0]!.key}': ${covering[0]!.basisNote}`,
       };
+    }
 
     default:
       // A treatment added to the inventory and not to this switch. There is no instruction here for
@@ -443,6 +535,64 @@ export async function partiallyErasedSubjects(
 
 /** What a completeness proof compares against — every column, attributable or not. */
 export const erasureAccountableColumns = (): readonly PiiColumn[] => PII_COLUMNS;
+
+export type GoLiveBlocker = {
+  prerequisite: ErasurePrerequisite;
+  what: string;
+  /** The decision or piece of work that would clear it. */
+  waitingOn: string;
+};
+
+/**
+ * Everything standing between this command and running for real subjects.
+ *
+ * One list, derived from the inventory and the carve-outs rather than maintained beside them, because a
+ * hand-kept gate is a gate that goes stale in the safe-looking direction. Empty means an erasure can
+ * claim completeness for anybody; non-empty means it cannot, and names why.
+ */
+export function erasureGoLiveBlockers(): readonly GoLiveBlocker[] {
+  const blockers: GoLiveBlocker[] = [];
+
+  for (const column of PII_COLUMNS) {
+    if (column.erasure !== "pending-counsel" && column.erasure !== "redact-on-erasure") continue;
+    blockers.push({
+      prerequisite: "counsel-determination",
+      what: `${column.table}.${column.column}`,
+      waitingOn: column.pendingClassification?.nzc
+        ?? (column.erasure === "redact-on-erasure" ? "a redaction mechanism" : "an unrecorded determination"),
+    });
+  }
+
+  for (const carveout of pendingCarveouts()) {
+    blockers.push({
+      prerequisite: "counsel-determination",
+      what: "table" in carveout.appliesTo
+        ? `${carveout.appliesTo.table} (${carveout.key})`
+        : `${carveout.key} (not mapped to any column yet)`,
+      waitingOn: "NZC-139",
+    });
+  }
+
+  for (const [prerequisite, columns] of outstandingByPrerequisite()) {
+    if (prerequisite === "counsel-determination") continue;
+    for (const column of columns) {
+      blockers.push({
+        prerequisite,
+        what: column,
+        waitingOn: prerequisite === "auth-bridge" ? "NZC-132" : "the plaintext-drop migration",
+      });
+    }
+  }
+
+  return blockers;
+}
+
+/** The carve-outs a person's erasure would run into, for the DPO view. */
+export const pendingCarveoutsFor = (columns: readonly PiiColumn[]): readonly RetentionCarveout[] =>
+  [...new Set(columns.flatMap((column) => {
+    const carveout = pendingCarveoutFor(column.table, column.column);
+    return carveout ? [carveout] : [];
+  }))];
 
 /**
  * The columns an erasure would leave behind for somebody who has data in every table.

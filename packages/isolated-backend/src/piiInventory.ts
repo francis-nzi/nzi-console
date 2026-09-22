@@ -75,6 +75,28 @@ export type PiiErasure =
   | "null-digest"
   /** Inside a JSON payload: it cannot be key-shredded, so it is redacted or retained with a basis. */
   | "redact-or-retain"
+  /**
+   * Strip the subject's personal data out of the payload and keep the row.
+   *
+   * The resolved form of `redact-or-retain` where counsel answers "redact": the record of what
+   * happened survives, the person inside it does not. Distinct from `shred-key` because there is no
+   * key over a payload, and distinct from nulling the column because the column holds more than the
+   * person.
+   */
+  | "redact-on-erasure"
+  /**
+   * Nobody has decided yet, and until somebody does this column blocks (NZC-142).
+   *
+   * The state exists so that waiting on a determination cannot be mistaken for a decision. Held as an
+   * absence it would behave exactly like "retain nothing" or "retain everything" depending on which way
+   * the code leaned, and the question would be answered by default. Held here it is enumerated, visible
+   * to the coverage invariant, and refused by the erasure command — which is what makes it a gap
+   * somebody still owes an answer for rather than a silent one.
+   *
+   * A column may not enter this state without a `pendingClassification` naming the decision it waits
+   * on. A pending state with no question attached is just an untreated column.
+   */
+  | "pending-counsel"
   /** Kept deliberately, with a lawful basis recorded. Never a silent skip. */
   | "retain-with-basis"
   /** A pointer to a person whose identity is already shredded: it dangles to a tombstone. */
@@ -113,6 +135,22 @@ export type PiiTable = {
   appendOnly?: true;
 };
 
+/**
+ * The open question behind a `pending-counsel` column.
+ *
+ * Candidates rather than a recommendation: the point of asking counsel is that we do not know, and a
+ * shape that recorded our preference would invite it to be adopted by default. What each candidate would
+ * *mean* is recorded, because the consequence is the part this system knows and counsel does not.
+ */
+export type PendingClassification = {
+  /** The decision this waits on. Required — a pending column with no question is an untreated one. */
+  nzc: string;
+  candidates: ReadonlyArray<PiiErasure>;
+  /** Per candidate, what follows here if counsel picks it. Keyed by the candidate. */
+  consequenceByCandidate: Readonly<Record<string, string>>;
+  note: string;
+};
+
 export type PiiColumn = {
   table: string;
   column: string;
@@ -133,6 +171,8 @@ export type PiiColumn = {
   attribution?: PiiAttribution;
   /** Why, wherever the answer is not the obvious one. Shown in an export or an erasure record. */
   because?: string;
+  /** Required when `erasure` is `pending-counsel`, and meaningless otherwise. */
+  pendingClassification?: PendingClassification;
 };
 
 /* ── The tables ──────────────────────────────────────────────────────────────────────── */
@@ -335,11 +375,46 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
 
   // ── Personal data inside JSON, which no key reaches ──────────────────────────────────
   { table: "audit_events", column: "before_json", label: "The previous value an edit replaced", stage: "deferred",
-    erasure: "redact-or-retain", storage: { kind: "json" },
-    because: "client.contact.update is the only command that puts a person field in a before-payload, and it is a name. An audit row plausibly has a lawful retention basis, so whether this is redacted or retained is a counsel question rather than a technical one" },
+    erasure: "pending-counsel", storage: { kind: "json" },
+    because: "client.contact.update is the only command that puts a person field in a before-payload, and it is a name. An audit row plausibly has a lawful retention basis, so whether this is redacted or retained is a counsel question rather than a technical one (NZC-140)",
+    pendingClassification: {
+      nzc: "NZC-140",
+      candidates: ["retain-with-basis", "redact-on-erasure"],
+      consequenceByCandidate: {
+        "retain-with-basis":
+          "a carve-out in retentionCarveouts.ts on an accountability or audit-integrity basis, which is " +
+          "then the single source of truth for it — the inventory points at the carve-out rather than " +
+          "restating the ground",
+        "redact-on-erasure":
+          "a redaction mechanism, which does not exist yet: the payload has to lose the person and keep " +
+          "the shape of what changed, or the audit row stops being evidence of anything",
+      },
+      note:
+        "The sharp edge is that a before-image can re-state a value the erasure destroyed. Exposure is " +
+        "already limited by the payload being structured rather than free text — one command writes a " +
+        "person's field into one, and it is a name — so this is a question about basis rather than a " +
+        "defect to fix.",
+    } },
   { table: "transactional_outbox", column: "payload_json", label: "A reminder addressed to you", stage: "deferred",
-    erasure: "redact-or-retain", storage: { kind: "json" },
-    because: "the strategy reminder payload carries recipientEmail and nothing drains the table; the address duplicates strategy_automation_log, so removing the copy is likely better than redacting it" },
+    erasure: "pending-counsel", storage: { kind: "json" },
+    because: "the strategy reminder payload carries recipientEmail and nothing drains the table; the address duplicates strategy_automation_log, so removing the copy is likely better than redacting it (NZC-140)",
+    pendingClassification: {
+      nzc: "NZC-140",
+      candidates: ["redact-on-erasure", "retain-with-basis"],
+      consequenceByCandidate: {
+        "redact-on-erasure":
+          "the expected answer: the row is in-flight work, so the address can go and the reminder still " +
+          "knows what it was for. Redaction here is cheaper than for the audit payload because nothing " +
+          "downstream verifies the payload's contents",
+        "retain-with-basis":
+          "a carve-out, which would be surprising for a transient queue and would need a reason the " +
+          "duplicate in strategy_automation_log does not already satisfy",
+      },
+      note:
+        "Transient by design and drained on a clock, so most rows age out before an erasure would reach " +
+        "them. That makes the expected answer redact-or-expire rather than retain — but 'expected' is " +
+        "not 'decided', and nothing drains the table today (NZC-129).",
+    } },
 ];
 
 /* ── Derivations ─────────────────────────────────────────────────────────────────────── */

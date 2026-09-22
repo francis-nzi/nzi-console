@@ -4012,3 +4012,57 @@ DSAR completeness, or whether a controller is expected to find records reachable
 **Related.** NZC-104 (the minimisation and why it was forward-only), NZC-117 (where snapshots were ruled
 out of scope pending this), NZC-103 (the asset identifier's posture), NZC-118 (the name-oracle ruling),
 NZC-074 (public certificate verification), NZC-134 (what an export claims to be complete over).
+
+### NZC-142 — "Not yet decided by counsel" is a state the code holds, and it blocks [Confirmed 22 Sep 2026]
+
+**Decision.** Waiting on a determination is a first-class, enumerated, **blocking** state rather than an
+absence. A column whose treatment counsel has not settled is `pending-counsel` in the inventory and must
+carry the decision it waits on; a retention that may be claimed but is not yet justified is a
+`RetentionCarveout` whose basis is `PENDING_NZC_139`. Both are visible to the coverage invariant, both
+stop an erasure claiming completeness, and neither can be entered without citing an NZC.
+
+**Why a shape now rather than when the answers arrive.** Held as an absence, "we are waiting" behaves
+exactly like a decision — the erasure command shreds, reports success, and the question is answered by
+default in whichever direction the code happened to lean. Nobody decided that; it is what an unstated
+question does. Held explicitly it behaves like what it is: an obligation somebody still owes an answer
+for. The scaffold also means the answers land as **field values**, not as a design pass under time
+pressure with counsel waiting.
+
+Same discipline as `awaiting-auth-bridge` and `NOT_RUN_IN_CI`: enumerated, green-but-listed, and load-
+bearing rather than decorative.
+
+**What it changed about the erasure command, which is the part that needed review.** Every subject now
+comes out `erasure-partial`, including one whose own records are entirely erasable — because two stores
+that may hold their name have no decided treatment. That is a real reduction in what the command claims,
+and it is the point: before this, such a subject was reported `erased`, which was a claim nobody had the
+standing to make.
+
+**Three things the scaffold caught that a shape-only change should not have.**
+
+  * **The block nearly did not fire.** A payload store is not reached by the subject traversal, so the
+    planner's "the traversal found no rows" branch answered `nothing-held` for both undecided columns —
+    a claim made from not having looked — while the worst-case helper reported them blocking. The gate
+    would have read as armed and passed every subject through. Payload treatments are now excluded from
+    that branch, and the anti-vacuity test exists because this is precisely the failure it is for.
+  * **Order of precedence lost information.** Checking the carve-out before the treatment moved
+    `staff_credentials` and `trainees` out of the auth-bridge list into the counsel list, so a column
+    blocked by *both* reported only the second — and landing the bridge would have looked like it
+    finished them. The treatment decides first; the carve-out is applied on top.
+  * **An override that was too wide added noise where a real blocker should be.** A carve-out only
+    overrides an outcome that would otherwise *destroy* something. Flipping a `retained` or
+    `nothing-held` column to pending put `training_bookings` — which no subject path reaches at all —
+    into the list of things blocking a person's erasure. Both cases still cite the carve-out, so neither
+    is silent.
+
+**One source of truth for a retention.** A column classified `retain-with-basis` must point at a carve-out
+that states the ground; a basis living only in a `because` string is one nobody can review, with nowhere
+to record who decided it or when it ends. A retained column with no carve-out fails the suite.
+
+**Nothing here is claimed to be decided.** Every carve-out is `PENDING_NZC_139`, both payload columns are
+`pending-counsel`, and a test asserts that remains true — so the first one marked resolved has to be
+explained rather than noticed later.
+
+**Related.** NZC-139 and NZC-140 (the determinations this holds the shape for), NZC-138 (the controllership
+split a carve-out's scope would turn on), NZC-136 and NZC-137 (the command and its honest-partial
+reporting), NZC-126 (the redact-or-retain ruling being resolved into two concrete treatments), NZC-119
+(the enumerate-rather-than-skip discipline this follows).

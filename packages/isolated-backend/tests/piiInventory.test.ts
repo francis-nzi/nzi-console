@@ -71,9 +71,23 @@ describe("the PII inventory (NZC-125)", () => {
       if (column.erasure === "null-digest") {
         assert.equal(column.storage.kind, "digest", `${name} is nulled as a digest but is not one`);
       }
-      if (column.erasure === "redact-or-retain") {
+      // The three answers a payload can have: undecided, decided-redact, or the older undecided form.
+      // All three say the same thing about storage — a key does not reach inside a payload.
+      if (["redact-or-retain", "redact-on-erasure", "pending-counsel"].includes(column.erasure)) {
         assert.equal(column.storage.kind, "json",
-          `${name} is redact-or-retain, which is the answer for a payload no key reaches`);
+          `${name} carries a payload treatment, which is the answer for data no key reaches`);
+      }
+      if (column.erasure === "pending-counsel") {
+        // A pending state with no question attached is an untreated column wearing a label.
+        const pending = column.pendingClassification;
+        assert.ok(pending, `${name} is pending-counsel with no classification recorded`);
+        assert.match(pending!.nzc, /^NZC-\d{3}$/, `${name} must cite the decision it waits on`);
+        assert.ok(pending!.candidates.length >= 2,
+          `${name} is pending between fewer than two answers, which is a decision rather than a question`);
+        for (const candidate of pending!.candidates) {
+          assert.ok(pending!.consequenceByCandidate[candidate]?.trim(),
+            `${name} does not say what follows if counsel picks '${candidate}'`);
+        }
       }
       if (column.erasure === "not-attributable") {
         assert.ok(!isAttributable(column), `${name} claims no subject path but the inventory gives it one`);
@@ -149,8 +163,11 @@ describe("the PII inventory (NZC-125)", () => {
       "the linkage digest must be an entry: a key-shred leaves it behind, and a digest is confirmable by guess");
     assert.ok(Object.values(PII_TABLES).some((table) => table.history),
       "at least one table must map to where its history lives, or erasure shreds the present and leaves the past");
-    assert.ok(PII_COLUMNS.some((column) => column.erasure === "redact-or-retain"),
-      "personal data inside a JSON payload cannot be key-shredded and needs its own treatment");
+    assert.ok(
+      PII_COLUMNS.some((column) =>
+        ["redact-or-retain", "redact-on-erasure", "pending-counsel"].includes(column.erasure)),
+      "personal data inside a JSON payload cannot be key-shredded and needs its own treatment — " +
+      "undecided, or decided, but never absent");
   });
 
   it("keeps the unsealed view in step with the inventory", () => {
@@ -161,6 +178,19 @@ describe("the PII inventory (NZC-125)", () => {
       noCiphertext.map((column) => `${column.table}.${column.column}`).sort());
     for (const entry of UNSEALED_PII_FOUND) {
       assert.notEqual(entry.erasure, "shred-key", `${entry.table}.${entry.column} has no key to shred`);
+    }
+
+    // Green-but-listed (NZC-142). A column nobody has classified yet stays visible here rather than
+    // dropping out of the invariant: the point of the pending state is that waiting is enumerated, and an
+    // enumeration that quietly loses its members is how a gap becomes invisible while still existing.
+    const undecided = PII_COLUMNS.filter((column) => column.erasure === "pending-counsel");
+    assert.ok(undecided.length > 0, "nothing is pending counsel, so either it is all answered or the state is unused");
+    for (const column of undecided) {
+      const listed = UNSEALED_PII_FOUND.find(
+        (entry) => entry.table === column.table && entry.column === column.column);
+      assert.ok(listed, `${column.table}.${column.column} is pending but absent from the unsealed listing`);
+      assert.match(listed!.note, /NZC-\d{3}/,
+        `${column.table}.${column.column} is listed without citing the decision it waits on`);
     }
   });
 
