@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "job" | "scopeRows" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -18,6 +18,9 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
   job: { key: "job", validate: (value) => record(value) && record(value.job), isEmpty: () => false },
   scopeRows: { key: "scopeRows", validate: (value) => rows(value, "rows"), isEmpty: () => false },
+  // The live aggregation (NZC-144). Never empty: a job with no entries has emissions of nought, which is
+  // a figure to show rather than an empty state to hide behind.
+  emissions: { key: "emissions", validate: (value) => typeof value === "object" && value !== null && "headline" in value, isEmpty: () => false },
   factorOptions: { key: "factorOptions", validate: (value) => rows(value, "factors") && rows(value, "datasets"), isEmpty: () => false },
   emissionsTarget: { key:"emissionsTarget",validate:(value)=>record(value)&&("target" in value),isEmpty:()=>false },
   intensityTarget:{key:"intensityTarget",validate:(value)=>record(value)&&("target" in value),isEmpty:()=>false},
