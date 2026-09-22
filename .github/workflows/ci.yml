@@ -197,6 +197,12 @@ jobs:
       # it can only answer that here — in the unit job it skips, which is not an answer.
       - name: Trainee self-service, against the policies that govern it
         run: npx tsx --test packages/isolated-backend/tests/traineeSelfServiceReal.test.ts
+      # The live emissions aggregation (NZC-143, NZC-144). The location rule is only meaningful against
+      # real rows and real constraints: that a market row contributes 0 to every tier while still reading
+      # its value, that an identical location row proves the rule bites, and that 0109 refuses to let a
+      # row which counts be hidden.
+      - name: Emissions totals exclude market and cannot hide a row that counts
+        run: npx tsx --test packages/isolated-backend/tests/emissionsAggregationReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

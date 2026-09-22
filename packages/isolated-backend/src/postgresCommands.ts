@@ -1212,8 +1212,8 @@ export async function createScopeRow(
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)`,
         [
           context.organisationId,
           rowId,
@@ -1250,6 +1250,10 @@ export async function createScopeRow(
           categoryCode,
           activity.frequency,
           activity.distributed,
+          // Scope 2 only, enforced by 0109's CHECK as well as here: a method on a Scope 1 or 3 row is a
+          // field with no rule behind it, so the write refuses rather than storing something unread.
+          input.scope === "2" ? input.scope2Method ?? null : null,
+          input.showInReport ?? true,
         ],
       );
       return {
@@ -1293,7 +1297,7 @@ export async function updateScopeRow(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
       provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,activity_frequency=$36,activity_distributed=$37,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
+      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,activity_frequency=$36,activity_distributed=$37,scope2_method=$38,show_in_report=$39,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -1332,6 +1336,10 @@ export async function updateScopeRow(
           categoryCode,
           activity.frequency,
           activity.distributed,
+          // Scope 2 only, enforced by 0109's CHECK as well as here: a method on a Scope 1 or 3 row is a
+          // field with no rule behind it, so the write refuses rather than storing something unread.
+          input.scope === "2" ? input.scope2Method ?? null : null,
+          input.showInReport ?? true,
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
