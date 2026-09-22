@@ -19,6 +19,7 @@
  */
 import { Pool } from "pg";
 import { backfillSealedPii } from "../src/piiBackfill";
+import { SEALABLE_ROWS } from "../src/piiSealing";
 import { resolveSealingKeys, SEALING_KEY_VARIABLES } from "../src/piiSealingKeys";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 
@@ -26,6 +27,16 @@ const ORG = process.env.NZI_DEMO_ORGANISATION_ID ?? "demo-nzi-console";
 const ACTOR = process.env.SEED_ACTOR_ID ?? "pii-encryption-backfill";
 const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH = Number(process.env.NZI_BACKFILL_BATCH_SIZE ?? "200");
+
+/**
+ * Wide enough for the longest table there is, read from the inventory rather than guessed.
+ *
+ * A constant was right until `client_contact_versions` joined the sealable set (NZC-120) and ran past
+ * it, pushing every number on that row out of its column. Nobody misreads a report over one ragged
+ * line, but an operator reading these totals is the last check on this having worked, and it should not
+ * need re-tidying each time a table is added.
+ */
+const WIDTH = Math.max("table".length, ...SEALABLE_ROWS.map((row) => row.table.length));
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
 async function main(): Promise<void> {
@@ -64,12 +75,12 @@ async function main(): Promise<void> {
     const outcome = await backfillSealedPii(pool, {
       organisationId: ORG, actorId: ACTOR, keys, batchSize: BATCH, dryRun: DRY_RUN,
       onProgress: ({ table, sealed, outstanding }) =>
-        log(`  ${table.padEnd(22)} sealed ${String(sealed).padStart(7)} · ~${outstanding} to go`),
+        log(`  ${table.padEnd(WIDTH)} sealed ${String(sealed).padStart(7)} · ~${outstanding} to go`),
     });
 
-    log(`\n  ${"table".padEnd(22)} ${"before".padStart(8)} ${"sealed".padStart(8)} ${"left".padStart(8)}`);
+    log(`\n  ${"table".padEnd(WIDTH)} ${"before".padStart(8)} ${"sealed".padStart(8)} ${"left".padStart(8)}`);
     for (const row of outcome.tables) {
-      log(`  ${row.table.padEnd(22)} ${String(row.outstandingBefore).padStart(8)} ${String(row.sealed).padStart(8)} ${String(row.outstandingAfter).padStart(8)}`);
+      log(`  ${row.table.padEnd(WIDTH)} ${String(row.outstandingBefore).padStart(8)} ${String(row.sealed).padStart(8)} ${String(row.outstandingAfter).padStart(8)}`);
     }
 
     const stranded = outcome.tables.filter((row) => row.outstandingAfter > 0);
