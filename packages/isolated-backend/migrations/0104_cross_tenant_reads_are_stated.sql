@@ -60,16 +60,26 @@ EXCEPTION
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nzi_console_definer') THEN RAISE; END IF;
 END $$;
 
--- Handing a function to a new owner requires being able to SET ROLE to it — that is, membership.
+-- Handing a function to a new owner requires being able to **SET ROLE** to it, and in PostgreSQL 16
+-- that is a distinct thing from being a member of it.
 --
--- Granted only when it is missing, because granting a role requires ADMIN OPTION on it and the role
--- may have been created by somebody else. A superuser is implicitly a member of everything, so on
--- Supabase this does nothing and the ALTERs below simply work. Where the platform has already made
--- this role and granted it, this does nothing either. Where neither is true, the GRANT runs — and if
--- that is refused, the migration says so rather than failing later on an ALTER that looks unrelated.
+-- When a `CREATEROLE` role creates a role, PG16 grants it back automatically as
+-- `ADMIN TRUE, INHERIT FALSE, SET FALSE`. So the creator is a member — `pg_has_role(…, 'MEMBER')` is
+-- true — and still cannot `SET ROLE` to it, which is what `ALTER … OWNER TO` demands. A guard on
+-- MEMBER therefore skips the grant precisely when it is needed, and the failure surfaces later as
+-- "must be able to SET ROLE", which names the symptom and not the missing privilege.
+--
+-- This is not hypothetical: it is what happened on staging. Supabase's `postgres` is **not** a
+-- superuser — it has `rolbypassrls` and `CREATEROLE` and nothing more (NZC-122) — so it created this
+-- role, held MEMBER without SET, skipped the grant, and the deploy failed here.
+--
+-- So the guard asks for the capability actually required, and the grant confers exactly that. Where
+-- the platform has already granted SET, this does nothing. Where the role belongs to somebody else and
+-- this connection has no ADMIN OPTION on it, the GRANT is refused — which is the right moment to fail,
+-- rather than three statements later on an ALTER that looks unrelated.
 DO $$ BEGIN
-  IF NOT pg_has_role(current_user, 'nzi_console_definer', 'MEMBER') THEN
-    EXECUTE 'GRANT nzi_console_definer TO CURRENT_USER';
+  IF NOT pg_has_role(current_user, 'nzi_console_definer', 'SET') THEN
+    EXECUTE 'GRANT nzi_console_definer TO CURRENT_USER WITH SET TRUE';
   END IF;
 END $$;
 

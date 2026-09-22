@@ -3269,3 +3269,48 @@ instead of surfacing as a failing index in every suite in turn.
 
 **Related.** NZC-122 (the same class: a platform default nothing enumerated), NZC-123 (the cross-tenant
 reads stated in policy), NZC-100 (privilege where policy cannot reach).
+
+### NZC-133 — Membership is not SET ROLE, and the harness has to hold the production role shape [Confirmed 21 Sep 2026]
+
+**What broke.** The staging deploy failed applying 0104: `must be able to SET ROLE "nzi_console_definer"`.
+The pre-deploy step runs every pending migration, so every deploy failed there until it was fixed —
+one migration held the whole service.
+
+**Two wrong beliefs, both recorded here rather than quietly corrected.** 0104 said *"a superuser is
+implicitly a member of everything, so on Supabase this does nothing and the ALTERs below simply work"*.
+Supabase's `postgres` is **not** a superuser: it holds `rolbypassrls` and `CREATEROLE` and nothing more,
+which NZC-122 recorded and this assumed away. And the guard tested `pg_has_role(…, 'MEMBER')`, which in
+PostgreSQL 16 is a different thing from being able to `SET ROLE`.
+
+**The mechanism, measured rather than reasoned about.** When a `CREATEROLE` role creates a role, PG16
+grants it back automatically as `admin_option: true, inherit_option: false, **set_option: false**`. So
+`pg_has_role(…, 'MEMBER')` is true while `pg_has_role(…, 'SET')` is false — and `ALTER … OWNER TO`
+requires SET. The guard therefore skipped the grant exactly when it was needed, and the failure appeared
+three statements later naming the symptom rather than the missing privilege.
+
+**The fix asks for the capability it needs.** `pg_has_role(current_user, 'nzi_console_definer', 'SET')`,
+and `GRANT … TO CURRENT_USER WITH SET TRUE` when it is absent. Verified by applying every migration as a
+role configured exactly like Supabase's — `NOSUPERUSER BYPASSRLS CREATEROLE`, creating the definer role
+itself — which reproduced the failure first and then applied clean.
+
+**Amended in place rather than corrected by a later migration.** 0104 had applied nowhere persistent:
+staging rolled back with no ledger row, and every other database that had seen it is a throwaway. A
+corrective 0106 would have left a 0104 that still fails on any fresh apply, so the schema could never be
+built from scratch — which is worse than the bug it fixed.
+
+**The harness gap is the finding that outlasts the bug.** CI passed because the test harness granted the
+migrating role `nzi_console_definer` `WITH ADMIN OPTION`, which carries SET by default. It handed the
+migration a privilege production does not give it, so the path that fails on staging was never
+exercised. The harness now grants that role the way PG16 grants a creator — `ADMIN TRUE, SET FALSE,
+INHERIT FALSE` — and with the old guard in place it reproduces the staging error exactly. A harness that
+is *more* permissive than production tests something easier than production, and will keep passing while
+deploys fail.
+
+**The recurring shape.** This is the fourth time the identity a thing runs under made a green
+meaningless: `NOLOGIN` roles whose refused *login* was mistaken for a refused privilege; a superuser
+connection that made RLS policies irrelevant; a bypassing owner under which definer functions could not
+fail; and now a membership flag. Each time the fix was to make the test environment hold the shape
+production has, at one more level of granularity.
+
+**Related.** NZC-122 (the provider default this assumed away), NZC-123 (the migration amended),
+NZC-121 (the confinement it implements).

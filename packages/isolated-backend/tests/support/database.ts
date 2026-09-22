@@ -313,7 +313,17 @@ export async function createDisposableDatabase(
     // Membership is what `ALTER FUNCTION … OWNER TO` requires of whoever runs it, and admin is what a
     // GRANT of the same role requires. Both, for every bootstrapped role, so the migration works
     // whatever created the role first.
-    await cluster.query(`GRANT ${BOOTSTRAP_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
+    await cluster.query(`GRANT ${RUNTIME_ROLES.join(", ")} TO ${OWNER_ROLE} WITH ADMIN OPTION`);
+    // The definer role is granted the way PostgreSQL 16 grants a role back to whoever created it:
+    // ADMIN yes, INHERIT no, **SET no**. That is the shape staging actually has, because Supabase's
+    // `postgres` is not a superuser — it has CREATEROLE, so it creates this role and receives exactly
+    // these flags.
+    //
+    // Granting it here with the default SET would hand the migration a privilege production does not
+    // give it, and 0104 would skip the grant it needs. That is precisely what happened: CI passed while
+    // the staging deploy failed with "must be able to SET ROLE". The harness now withholds SET, so the
+    // migration has to obtain it — and a migration that assumes membership is enough fails here first.
+    await cluster.query(`GRANT ${DEFINER_ROLE} TO ${OWNER_ROLE} WITH ADMIN OPTION, SET FALSE, INHERIT FALSE`);
 
     // Checked once, here, rather than discovered as a failing index in every suite in turn. An image
     // without the extension is an environment problem and should say so in one line.
