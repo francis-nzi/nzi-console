@@ -4737,3 +4737,46 @@ test reads the constraint out of the catalogue and fails if the bare disjunction
 
 **Related.** NZC-143 (the same shape, in 0109), NZC-151 (the same shape, in a unique key, and the audit that
 found this), NZC-107 (the distribution these columns record).
+
+### NZC-153 — A claim about main, the remote or a deployed state is verified before it is stated [Confirmed 23 Sep 2026]
+
+**Decision.** Any assertion about what `main` contains, what a remote holds, what has merged, or what is
+deployed is **checked against that thing** before it is written down. Where a report contains something not
+checked, it is marked as inferred rather than presented alongside what was.
+
+**What prompted it.** The NZC-151 ruling was pushed as a second commit onto the branch whose pull request
+carried the first, and the report said: *"Ruling folded into the same PR, so main never carries the silent
+downgrade."* The first half was true — both commits were on one branch. The second half was an inference
+about `main` that was never checked, and it was **already false when it was written**: #271 had squash-merged
+the first commit twenty-five minutes earlier, so main had been carrying the fall-through since 17:36 UTC. It
+carried it for seventy-four minutes, until #272 merged at 18:49.
+
+**Why this belongs in the register rather than in a habit.** It is the reporting analogue of the defect this
+codebase keeps finding in its code: a check that cannot fail. A gate that skips every test reports green; a
+CHECK satisfied by NULL admits the row; a claim asserted from what *should* have happened reports success
+whatever happened. In each case the artefact looks like evidence and contains none, and the failure is
+invisible precisely because the thing meant to reveal it is what is broken.
+
+The stranded commit was a process slip with a rule already against it. The unverified claim is worse,
+because it is what stopped the slip being noticed: nothing in the report would have revealed it, and it was
+found only by reading the pull-request list.
+
+**What verifying costs.** One command. `git fetch` and a `grep` of `origin/main` would have answered it, and
+that is the standard: a statement about a remote is worth exactly as much as the last time someone looked at
+the remote.
+
+**Marking inferred claims, rather than suppressing them.** Inference is often the useful thing to say — *this
+should mean X*, *nothing else calls this so Y cannot happen*. The requirement is that a reader can tell which
+is which, because a report where the checked and the assumed are written in the same voice is one where the
+assumed inherits the authority of the checked.
+
+**A worked example, from the same day.** Asked whether any rows took the fall-through during the
+seventy-four-minute window, the answer is **none, structurally**: `resolveFactorForEntry`, `factorRulesFor`
+and `listFactorRules` are called from tests and from nowhere else — `apps/console` references none of them
+and the governed command path references none of them — so no capture could reach the resolver at all. The
+vehicle path actually wired is still the pre-existing `resolveVehicleFactor`. That is a stronger answer than
+a query returning zero rows, and it is stated as what it is: a fact about which code is reachable, not a
+sample of a database this repository has no credentials for and should not acquire.
+
+**Related.** NZC-147 (a gate must be shown to have run), NZC-151 (the ruling whose delivery prompted this),
+NZC-143 / NZC-152 (checks that could not fail), NZC-119 (enumerate rather than skip).
