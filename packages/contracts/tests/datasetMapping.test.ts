@@ -209,3 +209,96 @@ describe("a category resolves its factor declaratively, or declines to the searc
     assert.deepEqual(outcome.kind === "resolved" ? outcome.declined.map((d) => d.ruleKey) : [], ["fuel"]);
   });
 });
+
+describe("a rule whose basis comes from an external lookup (NZC-151)", () => {
+  const dvlaRule: FactorRule = {
+    kind: "enriched", ruleKey: "dvla-diesel", ordering: 5, factorBase: "diesel-demo",
+    enrichmentSource: "dvla", enrichmentKeyField: "registrationFinder",
+    basisFieldKey: "fuel", basisValue: "diesel",
+  };
+  const withPlate = { registrationFinder: "AB12CDE" };
+
+  it("resolves from what the lookup returned", () => {
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: withPlate,
+      enrichment: { dvla: { fuel: "diesel", class: "van", make: "Ford" } },
+    }));
+    assert.equal(outcome.kind, "resolved");
+    assert.equal(outcome.kind === "resolved" ? outcome.factorId : null, "diesel-demo");
+  });
+
+  it("stays unresolved when the lookup returns nothing, rather than resolving on something else", () => {
+    // **The assertion this rule kind is judged on.** A failed lookup must not become a factor chosen
+    // because an external service was down — an answer that is wrong in a way nobody can see.
+    //
+    // The anti-vacuity half is the second rule: there is something else here that *would* match, so a
+    // resolver that treated a null lookup as "no opinion" would return `gas-demo` and this test would
+    // catch it. Without that rule the test would pass against a resolver that simply had nothing to
+    // fall through to.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaRule, lookup("gas-demo", 20)],
+      entry: withPlate,
+      enrichment: { dvla: null },
+      available: [{ factorId: "diesel-demo" }, { factorId: "gas-demo" }],
+    }));
+    assert.equal(outcome.kind, "free-search", "a failed lookup must not resolve to the next rule along");
+    assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /returned nothing/);
+  });
+
+  it("distinguishes a lookup that was not performed from one that found nothing", () => {
+    // Both decline, and they are different states: one is a half-filled form, the other is a service
+    // that answered. Collapsing them would make the honest message impossible to write.
+    const notAsked = resolveFactorForEntry(inputs({ rules: [dvlaRule], entry: withPlate }));
+    assert.match(notAsked.kind === "free-search" ? notAsked.declined[0]!.reason : "", /has not been performed/);
+
+    const asked = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: withPlate, enrichment: { dvla: null },
+    }));
+    assert.match(asked.kind === "free-search" ? asked.declined[0]!.reason : "", /returned nothing/);
+  });
+
+  it("declines before looking when nothing has been entered to look up", () => {
+    const outcome = resolveFactorForEntry(inputs({ rules: [dvlaRule], entry: {} }));
+    assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /nothing has been entered/);
+  });
+
+  it("declines when the lookup answered but not about this attribute", () => {
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: withPlate,
+      enrichment: { dvla: { fuel: "petrol", class: "car" } },
+    }));
+    assert.equal(outcome.kind, "free-search");
+    assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /says fuel is 'petrol'/);
+
+    // An attribute the lookup simply did not return is its own reason — an electric vehicle has no
+    // fuel keyword, and that is not the same as the lookup failing.
+    const silent = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: withPlate, enrichment: { dvla: { fuel: null, class: "car" } },
+    }));
+    assert.match(silent.kind === "free-search" ? silent.declined[0]!.reason : "", /returned no 'fuel'/);
+  });
+
+  it("never receives the lookup key — only the field that holds it", () => {
+    // The boundary NZC-103 draws, asserted rather than described. The rule names `registrationFinder`;
+    // the resolver reads whether it is empty and hands nothing onward. Every attribute it matches on
+    // came from the caller, who did the lookup.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: { registrationFinder: "AB12CDE" },
+      enrichment: { dvla: { fuel: "diesel" } },
+    }));
+    assert.equal(outcome.kind, "resolved");
+    if (outcome.kind !== "resolved") return;
+    const asText = JSON.stringify(outcome);
+    assert.ok(!asText.includes("AB12CDE"), "the outcome carries the registration");
+    assert.equal(outcome.rule.kind === "enriched" ? outcome.rule.enrichmentKeyField : null, "registrationFinder");
+  });
+
+  it("is only one source, so another lookup's answer cannot satisfy it", () => {
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaRule], entry: withPlate,
+      enrichment: { "some-other-service": { fuel: "diesel" } },
+    }));
+    assert.equal(outcome.kind, "free-search");
+    assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /has not been performed/);
+  });
+});
