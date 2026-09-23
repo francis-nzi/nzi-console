@@ -4320,3 +4320,95 @@ it claims to.
 **Related.** NZC-143/NZC-144 (what the totals are computed from), NZC-145 (the factor identity a unit is
 checked against, and asserting a gate on the command rather than the helper), NZC-119 (enumerate rather than
 skip), NZC-133 (the identity a test runs under decides whether green means anything).
+
+### NZC-147 — The capture surface is gated in a browser, against the commit under review [Confirmed 23 Sep 2026]
+
+**Decision.** A fifth CI gate runs the capture lifecycle in a real browser against **this commit's own
+build**, with Postgres, migrations and seeds stood up inside the job. The four existing gates read source;
+this one runs the product.
+
+**Why source-reading gates could not have caught what prompted it.** The drawer defect — a detail drawer open
+at rest, describing a row nobody had chosen — lived entirely in the DOM lifecycle. `resolveCaptureDrawer`'s
+unit tests were correct and passing the whole time, because the fault was not in the decision: it was in a
+caller that seeded the selection before the decision ran. No amount of reading the resolver would have found
+it. The gate is proved against exactly that: the `visibleRows[0] ?? rows[0]` fallback was reintroduced, the
+console rebuilt, and "the drawer is closed at rest" failed with a drawer present. Restored, six of six pass.
+
+**It deliberately does not run `test:e2e`, and the reason is the recurring defect rather than a preference.**
+That suite is *rendered acceptance*: it points at the deployed staging service and signs in with real
+credentials. As a gate it fails twice over.
+
+- **It tests what is deployed, not what is proposed.** A pull request's build is not on staging when its
+  checks run, so a suite aimed at staging cannot fail on the change under review. It would have passed for
+  the drawer defect's own pull request.
+- **Without credentials it skips itself and reports green.** `auth.setup.ts` writes an empty storage state
+  and annotates a skip when `ACCEPTANCE_STAFF_*` is unset. Wiring it into CI without secrets — the obvious
+  reading of "wire `test:e2e` into CI" — would have produced a permanently green required check that
+  executed zero browser tests. That is the same shape as a command with no capability check, a CHECK
+  constraint admitting NULL, and the fallback above: a thing that looks like a guard and cannot fail.
+
+So the gate is hermetic. One Next process serves both the pages and the 111 isolated API routes, against a
+Postgres created inside the job. No network, no deployed environment, no real account.
+
+**The gate has a guard of its own.** Playwright exits 0 with everything skipped, and exits 0 when a stray
+`test.only` has narrowed the run to one case. `scripts/check-gate-ran.mjs` reads the result file and refuses
+unless the suite actually executed: no skips, and at least a declared floor of tests. The floor is
+**declared, not inferred** — inferring it from the file would make the number always match, which is the
+non-check again. Adding a test to the gate means raising the floor in the same commit.
+
+**No retries, on purpose.** The acceptance config retries twice, which is right for a suite crossing a
+network to a shared environment. Here a retry would conceal the one thing a browser gate is bad at. A test
+that passes on the second attempt has a wrong wait, and the fix is a deterministic wait rather than another
+attempt. There is no `waitForTimeout` in the suite and there should never be one: every wait is on a
+condition, and the save — which genuinely crosses to Postgres and back — is waited on by the drawer changing
+identity, not by a duration somebody guessed. Proved with three consecutive clean runs at ~13 seconds.
+
+**Two defects surfaced from running what had only ever been read.**
+
+*`seeds/0002` could not execute.* It was written before 0030 made `report_label`, `level_1` and `level_2` NOT
+NULL and before 0010 required review evidence on an approved row, and it had been unrunnable ever since.
+Nothing noticed because the only test that reads it matches its **text** with a regex — `assert.match(seed,
+/job_scope_rows/)` — which a broken statement passes as happily as a working one. It is repaired by
+*deriving* the six missing values in SQL exactly as those migrations derived them, rather than typing them
+out nine times, so a future scope cannot fall out of step with its `level_2` row by row.
+
+*A test passed while never reaching what it tested.* One assertion used
+`assert.rejects(fn, CommandValidationError)`, which was satisfied by an unrelated `INVALID` refusal. Noted
+here because it is the same lesson as the gate's own guard, one level down: assert the specific reason, not
+the class.
+
+**A session is not a signed cookie.** `resolveStaffPrincipal` joins `staff_sessions` to `memberships` and
+refuses without a live row, while the middleware verifies only the token — so a valid signature alone renders
+every page and returns 401 from every API route behind it. That presents as a working surface whose panels
+are all empty for reasons that look like missing data. The gate therefore provisions a credential with the
+application's **own** provisioner and mints the token and the session row together from the same values.
+Using the real issuer is the point: a change to the session format breaks this loudly instead of quietly
+producing a token the middleware rejects.
+
+**One unallocated row is seeded on purpose.** `0012` sites four rows at Bristol and four at Leeds and leaves
+the purchased-goods spend row with no site, because a ledger total has no honest depot. That is what makes
+the site-tab rule testable in the only case it can get wrong: the row appears under "All sites" and under no
+individual site. Sites are seeded **name only** — `client_sites` carries sealed address and postcode columns,
+and a fixture has no business holding personal data.
+
+**The site test asserts an invariant rather than a total.** An earlier test in the file saves an entry, and a
+saved entry has no site, so a literal "All sites 9" made one test's result depend on whether another had run
+— a coupling that presents as intermittent failure rather than as the ordering bug it is. The per-site counts
+are literal (unallocated rows do not change them) and the total is asserted to exceed their sum.
+
+**What it does not claim.** The v2 capture surface is behind `NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2`, a
+build-time value baked into the bundle, so the gate builds with `data-entry-accordion` on or it would browse
+the pre-v2 register and assert nothing about the surface it is named after. The flag is **pinned in the
+workflow**, not read from the environment: what staging has enabled lives in the Render dashboard. This gate
+proves the surface works when the flag is on; it says nothing about what is on in staging.
+
+**Six cases, and it should stay small.** The state at rest and each transition that changes it: the drawer
+closed at rest, add-entry opening the category's drawer, save keeping it open on the new row, a row click
+opening its own, a lens-filtered-out row keeping its drawer, and a site tab re-scoping without inventing an
+allocation. A seventh asserting a colour would not be part of a lifecycle, and the gate is only useful while
+everyone still runs it.
+
+**Related.** NZC-146 (asserting the specific reason, and proving a guard by watching it fail), NZC-145 (a
+gate asserted on a helper proves nothing about the caller), NZC-133 (the identity a test runs under decides
+whether green means anything), NZC-119 (enumerate rather than skip), NZC-046 (the data-entry accordion this
+browses).

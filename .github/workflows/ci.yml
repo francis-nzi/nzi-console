@@ -225,3 +225,91 @@ jobs:
       # match nothing, and an archived industry that must still resolve for the clients that chose it.
       - name: Client references resolve, and fall back
         run: npx tsx --test packages/isolated-backend/tests/clientReferenceRead.test.ts
+
+  # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
+  #
+  # The four existing gates read source. This one runs the product. It exists because the drawer defect —
+  # a detail drawer open at rest, describing a row nobody had chosen — lived entirely in the DOM lifecycle:
+  # the unit test for the decision was correct and passing the whole time, because the fault was in a
+  # caller that seeded the selection before the decision ran. Nothing that reads source could have found
+  # it, and nothing did, for as long as it took somebody to look at the screen.
+  #
+  # It deliberately does **not** run `test:e2e`. That suite is rendered acceptance: it points at the
+  # deployed staging service and signs in with real credentials, which makes it unfit as a gate twice over.
+  # It tests what is deployed rather than what is proposed — a pull request's build is not on staging when
+  # its checks run — and without `ACCEPTANCE_STAFF_*` its setup writes an empty state and annotates a skip,
+  # so wiring it in here would have produced a permanently green check that executed nothing.
+  capture-gate:
+    name: the capture surface behaves, in a browser
+    runs-on: ubuntu-latest
+    # A build plus a browser run. Locally the suite itself takes thirteen seconds; the build dominates.
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nzi_capture_gate
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NZI_DATABASE_BOUNDARY: isolated-non-production
+      NEXT_PUBLIC_APP_ENV: staging
+      NZI_ISOLATED_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_capture_gate
+      # The v2 capture surface is behind a build-time flag, and a `NEXT_PUBLIC_*` value is baked into the
+      # bundle — so the gate must build with it on or it would browse the pre-v2 register and assert
+      # nothing about the surface it is named after. Pinned here rather than read from the environment:
+      # what staging has enabled lives in the Render dashboard and is not this gate's business. What this
+      # proves is that the surface works when the flag is on.
+      NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2: data-entry-accordion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Throwaway secrets for this run, as the migrations job does. The session secret and the MFA key are
+      # needed because capture is a write surface: the write routes resolve a staff principal, so the gate
+      # provisions an account and mints a session against these. Sealing keys because writing personal
+      # data refuses rather than skips without them.
+      - name: Mint throwaway keys for this run
+        run: |
+          {
+            echo "NZI_SUBJECT_MASTER_KEY=$(openssl rand -base64 32)"
+            echo "NZI_SUBJECT_INDEX_KEY=$(openssl rand -base64 32)"
+            echo "NZI_SUBJECT_LINKAGE_KEY=$(openssl rand -base64 32)"
+            echo "NZI_CONSOLE_SESSION_SECRET=$(openssl rand -base64 32)"
+            echo "NZI_CONSOLE_MFA_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+          } >> "$GITHUB_ENV"
+      - name: Apply every migration in order
+        run: npm run migrate
+      # The synthetic demonstrator: the organisation and job (0001), its scope rows (0002), its factors
+      # (0003) and its sites (0012). `ON_ERROR_STOP` because a seed that half-applied would leave the gate
+      # asserting against a fixture nobody designed — and this is the step that would have caught 0002
+      # becoming unrunnable, which it silently had.
+      - name: Seed the synthetic capture fixture
+        run: |
+          for seed in 0001_synthetic_demo 0002_synthetic_crp_scope_rows 0003_synthetic_factors 0012_synthetic_capture_sites; do
+            psql "$NZI_ISOLATED_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "packages/isolated-backend/seeds/$seed.sql"
+          done
+      - name: Install the browser the gate drives
+        run: npx playwright install --with-deps chromium
+      - name: Build the console the gate will browse
+        run: npm run build -w @nzi/console
+      # The gate, and then the guard on the gate. `test:e2e:gate` runs both: Playwright exits 0 when every
+      # test is skipped and when a stray `test.only` has narrowed the run to one case, so the result file
+      # is read and the run is refused unless it actually executed the suite.
+      - name: The capture lifecycle holds, and the gate actually ran
+        run: npm run test:e2e:gate
+      - name: Keep the traces of a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-gate-traces
+          path: apps/console/test-results/
+          retention-days: 7
