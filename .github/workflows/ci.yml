@@ -241,6 +241,13 @@ jobs:
       # refused everything would pass a refusal test and break capture.
       - name: A distributed row must say what it was distributed from
         run: npx tsx --test packages/isolated-backend/tests/distributionGrainReal.test.ts
+      # Companions — one entry resolving to more than one row (NZC-154). The assertion that matters is the
+      # pair: the transmission-and-distribution companion is created for grid supply, including REGO and
+      # green tariffs, and is NOT created for electricity generated on site. Tested both ways, because a
+      # test of only the first would pass against an engine that proposed T&D for everything — which is
+      # self-generated solar carrying losses it never incurred, on a client Scope 3.
+      - name: A companion fires for grid supply and not for self-generation
+        run: npx tsx --test packages/isolated-backend/tests/companionRulesReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

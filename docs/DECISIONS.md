@@ -4780,3 +4780,79 @@ sample of a database this repository has no credentials for and should not acqui
 
 **Related.** NZC-147 (a gate must be shown to have run), NZC-151 (the ruling whose delivery prompted this),
 NZC-143 / NZC-152 (checks that could not fail), NZC-119 (enumerate rather than skip).
+### NZC-154 — One entry can resolve to more than one row [Confirmed 23 Sep 2026]
+
+**Decision.** A category may declare **companions**: additional rows the engine proposes alongside the
+resolved primary, each with its own factor and its own GHG category. Electricity bought from the grid is a
+Scope 2 figure *and* the transmission and distribution lost carrying it, which is Scope 3.3.
+
+A companion is not another way to choose the primary factor — the rules of NZC-149 and NZC-151 do that,
+first match wins. It is another **row**, and **every companion whose condition holds fires**, because two
+companions are not competing answers to one question.
+
+**Transmission and distribution applies to electricity that crossed a network, which includes renewables.**
+A green tariff and a REGO certificate change what the supply is *accounted as*, not the wires it arrived on,
+so grid-supplied renewable electricity carries transmission losses exactly as ordinary supply does.
+Electricity generated and consumed on site crossed no network and lost nothing.
+
+**That distinction cannot be read from the category**, which is the finding that shaped the design. The spec
+carries both `2.purchased-electricity` and `2.renewable-electricity`, and neither name settles it: renewable
+electricity may be a REGO-backed grid tariff or roof-mounted solar. So the condition reads a captured field,
+`supplySource`, and what fires the companion is **how the electricity arrived** — never which category it
+was filed under.
+
+**Enumerated positively, which is the whole guard.** `when_values` lists the supply kinds that *do* fire the
+companion. Written the other way — "everything except self-generated" — a supply kind added later would
+start claiming transmission losses the day it was introduced, silently and for every entry. Enumerating
+means a new kind fires nothing until somebody decides it should, the same reason NZC-145 refuses a suffix
+nobody registered.
+
+**A companion to nothing is not a row.** Companions are proposed only alongside a **resolved** primary:
+transmission losses attributed to a supply the system could not identify would be a number with no parent
+and no way to check it.
+
+That rule found a defect in this migration's own first draft. It seeded the T&D companion on
+`2.renewable-electricity` as well — a category with **no primary factor rule**, so the companion could never
+have fired. Declaring something dead is the same failure as seeding a rule nobody agreed, and only the
+equality assertion in the suite said so. The companion there waits on that category's own mapping, which
+carries a question nobody has ruled: whether a REGO-backed supply's *location-based* figure uses the grid
+average factor, as the accounting convention suggests.
+
+**Market stays out of the headline, and that is the aggregation's doing rather than the mapping's.**
+NZC-143/144 already excludes `scope2_method = 'market'` from every tier while reporting it alongside; this
+change adds nothing there and **asserts it against real rows**, paired with a location row that must count.
+A headline of zero would satisfy "market is excluded" while proving only that the aggregation had stopped
+adding anything at all. The companion is asserted the other way — it *does* reach the headline, under
+Scope 3 — because not everything extra is excluded, and a T&D row kept out would understate Scope 3.
+
+**The field the condition reads is a forward reference, deliberately.** The first draft added
+`supplySource` to both electricity categories, and that broke `inputSpecReproducesGolden` — the
+characterisation pinning that the governed spec renders exactly what the hand-written model rendered
+(NZC-102) — because a new field is, correctly, a change to what the capture form shows. Re-pinning the
+golden model to accommodate this migration would have been weakening a characterisation test to make a
+change pass, which is the one thing it exists to prevent. A capture field is per-category spec authoring,
+which is its own scheduled phase; the rule names the field it needs and waits. Until then the companion
+declines with "supplySource has not been captured" — additive, asserted, and never assuming grid.
+
+**Substrate, not yet wired.** The proposer is pure and nothing calls it from the write path. Creating the
+proposed rows belongs to the wiring commit, which is its own review stop: it must show existing entries
+resolving identically or by reviewed intent, and be gated per category. The shape it will use is the one
+`reaggregateGroupRollup` already establishes — a helper writing **inside** the governing command's
+transaction, sharing its idempotency, audit event and outbox, rather than a second write path — and derived
+rows are marked with `sourceType` in provenance as that precedent does.
+
+**End-of-life is declared as a kind and deliberately not seeded.** The mechanism covers it: `end-of-life` is
+an enumerated companion kind, and all-matching-fire is what makes several rows from one entry possible. What
+is *not* built is fan-out over a **composition** — one waste entry apportioned across several materials by
+share. That needs a share concept, and inventing proportional logic unasked is exactly what declaring the
+mapping was meant to stop. Put to the review stop.
+
+**A fourth instance of the NULL footgun, caught in the writing.** This migration's first draft guarded the
+value list with `NOT (NULL = ANY (when_values))`, which is NULL when an element is NULL, and therefore
+passes. `array_position(when_values, NULL) IS NULL` is the form that actually finds one. Written two
+decisions after auditing the schema for precisely this shape, which is worth recording: knowing the pattern
+is not the same as not writing it.
+
+**Related.** NZC-149/151 (the primary rules a companion accompanies), NZC-143/144 (market excluded from the
+headline, reused rather than rebuilt), NZC-152 and NZC-143 (the same NULL shape), NZC-119 (enumerate rather
+than skip).

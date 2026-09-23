@@ -391,3 +391,113 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
  */
 export const baseOf = (factorId: string, registry: readonly CategoryVariant[]): string =>
   parseFactorId(factorId, registry).base;
+
+// ── Companions: one entry resolving to more than one row (NZC-154) ──────────────────────────────────
+
+/**
+ * An additional row a category proposes alongside its resolved primary.
+ *
+ * Not another way to choose the primary factor — the rules above do that, first match wins. A companion
+ * is another *row*, with its own factor and its own GHG category: transmission and distribution losses on
+ * a Scope 2 purchase are Scope 3.3, and belong to a different factor from the supply itself.
+ */
+export type CompanionRule = {
+  companionKey: string;
+  ordering: number;
+  kind: "transmission-distribution" | "end-of-life";
+  factorBase: string;
+  /** The companion row's own category, which is not the primary's. */
+  ghgCategory: string;
+  /** The captured field the condition reads. */
+  whenFieldKey: string;
+  /**
+   * The values that **do** fire this companion.
+   *
+   * Positively enumerated, never negated. "Everything except self-generated" would make a supply kind
+   * added later claim transmission losses from the day it was introduced — silently, and for every entry.
+   */
+  whenValues: readonly string[];
+  label: string;
+};
+
+export type ProposedCompanion = {
+  companionKey: string;
+  kind: CompanionRule["kind"];
+  factorId: string;
+  ghgCategory: string;
+  label: string;
+  /** Which captured value fired it, so a proposed row can explain itself. */
+  firedBy: { fieldKey: string; value: string };
+};
+
+export type CompanionProposal = {
+  /** Every companion whose condition held and whose factor the dataset carries. */
+  proposed: readonly ProposedCompanion[];
+  /** Every companion that did not fire, and why — so an absent row is legible rather than silent. */
+  declined: readonly RuleDeclined[];
+};
+
+/**
+ * Which companion rows an entry proposes.
+ *
+ * **Every** matching companion fires, unlike the primary rules where the first match wins: two companions
+ * are not competing answers to one question, and a waste stream with two treatments is two rows.
+ *
+ * A companion is proposed only when the primary resolved. A companion to nothing is not a row — it would
+ * be transmission losses attributed to a supply the system could not identify, which is a number with no
+ * parent and no way to check it.
+ */
+export function proposeCompanions(inputs: {
+  companions: readonly CompanionRule[];
+  entry: Readonly<Record<string, string | null | undefined>>;
+  available: ReadonlyArray<{ factorId: string; scopes?: readonly string[] | null }>;
+  /** The primary outcome. Companions are proposed only alongside a resolved primary. */
+  primary: MappingOutcome;
+}): CompanionProposal {
+  const { companions, entry, available, primary } = inputs;
+  const declined: RuleDeclined[] = [];
+
+  if (primary.kind !== "resolved") {
+    for (const rule of companions) {
+      declined.push({ ruleKey: rule.companionKey, kind: "lookup",
+        reason: "the entry has no resolved factor of its own, so there is nothing for this to accompany" });
+    }
+    return { proposed: [], declined };
+  }
+
+  const carried = new Set(available.map((factor) => factor.factorId));
+  const proposed: ProposedCompanion[] = [];
+
+  for (const rule of [...companions].sort((left, right) => left.ordering - right.ordering
+    || left.companionKey.localeCompare(right.companionKey))) {
+    const captured = entry[rule.whenFieldKey];
+    const value = normalise(captured);
+
+    if (value === "") {
+      declined.push({ ruleKey: rule.companionKey, kind: "basis-branch",
+        reason: `'${rule.whenFieldKey}' has not been captured, so it is not known whether this applies` });
+      continue;
+    }
+    if (!rule.whenValues.some((candidate) => normalise(candidate) === value)) {
+      // The self-generated case, and every other value nobody listed. Said as "not among" rather than
+      // "is excluded", because the rule never excluded anything — it named what fires.
+      declined.push({ ruleKey: rule.companionKey, kind: "basis-branch",
+        reason: `'${rule.whenFieldKey}' is '${captured}', which is not among the values this companion `
+          + `fires for (${rule.whenValues.join(", ")})` });
+      continue;
+    }
+    if (!carried.has(rule.factorBase)) {
+      declined.push({ ruleKey: rule.companionKey, kind: "lookup",
+        reason: `'${rule.factorBase}' is not in the selected dataset, so the companion cannot be priced` });
+      continue;
+    }
+
+    proposed.push({
+      companionKey: rule.companionKey, kind: rule.kind, factorId: rule.factorBase,
+      ghgCategory: rule.ghgCategory, label: rule.label,
+      firedBy: { fieldKey: rule.whenFieldKey, value: String(captured).trim() },
+    });
+  }
+
+  return { proposed, declined };
+}
