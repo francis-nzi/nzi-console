@@ -4181,9 +4181,19 @@ would make a factor id mean two things.
 
 This is a **widening to state**: unlike `reference_categories`, the table is writable by `nzi_console_app`,
 because the registry is admin-managed and extensible. That is a tenant-reachable write to estate-wide data,
-governed by `factor.manage`, audited, and constrained so that adding a variant is purely additive — no new
-suffix can change what an existing one means. The alternative, a per-tenant registry, trades that for the
-divergence above.
+audited, and constrained so that adding a variant is purely additive — no new suffix can change what an
+existing one means. The alternative, a per-tenant registry, trades that for the divergence above.
+
+**So the capability is the whole of the protection, and it is checked rather than assumed.** All three
+commands require `factor.manage`, which the matrix gives **Admin alone** — a consultant holds
+`clientfactor.manage`, a different capability over a different thing. The check comes before the shape
+check, so an unauthorised caller learns nothing about what the registry would have accepted.
+
+It was not checked when first written: the migration and this entry both said "governed by `factor.manage`"
+while the commands took a bare actor id and asked nobody. A review question found it. The test now refuses
+all three commands for four capability sets — none, `clientfactor.manage`, `dataset.manage`,
+`scoperow.edit` — and then asserts the registry is unchanged, because a gate no one has watched refuse is
+not a gate.
 
 **A suffix code is permanent, in use or not — which is stricter than asked.** The brief said "permanent once
 in use". "In use" cannot be answered honestly from here: factors are tenant-scoped under `FORCE ROW LEVEL
