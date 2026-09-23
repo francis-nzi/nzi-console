@@ -149,10 +149,15 @@ describe("a figure lands the same way in both stores (NZC-107)", { skip: DATABAS
   });
 
   it("keeps a figure that will not divide, exactly", async () => {
-    // £120,001 over twelve months. The stored months sum back to the figure that was typed — the
-    // defect this mechanism exists to prevent is a client's total quietly becoming £120,000.
+    // 120,001 litres over twelve months. The stored months sum back to the figure that was typed — the
+    // defect this mechanism exists to prevent is a client's total quietly becoming 120,000.
+    //
+    // The unit is the fixture's own litres, matching `f-diesel`. It read `GBP` until NZC-146 refused it:
+    // spend against a per-litre factor is the mismatch that guard exists for, and it was only ever here
+    // to make this comment read in pounds. What is under test is the arithmetic of an indivisible
+    // figure, which does not care what the figure counts.
     const created = await createScopeRow(pool, row({
-      sourceLabel: "Awkward", unit: "GBP", activityFrequency: "annual", activityFigures: [120001],
+      sourceLabel: "Awkward", activityFrequency: "annual", activityFigures: [120001],
     }), context("d-row-awkward"));
     const stored = await storedRow(created.data.rowId);
     const summed = stored.monthly_activity_json

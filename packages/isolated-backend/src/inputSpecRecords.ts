@@ -34,6 +34,7 @@ type FieldRow = {
   when_modes: string[] | null;
   when_lean: boolean | null;
   label_variants: InputSpecVariant[];
+  accepted_units: string[] | null;
 };
 
 export async function listInputSpec(db: Queryable): Promise<InputSpecCategory[]> {
@@ -45,7 +46,7 @@ export async function listInputSpec(db: Queryable): Promise<InputSpecCategory[]>
 
   const fields = await db.query<FieldRow>(
     `SELECT category_code, field_key, ordering, control, label, hint, optional,
-            when_audiences, when_modes, when_lean, label_variants
+            when_audiences, when_modes, when_lean, label_variants, accepted_units
        FROM nzi_console.input_spec_fields
       WHERE active
       ORDER BY category_code, ordering`);
@@ -64,6 +65,7 @@ export async function listInputSpec(db: Queryable): Promise<InputSpecCategory[]>
       whenModes: row.when_modes as InputSpecField["whenModes"],
       whenLean: row.when_lean,
       labelVariants: row.label_variants ?? [],
+      acceptedUnits: row.accepted_units ?? null,
     });
     byCategory.set(row.category_code, list);
   }

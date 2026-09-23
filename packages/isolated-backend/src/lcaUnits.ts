@@ -12,8 +12,13 @@
 export const MILES_PER_KM = 0.621371;
 export const EARTH_RADIUS_KM = 6371.0088;
 
-/** The activity denominator of a factor unit — the part after the first "/", else the whole string. */
-function denominatorOf(unit: string): string {
+/**
+ * The activity denominator of a factor unit — the part after the first "/", else the whole string.
+ *
+ * Exported so the unit-compatibility check reduces "kgCO2e/tonne.km" to "tonne.km" with this parser
+ * rather than a second one of its own. Behaviour is unchanged; only the visibility is.
+ */
+export function denominatorOf(unit: string): string {
   return (unit.includes("/") ? unit.slice(unit.indexOf("/") + 1) : unit).toLowerCase();
 }
 /** The CO2e numerator of a factor unit — the part before the first "/", else the whole string. */
