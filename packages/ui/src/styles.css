@@ -1487,7 +1487,9 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-es-total{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:6px 0 0}
 .nz-es-figure{font-size:34px;font-weight:800;letter-spacing:-.02em;color:var(--t1)}
 .nz-es-unit{font-size:14px;font-weight:600;color:var(--t2)}
-.nz-es-basis{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t3);border:1px solid var(--line);border-radius:20px;padding:2px 8px}
+/* The qualifier is longer than a one-word tag, so it wraps as a unit rather than stretching the
+   headline row; at phone width it drops under the figure instead of squeezing it. */
+.nz-es-basis{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--t3);border:1px solid var(--line);border-radius:20px;padding:2px 9px;line-height:1.5}
 .nz-es-market{margin:6px 0 0;font-size:12px;color:var(--t2);max-width:60ch}
 
 /* 2px gaps are the surface showing through between segments, which is what keeps two
