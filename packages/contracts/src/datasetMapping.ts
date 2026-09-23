@@ -60,7 +60,45 @@ export type FactorRule =
     factorBase: string;
     /** A suffix in the estate-wide registry (NZC-145). */
     suffixCode: string;
+  }
+  | {
+    kind: "enriched";
+    ruleKey: string;
+    ordering: number;
+    factorBase: string;
+    /** Which external lookup supplies the attributes — currently only `dvla`. */
+    enrichmentSource: string;
+    /**
+     * The entry field holding the lookup key, such as a vehicle registration.
+     *
+     * Named rather than read here: this module never receives the key's value. The caller performs the
+     * lookup and passes the *attributes*, so the plate stops at the lookup boundary and nothing
+     * downstream has one to store, log or mishandle (NZC-103).
+     */
+    enrichmentKeyField: string;
+    /** Which returned attribute decides — `fuel`, `class`. */
+    basisFieldKey: string;
+    /** The value of that attribute which selects this rule. */
+    basisValue: string;
   };
+
+/** What a lookup returned about the thing being captured. Values are compared like any other basis. */
+export type EnrichedAttributes = Readonly<Record<string, string | null | undefined>>;
+
+/**
+ * The result of each lookup the caller performed, keyed by source.
+ *
+ * Three states, and the difference between the second and third is the point of the whole feature:
+ *
+ * - **absent** — no lookup was attempted (nothing was typed into the key field yet);
+ * - **`null`** — a lookup was attempted and returned nothing, so the entry stays **unresolved**;
+ * - **attributes** — a lookup returned, and its values are matched like any other basis.
+ *
+ * Collapsing `null` into "absent", or into an empty attribute set, is how a failed lookup would quietly
+ * fall through to a rule that happens to match on something else — a factor chosen because an external
+ * service was down. That is the mis-resolution this type exists to make impossible to write by accident.
+ */
+export type EnrichmentResults = Readonly<Record<string, EnrichedAttributes | null | undefined>>;
 
 /**
  * Whether the factor's own `scopes[]` agrees with the category the row is being filed under.
@@ -120,6 +158,13 @@ export type MappingInputs = {
   available: ReadonlyArray<{ factorId: string; scopes?: readonly string[] | null }>;
   /** The estate-wide suffix registry (NZC-145). */
   registry: readonly CategoryVariant[];
+  /**
+   * What each external lookup returned, keyed by source. Omitted entirely when nothing was looked up.
+   *
+   * The caller does the lookup; this function never sees the key. That division is deliberate and is
+   * what keeps a registration out of everything downstream of the lookup boundary (NZC-103).
+   */
+  enrichment?: EnrichmentResults;
 };
 
 const normalise = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
@@ -171,7 +216,7 @@ function decideScope(
  * right, because the other possibility is that the mapping is wrong.
  */
 export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
-  const { rules, specGhgCategory, entry, available, registry } = inputs;
+  const { rules, specGhgCategory, entry, available, registry, enrichment } = inputs;
 
   const byId = new Map(available.map((factor) => [factor.factorId, factor]));
   const scopesOf = (factorId: string): readonly string[] =>
@@ -192,6 +237,59 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
       if (captured !== normalise(rule.basisValue)) {
         declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
           reason: `'${rule.basisFieldKey}' is '${entry[rule.basisFieldKey]}', not '${rule.basisValue}'` });
+        continue;
+      }
+    }
+
+    if (rule.kind === "enriched") {
+      // Nothing typed into the key field: there was no lookup to perform, which is the ordinary state
+      // of a half-filled form rather than a failure.
+      if (normalise(entry[rule.enrichmentKeyField]) === "") {
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
+          reason: `nothing has been entered in '${rule.enrichmentKeyField}' to look up` });
+        continue;
+      }
+
+      const result = enrichment?.[rule.enrichmentSource];
+      if (result === undefined) {
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
+          reason: `the '${rule.enrichmentSource}' lookup has not been performed` });
+        continue;
+      }
+      if (result === null) {
+        // **The case this rule kind is judged on, and the one place resolution stops rather than
+        // continuing.** The lookup ran and told us nothing — the plate is unknown, the service was
+        // down, the key was malformed.
+        //
+        // Every other decline falls through to the next rule, because a rule that does not apply is
+        // not an opinion about the ones that follow. This one is different: the lookup was the
+        // category's *best* answer, and a coarser rule standing in for it produces a factor chosen
+        // because an external service was unavailable. The entry would look resolved, the number would
+        // look ordinary, and the only trace would be a `declined` entry nobody reads. So the entry
+        // stays **unresolved** and goes to the search, where a person picks.
+        //
+        // Falling back to the search is still additive. What is refused is falling back to a *different
+        // declared rule*, which is a different thing wearing the same word.
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
+          reason: `the '${rule.enrichmentSource}' lookup returned nothing for '${rule.enrichmentKeyField}', `
+            + "so there are no attributes to resolve from" });
+        return {
+          kind: "free-search",
+          declined,
+          reason: `the '${rule.enrichmentSource}' lookup returned nothing, so this entry is left for a `
+            + "person to resolve rather than matched on a coarser rule",
+        };
+      }
+
+      const attribute = normalise(result[rule.basisFieldKey]);
+      if (attribute === "") {
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
+          reason: `the lookup returned no '${rule.basisFieldKey}' for this ${rule.enrichmentKeyField}` });
+        continue;
+      }
+      if (attribute !== normalise(rule.basisValue)) {
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
+          reason: `the lookup says ${rule.basisFieldKey} is '${result[rule.basisFieldKey]}', not '${rule.basisValue}'` });
         continue;
       }
     }

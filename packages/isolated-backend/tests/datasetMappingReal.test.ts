@@ -4,6 +4,7 @@ import pg from "pg";
 import { resolveFactorForEntry, type CategoryVariant } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { factorRulesFor, listFactorRules } from "../src/inputSpecFactorRules";
+import { lookupVehicleByRegistration, vehicleAttributes } from "../src/vehicleLookup";
 
 /**
  * The declared mapping, against the real tables (NZC-149).
@@ -195,5 +196,118 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     const read = await db.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM nzi_console.input_spec_factor_rules`);
     assert.ok(read.rows[0]!.n >= 2, "the seeded exemplars are not readable");
+  });
+});
+
+describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let registry: CategoryVariant[];
+
+  const available = [{ factorId: "diesel-demo", scopes: ["1", "3"] }, { factorId: "gas-demo", scopes: ["1"] }];
+
+  before(async () => {
+    database = (await createDisposableDatabase("enriched"))!;
+    db = await database.admin();
+    const rows = await db.query<{ suffix_code: string; label: string; ghg_category: string; description: string; status: string; sort_order: number }>(
+      `SELECT suffix_code, label, ghg_category, description, status, sort_order FROM nzi_console.factor_category_variants`);
+    registry = rows.rows.map((row) => ({
+      suffixCode: row.suffix_code, label: row.label, ghgCategory: row.ghg_category,
+      description: row.description, status: row.status as CategoryVariant["status"], sortOrder: row.sort_order,
+    }));
+  });
+
+  after(async () => { await db?.end(); await database?.end(); });
+
+  const vehicleRules = () => factorRulesFor(db, "1.company-vehicles");
+
+  it("seeds the enriched rule ahead of the coarser unit rule", async () => {
+    // Ordering is the whole of the policy here: a lookup that knows what the vehicle *is* must be
+    // consulted before an inference from the unit it was measured in.
+    const rules = await vehicleRules();
+    assert.deepEqual(rules.map((rule) => [rule.kind, rule.ruleKey]),
+      [["enriched", "dvla-diesel"], ["basis-branch", "fuel-litres"]]);
+  });
+
+  it("resolves a real stub lookup through the declared rule", async () => {
+    // End to end against the shipped stub rather than a hand-written attribute bag: the plate goes to
+    // `lookupVehicleByRegistration`, the spec is turned into attributes by the same derivations the
+    // lookup flow has always used, and the declared rule picks the factor.
+    const found = await lookupVehicleByRegistration("XY34ZAB", { allowStub: true });
+    assert.equal(found.ok, true);
+    if (!found.ok) return;
+
+    const attributes = vehicleAttributes(found.vehicle);
+    // The stub is deterministic per plate and this suite needs a diesel one. Asserted rather than
+    // assumed, which is how the first draft was caught using a plate the stub calls petrol — the
+    // resolving path would have looked tested and would not have been.
+    assert.equal(attributes.fuel, "diesel", "XY34ZAB is no longer a diesel in the stub");
+
+    const outcome = resolveFactorForEntry({
+      rules: await vehicleRules(), specGhgCategory: "1",
+      entry: { registrationFinder: "XY34ZAB", unit: "litres" },
+      available, registry, enrichment: { dvla: attributes },
+    });
+    assert.equal(outcome.kind, "resolved");
+    if (outcome.kind !== "resolved") return;
+    assert.equal(outcome.factorId, "diesel-demo");
+    assert.equal(outcome.rule.ruleKey, "dvla-diesel", "the unit rule answered instead of the lookup");
+  });
+
+  it("leaves the entry unresolved when the lookup finds nothing, though the unit rule would have matched", async () => {
+    // The anti-vacuity pairing. `unit: litres` means the seeded `fuel-litres` rule *would* resolve to
+    // `diesel-demo` — so a resolver that treated a failed lookup as "no opinion" would return a factor
+    // here, and this asserts it does not. The vehicle might have been petrol; nobody would have known.
+    const outcome = resolveFactorForEntry({
+      rules: await vehicleRules(), specGhgCategory: "1",
+      entry: { registrationFinder: "ZZ99ZZZ", unit: "litres" },
+      available, registry, enrichment: { dvla: null },
+    });
+    assert.equal(outcome.kind, "free-search");
+    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /left for a person to resolve/);
+  });
+
+  it("still resolves by unit when no registration was entered at all", async () => {
+    // And the other side of it, so "stops on a failed lookup" is not mistaken for "an enriched rule
+    // disables the rest of the category". A consultant who never used the finder is not blocked.
+    const outcome = resolveFactorForEntry({
+      rules: await vehicleRules(), specGhgCategory: "1",
+      entry: { unit: "litres" }, available, registry,
+    });
+    assert.equal(outcome.kind === "resolved" ? outcome.rule.ruleKey : null, "fuel-litres");
+  });
+
+  it("the lookup carries no registration back, so none can reach a row", async () => {
+    // NZC-103's boundary, asserted on the shipped result rather than described. The response never
+    // echoes the plate, so nothing downstream of here has one to persist.
+    const found = await lookupVehicleByRegistration("XY34ZAB", { allowStub: true });
+    assert.ok(!JSON.stringify(found).toUpperCase().includes("XY34ZAB"), "the lookup result echoes the plate");
+    assert.ok(!JSON.stringify(vehicleAttributes(found.ok ? found.vehicle : {} as never)).toUpperCase().includes("XY34ZAB"));
+  });
+
+  it("refuses an enriched rule missing its source or its key field", async () => {
+    const insert = `INSERT INTO nzi_console.input_spec_factor_rules
+      (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field,
+       basis_field_key, basis_value, created_by, updated_by)
+      VALUES ($1,$2,$3,'enriched','diesel-demo',$4,$5,$6,$7,'test','test')`;
+    const refused = async (values: unknown[]) => {
+      await assert.rejects(() => db.query(insert, values), /input_spec_factor_rules_shape/);
+    };
+    await refused(["1.company-vehicles", "no-source", 80, null, "registrationFinder", "fuel", "petrol"]);
+    await refused(["1.company-vehicles", "no-key", 81, "dvla", null, "fuel", "petrol"]);
+    await refused(["1.company-vehicles", "no-basis", 82, "dvla", "registrationFinder", null, null]);
+    await refused(["1.company-vehicles", "blank-source", 83, "  ", "registrationFinder", "fuel", "petrol"]);
+  });
+
+  it("lets an enriched and a captured basis coexist, and still refuses two of the same", async () => {
+    // 0112's uniqueness keyed on (category, field, value); an enriched basis comes from elsewhere, so
+    // `fuel=diesel` from the DVLA and `unit=litres` from the entry must both be allowed — they already
+    // are, above. What must still be refused is a second rule claiming the same lookup attribute.
+    await assert.rejects(
+      () => db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+        (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field,
+         basis_field_key, basis_value, created_by, updated_by)
+        VALUES ('1.company-vehicles','duplicate-dvla-diesel',84,'enriched','gas-demo','dvla','registrationFinder','fuel','diesel','test','test')`),
+      /one_branch_per_value|duplicate key/i);
   });
 });

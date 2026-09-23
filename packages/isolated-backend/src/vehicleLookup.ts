@@ -86,6 +86,25 @@ function stubVehicle(plate: string): VehicleSpec {
   return { ...base, yearOfManufacture: 2018 + (seed % 7) };
 }
 
+/**
+ * A looked-up vehicle as the attributes a declared `enriched` rule matches on (NZC-151).
+ *
+ * The bridge between this module and the spec's factor rules, and deliberately a thin one: it reuses
+ * `fuelKeyword` and `vehicleClassOf` rather than deriving fuel or class a second time, so a rule that
+ * says `fuel = diesel` means exactly what the lookup flow has always meant by diesel. Two derivations
+ * would be two answers to the same question, and the one in the spec would be the one nobody tested.
+ *
+ * **No registration appears here.** The argument is a `VehicleSpec`, which never carries one, so the
+ * plate cannot reach the resolver through this path (NZC-103).
+ */
+export function vehicleAttributes(vehicle: VehicleSpec): Record<string, string | null> {
+  return {
+    fuel: fuelKeyword(vehicle.fuelType),
+    class: vehicleClassOf(vehicle),
+    make: vehicle.make,
+  };
+}
+
 export async function lookupVehicleByRegistration(
   registration: string,
   config: VehicleLookupConfig,

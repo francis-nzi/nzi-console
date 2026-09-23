@@ -4587,3 +4587,67 @@ next unexplained build failure should not cost another elimination pass.
 
 **Related.** NZC-147 (the gate that caught it, and why a gate must not be retried past), NZC-027/028
 (content-addressed assets and determinism in the chart pipeline), NZC-119 (enumerate rather than skip).
+
+### NZC-151 — A mapping rule whose basis comes from an external lookup [Confirmed 23 Sep 2026]
+
+**Decision.** A fourth rule kind, `enriched`: a category declares that its factor is chosen from what an
+external lookup says the thing *is*, rather than from what was typed. A registration is entered, the DVLA
+returns make, fuel and class, and those attributes select the factor. First of the richer mapping types,
+powering company vehicles and later the road legs of business travel and commuting.
+
+**This makes an existing behaviour declared rather than guessed.** `resolveVehicleFactor` already turned a
+looked-up vehicle into a factor — by `ILIKE`-matching a fuel keyword and a class term against factor
+**labels**. That works until a library renames a factor, and it cannot be reviewed: the mapping lives in a
+pattern rather than in a row anybody can read. Same lookup, same derivations; the choice of factor moves
+into the spec.
+
+**No external call ships, and none was written.** The lookup already existed with a deterministic stub for
+isolated staging (a real DVLA client behind `DVLA_VES_API_KEY`, which staging does not set). Nothing here
+adds a network dependency; `vehicleAttributes` is a thin bridge that reuses `fuelKeyword` and
+`vehicleClassOf` rather than deriving fuel or class a second time — two derivations would be two answers to
+the same question, and the one in the spec would be the one nobody tested.
+
+**The plate stops at the lookup boundary (NZC-103), and this does not move it.** No column holds a
+registration: `enrichment_key_field` names the *field* the plate is typed into, so the resolver knows which
+value to hand the lookup, and the value itself is transient. The resolver is pure and receives
+**attributes**, never a key — asserted by serialising an outcome and checking the plate does not appear in
+it, and by checking the shipped lookup result does not echo it back.
+
+**A failed lookup leaves the entry unresolved, and that is the one place resolution stops.** Every other
+decline falls through to the next rule, because a rule that does not apply is not an opinion about the ones
+that follow. This one is different: the lookup was the category's *best* answer, and a coarser rule standing
+in for it produces a factor chosen because an external service was unavailable. The entry would look
+resolved, the number would look ordinary, and the only trace would be a `declined` entry nobody reads. So
+the entry goes to the search, where a person picks.
+
+Falling back to the **search** is still additive; what is refused is falling back to a different **declared
+rule**, which is a different thing wearing the same word. The proof is paired against a rule that *would*
+have matched — company vehicles carries `unit = litres → diesel-demo`, so an entry with a plate and litres
+resolves to a factor unless this rule holds. It does not, and the test says so.
+
+**Three states, not two.** A lookup that was never performed, one that returned nothing, and one that
+returned attributes are distinct: the first is a half-filled form, the second is a service that answered.
+Collapsing them would make the honest message impossible to write and would turn an outage into a silent
+default.
+
+**Two defects found by the suite rather than by review.**
+
+*A regression in the constraint.* Adding `enrichment_source` to the uniqueness key broke it: a plain
+`UNIQUE` treats every NULL as distinct, and `enrichment_source` is NULL on every non-enriched rule — so it
+quietly stopped refusing two basis-branches claiming the same value, which is exactly what NZC-149 added it
+for. `NULLS NOT DISTINCT` restores it. **NZC-149's own test caught this**, which is the argument for writing
+the constraint tests then rather than later.
+
+*A fixture asserting nothing.* The end-to-end test used a plate the stub reports as **petrol**, so the
+resolving path would have looked tested and would not have been. It failed because the test asserts the
+stub's answer rather than assuming it — the same habit that caught the accepted-units and gate-count cases.
+
+**One question left open rather than decided here.** A lookup that *succeeds* and matches no rule — a petrol
+vehicle, with only a diesel rule seeded — still falls through to the coarser `unit = litres` rule and
+resolves to the diesel factor. That is a defensible reading of additive, and it is also a ~10% error that
+looks ordinary. Whether a consulted-and-unmatched lookup should stop resolution the way a failed one does is
+a domain policy call, and it is put to the review stop rather than settled in passing.
+
+**Related.** NZC-149 (the three kinds this joins, and the constraint it nearly broke), NZC-103 (the plate
+stops at the lookup boundary), NZC-104 (and does not leave with the report), NZC-145 (the variant registry
+the next step uses), NZC-146 (units, the other basis).

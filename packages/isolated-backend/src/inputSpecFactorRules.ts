@@ -22,6 +22,8 @@ type Row = {
   basis_field_key: string | null;
   basis_value: string | null;
   suffix_code: string | null;
+  enrichment_source: string | null;
+  enrichment_key_field: string | null;
 };
 
 /**
@@ -42,13 +44,22 @@ function toRule(row: Row): FactorRule | null {
         : null;
     case "suffix-variant":
       return row.suffix_code ? { kind: "suffix-variant", ...common, suffixCode: row.suffix_code } : null;
+    case "enriched":
+      return row.enrichment_source && row.enrichment_key_field && row.basis_field_key && row.basis_value
+        ? {
+          kind: "enriched", ...common,
+          enrichmentSource: row.enrichment_source, enrichmentKeyField: row.enrichment_key_field,
+          basisFieldKey: row.basis_field_key, basisValue: row.basis_value,
+        }
+        : null;
     default:
       return null;
   }
 }
 
 const SELECT = `SELECT category_code, rule_key, ordering, rule_kind, factor_base,
-                       basis_field_key, basis_value, suffix_code
+                       basis_field_key, basis_value, suffix_code,
+                       enrichment_source, enrichment_key_field
                   FROM nzi_console.input_spec_factor_rules
                  WHERE active`;
 
