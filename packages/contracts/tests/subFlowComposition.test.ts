@@ -167,3 +167,65 @@ describe("a category reuses another flow and files it under its own (NZC-158)", 
     assert.equal(outcome.kind, "free-search");
   });
 });
+
+describe("resolution order is the declared one, not the order rules arrive in (NZC-158)", () => {
+  /**
+   * The residual the uniqueness loosening made reachable.
+   *
+   * While a category could hold at most one no-basis rule, order among them never mattered — there was
+   * never more than one to order. Now a sub-flow and a fallback lookup can coexist, and which of them
+   * answers is decided entirely by `ordering`. If that were incidental to insertion or array order, the
+   * additive shape could silently invert and the fallback would answer first: the Scope 1 base, filed
+   * under Scope 3, through the front door rather than the fallback path the STOP already closes.
+   *
+   * So it is asserted as a **pair**. One direction alone cannot tell "the declared order was honoured"
+   * from "it happened to come out that way".
+   */
+  const base: FactorRule = { kind: "lookup", ruleKey: "fallback-to-base", ordering: 99, factorBase: "diesel-demo" };
+  const subFlow: FactorRule = {
+    kind: "sub-flow", ruleKey: "road-via-vehicle-flow", ordering: 10,
+    subFlowCategory: "1.company-vehicles", suffixCode: "-b",
+  };
+
+  it("lets the sub-flow answer when it is declared first", () => {
+    const outcome = resolveFactorForEntry(inputs({ rules: [base, subFlow] }));
+    assert.equal(outcome.kind === "resolved" ? outcome.factorId : null, "diesel-demo-b",
+      "the fallback answered although the sub-flow was declared ahead of it");
+  });
+
+  it("lets the fallback answer when IT is declared first — the same rules, reordered", () => {
+    // Identical rules, identical array, only the declared numbers swapped. If this returned the variant
+    // too, `ordering` would be decorative and the previous assertion would prove nothing.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [{ ...base, ordering: 10 }, { ...subFlow, ordering: 99 }],
+    }));
+    assert.equal(outcome.kind === "resolved" ? outcome.factorId : null, "diesel-demo",
+      "the declared ordering was ignored");
+  });
+
+  it("is decided by the declared number and not by array position", () => {
+    // The array is given in the opposite order to the declaration in both directions, so a resolver that
+    // read position rather than `ordering` fails one of them whichever way it leaned.
+    const subFlowFirst = resolveFactorForEntry(inputs({ rules: [base, subFlow] }));
+    const baseFirst = resolveFactorForEntry(inputs({ rules: [{ ...subFlow, ordering: 99 }, { ...base, ordering: 10 }] }));
+    assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "diesel-demo-b");
+    assert.equal(baseFirst.kind === "resolved" ? baseFirst.factorId : null, "diesel-demo");
+  });
+
+  it("breaks a tie on the rule key, so equal orderings are still a total order", () => {
+    // Two rules at the same ordering would otherwise resolve differently depending on how the rows came
+    // back from the database — which is the incidental-order hazard one layer down.
+    const first = resolveFactorForEntry(inputs({
+      rules: [{ ...base, ruleKey: "zzz", ordering: 10 }, { ...subFlow, ruleKey: "aaa", ordering: 10 }],
+    }));
+    const second = resolveFactorForEntry(inputs({
+      rules: [{ ...subFlow, ruleKey: "aaa", ordering: 10 }, { ...base, ruleKey: "zzz", ordering: 10 }],
+    }));
+    assert.equal(first.kind === "resolved" ? first.factorId : null, "diesel-demo-b");
+    assert.equal(
+      first.kind === "resolved" ? first.factorId : "a",
+      second.kind === "resolved" ? second.factorId : "b",
+      "equal orderings resolved differently depending on the order the rules arrived in",
+    );
+  });
+});
