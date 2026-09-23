@@ -62,12 +62,18 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
 
   // ── The exemplars, read back and run ────────────────────────────────────────────────
 
-  it("carries exactly the two exemplars the migration claims, and no more", async () => {
+  it("carries exactly the mapped categories the migrations claim, and no more", async () => {
     // Asserted as an equality rather than a presence check: seeding a rule for a category whose factor
     // family nobody has agreed would be inventing domain policy in a migration, and this is what would
     // catch that happening quietly.
+    //
+    // The set grows only by reviewed intent, and has twice: 0112 mapped the two exemplars, and 0116 added
+    // business travel and commuting as sub-flows over the vehicle category (NZC-158). Updating this list
+    // is how that intent is recorded — an assertion that tracked the database automatically would agree
+    // with every addition, including the accidental one.
     const all = await listFactorRules(db);
-    assert.deepEqual([...all.keys()].sort(), ["1.company-vehicles", "2.purchased-electricity"]);
+    assert.deepEqual([...all.keys()].sort(),
+      ["1.company-vehicles", "2.purchased-electricity", "3.6", "3.7"]);
   });
 
   it("resolves metered electricity to the grid factor, by lookup", async () => {
@@ -121,7 +127,10 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     }
     // And the loop has to have run. If `mapped` ever contained everything, the body would never execute
     // and this test would pass having checked nothing.
-    assert.ok(checked >= 18, `only ${checked} unmapped categories checked`);
+    // Sixteen now rather than eighteen: 0116 mapped business travel and commuting. The floor moves down
+    // only when a migration deliberately maps a category, which is why it is a declared number and not a
+    // count taken from the same query it is checking.
+    assert.ok(checked >= 16, `only ${checked} unmapped categories checked`);
   });
 
   // ── The constraints, each given a row that should not exist ─────────────────────────

@@ -10,7 +10,7 @@ import { parseFactorId, variantFactorId, type CategoryVariant } from "./factorVa
  * everything the dataset offers, and the category the entry belongs to is only advice.
  *
  * So the mapping is made explicit: a category **declares** how it reaches a factor, in rules that live in
- * the database beside the rest of the input spec rather than in a switch statement. Three kinds cover what
+ * the database beside the rest of the input spec rather than in a switch statement. Five kinds cover what
  * the live platform actually does:
  *
  *   - **lookup** — this category always uses this factor. Purchased electricity is metered electricity.
@@ -19,6 +19,10 @@ import { parseFactorId, variantFactorId, type CategoryVariant } from "./factorVa
  *     different factors rather than a conversion of one another.
  *   - **suffix-variant** — the factor is a registered category variant of a base (NZC-145): the same
  *     measured factor, filed under the GHG category the suffix names.
+ *   - **enriched** — the basis comes from an external lookup rather than from what was typed: a
+ *     registration, and what the DVLA says the vehicle is (NZC-151).
+ *   - **sub-flow** — run another category's rules and file the result under this category's suffix, so
+ *     business travel and commuting reuse the vehicle flow rather than restating it (NZC-158).
  *
  * ## Additive, with the search still underneath
  *
@@ -59,6 +63,21 @@ export type FactorRule =
     ordering: number;
     factorBase: string;
     /** A suffix in the estate-wide registry (NZC-145). */
+    suffixCode: string;
+  }
+  | {
+    kind: "sub-flow";
+    ruleKey: string;
+    ordering: number;
+    /**
+     * The category whose rules this one reuses — a reference, never a copy.
+     *
+     * Business travel by road and commuting by car identify a vehicle exactly as company vehicles does;
+     * only the category the answer is filed under differs. One flow serving three consumers is what stops
+     * a change to the DVLA derivations reaching one of them and not the others.
+     */
+    subFlowCategory: string;
+    /** The registered suffix this category files the result under: "-b" is 3.6, "-c" is 3.7. */
     suffixCode: string;
   }
   | {
@@ -165,6 +184,13 @@ export type MappingInputs = {
    * what keeps a registration out of everything downstream of the lookup boundary (NZC-103).
    */
   enrichment?: EnrichmentResults;
+  /**
+   * The rules of other categories a sub-flow may reference, keyed by category code.
+   *
+   * Supplied by the caller rather than fetched here, because this function stays pure — and because the
+   * caller already knows which categories are in play and can load them in one read.
+   */
+  rulesByCategory?: Readonly<Record<string, readonly FactorRule[]>>;
 };
 
 const normalise = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
@@ -216,7 +242,19 @@ function decideScope(
  * right, because the other possibility is that the mapping is wrong.
  */
 export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
-  const { rules, specGhgCategory, entry, available, registry, enrichment } = inputs;
+  return resolveWithin(inputs, new Set<string>());
+}
+
+/**
+ * The resolver proper, carrying the set of categories already being resolved.
+ *
+ * A sub-flow runs another category's rules, so a chain is possible and a **cycle** is possible with it.
+ * The migration refuses the shortest one — a category referencing itself — at the point it is written; a
+ * longer ring can only be caught here, at the point it is run. A cycle declines rather than throwing: a
+ * misconfigured spec should leave capture working through the search, not take the surface down.
+ */
+function resolveWithin(inputs: MappingInputs, resolving: ReadonlySet<string>): MappingOutcome {
+  const { rules, specGhgCategory, entry, available, registry, enrichment, rulesByCategory } = inputs;
 
   const byId = new Map(available.map((factor) => [factor.factorId, factor]));
   const scopesOf = (factorId: string): readonly string[] =>
@@ -322,6 +360,38 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
           reason: `the lookup says ${rule.basisFieldKey} is '${result[rule.basisFieldKey]}', not '${rule.basisValue}'` });
         continue;
       }
+    }
+
+    if (rule.kind === "sub-flow") {
+      const outcome = resolveSubFlow(rule, inputs, resolving);
+      if (outcome.kind === "declined") {
+        declined.push({ ruleKey: rule.ruleKey, kind: rule.kind, reason: outcome.reason });
+        if (outcome.stop) {
+          // **The leak this primitive is shaped around.** The referenced flow answered — we know what the
+          // vehicle is — and the variant for this category could not be produced. The tempting behaviour
+          // is to use the base, because it is nearly right: same fuel, same litres, same arithmetic. It is
+          // a commute priced with the company's Scope 1 factor and filed under Scope 3, and nothing about
+          // the number looks wrong.
+          //
+          // So it stops, exactly as a consulted-and-unmatched lookup does (NZC-151). Falling back to the
+          // search is additive; falling back to the base is the wrong answer wearing the right shape.
+          return {
+            kind: "free-search",
+            declined,
+            reason: `the ${rule.subFlowCategory} flow resolved but its '${rule.suffixCode}' variant could `
+              + "not be composed, so this entry is left for a person rather than filed against the base "
+              + "factor, which belongs to a different scope",
+          };
+        }
+        continue;
+      }
+      return {
+        kind: "resolved",
+        factorId: outcome.factorId,
+        rule,
+        declined,
+        scope: decideScope(outcome.ghgCategory, "suffix-variant", scopesOf(outcome.factorId)),
+      };
     }
 
     let factorId = rule.factorBase;
@@ -500,4 +570,71 @@ export function proposeCompanions(inputs: {
   }
 
   return { proposed, declined };
+}
+
+/**
+ * Run another category's flow and file the result under this category's suffix (NZC-158).
+ *
+ * `stop` distinguishes the two ways this declines, and the distinction is the whole safety property:
+ *
+ * - **not a stop** — the referenced flow itself did not resolve. Nothing was learned, so there is nothing
+ *   to protect: the entry carries on to whatever other rules this category declares.
+ * - **a stop** — the referenced flow *did* resolve and the variant could not be composed. Something was
+ *   learned and could not be filed correctly, and the one thing that must not happen now is the base being
+ *   used because it is nearly right.
+ */
+function resolveSubFlow(
+  rule: Extract<FactorRule, { kind: "sub-flow" }>,
+  inputs: MappingInputs,
+  resolving: ReadonlySet<string>,
+): { kind: "resolved"; factorId: string; ghgCategory: string } | { kind: "declined"; reason: string; stop: boolean } {
+  const { available, registry, rulesByCategory } = inputs;
+
+  if (resolving.has(rule.subFlowCategory)) {
+    return { kind: "declined", stop: false,
+      reason: `'${rule.subFlowCategory}' is already being resolved — the rules form a cycle` };
+  }
+
+  const referenced = rulesByCategory?.[rule.subFlowCategory];
+  if (referenced === undefined) {
+    // The caller did not supply them. Declining rather than assuming an empty rule set: "that category
+    // has no rules" and "nobody loaded that category" are different, and treating the second as the first
+    // would make a loading bug look like a spec decision.
+    return { kind: "declined", stop: false,
+      reason: `the rules for '${rule.subFlowCategory}' were not supplied, so its flow could not be run` };
+  }
+
+  const inner = resolveWithin(
+    { ...inputs, rules: referenced, specGhgCategory: rule.subFlowCategory },
+    new Set([...resolving, rule.subFlowCategory]),
+  );
+  if (inner.kind !== "resolved") {
+    return { kind: "declined", stop: false,
+      reason: `the '${rule.subFlowCategory}' flow did not resolve a factor of its own (${inner.reason})` };
+  }
+
+  const variant = registry.find((entry) => entry.suffixCode === rule.suffixCode);
+  if (!variant) {
+    return { kind: "declined", stop: true,
+      reason: `'${rule.suffixCode}' is not in the variant registry, so the result cannot be filed under `
+        + "this category" };
+  }
+  if (variant.status !== "active") {
+    return { kind: "declined", stop: true,
+      reason: `'${rule.suffixCode}' is retired and is not used for new entries` };
+  }
+
+  // The base is recovered through the registry, never by splitting on the last hyphen: every seeded factor
+  // ends in something suffix-shaped, so a naive parser reads `diesel-demo` as `diesel` with a `-demo`
+  // variant and composes an id nobody registered (NZC-145). Taking the base also means a flow that already
+  // resolved a variant is re-filed rather than double-suffixed.
+  const base = parseFactorId(inner.factorId, registry).base;
+  const composed = variantFactorId(base, variant);
+
+  if (!available.some((factor) => factor.factorId === composed)) {
+    return { kind: "declined", stop: true,
+      reason: `'${composed}' is not in the selected dataset` };
+  }
+
+  return { kind: "resolved", factorId: composed, ghgCategory: variant.ghgCategory };
 }

@@ -16,6 +16,16 @@ VALUES
   ('demo-nzi-console','synthetic-gb-2026','gas-demo','Natural gas — demonstration factor','kWh',0.180000,ARRAY['1']),
   ('demo-nzi-console','synthetic-gb-2026','electricity-demo','UK electricity — demonstration factor','kWh',0.300000,ARRAY['2']),
   ('demo-nzi-console','synthetic-gb-2026','freight-demo','Road freight — demonstration factor','t·km',0.200000,ARRAY['3']),
+  -- The two registered category variants of the diesel base (0110), so the sub-flow composition 0116
+  -- declares has something to resolve against.
+  --
+  -- **The rate and the unit are identical to the base, and that is the invariant rather than a
+  -- convenience.** A variant records which GHG category the same measured factor is filed under; the
+  -- physical combustion does not change because the journey was a commute. A variant carrying a different
+  -- number is not a variant, it is another factor wearing the name — which is why the suite asserts the
+  -- three rates are equal rather than merely asserting each looks plausible.
+  ('demo-nzi-console','synthetic-gb-2026','diesel-demo-b','Diesel — business travel variant','litres',2.500000,ARRAY['3']),
+  ('demo-nzi-console','synthetic-gb-2026','diesel-demo-c','Diesel — commuting variant','litres',2.500000,ARRAY['3']),
   -- Transmission and distribution losses, so the companion rule 0115 declares has something to resolve
   -- against in the demonstration dataset. Scope 3.3, priced per kWh delivered, and far smaller than the
   -- supply factor beside it — which is what makes a companion row that silently failed to appear hard to
