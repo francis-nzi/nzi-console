@@ -68,7 +68,7 @@ describe("electricity — the exemplar, spelled out", () => {
 
   it("gives the consultant the factor, quality tier and confidence", () => {
     assert.deepEqual(fields("crm", "new"),
-      ["siteBanner", "activity", "quantity", "unit", "monthly", "factor", "qualityTier", "dataConfidence", "note", "documents"]);
+      ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "factor", "qualityTier", "dataConfidence", "note", "documents"]);
   });
 
   it("gives the client none of the factor internals", () => {
@@ -78,7 +78,9 @@ describe("electricity — the exemplar, spelled out", () => {
     for (const withheld of ["factor", "qualityTier", "dataConfidence", "lineage"]) {
       assert.ok(!portal.includes(withheld), `the portal must not render ${withheld}`);
     }
-    assert.deepEqual(portal, ["siteBanner", "activity", "quantity", "unit", "monthly", "note", "documents"]);
+    // The client is asked the supply question too: whether the electricity came over the grid is
+    // something the site knows and the consultant often does not (NZC-157).
+    assert.deepEqual(portal, ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "note", "documents"]);
   });
 
   it("labels quantity and unit plainly, not as spend", () => {
@@ -99,7 +101,10 @@ describe("electricity — the exemplar, spelled out", () => {
 
   it("under lean capture drops quality, confidence, notes and documents, and reviews the factor", () => {
     const lean = renderInputSpec(ELECTRICITY(), "crm", "new", true);
-    assert.deepEqual(lean.map((field) => field.key), ["siteBanner", "activity", "quantity", "unit", "monthly", "factor"]);
+    // `supplySource` survives lean capture, unlike quality and confidence. It decides whether a
+    // transmission-and-distribution row exists at all (NZC-154), so omitting it under lean would drop a
+    // Scope 3 row silently rather than merely collect less detail.
+    assert.deepEqual(lean.map((field) => field.key), ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "factor"]);
     assert.equal(lean.find((field) => field.key === "factor")!.control, "factor-review");
   });
 

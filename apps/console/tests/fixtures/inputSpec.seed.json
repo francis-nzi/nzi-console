@@ -647,6 +647,18 @@
         ]
       },
       {
+        "fieldKey": "supplySource",
+        "ordering": 25,
+        "control": "select",
+        "label": "Supply",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
         "fieldKey": "quantity",
         "ordering": 30,
         "control": "number",
@@ -839,6 +851,18 @@
             "label": "Activity"
           }
         ]
+      },
+      {
+        "fieldKey": "supplySource",
+        "ordering": 25,
+        "control": "select",
+        "label": "Supply",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
       },
       {
         "fieldKey": "quantity",
