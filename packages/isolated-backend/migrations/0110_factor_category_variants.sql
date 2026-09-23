@@ -33,7 +33,8 @@
 -- **One consequence to state plainly**, because it is a widening: unlike `reference_categories`, this
 -- table is writable by `nzi_console_app` — the registry is admin-managed and extensible, so adding a
 -- variant is a command rather than a migration. That means a tenant-reachable write to estate-wide data.
--- It is governed by the `factor.manage` capability, audited like any other command, and constrained by the
+-- It is governed by the `factor.manage` capability — Admin alone, checked by every one of the three
+-- commands before they touch anything — audited like any other command, and constrained by the
 -- trigger below; a new variant is additive and cannot change what an existing suffix means. The
 -- alternative — a per-tenant registry — would let two tenants define `-c` differently, which is the
 -- failure this tier exists to prevent.

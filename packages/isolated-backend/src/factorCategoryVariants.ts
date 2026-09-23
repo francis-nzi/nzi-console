@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isSuffixShape, type CategoryVariant, type VariantStatus } from "@nzi/contracts";
+import { requireCapability, type StaffPrincipal } from "./auth";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -8,6 +9,12 @@ import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "
  * The registry is estate-wide: the suffix vocabulary is the same for every client, because a factor id that
  * meant one category for one tenant and another for the next would not identify anything. Reads still go
  * through a tenant context, so the connection is the same confined one every other read uses.
+ *
+ * ## Gated on `factor.manage`, which is Admin alone
+ *
+ * The registry is estate-wide, so a write to it reaches every tenant. `factor.manage` is held by Admin
+ * and by nobody else — a consultant holds `clientfactor.manage`, which is a different capability over a
+ * different thing — and each of the three commands asks for it before touching anything.
  *
  * ## What may change, and what may not
  *
@@ -100,11 +107,16 @@ const audit = (
  */
 export async function addCategoryVariant(
   pool: PoolLike,
+  principal: StaffPrincipal,
   input: {
-    organisationId: string; actorId: string;
+    organisationId: string;
     suffixCode: string; label: string; ghgCategory: string; description?: string; sortOrder?: number;
   },
 ): Promise<CategoryVariant> {
+  // Before the shape check, so an unauthorised caller learns nothing about what the registry would
+  // have accepted.
+  requireCapability(principal, "factor.manage");
+  const actorId = principal.userId;
   // Trimmed but deliberately **not** lower-cased. Silently folding `-C` into `-c` would create a
   // permanent identifier that is not the one the admin typed, and they would find out later from a
   // factor id. Refusing says so at the point of the mistake.
@@ -132,10 +144,10 @@ export async function addCategoryVariant(
        VALUES ($1,$2,$3,$4,$5,'admin',$6,$6)
        RETURNING suffix_code, label, ghg_category, description, status, sort_order`,
       [suffixCode, input.label.trim(), input.ghgCategory.trim(), input.description?.trim() ?? "",
-        input.sortOrder ?? 0, input.actorId]);
+        input.sortOrder ?? 0, actorId]);
 
     await audit(db, {
-      organisationId: input.organisationId, actorId: input.actorId,
+      organisationId: input.organisationId, actorId: actorId,
       action: "factor.variant.added", suffixCode,
       detail: { suffixCode, label: input.label.trim(), ghgCategory: input.ghgCategory.trim() },
     });
@@ -151,8 +163,11 @@ export async function addCategoryVariant(
  */
 export async function relabelCategoryVariant(
   pool: PoolLike,
-  input: { organisationId: string; actorId: string; suffixCode: string; label: string; description?: string },
+  principal: StaffPrincipal,
+  input: { organisationId: string; suffixCode: string; label: string; description?: string },
 ): Promise<CategoryVariant> {
+  requireCapability(principal, "factor.manage");
+  const actorId = principal.userId;
   return withTenantWrite(pool, input.organisationId, async (db) => {
     const { rows } = await db.query<VariantRow>(
       `UPDATE nzi_console.factor_category_variants
@@ -161,11 +176,11 @@ export async function relabelCategoryVariant(
               version = version + 1, updated_at = now(), updated_by = $4
         WHERE suffix_code = $1
         RETURNING suffix_code, label, ghg_category, description, status, sort_order`,
-      [input.suffixCode, input.label.trim(), input.description?.trim() ?? null, input.actorId]);
+      [input.suffixCode, input.label.trim(), input.description?.trim() ?? null, actorId]);
     if (!rows[0]) throw new VariantRegistryError(`No variant ${input.suffixCode}.`, "unknown");
 
     await audit(db, {
-      organisationId: input.organisationId, actorId: input.actorId,
+      organisationId: input.organisationId, actorId: actorId,
       action: "factor.variant.relabelled", suffixCode: input.suffixCode,
       detail: { suffixCode: input.suffixCode, label: input.label.trim() },
     });
@@ -181,8 +196,11 @@ export async function relabelCategoryVariant(
  */
 export async function retireCategoryVariant(
   pool: PoolLike,
-  input: { organisationId: string; actorId: string; suffixCode: string; reason: string },
+  principal: StaffPrincipal,
+  input: { organisationId: string; suffixCode: string; reason: string },
 ): Promise<{ variant: CategoryVariant; alreadyRetired: boolean }> {
+  requireCapability(principal, "factor.manage");
+  const actorId = principal.userId;
   return withTenantWrite(pool, input.organisationId, async (db) => {
     const found = await db.query<VariantRow>(
       `SELECT suffix_code, label, ghg_category, description, status, sort_order
@@ -197,10 +215,10 @@ export async function retireCategoryVariant(
               version = version + 1, updated_at = now(), updated_by = $2
         WHERE suffix_code = $1
         RETURNING suffix_code, label, ghg_category, description, status, sort_order`,
-      [input.suffixCode, input.actorId]);
+      [input.suffixCode, actorId]);
 
     await audit(db, {
-      organisationId: input.organisationId, actorId: input.actorId,
+      organisationId: input.organisationId, actorId: actorId,
       action: "factor.variant.retired", suffixCode: input.suffixCode,
       // The reason is the part somebody reads later; a retirement with no stated reason is a change nobody
       // can review.
