@@ -215,27 +215,89 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'order-probe-fallback'`);
   });
 
-  it("declares no base-resolving rule ahead of a sub-flow, in any seeded category", async () => {
-    // The front-door version of the Scope 1 leak, checked at the data rather than in the resolver.
-    //
-    // The STOP closes the back door: a sub-flow that answered and could not be filed will not fall through
-    // to a coarser rule. It cannot close the front door, because a rule ordered *ahead* of the sub-flow
-    // answers before the sub-flow ever runs — and that is a legitimate tool, not a bug, which is exactly
-    // why the spec must be checked rather than the code. A base ordered first is a declared decision to
-    // file business travel against the Scope 1 factor.
-    //
-    // Generative over whatever is seeded, so a future migration that ordered one ahead fails here.
-    const { rows } = await db.query<{ category_code: string; rule_key: string; ordering: number }>(
-      `SELECT ahead.category_code, ahead.rule_key, ahead.ordering
-         FROM nzi_console.input_spec_factor_rules ahead
-         JOIN nzi_console.input_spec_factor_rules flow
-           ON flow.category_code = ahead.category_code AND flow.rule_kind = 'sub-flow'
-        WHERE ahead.active AND flow.active
-          AND ahead.factor_base IS NOT NULL
-          AND (ahead.ordering, ahead.rule_key) < (flow.ordering, flow.rule_key)`);
+  /**
+   * A rule that resolves the very base a category's sub-flow derives its variants from.
+   *
+   * **Targeted, not "any lookup near a sub-flow".** The shadowing case is a rule resolving the base the
+   * variants come from — `diesel-demo` in a category whose sub-flow produces `diesel-demo-b`. A rail or
+   * air lookup in business travel is a different activity with a different factor entirely: it declines on
+   * vehicle input and may sit anywhere in the order. Matching on "has a factor base" would refuse it, and
+   * an invariant that refuses legitimate authoring gets switched off.
+   *
+   * **At any order, not merely ahead**, which is a tightening with a reason rather than tidiness. Ordered
+   * *ahead*, such a rule answers before the sub-flow runs. Ordered *behind*, it fires whenever the
+   * sub-flow declines without stopping — which is precisely the case where the referenced flow identified
+   * no vehicle. Resolving the Scope 1 base for an unidentified vehicle, in business travel, is the same
+   * leak reached from the other side, and the STOP cannot reach it because nothing was learned to protect.
+   */
+  /**
+   * `EXISTS` rather than joins, so one offending rule is reported once.
+   *
+   * The first version joined through to the referenced category's rules, and the vehicle category declares
+   * **two** rules on `diesel-demo` — the DVLA enriched rule and the unit branch — so a single shadowing
+   * rule came back twice. It would still have failed on a violation, but an invariant whose output
+   * multiplies by an unrelated count is one whose message nobody trusts. Caught by the probe below
+   * asserting an exact count rather than merely "not empty".
+   */
+  const shadowedBases = () => db.query<{ category_code: string; rule_key: string; factor_base: string }>(
+    `SELECT shadow.category_code, shadow.rule_key, shadow.factor_base
+       FROM nzi_console.input_spec_factor_rules shadow
+      WHERE shadow.active
+        AND shadow.factor_base IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+            FROM nzi_console.input_spec_factor_rules flow
+           WHERE flow.category_code = shadow.category_code
+             AND flow.rule_kind = 'sub-flow'
+             AND flow.active
+             AND EXISTS (
+               SELECT 1
+                 FROM nzi_console.input_spec_factor_rules source
+                WHERE source.category_code = flow.sub_flow_category
+                  AND source.active
+                  AND source.factor_base = shadow.factor_base))`);
+
+  it("declares no rule resolving the base its own sub-flow derives variants from", async () => {
+    const { rows } = await shadowedBases();
     assert.deepEqual(rows, [],
-      "a rule resolving a factor base is declared ahead of a sub-flow, so it answers first and the "
-      + "sub-flow's category variant is never reached");
+      "a rule resolves the Scope 1 base that this category's sub-flow turns into a category variant, so "
+      + "the variant is bypassed and the emission is filed against the base");
+  });
+
+  it("permits an unrelated fallback in the same category, which is what makes it targeted", async () => {
+    // The other half. An invariant that also refused this would be refusing legitimate authoring — a rail
+    // leg in business travel is a different activity, not a shadow of the vehicle base — and an invariant
+    // that refuses legitimate authoring is one somebody eventually deletes.
+    await db.query(`INSERT INTO nzi_console.emission_factors
+      (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
+      VALUES ($1,'synthetic-gb-2026','rail-demo','Rail — demonstration factor','passenger.km',0.035,ARRAY['3'])`,
+    [DEMO_ORG]);
+    await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+      (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
+      VALUES ('3.6','rail-leg',5,'lookup','rail-demo','test','test')`);
+
+    const { rows } = await shadowedBases();
+    assert.deepEqual(rows, [], "a different-activity fallback was reported as shadowing the vehicle base");
+
+    await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'rail-leg'`);
+  });
+
+  it("catches the shadow wherever it is ordered, ahead of the sub-flow or behind it", async () => {
+    // Watched failing in both positions, because the tightening from "not ahead" to "at all" is only worth
+    // having if the behind case is actually reported.
+    for (const ordering of [1, 900]) {
+      await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+        (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
+        VALUES ('3.6','shadow-probe',$1,'lookup','diesel-demo','test','test')`, [ordering]);
+
+      const { rows } = await shadowedBases();
+      assert.equal(rows.length, 1, `a shadowing rule at ordering ${ordering} was not reported`);
+      assert.equal(rows[0]!.factor_base, "diesel-demo");
+
+      await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'shadow-probe'`);
+    }
+    // And clean again afterwards, so the invariant above is not passing on a deleted row.
+    assert.deepEqual((await shadowedBases()).rows, []);
   });
 
   it("refuses a sub-flow that carries a base of its own, or names itself", async () => {
