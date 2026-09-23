@@ -5064,3 +5064,66 @@ resolver is wired, so its test belongs with that characterisation.
 **Related.** NZC-145 (the variant registry and why bases are split on it), NZC-146 (the unit the variant
 inherits), NZC-149 (the rules a sub-flow reuses), NZC-151 (the STOP this repeats one layer down), NZC-154
 (the same fail-safe direction).
+
+### NZC-159 — Electricity records how it arrived, and renewable gets its primary [Confirmed 23 Sep 2026]
+
+**Decision.** The first of per-category spec authoring. `supplySource` becomes a captured field on both
+electricity categories, and `2.renewable-electricity` gets its primary mapping. They land together because
+neither is useful alone: the field says how the electricity reached the site, the mapping says which factor
+prices it.
+
+**The field NZC-154 declared a rule against and could not yet collect.** 0115 declared the
+transmission-and-distribution companion against `supplySource` deliberately, as a forward reference, because
+adding a capture field changes what the form shows and slipping it inside a migration about companions
+would have moved the render characterisation to make that migration pass. **This is the change where moving
+it is the point** — and that is the whole distinction: a characterisation may move by reviewed intent, never
+by "make it green".
+
+**The golden delta is exactly the intended additions, and was made minimal on purpose.** Regenerating the
+pinned matrix wholesale produced 381 insertions and 269 deletions; comparing semantically showed **16
+renders differing and all of them only by the new field, with zero other changes** — the rest was key-order
+churn from re-serialising freshly built objects. A diff carrying 269 lines of unchanged content is one
+nobody can review for drift, so the golden was rebuilt from the committed file with the field inserted,
+giving **112 insertions and no deletions**: sixteen renders, seven lines each. The inline exemplars in the
+console characterisation moved with it, which is what they are for — a reviewer sees what electricity
+produces without opening a 100KB fixture.
+
+**Three artefacts move together, and the characterisation is what proves they agree.** `inputSpec.seed.json`
+is the fixture the migration was generated from and the console renders from; the migration seeds the
+database; the golden pins what both produce. A field added to one and not the others fails on the next run.
+
+**Unconstrained by audience, mode or lean, each for a reason.** The client is asked because the site knows
+how its electricity arrives and the consultant often does not. Lean capture keeps it — unlike quality tier
+and confidence, which lean drops — because it decides whether a Scope 3 row **exists at all**: omitting it
+under lean would lose a row silently rather than collect less detail. That is a judgement about which kind
+of wrong is worse, and it is recorded rather than assumed.
+
+**Renewable electricity resolves to the same location factor as purchased (NZC-157).** Under the
+location-based method contractual instruments are irrelevant: the figure is the grid average whatever the
+contract says, and the renewable-ness lives in the market row, out of the headline. The two categories
+resolving to one factor is the accounting answer rather than a copy-paste, and the suite asserts it so a
+future reader finds a test saying so rather than a suspicious coincidence.
+
+With a primary in place the category carries its companion, which 0115 withheld because a companion is
+proposed only alongside a resolved primary and one declared there could never have fired. The pair is
+asserted on the category where the confusion is likeliest: a REGO-backed supply gets transmission losses,
+and renewable electricity generated on site does not.
+
+**The stored value enumerates positively, and admits NULL by decision.** `grid`, `grid-renewable`,
+`green-tariff`, `rego`, `self-generated` — with `self-generated` a member of the column's enumeration and
+absent from the companion's, which is what makes it fire nothing. `IS NULL OR` is explicit rather than
+incidental: an entry captured before the question is answered is ordinary, and the companion declines while
+it is unanswered.
+
+**Still substrate, and the capture surface is the remaining half.** This lands the spec, the mapping and the
+column. Rendering the control and storing the value through the command path complete "capture live" —
+which is the wiring gate's third condition — and nothing here makes the write path *consume* the
+declarative resolver, which remains its own four-condition stop.
+
+**One defect avoided in passing.** The form's `select` branch reads `field.key === "qualityTier" ? … : …`,
+so any other select renders as Data confidence. A third select field would have silently appeared as the
+wrong control — a catch-all whose failure looks like a working form. Noted here because it is the shape of
+the next change rather than something this one introduces.
+
+**Related.** NZC-157 (the location-based answer this applies), NZC-154 (the companion and the forward
+reference), NZC-102 (the governed spec and its golden), NZC-149 (the mapping the primary joins).

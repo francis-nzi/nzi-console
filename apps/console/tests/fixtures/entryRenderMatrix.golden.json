@@ -1886,6 +1886,13 @@
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -1976,6 +1983,13 @@
         "label": "Activity / source",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
       },
       {
         "key": "quantity",
@@ -2070,6 +2084,13 @@
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2156,6 +2177,13 @@
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2216,6 +2244,13 @@
         "label": "Activity",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
       },
       {
         "key": "quantity",
@@ -2287,6 +2322,13 @@
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2354,6 +2396,13 @@
         "label": "Activity",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
       },
       {
         "key": "quantity",
@@ -2425,6 +2474,13 @@
         "hint": "Smart search — Scope 2 · Purchased Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "How the electricity reached this site. Grid supply — including a green tariff or REGO-backed supply — carries transmission and distribution losses; electricity generated and used on site does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2492,6 +2548,13 @@
         "label": "Activity / source",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
       },
       {
         "key": "quantity",
@@ -2586,6 +2649,13 @@
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2678,6 +2748,13 @@
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2764,6 +2841,13 @@
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2824,6 +2908,13 @@
         "label": "Activity",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
       },
       {
         "key": "quantity",
@@ -2895,6 +2986,13 @@
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -2964,6 +3062,13 @@
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
       },
       {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -3031,6 +3136,13 @@
         "label": "Activity",
         "control": "smart-search",
         "hint": "Smart search — Scope 2 · Renewable Electricity factors only."
+      },
+      {
+        "key": "supplySource",
+        "label": "Supply",
+        "control": "select",
+        "hint": "A REGO-backed or green-tariff supply still arrives over the grid and carries its losses. Generation used on the site that produced it does not.",
+        "optional": false
       },
       {
         "key": "quantity",

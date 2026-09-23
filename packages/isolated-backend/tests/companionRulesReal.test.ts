@@ -62,10 +62,13 @@ describe("an entry resolves to more than one row, and market stays out of the he
 
   it("declares the T&D companion only where a primary exists to accompany", async () => {
     // An equality rather than a presence check, and it earns its keep: the first draft of 0115 also
-    // seeded this companion on `2.renewable-electricity`, which has no primary factor rule — so it could
-    // never have fired, and nothing but this assertion would have said so.
+    // seeded this companion on `2.renewable-electricity`, which then had no primary factor rule — so it
+    // could never have fired, and nothing but this assertion would have said so.
+    //
+    // 0117 gave that category its primary (the location-based grid factor, NZC-157) and its companion with
+    // it. The set grows by reviewed intent, which is what updating this list records.
     const all = await listCompanionRules(db);
-    assert.deepEqual([...all.keys()], ["2.purchased-electricity"],
+    assert.deepEqual([...all.keys()].sort(), ["2.purchased-electricity", "2.renewable-electricity"],
       "a companion is declared on a category that has no primary rule, so it can never fire");
 
     const rules = await companionRulesFor(db, "2.purchased-electricity");
@@ -94,6 +97,41 @@ describe("an entry resolves to more than one row, and market stays out of the he
       const outcome = await proposeFor("2.purchased-electricity", { unit: "kWh", supplySource: supply });
       assert.equal(outcome.proposed.length, 1, supply + " was given no transmission losses");
     }
+  });
+
+  it("resolves renewable electricity to the same grid factor as purchased (NZC-157)", async () => {
+    // Under the location-based method a REGO or green tariff does not change the figure: it is the grid
+    // average whatever the contract says, and the renewable-ness lives in the market row. So the two
+    // categories resolving to one factor is the accounting answer rather than a copy-paste, and it is
+    // asserted here so a future reader finds a test saying so rather than a suspicious coincidence.
+    const renewable = await primaryFor("2.renewable-electricity", { unit: "kWh", supplySource: "rego" });
+    const purchased = await primaryFor("2.purchased-electricity", { unit: "kWh", supplySource: "grid" });
+
+    assert.equal(renewable.kind, "resolved");
+    assert.equal(purchased.kind, "resolved");
+    if (renewable.kind !== "resolved" || purchased.kind !== "resolved") return;
+    assert.equal(renewable.factorId, "electricity-demo");
+    assert.equal(renewable.factorId, purchased.factorId,
+      "renewable electricity resolved to a different location-based factor from purchased");
+  });
+
+  it("now fires the companion on renewable electricity, which 0115 could not", async () => {
+    // The companion 0115 withheld because the category had no primary to accompany. It fires now for the
+    // same reason it always would have — the supply crossed a network — and the category it is filed
+    // under is unchanged.
+    const outcome = await proposeFor("2.renewable-electricity", { unit: "kWh", supplySource: "rego" });
+    assert.equal(outcome.proposed.length, 1, "a REGO-backed supply was given no transmission losses");
+    assert.equal(outcome.proposed[0]!.ghgCategory, "3.3");
+  });
+
+  it("does not fire it on renewable electricity that was generated on site", async () => {
+    // The pair, on the category where the confusion is likeliest: "renewable" says nothing about whether
+    // the electricity crossed a network, and roof-mounted solar lost nothing in transmission.
+    const entry = { unit: "kWh", supplySource: "self-generated" };
+    assert.equal((await primaryFor("2.renewable-electricity", entry)).kind, "resolved",
+      "the primary must still resolve, or this proves nothing");
+    const outcome = await proposeFor("2.renewable-electricity", entry);
+    assert.equal(outcome.proposed.length, 0, "self-generated renewable electricity was given T&D losses");
   });
 
   it("does NOT create it for self-generated electricity", async () => {
