@@ -4538,3 +4538,52 @@ executes is a test that passes having checked nothing.
 **Related.** NZC-145 (the variant registry and why bases are split on it rather than on the last hyphen),
 NZC-146 (units, and why litres and kilometres are different calculations), NZC-143 (the NULL-admitting
 CHECK), NZC-102 (the governed input spec this extends), NZC-030 (dataset selection).
+
+### NZC-150 — Inter is self-hosted; no build fetches a font [Confirmed 23 Sep 2026]
+
+**Decision.** The console loads Inter with `next/font/local` from a file in the repository. Nothing in a
+build reaches an external host for a typeface.
+
+**The evidenced cause, not the plausible one.** On 23 Sep 2026 the capture-surface gate (NZC-147) went red
+on #269. The failing step was the **build**, twenty-five seconds into a compile that normally takes
+fifty-five, and the same commit built green on the next run with nothing about it changed. The stack trace
+named `@next/font/google`'s Inter loader: `next/font` was fetching Inter from Google Fonts at build time.
+
+Worth recording how that was nearly mis-diagnosed. Having eliminated the code (the `checks` job runs the
+identical build command on the identical commit and passed), every environment variable, a clean install
+and the pull-request checkout, the remaining hypothesis offered was **memory pressure** — plausible,
+consistent with a mid-compile death, and **unevidenced**. The trace settled it. A hypothesis that fits the
+symptoms is not a diagnosis, and "fixing" the memory theory would have left the real fault in place and the
+gate still flaky.
+
+**Removed rather than retried.** A retry would have been the obvious response to an intermittent fetch, and
+it is the wrong one twice over: it treats a flaky gate as something to get past rather than a defect, and
+it leaves the failure mode in place for every future build. Self-hosting deletes the dependency, which also
+makes the question of *why* the fetch failed — outage, rate limit, DNS, memory pressure during it —
+one nobody has to answer.
+
+**A build that depends on somebody else's CDN fails for reasons that have nothing to do with the change
+under review**, and the cost is paid in trust: a gate that goes red without a cause gets re-run rather than
+read, and the next red — the real one — gets re-run too. That is the discipline this closes: nothing
+external on the critical path of a build.
+
+**The same font, not a substitute.** The file is the `latin` subset of Inter v20, the variable face, taken
+from the stylesheet `next/font/google` itself resolves — so it is what Google was already serving, at the
+same weights. One variable file covering 400–700 replaces four static weights, and declaring the range is
+what keeps `font-weight: 600` meaning 600. `display: swap` and the `--font-inter` variable are unchanged, so
+`var(--font-inter, Inter)` in `styles.css` needs no edit. Inter is OFL-1.1 and the licence is committed
+beside the file, which is what redistributing it requires.
+
+**Proved in both directions, with the network blocked.** With every outbound proxy pointed at a dead port:
+the self-hosted build **succeeds**, and the previous `next/font/google` version **fails** with
+``next/font` error: Failed to fetch `Inter` from Google Fonts.` — the same fault as the CI trace, reproduced
+on demand. The built CSS now serves the face from `/_next/static/media/`, and no Google host appears
+anywhere in the output. The capture gate passes 6/6 against the rebuilt console, so the surface renders as
+before.
+
+**The diagnostics stay.** The build step still re-emits its tail as a workflow annotation and keeps the log
+as an artifact. That was added when this failure was opaque, and it is what made the cause readable; the
+next unexplained build failure should not cost another elimination pass.
+
+**Related.** NZC-147 (the gate that caught it, and why a gate must not be retried past), NZC-027/028
+(content-addressed assets and determinism in the chart pipeline), NZC-119 (enumerate rather than skip).
