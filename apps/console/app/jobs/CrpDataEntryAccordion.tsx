@@ -47,12 +47,23 @@ type Props = {
   selectedRowId: string;
   /** Open a row in the drawer. `category` is set when the row sits in a category card. */
   onOpenRow: (rowId: string, category?: ApplicableCategory) => void;
-  /** Persist a new scope row from the shared capture form. */
-  onCreateEntry: (input: ScopeRowWriteFields) => Promise<{ ok: boolean; message?: string }>;
-  /** Controlled site-as-context (§2): "" = all sites, "none" = unallocated, else a site id. */
+  /**
+   * Open the drawer's type-aware quick-add for one category (v2).
+   *
+   * The accordion says *which* category the user asked to add to and nothing else: the form, its
+   * per-type fields and the save live in the drawer, so there is one heavy-detail surface rather than
+   * one here and another there.
+   */
+  onAddEntry: (category: ApplicableCategory) => void;
+  /**
+   * The site tab in force, as an id; "" is all sites.
+   *
+   * Read-only here: the tabs above the surface own the selection, and the rows reaching this component
+   * are already narrowed to it. Creating an entry is the drawer's job, so the accordion no longer needs
+   * a create callback or a way to change the site.
+   */
   sites: SiteContextOption[];
   siteId: string;
-  onSiteChange: (siteId: string) => void;
   /** Scope-tagged factor set (workspace maps FactorOption → EntryFactorRef). */
   factors: EntryFactorRef[];
   /** NZC-062 — the full job factor library (unmapped), for the template search. */
@@ -72,7 +83,7 @@ type Props = {
   notice: Notice;
 };
 
-export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onCreateEntry, sites, siteId, onSiteChange, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
+export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onAddEntry, sites, siteId, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
@@ -81,38 +92,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [addingCode, setAddingCode] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<{ title: string; body: ReactNode } | null>(null);
-  const [entryBusy, setEntryBusy] = useState(false);
-  const [entryError, setEntryError] = useState("");
 
   const siteContext = { id: siteId === "" || siteId === "none" ? null : siteId, label: sites.find(site => site.id === siteId)?.label ?? null };
-  const lookupRegistration = async (registration: string): Promise<import("./emissionEntryModel").RegistrationLookupOutcome> => {
-    try {
-      const response = await fetch(`/api/isolated/jobs/${jobId}/vehicle-lookup`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ registration }),
-      });
-      const body = await response.json();
-      if (!response.ok) return { ok: false, message: body.message ?? "Vehicle lookup failed — enter it manually." };
-      return {
-        ok: true,
-        make: body.vehicle?.make ?? null,
-        fuelType: body.vehicle?.fuelType ?? null,
-        suggestedClass: body.suggestedClass ?? "vehicle",
-        year: body.vehicle?.yearOfManufacture ?? null,
-        factorId: body.factor ? `dataset:${body.factor.datasetId}|${body.factor.factorId}` : null,
-        factorLabel: body.factor?.label ?? null,
-      };
-    } catch {
-      return { ok: false, message: "Vehicle lookup failed — enter it manually." };
-    }
-  };
-  const submitEntry = (category: ApplicableCategory) => async (draft: Parameters<typeof emissionEntryDraftToScopeRow>[0]) => {
-    if (entryBusy) return;
-    setEntryBusy(true); setEntryError("");
-    const result = await onCreateEntry(emissionEntryDraftToScopeRow(draft, category, siteContext, factors, reportingMonths));
-    setEntryBusy(false);
-    if (result.ok) setAddingCode(null);
-    else setEntryError(result.message ?? "The entry could not be saved.");
-  };
 
   const load = useCallback(async () => {
     setState("loading");
@@ -149,14 +130,9 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   return (
     <section aria-label="Data entry by category" id="data-entry-accordion">
       <div className="nz-acc-tool">
-        <label className="nz-fl" style={{ margin: 0, minWidth: 210 }}>Site
-          <select className="nz-sel" value={siteId} onChange={event => onSiteChange(event.target.value)} aria-label="Site context for new entries">
-            <option value="">All sites</option>
-            {sites.map(site => <option key={site.id} value={site.id}>{site.label}</option>)}
-            <option value="none">Unallocated</option>
-          </select>
-        </label>
-        <span className="hint">{siteId === "" ? "Showing every site. New entries ask for a site." : siteId === "none" ? "New entries are left unallocated." : `New entries are allocated to ${sites.find(site => site.id === siteId)?.label ?? "this site"}.`}</span>
+        {/* The site selector lives in the page's site tabs now (v2), which filter the whole surface
+            rather than only choosing where a new entry lands. A second control here would be a second
+            answer to the same question. The lens below stays: it is a different question. */}
         <Tabs
           className="nz-seg"
           ariaLabel="Data-entry view"
@@ -245,35 +221,16 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                           <div className="nz-acc-empty">No data yet — shown for completeness. Empty categories are excluded from the report.</div>
                         )}
                         <div className="nz-acc-foot">
-                          <button type="button" className="nz-btn pri" aria-expanded={addingCode === code}
-                            onClick={() => { setEntryError(""); setAddingCode(addingCode === code ? null : code); }}>
-                            {addingCode === code ? "Close" : "+ Add entry"}
+                          {/* Opens the drawer's type-aware quick-add for this category. The form used to
+                              unfold inside the card, which put a tall form between the row list and the
+                              next category and gave the page two places heavy detail could live. */}
+                          <button type="button" className="nz-btn pri"
+                            onClick={() => onAddEntry(entry.category)}>
+                            + Add entry
                           </button>
                           {imp ? <button type="button" className="nz-btn" onClick={() => setImportFor(imp)}>Import &amp; templates</button> : null}
                           {KIND_NOTE[entry.category.kind] ? <InfoTip label={`${entry.category.name} — how data entry works`}>{KIND_NOTE[entry.category.kind]}</InfoTip> : null}
                         </div>
-                        {addingCode === code ? (
-                          <div className="nz-acc-extra">
-                            <EmissionEntryForm
-                              spec={specs[entry.category.code] ?? null}
-                              key={code}
-                              category={entry.category}
-                              audience="crm"
-                              site={{ id: siteContext.id, label: siteContext.label ?? "Unallocated" }}
-                              factors={factors.filter(option => option.scope === entry.category.scope)}
-                              units={specs[entry.category.code]?.units ?? []}
-                              reportingMonths={reportingMonths}
-                              spendCategories={purchasedGoodsCategories}
-                              busy={entryBusy}
-                              error={entryError}
-                              onCancel={() => setAddingCode(null)}
-                              onSubmit={submitEntry(entry.category)}
-                              onSaveDraft={submitEntry(entry.category)}
-                              onLookupRegistration={lookupRegistration}
-                              leanCapture={dataEntryAdapterEnabled("entry-lean-capture")}
-                            />
-                          </div>
-                        ) : null}
                       </div>
                     ) : null}
                   </div>

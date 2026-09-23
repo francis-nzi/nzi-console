@@ -43,6 +43,12 @@ import {VehicleBulkPanel} from "./VehicleBulkPanel";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
 import {SpendImportPanel} from "./SpendImportPanel";
+import type { JobEmissions } from "@nzi/isolated-backend";
+import { EmissionsSummary } from "./EmissionsSummary";
+import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
+import { EmissionEntryForm } from "./EmissionEntryForm";
+import { emissionEntryDraftToScopeRow, type RegistrationLookupOutcome } from "./emissionEntryModel";
+import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
@@ -145,6 +151,7 @@ export function CrpScopeWorkspace({
   intensityTarget,
   sites,
   purchasedGoodsCategories,
+  emissions,
   writeEnabled,
 }: {
   /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
@@ -158,6 +165,13 @@ export function CrpScopeWorkspace({
   intensityTarget:IntensityTargetReadModel|null;
   sites:SiteOption[];
   purchasedGoodsCategories:PurchasedGoodsCategoryOption[];
+  /**
+   * The live emissions aggregation (NZC-144), read server-side.
+   *
+   * Passed in rather than fetched here so the first paint is correct; the strip re-reads it itself when a
+   * site tab changes.
+   */
+  emissions:JobEmissions;
   /** NZI_WRITE_API_ENABLED — the same flag the client workspace gates on. */
   writeEnabled:boolean;
 }) {
@@ -171,7 +185,10 @@ export function CrpScopeWorkspace({
         text: `QA pending: ${qa.calculationMissing} calculations missing · ${qa.qualityMissing} quality tiers missing · ${qa.independentReviewPending} rows awaiting independent approval.`,
       };
   const router = useRouter(),
-    [selectedId, setSelectedId] = useState(rows.find(scopeRowNeedsAttention)?.id??rows[0]?.id ?? ""),
+    // Empty on purpose: the detail drawer is a deliberate act, so nothing is selected until a row is
+    // clicked or an entry is added. Seeding this with "the first row needing attention" is what opened a
+    // drawer describing a row the user had never chosen.
+    [selectedId, setSelectedId] = useState(""),
     [creating, setCreating] = useState(rows.length === 0),
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
@@ -179,7 +196,16 @@ export function CrpScopeWorkspace({
     // The accordion lands on the scope→category view (crp_v3 prototype); the
     // exception lens is opt-in via the command-centre "Open N exceptions" action.
     [accordionLens,setAccordionLens]=useState<AccordionLens>("category"),
-    [siteContextId,setSiteContextId]=useState(""),
+    // The site tab in force. `null` is "all sites" and is the state at rest; it narrows the summary
+    // strip, the category cards and where a new entry lands, which is one answer to one question
+    // rather than a filter and a separate "site for new entries".
+    [siteId,setSiteId]=useState<string|null>(null),
+    // The category whose quick-add is open in the drawer, or null. Separate from `selectedId` because
+    // adding and inspecting are different acts: after a save this clears and the new row's id becomes
+    // the selection, so the detail drawer stays open on what was just created.
+    [addingCategory,setAddingCategory]=useState<ApplicableCategory|null>(null),
+    [quickAddBusy,setQuickAddBusy]=useState(false),
+    [quickAddError,setQuickAddError]=useState(""),
     [openStages,setOpenStages]=useState<Set<string>>(()=>new Set([job.header.workflowStage,"Data entry"])),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
@@ -271,16 +297,90 @@ export function CrpScopeWorkspace({
       router.refresh();
     } else setNotice({ kind: "warn", text: errorText(r) });
   }
-  const drawer = selected ? (
+  const siteLabel = siteLabelFor(sites.map(site => ({ id: site.id, name: site.name })), siteId);
+
+  async function lookupRegistration(registration: string): Promise<RegistrationLookupOutcome> {
+    try {
+      const response = await fetch(`/api/isolated/jobs/${job.header.id}/vehicle-lookup`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ registration }),
+      });
+      const body = await response.json();
+      if (!response.ok) return { ok: false, message: body.message ?? "Vehicle lookup failed — enter it manually." };
+      return {
+        ok: true,
+        make: body.vehicle?.make ?? null,
+        fuelType: body.vehicle?.fuelType ?? null,
+        suggestedClass: body.suggestedClass ?? "vehicle",
+        year: body.vehicle?.yearOfManufacture ?? null,
+        factorId: body.factor ? `dataset:${body.factor.datasetId}|${body.factor.factorId}` : null,
+        factorLabel: body.factor?.label ?? null,
+      };
+    } catch {
+      return { ok: false, message: "Vehicle lookup failed — enter it manually." };
+    }
+  }
+
+  /**
+   * Save a quick-add, then leave the new row's detail drawer open.
+   *
+   * The drawer does not close on save (v2 closed it). Adding an entry and refining it are one piece of
+   * work: the quantity and factor are in, the evidence and monthly split usually are not, and shutting
+   * the surface at exactly that moment asks the user to find the row again to finish.
+   */
+  async function saveQuickAdd(category: ApplicableCategory, draft: Parameters<typeof emissionEntryDraftToScopeRow>[0]) {
+    if (quickAddBusy) return { ok: false };
+    setQuickAddBusy(true); setQuickAddError("");
+    const site = { id: siteId, label: siteId === null ? null : siteLabel };
+    const result = await createEntryFromForm(
+      emissionEntryDraftToScopeRow(draft, category, site, entryFactorRefs, spendReportingMonths));
+    setQuickAddBusy(false);
+    if (result.ok) setAddingCategory(null);
+    else setQuickAddError(result.message ?? "The entry could not be saved.");
+    return result;
+  }
+
+  // One heavy-detail surface, and it is closed unless something was asked for: the quick-add for a
+  // category, or the row somebody clicked. Never a row nobody chose.
+  //
+  // The decision itself is `resolveCaptureDrawer`, so the rule this renders is the one the tests assert
+  // rather than a second copy of it here.
+  const drawerState = resolveCaptureDrawer(addingCategory?.code ?? null, rows, selectedId);
+  const drawer = drawerState.kind === "quick-add" && addingCategory ? (
     <EvidenceDrawer
-      kicker={`Scope row · version ${selected.version}`}
-      title={selected.sourceLabel}
-      subtitle={`Scope ${selected.scope}`}
+      kicker={`${addingCategory.code} · ${addingCategory.name}`}
+      title="Add entry"
+      subtitle={`Scope ${addingCategory.scope} · ${siteLabel}`}
+    >
+      <EmissionEntryForm
+        key={addingCategory.code}
+        spec={specs[addingCategory.code] ?? null}
+        category={addingCategory}
+        audience="crm"
+        site={{ id: siteId, label: siteId === null ? "Unallocated" : siteLabel }}
+        factors={entryFactorRefs.filter(option => option.scope === addingCategory.scope)}
+        units={specs[addingCategory.code]?.units ?? []}
+        reportingMonths={spendReportingMonths}
+        spendCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
+        busy={quickAddBusy}
+        error={quickAddError}
+        onCancel={() => { setAddingCategory(null); setQuickAddError(""); }}
+        onSubmit={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
+        onSaveDraft={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
+        onLookupRegistration={lookupRegistration}
+        leanCapture={dataEntryAdapterEnabled("entry-lean-capture")}
+      />
+    </EvidenceDrawer>
+  ) : drawerState.kind === "detail" ? ((detailRow => (
+    <EvidenceDrawer
+      kicker={`Scope row · version ${detailRow.version}`}
+      title={detailRow.sourceLabel}
+      subtitle={`Scope ${detailRow.scope}`}
     >
       <Editor
-        key={selected.id}
+        key={detailRow.id}
         jobId={job.header.id}
-        row={selected}
+        row={detailRow}
         factors={factors}
         sites={sites}
         purchasedGoodsCategories={purchasedGoodsCategories}
@@ -289,7 +389,7 @@ export function CrpScopeWorkspace({
         notice={setNotice}
       />
     </EvidenceDrawer>
-  ) : undefined;
+  ))(drawerState.row)) : undefined;
 
   const configPanels = (
     <>
@@ -306,13 +406,12 @@ export function CrpScopeWorkspace({
     <CrpDataEntryAccordion
       specs={specs}
       jobId={job.header.id}
-      rows={rows}
+      rows={filterRowsBySite(rows, siteId)}
       selectedRowId={selected?.id ?? ""}
       onOpenRow={setSelectedId}
-      onCreateEntry={createEntryFromForm}
+      onAddEntry={setAddingCategory}
       sites={sites.map(site => ({ id: site.id, label: site.name }))}
-      siteId={siteContextId}
-      onSiteChange={setSiteContextId}
+      siteId={siteId ?? ""}
       factors={entryFactorRefs}
       libraryFactors={factors}
       reportingMonths={spendReportingMonths}
@@ -434,6 +533,18 @@ export function CrpScopeWorkspace({
         </div>
       </div>
       <WorkflowStageControl job={job} />
+      {/* Job-specific, so it belongs in the job content column and not above the app chrome — rendered
+          from the page it pushed the whole left rail down the screen. Sticky within the column so the
+          totals stay in view while entries are typed below them. */}
+      <div className="nz-job-emissions">
+        <EmissionsSummary jobId={job.header.id} siteId={siteId} siteLabel={siteLabel} initial={emissions} />
+        <JobSiteTabs
+          sites={sites.map(site => ({ id: site.id, name: site.name }))}
+          emissions={emissions}
+          selected={siteId}
+          onSelect={setSiteId}
+        />
+      </div>
       {stageSectionsOn ? stageBody : (
       <div className="nz-body">
         <section className="nz-command-hero">

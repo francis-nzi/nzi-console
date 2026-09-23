@@ -1521,3 +1521,20 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 
 /* Tabular figures, so a column of totals lines up and a changing number does not jitter. */
 .tnum{font-variant-numeric:tabular-nums}
+
+/* ── Job emissions header: the strip and the site tabs (NZC-144) ─────────────────────
+   Sticky inside the job content column, so the totals a consultant is moving stay in
+   view while they type entries below. Not `position:fixed` and not above the app
+   chrome: it is job-specific, and rendering it outside the column pushed the whole
+   left rail down the page. */
+.nz-job-emissions{position:sticky;top:0;z-index:5;background:var(--paper);padding-top:10px;margin-bottom:6px}
+@media (max-width:900px){.nz-job-emissions{position:static}}
+
+.nz-site-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px}
+.nz-site-tab{display:inline-flex;align-items:center;gap:8px;flex:none;padding:7px 12px;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--t2);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}
+.nz-site-tab:hover{border-color:var(--pine)}
+/* The selected tab is not colour-alone: it also carries the weight and the ring. */
+.nz-site-tab.on{background:var(--mint);border-color:var(--accent);color:var(--deep);font-weight:750}
+.nz-site-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nz-site-tab-count{min-width:20px;padding:1px 6px;border-radius:20px;background:var(--line2);color:var(--t3);font-size:11px;font-weight:700}
+.nz-site-tab.on .nz-site-tab-count{background:var(--card);color:var(--deep)}
