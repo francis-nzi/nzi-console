@@ -38,6 +38,7 @@ export * from "./entryExtractionStub";
 export * from "./dates";
 export * from "./readModels";
 export * from "./inputSpecRecords";
+export * from "./inputSpecFactorRules";
 export * from "./spendImportIdentity";
 export * from "./spendImport";
 export * from "./scopeRowHistory";

@@ -228,6 +228,13 @@ jobs:
       # checker recognises, since a declared unit it cannot read would refuse every entry for that field.
       - name: A unit reconciles with its factor, or the entry is refused
         run: npx tsx --test packages/isolated-backend/tests/unitCompatibilityReal.test.ts
+      # The declared dataset mapping (NZC-149). Two things only a real database shows: that the rows 0112
+      # seeds are shaped the way the resolver reads them — a mapping right in the abstract and mis-keyed
+      # in the migration resolves nothing while every unit test stays green — and that the shape
+      # constraint refuses. A CHECK is satisfied by NULL, which is how an earlier one came to admit every
+      # row it was written to exclude, so each branch is given a row that should not exist.
+      - name: A category reaches its factor by declared rule, or declines to the search
+        run: npx tsx --test packages/isolated-backend/tests/datasetMappingReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

@@ -4469,3 +4469,72 @@ only 96 migrations — refused on the floor. A gate nobody has watched refuse is
 **Related.** NZC-145 (the incident, and where prose is allowed to keep up instead), NZC-147 (the fifth gate,
 and the guard that a gate must be shown to have run), NZC-086 (the first file-reading gate), NZC-119
 (enumerate rather than skip).
+### NZC-149 — A capture category declares how it reaches a factor [Confirmed 23 Sep 2026]
+
+**Decision.** The mapping from a capture category to a factor becomes **data**, stored beside the rest of
+the input spec, in three rule kinds evaluated in order with first match winning:
+
+- **lookup** — this category always uses this factor. Metered electricity is the grid factor.
+- **basis-branch** — the factor depends on what was captured. A vehicle recorded in litres is a fuel
+  calculation; the same vehicle in kilometres is a distance calculation. Those are different factors, not a
+  conversion of one another — which is the other half of NZC-146's refusal to convert between them.
+- **suffix-variant** — the factor is a registered category variant of a base (NZC-145): one measured
+  factor, filed under the GHG category its suffix names.
+
+**Why it was worth making declarative.** The mapping was a smart search: a list of everything the dataset
+offers, with the category as advice. That works, and it is also why two people capturing the same thing can
+land on two different factors. A rule in a table can be reviewed; a habit cannot.
+
+**Additive, and that is a hard constraint rather than a nicety.** A category with no rules behaves exactly
+as it does today, and a rule naming a factor the selected dataset does not carry **declines** — it does not
+fail the entry. The temptation is to treat "no rule matched" as an error, because a mapping that silently
+does nothing looks broken. It is the opposite: a consultant who cannot record a number because the taxonomy
+is incomplete will record it somewhere that is not this system. What must never happen is declining
+*quietly*, so every outcome carries each rule considered and the reason it passed.
+
+**The `scopes[]` ruling.** A factor's `scopes[]` is what the factor library says the factor may be used
+for. It is **advisory**. The authority is the category: for a suffix-variant, the registry's `ghg_category`
+for that suffix; otherwise the category's own scope in the spec.
+
+It has to be that way round, because a suffix exists precisely so one measured factor can be filed under
+several categories. A base carries the same `scopes[]` whatever suffix is attached, so letting it decide
+would either forbid the commuting variant of a business-travel factor or silently file a commute under
+business travel. The second is wrong invisibly, which is worse.
+
+So `scopes[]` is **reconciled and demoted when it disagrees**: the declared category wins, and the
+disagreement is recorded on the outcome for the caller to surface. Never silently dropped — a factor
+claiming it is not for this category deserves attention even when the mapping is right, because the other
+possibility is that the mapping is wrong. Agreement is graded rather than binary: a factor claiming the
+parent scope (`3` for `3.6`) **agrees**, and one claiming nothing is **silent**. Reporting those as
+contradictions would cry wolf on the common case and make the signal worthless.
+
+**Two exemplars seeded, deliberately only two.** Purchased electricity (lookup) and company vehicles
+(basis-branch on `unit`, fuel branch only). These are the categories whose mapping is already settled.
+Seeding a rule for a category whose factor family nobody has agreed would be inventing domain policy in a
+migration, which is the thing making this declarative is meant to stop. The vehicle **distance** branch is
+not seeded because no per-kilometre vehicle factor exists in the demonstration dataset: a rule that can
+never fire would state a mapping nobody agreed, and the distance entry keeps the search until there is a
+factor to point it at. The real-database suite asserts the seeded set is *exactly* those two, so a third
+appearing quietly fails.
+
+**suffix-variant is built and proved but not seeded**, for the same reason: no factor family in the
+demonstration dataset carries registered suffixes yet. It is exercised against factors the tests insert,
+including the two refusals that matter — a suffix the registry does not hold is never invented, and a
+**retired** suffix is not used for a new entry even though it still parses, because retirement withholds a
+suffix from new fan-outs while the factors already carrying it stay readable.
+
+**Every branch of the shape constraint names every column, including the ones it requires to be NULL.**
+Written the shorter way — `rule_kind <> 'basis-branch' OR basis_field_key IS NOT NULL` — a NULL makes the
+whole expression NULL and the row is admitted. That is precisely how 0109 came to permit every row it was
+written to exclude (NZC-143). The suite gives each branch a row that should not exist and asks the
+database, because a constraint nobody has watched refuse is a comment.
+
+**One correction made while writing the proof.** The test asserting that unmapped categories still use the
+search originally passed `rules: []` for every category — which re-proved the unit test and would have
+passed just as happily if every category had been mapped by mistake. It reads each category's own rules
+from the database now, and asserts the loop ran at least eighteen times, because a loop whose body never
+executes is a test that passes having checked nothing.
+
+**Related.** NZC-145 (the variant registry and why bases are split on it rather than on the last hyphen),
+NZC-146 (units, and why litres and kilometres are different calculations), NZC-143 (the NULL-admitting
+CHECK), NZC-102 (the governed input spec this extends), NZC-030 (dataset selection).
