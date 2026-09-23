@@ -285,6 +285,56 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     assert.ok(!JSON.stringify(vehicleAttributes(found.ok ? found.vehicle : {} as never)).toUpperCase().includes("XY34ZAB"));
   });
 
+  it("leaves a petrol vehicle unresolved rather than filing it against the diesel factor", async () => {
+    // The ruled case (NZC-151), against the rules the migration actually seeded. XY34ZAB is diesel in
+    // the stub, so a petrol plate is needed: AB12CDE is the one the stub calls petrol — asserted, not
+    // assumed, because a reshuffled stub would otherwise turn this into a test of nothing.
+    const found = await lookupVehicleByRegistration("AB12CDE", { allowStub: true });
+    assert.equal(found.ok, true);
+    if (!found.ok) return;
+    const attributes = vehicleAttributes(found.vehicle);
+    assert.equal(attributes.fuel, "petrol", "AB12CDE is no longer a petrol in the stub");
+
+    // `unit: litres` means the seeded coarser rule would resolve to diesel-demo if it were allowed to.
+    const outcome = resolveFactorForEntry({
+      rules: await vehicleRules(), specGhgCategory: "1",
+      entry: { registrationFinder: "AB12CDE", unit: "litres" },
+      available, registry, enrichment: { dvla: attributes },
+    });
+    assert.equal(outcome.kind, "free-search", "a petrol vehicle was filed against the diesel factor");
+    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /consulted and matched no rule/);
+  });
+
+  it("resolves that same petrol vehicle once a petrol rule is seeded", async () => {
+    // The pair. Without it the test above would be satisfied by an enriched path that had stopped
+    // working altogether. The rule is inserted into the real table, so the shape constraint and the
+    // read model are both exercised on the way through.
+    await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+      (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field,
+       basis_field_key, basis_value, created_by, updated_by)
+      VALUES ($1,$2,6,'enriched',$3,'dvla','registrationFinder','fuel','petrol','test','test')`,
+    ["1.company-vehicles", "dvla-petrol", "petrol-demo"]);
+
+    const found = await lookupVehicleByRegistration("AB12CDE", { allowStub: true });
+    assert.equal(found.ok, true);
+    if (!found.ok) return;
+
+    const outcome = resolveFactorForEntry({
+      rules: await vehicleRules(), specGhgCategory: "1",
+      entry: { registrationFinder: "AB12CDE", unit: "litres" },
+      available: [...available, { factorId: "petrol-demo", scopes: ["1"] }],
+      registry, enrichment: { dvla: vehicleAttributes(found.vehicle) },
+    });
+    assert.equal(outcome.kind, "resolved");
+    if (outcome.kind !== "resolved") return;
+    assert.equal(outcome.factorId, "petrol-demo");
+    assert.equal(outcome.rule.ruleKey, "dvla-petrol");
+
+    // Removed again, so the suite leaves the seeded set as the migration declares it — the test above
+    // asserting there are exactly two mapped categories must not depend on running first.
+    await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = $1`, ["dvla-petrol"]);
+  });
+
   it("refuses an enriched rule missing its source or its key field", async () => {
     const insert = `INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field,

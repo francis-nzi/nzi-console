@@ -4642,11 +4642,50 @@ the constraint tests then rather than later.
 resolving path would have looked tested and would not have been. It failed because the test asserts the
 stub's answer rather than assuming it — the same habit that caught the accepted-units and gate-count cases.
 
-**One question left open rather than decided here.** A lookup that *succeeds* and matches no rule — a petrol
-vehicle, with only a diesel rule seeded — still falls through to the coarser `unit = litres` rule and
-resolves to the diesel factor. That is a defensible reading of additive, and it is also a ~10% error that
-looks ordinary. Whether a consulted-and-unmatched lookup should stop resolution the way a failed one does is
-a domain policy call, and it is put to the review stop rather than settled in passing.
+**A consulted lookup is never overruled by a coarser rule.** The first draft let a lookup that *succeeded*
+and matched no rule fall through — a petrol vehicle, with only a diesel rule seeded, resolving to the diesel
+factor via `unit = litres`. That is a defensible reading of "additive" and it is also a ~10% error that
+looks entirely ordinary on a report. **Ruled: stop.** Once a more specific selector has been consulted, only
+it may answer; the entry goes to the search, exactly as it does when the lookup fails.
+
+The line holds where it matters: falling back to the **search** is always allowed, and is what makes this
+additive. Falling back to a different, **less specific declared rule** after consulting a more specific one
+is not — it is a silent downgrade wearing the same word.
+
+What is *not* set aside is a sibling enriched rule on the same lookup: a category with a rule per fuel must
+still reach the petrol one, so "stop" means "stop at a coarser rule", never "stop at the first decline".
+Rules that are set aside say so in `declined`, so the outcome explains itself rather than going quiet. The
+proof is a pair — a petrol vehicle with only a diesel rule stays unresolved though the coarser rule would
+have matched, and the same entry resolves once a petrol rule is declared, which is what stops the first
+assertion being satisfied by an enriched path that had simply stopped working.
+
+**The NULL footgun, audited across the schema.** It has now caused two defects (NZC-143's CHECK, and the
+uniqueness regression above), so every unique index and check constraint was examined mechanically rather
+than by recollection.
+
+*Unique keys:* thirteen include a nullable column. **Eleven are correct by construction** — partial indexes
+carrying `WHERE <column> IS NOT NULL`, so the column is never NULL within the index. The two without a
+predicate (`jobs (organisation_id, job_number)`, `portal_users (organisation_id, email_normalized)`) are
+intended: an unnumbered job and a sealed user's nulled plaintext are exactly the rows that should not
+collide, and sealed uniqueness is carried by the blind-index partial alongside. Neither is the shape that
+bit here, which was adding a mostly-NULL column to a key that already worked.
+
+*Check constraints:* one genuine instance survives, in two places —
+`job_scope_rows_distribution_grain` and its twin on `job_emission_sources`:
+
+```sql
+CHECK (activity_distributed = false OR activity_frequency = ANY (ARRAY['annual','quarterly']))
+```
+
+With `activity_distributed = true` and `activity_frequency` NULL the expression is `false OR NULL` — NULL,
+and the row is admitted. A row may therefore claim its months were derived while recording nothing about
+what they were derived from. The write paths set both together, so this looks unreachable through a command;
+that makes it a last line of defence which does not hold rather than a live defect, and it is recorded here
+as a finding rather than fixed inside this change.
+
+The one other candidate, `client_strategies_estimate_percent_bounded`, uses `IS DISTINCT FROM` and is
+NULL-safe on the branch that matters; its admitted case is a percent with no amount, which has no bound to
+break.
 
 **Related.** NZC-149 (the three kinds this joins, and the constraint it nearly broke), NZC-103 (the plate
 stops at the lookup boundary), NZC-104 (and does not leave with the report), NZC-145 (the variant registry
