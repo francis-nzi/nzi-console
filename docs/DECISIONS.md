@@ -4865,6 +4865,10 @@ rows are marked with `sourceType` in provenance as that precedent does.
    the spec *and* in the write path. Until then the rule is a forward reference and the companion declines,
    which is correct — but it also means "the companion works" is not a claim the wiring commit may make
    until this holds.
+4. **Sub-flow propagation proven.** A change to the vehicle flow must be shown to reach **both** sub-flow
+   consumers, business travel and commuting (NZC-158). That composition is a reference rather than a copy is
+   structural today — each category carries exactly one rule, a sub-flow pointing at the vehicle category —
+   but a mutation-propagation test needs live behaviour to propagate to, which only the wiring provides.
 
 **End-of-life is declared as a kind and deliberately not seeded.** The mechanism covers it: `end-of-life` is
 an enumerated companion kind, and all-matching-fire is what makes several rows from one entry possible. What
@@ -5007,8 +5011,34 @@ and a DVLA basis still collide. Because this is a loosening, what it was for is 
 assumed: two captured branches on one field still collide, a DVLA and a captured branch still collide, and
 a sub-flow with a fallback is now permitted.
 
+**Resolution order is declared, and proved to be honoured.** The loosening made reachable an ordering
+question that uniqueness had previously mooted: while a category could hold at most one no-basis rule, order
+among them never mattered. Now a sub-flow and a fallback can coexist and `ordering` decides which answers,
+so an order that was incidental to insertion could silently invert — and the fallback answering first is the
+Scope 1 base through the **front** door, rather than the back door the STOP closes.
+
+It is explicit at every layer: `ordering` is NOT NULL in the schema, the read model sorts
+`ORDER BY ordering, rule_key`, and the resolver sorts by the same pair, so array position never decides.
+That it is *honoured* is proved as a **pair** rather than asserted once — the same two rules with only the
+declared numbers swapped resolve to the other factor, in the unit suite and again across a real database
+round-trip where the fallback is inserted second and still loses until its number changes. One direction
+alone cannot distinguish "the declared order was honoured" from "it came out that way". The tie-break on
+`rule_key` matters for the same reason: two rules at one ordering would otherwise resolve differently
+depending on how the rows came back.
+
+**The front door is checked in the data, because the resolver cannot close it.** A rule ordered *ahead* of a
+sub-flow answers before the sub-flow runs, and that is a legitimate tool rather than a defect — ordering
+belongs to whoever authors the spec. So the invariant belongs to the spec too: no category declares a
+base-resolving rule ahead of its sub-flow. It is asserted generatively over whatever is seeded, so a future
+migration that ordered one ahead fails on its own, and the assertion was watched failing against a
+deliberately violating row.
+
 **Substrate, not yet wired**, on the same terms as NZC-154: the resolver is pure, nothing calls it from the
-write path, and the wiring commit remains its own review stop with its three conditions.
+write path, and the wiring commit remains its own review stop — now with **four** conditions, the fourth
+being that a change to the vehicle flow is shown to propagate to both sub-flow consumers. The
+composition-not-duplication property is structural here (both categories carry exactly one rule, a sub-flow
+pointing at the vehicle category), but propagation has no live behaviour to propagate *to* until the
+resolver is wired, so its test belongs with that characterisation.
 
 **Related.** NZC-145 (the variant registry and why bases are split on it), NZC-146 (the unit the variant
 inherits), NZC-149 (the rules a sub-flow reuses), NZC-151 (the STOP this repeats one layer down), NZC-154

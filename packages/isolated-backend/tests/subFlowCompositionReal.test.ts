@@ -188,6 +188,56 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'fallback-lookup'`);
   });
 
+  it("resolves in the declared order, not the order the rows were inserted", async () => {
+    // The residual the uniqueness loosening made reachable. While a category could hold only one no-basis
+    // rule, order among them never mattered. Now a sub-flow and a fallback can coexist and `ordering`
+    // decides which answers — so this proves the *database* round-trip honours the declared number rather
+    // than insertion or physical row order, which is where an incidental order would leak in.
+    //
+    // The fallback is inserted second and still loses, then the two numbers are swapped and it wins. One
+    // direction alone cannot tell "the declared order was honoured" from "it came out that way".
+    await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+      (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
+      VALUES ('3.6','order-probe-fallback',99,'lookup','diesel-demo','test','test')`);
+
+    const subFlowFirst = await resolveFor("3.6");
+    assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "diesel-demo-b",
+      "the fallback answered although it was declared behind the sub-flow");
+
+    // Swap the declared numbers. Nothing else changes — same rows, same category, same dataset.
+    await db.query(`UPDATE nzi_console.input_spec_factor_rules SET ordering = 5
+                     WHERE category_code = '3.6' AND rule_key = 'order-probe-fallback'`);
+
+    const fallbackFirst = await resolveFor("3.6");
+    assert.equal(fallbackFirst.kind === "resolved" ? fallbackFirst.factorId : null, "diesel-demo",
+      "the declared ordering was ignored on the way back from the database");
+
+    await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'order-probe-fallback'`);
+  });
+
+  it("declares no base-resolving rule ahead of a sub-flow, in any seeded category", async () => {
+    // The front-door version of the Scope 1 leak, checked at the data rather than in the resolver.
+    //
+    // The STOP closes the back door: a sub-flow that answered and could not be filed will not fall through
+    // to a coarser rule. It cannot close the front door, because a rule ordered *ahead* of the sub-flow
+    // answers before the sub-flow ever runs — and that is a legitimate tool, not a bug, which is exactly
+    // why the spec must be checked rather than the code. A base ordered first is a declared decision to
+    // file business travel against the Scope 1 factor.
+    //
+    // Generative over whatever is seeded, so a future migration that ordered one ahead fails here.
+    const { rows } = await db.query<{ category_code: string; rule_key: string; ordering: number }>(
+      `SELECT ahead.category_code, ahead.rule_key, ahead.ordering
+         FROM nzi_console.input_spec_factor_rules ahead
+         JOIN nzi_console.input_spec_factor_rules flow
+           ON flow.category_code = ahead.category_code AND flow.rule_kind = 'sub-flow'
+        WHERE ahead.active AND flow.active
+          AND ahead.factor_base IS NOT NULL
+          AND (ahead.ordering, ahead.rule_key) < (flow.ordering, flow.rule_key)`);
+    assert.deepEqual(rows, [],
+      "a rule resolving a factor base is declared ahead of a sub-flow, so it answers first and the "
+      + "sub-flow's category variant is never reached");
+  });
+
   it("refuses a sub-flow that carries a base of its own, or names itself", async () => {
     // Two answers in one rule, and which won would be an implementation detail.
     await assert.rejects(
