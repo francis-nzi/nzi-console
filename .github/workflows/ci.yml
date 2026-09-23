@@ -204,6 +204,12 @@ jobs:
       # row which counts be hidden.
       - name: Emissions totals exclude market and cannot hide a row that counts
         run: npx tsx --test packages/isolated-backend/tests/emissionsAggregationReal.test.ts
+      # The category-variant registry (NZC-145). Two things only real Postgres can show: that a base is
+      # recovered by splitting on the live registry rather than on a pattern — every seeded factor ends in
+      # "-demo", which a naive parser reads as a variant — and that the permanence trigger refuses a rename
+      # or a delete against the owner, which a grant would not have stopped.
+      - name: A factor base is recovered by the registry, and a suffix is permanent
+        run: npx tsx --test packages/isolated-backend/tests/factorCategoryVariantsReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
