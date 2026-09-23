@@ -11,7 +11,6 @@ import { LcaWorkspace } from "../lca/LcaWorkspace";
 import { TrainingWorkspace } from "../training/TrainingWorkspace";
 import { jobModuleEnabled } from "../../lib/jobModuleFlags";
 import type { TrainingRunRecord, JobEmissions } from "@nzi/isolated-backend";
-import { EmissionsSummary } from "../EmissionsSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -54,10 +53,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   return <ScreenState result={result}>{(data) => {
     const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
     if (!job) notFound();
-    if (job.header.family === "crp") return <>
-      <ScreenState result={emissions}>{(emissionsData) => <EmissionsSummary jobId={job.header.id} siteId={null} siteLabel="All sites" initial={emissionsData}/>}</ScreenState>
-      <ScreenState result={scopeRows}>{(scopeData) => <ScreenState result={factors}>{(factorData) => <ScreenState result={target}>{targetData=><ScreenState result={intensity}>{intensityData=><ScreenState result={sites}>{siteData=><ScreenState result={categories}>{categoryData=><CrpScopeWorkspace specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>
-    </>;
+    if (job.header.family === "crp") return <ScreenState result={emissions}>{(emissionsData) => <ScreenState result={scopeRows}>{(scopeData) => <ScreenState result={factors}>{(factorData) => <ScreenState result={target}>{targetData=><ScreenState result={intensity}>{intensityData=><ScreenState result={sites}>{siteData=><ScreenState result={categories}>{categoryData=><CrpScopeWorkspace specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} emissions={emissionsData} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
     if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca}>{(lcaData) => <ScreenState result={factors}>{(factorData) => <ScreenState result={lcaComponents}>{(componentData) => <LcaWorkspace job={job} assessments={lcaData.assessments} factors={factorData.factors} components={componentData.components} categories={componentData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>;
     // Track C — the training module, behind `job-module-training`; FamilyWorkspace still
     // serves training jobs while the flag is off. `today` is resolved here, on the server,
