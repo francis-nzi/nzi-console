@@ -1,4 +1,4 @@
-import type { FactorRule } from "@nzi/contracts";
+import type { CompanionRule, FactorRule } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 
 /**
@@ -82,4 +82,65 @@ export async function factorRulesFor(db: Queryable, categoryCode: string): Promi
   const result = await db.query<Row>(
     `${SELECT} AND category_code = $1 ORDER BY ordering, rule_key`, [categoryCode]);
   return result.rows.map(toRule).filter((rule): rule is FactorRule => rule !== null);
+}
+
+// ── Companion rules (NZC-154) ───────────────────────────────────────────────────────────────────────
+
+type CompanionRow = {
+  category_code: string;
+  companion_key: string;
+  ordering: number;
+  companion_kind: string;
+  factor_base: string;
+  ghg_category: string;
+  when_field_key: string;
+  when_values: string[];
+  label: string;
+};
+
+const COMPANION_SELECT = `SELECT category_code, companion_key, ordering, companion_kind, factor_base,
+                                 ghg_category, when_field_key, when_values, label
+                            FROM nzi_console.input_spec_companion_rules
+                           WHERE active`;
+
+/**
+ * One row as a companion rule, or `null` when it claims a kind this build does not know.
+ *
+ * Unknown kinds are dropped rather than coerced. A companion the engine cannot describe is one it should
+ * not be proposing rows for — the alternative is a row on a client's report whose reason for existing is
+ * a string nothing in this version understands.
+ */
+function toCompanion(row: CompanionRow): CompanionRule | null {
+  if (row.companion_kind !== "transmission-distribution" && row.companion_kind !== "end-of-life") return null;
+  return {
+    companionKey: row.companion_key,
+    ordering: row.ordering,
+    kind: row.companion_kind,
+    factorBase: row.factor_base,
+    ghgCategory: row.ghg_category,
+    whenFieldKey: row.when_field_key,
+    whenValues: row.when_values,
+    label: row.label,
+  };
+}
+
+/** One category's companion rules, in evaluation order. An empty array means the entry is one row. */
+export async function companionRulesFor(db: Queryable, categoryCode: string): Promise<CompanionRule[]> {
+  const result = await db.query<CompanionRow>(
+    `${COMPANION_SELECT} AND category_code = $1 ORDER BY ordering, companion_key`, [categoryCode]);
+  return result.rows.map(toCompanion).filter((rule): rule is CompanionRule => rule !== null);
+}
+
+/** Every active companion rule, grouped by category. */
+export async function listCompanionRules(db: Queryable): Promise<Map<string, CompanionRule[]>> {
+  const result = await db.query<CompanionRow>(`${COMPANION_SELECT} ORDER BY category_code, ordering, companion_key`);
+  const byCategory = new Map<string, CompanionRule[]>();
+  for (const row of result.rows) {
+    const rule = toCompanion(row);
+    if (!rule) continue;
+    const existing = byCategory.get(row.category_code);
+    if (existing) existing.push(rule);
+    else byCategory.set(row.category_code, [rule]);
+  }
+  return byCategory;
 }

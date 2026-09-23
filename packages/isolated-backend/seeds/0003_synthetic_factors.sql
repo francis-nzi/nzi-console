@@ -16,6 +16,11 @@ VALUES
   ('demo-nzi-console','synthetic-gb-2026','gas-demo','Natural gas — demonstration factor','kWh',0.180000,ARRAY['1']),
   ('demo-nzi-console','synthetic-gb-2026','electricity-demo','UK electricity — demonstration factor','kWh',0.300000,ARRAY['2']),
   ('demo-nzi-console','synthetic-gb-2026','freight-demo','Road freight — demonstration factor','t·km',0.200000,ARRAY['3']),
+  -- Transmission and distribution losses, so the companion rule 0115 declares has something to resolve
+  -- against in the demonstration dataset. Scope 3.3, priced per kWh delivered, and far smaller than the
+  -- supply factor beside it — which is what makes a companion row that silently failed to appear hard to
+  -- notice by eye, and worth a test.
+  ('demo-nzi-console','synthetic-gb-2026','electricity-td-demo','UK electricity T&D — demonstration factor','kWh',0.025000,ARRAY['3']),
   ('demo-nzi-console','synthetic-global-2026','spend-demo','Purchased goods spend — demonstration factor','GBP',0.150000,ARRAY['3']),
   ('demo-nzi-console','synthetic-us-2026','electricity-us-demo','US electricity — demonstration factor','kWh',0.400000,ARRAY['2'])
 ON CONFLICT (organisation_id,dataset_id,factor_id) DO UPDATE SET label=EXCLUDED.label,activity_unit=EXCLUDED.activity_unit,kgco2e_per_unit=EXCLUDED.kgco2e_per_unit,scopes=EXCLUDED.scopes;
