@@ -5026,6 +5026,27 @@ alone cannot distinguish "the declared order was honoured" from "it came out tha
 `rule_key` matters for the same reason: two rules at one ordering would otherwise resolve differently
 depending on how the rows came back.
 
+**The invariant is targeted at the shadowed base, and holds at any order.**
+
+*Targeted*, because the offence is a rule resolving the very base the sub-flow derives its variants from
+— `diesel-demo` in a category whose sub-flow produces `diesel-demo-b`. A rail or air lookup in business
+travel is a different activity with a different factor: it declines on vehicle input and may sit anywhere.
+The first version matched on "has a factor base" and would have refused it, and an invariant that refuses
+legitimate authoring is one somebody eventually switches off.
+
+*At any order*, which is a tightening with a reason rather than tidiness. Ordered **ahead**, such a rule
+answers before the sub-flow runs. Ordered **behind**, it fires whenever the sub-flow declines without
+stopping — which is exactly the case where the referenced flow identified no vehicle. Resolving the Scope 1
+base for an unidentified vehicle, in business travel, is the same leak reached from the other side, and the
+STOP cannot reach it because nothing was learned to protect. So "not ahead" left a hole and "at all" closes
+it, while still permitting the unrelated fallback.
+
+Both halves are proved: a shadow is caught at an ordering ahead of and behind the sub-flow, and an
+unrelated fallback in the same category is not reported. The exact-count assertion in that probe found a
+defect in the check itself — joining through to the referenced rules multiplied one offending rule by the
+number of rules declaring that base, so it is written with `EXISTS`. An invariant whose output multiplies
+by an unrelated count is one whose message nobody trusts.
+
 **The front door is checked in the data, because the resolver cannot close it.** A rule ordered *ahead* of a
 sub-flow answers before the sub-flow runs, and that is a legitimate tool rather than a defect — ordering
 belongs to whoever authors the spec. So the invariant belongs to the spec too: no category declares a
