@@ -4195,6 +4195,14 @@ all three commands for four capability sets — none, `clientfactor.manage`, `da
 `scoperow.edit` — and then asserts the registry is unchanged, because a gate no one has watched refuse is
 not a gate.
 
+**0110 says less than this entry does, and that is deliberate.** The fix above also rewrote the migration
+comment to say "Admin alone, checked by every one of the three commands" — after 0110 had already been
+applied to staging. The runner refused the next deploy on the checksum, correctly: a migration is frozen
+once applied, and the rule does not have an exemption for comments because the checksum is over the file.
+The file is restored to the bytes staging holds, and the fuller statement lives here and in the module
+docblock, which are the places that are allowed to keep up. Anyone tempted to bring the migration comment
+into line should add a new migration or change nothing.
+
 **A suffix code is permanent, in use or not — which is stricter than asked.** The brief said "permanent once
 in use". "In use" cannot be answered honestly from here: factors are tenant-scoped under `FORCE ROW LEVEL
 SECURITY` and this registry is not, so a trigger counting them would see only whichever tenant's context
