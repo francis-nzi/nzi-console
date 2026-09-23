@@ -51,6 +51,17 @@ jobs:
       # the next copy before it is written (NZC-106).
       - run: npm run check:dates
       - run: npm run check:terminology
+      # A migration on main is frozen — the ledger's checksum is over the whole file, so even a comment
+      # breaks the next deploy. That has now happened three times, most recently on #263/#264: a comment
+      # improved on an already-applied 0110, and staging refused to deploy until the bytes were restored.
+      #
+      # The fetch is not optional and it is not a formality. `actions/checkout` clones shallow, without
+      # `origin/main`, and a gate with nothing to compare against would pass everything — so the script
+      # treats an unresolvable base as a failure rather than a skip, and this step is what stops that
+      # failure from being how everybody finds out.
+      - name: Fetch main, which the frozen-migration gate compares against
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+      - run: npm run check:migrations-frozen
       - run: npm run typecheck
       - run: npm run build
       - run: npm test -w @nzi/contracts
