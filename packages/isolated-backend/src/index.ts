@@ -83,6 +83,7 @@ export { listClientFiles, listClientMessages, listClientReports, type ClientFile
 export * from "./clientLogo";
 export * from "./clientTargets";
 export * from "./emissionsAggregation";
+export * from "./factorCategoryVariants";
 export {
   assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
   removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy,

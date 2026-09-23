@@ -4157,3 +4157,62 @@ portal to show the same figure. Moving it to a governed read is what makes it th
 **Related.** NZC-143 (the method column its location rule reads), NZC-008 (the scope-row model it sums),
 NZC-022 (the permission matrix that governs the read), NZC-005 (evidence-drawer-first — a number with its
 lineage one click away).
+
+### NZC-145 — A category variant is a registered suffix, and a suffix is permanent [Confirmed 23 Sep 2026]
+
+**Decision.** One measured factor is used under several GHG Protocol categories, and which category is
+recorded as a **suffix on the factor id** read from a governed registry: `<base>-b` is the business-travel
+variant of `<base>`. Every variant of a base carries the **same kgCO₂e per unit** — the suffix records the
+category, never a different value. A variant with a different number is not a variant, it is another factor.
+
+**A suffix is a suffix only because the registry says so.** Parsing splits on the live registry's codes and
+never on a shape, and the reason is in the data: every factor already seeded ends in something
+suffix-shaped — `diesel-demo`, `freight-demo`, `electricity-us-demo`, `lca-rpet-demo`. A parser splitting on
+the last hyphen would read `diesel-demo` as `diesel` with a `-demo` variant, attach a category nobody
+registered, and group unrelated factors under one base. The negative case is the one the suite turns on.
+
+One module knows how to take an id apart (`parseFactorId`, `groupByBase`). The alternative is
+`factorId.split("-")` in a read model, a picker and a report, which is three chances to disagree about what
+a factor is.
+
+**Estate-wide, like the other definition tier.** `reference_categories` has no `organisation_id` while
+`reference_values` does; a suffix vocabulary belongs to the first. Two tenants defining `-c` differently
+would make a factor id mean two things.
+
+This is a **widening to state**: unlike `reference_categories`, the table is writable by `nzi_console_app`,
+because the registry is admin-managed and extensible. That is a tenant-reachable write to estate-wide data,
+governed by `factor.manage`, audited, and constrained so that adding a variant is purely additive — no new
+suffix can change what an existing one means. The alternative, a per-tenant registry, trades that for the
+divergence above.
+
+**A suffix code is permanent, in use or not — which is stricter than asked.** The brief said "permanent once
+in use". "In use" cannot be answered honestly from here: factors are tenant-scoped under `FORCE ROW LEVEL
+SECURITY` and this registry is not, so a trigger counting them would see only whichever tenant's context
+happened to be set. A suffix in use by another client would look unused and the guard would allow exactly
+the silent re-categorisation it exists to prevent. Answering it properly needs a `SECURITY DEFINER`
+cross-tenant read (NZC-123) — a privilege granted to enforce a convenience. Immutability needs none, and
+costs one retired row when somebody mistypes a suffix before anyone uses it.
+
+The GHG category is immutable for the same reason: leaving `-b` in place and repointing it re-categorises
+the same rows just as thoroughly as a rename. Label and description stay editable; retirement is the way a
+variant leaves.
+
+**Enforced by a trigger, not only a grant.** `REVOKE DELETE` stops the application and not the owner — and
+the owner is who applies migrations and who the test harness connects as, so a grant-only guard is one that
+cannot be shown to work. The trigger holds for every identity, which is also what makes the refusal
+testable; the suite asserts a rename, a delete and a category change all fail *as the owner*.
+
+**Retirement answers a different question from parsing.** A retired variant is withheld from new fan-outs
+and still resolves, because the factors already carrying it are history and an id that stopped parsing
+would take its category with it. One "usable" flag would have had to answer both and would have got one
+wrong.
+
+**No silent normalisation.** `-C` is refused rather than folded to `-c`: the code is permanent, so creating
+one the admin did not type means they find out later from a factor id.
+
+**Substrate only.** This is P2 of the resolution rebuild — the registry and the base/suffix concept.
+Mapping a spec to a factor row (P3) is not built, and neither is any fan-out.
+
+**Related.** NZC-030 (dataset selection), NZC-041 (client factors), NZC-109 (a client's own label for a
+factor), NZC-123 (why a cross-tenant read is a privilege rather than a convenience), NZC-119 (enumerate
+rather than skip).
