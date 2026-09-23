@@ -42,6 +42,8 @@ export class IdempotencyConflictError extends Error {
     this.name = "IdempotencyConflictError";
   }
 }
+import { checkUnit, isAcceptedUnit } from "./unitCompatibility";
+
 export class CommandValidationError extends Error {
   constructor(readonly issues: ReturnType<typeof validateCommand>) {
     super("Command validation failed.");
@@ -775,6 +777,69 @@ const resolveMonthlyActivity = (db: Queryable, organisationId: string, jobId: st
 
 const resolveSourceMonthlyActivity = (db: Queryable, organisationId: string, jobId: string, input: ActivityInput) =>
   resolveActivityVector(db, organisationId, jobId, input, "Monthly source activity");
+/**
+ * Refuse a quantity whose unit does not reconcile with what the factor is priced in (NZC-146).
+ *
+ * Two questions, asked in order, because they have different fixes:
+ *
+ *   1. does this field accept this unit at all — a spec question;
+ *   2. does it reconcile with the resolved factor's `activity_unit` — a factor question.
+ *
+ * Neither is silently passed. The failure this prevents is not a crash: it is litres of diesel
+ * multiplied by a per-kilometre factor, which produces a number that looks entirely ordinary on a
+ * client's report and is wrong by orders of magnitude. A convertible unit is converted, and the stored
+ * quantity is then in the factor's own terms.
+ *
+ * A row with no factor yet — a draft captured before anyone picks one — is left alone: there is nothing
+ * to reconcile against, and refusing it would stop capture rather than protect it.
+ */
+async function reconcileUnitWithFactor(
+  db: Queryable, organisationId: string, _jobId: string,
+  input: { unit?: string | null; quantity: number | null; datasetId: string | null; factorId: string | null; categoryCode?: string | null },
+): Promise<{ quantity: number | null; unit: string | null; conversion: { from: string; to: string; factor: number } | null }> {
+  const entered = input.unit?.trim() || null;
+  if (!entered || !input.factorId || !input.datasetId) {
+    return { quantity: input.quantity, unit: entered, conversion: null };
+  }
+
+  // The spec's own answer first, when the category declares one.
+  if (input.categoryCode) {
+    const spec = await db.query<{ accepted_units: string[] | null }>(
+      `SELECT accepted_units FROM nzi_console.input_spec_fields
+        WHERE category_code = $1 AND field_key = 'unit' AND active`, [input.categoryCode]);
+    const accepted = spec.rows[0]?.accepted_units ?? null;
+    if (accepted && !isAcceptedUnit(entered, accepted)) {
+      throw new CommandValidationError([{
+        field: "unit", code: "UNIT_NOT_ACCEPTED",
+        message: `This category collects ${accepted.join(", ")}. '${entered}' is not one of them.`,
+      }]);
+    }
+  }
+
+  const factor = await db.query<{ activity_unit: string }>(
+    `SELECT activity_unit FROM nzi_console.emission_factors
+      WHERE organisation_id = $1 AND dataset_id = $2 AND factor_id = $3`,
+    [organisationId, input.datasetId, input.factorId]);
+  const activityUnit = factor.rows[0]?.activity_unit ?? null;
+  // No such factor is the factor guard's business, not this one's; it reports a clearer error.
+  if (activityUnit === null) return { quantity: input.quantity, unit: entered, conversion: null };
+
+  const check = checkUnit(entered, activityUnit);
+  if (check.kind === "reject") {
+    throw new CommandValidationError([{
+      field: "unit", code: "UNIT_INCOMPATIBLE",
+      message: `The factor is priced per ${activityUnit}: ${check.reason}.`,
+    }]);
+  }
+  if (check.kind === "same") return { quantity: input.quantity, unit: entered, conversion: null };
+
+  return {
+    quantity: input.quantity === null ? null : input.quantity * check.factor,
+    unit: activityUnit,
+    conversion: { from: check.from, to: check.to, factor: check.factor },
+  };
+}
+
 async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);}
 
 
@@ -1210,6 +1275,12 @@ export async function createScopeRow(
       const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
+      // Units reconciled before anything is written: an entry whose unit cannot stand for the
+      // factor's own is refused rather than stored and multiplied later (NZC-146).
+      const reconciled = await reconcileUnitWithFactor(db, context.organisationId, input.jobId, {
+        unit: input.unit, quantity: activity.quantity, datasetId: input.datasetId,
+        factorId: input.factorId, categoryCode,
+      });
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
       (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report)
@@ -1222,8 +1293,8 @@ export async function createScopeRow(
           input.sourceLabel.trim(),
           input.siteId??null,
           input.purchasedGoodsCategoryId??null,
-          activity.quantity,
-          input.unit?.trim() || null,
+          reconciled.quantity,
+          reconciled.unit,
           input.datasetId,
           input.factorId,
           input.factorVersion,
@@ -1293,6 +1364,12 @@ export async function updateScopeRow(
       const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
+      // Units reconciled before anything is written: an entry whose unit cannot stand for the
+      // factor's own is refused rather than stored and multiplied later (NZC-146).
+      const reconciled = await reconcileUnitWithFactor(db, context.organisationId, input.jobId, {
+        unit: input.unit, quantity: activity.quantity, datasetId: input.datasetId,
+        factorId: input.factorId, categoryCode,
+      });
       const updated = await db.query<{ version: number }>(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
@@ -1306,8 +1383,8 @@ export async function updateScopeRow(
           input.sourceLabel.trim(),
           input.siteId??null,
           input.purchasedGoodsCategoryId??null,
-          activity.quantity,
-          input.unit?.trim() || null,
+          reconciled.quantity,
+          reconciled.unit,
           input.datasetId,
           input.factorId,
           input.factorVersion,

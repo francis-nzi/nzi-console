@@ -210,6 +210,13 @@ jobs:
       # or a delete against the owner, which a grant would not have stopped.
       - name: A factor base is recovered by the registry, and a suffix is permanent
         run: npx tsx --test packages/isolated-backend/tests/factorCategoryVariantsReal.test.ts
+      # Unit reconciliation (NZC-146). The assertions that decide whether this works are the refusals —
+      # litres against a per-kilometre factor, a passenger-km against a vehicle-km, a unit nobody has
+      # heard of — because a check that accepts everything passes every test about what it should accept.
+      # Real Postgres is needed for the other half: that every unit the seeded spec declares is one the
+      # checker recognises, since a declared unit it cannot read would refuse every entry for that field.
+      - name: A unit reconciles with its factor, or the entry is refused
+        run: npx tsx --test packages/isolated-backend/tests/unitCompatibilityReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

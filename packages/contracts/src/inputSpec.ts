@@ -62,6 +62,17 @@ export type InputSpecField = {
   whenModes: InputSpecMode[] | null;
   whenLean: boolean | null;
   labelVariants: InputSpecVariant[];
+  /**
+   * The units this field accepts, or null when it does not constrain them (NZC-146).
+   *
+   * Per field rather than per category, because a category can collect a distance and a volume while its
+   * spend variant collects neither — and because 0093's per-category list was the same global list on
+   * every one of the twenty categories, so Refrigerants offered kilowatt-hours.
+   *
+   * Null is the behaviour every spec had before the column existed, which is what makes declaring units
+   * additive: a field that declares them is checked, a field that does not is not.
+   */
+  acceptedUnits: string[] | null;
 };
 
 export type InputSpecCategory = {

@@ -4234,3 +4234,89 @@ Mapping a spec to a factor row (P3) is not built, and neither is any fan-out.
 **Related.** NZC-030 (dataset selection), NZC-041 (client factors), NZC-109 (a client's own label for a
 factor), NZC-123 (why a cross-tenant read is a privilege rather than a convenience), NZC-119 (enumerate
 rather than skip).
+
+### NZC-146 — A unit reconciles with its factor, or the entry is refused [Confirmed 23 Sep 2026]
+
+**Decision.** A quantity is stored in the unit its factor is priced in. An entered unit is either the
+factor's own, or convertible to it within one dimension — in which case it is converted and the quantity
+travels in the factor's terms — or the entry is **refused**. There is no third path in which a unit is
+accepted uncomputed and reconciled later.
+
+The failure this exists to prevent is not a crash. Litres of diesel multiplied by a per-kilometre factor
+produces a number that looks entirely ordinary on a client's report and is wrong by two orders of magnitude.
+Nothing downstream can tell it from a correct one, because by then the unit is gone.
+
+**Two questions, asked in that order, because they have different fixes.** Does the field accept this unit
+at all — a spec question, answered from `input_spec_fields.accepted_units`; and does it reconcile with the
+resolved factor's `activity_unit` — a factor question. "This category does not collect litres" and "this
+factor is not priced in litres" send somebody to different places, and one message covering both would send
+them to the wrong one.
+
+**An unknown unit is a refusal, not a pass.** Treating anything unrecognised as compatible is the shape of
+check whose failure is indistinguishable from its success: it would report green on every test written about
+what it should accept while letting through the one thing it exists to stop. The same reason makes money,
+counts and area **identity-only** rather than falling through to a ratio of 1 — £1 is not convertible to
+anything, and `1 unit = 1 night` is the sort of default that only ever shows up in a total.
+
+**A passenger-kilometre is its own dimension, not a kilometre.** The two look alike and differ by occupancy:
+a factor priced per passenger-km applied to vehicle-km misstates a full car by however many people were in
+it. Keeping them separate costs one dimension in a map and is the difference between a refusal and a
+plausible wrong answer.
+
+**`lcaUnits` could not be the home for this, and the brief's instruction is recorded rather than quietly
+followed.** The brief said to convert "via `lcaUnits`" and to never re-implement unit maths. `lcaUnits` is
+not a unit library: it is a **parity mirror** of the live engine's `lca_engine.py` / `lca_transport.py` — GHG
+numerator multipliers, the tonne-vs-kg material basis, freight denominators, haversine distance, detour
+factors — and its own header records that a line's quantity is always kg by live policy. It has no
+`convert(value, from, to)`, no notion of compatibility, and nothing at all for kWh, GJ, litres,
+passenger-km, m², nights or GBP; its comment states that non-mass activity units "are left at 1.0 — no
+density is available".
+
+Adding general conversion to that file would make the one question it exists to answer — *does this still
+match the live engine?* — unanswerable. So the conversions live in a sibling module, and the second half of
+the instruction is honoured where it bites: the one number that is a **choice** rather than a definition,
+`MILES_PER_KM`, is imported from `lcaUnits` rather than retyped, and so is `denominatorOf`, which already
+knew how to split a compound factor unit. Tonnes-to-kilograms is a definition, not policy.
+
+**A factor unit can be compound, and is taken apart by the parser that already existed.** `kgCO2e/km` is
+priced per kilometre; it is the **denominator** the entered quantity has to match, because the numerator says
+what the factor produces. This was found by the suite: the first version compared against the whole string
+and refused every compound-priced factor. The fix was to export `lcaUnits`' own `denominatorOf` rather than
+write a second parser, so there is one answer to where the slash falls.
+
+**The declarations are narrowings, and that is asserted rather than asked for.** `0111` adds
+`accepted_units` as **nullable**, so the twenty seeded specs keep working untouched and an undeclared field
+constrains nothing — this is additive by construction. Where it does declare, every unit is a subset of what
+the category already offered under 0093: the migration narrows and never invents a unit for a category, and
+the suite checks that against the live spec rather than trusting the seed. Refrigerants and 3.4/3.9 are left
+null on purpose, with the reason in the migration: a refrigerant charge is measured in kilograms, which no
+category offers yet. That is a spec gap to close in its own increment, not something to paper over here.
+
+A declared unit the checker cannot recognise would refuse every entry for that field — a spec that cannot be
+satisfied. The suite holds the **whole** seeded spec to units the checker reads, not the handful this
+increment touched.
+
+**The guard is on the command path, in both directions, and that is asserted from outside.**
+`reconcileUnitWithFactor` is called by create and by update, and both write the reconciled quantity and unit.
+Asserting it on the helper alone would have proved the helper works while the write path bypassed it — the
+failure found in NZC-145 and the reason a second suite drives `createScopeRow` and `updateScopeRow`
+themselves. A row with no factor yet is left alone: there is nothing to reconcile against, and refusing a
+draft captured before anyone picks a factor would stop capture rather than protect it.
+
+**Two habits earned their place while proving that.** The first: `assert.rejects(fn, CommandValidationError)`
+is not an assertion about this rule. Written that way, the update test passed — and it was passing because
+the payload was refused as `INVALID` for a missing `expectedVersion`, having never reached the guard at all.
+It asserts the **issue code** now, and the refusal is paired with a convertible update that goes through, so
+"refuses an incompatible unit" is distinguishable from "refuses any change of unit". The second: the four
+command-path tests were re-run with the guard neutered to a pass-through, and all four failed. A test that
+has not been watched fail is a claim, not a check.
+
+**It refused something already in the tree, which is the evidence that it fires.** An existing distribution
+fixture entered `GBP` against a factor priced in litres. The unit was incidental to what that test asserts —
+an indivisible figure apportioned without loss — and had been there unremarked. The fixture is corrected to
+the litres it always meant. A guard whose first act is to find a live mismatch is one that reaches the path
+it claims to.
+
+**Related.** NZC-143/NZC-144 (what the totals are computed from), NZC-145 (the factor identity a unit is
+checked against, and asserting a gate on the command rather than the helper), NZC-119 (enumerate rather than
+skip), NZC-133 (the identity a test runs under decides whether green means anything).
