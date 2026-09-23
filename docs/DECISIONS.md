@@ -4942,3 +4942,74 @@ is *accounted as*, never the wires it arrived on.
 
 **Related.** NZC-154 (the companion this explains), NZC-143/144 (market kept out of the headline, reported
 alongside), NZC-030 (dataset selection, which supplies the regional grid factor).
+
+### NZC-158 — A category can reuse another category's flow and file it under its own [Confirmed 23 Sep 2026]
+
+**Decision.** A category may declare a **sub-flow**: run another category's rules, take what they resolve,
+and apply this category's registered suffix to it. Business travel by road (3.6) and commuting by car (3.7)
+reuse the company-vehicle flow — the DVLA lookup, the fuel and class derivations, the vehicle rules —
+**referenced, never copied**. One flow serves three consumers, so a change to how a vehicle is identified
+reaches all of them rather than one transcription of three drifting apart.
+
+**Correctness here has two halves, and either alone is satisfied by a wrong answer.**
+
+- **Identity** — the resolved factor is the category *variant*, not the base, and business travel and
+  commuting resolve to **distinct** identities from the same flow. Alone, this passes against a variant
+  priced at half the base: right identity, wrong number, harder to notice.
+- **Rate** — every variant of a base carries the **identical** kgCO₂e per unit, and the identical unit. The
+  combustion does not change because the journey was a commute; a variant with a different number is not a
+  variant but another factor wearing the name (NZC-145). Alone, this passes against the base itself.
+
+Only both together pin it, so both are asserted — the rate against the **seeded** factor rows rather than
+rows the test writes, because a test that writes the numbers it then compares is asserting its own
+arithmetic.
+
+**The leak this primitive is shaped around is the second one.** Two paths put the Scope 1 vehicle factor
+into business travel. The obvious one is resolving the base directly, which the identity assertion catches.
+The other is composing the variant, finding it missing, and using the base **because it is nearly right** —
+same fuel, same litres, same arithmetic, wrong scope. That produces a commute priced with the company's
+Scope 1 factor and filed under Scope 3, and nothing about the number looks wrong.
+
+So an unresolvable variant **stops** (NZC-151): the entry goes to the search for a person to settle, and
+never to the base. Missing from the registry and missing from the dataset both stop; the reason differs, the
+refusal does not. And the stop is a real stop — a coarser rule behind it may not stand in, or the base
+returns by the back door.
+
+This is the same principle as NZC-151 and NZC-154 appearing one layer down: where an unforeseen case falls.
+The tempting behaviour at every layer is for silence to mean "use the nearest thing", and at every layer the
+answer is that it means "not yet, ask a person".
+
+**Declining is distinguished from stopping**, and the distinction keeps the stop narrow enough to be safe.
+If the referenced flow itself resolved nothing, nothing was learned and there is nothing to protect: the
+entry carries on to this category's other rules. Only a flow that *answered* and could not be filed
+correctly stops.
+
+**Composition is the registry's, not the string's.** The base is recovered with the registry parser, so
+`diesel-demo` plus `-b` is `diesel-demo-b`. Splitting on the last hyphen would read `diesel-demo` as
+`diesel` with a `-demo` variant and compose an id nobody registered — and since every seeded factor ends in
+something suffix-shaped, that is the ordinary case rather than an edge one. The unit is the base's,
+unchanged (NZC-146).
+
+**Cycles are refused at both ends.** The migration refuses the shortest — a category referencing itself — at
+the point it is written; a longer ring can only be caught at resolution, where it declines rather than
+throwing, because a misconfigured spec should leave capture working through the search rather than take the
+surface down.
+
+**A uniqueness constraint was loosened, and the loosening is proved.** NZC-151 made the branch key
+`NULLS NOT DISTINCT`, correctly. It over-tightened in the other direction, which this change exposed: a rule
+with no basis — `lookup`, `suffix-variant`, now `sub-flow` — keys as `(category, NULL, NULL, NULL)`, so a
+category could hold exactly **one** of them. That forbids the ordinary additive shape of a sub-flow with a
+fallback behind it, which the resolver supports and first-match-wins exists for.
+
+The key becomes what it always meant — *two branches of the same field may not claim the same value* — as a
+**partial** index over rows that have a basis, keeping `NULLS NOT DISTINCT` for those so a captured basis
+and a DVLA basis still collide. Because this is a loosening, what it was for is **re-proved** rather than
+assumed: two captured branches on one field still collide, a DVLA and a captured branch still collide, and
+a sub-flow with a fallback is now permitted.
+
+**Substrate, not yet wired**, on the same terms as NZC-154: the resolver is pure, nothing calls it from the
+write path, and the wiring commit remains its own review stop with its three conditions.
+
+**Related.** NZC-145 (the variant registry and why bases are split on it), NZC-146 (the unit the variant
+inherits), NZC-149 (the rules a sub-flow reuses), NZC-151 (the STOP this repeats one layer down), NZC-154
+(the same fail-safe direction).

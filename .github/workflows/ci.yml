@@ -248,6 +248,13 @@ jobs:
       # self-generated solar carrying losses it never incurred, on a client Scope 3.
       - name: A companion fires for grid supply and not for self-generation
         run: npx tsx --test packages/isolated-backend/tests/companionRulesReal.test.ts
+      # Sub-flow composition (NZC-158). Two halves pin correctness: the identity is the category
+      # variant and business travel differs from commuting, AND every variant is priced identically to the
+      # base. Identity alone admits a wrong-rate variant; the rate alone admits the base itself. The third
+      # assertion is the leak the primitive is shaped around — an absent variant stops rather than falling
+      # back to the Scope 1 base, which would be a commute filed under Scope 3 and looking entirely normal.
+      - name: A reused flow files under its own category, and never falls back to the base
+        run: npx tsx --test packages/isolated-backend/tests/subFlowCompositionReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
