@@ -31,7 +31,8 @@
     "seed:portal-acceptance": "npm run seed:portal-acceptance -w @nzi/isolated-backend",
     "seed:reference-data": "npm run seed:reference-data -w @nzi/isolated-backend",
     "backfill:client-references": "npm run backfill:client-references -w @nzi/isolated-backend",
-    "check:terminology": "node scripts/check-terminology.mjs"
+    "check:terminology": "node scripts/check-terminology.mjs",
+    "test:e2e:gate": "npm run test:e2e:gate -w @nzi/console && node scripts/check-gate-ran.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
