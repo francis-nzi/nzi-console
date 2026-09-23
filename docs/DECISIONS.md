@@ -4807,6 +4807,17 @@ start claiming transmission losses the day it was introduced, silently and for e
 means a new kind fires nothing until somebody decides it should, the same reason NZC-145 refuses a suffix
 nobody registered.
 
+**The direction is the point: this is a fail-safe default, and it is the same family as NZC-151's STOP.**
+Both rules choose which way an *unforeseen* case falls. A consulted lookup that matches nothing leaves the
+entry unresolved rather than letting a coarser rule stand in; a supply kind nobody listed claims no
+transmission losses rather than inheriting them from a negation. In each case the unanticipated input
+defaults to **claiming nothing and asking a person**, never to quietly acquiring a number.
+
+That is worth stating as a principle rather than as two coincidences, because the failure it prevents has
+one shape: an emission figure that appears without anybody deciding it should, looks entirely ordinary, and
+is discoverable only by someone who already suspects it. A negation makes the system's silence mean "yes";
+an enumeration makes it mean "not yet". Only the second is safe to extend.
+
 **A companion to nothing is not a row.** Companions are proposed only alongside a **resolved** primary:
 transmission losses attributed to a supply the system could not identify would be a number with no parent
 and no way to check it.
@@ -4835,11 +4846,25 @@ which is its own scheduled phase; the rule names the field it needs and waits. U
 declines with "supplySource has not been captured" — additive, asserted, and never assuming grid.
 
 **Substrate, not yet wired.** The proposer is pure and nothing calls it from the write path. Creating the
-proposed rows belongs to the wiring commit, which is its own review stop: it must show existing entries
-resolving identically or by reviewed intent, and be gated per category. The shape it will use is the one
+proposed rows belongs to the wiring commit, which is its own review stop. The shape it will use is the one
 `reaggregateGroupRollup` already establishes — a helper writing **inside** the governing command's
 transaction, sharing its idempotency, audit event and outbox, rather than a second write path — and derived
 rows are marked with `sourceType` in provenance as that precedent does.
+
+**The wiring gate has three conditions**, and none of them is "the tests pass":
+
+1. **A characterisation.** Existing entries resolve either identically to today or by reviewed intent, with
+   no silent change. The sharp edge is the vehicle path, which swaps from `resolveVehicleFactor`'s `ILIKE`
+   label matching to the declarative resolver: the before and after for the vehicle exemplar are shown
+   explicitly, against real Postgres, and any divergence is called out and justified rather than absorbed.
+2. **Per-category enablement.** Wired so it exploits the additive design — declarative where declared,
+   free search where not — which bounds the blast radius to the currently-mapped categories rather than
+   changing resolution everywhere at once. The fallback is proved live for an un-enabled category in the
+   same characterisation.
+3. **`supplySource` live in capture.** The companion cannot fire in production until the field exists in
+   the spec *and* in the write path. Until then the rule is a forward reference and the companion declines,
+   which is correct — but it also means "the companion works" is not a claim the wiring commit may make
+   until this holds.
 
 **End-of-life is declared as a kind and deliberately not seeded.** The mechanism covers it: `end-of-life` is
 an enumerated companion kind, and all-matching-fire is what makes several rows from one entry possible. What
@@ -4856,3 +4881,64 @@ is not the same as not writing it.
 **Related.** NZC-149/151 (the primary rules a companion accompanies), NZC-143/144 (market excluded from the
 headline, reused rather than rebuilt), NZC-152 and NZC-143 (the same NULL shape), NZC-119 (enumerate rather
 than skip).
+
+### NZC-156 — End-of-life is composition fan-out, not multi-factor [Open — spec before build, 23 Sep 2026]
+
+**Decision.** End-of-life treatment is **reclassified out of** the multi-factor step (NZC-154). It is a
+different primitive and gets its own step, specced before it is built. Nothing about it is implemented, and
+the share logic is deliberately not invented here.
+
+**Why they are different, which is the whole reason for separating them.** Multi-factor — as built — fires
+every companion whose condition holds, and each applies to the **same full quantity**: one fuel entry
+yielding CO₂, CH₄ and N₂O rows is three factors over one figure, and summing them is correct.
+
+End-of-life **apportions one entry across materials by share**: a waste stream is some proportion plastic,
+some paper, some metal, each with its own treatment route. Run through the multi-factor primitive it would
+apply the **full quantity to every route** and over-count — not by a little, but by roughly the number of
+materials. The mechanism that is right for one is wrong for the other, and the wrongness is silent: every
+row would look ordinary and the total would be a multiple of the truth.
+
+That is why `end-of-life` remains an enumerated companion kind with **no rules seeded against it**. The
+enumeration records that the case exists and is known; seeding a rule would make the wrong primitive fire.
+
+**The shape this is heading toward**, recorded so the eventual build is not re-derived from scratch, and
+explicitly **not yet ruled**:
+
+- **Composition as a governed reference object** — versioned, deactivate-not-delete, like every other
+  governed vocabulary here — with a **per-entry override** for the stream that does not match the profile.
+- **Shares sum to 1 with an explicit `unclassified` bucket**, never silent renormalisation. A stream that is
+  90% accounted for says so; it does not have its shares quietly scaled up to hide the missing tenth.
+- **Fan-out inside the governing command's transaction**, the same shape NZC-154 sets out and
+  `reaggregateGroupRollup` already establishes — not a second write path.
+- **Each apportioned row carries its provenance**: apportioned from entry E, material M, share S, profile
+  P(vN). A row whose share nobody can trace is a number without a derivation.
+- **The apportioned rows are the real rows** the live aggregation reads, not a presentation over a hidden
+  parent.
+
+**Not built, and not to be built until specced.** Inventing proportional logic unasked is exactly what
+making the mapping declarative was meant to stop.
+
+**Related.** NZC-154 (the multi-factor primitive this is not), NZC-107 (distribution, the other place a
+figure is divided and the reason a grain must be recorded), NZC-119 (enumerate rather than skip).
+
+### NZC-157 — A renewable tariff's location-based figure is the grid average [Confirmed 23 Sep 2026]
+
+**Decision.** Under the GHG Protocol **location-based** method, contractual instruments — REGOs, green
+tariffs, PPAs — are irrelevant: the location-based figure is the grid average for the grid and region,
+whatever the supply contract says. The renewable-ness lives entirely in the **market-based** row, which sits
+out of the headline and carries `show_in_report` (NZC-143/144).
+
+**So `2.renewable-electricity`'s primary mapping is, in effect, the same location grid factor as
+`2.purchased-electricity`**, plus a market row for the instrument. That mapping is still **deferred** to
+per-category spec authoring, because it needs `supplySource` captured first — but the domain question it was
+waiting on is now answered, and this is the answer.
+
+**It reinforces the NZC-154 design finding rather than sitting beside it.** The companion fires for
+`grid-renewable`, `rego` and `green-tariff` and not for `self-generated` because what matters is that the
+electricity was **grid-delivered**, and grid delivery means grid transmission losses. The same fact —
+contractual instruments do not change the physical path — is why the location-based figure is grid-average
+and why the T&D companion applies. One principle, two consequences: the certificate changes what the supply
+is *accounted as*, never the wires it arrived on.
+
+**Related.** NZC-154 (the companion this explains), NZC-143/144 (market kept out of the headline, reported
+alongside), NZC-030 (dataset selection, which supplies the regional grid factor).
