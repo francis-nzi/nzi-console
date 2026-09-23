@@ -4412,3 +4412,60 @@ everyone still runs it.
 gate asserted on a helper proves nothing about the caller), NZC-133 (the identity a test runs under decides
 whether green means anything), NZC-119 (enumerate rather than skip), NZC-046 (the data-entry accordion this
 browses).
+
+### NZC-148 — A migration on main is frozen, and CI says so [Confirmed 23 Sep 2026]
+
+**Decision.** Once a migration file is on `main`, its bytes never change again — not the SQL, not a typo,
+**not a comment**. Something to correct means a new migration, or nothing. A sixth gate,
+`check:migrations-frozen`, compares every migration on main against the working tree and refuses a change.
+
+**Why a comment counts, which is the part that keeps being got wrong.** The runner's ledger records a
+sha256 over the **raw file text** and refuses to proceed when a file's checksum no longer matches what was
+applied. It has no notion of "only a comment changed", and must not: a checksum that skipped comments would
+be a checksum of something other than the file, and the question it exists to answer — *is this the thing
+that ran?* — would stop having a truthful answer.
+
+This is the third incident of the kind and the second in a fortnight. #263 improved a comment in
+`0110_factor_category_variants.sql` describing the capability governing the registry — a better sentence,
+and true. The file had already been applied to staging. The next deploy refused on the checksum, correctly,
+and #264 restored the bytes (NZC-145 records why the fuller statement lives in the docblock and this
+register instead). Nothing was wrong with the prose. The file was simply no longer ours to edit.
+
+**Fix forward is the whole remedy.** A file present only in the working tree is a new migration and is what
+the gate is *for*; those are listed in the success line, never refused. A **deleted** migration fails,
+because deletion is the most complete way to change something.
+
+**The base is main, and the narrower scope is deliberate.** The standing convention is stricter — a
+migration applied *anywhere*, staging included, is frozen even before it merges. Nothing this script can
+read knows what staging has applied, so the gate enforces the half it can prove. A migration still open in
+its own pull request stays editable, which is also necessary: that is the window in which review comments
+get addressed. The rule bites the moment it merges.
+
+**The comparison is git's, not a read of the bytes on disk — and the first version got this wrong.** It
+used `readFileSync` against `git show main:path`, and fired on a clean checkout: `.gitattributes` declares
+`* text=auto eol=lf`, one file had drifted to CRLF on disk, and 819 bytes on disk were compared against 804
+in the blob for a file `git status` correctly called unmodified. Had that shipped, the gate would have been
+red on Windows checkouts for a change nobody made — the fastest way to teach everyone to ignore it. The
+question is "would committing this change the file?", and the only thing that answers it without
+reimplementing checkout filters is git.
+
+**It counts what it compared.** A bad glob, a renamed directory, or a base ref that resolves to nothing
+would each make the script compare zero files and exit 0 — green for the rest of its life having looked at
+nothing. So the number compared is asserted against a **declared floor** of 109, the count when the gate was
+written. Migrations are append-only, so the floor can only ever be an understatement, which is the right
+direction and means it never needs maintaining. A floor read from the repository at runtime would always
+agree with itself and prove nothing.
+
+**An unresolvable base is a failure, never a skip.** `actions/checkout` clones shallow and without
+`origin/main`, so the workflow fetches it explicitly and the script refuses when it cannot see it. A gate
+that quietly passes because it could not find what to compare against is the defect this codebase keeps
+finding in other forms.
+
+**Proved by watching it fail, five ways.** The #263 comment edit replayed verbatim against `0110` — refused,
+reporting blob `7fa09ec…` → `ab902ee…`, which are the ids in that pull request's own diff. A deleted
+migration — refused. A new migration — accepted and named. An unresolvable base — refused. A base holding
+only 96 migrations — refused on the floor. A gate nobody has watched refuse is a claim rather than a check.
+
+**Related.** NZC-145 (the incident, and where prose is allowed to keep up instead), NZC-147 (the fifth gate,
+and the guard that a gate must be shown to have run), NZC-086 (the first file-reading gate), NZC-119
+(enumerate rather than skip).
