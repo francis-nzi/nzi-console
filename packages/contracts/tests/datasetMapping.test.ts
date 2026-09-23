@@ -242,7 +242,11 @@ describe("a rule whose basis comes from an external lookup (NZC-151)", () => {
       available: [{ factorId: "diesel-demo" }, { factorId: "gas-demo" }],
     }));
     assert.equal(outcome.kind, "free-search", "a failed lookup must not resolve to the next rule along");
-    assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /returned nothing/);
+    // Asserted across the list rather than at a fixed index: the coarser rule is now reported as set
+    // aside too, and which of the two reasons comes first is not something this test is about.
+    assert.ok((outcome.kind === "free-search" ? outcome.declined : [])
+      .some((entry) => /returned nothing/.test(entry.reason)),
+    "the failed lookup is not reported among the reasons");
   });
 
   it("distinguishes a lookup that was not performed from one that found nothing", () => {
@@ -300,5 +304,85 @@ describe("a rule whose basis comes from an external lookup (NZC-151)", () => {
     }));
     assert.equal(outcome.kind, "free-search");
     assert.match(outcome.kind === "free-search" ? outcome.declined[0]!.reason : "", /has not been performed/);
+  });
+});
+
+describe("a consulted lookup is not overruled by a coarser rule (NZC-151)", () => {
+  const dvlaDiesel: FactorRule = {
+    kind: "enriched", ruleKey: "dvla-diesel", ordering: 5, factorBase: "diesel-demo",
+    enrichmentSource: "dvla", enrichmentKeyField: "registrationFinder",
+    basisFieldKey: "fuel", basisValue: "diesel",
+  };
+  const dvlaPetrol: FactorRule = { ...dvlaDiesel, ruleKey: "dvla-petrol", ordering: 6, factorBase: "petrol-demo", basisValue: "petrol" };
+  /** The coarser rule company vehicles actually carries: measured in litres, so diesel. */
+  const byUnit: FactorRule = {
+    kind: "basis-branch", ruleKey: "fuel-litres", ordering: 10, factorBase: "diesel-demo",
+    basisFieldKey: "unit", basisValue: "litres",
+  };
+  const petrolEntry = { registrationFinder: "XY34ZAB", unit: "litres" };
+  const bothFactors = [{ factorId: "diesel-demo" }, { factorId: "petrol-demo" }];
+
+  it("leaves a petrol vehicle unresolved when only a diesel rule is declared", () => {
+    // The ruled case. The lookup was consulted and said petrol; only diesel is declared. Falling
+    // through to `unit = litres → diesel-demo` would file a petrol vehicle against a diesel factor —
+    // roughly ten per cent wrong and entirely ordinary-looking on a report.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, byUnit], entry: petrolEntry,
+      enrichment: { dvla: { fuel: "petrol", class: "car" } },
+      available: bothFactors,
+    }));
+    assert.equal(outcome.kind, "free-search", "a petrol vehicle resolved to the diesel factor");
+    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /consulted and matched no rule/);
+    // And the coarser rule is reported as set aside, so the reason is legible rather than a silence.
+    assert.ok((outcome.kind === "free-search" ? outcome.declined : [])
+      .some((entry) => entry.ruleKey === "fuel-litres" && /set aside/.test(entry.reason)));
+  });
+
+  it("resolves the same entry once a petrol rule is declared", () => {
+    // The pair. Without this, the test above would be satisfied by a resolver that had simply stopped
+    // working for enriched rules altogether.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, dvlaPetrol, byUnit], entry: petrolEntry,
+      enrichment: { dvla: { fuel: "petrol", class: "car" } },
+      available: bothFactors,
+    }));
+    assert.equal(outcome.kind, "resolved");
+    if (outcome.kind !== "resolved") return;
+    assert.equal(outcome.factorId, "petrol-demo");
+    assert.equal(outcome.rule.ruleKey, "dvla-petrol");
+  });
+
+  it("reaches a sibling enriched rule, so 'stop' does not mean 'stop at the first decline'", () => {
+    // The distinction the filter has to get right: coarser rules are set aside, sibling enriched rules
+    // on the same lookup are not. A category with a rule per fuel must still reach the later one.
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, dvlaPetrol], entry: petrolEntry,
+      enrichment: { dvla: { fuel: "petrol" } }, available: bothFactors,
+    }));
+    assert.equal(outcome.kind === "resolved" ? outcome.rule.ruleKey : null, "dvla-petrol");
+  });
+
+  it("does not set anything aside when the lookup was never consulted", () => {
+    // The limit of the rule. A consultant who never used the finder is not blocked, and a category
+    // whose lookup nobody performed still resolves by its other rules.
+    const noPlate = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, byUnit], entry: { unit: "litres" }, available: bothFactors,
+    }));
+    assert.equal(noPlate.kind === "resolved" ? noPlate.rule.ruleKey : null, "fuel-litres");
+
+    // A plate typed but no lookup performed yet is also not a consultation — the form is mid-flight.
+    const notAsked = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, byUnit], entry: petrolEntry, available: bothFactors,
+    }));
+    assert.equal(notAsked.kind === "resolved" ? notAsked.rule.ruleKey : null, "fuel-litres");
+  });
+
+  it("sets coarser rules aside for a failed lookup too, which is the same rule", () => {
+    const outcome = resolveFactorForEntry(inputs({
+      rules: [dvlaDiesel, byUnit], entry: petrolEntry,
+      enrichment: { dvla: null }, available: bothFactors,
+    }));
+    assert.equal(outcome.kind, "free-search");
+    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /left for a person to resolve/);
   });
 });

@@ -226,7 +226,52 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
   const ordered = [...rules].sort((left, right) => left.ordering - right.ordering
     || left.ruleKey.localeCompare(right.ruleKey));
 
+  /**
+   * Which lookups were **consulted** for this entry — asked, and given an answer of some kind.
+   *
+   * A source counts as consulted when its key field holds something and the caller performed the
+   * lookup, whether it came back with attributes or with nothing. Both are answers; only "never asked"
+   * is not.
+   */
+  const consulted = new Set<string>();
   for (const rule of ordered) {
+    if (rule.kind !== "enriched") continue;
+    if (normalise(entry[rule.enrichmentKeyField]) === "") continue;
+    if (enrichment?.[rule.enrichmentSource] === undefined) continue;
+    consulted.add(rule.enrichmentSource);
+  }
+
+  /**
+   * Once a more specific selector has been consulted, only it may answer.
+   *
+   * This is the rule that stops a silent downgrade. Company vehicles carries both an enriched rule
+   * (the DVLA says what the vehicle is) and a coarser one (measured in litres, so diesel). If the
+   * lookup is consulted and matches nothing — the vehicle is petrol and only a diesel rule is seeded —
+   * letting the coarser rule stand in files a **petrol vehicle against a diesel factor**. About ten
+   * per cent wrong, entirely ordinary-looking, and traceable only in a `declined` list nobody reads.
+   *
+   * So the coarser rules are set aside for this entry, and the answer is the search. The additive line
+   * holds where it matters: falling back to the **search** is always allowed; falling back to a
+   * different, less specific **declared rule** after consulting a more specific one is not.
+   *
+   * Note what is *not* suppressed: sibling enriched rules on the same source. A category with a rule
+   * per fuel must still reach the petrol one, so the filter keeps every enriched rule of a consulted
+   * source and only sets aside the rest.
+   */
+  const candidates = consulted.size === 0
+    ? ordered
+    : ordered.filter((rule) => rule.kind === "enriched" && consulted.has(rule.enrichmentSource));
+
+  for (const rule of ordered) {
+    if (candidates.includes(rule)) continue;
+    declined.push({
+      ruleKey: rule.ruleKey, kind: rule.kind,
+      reason: `set aside: the ${[...consulted].map((source) => `'${source}'`).join(", ")} lookup was `
+        + "consulted for this entry, so a less specific rule may not stand in for it",
+    });
+  }
+
+  for (const rule of candidates) {
     if (rule.kind === "basis-branch") {
       const captured = normalise(entry[rule.basisFieldKey]);
       if (captured === "") {
@@ -257,28 +302,13 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
         continue;
       }
       if (result === null) {
-        // **The case this rule kind is judged on, and the one place resolution stops rather than
-        // continuing.** The lookup ran and told us nothing — the plate is unknown, the service was
-        // down, the key was malformed.
-        //
-        // Every other decline falls through to the next rule, because a rule that does not apply is
-        // not an opinion about the ones that follow. This one is different: the lookup was the
-        // category's *best* answer, and a coarser rule standing in for it produces a factor chosen
-        // because an external service was unavailable. The entry would look resolved, the number would
-        // look ordinary, and the only trace would be a `declined` entry nobody reads. So the entry
-        // stays **unresolved** and goes to the search, where a person picks.
-        //
-        // Falling back to the search is still additive. What is refused is falling back to a *different
-        // declared rule*, which is a different thing wearing the same word.
+        // The lookup ran and told us nothing — the plate is unknown, the service was down, the key was
+        // malformed. It declines like any other rule; what stops the entry being answered by something
+        // coarser is the consultation filter above, which has already set those rules aside.
         declined.push({ ruleKey: rule.ruleKey, kind: rule.kind,
           reason: `the '${rule.enrichmentSource}' lookup returned nothing for '${rule.enrichmentKeyField}', `
             + "so there are no attributes to resolve from" });
-        return {
-          kind: "free-search",
-          declined,
-          reason: `the '${rule.enrichmentSource}' lookup returned nothing, so this entry is left for a `
-            + "person to resolve rather than matched on a coarser rule",
-        };
+        continue;
       }
 
       const attribute = normalise(result[rule.basisFieldKey]);
@@ -328,6 +358,19 @@ export function resolveFactorForEntry(inputs: MappingInputs): MappingOutcome {
     }
 
     return { kind: "resolved", factorId, rule, declined, scope: decideScope(ghgCategory, authority, scopesOf(factorId)) };
+  }
+
+  if (consulted.size > 0) {
+    // Consulted and unmatched. Said in full, because this is the one outcome a reader is most likely to
+    // mistake for the feature being broken: a rule did apply to this entry, it was the most specific one
+    // available, and it declined to guess.
+    return {
+      kind: "free-search",
+      declined,
+      reason: `the ${[...consulted].map((source) => `'${source}'`).join(", ")} lookup was consulted and `
+        + "matched no rule, so this entry is left for a person to resolve rather than matched on a less "
+        + "specific rule that would contradict what the lookup said",
+    };
   }
 
   return {
