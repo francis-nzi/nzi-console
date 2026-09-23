@@ -259,7 +259,17 @@ jobs:
     env:
       NZI_DATABASE_BOUNDARY: isolated-non-production
       NEXT_PUBLIC_APP_ENV: staging
-      NZI_ISOLATED_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_capture_gate
+      # `sslmode=disable` is load-bearing, not decoration. The migration runner connects with a hard-coded
+      # `ssl: { rejectUnauthorized: false }` because the isolated database it normally talks to is Supabase,
+      # which requires TLS. A plain `postgres:16` service refuses the SSL negotiation outright, and the run
+      # dies with "The server does not support SSL connections" before applying anything. The connection
+      # string is the supported way to say otherwise, and it is preferred here over making the runner's TLS
+      # conditional: that script is on the deploy path, and this gate is not a reason to change how it
+      # connects to staging.
+      #
+      # The `migrations` job does not need this because it applies migrations through the test harness,
+      # which opens its own connections; this job runs `npm run migrate`, which is the real entry point.
+      NZI_ISOLATED_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_capture_gate?sslmode=disable
       # The v2 capture surface is behind a build-time flag, and a `NEXT_PUBLIC_*` value is baked into the
       # bundle — so the gate must build with it on or it would browse the pre-v2 register and assert
       # nothing about the surface it is named after. Pinned here rather than read from the environment:
@@ -295,8 +305,26 @@ jobs:
       - name: Seed the synthetic capture fixture
         run: |
           for seed in 0001_synthetic_demo 0002_synthetic_crp_scope_rows 0003_synthetic_factors 0012_synthetic_capture_sites; do
-            psql "$NZI_ISOLATED_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "packages/isolated-backend/seeds/$seed.sql"
+            psql -v ON_ERROR_STOP=1 -q -f "packages/isolated-backend/seeds/$seed.sql" -d "$NZI_ISOLATED_DATABASE_URL"
           done
+      # And then check that it did. `psql` will ignore options that follow a bare connection string —
+      # which is how the first version of the step above applied no files at all, printed nothing, and
+      # exited 0. The gate would then have run against an empty database and failed somewhere far from the
+      # cause. `ON_ERROR_STOP` cannot help with that: there was no error, because there was no work.
+      #
+      # So the fixture is counted rather than assumed. These are the numbers the six browser tests are
+      # written against: nine scope rows, four at Bristol, four at Leeds, one deliberately unallocated.
+      - name: The fixture is actually there
+        run: |
+          set -euo pipefail
+          count() { psql -tAX -c "$1" -d "$NZI_ISOLATED_DATABASE_URL"; }
+          rows=$(count "select count(*) from nzi_console.job_scope_rows where job_id='712'")
+          sites=$(count "select count(*) from nzi_console.client_sites")
+          unplaced=$(count "select count(*) from nzi_console.job_scope_rows where job_id='712' and site_id is null")
+          echo "scope rows=$rows sites=$sites unallocated=$unplaced"
+          test "$rows" = "9" || { echo "expected 9 seeded scope rows, found $rows"; exit 1; }
+          test "$sites" = "2" || { echo "expected 2 seeded sites, found $sites"; exit 1; }
+          test "$unplaced" = "1" || { echo "expected exactly 1 unallocated row, found $unplaced"; exit 1; }
       - name: Install the browser the gate drives
         run: npx playwright install --with-deps chromium
       - name: Build the console the gate will browse
