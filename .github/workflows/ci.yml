@@ -228,6 +228,13 @@ jobs:
       # checker recognises, since a declared unit it cannot read would refuse every entry for that field.
       - name: A unit reconciles with its factor, or the entry is refused
         run: npx tsx --test packages/isolated-backend/tests/unitCompatibilityReal.test.ts
+      # The declared dataset mapping (NZC-149). Two things only a real database shows: that the rows 0112
+      # seeds are shaped the way the resolver reads them — a mapping right in the abstract and mis-keyed
+      # in the migration resolves nothing while every unit test stays green — and that the shape
+      # constraint refuses. A CHECK is satisfied by NULL, which is how an earlier one came to admit every
+      # row it was written to exclude, so each branch is given a row that should not exist.
+      - name: A category reaches its factor by declared rule, or declines to the search
+        run: npx tsx --test packages/isolated-backend/tests/datasetMappingReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
@@ -338,8 +345,34 @@ jobs:
           test "$unplaced" = "1" || { echo "expected exactly 1 unallocated row, found $unplaced"; exit 1; }
       - name: Install the browser the gate drives
         run: npx playwright install --with-deps chromium
+      # The build, with its own output surfaced where it can be read.
+      #
+      # When this step failed on #269 the only thing outside the job log was "Process completed with exit
+      # code 1" — and a job log needs an authenticated token to fetch, while annotations do not. So the
+      # tail of a failing build is re-emitted as an `::error::` workflow command, which lands in the
+      # annotations, and the whole log is kept as an artifact.
+      #
+      # This changes nothing about what the gate proves or what it will accept. It changes how long it
+      # takes to find out why it refused, which on that run was the difference between a diagnosis and an
+      # afternoon of elimination.
       - name: Build the console the gate will browse
-        run: npm run build -w @nzi/console
+        run: |
+          set -o pipefail
+          if ! npm run build -w @nzi/console 2>&1 | tee "$RUNNER_TEMP/console-build.log"; then
+            # `paste -sd" " -` joins the lines: an annotation is single-line, and doing the join with
+            # `tr` would need an escape sequence that has to survive YAML, a shell and a here-doc.
+            tail -c 2500 "$RUNNER_TEMP/console-build.log" | paste -sd" " - | sed "s/::/ /g" > "$RUNNER_TEMP/tail.txt"
+            echo "::error title=Console build failed::$(cat "$RUNNER_TEMP/tail.txt")"
+            exit 1
+          fi
+      - name: Keep the build log of a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-gate-build-log
+          path: ${{ runner.temp }}/console-build.log
+          retention-days: 7
+          if-no-files-found: ignore
       # The gate, and then the guard on the gate. `test:e2e:gate` runs both: Playwright exits 0 when every
       # test is skipped and when a stray `test.only` has narrowed the run to one case, so the result file
       # is read and the run is refused unless it actually executed the suite.
