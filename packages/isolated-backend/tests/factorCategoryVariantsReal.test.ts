@@ -7,6 +7,7 @@ import {
   relabelCategoryVariant, retireCategoryVariant, VariantRegistryError,
 } from "../src/factorCategoryVariants";
 import { availableVariants, factorBase, groupByBase, parseFactorId, variantFactorId } from "@nzi/contracts";
+import { AuthorizationError, type StaffPrincipal } from "../src/auth";
 
 /**
  * The category-variant registry, against real Postgres (NZC-145).
@@ -28,6 +29,14 @@ const DATABASE_URL = TEST_DATABASE_URL;
 const ORG = "org-variants";
 const OTHER = "org-variants-two";
 const ACTOR = "admin-a";
+
+const principal = (...held: string[]) => ({
+  userId: ACTOR, organisationId: ORG, role: "admin",
+  capabilities: held.map((capability) => ({ capability, scope: "all" })),
+} as unknown as StaffPrincipal);
+
+/** The registry is estate-wide, so writing to it is Admin's `factor.manage` and nobody else's. */
+const admin = principal("factor.manage");
 
 describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
@@ -133,8 +142,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
   });
 
   it("prefers the longer suffix, so a registry cannot make an id ambiguous", async () => {
-    await addCategoryVariant(database.pool, {
-      organisationId: ORG, actorId: ACTOR, suffixCode: "-ud", label: "Upstream, disaggregated",
+    await addCategoryVariant(database.pool, admin, {
+      organisationId: ORG, suffixCode: "-ud", label: "Upstream, disaggregated",
       ghgCategory: "3.4", description: "A longer suffix that ends with a registered shorter one.",
     });
     const variants = await registry();
@@ -178,8 +187,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
   // ── Retirement: two different questions ─────────────────────────────────────────────
 
   it("withholds a retired variant from new fan-outs and still resolves the history", async () => {
-    const outcome = await retireCategoryVariant(database.pool, {
-      organisationId: ORG, actorId: ACTOR, suffixCode: "-w",
+    const outcome = await retireCategoryVariant(database.pool, admin, {
+      organisationId: ORG, suffixCode: "-w",
       reason: "Waste moved to its own dataset, so the variant is no longer offered.",
     });
     assert.equal(outcome.variant.status, "retired");
@@ -197,8 +206,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
     assert.equal(parsed.base, "skip-hire");
 
     // Idempotent, because the desired state is the same on a second call.
-    const again = await retireCategoryVariant(database.pool, {
-      organisationId: ORG, actorId: ACTOR, suffixCode: "-w", reason: "again",
+    const again = await retireCategoryVariant(database.pool, admin, {
+      organisationId: ORG, suffixCode: "-w", reason: "again",
     });
     assert.equal(again.alreadyRetired, true);
   });
@@ -246,8 +255,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
   });
 
   it("allows the label and description to be refined", async () => {
-    const updated = await relabelCategoryVariant(database.pool, {
-      organisationId: ORG, actorId: ACTOR, suffixCode: "-b",
+    const updated = await relabelCategoryVariant(database.pool, admin, {
+      organisationId: ORG, suffixCode: "-b",
       label: "Business travel (road)", description: "Refined wording.",
     });
     assert.equal(updated.label, "Business travel (road)");
@@ -261,8 +270,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
   // ── Adding ──────────────────────────────────────────────────────────────────────────
 
   it("adds a variant that is usable immediately, and refuses a malformed or duplicate one", async () => {
-    const added = await addCategoryVariant(database.pool, {
-      organisationId: ORG, actorId: ACTOR, suffixCode: "-fr", label: "Franchises",
+    const added = await addCategoryVariant(database.pool, admin, {
+      organisationId: ORG, suffixCode: "-fr", label: "Franchises",
       ghgCategory: "3.14", description: "The same factor used by a franchisee.", sortOrder: 70,
     });
     assert.equal(added.status, "active");
@@ -272,8 +281,8 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
 
     for (const bad of ["c", "-C", "-toolong", "-c1", "--c", ""]) {
       await assert.rejects(
-        () => addCategoryVariant(database.pool, {
-          organisationId: ORG, actorId: ACTOR, suffixCode: bad, label: "x", ghgCategory: "3.1",
+        () => addCategoryVariant(database.pool, admin, {
+          organisationId: ORG, suffixCode: bad, label: "x", ghgCategory: "3.1",
         }),
         (error: unknown) => error instanceof VariantRegistryError && error.reason === "shape",
         `'${bad}' is not a suffix`);
@@ -282,11 +291,48 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
     // A duplicate is refused with its status named, because "already there" and "already there but
     // retired" call for different actions.
     await assert.rejects(
-      () => addCategoryVariant(database.pool, {
-        organisationId: ORG, actorId: ACTOR, suffixCode: "-w", label: "Waste again", ghgCategory: "3.5",
+      () => addCategoryVariant(database.pool, admin, {
+        organisationId: ORG, suffixCode: "-w", label: "Waste again", ghgCategory: "3.5",
       }),
       (error: unknown) => error instanceof VariantRegistryError && error.reason === "duplicate"
         && /retired/.test(error.message));
+  });
+
+  it("refuses a caller without factor.manage, on every one of the three commands", async () => {
+    // The registry is estate-wide: a write reaches every tenant, so the capability is the whole of the
+    // protection and a gate nobody has watched refuse is not one. `factor.manage` is Admin's alone —
+    // a consultant holds `clientfactor.manage`, which is a different capability over a different thing.
+    for (const held of [[], ["clientfactor.manage"], ["dataset.manage"], ["scoperow.edit"]]) {
+      const caller = principal(...held);
+      const naming = held.join("+") || "nothing";
+
+      await assert.rejects(
+        () => addCategoryVariant(database.pool, caller, {
+          organisationId: ORG, suffixCode: "-zz", label: "Sneaked in", ghgCategory: "3.1",
+        }),
+        (error: unknown) => error instanceof AuthorizationError && error.permission === "factor.manage",
+        `holding ${naming} must not add a variant`);
+
+      await assert.rejects(
+        () => relabelCategoryVariant(database.pool, caller, {
+          organisationId: ORG, suffixCode: "-c", label: "Renamed by the unauthorised",
+        }),
+        (error: unknown) => error instanceof AuthorizationError && error.permission === "factor.manage",
+        `holding ${naming} must not relabel a variant`);
+
+      await assert.rejects(
+        () => retireCategoryVariant(database.pool, caller, {
+          organisationId: ORG, suffixCode: "-p", reason: "not theirs to retire",
+        }),
+        (error: unknown) => error instanceof AuthorizationError && error.permission === "factor.manage",
+        `holding ${naming} must not retire a variant`);
+    }
+
+    // Nothing leaked through: the refusals happen before any write, so the registry is as it was.
+    const variants = await registry();
+    assert.ok(!variants.some((variant) => variant.suffixCode === "-zz"));
+    assert.equal(variants.find((variant) => variant.suffixCode === "-c")!.label, "Commuting");
+    assert.equal(variants.find((variant) => variant.suffixCode === "-p")!.status, "active");
   });
 
   it("counts use within the organisation, and says that is what it is", async () => {
