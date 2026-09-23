@@ -235,6 +235,12 @@ jobs:
       # row it was written to exclude, so each branch is given a row that should not exist.
       - name: A category reaches its factor by declared rule, or declines to the search
         run: npx tsx --test packages/isolated-backend/tests/datasetMappingReal.test.ts
+      # The distribution-grain constraint (NZC-152), which said what it did not enforce: `false OR NULL`
+      # is NULL, so a row claiming its months were derived while recording nothing about what from was
+      # admitted. The refusals are paired with the rows that must still be accepted — a constraint that
+      # refused everything would pass a refusal test and break capture.
+      - name: A distributed row must say what it was distributed from
+        run: npx tsx --test packages/isolated-backend/tests/distributionGrainReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing

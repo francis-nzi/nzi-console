@@ -4651,3 +4651,50 @@ a domain policy call, and it is put to the review stop rather than settled in pa
 **Related.** NZC-149 (the three kinds this joins, and the constraint it nearly broke), NZC-103 (the plate
 stops at the lookup boundary), NZC-104 (and does not leave with the report), NZC-145 (the variant registry
 the next step uses), NZC-146 (units, the other basis).
+
+### NZC-152 — A distributed row names the grain it came from [Confirmed 23 Sep 2026]
+
+**Decision.** The constraint 0094 put on `job_scope_rows` and `job_emission_sources` is tightened so that a
+row claiming `activity_distributed = true` must carry an `activity_frequency` of `annual` or `quarterly`.
+
+**It said that already, and did not enforce it.**
+
+```sql
+CHECK (activity_distributed = false OR activity_frequency = ANY (ARRAY['annual','quarterly']))
+```
+
+With `activity_distributed = true` and `activity_frequency` NULL the expression is `false OR NULL`, which is
+NULL, and **the row is admitted** — so a row could claim its months were derived while recording nothing
+about what they were derived from, losing the provenance the column pair exists to keep.
+
+**The third appearance of one mistake.** A CHECK is satisfied by NULL, so a disjunction whose live branch
+compares a nullable column passes whenever that column is null. It admitted every hideable row in 0109
+(NZC-143); it silently disabled a uniqueness guarantee in 0113 (NZC-151). Found this time by **reading every
+unique index and check constraint in the schema** rather than by waiting for the next defect — an audit that
+also cleared eleven unique indexes as correct by construction (partial, `WHERE <column> IS NOT NULL`) and
+two more as intended.
+
+**Latent rather than live, which is the argument for fixing it rather than against.** Both write paths set
+frequency and distributed together from one resolver, so nothing in the application is known to reach the
+admitted state. That makes this a last line of defence which does not hold — and the day a last line of
+defence matters is the day something else has already gone wrong.
+
+**Counted before it is tightened, for the message rather than for safety.** `ALTER TABLE ... ADD CONSTRAINT`
+validates existing rows and would fail on its own; what the pre-check adds is a legible failure. Without it
+a deploy stops on `violates check constraint`, naming neither how many rows nor what state they are in, and
+whoever reads it will not have the migration open. Proved by inserting an offending row under the old
+constraint — which admitted it, confirming the gap was real — and watching the migration refuse with the
+count and the remedy.
+
+**Not repaired automatically, on purpose.** A row claiming derivation with no grain recorded cannot have one
+inferred: annual and quarterly produce different months from the same figure, so guessing would write a
+provenance nobody established. The migration stops and says what to establish.
+
+**The refusals are paired with what must still be accepted.** A constraint that refused everything would
+satisfy a refusal test and break capture, so the suite asserts alongside: months typed by hand carry no
+frequency and are not distributed; months derived from an annual or quarterly figure carry both; `monthly`
+is still refused as a grain, because it is not something a monthly breakdown can be derived *from*. A last
+test reads the constraint out of the catalogue and fails if the bare disjunction ever returns.
+
+**Related.** NZC-143 (the same shape, in 0109), NZC-151 (the same shape, in a unique key, and the audit that
+found this), NZC-107 (the distribution these columns record).
