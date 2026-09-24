@@ -267,6 +267,12 @@ jobs:
       # back with its JSON types intact. Watched failing on the unfixed code before the fix went in.
       - name: Portal writes commit and audit, against a real database
         run: npx tsx --test packages/isolated-backend/tests/portalAuditWritesReal.test.ts
+      # A portal entry's primary factor is one its scope row may carry, at every point (NZC-160 H1). The grant
+      # checked once; a row re-scoped after it kept offering, accepting and landing the T&D factor on what was
+      # now Scope 2. Each of grant, listing, draft, submission and acceptance is refused on that back door
+      # here, paired with an ordinary entry that must go all the way through.
+      - name: A portal entry's factor is one its row may carry, at grant, draft, submission and acceptance
+        run: npx tsx --test packages/isolated-backend/tests/portalPrimaryFactorReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
