@@ -4886,6 +4886,37 @@ is not the same as not writing it.
 headline, reused rather than rebuilt), NZC-152 and NZC-143 (the same NULL shape), NZC-119 (enumerate rather
 than skip).
 
+### NZC-155 — The enumerative NULL guard [Open — backfilled 24 Sep 2026; scope to confirm, guard not built]
+
+**Backfilled.** This number was referred to in rulings as "the enumerative NULL guard" from NZC-154 onwards
+and never written; the register jumped from 154 to 156. It is recorded here, in its own slot, so every
+reference to it resolves. What follows is **only what the record already establishes**, and the scope of the
+guard itself is left for confirmation rather than reconstructed as though it had been decided.
+
+**What the record establishes.** One mistake has now appeared four times: a CHECK or a key whose expression
+compares a nullable value, so that NULL makes the whole expression NULL and the row is **admitted**.
+
+- 0109's hideable-row CHECK admitted every row it was written to exclude (NZC-143).
+- 0113's uniqueness key stopped refusing duplicate branches once a mostly-NULL column joined it (NZC-151).
+- 0094's distribution-grain CHECK admitted a derived row with no grain (NZC-152).
+- 0115's first draft guarded a value list with `NOT (NULL = ANY (…))`, which passes when an element is NULL;
+  `array_position(…, NULL) IS NULL` is the form that finds one (NZC-154).
+
+And one principle answers it at the level of values: **enumerate positively, never negate** (NZC-154) — a
+list of what fires, so an unforeseen value claims nothing, rather than an exclusion that silently claims it.
+
+**What is and is not built.** NZC-151 audited every unique index and check constraint **by hand, once**.
+Nothing mechanical repeats that audit: the one constraint read back out of the catalogue by a test is
+`job_scope_rows_distribution_grain` (NZC-152), and only that one. So the guard this number names is **not
+yet built**, and a fifth instance would be caught only by the next person who happens to look.
+
+**To confirm.** The scope — at minimum, a check over the live catalogue that fails on a CHECK or unique key
+whose expression can evaluate to NULL for an admitted row — and whether it is a companion to NZC-161, which
+closes the other class of defect that rides uncaught.
+
+**Related.** NZC-143, NZC-151, NZC-152, NZC-154 (the four instances), NZC-161 (the other mechanical guard),
+NZC-119 (enumerate rather than skip).
+
 ### NZC-156 — End-of-life is composition fan-out, not multi-factor [Open — spec before build, 23 Sep 2026]
 
 **Decision.** End-of-life treatment is **reclassified out of** the multi-factor step (NZC-154). It is a
@@ -5208,3 +5239,37 @@ characterising before wiring, which is the argument for the order.
 **Related.** NZC-154 (the gate this is condition 1 of), NZC-151 (the STOP that D3 and H2 extend), NZC-158 (the
 leak D1 finds live), NZC-146 (units — D2 and H3), NZC-153 (the verification failure behind the NZC-159
 correction), NZC-143/144 (market kept out of the headline).
+
+### NZC-161 — Every governed write command has a real-database suite [Confirmed 24 Sep 2026 — the guard is its own stop]
+
+**Decision.** A command that writes through a governed transaction is exercised by at least one real-database
+suite that CI runs. A command with none fails the build — unless it is on a checked-in list of known gaps,
+and that list may only shrink.
+
+**What exposed it.** Nine portal commands audited through `jsonb_build_object` with untyped parameters, which
+Postgres refuses — so every one of them rolled back, and every one passed its unit tests, because those run
+against a fake pool that accepts any SQL (P0). Neither typecheck nor a fake pool can see a runtime SQL type
+error; only a database can. The guard that already exists asks a narrower question — *is every real-database
+suite run by CI* — and a command with **no suite at all** passes it by having nothing to run. The two are
+complements: that one stops a suite being skipped, this one stops a command having no suite.
+
+**The size of the gap, measured rather than guessed.** A command here is an exported function that opens a
+write through `runPostgresCommand`, `withTenantWrite`, `withTenantTransaction`, or `withAuthTransaction(…,
+"write")`. On 24 Sep 2026: **119** such commands; **31** called by a real-database suite on main; **9** more
+once P0 merges; **79** with none. The count matches on a call by name, so "called" means some suite invokes
+the command, not that every branch of it is exercised — it is a floor on the gap, not a measure of coverage.
+
+**A ratchet, not a mandate.** Requiring 79 suites before anything else merges would stall the work the guard
+exists to protect. So the guard ships with the 79 named in a baseline file, and fails on two things only:
+
+- a governed write command **not** on the list and not called by any real-database suite — so nothing new
+  arrives uncovered;
+- a command still on the list that **is** now covered — so the list cannot quietly carry an entry that is no
+  longer true, and shrinking it is the only way it moves.
+
+**Where it applies first.** The uncovered set is concentrated: the rest of `postgresCommands.ts`, the staff and
+trainee login paths, the LCA commands, and the remaining portal writes. The portal's are the natural next
+retirements, since P0 left their fixture in place.
+
+**Related.** P0 (the defect class this closes), NZC-155 (the other mechanical guard, for NULL-admitting
+constraints), NZC-147 (a gate must be shown to have run), NZC-119 (enumerate rather than skip).
