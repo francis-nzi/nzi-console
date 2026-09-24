@@ -12,6 +12,7 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import { companionRulesFor, factorRulesFor, listCompanionRules, listFactorRules } from "../src/inputSpecFactorRules";
 import { lookupVehicleByRegistration, resolveVehicleFactor, vehicleAttributes, type VehicleSpec } from "../src/vehicleLookup";
 import { reconcileUnitForMapping } from "../src/unitCompatibility";
+import { primaryFactorFor } from "../src/portalPrimaryFactor";
 
 /**
  * Stop 1 of the wiring commit: what today's paths choose, against what the declarative resolver would choose.
@@ -286,27 +287,31 @@ describe("wiring characterisation — today's paths against the declarative reso
 
   // ── The portal: the client's allow-list, pre-selected by collation ───────────────────────────────────
 
-  it("characterises the portal default, which the database's collation decides", async () => {
-    // The expression listPortalDataEntryBuckets orders a bucket's factors by, run against this database so
-    // the collation is the real one. An electricity bucket granted both electricity factors is the case that
-    // matters: whichever sorts first is what a client submits without touching the control.
-    const allowLists: Array<[string, string, string[]]> = [
-      ["2.purchased-electricity", "2", ["electricity-demo", "electricity-td-demo"]],
-      ["1.company-vehicles", "1", ["diesel-demo", "gas-demo"]],
+  it("characterises the portal default as it is since H1: what the bucket may offer, pre-selected only if one", async () => {
+    // Since H1 (NZC-160) the portal no longer pre-selects the first factor by lower(label). The bucket offers
+    // only factors its row may carry — the shipped primaryFactorFor predicate, run here against this database —
+    // and pre-selects one only when exactly one is left. With several, the client picks.
+    const allowLists: Array<[string, string, string[], string]> = [
+      ["2.purchased-electricity", "2", ["electricity-demo", "electricity-td-demo"], "electricity-demo"],
+      ["1.company-vehicles", "1", ["diesel-demo", "gas-demo"], "diesel-demo"],
     ];
-    for (const [category, spec, allowed] of allowLists) {
-      const first = (await db.query<{ factor_id: string }>(
+    for (const [category, spec, allowed, plausiblePick] of allowLists) {
+      const offered = (await db.query<{ factor_id: string }>(
         `SELECT f.factor_id FROM nzi_console.emission_factors f
            JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id)
-          WHERE s.job_id=$1 AND f.factor_id = ANY($2) AND f.active
-          ORDER BY lower(f.label), f.factor_id LIMIT 1`, [JOB_SHIPPED, allowed])).rows[0]?.factor_id ?? null;
+           CROSS JOIN (SELECT $3::text AS scope, $4::text AS category_code) r
+          WHERE s.job_id=$1 AND f.factor_id = ANY($2) AND ${primaryFactorFor("f", "r")}
+          ORDER BY f.factor_id`, [JOB_SHIPPED, allowed, spec, category])).rows.map((row) => row.factor_id);
       const entry = category === "1.company-vehicles" ? { unit: "litres" } : { unit: "kWh", supplySource: "grid" };
       const { outcome, companions, factors } = await declared(JOB_SHIPPED, category, spec, entry);
       record({
         id: `shipped:${category}:portal-default-${allowed.join("+")}`, dataset: "shipped", category,
-        entry: `portal bucket allowing ${allowed.join(", ")} — untouched default`,
-        before: { kind: "automated", path: "portal allow-list, first by lower(label)", factorId: first,
-          detail: `collation picks ${first}` },
+        entry: `portal bucket granted ${allowed.join(", ")} — offered ${offered.join(", ") || "nothing"}`,
+        before: offered.length === 1
+          ? { kind: "automated", path: "portal, the one eligible factor pre-selected (H1)", factorId: offered[0]!,
+            detail: `only ${offered[0]} may be this row's primary` }
+          : { kind: "person", path: "portal, several eligible so none pre-selected (H1)", plausiblePick,
+            detail: `the client chooses among ${offered.join(", ")}` },
         after: shape(outcome),
         companions: { before: [], after: companions.proposed.map((companion) => `${companion.factorId} (${companion.ghgCategory})`) },
         unitCheck: unitNote(factors, shape(outcome).factorId, entry.unit),
@@ -452,8 +457,12 @@ describe("wiring characterisation — today's paths against the declarative reso
  *   per-litre factor. **Ruled: fix before wiring. Fixed** — a resolved factor must reconcile with the entry's
  *   unit or its rule declines, to a person's pick and never to the `ILIKE`. Its six entries moved by that
  *   intent: three to identical, three to D4. No entry carries D2 now; the class is kept so its history reads.
- * - `D3` new-mapping defect — `fuel-litres` assumes diesel, so an unplated petrol vehicle in litres resolves to
- *   the diesel factor. **Ruled: fix before wiring** — deactivate the rule; a unit alone cannot identify a fuel.
+ * - `D3` new-mapping defect — `fuel-litres` assumed diesel, so an unplated petrol vehicle in litres resolved to
+ *   the diesel factor. **Ruled: fix before wiring. Fixed by 0119**, which deactivated the rule: a unit alone cannot
+ *   identify a fuel. Its entries moved by that intent — shipped petrol to identical, probe petrol to D5 — and so
+ *   did every unplated diesel entry, to D5. **What that gives up:** in 3.6 and 3.7 an unplated diesel entry used
+ *   to resolve to its own variant through the sub-flow (D1); it is a person's pick again, and today's pick list
+ *   offers the Scope 1 base. Only plated entries still get the variant declaratively.
  * - `D4` coverage traded for safety — today's `ILIKE` suggests a Scope 1 per-km factor for petrol and hybrid;
  *   the declarative side leaves the entry to a person. **Ruled: accepted, conditional on retiring the `ILIKE`
  *   for enabled categories.**
@@ -471,8 +480,12 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
       // D2 fixed (the unit now has to reconcile): shipped went from ∅ → diesel-demo to ∅ → search, which is
       // identical; the probe's ILIKE still suggests a Scope 1 per-km van factor where a person now picks — D4.
       if (dataset === "probe") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";
-      ledger[`${dataset}:${category}:no-plate-petrol-litres`] = "D3";
-      if (category !== "1.company-vehicles") ledger[`${dataset}:${category}:no-plate-diesel-litres`] = "D1";
+      // D3 fixed (0119 retired fuel-litres): an unplated vehicle in litres has no declared answer and goes to a
+      // person. Shipped petrol had no factor to pick, so ∅ → search is identical; the probe's petrol pick
+      // stands — D5. Unplated diesel, company vehicles or a sub-flow, is now a person's pick too — D5, where
+      // for 3.6/3.7 it was D1 (base → variant); see the note on D3 above for what that gives up.
+      if (dataset === "probe") ledger[`probe:${category}:no-plate-petrol-litres`] = "D5";
+      ledger[`${dataset}:${category}:no-plate-diesel-litres`] = "D5";
       if (dataset === "probe") {
         for (const name of ["petrolCar", "hybridCar"]) {
           for (const unit of ["litres", "km"]) ledger[`probe:${category}:plate-${name}-${unit}`] = "D4";
@@ -486,6 +499,10 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
       }
     }
   }
+  // The portal, modelled as it is since H1: the electricity bucket offers only the grid factor (T&D is a companion
+  // of the row's category), so the primary is identical and only the companion diverges; the vehicle bucket
+  // offers two, so the client picks, against the declared search — D5.
   ledger["shipped:2.purchased-electricity:portal-default-electricity-demo+electricity-td-demo"] = "D6";
+  ledger["shipped:1.company-vehicles:portal-default-diesel-demo+gas-demo"] = "D5";
   return ledger;
 })();
