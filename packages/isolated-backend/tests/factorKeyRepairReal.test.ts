@@ -11,6 +11,13 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
  * the row it sits on — the dataset part is the row's own dataset and the factor exists in it; the client part is
  * the row's own client factor. Anything else key-shaped is refused, and the migration stops rather than guess.
  *
+ * **At cutover, an abort is the design working.** If migrated client data holds a key-shaped factor id that does
+ * not agree with its own row — a dataset or client factor other than the row's, or a factor its dataset does not
+ * carry — 0122 stops the deploy with a count and changes nothing. That is not a failed migration: it is the repair
+ * refusing to choose a factor for somebody. Establish what each of those rows was meant to be, correct them, and
+ * the repair then runs clean. (Recorded here rather than in 0122 because a migration is frozen once it is open in
+ * a pull request, and 0122 was.)
+ *
  * The rows are put in place *before* 0122 runs — the harness's hook after 0121 — because a repair is only proved
  * against rows that existed when it ran. Two organisations, because the table's row-level security is forced: a
  * repair that ran without a tenant context would see nothing and report success, which is the shape to rule out.
