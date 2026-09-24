@@ -348,3 +348,26 @@ This is a design job before it is an implementation job. It needs:
 
 Not started. Nothing in NZC-103 or NZC-104 addresses it; those record the posture and close one
 over-disclosure, and both say so explicitly.
+
+**Status, 24 Sep 2026.** The single-tenant core has since been built (NZC-116–137: subject identity, the
+confined linkage, crypto-shred erasure with honest-partial reporting, the export), and "waiting on counsel"
+is a blocking state the code holds (NZC-142). **Counsel has answered all four open questions** —
+NZC-138–141 are resolved in the register:
+
+| NZC | Determination | What it implies to build |
+|---|---|---|
+| 138 | Each client org is an independent controller; erasure is tenant-scoped; a global request is split into platform-controlled (NZI answers) and tenant-routed (the client's controller answers) | Global-request intake: classify, answer, route with a record |
+| 139 | Staff data survives under legal obligation / legal claims; archive-not-purge; counsel's stated retention periods | Transcribe basis, period and `shred-after-retention` into each carve-out; an archive state |
+| 140 | Audit before-images and outbox payloads are redacted/anonymised on erasure — not exempt | Payload redaction mechanism; drop the outbox's duplicated address first (NZC-129) |
+| 141 | Cold snapshots may retain data behind a permanent Tombstone Registry with restore-time re-purge; a DSAR needs unique-identifier authentication, never name matching | Tombstone Registry and restore-time re-purge; DSAR identity verification |
+
+**Scheduled after client onboarding**, as its own review stops, unless the onboarding client needs any of it
+first. Until each stop lands the code is unchanged and still reports every erasure `erasure-partial`.
+
+**Confirmed 24 Sep 2026:** carve-outs cover NZI's own staff and records only — a client's staff data is the
+client's determination as controller, and NZI provides the mechanism only; and NZC-141(a) covers backups as
+well as the pre-minimisation snapshots — any cold store that could resurrect erased data re-purges on restore.
+
+**Blocked:** the NZC-139 stop waits on counsel's per-field retention periods; none is inferred. **Open, needing
+its own determination:** the lawful basis for the cross-organisation matching adjudication (NZC-118), not
+covered by the 138–141 relay.
