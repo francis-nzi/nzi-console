@@ -34,8 +34,9 @@ jobs:
   # because its HOLD lived in a commit body the PR page never shows; a signal that depends on someone reading it
   # under time pressure was always going to fail. The prefix is visible in the PR header and enforced here.
   #
-  # Cleared after the ruling by renaming the branch (GitHub's branch rename keeps the PR, which follows the new
-  # name), then re-running this job: it reads the branch name at run time, so the re-run passes.
+  # Cleared after the ruling by renaming the branch off the prefix. In practice the rename did not carry the open
+  # PR (#293 closed; #294 opened for the renamed branch at the same commit), so clearing a hold means a new PR,
+  # whose checks — this one included — run on opening and pass. See the NZC-163 addendum.
   #
   # Only enforcing once it is a *required* status check on main — a repository setting, not something this file
   # can make true.
