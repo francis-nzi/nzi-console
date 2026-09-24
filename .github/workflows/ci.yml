@@ -289,6 +289,11 @@ jobs:
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
       - name: A CRM quick-add entry stores the factor's own id, and calculates
         run: npx tsx --test packages/isolated-backend/tests/crmQuickAddFactorReal.test.ts
+      # 0122 repairs rows the quick-add stored with its option key as the factor id — only where the key agrees
+      # with the row it sits on, in every tenant, calculating nothing — and refuses, before changing anything,
+      # each shape it cannot be sure of. The rows exist before the migration runs, seeded by the harness hook.
+      - name: Key-stored factor ids are repaired where certain, and refused where not
+        run: npx tsx --test packages/isolated-backend/tests/factorKeyRepairReal.test.ts
       # The wiring characterisation, Stop 1. Today's resolution — the DVLA stub, resolveVehicleFactor's ILIKE,
       # the portal's allow-list ordering under this database's collation — executed beside the declarative
       # resolver over real seeded rules. Every divergence is pinned in a ledger, so a change in what resolves
