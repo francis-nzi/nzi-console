@@ -8,6 +8,7 @@ import { resolveFactorForEntry, type CategoryVariant, type FactorRule } from "@n
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { factorRulesFor } from "../src/inputSpecFactorRules";
 import { reconcileUnitForMapping } from "../src/unitCompatibility";
+import { lookupVehicleByRegistration, vehicleAttributes } from "../src/vehicleLookup";
 
 /**
  * Sub-flow composition against the real tables and the real seeded factors (NZC-158).
@@ -60,11 +61,27 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     "1.company-vehicles": await factorRulesFor(db, "1.company-vehicles"),
   });
 
+  /**
+   * An identified diesel vehicle, through the real stub: a plate the DVLA stub calls diesel.
+   *
+   * Until 0119 this suite used `{ unit: "litres" }` alone, and the vehicle flow answered through `fuel-litres`.
+   * That rule assumed diesel for any litres entry and was retired for it (NZC-160 D3), so an unidentified vehicle
+   * now resolves nothing — correctly. The sub-flow is exercised where it still applies: a vehicle the lookup
+   * has named.
+   */
+  const identifiedDiesel = async () => {
+    const found = await lookupVehicleByRegistration("AB12CDH", { allowStub: true });
+    assert.ok(found.ok, "the stub refused the plate");
+    const attributes = vehicleAttributes(found.vehicle);
+    assert.equal(attributes.fuel, "diesel", "AB12CDH is no longer a diesel in the stub");
+    return { entry: { registrationFinder: "AB12CDH", unit: "litres" }, enrichment: { dvla: attributes } };
+  };
+
   const resolveFor = async (category: string, over: { available?: typeof available; rules?: FactorRule[] } = {}) =>
     resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: over.rules ?? await factorRulesFor(db, category),
       specGhgCategory: "3",
-      entry: { unit: "litres" },
+      ...await identifiedDiesel(),
       available: over.available ?? available,
       registry,
       rulesByCategory: await rulesByCategory(),
@@ -200,20 +217,23 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
       VALUES ('3.6','order-probe-fallback',99,'lookup','diesel-demo','test','test')`);
+    // Removed in a finally: left behind by a failing assertion, this row is a shadowed base, and the invariant
+    // tests below would then fail for a reason that has nothing to do with them.
+    try {
+      const subFlowFirst = await resolveFor("3.6");
+      assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "diesel-demo-b",
+        "the fallback answered although it was declared behind the sub-flow");
 
-    const subFlowFirst = await resolveFor("3.6");
-    assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "diesel-demo-b",
-      "the fallback answered although it was declared behind the sub-flow");
+      // Swap the declared numbers. Nothing else changes — same rows, same category, same dataset.
+      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET ordering = 5
+                       WHERE category_code = '3.6' AND rule_key = 'order-probe-fallback'`);
 
-    // Swap the declared numbers. Nothing else changes — same rows, same category, same dataset.
-    await db.query(`UPDATE nzi_console.input_spec_factor_rules SET ordering = 5
-                     WHERE category_code = '3.6' AND rule_key = 'order-probe-fallback'`);
-
-    const fallbackFirst = await resolveFor("3.6");
-    assert.equal(fallbackFirst.kind === "resolved" ? fallbackFirst.factorId : null, "diesel-demo",
-      "the declared ordering was ignored on the way back from the database");
-
-    await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'order-probe-fallback'`);
+      const fallbackFirst = await resolveFor("3.6");
+      assert.equal(fallbackFirst.kind === "resolved" ? fallbackFirst.factorId : null, "diesel-demo",
+        "the declared ordering was ignored on the way back from the database");
+    } finally {
+      await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'order-probe-fallback'`);
+    }
   });
 
   /**

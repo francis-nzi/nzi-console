@@ -92,17 +92,27 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     assert.equal(outcome.scope.agreement, "agrees");
   });
 
-  it("branches a vehicle on its unit, and leaves the distance entry to the search", async () => {
+  it("leaves an unidentified vehicle in litres to a person, because a unit does not name a fuel (D3)", async () => {
+    // 0112 seeded `fuel-litres`: litres → diesel-demo. For a vehicle nobody identified that priced petrol as
+    // diesel, and 0119 deactivated it (NZC-160 D3). Litres and kilometres now both go to the search.
     const rules = await factorRulesFor(db, "1.company-vehicles");
+    for (const unit of ["litres", "km"]) {
+      const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping, rules, specGhgCategory: "1", entry: { unit }, available, registry });
+      assert.equal(outcome.kind, "free-search", `an unplated vehicle in ${unit} was given a factor`);
+    }
 
-    const litres = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping, rules, specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
-    assert.equal(litres.kind === "resolved" ? litres.factorId : null, "diesel-demo");
-
-    // The other half of the characterisation, and the one that proves this is additive: kilometres has
-    // no factor in this dataset, so the entry keeps the search rather than being blocked or — worse —
-    // resolved to the fuel factor because it was the only rule there.
-    const km = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping, rules, specGhgCategory: "1", entry: { unit: "km" }, available, registry });
-    assert.equal(km.kind, "free-search");
+    // Deactivated, not deleted — and able to fail: with the row switched back on, inside a transaction that
+    // is rolled back, the same entry resolves to diesel again. Without this the assertion above would pass
+    // just as well if the rule had never existed or the read had stopped working.
+    await db.query("BEGIN");
+    try {
+      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET active = true WHERE rule_key = 'fuel-litres'`);
+      const revived = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
+        rules: await factorRulesFor(db, "1.company-vehicles"), specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
+      assert.equal(revived.kind === "resolved" ? revived.factorId : null, "diesel-demo");
+    } finally {
+      await db.query("ROLLBACK");
+    }
   });
 
   it("leaves every other seeded category on the free search", async () => {
@@ -232,12 +242,41 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
 
   const vehicleRules = () => factorRulesFor(db, "1.company-vehicles");
 
-  it("seeds the enriched rule ahead of the coarser unit rule", async () => {
-    // Ordering is the whole of the policy here: a lookup that knows what the vehicle *is* must be
-    // consulted before an inference from the unit it was measured in.
+  /**
+   * A coarser rule, present for one test and removed after.
+   *
+   * The STOP tests below prove that a consulted lookup is never overruled by a less specific rule — which only
+   * means anything if such a rule exists and *would* have answered. 0112's `fuel-litres` was that rule until
+   * 0119 retired it (D3); without a stand-in these tests would pass with nothing to set aside, proving nothing.
+   *
+   * A plain lookup rather than a copy of `fuel-litres`: the retired row still holds its `(unit, litres)` slot in
+   * `one_branch_per_value`, which covers inactive rules too. A lookup always answers, which is exactly the less
+   * specific rule a consulted lookup must never let stand in.
+   */
+  const withCoarserRule = async (run: () => Promise<void>) => {
+    await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
+      (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
+      VALUES ('1.company-vehicles','test-coarser-litres',10,'lookup','diesel-demo','test','test')`);
+    try {
+      const probe = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
+        rules: await vehicleRules(), specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
+      assert.equal(probe.kind === "resolved" ? probe.rule.ruleKey : null, "test-coarser-litres",
+        "the stand-in coarser rule does not answer on its own, so the tests using it would prove nothing");
+      await run();
+    } finally {
+      await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'test-coarser-litres'`);
+    }
+  };
+
+  it("seeds only the enriched rule as active; the unit rule is retired, not removed (D3)", async () => {
+    // A lookup that knows what the vehicle *is* is the only thing that may name its fuel.
     const rules = await vehicleRules();
-    assert.deepEqual(rules.map((rule) => [rule.kind, rule.ruleKey]),
-      [["enriched", "dvla-diesel"], ["basis-branch", "fuel-litres"]]);
+    assert.deepEqual(rules.map((rule) => [rule.kind, rule.ruleKey]), [["enriched", "dvla-diesel"]]);
+
+    const retired = await db.query<{ active: boolean; version: number; updated_by: string }>(
+      `SELECT active, version, updated_by FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'fuel-litres'`);
+    assert.deepEqual(retired.rows, [{ active: false, version: 2, updated_by: "migration:0119" }],
+      "fuel-litres should remain, deactivated by 0119, so what it said stays readable");
   });
 
   it("resolves a real stub lookup through the declared rule", async () => {
@@ -265,27 +304,31 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     assert.equal(outcome.rule.ruleKey, "dvla-diesel", "the unit rule answered instead of the lookup");
   });
 
-  it("leaves the entry unresolved when the lookup finds nothing, though the unit rule would have matched", async () => {
-    // The anti-vacuity pairing. `unit: litres` means the seeded `fuel-litres` rule *would* resolve to
-    // `diesel-demo` — so a resolver that treated a failed lookup as "no opinion" would return a factor
-    // here, and this asserts it does not. The vehicle might have been petrol; nobody would have known.
-    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
-      rules: await vehicleRules(), specGhgCategory: "1",
-      entry: { registrationFinder: "ZZ99ZZZ", unit: "litres" },
-      available, registry, enrichment: { dvla: null },
+  it("leaves the entry unresolved when the lookup finds nothing, though a coarser rule would have matched", async () => {
+    // The anti-vacuity pairing. `unit: litres` means the coarser rule *would* resolve to `diesel-demo` — so a
+    // resolver that treated a failed lookup as "no opinion" would return a factor here, and this asserts it
+    // does not. The vehicle might have been petrol; nobody would have known.
+    await withCoarserRule(async () => {
+      const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
+        rules: await vehicleRules(), specGhgCategory: "1",
+        entry: { registrationFinder: "ZZ99ZZZ", unit: "litres" },
+        available, registry, enrichment: { dvla: null },
+      });
+      assert.equal(outcome.kind, "free-search");
+      assert.match(outcome.kind === "free-search" ? outcome.reason : "", /left for a person to resolve/);
     });
-    assert.equal(outcome.kind, "free-search");
-    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /left for a person to resolve/);
   });
 
-  it("still resolves by unit when no registration was entered at all", async () => {
+  it("still lets a coarser rule answer when no registration was entered at all", async () => {
     // And the other side of it, so "stops on a failed lookup" is not mistaken for "an enriched rule
-    // disables the rest of the category". A consultant who never used the finder is not blocked.
-    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
-      rules: await vehicleRules(), specGhgCategory: "1",
-      entry: { unit: "litres" }, available, registry,
+    // disables the rest of the category". Nothing was consulted, so a coarser rule may answer.
+    await withCoarserRule(async () => {
+      const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
+        rules: await vehicleRules(), specGhgCategory: "1",
+        entry: { unit: "litres" }, available, registry,
+      });
+      assert.equal(outcome.kind === "resolved" ? outcome.rule.ruleKey : null, "test-coarser-litres");
     });
-    assert.equal(outcome.kind === "resolved" ? outcome.rule.ruleKey : null, "fuel-litres");
   });
 
   it("the lookup carries no registration back, so none can reach a row", async () => {
@@ -306,14 +349,16 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     const attributes = vehicleAttributes(found.vehicle);
     assert.equal(attributes.fuel, "petrol", "AB12CDE is no longer a petrol in the stub");
 
-    // `unit: litres` means the seeded coarser rule would resolve to diesel-demo if it were allowed to.
-    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
-      rules: await vehicleRules(), specGhgCategory: "1",
-      entry: { registrationFinder: "AB12CDE", unit: "litres" },
-      available, registry, enrichment: { dvla: attributes },
+    // `unit: litres` means the coarser rule would resolve to diesel-demo if it were allowed to.
+    await withCoarserRule(async () => {
+      const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
+        rules: await vehicleRules(), specGhgCategory: "1",
+        entry: { registrationFinder: "AB12CDE", unit: "litres" },
+        available, registry, enrichment: { dvla: attributes },
+      });
+      assert.equal(outcome.kind, "free-search", "a petrol vehicle was filed against the diesel factor");
+      assert.match(outcome.kind === "free-search" ? outcome.reason : "", /consulted and matched no rule/);
     });
-    assert.equal(outcome.kind, "free-search", "a petrol vehicle was filed against the diesel factor");
-    assert.match(outcome.kind === "free-search" ? outcome.reason : "", /consulted and matched no rule/);
   });
 
   it("resolves that same petrol vehicle once a petrol rule is seeded", async () => {
