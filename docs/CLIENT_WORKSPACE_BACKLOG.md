@@ -364,7 +364,10 @@ NZC-138–141 are resolved in the register:
 **Scheduled after client onboarding**, as its own review stops, unless the onboarding client needs any of it
 first. Until each stop lands the code is unchanged and still reports every erasure `erasure-partial`.
 
-**Inputs still needed before the NZC-139 stop:** counsel's per-field retention periods, as values; and
-confirmation that the carve-outs govern NZI's own staff and platform accounts, with a client's staff records
-that client's to decide under NZC-138. Also open, and not assumed: the lawful basis for continuing the
-cross-organisation matching adjudication (NZC-118) now that each client is an independent controller.
+**Confirmed 24 Sep 2026:** carve-outs cover NZI's own staff and records only — a client's staff data is the
+client's determination as controller, and NZI provides the mechanism only; and NZC-141(a) covers backups as
+well as the pre-minimisation snapshots — any cold store that could resurrect erased data re-purges on restore.
+
+**Blocked:** the NZC-139 stop waits on counsel's per-field retention periods; none is inferred. **Open, needing
+its own determination:** the lawful basis for the cross-organisation matching adjudication (NZC-118), not
+covered by the 138–141 relay.

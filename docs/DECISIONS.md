@@ -3925,10 +3925,10 @@ organisations would have answered for controllers who had not been asked.
 or tenant-routed, answer the first, and route the second to the tenant's controller with a record that it
 was routed. Nothing in the single-tenant erasure or export changes.
 
-**Not covered by the determination as recorded,** and so not assumed: the lawful basis for the
-cross-organisation matching adjudication (NZC-118). With independent controllers, whether that adjudication
-continues — and on what basis — is its own question; until it is answered it stays the privileged,
-human-ruled step it is, and is not extended.
+**Open, and not assumed (confirmed 24 Sep 2026):** the lawful basis for the cross-organisation matching
+adjudication (NZC-118). It was not part of the 138–141 determination and needs its own from counsel. With
+independent controllers, whether that adjudication continues — and on what basis — is its own question; until
+it is answered it stays the privileged, human-ruled step it is, and is not extended.
 
 **When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
 contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
@@ -3982,10 +3982,15 @@ fields rather than prose.
 `onErasure: "shred-after-retention"` from the determination, with `resolvedBy: "NZC-139"`; and an archive
 state — retained, out of live use, with a destruction date — distinct from both live and shredded.
 
-**Still to transcribe before that stop.** The per-field retention periods are in counsel's advice and are not
-reproduced here; they are needed as values, per carve-out, before the implementation can resolve a single
-entry. So is whether NZI staff and client staff are treated alike — under NZC-138 a client's staff record is
-that client's to decide, which suggests the carve-outs here govern NZI's own staff and platform accounts.
+**Scope: NZI's own staff and records only (confirmed 24 Sep 2026).** Under NZC-138 each client controls its own
+data, so NZI asserts no retention basis over a client's staff data: whether any of it survives an erasure is the
+client's determination as controller. NZI provides the mechanism — the carve-out shape, the archive state, the
+reporting — and the client supplies the decision. So every carve-out here is `nzi-staff` in scope; a client-staff
+retention is never entered as NZI's.
+
+**Blocked on counsel.** The per-field retention periods are still to come from counsel. They are needed as values,
+per carve-out, before the implementation can resolve a single entry, and none is inferred meanwhile: the NZC-139
+stop does not start until they arrive.
 
 **When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
 contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
@@ -4086,9 +4091,9 @@ reports these as retained today), NZC-129 (dropping data nobody uses).
     re-purge.** A stored snapshot is not rewritten or shredded — so its hash still verifies, and public
     certificate verification (NZC-074) is unaffected. Instead every erasure is recorded permanently in a
     Tombstone Registry, and anything restored or rehydrated from cold storage has the registry's erasures
-    re-applied before it returns to use. Read here as covering both the pre-minimisation report and
-    certificate snapshots this question was about, and cold copies such as backups, since the mechanism is
-    the same for both.
+    re-applied before it returns to use. **Scope confirmed (24 Sep 2026):** any cold store that could
+    resurrect erased data on restore — the pre-minimisation report and certificate snapshots this question was
+    about, and backups — and each such restore re-purges through the registry.
   - **(b) A DSAR requires authentication by unique identifier, never name matching.** A request is tied to the
     person by an identifier that is theirs alone — never a name. Name matching neither completes a DSAR nor
     identifies who is asking; the best-effort name assist above cannot be used to fulfil one.
