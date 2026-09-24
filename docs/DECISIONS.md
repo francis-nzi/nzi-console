@@ -5125,5 +5125,86 @@ so any other select renders as Data confidence. A third select field would have 
 wrong control — a catch-all whose failure looks like a working form. Noted here because it is the shape of
 the next change rather than something this one introduces.
 
+> **Correction (24 Sep 2026) — the last sentence above is wrong, and so was the ruling built on it.** This
+> change *did* introduce that defect: `supplySource` is a `select`, so from #280 every electricity entry drew
+> Supply as a second "Data confidence" control bound to `dataConfidence`. And `supplySource` was **not**
+> captured by #280 — the spec field and the column landed, but neither command stored the value. The later
+> ruling that it was "captured" was inferred from the spec change and never checked against the write path,
+> which is the NZC-153 failure applied to a ruling rather than a report. Found by the wiring Stop 1
+> characterisation (NZC-160). Capture proper — the control drawn by key, the value stored through create and
+> update, a real-database suite in CI — is `feat/supply-source-store`, merged as its own stop.
+
 **Related.** NZC-157 (the location-based answer this applies), NZC-154 (the companion and the forward
 reference), NZC-102 (the governed spec and its golden), NZC-149 (the mapping the primary joins).
+
+### NZC-160 — The wiring characterisation, ruled: what may change, what must be fixed first, and in what order [Confirmed 24 Sep 2026]
+
+**Decision.** Stop 1 of the wiring commit (NZC-154 gate 1) is accepted, and each divergence it found is ruled
+individually. Nothing on the resolution path is wired by this ruling. It fixes the order in which the path is
+made safe to wire.
+
+**What "today" turned out to be.** `createScopeRow` resolves no factor; it stores what its caller sends. The
+resolution the characterisation compares against lives upstream, on **three write paths**: the CRM lookup route
+(`resolveVehicleFactor`, an `ILIKE` over labels restricted to Scope 1) for registration categories; a person's
+pick for every other CRM entry; and the portal, where a client chooses from a staff allow-list pre-selected to
+the first by `lower(label)` and a reviewer's acceptance writes it onto the scope row. The characterisation runs
+that old code, against real rows, beside the resolver over the seeded rules — 113 cases, two datasets, 54
+divergences pinned in a ledger, and two mutation checks proving each side is live code.
+
+**The divergences.**
+
+- **D1 (10) — change by reviewed intent.** A plated diesel vehicle, or an unplated one in business travel or
+  commuting, resolves to the declared factor where today it gets nothing, a Scope 1 per-km guess, or the Scope 1
+  base in a Scope 3 category. The last is the leak NZC-158 exists to close, found live in the old path.
+- **D2 (6) — defect in the new mapping; fixed before wiring, as its own stop.** `dvla-diesel` ignores the unit,
+  so a diesel vehicle recorded in km resolves to a per-litre factor. When `checkUnit` rejects, resolution
+  declines — to a person's pick, **never** to the `ILIKE`.
+- **D3 (6) — defect in the new mapping; fixed before wiring, as its own stop.** `fuel-litres` maps litres to
+  diesel, so an unplated petrol vehicle would have been recorded at the diesel factor, silently. A unit alone
+  cannot identify a fuel; the rule is deactivated. This is the NZC-151 silent downgrade reached through the
+  unit rather than the lookup, and the most important thing the characterisation found.
+- **D4 (12) — accepted, coverage traded for safety,** on condition H6: a petrol or hybrid plate declines to a
+  person until those mappings are authored, rather than taking an automatic Scope 1 guess.
+- **D5 (3) — accepted as identical,** on the same condition: "the search" is a person's pick.
+- **D6 (17) — change by reviewed intent,** the T&D companion beside grid-delivered electricity — held from
+  activation (H4), and dependent on `supplySource` being **required** for electricity rather than offered.
+  "Not stated → no companion" is the right fail-safe direction and silently under-counts T&D if a grid supply is
+  left untagged, so a grid entry must not be committable with supply unstated — the same reasoning that keeps the
+  field under lean capture (NZC-159).
+
+**The hazards.**
+
+- **H1 — urgent, its own stop, ahead of every D-fix.** Under byte-order collation the portal's electricity
+  default is the T&D factor: a client who leaves the control alone records Scope 2 electricity roughly twelve
+  times low. It owes nothing to wiring. The portal default becomes deterministic, never a companion factor, and
+  companion factors leave the primary allow-list entirely — a Scope 3 T&D factor is never selectable as a Scope 2
+  primary. The durable answer is the portal's electricity primary resolved declaratively; an interim
+  deterministic fix ships first if that cannot be immediate.
+- **H2 — latent; closed before any fallback is authored in a sub-flow category.** A consulted lookup that matched
+  nothing comes back through a sub-flow as a plain decline, so a coarser fallback behind the sub-flow would answer
+  for a vehicle that was recognised and could not be mapped. "Not a vehicle" may fall through; "a vehicle I
+  cannot map" declines to a person. Its own design step.
+- **H3 — closed by D2, plus a rule.** The form never rewrites a unit the user entered to match a resolved factor.
+  A resolved factor reconciles with the user's unit or it declines; 100 km never becomes 100 litres.
+- **H4 — the companion does not activate until manual 3.3 coexistence is decided.** Recommended: the derived
+  companion becomes the system of record and manual T&D in 3.3 is flagged or prevented where it fires — to be
+  confirmed before activation. Per-category enablement lets the electricity primary be wired (identical to today)
+  while the companion is held.
+- **H5 — the market row is out of scope.** The substrate proposes only T&D; a market row needs a market-factor
+  policy and is a separate workstream. The electricity target is location headline plus T&D companion.
+- **H6 — the `ILIKE` matcher is retired for enabled categories.** Left behind the declarative path, every decline
+  would leak back to a Scope 1 per-km guess. Enabled-category fallback is declarative, then a person's pick.
+- **H7 — parity by construction.** Both surfaces are wired, after H1, with the allow-list reconciled so declared
+  answers pass portal submission. If the console goes first, the gap is explicit and time-boxed, never silent.
+
+**Sequence.** Capture (`feat/supply-source-store`) merges once green, as its own stop → H1 → D2 → D3 → Stop 2
+wiring (H6 in, per-category enablement, electricity primary and the three vehicle-flow categories enabled, T&D
+held behind H4, portal per H7). H2 before any sub-flow fallback; H4 before the companion activates.
+
+**The premises this corrected.** Two inputs to the brief for this stop were wrong: that `supplySource` was live in
+capture (NZC-159, corrected there), and that the electricity end state included a market row. Both were caught by
+characterising before wiring, which is the argument for the order.
+
+**Related.** NZC-154 (the gate this is condition 1 of), NZC-151 (the STOP that D3 and H2 extend), NZC-158 (the
+leak D1 finds live), NZC-146 (units — D2 and H3), NZC-153 (the verification failure behind the NZC-159
+correction), NZC-143/144 (market kept out of the headline).
