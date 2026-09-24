@@ -62,6 +62,11 @@ import { previewDeclaredFactor } from "../src/declarativeResolution";
  * entries the write path refuses with UNIT_NOT_ACCEPTED. Their resolver outcome is accurate; their premise is
  * not an input anyone can submit. Found in Stop 2a, and the reason Stop 2's own proofs go through the commands.
  *
+ * **A person's pick is the factor's own id.** The CRM rows model a person picking, say, `electricity-demo`. Until
+ * the quick-add fix (found in Stop 2b) the form actually sent its option key, `dataset:<id>|<factor>`, which no
+ * factor has: the row was stored and calculation refused it. So those rows described what the form was meant to
+ * do rather than what it did, and are accurate only from that fix on.
+ *
  * **Keep the "before" live.** Any change to how a factor is chosen, offered, defaulted or accepted updates the
  * rows here that model it, in the same PR (the lesson of H1, whose portal change left these rows stale).
  */

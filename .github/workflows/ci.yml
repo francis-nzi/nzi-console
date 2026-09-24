@@ -284,6 +284,11 @@ jobs:
       # the companion is held (H4). A deliberately chosen different factor needs a reason and is recorded.
       - name: Electricity resolves its primary declaratively, with the companion held
         run: npx tsx --test packages/isolated-backend/tests/electricityPrimaryEnabledReal.test.ts
+      # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
+      # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
+      # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
+      - name: A CRM quick-add entry stores the factor's own id, and calculates
+        run: npx tsx --test packages/isolated-backend/tests/crmQuickAddFactorReal.test.ts
       # The wiring characterisation, Stop 1. Today's resolution — the DVLA stub, resolveVehicleFactor's ILIKE,
       # the portal's allow-list ordering under this database's collation — executed beside the declarative
       # resolver over real seeded rules. Every divergence is pinned in a ledger, so a change in what resolves
