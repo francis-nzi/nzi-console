@@ -47,7 +47,7 @@ import type { JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
+import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
@@ -228,8 +228,10 @@ export function CrpScopeWorkspace({
       .catch(()=>{if(live)setDeclaredPreview(null);});
     return()=>{live=false;};
   },[addingCategory,job.header.id]);
-  const declaredOption=addingCategory&&declaredPreview?.category===addingCategory.code
-    ?declaredOptionFor(declaredPreview.preview,entryFactorRefs.filter(option=>option.scope===addingCategory.scope)):null;
+  // The quick-add's options: the category's scope, less the bases a variant category refuses (Stop 2c).
+  const categoryPreview=addingCategory&&declaredPreview?.category===addingCategory.code?declaredPreview.preview:null;
+  const quickAddOptions=addingCategory?optionsForCategory(entryFactorRefs.filter(option=>option.scope===addingCategory.scope),categoryPreview):[];
+  const declaredOption=addingCategory?declaredOptionFor(categoryPreview,quickAddOptions):null;
   async function createEntryFromForm(input:ScopeRowWriteFields):Promise<{ok:boolean;message?:string}>{
     const result=await postBrowserCommand<{rowId:string}>(`/api/isolated/jobs/${job.header.id}/scope-rows`,input,crypto.randomUUID());
     if(result.state==="success"){setSelectedId(result.data.rowId);setNotice({kind:"ok",text:`Entry added to ${input.categoryCode??input.scope}. Calculate and review it next.`});router.refresh();return{ok:true};}
@@ -320,7 +322,9 @@ export function CrpScopeWorkspace({
     try {
       const response = await fetch(`/api/isolated/jobs/${job.header.id}/vehicle-lookup`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ registration }),
+        // The category goes with the lookup, so a category that resolves declaratively suggests its declared
+        // factor rather than the label ILIKE (Stop 2c, H6).
+        body: JSON.stringify({ registration, categoryCode: addingCategory?.code ?? null, scope: addingCategory ? categoryRowScope(addingCategory as never) : null }),
       });
       const body = await response.json();
       if (!response.ok) return { ok: false, message: body.message ?? "Vehicle lookup failed — enter it manually." };
@@ -332,6 +336,7 @@ export function CrpScopeWorkspace({
         year: body.vehicle?.yearOfManufacture ?? null,
         factorId: body.factor ? `dataset:${body.factor.datasetId}|${body.factor.factorId}` : null,
         factorLabel: body.factor?.label ?? null,
+        attributes: body.attributes ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };
@@ -375,7 +380,7 @@ export function CrpScopeWorkspace({
         category={addingCategory}
         audience="crm"
         site={{ id: siteId, label: siteId === null ? "Unallocated" : siteLabel }}
-        factors={entryFactorRefs.filter(option => option.scope === addingCategory.scope)}
+        factors={quickAddOptions}
         declared={declaredOption}
         units={specs[addingCategory.code]?.units ?? []}
         reportingMonths={spendReportingMonths}

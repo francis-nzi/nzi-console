@@ -235,18 +235,28 @@ describe("wiring characterisation — today's paths against the declarative reso
       for (const category of VEHICLE_FLOW) {
         const spec = category === "1.company-vehicles" ? "1" : "3";
 
-        // Plated entries: today's CRM path is lookup → resolveVehicleFactor → the form applies its answer.
+        // Plated entries: today's CRM path is lookup → the route's suggestion → the form applies it. Since 2c the
+        // route answers an enabled category from the declared resolution, asked with the lookup's attributes and no
+        // unit (the CRM has none until a factor gives it one), and never with the ILIKE (H6). A category that is
+        // off — business travel, commuting — still gets the ILIKE. Both halves are the route's own logic, run here.
         for (const [name, plate] of Object.entries(PLATES)) {
           for (const unit of ["litres", "km"]) {
             const vehicle = await vehicleFor(plate);
-            const old = await resolveVehicleFactor(db, jobId, vehicle);
+            const attributes = vehicleAttributes(vehicle);
+            const live = await previewDeclaredFactor(db, ORG, jobId, { scope: spec, unit: null, supplySource: null,
+              assertedVehicleAttributes: { source: "stub", fuel: attributes.fuel ?? null, vehicleClass: attributes.class ?? null } }, category);
+            const old = live.enabled ? null : await resolveVehicleFactor(db, jobId, vehicle);
+            const suggested = live.enabled ? live.declared?.factorId ?? null : old?.factorId ?? null;
             const { outcome, factors } = await declared(jobId, category, spec,
-              { registrationFinder: plate, unit }, { dvla: vehicleAttributes(vehicle) });
+              { registrationFinder: plate, unit }, { dvla: attributes });
             record({
               id: `${dataset}:${category}:plate-${name}-${unit}`, dataset, category,
               entry: `plate → ${name}, recorded in ${unit}`,
-              before: { kind: "automated", path: "CRM lookup → resolveVehicleFactor (ILIKE, Scope 1 only)", factorId: old?.factorId ?? null,
-                detail: old ? `${old.label} · per ${old.unit}` : "no label matched — form says 'pick one below'" },
+              before: live.enabled
+                ? { kind: "automated", path: "CRM lookup → declared resolution (2c; ILIKE retired, H6)", factorId: suggested,
+                  detail: suggested ? `declared ${suggested}` : "nothing declared — the person picks" }
+                : { kind: "automated", path: "CRM lookup → resolveVehicleFactor (ILIKE, Scope 1 only)", factorId: suggested,
+                  detail: old ? `${old.label} · per ${old.unit}` : "no label matched — form says 'pick one below'" },
               after: shape(outcome), companions: { before: [], after: [] },
               unitCheck: unitNote(factors, shape(outcome).factorId, unit),
             });
@@ -504,15 +514,26 @@ describe("wiring characterisation — today's paths against the declarative reso
  * - `D6` new companion row by design — T&D losses (3.3) beside grid-delivered electricity (NZC-154). **Ruled:
  *   change by reviewed intent**, held from activation until manual 3.3 coexistence is decided and supplySource
  *   is required rather than offered for electricity.
+ * - `D7` the lookup's declared suggestion carries no unit — for a plated diesel in company vehicles it suggests the
+ *   per-litre factor, where the resolver asked with an entry already in km declines (D2). In the CRM the unit
+ *   follows the factor, so applying the suggestion makes the entry litres, shown before any quantity (H3); an entry
+ *   *recorded in km* before the lookup is portal-shaped, where D2 governs. **Proposed at 2c: accepted by reviewed
+ *   intent, pending the ruling.**
+ *
+ * Since 2c company vehicles resolve declaratively and the ILIKE is retired for them (H6), so their plated diesel in
+ * litres (was D1) and the probe's petrol and hybrid plates (was D4) are identical: both sides are the declared
+ * answer or a person's pick. Business travel and commuting are unchanged — still off, still the ILIKE.
  */
-const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
-  const ledger: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = {};
+const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (() => {
+  const ledger: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = {};
   for (const dataset of ["shipped", "probe"] as const) {
+    // Company vehicles, enabled in 2c: plated diesel in km is the one divergence left (D7).
+    ledger[`${dataset}:1.company-vehicles:plate-dieselVan-km`] = "D7";
     for (const category of ["1.company-vehicles", "3.6", "3.7"]) {
-      ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
+      if (category !== "1.company-vehicles") ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
       // D2 fixed (the unit now has to reconcile): shipped went from ∅ → diesel-demo to ∅ → search, which is
       // identical; the probe's ILIKE still suggests a Scope 1 per-km van factor where a person now picks — D4.
-      if (dataset === "probe") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";
+      if (dataset === "probe" && category !== "1.company-vehicles") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";
       // D3 fixed (0119 retired fuel-litres): an unplated vehicle in litres has no declared answer and goes to a
       // person. Shipped petrol had no factor to pick, so ∅ → search is identical; the probe's petrol pick
       // stands — D5. Unplated diesel, company vehicles or a sub-flow, is now a person's pick too — D5, where
@@ -520,8 +541,10 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
       if (dataset === "probe") ledger[`probe:${category}:no-plate-petrol-litres`] = "D5";
       ledger[`${dataset}:${category}:no-plate-diesel-litres`] = "D5";
       if (dataset === "probe") {
-        for (const name of ["petrolCar", "hybridCar"]) {
-          for (const unit of ["litres", "km"]) ledger[`probe:${category}:plate-${name}-${unit}`] = "D4";
+        if (category !== "1.company-vehicles") {
+          for (const name of ["petrolCar", "hybridCar"]) {
+            for (const unit of ["litres", "km"]) ledger[`probe:${category}:plate-${name}-${unit}`] = "D4";
+          }
         }
         ledger[`probe:${category}:no-plate-diesel-car-km`] = "D5";
       }

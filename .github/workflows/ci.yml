@@ -319,6 +319,11 @@ jobs:
       # What the form shows is what it commits; nothing rewrites a factor or unit a person chose.
       - name: The capture form shows the declared factor and commits exactly what it shows
         run: npx tsx --test packages/isolated-backend/tests/declaredFactorFormReal.test.ts
+      # Stop 2c — company vehicles switched on (0123), the ILIKE retired for them (H6), the base of a variant refused
+      # in business travel and commuting (in the pick list and at the write), and a change to the vehicle flow
+      # carried into both through the write. Driven through the capture path per NZC-162.
+      - name: The vehicle trio resolves as ruled, and the flow reaches its sub-flows through the write
+        run: npx tsx --test packages/isolated-backend/tests/vehicleTrio2cReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.

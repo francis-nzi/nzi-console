@@ -59,8 +59,8 @@ describe("the write path resolves declaratively where a category is switched on,
     `SELECT factor_id, dataset_id, factor_version, provenance_json, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0]!;
   const rowCount = async () => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n;
 
-  /** What the migrations switched on: since 0121, electricity's two primaries, and no companion. */
-  const BASELINE = ["2.purchased-electricity", "2.renewable-electricity"];
+  /** What the migrations switched on: electricity's two primaries (0121) and company vehicles (0123), no companion. */
+  const BASELINE = ["1.company-vehicles", "2.purchased-electricity", "2.renewable-electricity"];
   const restoreBaseline = () => db.query(
     `UPDATE nzi_console.input_spec_categories SET companions_enabled = false, declarative_resolution_enabled = (category_code = ANY($1))`, [BASELINE]);
 
@@ -101,7 +101,7 @@ describe("the write path resolves declaratively where a category is switched on,
 
   // ── The switches ─────────────────────────────────────────────────────────────────────────────────────
 
-  it("switches on only what a migration switched on: 0120 laid them all off, 0121 turned on electricity's primaries", async () => {
+  it("switches on only what a migration switched on: 0120 laid them all off; 0121 and 0123 turned on three primaries", async () => {
     const on = await db.query<{ category_code: string; companions_enabled: boolean }>(
       `SELECT category_code, companions_enabled FROM nzi_console.input_spec_categories WHERE declarative_resolution_enabled OR companions_enabled ORDER BY category_code`);
     assert.deepEqual(on.rows, BASELINE.map((category_code) => ({ category_code, companions_enabled: false })));
@@ -109,7 +109,7 @@ describe("the write path resolves declaratively where a category is switched on,
 
   it("refuses a companion switched on without its category's primary", async () => {
     await assert.rejects(
-      () => db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '1.company-vehicles'`),
+      () => db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '1.natural-gas'`),
       /input_spec_categories_companions_need_primary/);
   });
 
@@ -286,10 +286,12 @@ describe("the write path resolves declaratively where a category is switched on,
     });
   });
 
-  it("PINNED until 2c: an unplated business-travel entry can take a factor tagged Scope 1 and 3, per km", async () => {
+  it("PINNED until per-distance factors: an unplated business-travel entry can take a factor tagged Scope 1 and 3, per km", async () => {
     // D3 #1's leak in the shape the write path allows: a per-km passenger-vehicle factor tagged {1,3}, as
     // libraries tag them, passes the validity gate for a Scope 3 row and nothing declared stands in its way.
-    // 2c restricts the variant categories to their variants; until then the person's pick stands.
+    // 2c refuses the base of a category's own variant — but this factor has no variant, so it stays open, as ruled:
+    // restricting to variants before distance-priced ones exist would leave nothing to pick. It closes when the
+    // per-distance business-travel and commuting factors are authored.
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
        VALUES ($1,'synthetic-gb-2026','car-km-test','Average car — test factor','km',0.17,ARRAY['1','3'])`, [ORG]);

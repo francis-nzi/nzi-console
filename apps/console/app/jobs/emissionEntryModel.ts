@@ -27,6 +27,8 @@ export type EmissionEntryDraft = {
   supplySource: string;
   /** Why a factor other than the category's declared one was chosen. Asked only when the choice diverges (Stop 2b). */
   factorOverrideReason: string;
+  /** The lookup's attributes, carried to the write (Stop 2c, F3). Dropped when the registration changes. */
+  assertedVehicleAttributes?: { source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null } | null;
   note: string;
   monthlyOpen: boolean;
   monthly: Record<string, string>;
@@ -44,6 +46,8 @@ export type RegistrationLookupOutcome =
       year: number | null;
       /** CRM only — a suggested factor when one matched. */
       factorId?: string | null;
+      /** What the lookup said the vehicle is — fuel and class, never the plate — for the write to re-resolve (F3). */
+      attributes?: { source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null } | null;
       factorLabel?: string | null;
     }
   | { ok: false; message: string };
@@ -192,8 +196,18 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
 
 /** What the declared-factor preview returns — the shape of the backend's `DeclaredFactorPreview`. */
 export type DeclaredFactorPreviewResult =
-  | { enabled: false }
-  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null };
+  | { enabled: false; excludedFactorIds?: string[] }
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds?: string[] };
+
+/**
+ * The options a category's quick-add may offer (Stop 2c): all of them, less the bases the category refuses — a
+ * variant category never offers the base of its own variant. Mirrors the write's refusal, so a person is not
+ * offered what the server would turn away.
+ */
+export function optionsForCategory(options: readonly EntryFactorRef[], preview: DeclaredFactorPreviewResult | null): EntryFactorRef[] {
+  const excluded = new Set(preview?.excludedFactorIds ?? []);
+  return options.filter((option) => option.factorSource === "client" || !excluded.has(option.factorId ?? ""));
+}
 
 /** The declared factor, as one of the form's own options. */
 export type DeclaredOption = { optionId: string; factorId: string; label: string; unit: string };
@@ -298,6 +312,8 @@ export function emissionEntryDraftToScopeRow(
     supplySource: (draft.supplySource.trim() || null) as ScopeRowWriteFields["supplySource"],
     // Only ever filled when the pick diverges from the declared factor; the form clears it otherwise (Stop 2b).
     factorOverrideReason: draft.factorOverrideReason.trim() || null,
+    // What the lookup said, asserted at capture; the write resolves from it and records it as such (F3).
+    assertedVehicleAttributes: draft.assertedVehicleAttributes ?? null,
     purchasedGoodsCategoryId: spend ? draft.spendCategoryId || null : null,
     purchasedGoodsCategoryLabel: null,
     quantity: parseEntryNumber(draft.quantity),

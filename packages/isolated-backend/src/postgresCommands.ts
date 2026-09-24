@@ -34,7 +34,7 @@ import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 import type { PoolLike, Queryable } from "./postgres";
-import { applyDeclarativeResolution } from "./declarativeResolution";
+import { applyDeclarativeResolution, variantBaseRefusal } from "./declarativeResolution";
 import { withTenantWrite } from "./postgres";
 
 export class IdempotencyConflictError extends Error {
@@ -1264,6 +1264,10 @@ export type CreateScopeRowResult = {
  * nothing behind. See `declarativeResolution.ts` for the F1 rule itself.
  */
 async function declarativeFactorFor(db: Queryable, context: CommandContext, input: ScopeRowWriteFields & { jobId: string }, categoryCode: string | null) {
+  // Stop 2c — whatever the switch: a variant category never takes the base of its own variant (the D1 leak on the
+  // manual path). The only check here that runs for a category resolution has not been switched on for.
+  const baseRefusal = await variantBaseRefusal(db, context.organisationId, input.jobId, input, categoryCode);
+  if (baseRefusal) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_IS_VARIANT_BASE", message: baseRefusal }]);
   const result = await applyDeclarativeResolution(db, context.organisationId, input.jobId, input, categoryCode, context.actorId);
   if (result.kind === "refuse") throw new CommandValidationError([{ field: result.field, code: result.code, message: result.message }]);
   return result.kind === "apply" ? result
