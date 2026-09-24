@@ -31,7 +31,19 @@ const businessTravel: FactorRule = {
 };
 const commuting: FactorRule = { ...businessTravel, ruleKey: "car-via-vehicle-flow", suffixCode: "-c" };
 
-const inputs = (over: Partial<MappingInputs>): MappingInputs => ({
+/**
+ * Units are not this file's subject — D2's own suite (unitReconciliation.test.ts) is. Since D2 an entry carrying a
+ * unit declines unless its factor's unit is known and reconciles, so here every factor is taken to be priced in
+ * whatever the entry was captured in, and the check passes. That keeps these tests about rule mechanics without
+ * switching the unit check off anywhere it is being tested.
+ */
+const unitsNotUnderTest = (built: MappingInputs): MappingInputs => ({
+  ...built,
+  reconcileUnit: built.reconcileUnit ?? (() => ({ ok: true })),
+  available: built.available.map((factor) => ({ ...factor, unit: factor.unit ?? built.entry.unit ?? null })),
+});
+
+const inputs = (over: Partial<MappingInputs>): MappingInputs => unitsNotUnderTest({
   rules: [businessTravel],
   specGhgCategory: "3",
   entry: { unit: "litres" },

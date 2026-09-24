@@ -7,6 +7,7 @@ import pg from "pg";
 import { resolveFactorForEntry, type CategoryVariant, type FactorRule } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { factorRulesFor } from "../src/inputSpecFactorRules";
+import { reconcileUnitForMapping } from "../src/unitCompatibility";
 
 /**
  * Sub-flow composition against the real tables and the real seeded factors (NZC-158).
@@ -28,7 +29,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
   let database: DisposableDatabase;
   let db: pg.Client;
   let registry: CategoryVariant[];
-  let available: Array<{ factorId: string; scopes: string[] }>;
+  let available: Array<{ factorId: string; scopes: string[]; unit: string }>;
 
   before(async () => {
     database = (await createDisposableDatabase("subflow"))!;
@@ -48,9 +49,9 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
       description: row.description, status: row.status as CategoryVariant["status"], sortOrder: row.sort_order,
     }));
 
-    const factors = await db.query<{ factor_id: string; scopes: string[] }>(
-      `SELECT factor_id, scopes FROM nzi_console.emission_factors WHERE organisation_id = $1`, [DEMO_ORG]);
-    available = factors.rows.map((row) => ({ factorId: row.factor_id, scopes: row.scopes }));
+    const factors = await db.query<{ factor_id: string; scopes: string[]; activity_unit: string }>(
+      `SELECT factor_id, scopes, activity_unit FROM nzi_console.emission_factors WHERE organisation_id = $1`, [DEMO_ORG]);
+    available = factors.rows.map((row) => ({ factorId: row.factor_id, scopes: row.scopes, unit: row.activity_unit }));
   });
 
   after(async () => { await db?.end(); await database?.end(); });
@@ -60,7 +61,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
   });
 
   const resolveFor = async (category: string, over: { available?: typeof available; rules?: FactorRule[] } = {}) =>
-    resolveFactorForEntry({
+    resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: over.rules ?? await factorRulesFor(db, category),
       specGhgCategory: "3",
       entry: { unit: "litres" },

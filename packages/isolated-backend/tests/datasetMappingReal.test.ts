@@ -5,6 +5,7 @@ import { resolveFactorForEntry, type CategoryVariant } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { factorRulesFor, listFactorRules } from "../src/inputSpecFactorRules";
 import { lookupVehicleByRegistration, vehicleAttributes } from "../src/vehicleLookup";
+import { reconcileUnitForMapping } from "../src/unitCompatibility";
 
 /**
  * The declared mapping, against the real tables (NZC-149).
@@ -31,9 +32,9 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
 
   /** The demonstration dataset's factors, as the resolver sees them. */
   const available = [
-    { factorId: "electricity-demo", scopes: ["2"] },
-    { factorId: "diesel-demo", scopes: ["1", "3"] },
-    { factorId: "gas-demo", scopes: ["1"] },
+    { factorId: "electricity-demo", scopes: ["2"], unit: "kWh" },
+    { factorId: "diesel-demo", scopes: ["1", "3"], unit: "litres" },
+    { factorId: "gas-demo", scopes: ["1"], unit: "kWh" },
   ];
 
   const refused = async (sql: string, values: unknown[], constraint: RegExp) => {
@@ -82,7 +83,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     assert.equal(rules.length, 1);
     assert.equal(rules[0]!.kind, "lookup");
 
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules, specGhgCategory: "2", entry: { unit: "kWh" }, available, registry,
     });
     assert.equal(outcome.kind, "resolved");
@@ -94,13 +95,13 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
   it("branches a vehicle on its unit, and leaves the distance entry to the search", async () => {
     const rules = await factorRulesFor(db, "1.company-vehicles");
 
-    const litres = resolveFactorForEntry({ rules, specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
+    const litres = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping, rules, specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
     assert.equal(litres.kind === "resolved" ? litres.factorId : null, "diesel-demo");
 
     // The other half of the characterisation, and the one that proves this is additive: kilometres has
     // no factor in this dataset, so the entry keeps the search rather than being blocked or — worse —
     // resolved to the fuel factor because it was the only rule there.
-    const km = resolveFactorForEntry({ rules, specGhgCategory: "1", entry: { unit: "km" }, available, registry });
+    const km = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping, rules, specGhgCategory: "1", entry: { unit: "km" }, available, registry });
     assert.equal(km.kind, "free-search");
   });
 
@@ -120,7 +121,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
       // pass just as happily if every one of these categories had been mapped by mistake.
       const rules = await factorRulesFor(db, code);
       assert.deepEqual(rules, [], `${code} has rules but was not in the grouped read`);
-      const outcome = resolveFactorForEntry({
+      const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
         rules, specGhgCategory: "1", entry: { unit: "litres" }, available, registry,
       });
       assert.equal(outcome.kind, "free-search", `${code} must still use the search`);
@@ -214,7 +215,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
   let db: pg.Client;
   let registry: CategoryVariant[];
 
-  const available = [{ factorId: "diesel-demo", scopes: ["1", "3"] }, { factorId: "gas-demo", scopes: ["1"] }];
+  const available = [{ factorId: "diesel-demo", scopes: ["1", "3"], unit: "litres" }, { factorId: "gas-demo", scopes: ["1"], unit: "kWh" }];
 
   before(async () => {
     database = (await createDisposableDatabase("enriched"))!;
@@ -253,7 +254,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     // resolving path would have looked tested and would not have been.
     assert.equal(attributes.fuel, "diesel", "XY34ZAB is no longer a diesel in the stub");
 
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
       entry: { registrationFinder: "XY34ZAB", unit: "litres" },
       available, registry, enrichment: { dvla: attributes },
@@ -268,7 +269,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     // The anti-vacuity pairing. `unit: litres` means the seeded `fuel-litres` rule *would* resolve to
     // `diesel-demo` — so a resolver that treated a failed lookup as "no opinion" would return a factor
     // here, and this asserts it does not. The vehicle might have been petrol; nobody would have known.
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
       entry: { registrationFinder: "ZZ99ZZZ", unit: "litres" },
       available, registry, enrichment: { dvla: null },
@@ -280,7 +281,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
   it("still resolves by unit when no registration was entered at all", async () => {
     // And the other side of it, so "stops on a failed lookup" is not mistaken for "an enriched rule
     // disables the rest of the category". A consultant who never used the finder is not blocked.
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
       entry: { unit: "litres" }, available, registry,
     });
@@ -306,7 +307,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     assert.equal(attributes.fuel, "petrol", "AB12CDE is no longer a petrol in the stub");
 
     // `unit: litres` means the seeded coarser rule would resolve to diesel-demo if it were allowed to.
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
       entry: { registrationFinder: "AB12CDE", unit: "litres" },
       available, registry, enrichment: { dvla: attributes },
@@ -329,10 +330,10 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     assert.equal(found.ok, true);
     if (!found.ok) return;
 
-    const outcome = resolveFactorForEntry({
+    const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
       entry: { registrationFinder: "AB12CDE", unit: "litres" },
-      available: [...available, { factorId: "petrol-demo", scopes: ["1"] }],
+      available: [...available, { factorId: "petrol-demo", scopes: ["1"], unit: "litres" }],
       registry, enrichment: { dvla: vehicleAttributes(found.vehicle) },
     });
     assert.equal(outcome.kind, "resolved");

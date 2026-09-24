@@ -166,6 +166,15 @@ export type MappingOutcome =
     reason: string;
   };
 
+/**
+ * Whether an entered unit can stand for a factor's unit (NZC-146, NZC-160 D2).
+ *
+ * Handed in rather than implemented here: the conversions live in the backend's `checkUnit`, and a second
+ * table of them in this pure module would be a second answer to the same question. The resolver only needs
+ * the verdict, and the reason, so a decline can say why.
+ */
+export type UnitReconciler = (entered: string, factorUnit: string) => { ok: true } | { ok: false; reason: string };
+
 export type MappingInputs = {
   /** The category's declared rules, in any order; this function sorts them. */
   rules: readonly FactorRule[];
@@ -173,8 +182,17 @@ export type MappingInputs = {
   specGhgCategory: string;
   /** What the user has captured so far, by field key. Missing keys simply do not match. */
   entry: Readonly<Record<string, string | null | undefined>>;
-  /** The factors the selected dataset offers, with what each claims about itself. */
-  available: ReadonlyArray<{ factorId: string; scopes?: readonly string[] | null }>;
+  /** The factors the selected dataset offers, with what each claims about itself and the unit it is priced per. */
+  available: ReadonlyArray<{ factorId: string; scopes?: readonly string[] | null; unit?: string | null }>;
+  /**
+   * Checks a resolved factor's unit against the unit the entry was captured in (D2).
+   *
+   * When the entry carries a unit, a factor must reconcile with it or its rule declines — a per-litre factor is
+   * never applied to kilometres. A caller that supplies no check, or a factor whose unit is not known, declines
+   * too: an entry with a unit that nothing checked is not waved through. An entry with no unit yet is not
+   * checked, because nothing was entered for the factor to contradict.
+   */
+  reconcileUnit?: UnitReconciler;
   /** The estate-wide suffix registry (NZC-145). */
   registry: readonly CategoryVariant[];
   /**
@@ -259,6 +277,7 @@ function resolveWithin(inputs: MappingInputs, resolving: ReadonlySet<string>): M
   const byId = new Map(available.map((factor) => [factor.factorId, factor]));
   const scopesOf = (factorId: string): readonly string[] =>
     (byId.get(factorId)?.scopes ?? []).filter((scope) => scope.trim() !== "");
+  const unitRefusal = (factorId: string): string | null => unitMismatch(inputs, factorId);
 
   const declined: RuleDeclined[] = [];
   const ordered = [...rules].sort((left, right) => left.ordering - right.ordering
@@ -427,6 +446,16 @@ function resolveWithin(inputs: MappingInputs, resolving: ReadonlySet<string>): M
       continue;
     }
 
+    // The unit the entry was captured in must be one this factor can price (D2). The enriched rule reads
+    // fuel and nothing else, so without this a diesel van recorded in kilometres resolved to a per-litre
+    // factor. A decline here is like any other: after a consulted lookup the coarser rules are already set
+    // aside, so the entry goes to a person — never to a less specific rule, never to the ILIKE matcher.
+    const refused = unitRefusal(factorId);
+    if (refused) {
+      declined.push({ ruleKey: rule.ruleKey, kind: rule.kind, reason: refused });
+      continue;
+    }
+
     return { kind: "resolved", factorId, rule, declined, scope: decideScope(ghgCategory, authority, scopesOf(factorId)) };
   }
 
@@ -450,6 +479,26 @@ function resolveWithin(inputs: MappingInputs, resolving: ReadonlySet<string>): M
       ? "this category declares no factor rules yet, so the search is the mapping"
       : `none of its ${ordered.length} rule(s) applied`,
   };
+}
+
+/**
+ * Why a factor cannot price this entry's unit, or null when it can (D2).
+ *
+ * Unchecked is refused, not passed: an entry that carries a unit declines if the caller supplied no check or
+ * the factor's own unit is unknown. That is the fail-safe direction — the cost is a person picking a factor,
+ * where the alternative is a quantity multiplied by a rate priced in something else.
+ */
+function unitMismatch(inputs: MappingInputs, factorId: string): string | null {
+  const entered = (inputs.entry.unit ?? "").trim();
+  if (entered === "") return null;
+  const factorUnit = (inputs.available.find((factor) => factor.factorId === factorId)?.unit ?? "").trim();
+  if (factorUnit === "" || !inputs.reconcileUnit) {
+    return `the entry is in '${entered}' and '${factorId}''s unit could not be checked against it, so it is left `
+      + "for a person rather than assumed to match";
+  }
+  const verdict = inputs.reconcileUnit(entered, factorUnit);
+  return verdict.ok ? null
+    : `the entry is in '${entered}' and '${factorId}' is priced per '${factorUnit}': ${verdict.reason}`;
 }
 
 /**
@@ -635,6 +684,11 @@ function resolveSubFlow(
     return { kind: "declined", stop: true,
       reason: `'${composed}' is not in the selected dataset` };
   }
+
+  // The inner flow already checked the base's unit; the variant is checked in its own right, because a variant
+  // carrying a different unit from its base is exactly the drift NZC-145 forbids and this is where it would bite.
+  const refused = unitMismatch(inputs, composed);
+  if (refused) return { kind: "declined", stop: true, reason: refused };
 
   return { kind: "resolved", factorId: composed, ghgCategory: variant.ghgCategory };
 }

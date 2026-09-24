@@ -1,3 +1,4 @@
+import type { UnitReconciler } from "@nzi/contracts";
 import { denominatorOf, MILES_PER_KM } from "./lcaUnits";
 
 /**
@@ -172,6 +173,18 @@ export function quantityInFactorUnit(
   if (check.kind === "reject") return null;
   return { quantity: check.kind === "same" ? quantity : quantity * check.factor, check };
 }
+
+/**
+ * `checkUnit` in the shape the declarative resolver takes (NZC-160 D2).
+ *
+ * The resolver is pure and lives in contracts, so it is handed this rather than a copy of the unit table: one
+ * definition of which units reconcile, asked at resolution and again at the write. Convertible counts as
+ * reconciling — the write converts it — and only a rejection declines the rule.
+ */
+export const reconcileUnitForMapping: UnitReconciler = (entered, factorUnit) => {
+  const check = checkUnit(entered, factorUnit);
+  return check.kind === "reject" ? { ok: false, reason: check.reason } : { ok: true };
+};
 
 /**
  * Whether a unit is one the spec offers for a field.
