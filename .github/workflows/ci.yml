@@ -324,10 +324,10 @@ jobs:
       # carried into both through the write. Driven through the capture path per NZC-162.
       - name: The vehicle trio resolves as ruled, and the flow reaches its sub-flows through the write
         run: npx tsx --test packages/isolated-backend/tests/vehicleTrio2cReal.test.ts
-      # H4 as ruled: the derived T&D companion is the system of record, and a manual 3.3 entry is flagged, never refused,
-      # where the companion is actually derived in the same job. Dormant while companions are off; blocks nothing.
-      - name: A manual 3.3 entry is flagged, not refused, where T&D is derived beside it
-        run: npx tsx --test packages/isolated-backend/tests/tdOverlapFlagReal.test.ts
+      # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
+      # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
+      - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked
+        run: npx tsx --test packages/isolated-backend/tests/tdAddPromptReal.test.ts
       # Stop 2d — portal parity. Acceptance is the third write path and applies F1 and the variant-base rule, with the
       # reviewer, not the client, accountable for a deviation (a reason, or a switch to the declared factor). The grant
       # refuses a bucket missing its declared factor, the portal pre-selects it, and a looked-up vehicle's attributes

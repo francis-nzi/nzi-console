@@ -292,8 +292,8 @@ export type ScopeRowWriteFields = {
 export type SiteOption={id:string;name:string};
 export type PurchasedGoodsCategoryOption={id:string;name:string};
 export type ScopeRowReadModel = ScopeRowWriteFields & { id: string; jobId: string; reportLabel:string; categoryPath:string[]; categoryCode?: string | null; monthlyActivity:MonthlyActivitySlot[]; calculatedTco2e: number | null; overrideTco2e: number | null; overrideReason: string | null; reviewStatus: "pending" | "approved" | "rejected"; reviewedRowVersion:number|null;reviewedBy:string|null;reviewedAt:string|null;reviewerNote:string|null; version: number; enabled: boolean; clientFactorVersionMoved?: boolean;
-  /** A manual row in a companion's category, in a job where that companion is being derived — T&D may be counted twice. Advisory, never blocking (NZC-160 H4, as ruled). */
-  tdDerivedAlongside?: boolean; provenance: Record<string, unknown>; lineage: Array<{ title: string; detail: string }> };
+  /** A 3.3 row, which may not include transmission & distribution losses: prompt to consider adding T&D. A completeness nudge, never blocking (NZC-160 H4, as ruled). */
+  tdAddPrompt?: boolean; provenance: Record<string, unknown>; lineage: Array<{ title: string; detail: string }> };
 export type ScopeQaReadiness={total:number;enabled:number;approved:number;pending:number;rejected:number;calculationMissing:number;qualityMissing:number;independentReviewPending:number;readyForReporting:boolean};
 export type EmissionsTargetReadModel={jobId:string;baselineYear:number;baselineTco2e:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;version:number;updatedAt:string;updatedBy:string};
 /** NZC-071 — where an intensity denominator came from. A floor-area metric is always derived from the in-boundary sites. */
