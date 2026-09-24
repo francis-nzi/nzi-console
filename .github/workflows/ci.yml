@@ -255,6 +255,12 @@ jobs:
       # back to the Scope 1 base, which would be a commute filed under Scope 3 and looking entirely normal.
       - name: A reused flow files under its own category, and never falls back to the base
         run: npx tsx --test packages/isolated-backend/tests/subFlowCompositionReal.test.ts
+      # The portal's staff and client writes (P0). Nine commands audited through jsonb_build_object with
+      # untyped parameters, which Postgres refuses — so every one rolled back, and every one passed its
+      # fake-pool unit tests. Each is run here against real policies and grants, and its audit event read
+      # back with its JSON types intact. Watched failing on the unfixed code before the fix went in.
+      - name: Portal writes commit and audit, against a real database
+        run: npx tsx --test packages/isolated-backend/tests/portalAuditWritesReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
