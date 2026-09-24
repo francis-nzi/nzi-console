@@ -324,6 +324,16 @@ jobs:
       # carried into both through the write. Driven through the capture path per NZC-162.
       - name: The vehicle trio resolves as ruled, and the flow reaches its sub-flows through the write
         run: npx tsx --test packages/isolated-backend/tests/vehicleTrio2cReal.test.ts
+      # Stop 2d — portal parity. Acceptance is the third write path and applies F1 and the variant-base rule, with the
+      # reviewer, not the client, accountable for a deviation (a reason, or a switch to the declared factor). The grant
+      # refuses a bucket missing its declared factor, the portal pre-selects it, and a looked-up vehicle's attributes
+      # travel in the draft to be re-resolved at acceptance. Grant to a calculated number, per NZC-162.
+      - name: A portal entry is resolved at acceptance as the CRM's write resolves it
+        run: npx tsx --test packages/isolated-backend/tests/portalParity2dReal.test.ts
+      # H4's hard gate (2d): companions stay off until portal records capture supply source. A migration that switches
+      # them on first fails here — the T&D row would otherwise go missing from every portal grid entry, silently.
+      - name: Companions stay off until the portal can state how electricity arrived
+        run: npx tsx --test packages/isolated-backend/tests/companionActivationGateReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.

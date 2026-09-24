@@ -1,4 +1,5 @@
-import { lookupVehicleByRegistration, resolveVehicleFactor, withTenantRead } from "@nzi/isolated-backend";
+import { lookupVehicleByRegistration, withTenantRead } from "@nzi/isolated-backend";
+import { suggestVehicleFactor } from "../../../../../lib/vehicleSuggestion";
 import { portalAuthFailure } from "../../../../../lib/authResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 import { currentPortalUserForData, requirePortalOrigin } from "../../../../../lib/portalSession";
@@ -14,7 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     requirePortalOrigin(request);
     const user = await currentPortalUserForData(request);
     const { jobId } = await params;
-    const body = (await request.json().catch(() => ({}))) as { registration?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { registration?: unknown; categoryCode?: unknown; scope?: unknown };
     if (typeof body.registration !== "string" || body.registration.trim() === "") {
       return Response.json({ code: "REGISTRATION_REQUIRED", message: "A registration number is required." }, { status: 400 });
     }
@@ -24,9 +25,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     });
     if (!result.ok) return Response.json({ code: "VEHICLE_LOOKUP_FAILED", message: result.message }, { status: result.status });
 
-    const factor = await withTenantRead(isolatedPool(), user.organisationId, (db) => resolveVehicleFactor(db, jobId, result.vehicle));
+    // Stop 2d (P3): the same suggestion the CRM uses — declared for an enabled category, never the ILIKE there — and the
+    // attributes (fuel and class, never the plate) for the draft to carry to acceptance. The factor itself is not sent
+    // to the client: the bucket's authorised list decides what they may pick, and acceptance re-resolves regardless.
+    const category = typeof body.categoryCode === "string" && body.categoryCode.trim() ? body.categoryCode.trim() : null;
+    const scope = typeof body.scope === "string" && body.scope.trim() ? body.scope.trim() : null;
+    const { factor, attributes } = await withTenantRead(isolatedPool(), user.organisationId, (db) =>
+      suggestVehicleFactor(db, user.organisationId, jobId, result.vehicle, result.source, category, scope));
     return Response.json(
-      { source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, matched: factor !== null },
+      { source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, matched: factor !== null, attributes },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

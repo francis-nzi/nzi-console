@@ -425,5 +425,7 @@ export function emissionEntryDraftToPortalRecord(
 
   const quantity = parseEntryNumber(draft.quantity);
   if (quantity == null || quantity <= 0) return { error: "Enter a quantity greater than zero." };
-  return { bucketGrantId: bucket.bucketGrantId, quantity, unit: factor.unit, factorId, siteId: site.id, note };
+  // A looked-up vehicle's attributes travel in the record's detail, for acceptance to re-resolve from (Stop 2d, P3).
+  const detail = draft.assertedVehicleAttributes ? { vehicleAttributes: draft.assertedVehicleAttributes } : undefined;
+  return { bucketGrantId: bucket.bucketGrantId, quantity, unit: factor.unit, factorId, siteId: site.id, note, ...(detail ? { detail } : {}) };
 }

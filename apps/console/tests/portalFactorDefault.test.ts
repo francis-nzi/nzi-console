@@ -32,6 +32,17 @@ describe("the portal's default factor", () => {
     assert.equal(defaultPortalFactorId([]), "");
   });
 
+  it("is the category's declared factor when the bucket authorises it, however many others it offers (Stop 2d, P4)", () => {
+    assert.equal(defaultPortalFactorId([option("electricity-td-demo"), option("electricity-demo")], "electricity-demo"), "electricity-demo");
+    assert.equal(defaultPortalFactorId([option("electricity-demo"), option("electricity-td-demo")], "electricity-demo"), "electricity-demo");
+  });
+
+  it("ignores a declared factor the bucket does not authorise — a default is never a factor staff did not grant", () => {
+    assert.equal(defaultPortalFactorId([option("a"), option("b")], "electricity-demo"), "");
+    assert.equal(defaultPortalFactorId([option("a")], "electricity-demo"), "a");
+    assert.equal(defaultPortalFactorId([option("a"), option("b")], null), "");
+  });
+
   it("is what the portal surface actually uses — it no longer reaches for the first factor", () => {
     // Asserted on the source because the regression is a shape: `factors[0]` anywhere in the surface is a
     // default chosen by collation.
