@@ -78,6 +78,31 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
     assert.equal(Number(calculated.calculated_tco2e), 0.18);
   });
 
+  it("saves and calculates an electricity quick-add with electricity switched on (0121), where the key was refused", async () => {
+    // #290 enabled electricity ahead of this fix, and with the form sending its option key every electricity
+    // quick-add with a picked factor was refused at save. Both halves, against the migrations as shipped.
+    const refs = entryFactorRefsFor([{ factorSource: "dataset", datasetId: "synthetic-gb-2026", clientFactorId: null,
+      factorId: "electricity-demo", label: "UK electricity — demonstration factor", activityUnit: "kWh", synthetic: true, scopes: ["2"], datasetVersion: "2026 demo v1" }]);
+    const input = emissionEntryDraftToScopeRow({
+      activity: "Meter", quantity: "1000", unit: "kWh", vatPercent: "", glCode: "", spendCategoryId: "", registration: "",
+      manualMode: false, manualDetail: "", factorId: refs[0]!.id, qualityTier: "Measured", dataConfidence: "M — Medium",
+      supplySource: "grid", note: "", monthlyOpen: false, monthly: {},
+    }, { code: "2.purchased-electricity", name: "Purchased electricity", scope: "2", kind: "manual" } as never, { id: null, label: null }, refs, []);
+
+    const created = await createScopeRow(database.pool, { ...input, jobId: JOB }, context());
+    const row = (await db.query<{ factor_id: string; version: number; provenance_json: Record<string, any> }>(
+      `SELECT factor_id, version, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
+    assert.equal(row.factor_id, "electricity-demo");
+    assert.equal(row.provenance_json.declarativeResolution.decision, "matched", "the person's pick did not match the declared factor");
+    await calculateScopeRow(database.pool, { jobId: JOB, rowId: created.data.rowId, expectedVersion: row.version }, context());
+    const calculated = (await db.query<{ calculated_tco2e: string }>(
+      `SELECT calculated_tco2e::text FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
+    assert.equal(Number(calculated.calculated_tco2e), 0.3);
+
+    await assert.rejects(() => createScopeRow(database.pool, { ...input, factorId: refs[0]!.id, jobId: JOB }, context()),
+      (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_VALID_FOR_ROW", "the option key was not refused with electricity on");
+  });
+
   it("still refuses to calculate the option key stored as a factor — which is what every quick-add used to be", async () => {
     const created = await createScopeRow(database.pool, { ...quickAdd(options()[0]!.id), factorId: options()[0]!.id, jobId: JOB }, context());
     const row = (await db.query<{ version: number }>(`SELECT version FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
