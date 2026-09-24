@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -49,5 +49,15 @@ describe("the portal's default factor", () => {
     const source = readFileSync(FORM, "utf8");
     assert.ok(!source.includes("factors[0]"), "the portal still defaults to the first factor it was sent");
     assert.ok(source.includes("defaultPortalFactorId("), "the portal does not use the shared default");
+  });
+
+  it("is the only place in the console that may reach for a first factor", () => {
+    // The whole app, not one surface: the last two survivors of the H1 anti-pattern were a draft mapping the portal
+    // could not reach and a fallback form one feature flag away from live. "Unreachable today" is not a defence.
+    const APP = join(resolve(dirname(fileURLToPath(import.meta.url)), ".."), "app");
+    const offenders = readdirSync(APP, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file) && !file.endsWith("portalFactorDefault.ts"))
+      .filter((file) => /factors\s*\[\s*0\s*\]/.test(readFileSync(join(APP, file), "utf8")));
+    assert.deepEqual(offenders, [], "a first-factor default outside the shared one");
   });
 });

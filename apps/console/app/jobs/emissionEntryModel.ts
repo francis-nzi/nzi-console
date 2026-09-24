@@ -5,6 +5,7 @@
 // (the portal is a constrained mirror — same order, fewer fields).
 import type { EmissionCategory, ScopeQualityTier, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { scopeMeta } from "@nzi/contracts";
+import { defaultPortalFactorId } from "../portal/portalFactorDefault";
 
 export type EntryAudience = "crm" | "portal";
 export type EntryMode = "new" | "existing";
@@ -388,7 +389,9 @@ export function emissionEntryDraftToPortalRecord(
   bucket: PortalBucketRef,
   site: { id: string | null },
 ): PortalRecordInput | { error: string } {
-  const factorId = draft.factorId || bucket.factors[0]?.id || "";
+  // No factor chosen: the shared default — the sole authorised factor, or none. Never the first of several, which
+  // the database's collation would have chosen (NZC-160 H1).
+  const factorId = draft.factorId || defaultPortalFactorId(bucket.factors);
   const factor = bucket.factors.find(option => option.id === factorId);
   if (!factor) return { error: "Choose one of the authorised factors." };
   const note = [draft.activity.trim(), draft.registration.trim(), draft.manualDetail.trim(), draft.note.trim()]
