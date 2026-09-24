@@ -273,6 +273,12 @@ jobs:
       # here, paired with an ordinary entry that must go all the way through.
       - name: A portal entry's factor is one its row may carry, at grant, draft, submission and acceptance
         run: npx tsx --test packages/isolated-backend/tests/portalPrimaryFactorReal.test.ts
+      # Stop 2a — the write path's use of the declarative resolver, through the real create and update commands.
+      # Rails laid dark: off means the row is exactly what it was, and on (switched in the test, never beyond it)
+      # means the F1 rule — fill, match, refuse by name, an override that may deviate from the resolver but never
+      # from what the row may carry, and an edit that corrects a bad row.
+      - name: The write path resolves declaratively where switched on, and nowhere else
+        run: npx tsx --test packages/isolated-backend/tests/declarativeResolutionReal.test.ts
       # The wiring characterisation, Stop 1. Today's resolution — the DVLA stub, resolveVehicleFactor's ILIKE,
       # the portal's allow-list ordering under this database's collation — executed beside the declarative
       # resolver over real seeded rules. Every divergence is pinned in a ledger, so a change in what resolves

@@ -34,6 +34,7 @@ import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 import type { PoolLike, Queryable } from "./postgres";
+import { applyDeclarativeResolution } from "./declarativeResolution";
 import { withTenantWrite } from "./postgres";
 
 export class IdempotencyConflictError extends Error {
@@ -1256,6 +1257,31 @@ export type CreateScopeRowResult = {
   jobId: string;
   version: number;
 };
+/**
+ * The declarative resolver's answer for this write, or the input untouched when the category is off (Stop 2).
+ *
+ * A refusal becomes the command's validation error, inside the same transaction, so a refused write leaves
+ * nothing behind. See `declarativeResolution.ts` for the F1 rule itself.
+ */
+async function declarativeFactorFor(db: Queryable, context: CommandContext, input: ScopeRowWriteFields & { jobId: string }, categoryCode: string | null) {
+  const result = await applyDeclarativeResolution(db, context.organisationId, input.jobId, input, categoryCode, context.actorId);
+  if (result.kind === "refuse") throw new CommandValidationError([{ field: result.field, code: result.code, message: result.message }]);
+  return result.kind === "apply" ? result
+    : { kind: "not-enabled" as const, factor: { datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, factorLabel: input.factorLabel } };
+}
+
+/** Evidence with the resolution recorded. Unchanged — not one key added — when the category is off. */
+function withDeclarative(evidence: ReturnType<typeof scopeEvidence>, declared: Awaited<ReturnType<typeof declarativeFactorFor>>) {
+  if (declared.kind !== "apply") return evidence;
+  const trail = declared.provenance.declarativeResolution as { decision?: string; ruleKey?: string | null } | undefined;
+  return {
+    provenance: { ...evidence.provenance, ...declared.provenance },
+    lineage: trail?.decision === "filled"
+      ? [...evidence.lineage, { title: "Factor resolved by declared rule", detail: `${trail.ruleKey ?? "rule"} · no factor was sent, so the category's declared factor was used` }]
+      : evidence.lineage,
+  };
+}
+
 export async function createScopeRow(
   pool: PoolLike,
   input: CommandInputMap["scope.row.create"],
@@ -1272,14 +1298,18 @@ export async function createScopeRow(
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
       const rowId = randomUUID();
       const activity=await resolveMonthlyActivity(db,context.organisationId,input.jobId,input);
-      const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
+      // Stop 2: resolved first, so the row, its evidence and its unit check all see the same factor. Inert —
+      // the input untouched — for a category whose switch (0120) is off.
+      const declared = await declarativeFactorFor(db, context, input, categoryCode);
+      const effective = { ...input, ...declared.factor };
+      const evidence = withDeclarative(scopeEvidence({...effective,quantity:activity.quantity,monthlyActivity:activity.slots}, context), declared);
       // Units reconciled before anything is written: an entry whose unit cannot stand for the
       // factor's own is refused rather than stored and multiplied later (NZC-146).
       const reconciled = await reconcileUnitWithFactor(db, context.organisationId, input.jobId, {
-        unit: input.unit, quantity: activity.quantity, datasetId: input.datasetId,
-        factorId: input.factorId, categoryCode,
+        unit: input.unit, quantity: activity.quantity, datasetId: effective.datasetId,
+        factorId: effective.factorId, categoryCode,
       });
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
@@ -1295,10 +1325,10 @@ export async function createScopeRow(
           input.purchasedGoodsCategoryId??null,
           reconciled.quantity,
           reconciled.unit,
-          input.datasetId,
-          input.factorId,
-          input.factorVersion,
-          input.factorLabel,
+          effective.datasetId,
+          effective.factorId,
+          effective.factorVersion,
+          effective.factorLabel,
           input.qualityTier,
           input.overrideTco2e ?? null,
           input.overrideReason?.trim() || null,
@@ -1364,14 +1394,18 @@ export async function updateScopeRow(
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
       const activity=await resolveMonthlyActivity(db,context.organisationId,input.jobId,input);
-      const evidence = scopeEvidence({...input,quantity:activity.quantity,monthlyActivity:activity.slots}, context);
       const categoryPath = crpScopeCategoryPath(input.scope);
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
+      // Stop 2: resolved first, so the row, its evidence and its unit check all see the same factor. Inert —
+      // the input untouched — for a category whose switch (0120) is off.
+      const declared = await declarativeFactorFor(db, context, input, categoryCode);
+      const effective = { ...input, ...declared.factor };
+      const evidence = withDeclarative(scopeEvidence({...effective,quantity:activity.quantity,monthlyActivity:activity.slots}, context), declared);
       // Units reconciled before anything is written: an entry whose unit cannot stand for the
       // factor's own is refused rather than stored and multiplied later (NZC-146).
       const reconciled = await reconcileUnitWithFactor(db, context.organisationId, input.jobId, {
-        unit: input.unit, quantity: activity.quantity, datasetId: input.datasetId,
-        factorId: input.factorId, categoryCode,
+        unit: input.unit, quantity: activity.quantity, datasetId: effective.datasetId,
+        factorId: effective.factorId, categoryCode,
       });
       const updated = await db.query<{ version: number }>(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
@@ -1388,10 +1422,10 @@ export async function updateScopeRow(
           input.purchasedGoodsCategoryId??null,
           reconciled.quantity,
           reconciled.unit,
-          input.datasetId,
-          input.factorId,
-          input.factorVersion,
-          input.factorLabel,
+          effective.datasetId,
+          effective.factorId,
+          effective.factorVersion,
+          effective.factorLabel,
           input.qualityTier,
           input.overrideTco2e ?? null,
           input.overrideReason?.trim() || null,
