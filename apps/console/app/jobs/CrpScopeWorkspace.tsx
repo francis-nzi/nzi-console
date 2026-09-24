@@ -490,7 +490,7 @@ export function CrpScopeWorkspace({
               <td>{r.factorLabel ?? "No factor"}</td>
               <td>{qualities.find((q) => q.value === r.qualityTier)?.label ?? "—"}</td>
               <td>{r.overrideTco2e ?? r.calculatedTco2e ?? "—"}</td>
-              <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span></td>
+              <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span>{r.tdDerivedAlongside ? <> <span className="nz-st need" title="T&D losses are derived for this job from its grid electricity — check this entry does not include them too">T&amp;D?</span></> : null}</td>
             </tr>
           ))}
         </tbody>
@@ -1070,6 +1070,10 @@ function Editor({
 
         {row.factorSource === "client" && row.clientFactorVersionMoved ? (
           <div className="nz-banner warn" role="note"><div><b>Client factor version moved</b><div>This row is pinned to <b>{row.factorVersion}</b>; the client factor has since been updated. Re-calculate to move it, and re-review — the pinned value still stands until you do (NZC-030).</div></div></div>
+        ) : null}
+
+        {row.tdDerivedAlongside ? (
+          <div className="nz-banner warn" role="note"><div><b>T&amp;D may be counted twice</b><div>Transmission and distribution losses are derived for this job from its grid electricity, and that derived figure is the one of record. If this entry already includes T&amp;D losses, take them out of it, or note why both stand. Nothing is blocked.</div></div></div>
         ) : null}
 
         <div className="nz-sect">Calculation lineage</div>

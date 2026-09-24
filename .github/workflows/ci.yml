@@ -334,6 +334,10 @@ jobs:
       # them on first fails here — the T&D row would otherwise go missing from every portal grid entry, silently.
       - name: Companions stay off until the portal can state how electricity arrived
         run: npx tsx --test packages/isolated-backend/tests/companionActivationGateReal.test.ts
+      # H4 as ruled: the derived T&D companion is the system of record, and a manual 3.3 entry is flagged, never refused,
+      # where the companion is actually derived in the same job. Dormant while companions are off; blocks nothing.
+      - name: A manual 3.3 entry is flagged, not refused, where T&D is derived beside it
+        run: npx tsx --test packages/isolated-backend/tests/tdOverlapFlagReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
