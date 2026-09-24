@@ -334,6 +334,11 @@ jobs:
       # them on first fails here — the T&D row would otherwise go missing from every portal grid entry, silently.
       - name: Companions stay off until the portal can state how electricity arrived
         run: npx tsx --test packages/isolated-backend/tests/companionActivationGateReal.test.ts
+      # NZC-164's precondition, built (0124): a portal entry records how its electricity arrived — the form showed the
+      # Supply control and the mapping dropped its answer — and acceptance carries it onto the row. Grant to a
+      # calculated number per NZC-162, with companions still off, so no T&D row appears.
+      - name: A portal entry records how its electricity arrived, and acceptance carries it
+        run: npx tsx --test packages/isolated-backend/tests/portalSupplySourceReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
