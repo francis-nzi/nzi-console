@@ -5317,3 +5317,18 @@ branch rather than a force-push to one that might already carry a pull request �
 
 **Related.** NZC-155 (the same move for constraints), NZC-153 (claims about main are verified), NZC-148 (the frozen
 migration gate, the other thing that makes migrations safe to merge).
+
+> **Addendum to NZC-163 (24 Sep 2026) — the setting as it actually is, and one correction.**
+>
+> *Bypass.* The hold check is required on `main`, and the branch protection's enforcement level is **`non_admins`**
+> (read from GitHub's public branch record, not assumed): an administrator can still merge past a red gate, and
+> the PR page offers "Merge without waiting for requirements to be met". So the gate binds everyone except an
+> administrator, and **an administrator's bypass is a deliberate act that is recorded** — in the PR or its merge
+> commit, with the reason — rather than something the gate prevents. #290 merged under time pressure; if that
+> exposure is judged too great, the setting to change is "Do not allow bypassing the above settings".
+>
+> *Rename.* The entry above says a GitHub branch rename keeps the pull request. In the first use it did not: the
+> rename of `hold/repair-key-stored-factor-ids` left #293 closed unmerged, and #294 was opened for the renamed
+> branch at the same commit (8864d01). Clearing a hold therefore means **a new pull request for the renamed branch**,
+> whose checks run on opening; verifying the merge means comparing the merged content with the reviewed commit,
+> not following one PR number.
