@@ -191,6 +191,12 @@ describe("UX1d-2 — draft → client-portal data-entry record", () => {
     assert.equal("error" in result ? "" : result.factorId, "f-gas");
   });
 
+  it("chooses nothing when the portal form supplies none and the bucket authorises several (NZC-160 H1)", () => {
+    const several = { ...manualBucket, factors: [{ id: "f-z", label: "Z", unit: "kWh" }, ...manualBucket.factors] };
+    assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "10", factorId: "" }), several, { id: null }),
+      "the mapping chose the first of several authorised factors");
+  });
+
   it("errors when the chosen factor is not one the bucket authorises", () => {
     assert.ok("error" in emissionEntryDraftToPortalRecord(draft({ quantity: "10", factorId: "f-not-authorised" }), manualBucket, { id: null }));
   });
