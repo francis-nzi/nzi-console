@@ -144,34 +144,58 @@ describe("portal writes that audit through jsonb_build_object, against real Post
     assert.equal(new Date(String(after.expiresAt)).toISOString(), result.expiresAt);
   });
 
-  it("PINNED DEFECT: createPortalRecoveryInvitation writes sessions and credentials the app role may not touch", async () => {
-    // A second, separate defect in the same command, and it fires first. Recovery UPDATEs portal_sessions and
-    // portal_credentials directly; 0018 grants both only to nzi_console_auth. Sessions have a boundary the
-    // app may call (revoke_portal_user_sessions, 0024); credentials have none. Closing that needs a migration,
-    // which is its own ruling — so it is pinned here, and fails when fixed.
-    await assert.rejects(
-      () => createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover" }),
-      /permission denied for table portal_sessions/);
+  it("createPortalRecoveryInvitation works as the real app role: suspends credentials, revokes sessions, audits", async () => {
+    // No privileges granted here. Until P0b this command was refused on its first write, because it UPDATEd
+    // portal_sessions and portal_credentials, which only nzi_console_auth may touch. It now goes through the
+    // two confined functions — revoke_portal_user_sessions (0024) and suspend_portal_user_credentials (0118).
+    await db.query(
+      `INSERT INTO nzi_console.portal_credentials (organisation_id,portal_user_id,password_salt,password_hash,totp_ciphertext,totp_iv,totp_tag,enabled)
+       VALUES ($1,'portal-recover','salt','hash','ct','iv','tag',true)`, [ORG]);
+    await db.query(
+      `INSERT INTO nzi_console.portal_sessions (organisation_id,session_id,portal_user_id,client_id,expires_at)
+       VALUES ($1,'session-recover','portal-recover',$2,now() + interval '1 day')`, [ORG, CLIENT]);
+
+    const result = await createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover" });
+
+    const credential = await db.query<{ enabled: boolean }>(
+      `SELECT enabled FROM nzi_console.portal_credentials WHERE portal_user_id='portal-recover'`);
+    assert.equal(credential.rows[0]!.enabled, false, "the credentials were not suspended");
+    const sessionRow = await db.query<{ revoked_at: Date | null }>(
+      `SELECT revoked_at FROM nzi_console.portal_sessions WHERE session_id='session-recover'`);
+    assert.ok(sessionRow.rows[0]!.revoked_at, "the live session was not revoked");
+    const user = await db.query<{ status: string }>(`SELECT status FROM nzi_console.portal_users WHERE portal_user_id='portal-recover'`);
+    assert.equal(user.rows[0]!.status, "invited");
+
+    const after = await audit("portal.recovery.issue", "portal-recover");
+    assert.equal(after.invitationId, result.invitationId);
+    assert.equal(after.clientId, CLIENT);
+    assert.equal(after.sessionsRevoked, true);
+    assert.equal(after.credentialsSuspended, true);
   });
 
-  it("AUDIT STATEMENT ONLY — recovery itself does NOT work for the real app role until P0b; privileges granted for this call", async () => {
-    // ┌─ READ THIS BEFORE TRUSTING THE GREEN ───────────────────────────────────────────────────────────────┐
-    // │ This test passing does **not** mean a recovery invitation can be issued. It cannot: as the real     │
-    // │ app role the command is refused on portal_sessions (the PINNED DEFECT test above says so, and that   │
-    // │ one is the truth about the product). This test grants the two privileges the app role lacks, for    │
-    // │ this one call, and revokes them after — so it proves only that the audit statement's parameter types │
-    // │ are fixed. When P0b lands a confined definer function for credentials, delete the GRANT/REVOKE here, │
-    // │ call the command as the unmodified role, and the PINNED DEFECT test will fail and be removed.        │
-    // └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
-    await db.query(`GRANT SELECT, UPDATE ON nzi_console.portal_sessions, nzi_console.portal_credentials TO nzi_console_app`);
+  it("the app role still cannot write portal_credentials directly — the function is the only path", async () => {
+    // The fix must not be "grant the app the table". Least privilege is the point of 0018, and 0118 keeps it.
+    const client = await database.admin();
     try {
-      const result = await createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover" });
-      const after = await audit("portal.recovery.issue", "portal-recover");
-      assert.equal(after.invitationId, result.invitationId);
-      assert.equal(after.clientId, CLIENT);
-      assert.equal(after.sessionsRevoked, true);
+      await client.query(`SET ROLE nzi_console_app`);
+      await assert.rejects(
+        () => client.query(`UPDATE nzi_console.portal_credentials SET enabled = false`),
+        /permission denied for table portal_credentials/);
     } finally {
-      await db.query(`REVOKE SELECT, UPDATE ON nzi_console.portal_sessions, nzi_console.portal_credentials FROM nzi_console_app`);
+      await client.end();
+    }
+  });
+
+  it("suspend_portal_user_credentials refuses to act for a tenant other than the caller's", async () => {
+    const client = await database.admin();
+    try {
+      await client.query(`SET ROLE nzi_console_app`);
+      await client.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+      await assert.rejects(
+        () => client.query(`SELECT nzi_console.suspend_portal_user_credentials('some-other-org', 'portal-recover')`),
+        /Tenant context mismatch/);
+    } finally {
+      await client.end();
     }
   });
 
@@ -192,5 +216,8 @@ describe("portal writes that audit through jsonb_build_object, against real Post
     const after = await audit("portal.report.approve", REPORT);
     assert.equal(after.statementVersion, 1);
     assert.ok(approval.approvalId, "no approval returned");
+    // It recorded the audit event's own id under this key until P0b — right shape, wrong referent, and the
+    // audit trail is the thing a reviewer follows back to the approval.
+    assert.equal(after.approvalId, approval.approvalId, "the audit names something other than the approval");
   });
 });
