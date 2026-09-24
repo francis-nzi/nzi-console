@@ -4886,6 +4886,37 @@ is not the same as not writing it.
 headline, reused rather than rebuilt), NZC-152 and NZC-143 (the same NULL shape), NZC-119 (enumerate rather
 than skip).
 
+### NZC-155 — The enumerative NULL guard [Open — backfilled 24 Sep 2026; scope to confirm, guard not built]
+
+**Backfilled.** This number was referred to in rulings as "the enumerative NULL guard" from NZC-154 onwards
+and never written; the register jumped from 154 to 156. It is recorded here, in its own slot, so every
+reference to it resolves. What follows is **only what the record already establishes**, and the scope of the
+guard itself is left for confirmation rather than reconstructed as though it had been decided.
+
+**What the record establishes.** One mistake has now appeared four times: a CHECK or a key whose expression
+compares a nullable value, so that NULL makes the whole expression NULL and the row is **admitted**.
+
+- 0109's hideable-row CHECK admitted every row it was written to exclude (NZC-143).
+- 0113's uniqueness key stopped refusing duplicate branches once a mostly-NULL column joined it (NZC-151).
+- 0094's distribution-grain CHECK admitted a derived row with no grain (NZC-152).
+- 0115's first draft guarded a value list with `NOT (NULL = ANY (…))`, which passes when an element is NULL;
+  `array_position(…, NULL) IS NULL` is the form that finds one (NZC-154).
+
+And one principle answers it at the level of values: **enumerate positively, never negate** (NZC-154) — a
+list of what fires, so an unforeseen value claims nothing, rather than an exclusion that silently claims it.
+
+**What is and is not built.** NZC-151 audited every unique index and check constraint **by hand, once**.
+Nothing mechanical repeats that audit: the one constraint read back out of the catalogue by a test is
+`job_scope_rows_distribution_grain` (NZC-152), and only that one. So the guard this number names is **not
+yet built**, and a fifth instance would be caught only by the next person who happens to look.
+
+**To confirm.** The scope — at minimum, a check over the live catalogue that fails on a CHECK or unique key
+whose expression can evaluate to NULL for an admitted row — and whether it is a companion to NZC-161, which
+closes the other class of defect that rides uncaught.
+
+**Related.** NZC-143, NZC-151, NZC-152, NZC-154 (the four instances), NZC-161 (the other mechanical guard),
+NZC-119 (enumerate rather than skip).
+
 ### NZC-156 — End-of-life is composition fan-out, not multi-factor [Open — spec before build, 23 Sep 2026]
 
 **Decision.** End-of-life treatment is **reclassified out of** the multi-factor step (NZC-154). It is a
@@ -5125,5 +5156,120 @@ so any other select renders as Data confidence. A third select field would have 
 wrong control — a catch-all whose failure looks like a working form. Noted here because it is the shape of
 the next change rather than something this one introduces.
 
+> **Correction (24 Sep 2026) — the last sentence above is wrong, and so was the ruling built on it.** This
+> change *did* introduce that defect: `supplySource` is a `select`, so from #280 every electricity entry drew
+> Supply as a second "Data confidence" control bound to `dataConfidence`. And `supplySource` was **not**
+> captured by #280 — the spec field and the column landed, but neither command stored the value. The later
+> ruling that it was "captured" was inferred from the spec change and never checked against the write path,
+> which is the NZC-153 failure applied to a ruling rather than a report. Found by the wiring Stop 1
+> characterisation (NZC-160). Capture proper — the control drawn by key, the value stored through create and
+> update, a real-database suite in CI — is `feat/supply-source-store`, merged as its own stop.
+
 **Related.** NZC-157 (the location-based answer this applies), NZC-154 (the companion and the forward
 reference), NZC-102 (the governed spec and its golden), NZC-149 (the mapping the primary joins).
+
+### NZC-160 — The wiring characterisation, ruled: what may change, what must be fixed first, and in what order [Confirmed 24 Sep 2026]
+
+**Decision.** Stop 1 of the wiring commit (NZC-154 gate 1) is accepted, and each divergence it found is ruled
+individually. Nothing on the resolution path is wired by this ruling. It fixes the order in which the path is
+made safe to wire.
+
+**What "today" turned out to be.** `createScopeRow` resolves no factor; it stores what its caller sends. The
+resolution the characterisation compares against lives upstream, on **three write paths**: the CRM lookup route
+(`resolveVehicleFactor`, an `ILIKE` over labels restricted to Scope 1) for registration categories; a person's
+pick for every other CRM entry; and the portal, where a client chooses from a staff allow-list pre-selected to
+the first by `lower(label)` and a reviewer's acceptance writes it onto the scope row. The characterisation runs
+that old code, against real rows, beside the resolver over the seeded rules — 113 cases, two datasets, 54
+divergences pinned in a ledger, and two mutation checks proving each side is live code.
+
+**The divergences.**
+
+- **D1 (10) — change by reviewed intent.** A plated diesel vehicle, or an unplated one in business travel or
+  commuting, resolves to the declared factor where today it gets nothing, a Scope 1 per-km guess, or the Scope 1
+  base in a Scope 3 category. The last is the leak NZC-158 exists to close, found live in the old path.
+- **D2 (6) — defect in the new mapping; fixed before wiring, as its own stop.** `dvla-diesel` ignores the unit,
+  so a diesel vehicle recorded in km resolves to a per-litre factor. When `checkUnit` rejects, resolution
+  declines — to a person's pick, **never** to the `ILIKE`.
+- **D3 (6) — defect in the new mapping; fixed before wiring, as its own stop.** `fuel-litres` maps litres to
+  diesel, so an unplated petrol vehicle would have been recorded at the diesel factor, silently. A unit alone
+  cannot identify a fuel; the rule is deactivated. This is the NZC-151 silent downgrade reached through the
+  unit rather than the lookup, and the most important thing the characterisation found.
+- **D4 (12) — accepted, coverage traded for safety,** on condition H6: a petrol or hybrid plate declines to a
+  person until those mappings are authored, rather than taking an automatic Scope 1 guess.
+- **D5 (3) — accepted as identical,** on the same condition: "the search" is a person's pick.
+- **D6 (17) — change by reviewed intent,** the T&D companion beside grid-delivered electricity — held from
+  activation (H4), and dependent on `supplySource` being **required** for electricity rather than offered.
+  "Not stated → no companion" is the right fail-safe direction and silently under-counts T&D if a grid supply is
+  left untagged, so a grid entry must not be committable with supply unstated — the same reasoning that keeps the
+  field under lean capture (NZC-159).
+
+**The hazards.**
+
+- **H1 — urgent, its own stop, ahead of every D-fix.** Under byte-order collation the portal's electricity
+  default is the T&D factor: a client who leaves the control alone records Scope 2 electricity roughly twelve
+  times low. It owes nothing to wiring. The portal default becomes deterministic, never a companion factor, and
+  companion factors leave the primary allow-list entirely — a Scope 3 T&D factor is never selectable as a Scope 2
+  primary. The durable answer is the portal's electricity primary resolved declaratively; an interim
+  deterministic fix ships first if that cannot be immediate.
+- **H2 — latent; closed before any fallback is authored in a sub-flow category.** A consulted lookup that matched
+  nothing comes back through a sub-flow as a plain decline, so a coarser fallback behind the sub-flow would answer
+  for a vehicle that was recognised and could not be mapped. "Not a vehicle" may fall through; "a vehicle I
+  cannot map" declines to a person. Its own design step.
+- **H3 — closed by D2, plus a rule.** The form never rewrites a unit the user entered to match a resolved factor.
+  A resolved factor reconciles with the user's unit or it declines; 100 km never becomes 100 litres.
+- **H4 — the companion does not activate until manual 3.3 coexistence is decided.** Recommended: the derived
+  companion becomes the system of record and manual T&D in 3.3 is flagged or prevented where it fires — to be
+  confirmed before activation. Per-category enablement lets the electricity primary be wired (identical to today)
+  while the companion is held.
+- **H5 — the market row is out of scope.** The substrate proposes only T&D; a market row needs a market-factor
+  policy and is a separate workstream. The electricity target is location headline plus T&D companion.
+- **H6 — the `ILIKE` matcher is retired for enabled categories.** Left behind the declarative path, every decline
+  would leak back to a Scope 1 per-km guess. Enabled-category fallback is declarative, then a person's pick.
+- **H7 — parity by construction.** Both surfaces are wired, after H1, with the allow-list reconciled so declared
+  answers pass portal submission. If the console goes first, the gap is explicit and time-boxed, never silent.
+
+**Sequence.** Capture (`feat/supply-source-store`) merges once green, as its own stop → H1 → D2 → D3 → Stop 2
+wiring (H6 in, per-category enablement, electricity primary and the three vehicle-flow categories enabled, T&D
+held behind H4, portal per H7). H2 before any sub-flow fallback; H4 before the companion activates.
+
+**The premises this corrected.** Two inputs to the brief for this stop were wrong: that `supplySource` was live in
+capture (NZC-159, corrected there), and that the electricity end state included a market row. Both were caught by
+characterising before wiring, which is the argument for the order.
+
+**Related.** NZC-154 (the gate this is condition 1 of), NZC-151 (the STOP that D3 and H2 extend), NZC-158 (the
+leak D1 finds live), NZC-146 (units — D2 and H3), NZC-153 (the verification failure behind the NZC-159
+correction), NZC-143/144 (market kept out of the headline).
+
+### NZC-161 — Every governed write command has a real-database suite [Confirmed 24 Sep 2026 — the guard is its own stop]
+
+**Decision.** A command that writes through a governed transaction is exercised by at least one real-database
+suite that CI runs. A command with none fails the build — unless it is on a checked-in list of known gaps,
+and that list may only shrink.
+
+**What exposed it.** Nine portal commands audited through `jsonb_build_object` with untyped parameters, which
+Postgres refuses — so every one of them rolled back, and every one passed its unit tests, because those run
+against a fake pool that accepts any SQL (P0). Neither typecheck nor a fake pool can see a runtime SQL type
+error; only a database can. The guard that already exists asks a narrower question — *is every real-database
+suite run by CI* — and a command with **no suite at all** passes it by having nothing to run. The two are
+complements: that one stops a suite being skipped, this one stops a command having no suite.
+
+**The size of the gap, measured rather than guessed.** A command here is an exported function that opens a
+write through `runPostgresCommand`, `withTenantWrite`, `withTenantTransaction`, or `withAuthTransaction(…,
+"write")`. On 24 Sep 2026: **119** such commands; **31** called by a real-database suite on main; **9** more
+once P0 merges; **79** with none. The count matches on a call by name, so "called" means some suite invokes
+the command, not that every branch of it is exercised — it is a floor on the gap, not a measure of coverage.
+
+**A ratchet, not a mandate.** Requiring 79 suites before anything else merges would stall the work the guard
+exists to protect. So the guard ships with the 79 named in a baseline file, and fails on two things only:
+
+- a governed write command **not** on the list and not called by any real-database suite — so nothing new
+  arrives uncovered;
+- a command still on the list that **is** now covered — so the list cannot quietly carry an entry that is no
+  longer true, and shrinking it is the only way it moves.
+
+**Where it applies first.** The uncovered set is concentrated: the rest of `postgresCommands.ts`, the staff and
+trainee login paths, the LCA commands, and the remaining portal writes. The portal's are the natural next
+retirements, since P0 left their fixture in place.
+
+**Related.** P0 (the defect class this closes), NZC-155 (the other mechanical guard, for NULL-admitting
+constraints), NZC-147 (a gate must be shown to have run), NZC-119 (enumerate rather than skip).
