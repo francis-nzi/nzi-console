@@ -14,6 +14,7 @@ import {
 } from "../jobs/emissionEntryModel";
 import type { PortalAccordionSection, PortalBucket } from "./portalEntryGrouping";
 import { redirectIfPortalSessionEnded } from "./portalSessionClient";
+import { defaultPortalFactorId } from "./portalFactorDefault";
 
 export function PortalCategoryEntry({
   specs,
@@ -32,7 +33,7 @@ export function PortalCategoryEntry({
   const [bucketId, setBucketId] = useState(buckets[0]?.bucketGrantId ?? "");
   const bucket = useMemo(() => buckets.find(item => item.bucketGrantId === bucketId) ?? buckets[0], [buckets, bucketId]);
   const [records, setRecords] = useState<PortalDataEntryRecord[] | null>(null);
-  const [factorId, setFactorId] = useState(bucket?.factors[0]?.id ?? "");
+  const [factorId, setFactorId] = useState(defaultPortalFactorId(bucket?.factors ?? []));
   const [siteId, setSiteId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +54,7 @@ export function PortalCategoryEntry({
     }
   }, [jobId, buckets]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setFactorId(bucket?.factors[0]?.id ?? ""); }, [bucket]);
+  useEffect(() => { setFactorId(defaultPortalFactorId(bucket?.factors ?? [])); }, [bucket]);
 
   if (!bucket) return null;
 
@@ -78,6 +79,8 @@ export function PortalCategoryEntry({
 
   const submitDraft = async (draft: EmissionEntryDraft, andSubmit: boolean) => {
     if (busy) return;
+    // Nothing is sent without a factor somebody chose: with several authorised the control starts empty (H1).
+    if (!(factorId || draft.factorId)) { setError("Choose the factor for this entry before saving it."); return; }
     setBusy(true); setError(""); setNotice("");
     const mapped = emissionEntryDraftToPortalRecord({ ...draft, factorId: factorId || draft.factorId }, bucket, { id: siteId || null });
     if ("error" in mapped) { setBusy(false); setError(mapped.error); return; }
@@ -136,9 +139,15 @@ export function PortalCategoryEntry({
           </select>
         </label>
       ) : <p className="nz-hint">Providing data for <b>{bucket.sourceLabel}</b>.</p>}
+      {bucket.factors.length === 0 ? (
+        // Every factor this source was granted has stopped being one its row may carry — usually because the
+        // row was re-scoped after the grant (H1). Said plainly, rather than a factor prompt nobody can answer.
+        <div className="nz-banner warn" role="status">No factor is currently authorised for this source. NZI will update it — you can't add entries here until then.</div>
+      ) : null}
       {bucket.factors.length > 1 ? (
         <label className="nz-fl">Authorised factor
           <select className="nz-sel" value={factorId} onChange={event => setFactorId(event.target.value)}>
+            <option value="">Select a factor</option>
             {bucket.factors.map(option => <option key={option.id} value={option.id}>{option.label} · {option.unit}</option>)}
           </select>
         </label>
