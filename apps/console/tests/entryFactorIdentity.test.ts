@@ -29,7 +29,7 @@ const options = entryFactorRefsFor([
 const draft = (factorId: string): EmissionEntryDraft => ({
   activity: "Meter", quantity: "1000", unit: "kWh", vatPercent: "", glCode: "", spendCategoryId: "", registration: "",
   manualMode: false, manualDetail: "", factorId, qualityTier: "Measured", dataConfidence: "M — Medium",
-  supplySource: "grid", note: "", monthlyOpen: false, monthly: {},
+  supplySource: "grid", factorOverrideReason: "", note: "", monthlyOpen: false, monthly: {},
 });
 const electricity = { code: "2.purchased-electricity", name: "Purchased electricity", scope: "2", kind: "manual" } as unknown as EmissionCategory;
 

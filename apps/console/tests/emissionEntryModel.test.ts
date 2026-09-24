@@ -24,7 +24,7 @@ import {
 const draft = (over: Partial<EmissionEntryDraft> = {}): EmissionEntryDraft => ({
   activity: "", quantity: "", unit: "", vatPercent: "", glCode: "", spendCategoryId: "",
   registration: "", manualMode: false, manualDetail: "", factorId: "", qualityTier: "Measured",
-  dataConfidence: "M — Medium", supplySource: "", note: "", monthlyOpen: false, monthly: {}, ...over,
+  dataConfidence: "M — Medium", supplySource: "", factorOverrideReason: "", note: "", monthlyOpen: false, monthly: {}, ...over,
 });
 
 const cat = (name: string): EmissionCategory => {

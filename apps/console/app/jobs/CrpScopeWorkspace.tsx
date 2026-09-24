@@ -47,7 +47,7 @@ import type { JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { emissionEntryDraftToScopeRow, entryFactorRefsFor, type RegistrationLookupOutcome } from "./emissionEntryModel";
+import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
@@ -213,6 +213,23 @@ export function CrpScopeWorkspace({
     } | null>(qaNotice);
   const accordionOn=dataEntryAdapterEnabled("data-entry-accordion");
   const entryFactorRefs=entryFactorRefsFor(factors);
+  // Stop 2b — the declared factor for a new entry, from the same resolution the write uses, so what the form shows
+  // is what will be committed. A preview that cannot be fetched leaves the form as it was: the write still fills
+  // or refuses on its own, so a missing preview can hide a convenience but never change a number.
+  const [declaredPreview,setDeclaredPreview]=useState<{category:string;preview:DeclaredFactorPreviewResult}|null>(null);
+  useEffect(()=>{
+    if(!addingCategory)return;
+    let live=true;
+    const category=addingCategory;
+    fetch(`/api/isolated/jobs/${job.header.id}/declared-factor`,{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({categoryCode:category.code,scope:categoryRowScope(category as never)})})
+      .then(response=>response.ok?response.json():null)
+      .then(preview=>{if(live)setDeclaredPreview(preview?{category:category.code,preview}:null);})
+      .catch(()=>{if(live)setDeclaredPreview(null);});
+    return()=>{live=false;};
+  },[addingCategory,job.header.id]);
+  const declaredOption=addingCategory&&declaredPreview?.category===addingCategory.code
+    ?declaredOptionFor(declaredPreview.preview,entryFactorRefs.filter(option=>option.scope===addingCategory.scope)):null;
   async function createEntryFromForm(input:ScopeRowWriteFields):Promise<{ok:boolean;message?:string}>{
     const result=await postBrowserCommand<{rowId:string}>(`/api/isolated/jobs/${job.header.id}/scope-rows`,input,crypto.randomUUID());
     if(result.state==="success"){setSelectedId(result.data.rowId);setNotice({kind:"ok",text:`Entry added to ${input.categoryCode??input.scope}. Calculate and review it next.`});router.refresh();return{ok:true};}
@@ -359,6 +376,7 @@ export function CrpScopeWorkspace({
         audience="crm"
         site={{ id: siteId, label: siteId === null ? "Unallocated" : siteLabel }}
         factors={entryFactorRefs.filter(option => option.scope === addingCategory.scope)}
+        declared={declaredOption}
         units={specs[addingCategory.code]?.units ?? []}
         reportingMonths={spendReportingMonths}
         spendCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}

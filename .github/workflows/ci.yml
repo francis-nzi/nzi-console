@@ -314,6 +314,11 @@ jobs:
       # the companion is held (H4). A deliberately chosen different factor needs a reason and is recorded.
       - name: Electricity resolves its primary declaratively, with the companion held
         run: npx tsx --test packages/isolated-backend/tests/electricityPrimaryEnabledReal.test.ts
+      # Stop 2b's form — the declared-factor preview and the override reason, driven per NZC-162: the job's real
+      # factor options, the console's own seed, divergence check and mapping, into the write and on to a number.
+      # What the form shows is what it commits; nothing rewrites a factor or unit a person chose.
+      - name: The capture form shows the declared factor and commits exactly what it shows
+        run: npx tsx --test packages/isolated-backend/tests/declaredFactorFormReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.

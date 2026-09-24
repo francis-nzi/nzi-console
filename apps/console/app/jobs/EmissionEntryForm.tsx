@@ -5,7 +5,7 @@
 // on the category kind, the portal a constrained mirror that never shows the
 // factor / quality / confidence / lineage fields. Endpoint wiring is the caller's
 // job (UX1b CRP accordion, UX1d portal accordion) — this component is presentational.
-import { type FormEvent, useId, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { renderInputSpec, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, type InputSpecCategory } from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
@@ -13,6 +13,9 @@ import {
   isRegistrationKind,
   isSpendKind,
   matchFactorByActivity,
+  needsOverrideReason,
+  seedWithDeclared,
+  type DeclaredOption,
   type EmissionEntryDraft,
   type EmissionEntryLineageStep,
   type EntryAudience,
@@ -54,6 +57,11 @@ export type EmissionEntryFormProps = {
   onApprove?: () => void | Promise<void>;
   /** Two-step DVLA lookup: resolve a registration to a vehicle spec (+ a suggested factor for CRM). */
   onLookupRegistration?: (registration: string) => Promise<RegistrationLookupOutcome>;
+  /**
+   * The category's declared factor for this entry, when its category resolves declaratively (Stop 2b). A new entry
+   * starts on it, with its unit shown before a quantity is typed; choosing a different factor asks why.
+   */
+  declared?: DeclaredOption | null;
 };
 
 const QUALITY_TIERS = ["Measured", "Estimated", "Spend-based", "Survey"] as const;
@@ -86,6 +94,7 @@ const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null, 
   qualityTier: seed?.qualityTier ?? (lean ? "" : QUALITY_TIERS[0]),
   dataConfidence: seed?.dataConfidence ?? (lean ? "" : DATA_CONFIDENCE[1]),
   supplySource: seed?.supplySource ?? "",
+  factorOverrideReason: seed?.factorOverrideReason ?? "",
   note: seed?.note ?? "",
   monthlyOpen: seed?.monthlyOpen ?? false,
   monthly: seed?.monthly ?? {},
@@ -96,6 +105,11 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const mode: EntryMode = entry ? "existing" : "new";
   const lean = leanCapture && audience === "crm" && mode === "new";
   const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry, lean));
+  const declared = mode === "new" ? props.declared ?? null : null;
+  const [localError, setLocalError] = useState("");
+  // The preview arrives after the form opens. It fills an empty choice only — never one a person already made.
+  useEffect(() => { if (declared) setDraft(current => seedWithDeclared(current, declared)); }, [declared]);
+  const divergent = needsOverrideReason(draft, declared);
   const [lookup, setLookup] = useState<
     | { state: "idle" }
     | { state: "loading" }
@@ -141,6 +155,12 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
 
   const run = (key: string) => {
     if (props.busy) return;
+    // A factor other than the declared one needs its reason before it goes anywhere; the server refuses it anyway.
+    if ((key === "submit" || key === "save" || key === "saveDraft") && divergent && !draft.factorOverrideReason.trim()) {
+      setLocalError("Say why this factor was chosen instead of the one declared for this category.");
+      return;
+    }
+    setLocalError("");
     if (key === "submit") return void props.onSubmit(draft);
     if (key === "save") return void props.onSubmit(draft);
     if (key === "saveDraft") return void props.onSaveDraft?.(draft);
@@ -155,7 +175,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
 
   return (
     <form className="nz-ef" aria-label={`${category.name} — ${mode === "new" ? "new entry" : entry?.title ?? "entry"}`} onSubmit={onFormSubmit}>
-      {props.error ? <div className="nz-banner warn" role="alert">{props.error}</div> : null}
+      {props.error || localError ? <div className="nz-banner warn" role="alert">{props.error || localError}</div> : null}
       {props.notice ? <div className="nz-banner ok" role="status">{props.notice}</div> : null}
 
       {fields.map(field => {
@@ -219,7 +239,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     // unit) — the user never picks it.
                     if (lean) {
                       const matched = matchFactorByActivity(activity, factors);
-                      patch({ activity, factorId: matched?.id ?? "", unit: matched?.unit ?? draft.unit });
+                      // An activity that names no factor keeps the declared one rather than clearing it (Stop 2b).
+                      patch({ activity, factorId: matched?.id ?? declared?.optionId ?? "", unit: matched?.unit ?? declared?.unit ?? draft.unit });
                     } else patch({ activity });
                   }} />
                 <datalist id={listId}>{factors.map(option => <option key={option.id} value={option.label} />)}</datalist>
@@ -311,13 +332,22 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
               <label key={field.key} className="nz-fl">{field.label}
                 <select className="nz-sel" value={draft.factorId} onChange={event => {
                   const id = event.target.value;
-                  patch({ factorId: id, unit: factors.find(option => option.id === id)?.unit ?? draft.unit });
+                  // Back on the declared factor, a reason given for leaving it no longer applies.
+                  patch({ factorId: id, unit: factors.find(option => option.id === id)?.unit ?? draft.unit,
+                    factorOverrideReason: declared && id === declared.optionId ? "" : draft.factorOverrideReason });
                 }}>
                   <option value="">Select a factor</option>
                   {factors.map(option => <option key={option.id} value={option.id}>{option.label}{option.unit ? ` · ${option.unit}` : ""}</option>)}
                   <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option>
                 </select>
-                <span className="nz-hint">{field.hint}</span>
+                <span className="nz-hint">{declared ? `Declared for this category: ${declared.label}` : field.hint}</span>
+                {divergent ? (
+                  <label className="nz-fl">Why this factor instead of the declared one?
+                    <textarea className="nz-inp" rows={2} maxLength={500} value={draft.factorOverrideReason}
+                      onChange={event => patch({ factorOverrideReason: event.target.value })}
+                      placeholder="e.g. supplier-specific factor from the client's contract" />
+                  </label>
+                ) : null}
               </label>
             );
 
@@ -332,6 +362,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 {matched ? (
                   <div className="nz-banner ok" role="status">
                     <b>{matched.label}</b>{matched.unit ? ` · ${matched.unit}` : ""}
+                    {declared && matched.id === declared.optionId ? <span className="chip">declared for this category</span> : null}
                   </div>
                 ) : (
                   <div className="nz-banner warn" role="status">
@@ -339,6 +370,13 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   </div>
                 )}
                 <span className="nz-hint">{field.hint}</span>
+                {divergent ? (
+                  <label className="nz-fl">Why this factor instead of the declared one?
+                    <textarea className="nz-inp" rows={2} maxLength={500} value={draft.factorOverrideReason}
+                      onChange={event => patch({ factorOverrideReason: event.target.value })}
+                      placeholder="e.g. supplier-specific factor from the client's contract" />
+                  </label>
+                ) : null}
               </div>
             );
           }

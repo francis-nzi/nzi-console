@@ -43,7 +43,7 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
   const quickAdd = (factorKey: string) => emissionEntryDraftToScopeRow({
     activity: "Boiler", quantity: "1000", unit: "kWh", vatPercent: "", glCode: "", spendCategoryId: "", registration: "",
     manualMode: false, manualDetail: "", factorId: factorKey, qualityTier: "Measured", dataConfidence: "M — Medium",
-    supplySource: "", note: "", monthlyOpen: false, monthly: {},
+    supplySource: "", factorOverrideReason: "", note: "", monthlyOpen: false, monthly: {},
   }, { code: "1.natural-gas", name: "Natural gas", scope: "1", kind: "manual" } as never, { id: null, label: null }, options(), []);
 
   before(async () => {
@@ -86,7 +86,7 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
     const input = emissionEntryDraftToScopeRow({
       activity: "Meter", quantity: "1000", unit: "kWh", vatPercent: "", glCode: "", spendCategoryId: "", registration: "",
       manualMode: false, manualDetail: "", factorId: refs[0]!.id, qualityTier: "Measured", dataConfidence: "M — Medium",
-      supplySource: "grid", note: "", monthlyOpen: false, monthly: {},
+      supplySource: "grid", factorOverrideReason: "", note: "", monthlyOpen: false, monthly: {},
     }, { code: "2.purchased-electricity", name: "Purchased electricity", scope: "2", kind: "manual" } as never, { id: null, label: null }, refs, []);
 
     const created = await createScopeRow(database.pool, { ...input, jobId: JOB }, context());
