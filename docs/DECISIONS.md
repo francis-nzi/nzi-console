@@ -5273,3 +5273,47 @@ retirements, since P0 left their fixture in place.
 
 **Related.** P0 (the defect class this closes), NZC-155 (the other mechanical guard, for NULL-admitting
 constraints), NZC-147 (a gate must be shown to have run), NZC-119 (enumerate rather than skip).
+
+### NZC-162 — A capture-path test drives the production input path and runs to a calculated number [Confirmed 24 Sep 2026]
+
+**Decision.** A test of a capture path builds its inputs through the same production code the UI uses — the
+option builder and the draft-to-command mapping — sends them through the real command, and runs the chain on to
+a **calculated** number. Not a hand-built command, not an idealised id, not a stop at "the row was stored".
+
+**What it closes.** The CRM quick-add sent its factor *option key* (`dataset:<id>|<factor>`) as the factor id.
+Every entry with a picked factor was stored, then refused by calculation — it existed and could never be counted,
+in every category. The model's tests passed throughout: they built their options with bare ids like `f-grid`,
+which is not how the workspace builds them, and they never calculated. They exercised a path production does not
+take. Found only when Stop 2b tried to consume the factor, and it would have refused every electricity quick-add.
+
+**The companion to NZC-161.** 161 says every governed write command has a real-database suite; 162 says what that
+suite must drive — the real input path, to the number — so a green suite cannot be green about an input nobody
+submits. The first instance is `crmQuickAddFactorReal`: the console's own options and mapping into
+`createScopeRow` and `calculateScopeRow`, with the old key kept as the case that must still be refused.
+
+**Related.** NZC-161 (a real-database suite for every write command), NZC-160 (the wiring track that surfaced it),
+NZC-146 (units, the other check the characterisation bypassed).
+
+### NZC-163 — A branch awaiting a ruling is named hold/, and CI refuses it until the ruling clears it [Confirmed 24 Sep 2026]
+
+**Decision.** A branch that needs a ruling before it merges — anything carrying a migration, or marked HOLD for any
+reason — is named `hold/…`. A CI job fails on any branch so named. Once the job is a required status check on
+`main`, a held branch cannot be merged. After the ruling the branch is renamed without the prefix (a GitHub branch
+rename keeps the pull request) and the job re-run; it reads the name at run time and passes.
+
+**Why a gate rather than a note.** #290 carried "HOLD" and "BLOCKED" in its commit body and in the report that
+brought it, and merged ahead of the fix it was blocked on, putting a live break in electricity capture on main. The
+signal existed and never reached the merge: the PR page shows neither a commit body nor a report, and a merge made
+under time pressure reads the PR page. A signal that depends on someone reading it at the wrong moment was always
+going to fail eventually. The prefix is visible in the PR header, and the check enforces it — visible to a person,
+enforced by the build. The same move NZC-155 makes for NULL-admitting constraints: from habit to mechanism.
+
+**What it depends on.** The job only blocks a merge once branch protection marks it required — a repository
+setting, not something the workflow can make true. Until then it is a red check that can be overridden.
+
+**A corollary for incidents.** When a person may be opening or handling the same branch, a fix goes on a fresh
+branch rather than a force-push to one that might already carry a pull request — the collision that happened on
+#291 is exactly what an incident produces.
+
+**Related.** NZC-155 (the same move for constraints), NZC-153 (claims about main are verified), NZC-148 (the frozen
+migration gate, the other thing that makes migrations safe to merge).
