@@ -9,12 +9,21 @@ export function PortalDataEntryReviewQueue({jobId}:{jobId?:string}){
   const [items,setItems]=useState<PortalDataEntryReviewItem[]>([]),[state,setState]=useState<"loading"|"ready"|"error">("loading"),[pending,setPending]=useState(""),[error,setError]=useState("");
   const load=useCallback(async()=>{setState("loading");try{const query=jobId?`?jobId=${encodeURIComponent(jobId)}`:"",response=await fetch(`/api/isolated/portal-data-entry-review${query}`,{cache:"no-store"}),body=await response.json();if(!response.ok)throw new Error(body.message);setItems(Array.isArray(body.items)?body.items:[]);setState("ready")}catch{setState("error")}},[jobId]);
   useEffect(()=>{void load()},[load]);
-  async function decide(item:PortalDataEntryReviewItem,decision:"accept"|"reject"){
+  async function decide(item:PortalDataEntryReviewItem,decision:"accept"|"reject",deviation?:{factorOverrideReason?:string;useDeclaredFactor?:boolean}){
     const note=decision==="reject"?window.prompt("Give the client a reason for rejecting this submission:")?.trim():"";
     if(decision==="reject"&&!note)return;
-    if(decision==="accept"&&!window.confirm("Import this submission as pending, uncalculated scope evidence? It will still require independent emissions review."))return;
+    if(decision==="accept"&&!deviation&&!window.confirm("Import this submission as pending, uncalculated scope evidence? It will still require independent emissions review."))return;
     setPending(item.queueId);setError("");
-    try{const response=await fetch("/api/isolated/portal-data-entry-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({queueId:item.queueId,expectedSubmittedVersion:item.submittedVersion,decision,note:note??""})}),body=await response.json();if(!response.ok)throw new Error(response.status===409?"This submission changed. The queue has been refreshed.":body.message);await load()}catch(cause){setError(cause instanceof Error?cause.message:"The review decision could not be verified.");await load()}finally{setPending("")}
+    try{const response=await fetch("/api/isolated/portal-data-entry-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({queueId:item.queueId,expectedSubmittedVersion:item.submittedVersion,decision,note:note??"",...(deviation??{})})}),body=await response.json();
+      // Stop 2d (P1): the client's factor is not the one declared for this source. The reviewer — not the client — decides:
+      // record why the client's choice stands, or leave it blank to switch the entry to the declared factor.
+      if(!response.ok&&!deviation&&typeof body.message==="string"&&body.message.includes("switch it to the declared factor")){
+        const reason=window.prompt(`${body.message}\n\nTo keep the client's factor, say why. Leave blank to switch it to the declared factor.`);
+        if(reason===null)return;
+        setPending("");
+        return decide(item,decision,reason.trim()?{factorOverrideReason:reason.trim()}:{useDeclaredFactor:true});
+      }
+      if(!response.ok)throw new Error(response.status===409?"This submission changed. The queue has been refreshed.":body.message);await load()}catch(cause){setError(cause instanceof Error?cause.message:"The review decision could not be verified.");await load()}finally{setPending("")}
   }
   return <section className="nz-panel" style={{padding:16,marginTop:14}}><span className="nz-eyebrow">Client submission review</span><h3 style={{margin:"6px 0"}}>Pending data-entry queue</h3><p className="sub">Acceptance imports the submitted values as pending, uncalculated scope evidence. Independent emissions review is still required.</p>{error?<div className="nz-banner warn" role="alert">{error}</div>:null}{state==="loading"?<div className="nz-table-empty">Loading submitted records…</div>:state==="error"?<div className="nz-banner warn" role="alert">The review queue is unavailable.</div>:items.length===0?<div className="nz-table-empty">No client submissions are awaiting review.</div>:<div style={{overflowX:"auto"}}><table className="nz-tbl"><thead><tr><th>Client / job</th><th>Scope row</th><th>Submission</th><th>Client note</th><th>Submitted</th><th>Decision</th></tr></thead><tbody>{items.map(item=><tr key={item.queueId}><td><b>{item.client}</b><div className="muted">{item.portalUser} · {item.jobNumber}</div></td><td>{item.scope}<div className="muted">{item.sourceLabel}</div></td><td className="num">{item.quantity} {item.unit}<div className="muted">v{item.submittedVersion}</div></td><td>{item.note||"—"}</td><td>{formatDateTime(item.submittedAt)}</td><td><div style={{display:"flex",gap:8}}><button className="nz-btn pri" disabled={!!pending} onClick={()=>void decide(item,"accept")}>{pending===item.queueId?"Working…":"Accept"}</button><button className="nz-btn" disabled={!!pending} onClick={()=>void decide(item,"reject")}>Reject</button></div></td></tr>)}</tbody></table></div>}</section>;
 }

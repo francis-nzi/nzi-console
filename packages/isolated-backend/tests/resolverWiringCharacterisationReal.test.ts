@@ -14,6 +14,10 @@ import { lookupVehicleByRegistration, resolveVehicleFactor, vehicleAttributes, t
 import { reconcileUnitForMapping } from "../src/unitCompatibility";
 import { primaryFactorFor } from "../src/portalPrimaryFactor";
 import { previewDeclaredFactor } from "../src/declarativeResolution";
+// The portal's own default, imported across the package seam as the capture suites import the console's model (NZC-162).
+import * as portalDefaultModule from "../../../apps/console/app/portal/portalFactorDefault";
+
+const { defaultPortalFactorId } = ((portalDefaultModule as any).defaultPortalFactorId ? portalDefaultModule : (portalDefaultModule as any).default) as typeof import("../../../apps/console/app/portal/portalFactorDefault");
 
 /**
  * Stop 1 of the wiring commit: what today's paths choose, against what the declarative resolver would choose.
@@ -28,9 +32,11 @@ import { previewDeclaredFactor } from "../src/declarativeResolution";
  *     applies its answer as the entry's factor. This is the only automated resolution that exists today.
  *   - **Everything else in the CRM** — a person picks from the job's factors (the full form's select starts
  *     blank; lean capture exact-matches the label the person chose).
- *   - **The portal** — the client chooses from a staff-granted allow-list, pre-selected to the first by
- *     `lower(label)`; the portal lookup discards the suggested factor. A reviewer's acceptance copies the
- *     choice onto the scope row.
+ *   - **The portal** — the client chooses from a staff-granted allow-list. Until H1 it was pre-selected to the
+ *     first by `lower(label)`; since 2d it is pre-selected to the category's declared factor when the bucket
+ *     authorises it (P4). Since 2d acceptance is a write path like the CRM's: it re-resolves under F1 — from the
+ *     lookup's stored attributes for a vehicle (P3) — so for an enabled category what lands is the declared
+ *     factor, unless the reviewer records why the client's pick stands.
  *
  * So the "before" side here is **the old code, executed**: the real DVLA stub, the real `resolveVehicleFactor`
  * SQL against real rows, and the portal's real ordering expression under the database's real collation. It is
@@ -328,36 +334,64 @@ describe("wiring characterisation — today's paths against the declarative reso
     }
   });
 
-  // ── The portal: the client's allow-list, pre-selected by collation ───────────────────────────────────
+  // ── The portal: the client's allow-list, and acceptance re-resolving what the client sent ────────────
 
-  it("characterises the portal default as it is since H1: what the bucket may offer, pre-selected only if one", async () => {
-    // Since H1 (NZC-160) the portal no longer pre-selects the first factor by lower(label). The bucket offers
-    // only factors its row may carry — the shipped primaryFactorFor predicate, run here against this database —
-    // and pre-selects one only when exactly one is left. With several, the client picks.
+  it("characterises the portal as it is since 2d: the declared factor pre-selected, and re-resolved at acceptance", async () => {
+    // The bucket offers only factors its row may carry — the shipped primaryFactorFor predicate, run here (H1). The
+    // listing asks the declared resolution what the category resolves to independently of any entry — no unit, no
+    // supply source, no vehicle, exactly as listPortalDataEntryBuckets asks it — and the portal's own default picks
+    // that when the bucket authorises it (P4), else the one eligible factor, else nothing and the client picks.
+    const offeredFor = async (category: string, spec: string, allowed: string[]) => (await db.query<{ factor_id: string }>(
+      `SELECT f.factor_id FROM nzi_console.emission_factors f
+         JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id)
+         CROSS JOIN (SELECT $3::text AS scope, $4::text AS category_code) r
+        WHERE s.job_id=$1 AND f.factor_id = ANY($2) AND ${primaryFactorFor("f", "r")}
+        ORDER BY f.factor_id`, [JOB_SHIPPED, allowed, spec, category])).rows.map((row) => row.factor_id);
     const allowLists: Array<[string, string, string[], string]> = [
       ["2.purchased-electricity", "2", ["electricity-demo", "electricity-td-demo"], "electricity-demo"],
+      ["2.purchased-electricity", "2", ["electricity-demo", "electricity-us-demo"], "electricity-demo"],
       ["1.company-vehicles", "1", ["diesel-demo", "gas-demo"], "diesel-demo"],
     ];
     for (const [category, spec, allowed, plausiblePick] of allowLists) {
-      const offered = (await db.query<{ factor_id: string }>(
-        `SELECT f.factor_id FROM nzi_console.emission_factors f
-           JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id)
-           CROSS JOIN (SELECT $3::text AS scope, $4::text AS category_code) r
-          WHERE s.job_id=$1 AND f.factor_id = ANY($2) AND ${primaryFactorFor("f", "r")}
-          ORDER BY f.factor_id`, [JOB_SHIPPED, allowed, spec, category])).rows.map((row) => row.factor_id);
+      const offered = await offeredFor(category, spec, allowed);
+      const listing = await previewDeclaredFactor(db, ORG, JOB_SHIPPED, { scope: spec, unit: null, supplySource: null, assertedVehicleAttributes: null }, category);
+      const listed = listing.enabled ? listing.declared?.factorId ?? null : null;
+      const preselected = defaultPortalFactorId(offered.map((id) => ({ id })), listed && offered.includes(listed) ? listed : null);
       const entry = category === "1.company-vehicles" ? { unit: "litres" } : { unit: "kWh", supplySource: "grid" };
       const { outcome, companions, factors } = await declared(JOB_SHIPPED, category, spec, entry);
       record({
         id: `shipped:${category}:portal-default-${allowed.join("+")}`, dataset: "shipped", category,
         entry: `portal bucket granted ${allowed.join(", ")} — offered ${offered.join(", ") || "nothing"}`,
-        before: offered.length === 1
-          ? { kind: "automated", path: "portal, the one eligible factor pre-selected (H1)", factorId: offered[0]!,
-            detail: `only ${offered[0]} may be this row's primary` }
-          : { kind: "person", path: "portal, several eligible so none pre-selected (H1)", plausiblePick,
+        before: preselected
+          ? { kind: "automated", path: preselected === listed ? "portal, the declared factor pre-selected (2d, P4)" : "portal, the one eligible factor pre-selected (H1)",
+            factorId: preselected, detail: `pre-selected ${preselected}; acceptance re-resolves under F1` }
+          : { kind: "person", path: "portal, nothing declared for the bucket and several eligible, so none pre-selected (H1)", plausiblePick,
             detail: `the client chooses among ${offered.join(", ")}` },
         after: shape(outcome),
         companions: { before: [], after: companions.proposed.map((companion) => `${companion.factorId} (${companion.ghgCategory})`) },
         unitCheck: unitNote(factors, shape(outcome).factorId, entry.unit),
+      });
+    }
+
+    // A plated vehicle. The lookup's attributes travel in the draft (P3), and acceptance re-resolves from them with the
+    // entry's unit — which in the portal, as in the CRM, follows the factor the client picked. So what lands for an
+    // enabled category is the write path's declared answer; it is asked here through the same function.
+    for (const [name, plate] of [["dieselVan", PLATES.dieselVan], ["petrolCar", PLATES.petrolCar]] as const) {
+      const attributes = vehicleAttributes(await vehicleFor(plate));
+      const asserted = { source: "stub" as const, fuel: attributes.fuel ?? null, vehicleClass: attributes.class ?? null };
+      const atAcceptance = await previewDeclaredFactor(db, ORG, JOB_SHIPPED, { scope: "1", unit: "litres", supplySource: null, assertedVehicleAttributes: asserted }, "1.company-vehicles");
+      const landed = atAcceptance.enabled ? atAcceptance.declared?.factorId ?? null : null;
+      const { outcome, factors } = await declared(JOB_SHIPPED, "1.company-vehicles", "1", { registrationFinder: plate, unit: "litres" }, { dvla: attributes });
+      record({
+        id: `shipped:1.company-vehicles:portal-plate-${name}-litres`, dataset: "shipped", category: "1.company-vehicles",
+        entry: `portal plate → ${name}, bucket granted diesel-demo, gas-demo, recorded in litres`,
+        before: landed
+          ? { kind: "automated", path: "portal lookup → attributes in the draft → F1 at acceptance (2d, P3)", factorId: landed,
+            detail: `the declared ${landed} lands unless the reviewer records why the client's pick stands` }
+          : { kind: "person", path: "portal lookup → nothing declared, so the client's pick stands at acceptance (2d)", plausiblePick: null,
+            detail: "no suitable factor in this dataset" },
+        after: shape(outcome), companions: { before: [], after: [] },
+        unitCheck: unitNote(factors, shape(outcome).factorId, "litres"),
       });
     }
   });
@@ -555,10 +589,13 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (
       }
     }
   }
-  // The portal, modelled as it is since H1: the electricity bucket offers only the grid factor (T&D is a companion
-  // of the row's category), so the primary is identical and only the companion diverges; the vehicle bucket
-  // offers two, so the client picks, against the declared search — D5.
+  // The portal, modelled as it is since 2d. Electricity pre-selects its declared grid factor, whether the bucket
+  // offers it alone (T&D is a companion, so not offered — H1) or beside another grid factor (P4, where before 2d the
+  // client picked): the primary is identical and only the held companion diverges. The unplated vehicle bucket has
+  // nothing declared without a vehicle, so the client picks, against the declared search — D5. A plated vehicle is
+  // re-resolved at acceptance from its stored attributes, so it is identical by construction while the switch holds.
   ledger["shipped:2.purchased-electricity:portal-default-electricity-demo+electricity-td-demo"] = "D6";
+  ledger["shipped:2.purchased-electricity:portal-default-electricity-demo+electricity-us-demo"] = "D6";
   ledger["shipped:1.company-vehicles:portal-default-diesel-demo+gas-demo"] = "D5";
   return ledger;
 })();

@@ -33,7 +33,7 @@ export function PortalCategoryEntry({
   const [bucketId, setBucketId] = useState(buckets[0]?.bucketGrantId ?? "");
   const bucket = useMemo(() => buckets.find(item => item.bucketGrantId === bucketId) ?? buckets[0], [buckets, bucketId]);
   const [records, setRecords] = useState<PortalDataEntryRecord[] | null>(null);
-  const [factorId, setFactorId] = useState(defaultPortalFactorId(bucket?.factors ?? []));
+  const [factorId, setFactorId] = useState(defaultPortalFactorId(bucket?.factors ?? [], bucket?.declaredFactorId));
   const [siteId, setSiteId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -54,14 +54,16 @@ export function PortalCategoryEntry({
     }
   }, [jobId, buckets]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setFactorId(defaultPortalFactorId(bucket?.factors ?? [])); }, [bucket]);
+  useEffect(() => { setFactorId(defaultPortalFactorId(bucket?.factors ?? [], bucket?.declaredFactorId)); }, [bucket]);
 
   if (!bucket) return null;
 
   const portalLookup = async (registration: string): Promise<RegistrationLookupOutcome> => {
     try {
       const response = await fetch(`/api/portal/jobs/${jobId}/vehicle-lookup`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ registration }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        // The category goes with the lookup, so an enabled category answers from its declared rule, not the ILIKE (2d, P3).
+        body: JSON.stringify({ registration, categoryCode: section.category.code, scope: section.category.scope === "3" ? section.category.code : section.category.scope }),
       });
       const body = await response.json();
       if (!response.ok) return { ok: false, message: body.message ?? "Vehicle lookup failed — enter it manually." };
@@ -71,6 +73,8 @@ export function PortalCategoryEntry({
         fuelType: body.vehicle?.fuelType ?? null,
         suggestedClass: body.suggestedClass ?? "vehicle",
         year: body.vehicle?.yearOfManufacture ?? null,
+        // Carried to the draft, and on to acceptance, so the entry is re-resolved from what the lookup said (F3).
+        attributes: body.attributes ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };

@@ -5,6 +5,8 @@
 import { emissionCategoryTaxonomy, scopeMeta, type EmissionCategory, type EmissionCategoryKind } from "@nzi/contracts";
 
 export type PortalBucket = {
+  /** The category's declared factor, when the bucket authorises it — the default (Stop 2d, P4). */
+  declaredFactorId?: string | null;
   bucketGrantId: string;
   scopeRowId: string;
   scope: string;
