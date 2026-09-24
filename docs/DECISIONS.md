@@ -5480,3 +5480,23 @@ population — backfill of existing portal records, if any, is for the activatio
 
 **Related.** NZC-160 (H4, H7, D6), NZC-159 (supply-source capture in the CRM), NZC-154 (the companion substrate),
 NZC-163 and NZC-155 (the same move from a documented intention to a mechanism).
+
+> **Addendum to NZC-164 (24 Sep 2026) — activation is a gated build, not a switch; and H4 as ruled.**
+>
+> *H4 ruled.* The derived T&D companion is the system of record. A manual 3.3 entry is not prevented: every one
+> carries a non-blocking "Add T&D?" completeness prompt, ungated (built separately, `tdAddPrompt`). How a manual 3.3
+> entry and a derived T&D row coexist without double counting is part of activation, below, not of that prompt.
+>
+> *What the switch does today: nothing.* `companions_enabled` is stored, and no write path reads it to create a
+> companion row — not `createScopeRow`, not `updateScopeRow`, not portal acceptance. Flipping it would change no
+> number and create no row, while reading as if T&D were live.
+>
+> *So the activation stop builds, in order, and flips the switch last:*
+>
+> 1. **Companion-row creation in all three write paths** — CRM create, CRM update, portal acceptance — each derived
+>    row carrying a `companionOf` provenance marker naming its primary, so it is identifiable as derived.
+> 2. **Supply source required** for electricity, in the CRM and the portal (the portal capture itself is 0124).
+> 3. **The manual-3.3 / derived-T&D dedup**, keyed on `companionOf`.
+> 4. **Then the flag**, in its own migration, which this entry's gate (`companionActivationGateReal`) lets through.
+>
+> Its own review stop, sequenced independently of the data import, and re-sized against real data before the flag.
