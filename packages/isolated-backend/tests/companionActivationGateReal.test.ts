@@ -43,8 +43,10 @@ describe("companions stay off until the portal can state how electricity arrived
   });
 
   it("bites: switching a companion on without portal capture is reported", async () => {
+    // Since 0124 the column exists, so the state the gate guards against is rebuilt inside a rolled-back transaction.
     await db.query("BEGIN");
     try {
+      await db.query(`ALTER TABLE nzi_console.portal_data_entry_records DROP COLUMN supply_source`);
       await db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '2.purchased-electricity'`);
       const violations = await companionGateViolations(db);
       assert.equal(violations.length, 1, "the gate did not report a companion switched on over a portal that cannot state supply source");
@@ -52,10 +54,9 @@ describe("companions stay off until the portal can state how electricity arrived
     } finally { await db.query("ROLLBACK"); }
   });
 
-  it("is satisfied once portal records capture supply source", async () => {
+  it("is satisfied by the portal capture 0124 built", async () => {
     await db.query("BEGIN");
     try {
-      await db.query(`ALTER TABLE nzi_console.portal_data_entry_records ADD COLUMN supply_source text`);
       await db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '2.purchased-electricity'`);
       assert.deepEqual(await companionGateViolations(db), []);
     } finally { await db.query("ROLLBACK"); }

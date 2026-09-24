@@ -382,6 +382,8 @@ export type PortalRecordInput = {
   siteId: string | null;
   note: string;
   detail?: unknown;
+  /** How the electricity arrived, as the client stated it (NZC-164); omitted when not stated. */
+  supplySource?: string | null;
 };
 
 export function emissionEntryDraftToPortalRecord(
@@ -427,5 +429,7 @@ export function emissionEntryDraftToPortalRecord(
   if (quantity == null || quantity <= 0) return { error: "Enter a quantity greater than zero." };
   // A looked-up vehicle's attributes travel in the record's detail, for acceptance to re-resolve from (Stop 2d, P3).
   const detail = draft.assertedVehicleAttributes ? { vehicleAttributes: draft.assertedVehicleAttributes } : undefined;
-  return { bucketGrantId: bucket.bucketGrantId, quantity, unit: factor.unit, factorId, siteId: site.id, note, ...(detail ? { detail } : {}) };
+  // The Supply answer the form collects. Dropped here until NZC-164 — the control was shown and its answer lost.
+  const supplySource = draft.supplySource.trim() || null;
+  return { bucketGrantId: bucket.bucketGrantId, quantity, unit: factor.unit, factorId, siteId: site.id, note, ...(detail ? { detail } : {}), ...(supplySource ? { supplySource } : {}) };
 }
