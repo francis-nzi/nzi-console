@@ -160,3 +160,4 @@ export async function runIsolatedCommand<T extends Record<string, unknown>>(stor
 }
 export { mailDelivery, smtpSettingsFrom, suppressingMailer, SmtpConfigurationError, type Mailer, type MailMessage, type MailDelivery } from "./mailer";
 export { runReminderTick, scanClientReminders, drainOutbox, clientsWithPlans, REMINDER_TOPIC, MAX_SEND_ATTEMPTS, type ReminderRunSummary } from "./strategyReminderWorker";
+export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";

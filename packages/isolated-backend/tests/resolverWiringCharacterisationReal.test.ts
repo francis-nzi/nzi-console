@@ -13,6 +13,7 @@ import { companionRulesFor, factorRulesFor, listCompanionRules, listFactorRules 
 import { lookupVehicleByRegistration, resolveVehicleFactor, vehicleAttributes, type VehicleSpec } from "../src/vehicleLookup";
 import { reconcileUnitForMapping } from "../src/unitCompatibility";
 import { primaryFactorFor } from "../src/portalPrimaryFactor";
+import { previewDeclaredFactor } from "../src/declarativeResolution";
 
 /**
  * Stop 1 of the wiring commit: what today's paths choose, against what the declarative resolver would choose.
@@ -34,7 +35,10 @@ import { primaryFactorFor } from "../src/portalPrimaryFactor";
  * So the "before" side here is **the old code, executed**: the real DVLA stub, the real `resolveVehicleFactor`
  * SQL against real rows, and the portal's real ordering expression under the database's real collation. It is
  * never the resolver compared with itself — the suite proves that at the end, by mutating a seeded rule and
- * watching a divergence appear where there was none.
+ * watching a divergence appear where there was none — **except where a category is switched on**, because there
+ * the write path *is* the resolver. Since 2b that is electricity's primary: its "before" is the live write-path
+ * resolution, identical by construction while the switch holds, and proved through the command elsewhere
+ * (electricityPrimaryEnabledReal). Each enabling slice moves its rows here the same way.
  *
  * ## Two datasets, and why the second is a probe
  *
@@ -282,16 +286,24 @@ describe("wiring characterisation — today's paths against the declarative reso
   // ── Electricity: today is always a person's pick; the declarative side adds a companion ──────────────
 
   it("characterises both electricity categories under every supply source", async () => {
+    // Since 2b (0121) the CRM write path resolves electricity's primary itself, so "today" is no longer a
+    // person's pick: it is what the shipped write-path resolution fills, asked here through the same function
+    // the capture form previews it with. For the primary that is identical by construction while the switch is
+    // on — which is the claim — and if the switch goes off the before becomes empty and every row here goes red.
+    // What proves the write itself does this is electricityPrimaryEnabledReal, through createScopeRow. The
+    // companion stays held (H4), so its divergence (D6) is unchanged.
     for (const [dataset, jobId] of [["shipped", JOB_SHIPPED], ["probe", JOB_PROBE]] as const) {
       for (const category of ELECTRICITY) {
         for (const supply of SUPPLY) {
           const entry = { unit: "kWh", supplySource: supply };
           const { outcome, companions, factors } = await declared(jobId, category, "2", entry);
+          const live = await previewDeclaredFactor(db, ORG, jobId, { scope: "2", unit: "kWh", supplySource: supply }, category);
           record({
             id: `${dataset}:${category}:supply-${supply ?? "unstated"}`, dataset, category,
             entry: `metered kWh, supplySource ${supply ?? "not stated"}`,
-            before: { kind: "person", path: "CRM factor select", plausiblePick: "electricity-demo",
-              detail: "the grid factor; no companion row exists on any path today" },
+            before: { kind: "automated", path: "CRM write path, declarative since 2b (0121)",
+              factorId: live.enabled ? live.declared?.factorId ?? null : null,
+              detail: live.enabled ? "filled by the write path; the T&D companion is held (H4)" : "the switch is off" },
             after: shape(outcome),
             companions: { before: [], after: companions.proposed.map((companion) => `${companion.factorId} (${companion.ghgCategory})`) },
             unitCheck: unitNote(factors, shape(outcome).factorId, "kWh"),
