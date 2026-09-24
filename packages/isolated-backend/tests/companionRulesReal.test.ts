@@ -5,6 +5,7 @@ import { proposeCompanions, resolveFactorForEntry, type CategoryVariant } from "
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { companionRulesFor, factorRulesFor, listCompanionRules } from "../src/inputSpecFactorRules";
 import { readJobEmissions } from "../src/emissionsAggregation";
+import { reconcileUnitForMapping } from "../src/unitCompatibility";
 
 /**
  * Companions and the market row, against the real tables (NZC-154).
@@ -28,8 +29,8 @@ describe("an entry resolves to more than one row, and market stays out of the he
   const registry: CategoryVariant[] = [];
 
   const available = [
-    { factorId: "electricity-demo", scopes: ["2"] },
-    { factorId: "electricity-td-demo", scopes: ["3"] },
+    { factorId: "electricity-demo", scopes: ["2"], unit: "kWh" },
+    { factorId: "electricity-td-demo", scopes: ["3"], unit: "kWh" },
   ];
 
   before(async () => {
@@ -49,7 +50,7 @@ describe("an entry resolves to more than one row, and market stays out of the he
 
   after(async () => { await db?.end(); await database?.end(); });
 
-  const primaryFor = async (category: string, entry: Record<string, string>) => resolveFactorForEntry({
+  const primaryFor = async (category: string, entry: Record<string, string>) => resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
     rules: await factorRulesFor(db, category), specGhgCategory: "2", entry, available, registry,
   });
 

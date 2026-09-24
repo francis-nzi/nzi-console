@@ -11,6 +11,7 @@ import {
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { companionRulesFor, factorRulesFor, listCompanionRules, listFactorRules } from "../src/inputSpecFactorRules";
 import { lookupVehicleByRegistration, resolveVehicleFactor, vehicleAttributes, type VehicleSpec } from "../src/vehicleLookup";
+import { reconcileUnitForMapping } from "../src/unitCompatibility";
 
 /**
  * Stop 1 of the wiring commit: what today's paths choose, against what the declarative resolver would choose.
@@ -156,8 +157,8 @@ describe("wiring characterisation — today's paths against the declarative reso
     const rules: Record<string, readonly FactorRule[]> = Object.fromEntries(await listFactorRules(db));
     const outcome = resolveFactorForEntry({
       rules: await factorRulesFor(db, category), specGhgCategory, entry,
-      available: factors.map((factor) => ({ factorId: factor.factor_id, scopes: factor.scopes })),
-      registry, enrichment, rulesByCategory: rules,
+      available: factors.map((factor) => ({ factorId: factor.factor_id, scopes: factor.scopes, unit: factor.activity_unit })),
+      registry, enrichment, rulesByCategory: rules, reconcileUnit: reconcileUnitForMapping,
     });
     const companions = proposeCompanions({
       companions: await companionRulesFor(db, category), entry,
@@ -415,8 +416,11 @@ describe("wiring characterisation — today's paths against the declarative reso
         `INSERT INTO nzi_console.input_spec_factor_rules
            (category_code, rule_key, ordering, rule_kind, factor_base, note, created_by, updated_by)
          VALUES ('3.6', 'probe-rail-fallback', 20, 'lookup', 'freight-demo', 'probe', 'test', 'test')`);
+      // No unit captured: since D2 a fallback that cannot price the entry's unit declines, which is not H2
+      // being closed — a fallback whose unit reconciles, or an entry with no unit yet, still answers. The
+      // entry is left unit-less so this keeps showing the hazard D2 does not touch.
       const { outcome } = await declared(JOB_SHIPPED, "3.6", "3",
-        { registrationFinder: PLATES.petrolCar, unit: "litres" }, { dvla: vehicleAttributes(vehicle) });
+        { registrationFinder: PLATES.petrolCar }, { dvla: vehicleAttributes(vehicle) });
       assert.equal(outcome.kind === "resolved" ? outcome.factorId : outcome.kind, "freight-demo",
         "the fallback did not answer — if this now fails, the STOP propagates and this pin should move");
     } finally {
@@ -444,9 +448,10 @@ describe("wiring characterisation — today's paths against the declarative reso
  *
  * - `D1` old-path defect, declarative correct — today's answer is none, a Scope 1 per-km factor, or the Scope 1
  *   base in a Scope 3 category. **Ruled: change by reviewed intent.**
- * - `D2` new-mapping defect — `dvla-diesel` ignores the unit, so a diesel vehicle recorded in km resolves to a
- *   per-litre factor. **Ruled: fix before wiring** — a unit that does not reconcile declines to the person's
- *   pick, never to the `ILIKE`.
+ * - `D2` new-mapping defect — `dvla-diesel` ignored the unit, so a diesel vehicle recorded in km resolved to a
+ *   per-litre factor. **Ruled: fix before wiring. Fixed** — a resolved factor must reconcile with the entry's
+ *   unit or its rule declines, to a person's pick and never to the `ILIKE`. Its six entries moved by that
+ *   intent: three to identical, three to D4. No entry carries D2 now; the class is kept so its history reads.
  * - `D3` new-mapping defect — `fuel-litres` assumes diesel, so an unplated petrol vehicle in litres resolves to
  *   the diesel factor. **Ruled: fix before wiring** — deactivate the rule; a unit alone cannot identify a fuel.
  * - `D4` coverage traded for safety — today's `ILIKE` suggests a Scope 1 per-km factor for petrol and hybrid;
@@ -463,7 +468,9 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
   for (const dataset of ["shipped", "probe"] as const) {
     for (const category of ["1.company-vehicles", "3.6", "3.7"]) {
       ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
-      ledger[`${dataset}:${category}:plate-dieselVan-km`] = "D2";
+      // D2 fixed (the unit now has to reconcile): shipped went from ∅ → diesel-demo to ∅ → search, which is
+      // identical; the probe's ILIKE still suggests a Scope 1 per-km van factor where a person now picks — D4.
+      if (dataset === "probe") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";
       ledger[`${dataset}:${category}:no-plate-petrol-litres`] = "D3";
       if (category !== "1.company-vehicles") ledger[`${dataset}:${category}:no-plate-diesel-litres`] = "D1";
       if (dataset === "probe") {
