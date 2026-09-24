@@ -6,7 +6,7 @@
 // factor / quality / confidence / lineage fields. Endpoint wiring is the caller's
 // job (UX1b CRP accordion, UX1d portal accordion) — this component is presentational.
 import { type FormEvent, useId, useMemo, useState } from "react";
-import { renderInputSpec, type InputSpecCategory } from "@nzi/contracts";
+import { renderInputSpec, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, type InputSpecCategory } from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
   emissionEntryActions,
@@ -85,6 +85,7 @@ const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null, 
   factorId: seed?.factorId ?? "",
   qualityTier: seed?.qualityTier ?? (lean ? "" : QUALITY_TIERS[0]),
   dataConfidence: seed?.dataConfidence ?? (lean ? "" : DATA_CONFIDENCE[1]),
+  supplySource: seed?.supplySource ?? "",
   note: seed?.note ?? "",
   monthlyOpen: seed?.monthlyOpen ?? false,
   monthly: seed?.monthly ?? {},
@@ -342,20 +343,47 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             );
           }
 
+          // Each select names the field it renders. This was `qualityTier ? … : dataConfidence`, which
+          // meant **every other select rendered as Data confidence** — bound to `draft.dataConfidence`,
+          // so a new field would have silently overwritten a different value while looking like a working
+          // form. `supplySource` was about to be that field. An unknown key now renders nothing rather
+          // than something else, and `everySelectFieldHasAControl` fails on it in CI.
           case "select":
-            return field.key === "qualityTier" ? (
-              <label key={field.key} className="nz-fl">Quality tier
-                <select className="nz-sel" value={draft.qualityTier} onChange={event => patch({ qualityTier: event.target.value })}>
-                  {QUALITY_TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}
-                </select>
-              </label>
-            ) : (
-              <label key={field.key} className="nz-fl">Data confidence <span className="muted">· NZC-044</span>
-                <select className="nz-sel" value={draft.dataConfidence} onChange={event => patch({ dataConfidence: event.target.value })}>
-                  {DATA_CONFIDENCE.map(level => <option key={level} value={level}>{level}</option>)}
-                </select>
-              </label>
-            );
+            if (field.key === "qualityTier") {
+              return (
+                <label key={field.key} className="nz-fl">Quality tier
+                  <select className="nz-sel" value={draft.qualityTier} onChange={event => patch({ qualityTier: event.target.value })}>
+                    {QUALITY_TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}
+                  </select>
+                </label>
+              );
+            }
+            if (field.key === "dataConfidence") {
+              return (
+                <label key={field.key} className="nz-fl">Data confidence <span className="muted">· NZC-044</span>
+                  <select className="nz-sel" value={draft.dataConfidence} onChange={event => patch({ dataConfidence: event.target.value })}>
+                    {DATA_CONFIDENCE.map(level => <option key={level} value={level}>{level}</option>)}
+                  </select>
+                </label>
+              );
+            }
+            if (field.key === "supplySource") {
+              return (
+                <label key={field.key} className="nz-fl">{field.label}
+                  {field.hint ? <span className="muted"> · {field.hint}</span> : null}
+                  {/* No pre-selected value: the blank is what "not answered yet" looks like, and the
+                      companion declines while it holds. Defaulting to grid would invent a Scope 3 row
+                      for every entry nobody had got to. */}
+                  <select className="nz-sel" value={draft.supplySource} onChange={event => patch({ supplySource: event.target.value })}>
+                    <option value="">Not stated</option>
+                    {SUPPLY_SOURCES.map(source => (
+                      <option key={source} value={source}>{SUPPLY_SOURCE_LABELS[source]}</option>
+                    ))}
+                  </select>
+                </label>
+              );
+            }
+            return null;
 
           case "textarea":
             return (

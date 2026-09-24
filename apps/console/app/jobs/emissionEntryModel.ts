@@ -23,6 +23,8 @@ export type EmissionEntryDraft = {
   factorId: string;
   qualityTier: string;
   dataConfidence: string;
+  /** How the electricity arrived. Blank until answered — see the control comment (NZC-159). */
+  supplySource: string;
   note: string;
   monthlyOpen: boolean;
   monthly: Record<string, string>;
@@ -218,6 +220,10 @@ export function emissionEntryDraftToScopeRow(
     assetIdentifier: draft.registration.trim() || null,
     siteId: site.id,
     siteLabel: site.label,
+    // Blank means not answered, which is a different thing from any of the values and must stay
+    // distinguishable: the transmission companion declines while it is unanswered rather than
+    // assuming grid (NZC-159).
+    supplySource: (draft.supplySource.trim() || null) as ScopeRowWriteFields["supplySource"],
     purchasedGoodsCategoryId: spend ? draft.spendCategoryId || null : null,
     purchasedGoodsCategoryLabel: null,
     quantity: parseEntryNumber(draft.quantity),
