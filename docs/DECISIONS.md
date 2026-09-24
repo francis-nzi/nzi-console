@@ -3904,7 +3904,40 @@ erased would be the one copy that survived the erasure.
 refusal), NZC-132 (the bridge), NZC-120 (the sealed history whose plaintext is the second prerequisite),
 NZC-130 (rendering a known gap rather than skipping it).
 
-### NZC-138 — Whether a person's rights span tenants is a controllership question, not a technical one [Open — awaiting data-protection counsel, 22 Sep 2026]
+### NZC-138 — Whether a person's rights span tenants is a controllership question, not a technical one [Resolved 24 Sep 2026 — data-protection counsel]
+
+**Resolved.** Counsel's determination:
+
+  - **Each client organisation is an independent controller** of the records in its tenant — not a party for
+    whom NZI processes, and not a tenant of an NZI-wide controllership.
+  - **Erasure is tenant-scoped.** A request is answered within the organisation it is made to; the same
+    person at two clients is two requests to two controllers, which is what the per-organisation subject
+    (NZC-116) already models.
+  - **A global request is split.** A request made to NZI, or naming no organisation, is divided into what is
+    *platform-controlled* — data NZI controls in its own right — which NZI answers, and what is
+    *tenant-routed* — records a client controls — which is routed to that client's controller to answer.
+    NZI does not fulfil a tenant's part on the client's behalf.
+
+**What it confirms.** The deliberate absence of automatic cross-tenant fulfilment was right: fulfilling across
+organisations would have answered for controllers who had not been asked.
+
+**What it implies to build.** An intake step for a global request: classify each part as platform-controlled
+or tenant-routed, answer the first, and route the second to the tenant's controller with a record that it
+was routed. Nothing in the single-tenant erasure or export changes.
+
+**Not covered by the determination as recorded,** and so not assumed: the lawful basis for the
+cross-organisation matching adjudication (NZC-118). With independent controllers, whether that adjudication
+continues — and on what basis — is its own question; until it is answered it stays the privileged,
+human-ruled step it is, and is not extended.
+
+**When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
+contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
+the scaffold stays exactly as NZC-142 left it: pending, blocking, and reporting every erasure
+`erasure-partial`. Recording a determination here does not change what the code claims; the implementation
+stop that transcribes it does, and is reviewed as such.
+
+**The question as it stood** (22 Sep 2026):
+
 
 **Question.** Is NZI the controller across all tenants — so that one person's access or erasure request
 covers every organisation they appear in — or is each client the controller of its own records with NZI
@@ -3937,7 +3970,31 @@ Nothing here affects the single-tenant core, which is why the build closed witho
 and the adjudication), NZC-123 (crossing a tenant boundary is a policy naming a role), NZC-128 (the shared
 read path), NZC-134 (the export's stated non-answer), NZC-136 (erasure).
 
-### NZC-139 — What staff personal data survives an erasure request, and on what basis [Open — awaiting data-protection counsel, 22 Sep 2026]
+### NZC-139 — What staff personal data survives an erasure request, and on what basis [Resolved 24 Sep 2026 — data-protection counsel]
+
+**Resolved.** Counsel's determination: staff personal data survives an erasure request under **legal
+obligation** and **legal claims** (Art. 17(3)(b) and (e)); what survives is **archived, not purged** — taken
+out of live use and kept, for the **retention periods counsel stated**, after which it is destroyed. This
+confirms the NZC-142 scaffold: `retain-with-basis` backed by a carve-out, with the basis and the period as
+fields rather than prose.
+
+**What it implies to build.** Each `RETENTION_CARVEOUTS` entry gets its basis, its period and
+`onErasure: "shred-after-retention"` from the determination, with `resolvedBy: "NZC-139"`; and an archive
+state — retained, out of live use, with a destruction date — distinct from both live and shredded.
+
+**Still to transcribe before that stop.** The per-field retention periods are in counsel's advice and are not
+reproduced here; they are needed as values, per carve-out, before the implementation can resolve a single
+entry. So is whether NZI staff and client staff are treated alike — under NZC-138 a client's staff record is
+that client's to decide, which suggests the carve-outs here govern NZI's own staff and platform accounts.
+
+**When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
+contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
+the scaffold stays exactly as NZC-142 left it: pending, blocking, and reporting every erasure
+`erasure-partial`. Recording a determination here does not change what the code claims; the implementation
+stop that transcribes it does, and is reviewed as such.
+
+**The question as it stood** (22 Sep 2026):
+
 
 **Question.** When a staff member asks to be erased, which of their personal data is retained despite the
 request, on what lawful basis, and for how long?
@@ -3970,7 +4027,28 @@ cannot be applied.
 command and its honest-partial reporting), NZC-125 (the inventory these entries live in), NZC-117 (what a
 shred reaches).
 
-### NZC-140 — Whether the audit before-image and the outbox payload outrank an erasure [Open — awaiting data-protection counsel, 22 Sep 2026]
+### NZC-140 — Whether the audit before-image and the outbox payload outrank an erasure [Resolved 24 Sep 2026 — data-protection counsel]
+
+**Resolved.** Counsel's determination: **neither store is exempt.** On erasure, the personal data inside
+`audit_events.before_json` and `transactional_outbox.payload_json` is **redacted or anonymised**. The audit
+row survives as a record that something changed, and by whom; it no longer re-states the value the erasure
+destroyed.
+
+**What it implies to build.** A redaction mechanism for payload stores, which does not exist yet: it rewrites
+the named personal field inside the JSON (the contact name in a `client.contact.update` before-image; the
+`recipientEmail` in the reminder payload) to an anonymised marker, reports what it rewrote, and leaves the
+rest of the payload intact. Both inventory entries move from `pending-counsel` to that treatment. For the
+outbox, removing the duplicated address outright (NZC-129) remains the better answer where the payload does
+not need it, and is taken first.
+
+**When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
+contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
+the scaffold stays exactly as NZC-142 left it: pending, blocking, and reporting every erasure
+`erasure-partial`. Recording a determination here does not change what the code claims; the implementation
+stop that transcribes it does, and is reviewed as such.
+
+**The question as it stood** (22 Sep 2026):
+
 
 **Question.** Do `audit_events.before_json` and `transactional_outbox.payload_json` carry a retention basis
 that overrides an erasure request, or must the personal data inside them be redacted or shredded when a
@@ -4000,7 +4078,33 @@ with the basis recorded; if not, it needs a redaction mechanism, which does not 
 **Related.** NZC-126 (the ruling this completes), NZC-125 (the inventory axis), NZC-136 (the erasure that
 reports these as retained today), NZC-129 (dropping data nobody uses).
 
-### NZC-141 — Legacy snapshots carrying minimised data, and whether name matching completes a DSAR [Open — awaiting data-protection counsel, 22 Sep 2026]
+### NZC-141 — Legacy snapshots carrying minimised data, and whether name matching completes a DSAR [Resolved 24 Sep 2026 — data-protection counsel]
+
+**Resolved.** Counsel's determination, in the same two parts:
+
+  - **(a) Cold snapshots may retain the data, behind a permanent Tombstone Registry with a restore-time
+    re-purge.** A stored snapshot is not rewritten or shredded — so its hash still verifies, and public
+    certificate verification (NZC-074) is unaffected. Instead every erasure is recorded permanently in a
+    Tombstone Registry, and anything restored or rehydrated from cold storage has the registry's erasures
+    re-applied before it returns to use. Read here as covering both the pre-minimisation report and
+    certificate snapshots this question was about, and cold copies such as backups, since the mechanism is
+    the same for both.
+  - **(b) A DSAR requires authentication by unique identifier, never name matching.** A request is tied to the
+    person by an identifier that is theirs alone — never a name. Name matching neither completes a DSAR nor
+    identifies who is asking; the best-effort name assist above cannot be used to fulfil one.
+
+**What it implies to build.** The Tombstone Registry (permanent, append-only, outside the tenant data it
+governs so that a restore cannot bring an erasure back with it) and the restore-time re-purge that consults
+it; and DSAR identity verification on a unique identifier before any read or erasure is fulfilled.
+
+**When it is built.** After client onboarding, as its own stops — unless the onboarding client's data or
+contract needs it sooner, in which case it moves ahead of onboarding rather than being waived. Until then
+the scaffold stays exactly as NZC-142 left it: pending, blocking, and reporting every erasure
+`erasure-partial`. Recording a determination here does not change what the code claims; the implementation
+stop that transcribes it does, and is reviewed as such.
+
+**The question as it stood** (22 Sep 2026):
+
 
 **Question, in two parts.** Consolidates and supersedes the legacy-snapshot carve-out recorded as out of
 scope in NZC-117 and forward-only in NZC-104; those stay as the history of the ruling and this is the open
@@ -4088,6 +4192,14 @@ explained rather than noticed later.
 split a carve-out's scope would turn on), NZC-136 and NZC-137 (the command and its honest-partial
 reporting), NZC-126 (the redact-or-retain ruling being resolved into two concrete treatments), NZC-119
 (the enumerate-rather-than-skip discipline this follows).
+
+> **Addendum to NZC-142 (24 Sep 2026) — the determinations have arrived; the scaffold holds until they are
+> transcribed.** Counsel has answered NZC-138–141, and NZC-139's answer (legal obligation and legal claims,
+> archive-not-purge, stated periods) confirms the shape this entry built. The answers are recorded in the
+> register; they are **not yet in the code**. Every carve-out stays `PENDING_NZC_139`, both payload columns stay
+> `pending-counsel`, and every erasure still reports `erasure-partial` until an implementation stop transcribes
+> each answer as field values and is reviewed as such. The test asserting that nothing is resolved is the
+> tripwire that makes that stop visible: it moves when the first entry is resolved, with the NZC it cites.
 
 ### NZC-143 — A Scope 2 row records its method, and a hidden row cannot be an uncounted one [Confirmed 22 Sep 2026]
 
