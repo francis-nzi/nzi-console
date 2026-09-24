@@ -147,6 +147,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
     patch({
       activity: [result.make, result.fuelType].filter(Boolean).join(" · ") || draft.activity,
       factorId: result.factorId ?? draft.factorId,
+      // Carried to the write so it can resolve from what the lookup said (F3).
+      assertedVehicleAttributes: result.attributes ?? null,
       unit: (result.factorId ? factors.find(option => option.id === result.factorId)?.unit : undefined) ?? draft.unit,
       manualMode: false,
     });
@@ -195,7 +197,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 <div className="nz-ef-reg">
                   <label className="nz-fl">Registration (DVLA lookup)
                     <input className="nz-plate" placeholder="AB12 CDE" value={draft.registration}
-                      onChange={event => { patch({ registration: event.target.value.toUpperCase() }); setLookup({ state: "idle" }); }} />
+                      onChange={event => { patch({ registration: event.target.value.toUpperCase(), assertedVehicleAttributes: null }); setLookup({ state: "idle" }); }} />
                   </label>
                   <button type="button" className="nz-btn" disabled={props.busy || lookup.state === "loading" || draft.registration.trim() === "" || !props.onLookupRegistration}
                     onClick={() => void runLookup()}>{lookup.state === "loading" ? "Looking up…" : "Look up"}</button>
@@ -209,7 +211,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     {audience === "crm" && !lookup.result.factorLabel ? <div className="nz-hint">No factor matched — pick one below.</div> : null}
                     <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                       <button type="button" className="nz-btn pri" onClick={() => applyLookup(lookup.result)}>Use this</button>
-                      <button type="button" className="nz-btn" onClick={() => { setLookup({ state: "idle" }); patch({ manualMode: true }); }}>Not right — enter manually</button>
+                      <button type="button" className="nz-btn" onClick={() => { setLookup({ state: "idle" }); patch({ manualMode: true, assertedVehicleAttributes: null }); }}>Not right — enter manually</button>
                     </div>
                   </div>
                 ) : null}

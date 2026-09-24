@@ -1,5 +1,5 @@
 import {
-  resolveFactorForEntry,
+  parseFactorId, resolveFactorForEntry, variantFactorId,
   type AssertedVehicleAttributes, type FactorRule, type MappingOutcome, type ScopeRowWriteFields,
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
@@ -104,10 +104,61 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
   return { outcome, factors, declared: carriers.length === 1 ? carriers[0]! : null, ambiguous: carriers.length > 1, attributes };
 }
 
-/** What the form's preview is told: whether the category is on, and if so what it declares for this entry. */
+/**
+ * What the form's preview is told: whether the category is on, and if so what it declares for this entry — and,
+ * whatever the switch, which factors this category refuses as the base of its own variant (Stop 2c).
+ */
 export type DeclaredFactorPreview =
-  | { enabled: false }
-  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null };
+  | { enabled: false; excludedFactorIds: string[] }
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds: string[] };
+
+/**
+ * The factors a variant category refuses, because the category's own variant of each is on offer (Stop 2c).
+ *
+ * Business travel reuses the vehicle flow and files what it finds under `-b`; commuting under `-c` (NZC-158). A
+ * base factor picked by hand in either — `diesel-demo` in business travel — is the Scope 1 figure filed under Scope
+ * 3: the D1 leak on the manual path. Scope tags do not catch it, because the base is tagged `{1,3}`. So the rule is
+ * the precise one: a factor is refused in a category that files under a suffix when that category's variant of it
+ * is among the job's factors. Where no variant exists nothing is refused, so the category is never left with
+ * nothing to pick — the dual-tagged per-distance factors stay open until distance-priced variants exist.
+ *
+ * Applies whether or not the category resolves declaratively: this is what a variant category may carry, not a
+ * decision about resolution. The write refuses these; the form's pick list leaves them out.
+ */
+export async function variantBasesRefused(db: Queryable, organisationId: string, jobId: string, categoryCode: string | null)
+  : Promise<Array<{ baseFactorId: string; variantFactorId: string }>> {
+  if (!categoryCode) return [];
+  const subFlows = (await factorRulesFor(db, categoryCode)).filter((rule) => rule.kind === "sub-flow");
+  if (subFlows.length === 0) return [];
+  const registry = await listCategoryVariants(db);
+  const offered = new Set((await db.query<{ factor_id: string }>(
+    `SELECT f.factor_id FROM nzi_console.job_dataset_selections s
+       JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
+      WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows.map((row) => row.factor_id));
+  const refused: Array<{ baseFactorId: string; variantFactorId: string }> = [];
+  for (const rule of subFlows) {
+    if (rule.kind !== "sub-flow") continue;
+    const variant = registry.find((entry) => entry.suffixCode === rule.suffixCode && entry.status === "active");
+    if (!variant) continue;
+    for (const factorId of offered) {
+      if (parseFactorId(factorId, registry).base !== factorId) continue; // already a variant of something
+      const own = variantFactorId(factorId, variant);
+      if (offered.has(own)) refused.push({ baseFactorId: factorId, variantFactorId: own });
+    }
+  }
+  return refused;
+}
+
+/** Why the sent factor is the base of this category's own variant, or null (Stop 2c). */
+export async function variantBaseRefusal(db: Queryable, organisationId: string, jobId: string, input: ScopeRowWriteFields, categoryCode: string | null)
+  : Promise<string | null> {
+  const sent = input.factorId?.trim();
+  if (!sent || (input.factorSource ?? "dataset") !== "dataset") return null;
+  const hit = (await variantBasesRefused(db, organisationId, jobId, categoryCode)).find((pair) => pair.baseFactorId === sent);
+  return hit
+    ? `'${sent}' is the base factor this category files as '${hit.variantFactorId}'. The base belongs to the scope it was measured for; use '${hit.variantFactorId}'.`
+    : null;
+}
 
 /**
  * The declared factor for an entry as it stands, for the capture form (Stop 2b, H3).
@@ -118,10 +169,12 @@ export type DeclaredFactorPreview =
  */
 export async function previewDeclaredFactor(db: Queryable, organisationId: string, jobId: string, entry: ResolutionEntry, categoryCode: string | null): Promise<DeclaredFactorPreview> {
   const resolved = await resolveDeclared(db, organisationId, jobId, entry, categoryCode);
-  if (!resolved) return { enabled: false };
+  const excludedFactorIds = (await variantBasesRefused(db, organisationId, jobId, categoryCode)).map((pair) => pair.baseFactorId);
+  if (!resolved) return { enabled: false, excludedFactorIds };
   const { declared, outcome } = resolved;
   return {
     enabled: true,
+    excludedFactorIds,
     declared: declared ? { datasetId: declared.datasetId, factorId: declared.factorId, label: declared.label, unit: declared.unit, version: declared.datasetVersion } : null,
     reason: declared ? null : outcome.kind === "free-search" ? outcome.reason : "the declared factor is carried by more than one selected dataset",
   };
