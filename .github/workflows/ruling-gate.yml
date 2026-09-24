@@ -1,0 +1,50 @@
+# The ruling gate (NZC-163, hardened). Fails a pull request that adds or changes a migration until it is ruled — the
+# `ruled` label applied to its current head — and fails any branch named hold/. See scripts/ruling-gate.mjs.
+#
+# Its own lightweight workflow so a label change re-runs only this, never the heavy suites in ci.yml.
+#
+# `pull_request_target`, deliberately: the workflow and the script run from the default branch, so a pull request
+# cannot edit the gate that judges it. That trigger runs with the base repository's token, so the rules that make it
+# safe are kept here and asserted by scripts/ruling-gate.test.mjs:
+#   - read-only token, and no credentials left in the checkout;
+#   - the pull request's code is never checked out or executed — its head is fetched and diffed by file name only;
+#   - every value from the event reaches the script through the environment, never interpolated into a shell line.
+name: Ruling gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+# One decision per pull request at a time; the newest event's run is the one that counts.
+concurrency:
+  group: ruling-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ruling:
+    name: no unruled migration or held branch merges
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The default branch — the gate's own trusted copy. Never the pull request's head.
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Decide
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ruling-gate.mjs

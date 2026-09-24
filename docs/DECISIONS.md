@@ -5450,6 +5450,39 @@ migration gate, the other thing that makes migrations safe to merge).
 > whose checks run on opening; verifying the merge means comparing the merged content with the reviewed commit,
 > not following one PR number.
 
+> **Addendum to NZC-163 (24 Sep 2026) — the gate holds a migration by its diff, and a ruling is an event.**
+>
+> *The gap.* The gate inspected the branch name and nothing else — not the commit body, the title, the labels or the
+> diff. A migration on a branch nobody named `hold/` passed: #290's failure by a different route, and a gate that
+> failed open for exactly the person it exists to catch, the one who forgot.
+>
+> *The gate now* (`.github/workflows/ruling-gate.yml`, `scripts/ruling-gate.mjs`) fails a pull request whose diff
+> adds or changes anything under `packages/isolated-backend/migrations/` until it is **ruled**, and still fails any
+> `hold/` branch — a manual hold for work that carries no migration (the import seed). A ruling is **Francis applying
+> the `ruled` label**: the `labeled` event for that label, bound by GitHub to the pull request's head at that moment.
+> Every other event on a migration-carrying pull request fails whatever labels it has, so **any push after a ruling
+> holds it again**, and re-ruling is removing and re-applying the label. No commit date is read — whoever pushes can
+> set both — and a test proves it: ruled, then a push backdated to 2001, and the check goes red; two planted weaker
+> gates (label presence; a commit dated before the ruling) both fail that test. The implementer session cannot apply
+> a label, so the ruling is Francis's by construction.
+>
+> *Why `pull_request_target`.* A `pull_request` workflow runs the pull request's own copy of the workflow, so a
+> pull request could edit the gate that judges it. This runs the default branch's copy with a read-only token and no
+> stored credentials, never checks out or executes the pull request's code — it fetches the head and diffs file names
+> — and passes event values through the environment only. Those rules are asserted by the gate's own tests.
+>
+> *Not gated, deliberately:* "factor-affecting code". It maps to no clean set of paths, would trip on nearly every
+> pull request in the write-path workstream, and a label applied to everything is a rubber stamp that stops meaning
+> anything on the migration PRs where it matters. Factor behaviour is guarded mechanically by what fails on behaviour
+> rather than on touching a file: the characterisation ledger (NZC-160) and the capture-path suites (NZC-162).
+>
+> *Residual risk, stated.* A ruling binds to whatever head the pull request has when the label is applied; a push
+> seconds before would be ruled unseen. The check names the head it ruled, to compare against the one reviewed.
+>
+> *The rename dance ends.* A migration pull request stays open and held until ruled; it no longer needs a `hold/` name
+> and a rename that closes it. The old branch-name job in `ci.yml` is kept until branch protection requires the new
+> check, then retired in its own change.
+
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
 **Decision.** Activating the transmission-and-distribution companion (NZC-160 H4) has two preconditions, and both
