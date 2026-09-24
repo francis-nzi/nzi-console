@@ -439,20 +439,24 @@ describe("wiring characterisation — today's paths against the declarative reso
 });
 
 /**
- * Every divergence the characterisation found, and the class proposed for it. **Proposals, pending the Stop 1
- * ruling** — the classes are what is put to review, not what has been decided.
+ * Every divergence the characterisation found, and how it was **ruled at Stop 1 (24 Sep 2026)**. The ledger moves
+ * only by reviewed intent: D2 and D3 are defects whose fixes will move their entries, and each fix is its own stop.
  *
  * - `D1` old-path defect, declarative correct — today's answer is none, a Scope 1 per-km factor, or the Scope 1
- *   base in a Scope 3 category.
+ *   base in a Scope 3 category. **Ruled: change by reviewed intent.**
  * - `D2` new-mapping defect — `dvla-diesel` ignores the unit, so a diesel vehicle recorded in km resolves to a
- *   per-litre factor.
+ *   per-litre factor. **Ruled: fix before wiring** — a unit that does not reconcile declines to the person's
+ *   pick, never to the `ILIKE`.
  * - `D3` new-mapping defect — `fuel-litres` assumes diesel, so an unplated petrol vehicle in litres resolves to
- *   the diesel factor.
+ *   the diesel factor. **Ruled: fix before wiring** — deactivate the rule; a unit alone cannot identify a fuel.
  * - `D4` coverage traded for safety — today's `ILIKE` suggests a Scope 1 per-km factor for petrol and hybrid;
- *   the declarative side leaves the entry to a person.
- * - `D5` search either way — the resolver declines and the person's pick stands, provided "the search" means a
- *   person's pick and not the `ILIKE` matcher.
- * - `D6` new companion row by design — T&D losses (3.3) beside grid-delivered electricity (NZC-154).
+ *   the declarative side leaves the entry to a person. **Ruled: accepted, conditional on retiring the `ILIKE`
+ *   for enabled categories.**
+ * - `D5` search either way — the resolver declines and the person's pick stands. **Ruled: identical, on the
+ *   same condition.**
+ * - `D6` new companion row by design — T&D losses (3.3) beside grid-delivered electricity (NZC-154). **Ruled:
+ *   change by reviewed intent**, held from activation until manual 3.3 coexistence is decided and supplySource
+ *   is required rather than offered for electricity.
  */
 const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = (() => {
   const ledger: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6"> = {};
