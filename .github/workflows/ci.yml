@@ -40,6 +40,8 @@ jobs:
   #
   # Only enforcing once it is a *required* status check on main — a repository setting, not something this file
   # can make true.
+  # Superseded by ruling-gate.yml, which holds a migration by its diff as well as a hold/ branch by its name. Kept
+  # until branch protection requires the new check; then retired in its own change (see the NZC-163 addendum).
   hold:
     name: no branch awaiting a ruling merges
     runs-on: ubuntu-latest
@@ -81,6 +83,9 @@ jobs:
       # the next copy before it is written (NZC-106).
       - run: npm run check:dates
       - run: npm run check:terminology
+      # The ruling gate (ruling-gate.yml) runs from main under pull_request_target, so this is where its own logic is
+      # proved on the change that edits it: real repositories, a ruled head, and a backdated push that must go red.
+      - run: npm run test:ruling-gate
       # A migration on main is frozen — the ledger's checksum is over the whole file, so even a comment
       # breaks the next deploy. That has now happened three times, most recently on #263/#264: a comment
       # improved on an already-applied 0110, and staging refused to deploy until the bytes were restored.
