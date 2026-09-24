@@ -5332,3 +5332,34 @@ migration gate, the other thing that makes migrations safe to merge).
 > branch at the same commit (8864d01). Clearing a hold therefore means **a new pull request for the renamed branch**,
 > whose checks run on opening; verifying the merge means comparing the merged content with the reviewed commit,
 > not following one PR number.
+
+### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
+
+**Decision.** Activating the transmission-and-distribution companion (NZC-160 H4) has two preconditions, and both
+must be met before any category's `companions_enabled` is switched on:
+
+1. **The double-counting decision** — how a derived T&D row coexists with manual T&D already entered in 3.3
+   (NZC-160 H4: recommended, the derived companion becomes the system of record and manual 3.3 T&D is flagged or
+   prevented where it fires; to be confirmed before activation).
+2. **Portal supply-source capture** — portal data-entry records carry a supply source, as CRM capture already does
+   (NZC-159).
+
+The second is a **hard, mechanical gate**: `companionActivationGateReal` runs against the database every migration
+builds and fails CI if any category has companions switched on while `portal_data_entry_records` has no
+`supply_source`. So the migration that activates companions cannot pass unless portal capture has landed with it
+or before it. The first remains a ruling, recorded here and in NZC-160.
+
+**Why a gate rather than a note.** The companion fires on `supplySource`, and "not stated" fires nothing — the
+right fail-safe for one entry, and a systematic under-count for a surface that cannot state it. With companions on
+and the portal unable to say how electricity arrived, every portal grid-electricity entry would produce no T&D row,
+silently, while the CRM's did. That is a parity break (NZC-160 H7) that no reviewer would see. The gate is armed
+now, while nothing is switched on and the column it looks for does not yet exist: dormant, and proved to bite — the
+suite switches a companion on inside a rolled-back transaction and asserts the violation is reported, and adds the
+column the same way and asserts it clears.
+
+**What it does not do.** It does not require supply source to be *mandatory* in the portal, only captured; making it
+required for electricity is part of the H4 activation work (NZC-160, D6). It checks for the column, not its
+population — backfill of existing portal records, if any, is for the activation stop to size.
+
+**Related.** NZC-160 (H4, H7, D6), NZC-159 (supply-source capture in the CRM), NZC-154 (the companion substrate),
+NZC-163 and NZC-155 (the same move from a documented intention to a mechanism).
