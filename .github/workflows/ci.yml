@@ -273,6 +273,13 @@ jobs:
       # here, paired with an ordinary entry that must go all the way through.
       - name: A portal entry's factor is one its row may carry, at grant, draft, submission and acceptance
         run: npx tsx --test packages/isolated-backend/tests/portalPrimaryFactorReal.test.ts
+      # The wiring characterisation, Stop 1. Today's resolution — the DVLA stub, resolveVehicleFactor's ILIKE,
+      # the portal's allow-list ordering under this database's collation — executed beside the declarative
+      # resolver over real seeded rules. Every divergence is pinned in a ledger, so a change in what resolves
+      # arrives as a reviewed diff; two mutation checks prove each side is live code rather than a remembered
+      # answer. Its collation result is only authoritative here: a local cluster may not compare bytes.
+      - name: Today's resolution against the declarative resolver, every divergence named
+        run: npx tsx --test packages/isolated-backend/tests/resolverWiringCharacterisationReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
