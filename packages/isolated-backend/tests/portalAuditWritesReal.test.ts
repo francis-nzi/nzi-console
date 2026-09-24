@@ -154,10 +154,15 @@ describe("portal writes that audit through jsonb_build_object, against real Post
       /permission denied for table portal_sessions/);
   });
 
-  it("createPortalRecoveryInvitation audits the recovery, once the boundary is stood in for", async () => {
-    // The audit statement cannot be reached as the app role until the defect above is closed. So the two
-    // privileges it lacks are granted for this call only — standing in for the missing boundary, and for
-    // nothing else — which isolates exactly what this change fixes: the statement's parameter types.
+  it("AUDIT STATEMENT ONLY — recovery itself does NOT work for the real app role until P0b; privileges granted for this call", async () => {
+    // ┌─ READ THIS BEFORE TRUSTING THE GREEN ───────────────────────────────────────────────────────────────┐
+    // │ This test passing does **not** mean a recovery invitation can be issued. It cannot: as the real     │
+    // │ app role the command is refused on portal_sessions (the PINNED DEFECT test above says so, and that   │
+    // │ one is the truth about the product). This test grants the two privileges the app role lacks, for    │
+    // │ this one call, and revokes them after — so it proves only that the audit statement's parameter types │
+    // │ are fixed. When P0b lands a confined definer function for credentials, delete the GRANT/REVOKE here, │
+    // │ call the command as the unmodified role, and the PINNED DEFECT test will fail and be removed.        │
+    // └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
     await db.query(`GRANT SELECT, UPDATE ON nzi_console.portal_sessions, nzi_console.portal_credentials TO nzi_console_app`);
     try {
       const result = await createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover" });
