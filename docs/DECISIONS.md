@@ -5479,6 +5479,12 @@ migration gate, the other thing that makes migrations safe to merge).
 > *Residual risk, stated.* A ruling binds to whatever head the pull request has when the label is applied; a push
 > seconds before would be ruled unseen. The check names the head it ruled, to compare against the one reviewed.
 >
+> *The operating rule that closes it.* Once a migration-carrying branch is handed to Francis for ruling, the
+> implementer does not push to it again until he has ruled and merged it, or asked for changes. With nothing pushed
+> between review and label, the head he labels is the head he reviewed; the window is removed rather than watched.
+> Francis also verifies the merged SHA against the one the check's output names. A change he asks for is a new push,
+> which the gate holds again, and it is handed back for a fresh ruling under the same rule.
+>
 > *The rename dance ends.* A migration pull request stays open and held until ruled; it no longer needs a `hold/` name
 > and a rename that closes it. The old branch-name job in `ci.yml` is kept until branch protection requires the new
 > check, then retired in its own change.
