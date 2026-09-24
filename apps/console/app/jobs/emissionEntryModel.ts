@@ -25,6 +25,8 @@ export type EmissionEntryDraft = {
   dataConfidence: string;
   /** How the electricity arrived. Blank until answered — see the control comment (NZC-159). */
   supplySource: string;
+  /** Why a factor other than the category's declared one was chosen. Asked only when the choice diverges (Stop 2b). */
+  factorOverrideReason: string;
   note: string;
   monthlyOpen: boolean;
   monthly: Record<string, string>;
@@ -188,6 +190,43 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
   }));
 }
 
+/** What the declared-factor preview returns — the shape of the backend's `DeclaredFactorPreview`. */
+export type DeclaredFactorPreviewResult =
+  | { enabled: false }
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null };
+
+/** The declared factor, as one of the form's own options. */
+export type DeclaredOption = { optionId: string; factorId: string; label: string; unit: string };
+
+/**
+ * The declared factor mapped onto the options the form actually offers (Stop 2b).
+ *
+ * Null when the category is off, when nothing is declared for the entry, or when the declared factor is not among
+ * the options — a preview naming a factor the form cannot select would be a promise the form cannot keep.
+ */
+export function declaredOptionFor(preview: DeclaredFactorPreviewResult | null, options: readonly EntryFactorRef[]): DeclaredOption | null {
+  if (!preview?.enabled || !preview.declared) return null;
+  const { datasetId, factorId, unit } = preview.declared;
+  const option = options.find((candidate) => candidate.factorId === factorId && candidate.datasetId === datasetId);
+  return option ? { optionId: option.id, factorId, label: option.label, unit } : null;
+}
+
+/**
+ * A new entry, pre-filled with the declared factor and the unit that factor is priced in (Stop 2b, H3).
+ *
+ * Only an empty choice is filled. A factor somebody already picked is left alone, and so is its unit: the form
+ * derives the unit from the factor and shows it before a quantity is typed, and never rewrites one a person set.
+ */
+export function seedWithDeclared(draft: EmissionEntryDraft, declared: DeclaredOption | null): EmissionEntryDraft {
+  if (!declared || draft.factorId) return draft;
+  return { ...draft, factorId: declared.optionId, unit: declared.unit };
+}
+
+/** Whether the pick diverges from the declared factor, so a reason is needed before it can be saved. */
+export function needsOverrideReason(draft: EmissionEntryDraft, declared: DeclaredOption | null): boolean {
+  return Boolean(declared && draft.factorId && draft.factorId !== declared.optionId);
+}
+
 const QUALITY_TO_TIER: Record<string, ScopeQualityTier> = {
   Measured: "measured", Estimated: "estimated", "Spend-based": "spend-based", Survey: "survey",
 };
@@ -257,6 +296,8 @@ export function emissionEntryDraftToScopeRow(
     // distinguishable: the transmission companion declines while it is unanswered rather than
     // assuming grid (NZC-159).
     supplySource: (draft.supplySource.trim() || null) as ScopeRowWriteFields["supplySource"],
+    // Only ever filled when the pick diverges from the declared factor; the form clears it otherwise (Stop 2b).
+    factorOverrideReason: draft.factorOverrideReason.trim() || null,
     purchasedGoodsCategoryId: spend ? draft.spendCategoryId || null : null,
     purchasedGoodsCategoryLabel: null,
     quantity: parseEntryNumber(draft.quantity),
