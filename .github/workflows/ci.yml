@@ -255,6 +255,12 @@ jobs:
       # back to the Scope 1 base, which would be a commute filed under Scope 3 and looking entirely normal.
       - name: A reused flow files under its own category, and never falls back to the base
         run: npx tsx --test packages/isolated-backend/tests/subFlowCompositionReal.test.ts
+      # Supply source capture (NZC-159). Both halves need real rows: the value survives create and update,
+      # with "not stated" kept as NULL rather than collapsed into an answer — and a grid-supplied row still
+      # stands alone, because storing the field is capture and firing the companion from it is the wiring
+      # commit. Unlisted, this suite skips in the unit job and proves nothing anywhere.
+      - name: Supply source is stored as captured, and fires nothing yet
+        run: npx tsx --test packages/isolated-backend/tests/supplySourceCaptureReal.test.ts
       # Carrying the free-text client fields onto the references (NZC-090). The assertions that
       # matter are negative: an unmatched value is left alone, and an owner is never re-pointed.
       - name: The client reference backfill loses nothing
