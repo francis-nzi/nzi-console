@@ -51,20 +51,33 @@ type AvailableFactor = { factorId: string; datasetId: string; datasetVersion: st
 /** A lookup's attributes as the resolver matches them. The key field gets a marker, never a registration. */
 const ASSERTED_AT_CAPTURE = "(asserted at capture)";
 
-export async function applyDeclarativeResolution(
-  db: Queryable,
-  organisationId: string,
-  jobId: string,
-  input: ScopeRowWriteFields,
-  categoryCode: string | null,
-  actorId: string,
-): Promise<DeclarativeResolution> {
-  if (!categoryCode) return { kind: "not-enabled" };
+type Declared = {
+  outcome: MappingOutcome;
+  factors: AvailableFactor[];
+  /** The one factor the resolved id names, or null when nothing resolved or it is ambiguous across datasets. */
+  declared: AvailableFactor | null;
+  ambiguous: boolean;
+  attributes: AssertedVehicleAttributes | null;
+};
+
+/** The entry fields resolution reads — what the write sends, and what the form's preview sends. */
+export type ResolutionEntry = Pick<ScopeRowWriteFields, "scope" | "unit" | "supplySource" | "assertedVehicleAttributes">;
+
+/**
+ * The resolver's answer for one entry, or null when the category is switched off.
+ *
+ * One function for the write and for the form's preview, so the two cannot come to different answers: the
+ * preview shows what the write will do, and the write re-resolves regardless (it never trusts the preview).
+ */
+async function resolveDeclared(db: Queryable, organisationId: string, jobId: string, entry: ResolutionEntry, categoryCode: string | null): Promise<Declared | null> {
+  if (!categoryCode) return null;
   const switched = await db.query<{ declarative_resolution_enabled: boolean }>(
     `SELECT declarative_resolution_enabled FROM nzi_console.input_spec_categories WHERE category_code = $1`, [categoryCode]);
-  if (!switched.rows[0]?.declarative_resolution_enabled) return { kind: "not-enabled" };
+  if (!switched.rows[0]?.declarative_resolution_enabled) return null;
 
-  // The job's selected datasets are the only factors a row may use; the resolver is handed exactly those.
+  // The job's selected datasets are the only factors a row may use; the resolver is handed exactly those. Which
+  // factor is "the grid factor" is the declared rule's to say, against whatever datasets this job selected —
+  // nothing here names one, so a regional or period grid is a rule and a dataset, not a code change.
   const factors = (await db.query<{ factor_id: string; dataset_id: string; version: string; label: string; activity_unit: string; scopes: string[] }>(
     `SELECT f.factor_id, f.dataset_id, d.version, f.label, f.activity_unit, f.scopes
        FROM nzi_console.job_dataset_selections s
@@ -76,17 +89,55 @@ export async function applyDeclarativeResolution(
 
   const rules = await factorRulesFor(db, categoryCode);
   const rulesByCategory: Record<string, readonly FactorRule[]> = Object.fromEntries(await listFactorRules(db));
-  const attributes = input.assertedVehicleAttributes ?? null;
+  const attributes = entry.assertedVehicleAttributes ?? null;
   const outcome = resolveFactorForEntry({
     rules,
-    specGhgCategory: input.scope,
-    entry: entryFor(input, attributes, [...rules, ...Object.values(rulesByCategory).flat()]),
+    specGhgCategory: entry.scope,
+    entry: entryFor(entry, attributes, [...rules, ...Object.values(rulesByCategory).flat()]),
     available: factors.map((factor) => ({ factorId: factor.factorId, scopes: factor.scopes, unit: factor.unit })),
     registry: await listCategoryVariants(db),
     enrichment: attributes ? { dvla: { fuel: attributes.fuel, class: attributes.vehicleClass } } : undefined,
     rulesByCategory,
     reconcileUnit: reconcileUnitForMapping,
   });
+  const carriers = outcome.kind === "resolved" ? factors.filter((factor) => factor.factorId === outcome.factorId) : [];
+  return { outcome, factors, declared: carriers.length === 1 ? carriers[0]! : null, ambiguous: carriers.length > 1, attributes };
+}
+
+/** What the form's preview is told: whether the category is on, and if so what it declares for this entry. */
+export type DeclaredFactorPreview =
+  | { enabled: false }
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null };
+
+/**
+ * The declared factor for an entry as it stands, for the capture form (Stop 2b, H3).
+ *
+ * Read-only. The CRM shows this factor, and its unit, before a quantity is typed — the unit comes from the
+ * factor and is never rewritten from one the user entered. Keyed on the category the form sends, which is only
+ * a preview: the write resolves again from the row's own category, and F1 refuses anything that disagrees.
+ */
+export async function previewDeclaredFactor(db: Queryable, organisationId: string, jobId: string, entry: ResolutionEntry, categoryCode: string | null): Promise<DeclaredFactorPreview> {
+  const resolved = await resolveDeclared(db, organisationId, jobId, entry, categoryCode);
+  if (!resolved) return { enabled: false };
+  const { declared, outcome } = resolved;
+  return {
+    enabled: true,
+    declared: declared ? { datasetId: declared.datasetId, factorId: declared.factorId, label: declared.label, unit: declared.unit, version: declared.datasetVersion } : null,
+    reason: declared ? null : outcome.kind === "free-search" ? outcome.reason : "the declared factor is carried by more than one selected dataset",
+  };
+}
+
+export async function applyDeclarativeResolution(
+  db: Queryable,
+  organisationId: string,
+  jobId: string,
+  input: ScopeRowWriteFields,
+  categoryCode: string | null,
+  actorId: string,
+): Promise<DeclarativeResolution> {
+  const resolved = await resolveDeclared(db, organisationId, jobId, input, categoryCode);
+  if (!resolved || !categoryCode) return { kind: "not-enabled" };
+  const { outcome, factors, declared, ambiguous, attributes } = resolved;
 
   const companionBases = new Set((await companionRulesFor(db, categoryCode)).map((rule) => rule.factorBase));
   const validity = await validityOf(db, organisationId, input, categoryCode, factors, companionBases);
@@ -104,14 +155,15 @@ export async function applyDeclarativeResolution(
   if (validity) return { kind: "refuse", field: "factorId", code: "FACTOR_NOT_VALID_FOR_ROW", message: validity };
 
   const sent = input.factorId?.trim() || null;
-  const deliberate = (input.factorSource ?? "dataset") === "client" || input.overrideTco2e != null;
+  const factorChoiceReason = input.factorOverrideReason?.trim() || null;
+  const overrideKind = (input.factorSource ?? "dataset") === "client" ? "client-factor"
+    : input.overrideTco2e != null ? "emissions-override"
+      : factorChoiceReason ? "factor-choice" : null;
 
   if (outcome.kind !== "resolved") {
     return { kind: "apply", factor: pick(input), provenance: { declarativeResolution: { ...trail, decision: "search" } } };
   }
-
-  const declared = declaredFactor(outcome, factors);
-  if (!declared) {
+  if (ambiguous || !declared) {
     // The same factor id in two selected datasets: which one is meant is not something to guess.
     return { kind: "refuse", field: "factorId", code: "DECLARED_FACTOR_AMBIGUOUS",
       message: `'${outcome.factorId}' is carried by more than one selected dataset, so which one is declared cannot be settled here.` };
@@ -124,13 +176,15 @@ export async function applyDeclarativeResolution(
   if (sent === declared.factorId && (input.datasetId ?? null) === declared.datasetId) {
     return { kind: "apply", factor: pick(input), provenance: { declarativeResolution: { ...trail, decision: "matched" } } };
   }
-  if (deliberate) {
+  if (overrideKind) {
     return { kind: "apply", factor: pick(input),
-      provenance: { declarativeResolution: { ...trail, decision: "override", deviatedBy: actorId, deviatedFrom: declared.factorId } } };
+      provenance: { declarativeResolution: { ...trail, decision: "override", overrideKind,
+        overrideReason: overrideKind === "factor-choice" ? factorChoiceReason : overrideKind === "emissions-override" ? input.overrideReason?.trim() ?? null : null,
+        deviatedBy: actorId, deviatedFrom: declared.factorId } } };
   }
   return { kind: "refuse", field: "factorId", code: "FACTOR_NOT_DECLARED",
     message: `This category resolves to '${declared.label}' (${declared.factorId}) for this entry. Use that factor, `
-      + "or record a deliberate override with a reason." };
+      + "or give a reason for choosing a different one." };
 }
 
 /** The factor fields exactly as the caller sent them. */
@@ -139,7 +193,7 @@ const pick = (input: ScopeRowWriteFields): ResolvedFactorFields => ({
 });
 
 /** The resolver reads captured fields by key; a lookup's key field holds a marker, so the plate never enters. */
-function entryFor(input: ScopeRowWriteFields, attributes: AssertedVehicleAttributes | null, rules: readonly FactorRule[]) {
+function entryFor(input: ResolutionEntry, attributes: AssertedVehicleAttributes | null, rules: readonly FactorRule[]) {
   const entry: Record<string, string | null> = { unit: input.unit ?? null, supplySource: input.supplySource ?? null };
   if (attributes) {
     for (const rule of rules) if (rule.kind === "enriched") entry[rule.enrichmentKeyField] = ASSERTED_AT_CAPTURE;
@@ -147,10 +201,6 @@ function entryFor(input: ScopeRowWriteFields, attributes: AssertedVehicleAttribu
   return entry;
 }
 
-function declaredFactor(outcome: Extract<MappingOutcome, { kind: "resolved" }>, factors: readonly AvailableFactor[]) {
-  const carriers = factors.filter((factor) => factor.factorId === outcome.factorId);
-  return carriers.length === 1 ? carriers[0]! : null;
-}
 
 /**
  * Why the caller's factor may not be this row's primary, or null when it may (the F1 validity gate).

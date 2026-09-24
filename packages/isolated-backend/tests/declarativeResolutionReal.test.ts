@@ -59,12 +59,21 @@ describe("the write path resolves declaratively where a category is switched on,
     `SELECT factor_id, dataset_id, factor_version, provenance_json, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0]!;
   const rowCount = async () => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n;
 
-  /** Switch categories on for the length of one test, then back off — nothing enabled outlives it. */
+  /** What the migrations switched on: since 0121, electricity's two primaries, and no companion. */
+  const BASELINE = ["2.purchased-electricity", "2.renewable-electricity"];
+  const restoreBaseline = () => db.query(
+    `UPDATE nzi_console.input_spec_categories SET companions_enabled = false, declarative_resolution_enabled = (category_code = ANY($1))`, [BASELINE]);
+
+  /** Switch categories on for the length of one test, then back to what the migrations left — nothing outlives it. */
   const enabled = async (categories: string[], run: () => Promise<void>, companions = false) => {
     await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = true, companions_enabled = $2 WHERE category_code = ANY($1)`, [categories, companions]);
-    try { await run(); } finally {
-      await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = false, companions_enabled = false`);
-    }
+    try { await run(); } finally { await restoreBaseline(); }
+  };
+
+  /** Switch categories off for one test — to write what the path wrote before they were enabled. */
+  const switchedOff = async (categories: string[], run: () => Promise<void>) => {
+    await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = false, companions_enabled = false WHERE category_code = ANY($1)`, [categories]);
+    try { await run(); } finally { await restoreBaseline(); }
   };
 
   before(async () => {
@@ -92,14 +101,15 @@ describe("the write path resolves declaratively where a category is switched on,
 
   // ── The switches ─────────────────────────────────────────────────────────────────────────────────────
 
-  it("lays every switch down off", async () => {
-    const on = await db.query(`SELECT category_code FROM nzi_console.input_spec_categories WHERE declarative_resolution_enabled OR companions_enabled`);
-    assert.deepEqual(on.rows, []);
+  it("switches on only what a migration switched on: 0120 laid them all off, 0121 turned on electricity's primaries", async () => {
+    const on = await db.query<{ category_code: string; companions_enabled: boolean }>(
+      `SELECT category_code, companions_enabled FROM nzi_console.input_spec_categories WHERE declarative_resolution_enabled OR companions_enabled ORDER BY category_code`);
+    assert.deepEqual(on.rows, BASELINE.map((category_code) => ({ category_code, companions_enabled: false })));
   });
 
   it("refuses a companion switched on without its category's primary", async () => {
     await assert.rejects(
-      () => db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '2.purchased-electricity'`),
+      () => db.query(`UPDATE nzi_console.input_spec_categories SET companions_enabled = true WHERE category_code = '1.company-vehicles'`),
       /input_spec_categories_companions_need_primary/);
   });
 
@@ -115,8 +125,8 @@ describe("the write path resolves declaratively where a category is switched on,
 
   // ── Off: untouched ───────────────────────────────────────────────────────────────────────────────────
 
-  it("stores exactly what it was sent while the category is off — even a factor it would refuse", async () => {
-    // The T&D factor as a Scope 2 primary is wrong, and today's write path takes it. Off must mean today.
+  it("stores exactly what it was sent while the category is off — even a factor it would refuse", async () => switchedOff(["2.purchased-electricity"], async () => {
+    // The T&D factor as a Scope 2 primary is wrong, and the path before 0121 takes it. Off must mean exactly that.
     const tnd = await createScopeRow(pool, electricity({ datasetId: "synthetic-gb-2026", factorId: "electricity-td-demo", factorVersion: "2026 demo v1", factorLabel: "T&D" }), context());
     const row = await stored(tnd.data.rowId);
     assert.equal(row.factor_id, "electricity-td-demo");
@@ -124,7 +134,7 @@ describe("the write path resolves declaratively where a category is switched on,
 
     const empty = await createScopeRow(pool, electricity(), context());
     assert.equal((await stored(empty.data.rowId)).factor_id, null, "a factor was filled in for an un-enabled category");
-  });
+  }));
 
   // ── On: the F1 rule ──────────────────────────────────────────────────────────────────────────────────
 
@@ -199,7 +209,10 @@ describe("the write path resolves declaratively where a category is switched on,
 
   it("lets an edit correct an existing bad row, and refuses the edit that would keep it bad (F2)", async () => {
     // Created while the category was off, so it holds a factor the rule would now refuse.
-    const legacy = await createScopeRow(pool, electricity({ ...gridFactor, factorId: "electricity-green-demo", factorLabel: "Green" }), context());
+    let legacy!: Awaited<ReturnType<typeof createScopeRow>>;
+    await switchedOff(["2.purchased-electricity"], async () => {
+      legacy = await createScopeRow(pool, electricity({ ...gridFactor, factorId: "electricity-green-demo", factorLabel: "Green" }), context());
+    });
     const version = async () => (await db.query<{ version: number }>(`SELECT version FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [legacy.data.rowId])).rows[0]!.version;
     await enabled(["2.purchased-electricity"], async () => {
       const current = await version();

@@ -279,6 +279,11 @@ jobs:
       # from what the row may carry, and an edit that corrects a bad row.
       - name: The write path resolves declaratively where switched on, and nowhere else
         run: npx tsx --test packages/isolated-backend/tests/declarativeResolutionReal.test.ts
+      # Stop 2b — electricity's primary, switched on by 0121, as shipped. Every supply source through create,
+      # calculate and the headline aggregation: the grid factor, a location-based figure, and no T&D row while
+      # the companion is held (H4). A deliberately chosen different factor needs a reason and is recorded.
+      - name: Electricity resolves its primary declaratively, with the companion held
+        run: npx tsx --test packages/isolated-backend/tests/electricityPrimaryEnabledReal.test.ts
       # The wiring characterisation, Stop 1. Today's resolution — the DVLA stub, resolveVehicleFactor's ILIKE,
       # the portal's allow-list ordering under this database's collation — executed beside the declarative
       # resolver over real seeded rules. Every divergence is pinned in a ledger, so a change in what resolves

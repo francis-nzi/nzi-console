@@ -30,10 +30,16 @@ function bodyOf(source: string, name: string): string {
 }
 
 describe("the declarative resolver is reached from the scope-row create and update commands, and nowhere else", () => {
-  it("is imported by exactly one module besides its own, and that is the command module", () => {
+  it("is imported by the command module, and re-exported only as the read-only preview", () => {
     const importers = readdirSync(SRC).filter((file) => file.endsWith(".ts"))
       .filter((file) => /from "\.\/declarativeResolution"/.test(read(file)));
-    assert.deepEqual(importers, ["postgresCommands.ts"]);
+    assert.deepEqual(importers.sort(), ["index.ts", "postgresCommands.ts"]);
+    // The package exports the preview (Stop 2b, for the capture form) and nothing that writes.
+    const reexport = read("index.ts").split("\n").filter((line) => line.includes("./declarativeResolution"));
+    assert.deepEqual(reexport, ['export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";']);
+    const writers = readdirSync(SRC).filter((file) => file.endsWith(".ts") && file !== "declarativeResolution.ts")
+      .filter((file) => /\bapplyDeclarativeResolution\b/.test(read(file)));
+    assert.deepEqual(writers, ["postgresCommands.ts"], "the write-side resolution is reachable from somewhere other than the commands");
   });
 
   it("calls the pure resolver from its one adapter only", () => {
