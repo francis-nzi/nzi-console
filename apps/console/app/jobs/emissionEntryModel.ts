@@ -144,7 +144,13 @@ export const NO_DATA_NOTE =
 // input (stamping the category code and the site-as-context) and back.
 
 export type EntryFactorRef = {
+  /**
+   * The form's option key — `<source>:<dataset or client factor>|<factor>`, unique across datasets as a select
+   * needs. Never sent to a command as the factor: that is `factorId`.
+   */
   id: string;
+  /** The factor's own id, which is what a command takes. */
+  factorId?: string;
   label: string;
   unit?: string;
   /** top-level scope "1" | "2" | "3" — for filtering to a category's scope */
@@ -154,6 +160,33 @@ export type EntryFactorRef = {
   factorSource?: "dataset" | "client";
   clientFactorId?: string | null;
 };
+
+/** What the workspace knows about a factor, from the job's factor library. */
+export type EntryFactorSource = {
+  factorSource: "dataset" | "client"; datasetId: string | null; clientFactorId: string | null; factorId: string;
+  label: string; activityUnit: string; synthetic?: boolean; scopes: string[]; datasetVersion: string | null;
+};
+
+/**
+ * The capture form's factor options, built once so the workspace and its tests cannot build them differently.
+ *
+ * Each carries the form's option key as `id` and the factor's own id as `factorId`. Before this the workspace
+ * built them inline and the quick-add sent the key as the factor, so every picked factor was stored as a key no
+ * factor has — found in Stop 2b, where it would have refused every electricity quick-add.
+ */
+export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): EntryFactorRef[] {
+  return sources.map((f) => ({
+    id: `${f.factorSource}:${f.clientFactorId ?? f.datasetId}|${f.factorId}`,
+    factorId: f.factorId,
+    label: `${f.label} · ${f.activityUnit}${f.synthetic ? " · DEMO" : ""}`,
+    unit: f.activityUnit,
+    scope: (f.scopes.find((s) => s === "1" || s === "2" || s === "3") ?? "3") as "1" | "2" | "3",
+    datasetId: f.datasetId,
+    datasetVersion: f.datasetVersion,
+    factorSource: f.factorSource,
+    clientFactorId: f.clientFactorId,
+  }));
+}
 
 const QUALITY_TO_TIER: Record<string, ScopeQualityTier> = {
   Measured: "measured", Estimated: "estimated", "Spend-based": "spend-based", Survey: "survey",
@@ -230,7 +263,8 @@ export function emissionEntryDraftToScopeRow(
     unit: spend ? "GBP" : draft.unit.trim() || null,
     monthlyActivity: monthly,
     datasetId: isClient ? null : factor?.datasetId ?? null,
-    factorId: factor?.id ?? null,
+    // The factor's own id — never the option key, which no factor has (see entryFactorRefsFor).
+    factorId: factor ? factor.factorId ?? factor.id : null,
     factorVersion: factor?.datasetVersion ?? null,
     factorLabel: factor?.label ?? null,
     factorSource: isClient ? "client" : "dataset",

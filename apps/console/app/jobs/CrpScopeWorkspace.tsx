@@ -47,7 +47,7 @@ import type { JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { emissionEntryDraftToScopeRow, type RegistrationLookupOutcome } from "./emissionEntryModel";
+import { emissionEntryDraftToScopeRow, entryFactorRefsFor, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
@@ -212,7 +212,7 @@ export function CrpScopeWorkspace({
       text: string;
     } | null>(qaNotice);
   const accordionOn=dataEntryAdapterEnabled("data-entry-accordion");
-  const entryFactorRefs=factors.map(f=>({id:`${f.factorSource}:${f.clientFactorId??f.datasetId}|${f.factorId}`,label:`${f.label} · ${f.activityUnit}${f.synthetic?" · DEMO":""}`,unit:f.activityUnit,scope:(f.scopes.find(s=>s==="1"||s==="2"||s==="3")??"3") as "1"|"2"|"3",datasetId:f.datasetId,datasetVersion:f.datasetVersion,factorSource:f.factorSource,clientFactorId:f.clientFactorId}));
+  const entryFactorRefs=entryFactorRefsFor(factors);
   async function createEntryFromForm(input:ScopeRowWriteFields):Promise<{ok:boolean;message?:string}>{
     const result=await postBrowserCommand<{rowId:string}>(`/api/isolated/jobs/${job.header.id}/scope-rows`,input,crypto.randomUUID());
     if(result.state==="success"){setSelectedId(result.data.rowId);setNotice({kind:"ok",text:`Entry added to ${input.categoryCode??input.scope}. Calculate and review it next.`});router.refresh();return{ok:true};}
