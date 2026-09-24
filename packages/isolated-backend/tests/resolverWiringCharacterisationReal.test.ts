@@ -44,6 +44,22 @@ import { primaryFactorFor } from "../src/portalPrimaryFactor";
  * matches. **probe** adds factors labelled the way DESNZ labels them ("Medium car — Diesel"), inserted by this
  * test and named as such, to exercise the matcher's positive branch. Nothing about the probe is a claim about
  * staging's data.
+ *
+ * ## What this does not cover — stated so nobody reads it as complete
+ *
+ * **Three of the five write paths.** A factor lands on a scope row through `createScopeRow`, `updateScopeRow`,
+ * portal acceptance, emission-source sync (`syncEmissionSourceToScope` / `reaggregateGroupRollup`) and year
+ * roll-forward (`rollforwardScopeRows`). This characterises the upstream choice for the CRM and the portal; it
+ * says nothing about source sync or roll-forward, which have their own characterise-then-wire stops (Stop 2, F4).
+ *
+ * **The resolver, not the whole command.** It calls the resolver directly, so it does not apply the checks the
+ * write command makes before resolution matters — notably NZC-146's accepted units per field. Business travel
+ * and commuting accept distances only, so the 3.6/3.7 rows here that are recorded in **litres** describe
+ * entries the write path refuses with UNIT_NOT_ACCEPTED. Their resolver outcome is accurate; their premise is
+ * not an input anyone can submit. Found in Stop 2a, and the reason Stop 2's own proofs go through the commands.
+ *
+ * **Keep the "before" live.** Any change to how a factor is chosen, offered, defaulted or accepted updates the
+ * rows here that model it, in the same PR (the lesson of H1, whose portal change left these rows stale).
  */
 
 const DATABASE_URL = TEST_DATABASE_URL;
