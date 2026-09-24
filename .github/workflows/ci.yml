@@ -27,6 +27,35 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # ── The hold gate (NZC-163) ────────────────────────────────────────────────────────────────────────────────
+  #
+  # A branch awaiting a ruling is named `hold/…`, and while it is, this job fails — so a held branch cannot go
+  # green, and cannot be merged once this check is required. #290 merged ahead of the fix it was blocked on
+  # because its HOLD lived in a commit body the PR page never shows; a signal that depends on someone reading it
+  # under time pressure was always going to fail. The prefix is visible in the PR header and enforced here.
+  #
+  # Cleared after the ruling by renaming the branch (GitHub's branch rename keeps the PR, which follows the new
+  # name), then re-running this job: it reads the branch name at run time, so the re-run passes.
+  #
+  # Only enforcing once it is a *required* status check on main — a repository setting, not something this file
+  # can make true.
+  hold:
+    name: no branch awaiting a ruling merges
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Refuse a branch named hold/ until its ruling clears it
+        env:
+          # The PR's source branch; on a push to main there is none, and main is never on hold.
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          case "$BRANCH" in
+            hold/*)
+              echo "::error title=On hold (NZC-163)::'$BRANCH' is awaiting a ruling. Rename it without the hold/ prefix once ruled, then re-run this check."
+              exit 1 ;;
+            *) echo "'$BRANCH' is not on hold." ;;
+          esac
+
   checks:
     name: typecheck · build · tests
     runs-on: ubuntu-latest
