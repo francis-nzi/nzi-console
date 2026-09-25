@@ -300,8 +300,9 @@ describe("the full-extract review of 25 Sep 2026", () => {
 });
 
 describe("the dry-run rulings of 25 Sep 2026", () => {
-  it("excludes only the five named reasons; any other bad row still refuses the whole load", () => {
-    assert.deepEqual(Object.keys(EXCLUSION_REASONS).sort(), ["column-shifted", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
+  it("excludes only the six named reasons; any other bad row still refuses the whole load", () => {
+    assert.deepEqual(Object.keys(EXCLUSION_REASONS).sort(),
+      ["column-shifted", "duplicate-upload-unit-conflict", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
     const result = plan([
       row({ db_id: "1101", factor: "NaN" }),
       row({ db_id: "1102", original_id: "X_1", currency: "Rail transport services" }),
@@ -341,5 +342,30 @@ describe("the dry-run rulings of 25 Sep 2026", () => {
     assert.deepEqual(result.factors.map((factor) => `${factor.datasetId}:${factor.scopes.join("+")}`).sort(), ["uk-ghg-gb-2024:3", "uk-ghg-gb-2025:1"]);
     assert.deepEqual(result.identities[0]!.scopes, ["1", "3"]);
     assert.match(result.reports.find((finding) => finding.code === "scope-by-year")!.examples[0]!, /uk-ghg-SPEND-SIC-05: 2024 S3, 2025 S1/);
+  });
+
+  describe("the duplicate-upload unit conflicts, excluded by db_id and self-checking", () => {
+    const walking = (over: Partial<ExtractRow>) => row({ original_id: "99_316_3160_11_2", source: "NZI", year: "2025", factor: "0",
+      scope: "Scope 3", region: "", ...over });
+    const xlsx = walking({ db_id: "2579", dataset_id: "1", uom: "miles", file_name: "DESNZ DEFRA Conversion Factors 2019-2025.xlsx" });
+    const tmp = walking({ db_id: "21722", dataset_id: "8", uom: "passenger.km", file_name: "tmpk56odb7o.csv" });
+
+    it("excludes a ruled row at 0 with its xlsx miles counterpart present, and the merge loads the miles row", () => {
+      const result = plan([xlsx, tmp]);
+      assert.deepEqual(result.refusals, []);
+      assert.deepEqual(result.excluded.map((excluded) => `${excluded.dbId}:${excluded.reason}`), ["21722:duplicate-upload-unit-conflict"]);
+      assert.deepEqual(result.factors.map((factor) => `${factor.legacyDbId}:${factor.activityUnit}`), ["2579:miles"]);
+    });
+
+    it("blocks when the ruling no longer holds: a value that is not 0, or no xlsx miles counterpart", () => {
+      assert.deepEqual(codes(plan([xlsx, { ...tmp, factor: "0.1" }]).refusals), ["ruled-exclusion-unverified"]);
+      assert.deepEqual(codes(plan([tmp]).refusals), ["ruled-exclusion-unverified"]);
+      assert.deepEqual(codes(plan([{ ...xlsx, uom: "km" }, tmp]).refusals), ["ruled-exclusion-unverified"]);
+      assert.deepEqual(codes(plan([{ ...xlsx, file_name: "tmpother.csv" }, tmp]).refusals), ["ruled-exclusion-unverified"]);
+    });
+
+    it("leaves the merge guard unchanged for any other row: the same clash on an unruled db_id refuses", () => {
+      assert.deepEqual(codes(plan([xlsx, { ...tmp, db_id: "21799" }]).refusals), ["merge-conflict"]);
+    });
   });
 });

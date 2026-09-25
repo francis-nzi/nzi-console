@@ -133,8 +133,11 @@ hash (a changed edition is a new dataset; the same hash is a no-op).
 
 **Load exclusions (skip, list, do not refuse)** — ruled 25 Sep 2026, a fixed list of named reasons and nothing else, so a
 new kind of bad row still halts the load: `factor-missing` (no value), `column-shifted` (a currency that is not a
-currency code), `swc-no-country` (SWC is unused), `not-kgco2e`, `retired-w`. Every excluded row is written to the
-exclusion report beside the extract.
+currency code), `swc-no-country` (SWC is unused), `not-kgco2e`, `retired-w`, and `duplicate-upload-unit-conflict` —
+keyed to db_ids 31415, 31416, 21722, 21723 only (nzi Walking/Cycling at 0 passenger.km in v7's tmp*.csv duplicate
+uploads; the xlsx 0-miles rows load through the merge), and self-checking: excluded only while the value is 0 and the
+xlsx miles counterpart is present, refused otherwise. Every excluded row is written to the exclusion report beside the
+extract.
 
 **Scope may vary by year** (ruled 25 Sep 2026). Scope is a property of each value row: DEFRA moved spend fuels and energy
 (`SPEND-SIC-05`, `SPEND-PROD-4.5.x`…) from Scope 3 to Scope 1/2 in 2025, and each year's row keeps its own. The resolver

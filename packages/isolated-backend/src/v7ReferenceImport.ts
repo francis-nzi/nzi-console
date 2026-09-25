@@ -159,7 +159,16 @@ export const EXCLUSION_REASONS = {
   "swc-no-country": "an swc row with no region: SWC is unused, and a spend factor with no country would attach to every job",
   "not-kgco2e": "a row not in kgCO2e: not an emission factor",
   "retired-w": "a code ending in -w, the retired waste variant",
+  "duplicate-upload-unit-conflict": "a ruled duplicate-upload row whose unit contradicts the xlsx edition at a value of 0: the xlsx row loads",
 } as const;
+
+/**
+ * The rows excluded as `duplicate-upload-unit-conflict` (ruled 25 Sep 2026), by db_id: nzi Walking and Cycling priced
+ * at 0 in passenger.km by v7's tmp*.csv duplicate uploads, where the xlsx edition of the same year says miles. Keyed to
+ * these ids and nothing else, and self-checking: each is excluded only while its value is 0 and its xlsx miles
+ * counterpart (same code and year, another v7 dataset, value 0) is in the extract. Otherwise it refuses.
+ */
+export const DUPLICATE_UPLOAD_UNIT_CONFLICTS: ReadonlySet<string> = new Set(["31415", "31416", "21722", "21723"]);
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 /** One excluded row, for the auditable exclusion report. */
 export type ExcludedRow = { dbId: string; reason: ExclusionReason; originalId: string | null; source: string | null; detail: string };
@@ -250,6 +259,18 @@ export function planV7Load(
   for (const [dbId, row] of byDbId) {
     const ghgUnit = clean(row.ghg_unit);
     if (ghgUnit !== "kgCO2e") { skippedNotKgco2e += 1; exclude("not-kgco2e", dbId, row, `ghg_unit ${ghgUnit}`); continue; }
+    if (DUPLICATE_UPLOAD_UNIT_CONFLICTS.has(dbId)) {
+      const isZero = (value: string | undefined) => { const cleaned = clean(value); return cleaned !== null && Number(cleaned) === 0; };
+      const counterpart = [...byDbId.values()].find((other) => other !== row && clean(other.original_id) === clean(row.original_id)
+        && clean(other.year) === clean(row.year) && clean(other.dataset_id) !== clean(row.dataset_id)
+        && clean(other.uom)?.toLowerCase() === "miles" && /\.xlsx$/i.test(clean(other.file_name) ?? "") && isZero(other.factor));
+      if (isZero(row.factor) && counterpart) {
+        exclude("duplicate-upload-unit-conflict", dbId, row, `${clean(row.original_id)} ${clean(row.year)} 0 ${clean(row.uom)} — db ${clean(counterpart.db_id)} (xlsx, 0 miles) loads`);
+        continue;
+      }
+      refuse("ruled-exclusion-unverified", "a row ruled excluded as a duplicate-upload unit conflict no longer matches the ruling (value not 0, or no xlsx miles counterpart)", `${dbId}: ${clean(row.original_id)} ${clean(row.factor)} ${clean(row.uom)}`);
+      continue;
+    }
     const verbatimCode = clean(row.original_id);
     const aliased = verbatimCode ? Object.entries(SUFFIX_ALIASES).find(([from]) => verbatimCode.endsWith(from)) : undefined;
     const code = aliased ? `${verbatimCode!.slice(0, -aliased[0].length)}${aliased[1]}` : verbatimCode;
