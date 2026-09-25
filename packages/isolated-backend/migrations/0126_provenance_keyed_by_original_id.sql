@@ -1,27 +1,30 @@
--- 0126 v7 provenance is keyed by original_id, one identity per code within one source family, and the variant
--- registry matches v7's suffixes (REFERENCE_DATA_DESIGN §3–4).
+-- 0126 v7 provenance: each factor points back at its factor_lookup row, each identity is one code within one source
+-- family, and the variant registry matches v7's suffixes (REFERENCE_DATA_DESIGN §3–4).
 --
 -- ## Why
 --
--- 0125 made `legacy_factor_id` (v7's `definitions.factor_id`) the identity key, unique within a dataset. Diagnostics on
--- live then showed it is not: definition 9759 is five distinct flight-class factors in one dataset, five values, the
--- same path and unit. `(dataset_id, original_id)` is the pair that is unique — zero duplicates — and `original_id`
--- recurs across years and countries, so it is the identity. The factor id is minted as `v7-<original_id>`. 0125 is
--- merged and frozen, so the roles are corrected here.
+-- 0125 took `legacy_factor_id` (v7's `definitions.factor_id`) as the identity key, unique within a dataset. It is not:
+-- factor 9759 alone is five flight classes in one dataset. The import's source of record is now v7's `factor_lookup`
+-- (its category is the operationally correct, suffix-aware one; the definitions' is stale on suffixed rows), so the
+-- durable back-reference is the lookup row's `db_id`, and the identity is the source code, `original_id`, within its
+-- source family. The factor id is minted as `<family>-<normalised original_id>`: ICE uses bare integers ("1"–"8"), IEA
+-- uses country names, so the same code in two families is two different factors. 0125 is merged and frozen, so the roles
+-- are corrected here.
 --
 -- ## What changes
 --
--- 1. **Keys.** The unique keys on `legacy_factor_id` go; uniqueness moves to `legacy_original_id`: per dataset for
---    factors, per organisation for identities. `legacy_factor_id` stays as secondary provenance.
--- 2. **One code, one family (ruled 25 Sep 2026).** An identity records the source family it belongs to, and a factor
---    whose dataset is of another family is refused. `v7-<original_id>` is one identity across every year and country
---    of its family; a code that turns up in two families would merge two different factors into one, so it is refused
---    rather than reported.
--- 3. **The variant registry matches v7.** v7 allocates one physical factor to several categories by suffixing its
---    `original_id`. Five of its ten suffixes were already registered (`-b -c -d -p -u`, 0110); the other five are
---    added: `-vcd`, `-vcp`, `-vh`, `-vvd` — company-vehicle sub-types, Scope 1 — and `-bcp`, business travel by petrol
---    car (3.6). Variants therefore span scopes. `-w` (waste, 0110) is not a v7 suffix and is left for a ruling:
---    retiring it is the audited `factor.variant.retire` command, not a migration.
+-- 1. **Back-references.** `legacy_factor_id` goes from both tables. `emission_factors.legacy_db_id` is the
+--    `factor_lookup` row a value row came from — unique per organisation, so a re-run lands on the same rows.
+--    `factor_identities.legacy_db_id` is the lowest `db_id` carrying the code: a stable pointer back into the source.
+--    `legacy_original_id` stays on both; it is stored exactly as v7 has it, which is what makes the normalised id
+--    reversible.
+-- 2. **One code per family, one family per identity.** An identity records its source family, and uniqueness is
+--    (organisation, source system, family, original_id) — ICE's "1" and another family's "1" are separate identities.
+--    A factor whose dataset belongs to another family than its identity is refused, wherever it is written from.
+-- 3. **The variant registry matches v7.** Five of v7's ten suffixes were registered (`-b -c -d -p -u`, 0110); the other
+--    five are added: `-vcd`, `-vcp`, `-vh`, `-vvd` — company-vehicle sub-types, Scope 1 — and `-bcp`, business travel by
+--    petrol car (3.6). Variants span scopes. `-w` (waste, 0110) is not a v7 suffix; it is retired by the audited
+--    `factor.variant.retire` command, not here.
 --
 -- No row carries `source_system` yet — the import has not run — so nothing is re-keyed; this refuses if that is no
 -- longer true.
@@ -45,33 +48,45 @@ BEGIN
   END IF;
 END $$;
 
--- ── 1. Keys ───────────────────────────────────────────────────────────────────────────────────────────────────
+-- ── 1. Back-references ────────────────────────────────────────────────────────────────────────────────────────
 
 DROP INDEX nzi_console.emission_factors_legacy_key;
 DROP INDEX nzi_console.factor_identities_legacy_key;
 
+ALTER TABLE nzi_console.emission_factors DROP CONSTRAINT emission_factor_provenance_shape;
+ALTER TABLE nzi_console.emission_factors
+  DROP COLUMN legacy_factor_id,
+  ADD COLUMN legacy_db_id text,
+  ADD CONSTRAINT emission_factor_provenance_shape
+    CHECK (source_system IS NULL OR (legacy_original_id IS NOT NULL AND legacy_db_id IS NOT NULL));
 CREATE UNIQUE INDEX emission_factors_legacy_original_key
   ON nzi_console.emission_factors (organisation_id, dataset_id, source_system, legacy_original_id) WHERE source_system IS NOT NULL;
+CREATE UNIQUE INDEX emission_factors_legacy_db_key
+  ON nzi_console.emission_factors (organisation_id, source_system, legacy_db_id) WHERE source_system IS NOT NULL;
 
-ALTER TABLE nzi_console.factor_identities
-  ADD COLUMN legacy_original_id text,
-  ADD COLUMN source_family text;
 ALTER TABLE nzi_console.factor_identities DROP CONSTRAINT factor_identity_provenance_shape;
-ALTER TABLE nzi_console.factor_identities ADD CONSTRAINT factor_identity_provenance_shape
-  CHECK (source_system IS NULL OR (legacy_original_id IS NOT NULL AND source_family IS NOT NULL));
+ALTER TABLE nzi_console.factor_identities
+  DROP COLUMN legacy_factor_id,
+  ADD COLUMN legacy_db_id text,
+  ADD COLUMN legacy_original_id text,
+  ADD COLUMN source_family text,
+  ADD CONSTRAINT factor_identity_provenance_shape
+    CHECK (source_system IS NULL OR (legacy_original_id IS NOT NULL AND source_family IS NOT NULL));
 CREATE UNIQUE INDEX factor_identities_legacy_original_key
-  ON nzi_console.factor_identities (organisation_id, source_system, legacy_original_id) WHERE source_system IS NOT NULL;
+  ON nzi_console.factor_identities (organisation_id, source_system, source_family, legacy_original_id) WHERE source_system IS NOT NULL;
 
 COMMENT ON COLUMN nzi_console.emission_factors.legacy_original_id IS
-  'The source''s identity for this factor (v7 original_id): unique within a dataset, and the same across the years and countries of its family that use it. The factor_id is minted from it: v7-<original_id>.';
-COMMENT ON COLUMN nzi_console.emission_factors.legacy_factor_id IS
-  'v7 definitions.factor_id — secondary provenance. Not unique within a dataset: one definition can hold several factors.';
+  'The source code for this factor exactly as v7 stores it (factor_lookup.original_id). The factor_id is minted from it, normalised and prefixed with the source family; this column is what makes that reversible.';
+COMMENT ON COLUMN nzi_console.emission_factors.legacy_db_id IS
+  'The v7 factor_lookup row this value row was loaded from (db_id). Unique per organisation.';
 COMMENT ON COLUMN nzi_console.factor_identities.legacy_original_id IS
-  'The source code this identity stands for (v7 original_id). One identity per code, curated once for every year and country that uses it.';
+  'The source code this identity stands for, exactly as v7 stores it. One identity per code per source family, curated once for every year and country that uses it.';
+COMMENT ON COLUMN nzi_console.factor_identities.legacy_db_id IS
+  'The lowest v7 factor_lookup db_id carrying this code: a stable pointer back into the source for the identity.';
 COMMENT ON COLUMN nzi_console.factor_identities.source_family IS
-  'The source family the code belongs to. A factor from a dataset of another family is refused: one code, one family.';
+  'The source family the code belongs to. A factor from a dataset of another family is refused: one family per identity.';
 
--- ── 2. One code, one family — enforced where every writer passes ─────────────────────────────────────────────
+-- ── 2. One family per identity — enforced where every writer passes ──────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION nzi_console.ensure_factor_identity() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog AS $$
@@ -84,8 +99,8 @@ BEGIN
   -- A curated identity already in place is never touched: a loader writes identities first, and a later edition of
   -- the same factor keeps whatever NZI has curated.
   INSERT INTO nzi_console.factor_identities
-    (organisation_id, factor_id, label, source_label, source_system, legacy_factor_id, legacy_original_id, source_family, created_by)
-  VALUES (NEW.organisation_id, NEW.factor_id, NEW.label, NEW.label, NEW.source_system, NEW.legacy_factor_id,
+    (organisation_id, factor_id, label, source_label, source_system, legacy_db_id, legacy_original_id, source_family, created_by)
+  VALUES (NEW.organisation_id, NEW.factor_id, NEW.label, NEW.label, NEW.source_system, NEW.legacy_db_id,
           NEW.legacy_original_id, CASE WHEN NEW.source_system IS NULL THEN NULL ELSE dataset_family END, 'factor-insert')
   ON CONFLICT (organisation_id, factor_id) DO NOTHING;
 
@@ -96,7 +111,7 @@ BEGIN
     IF identity_system IS NOT NULL AND identity_family IS DISTINCT FROM dataset_family THEN
       RAISE EXCEPTION USING
         ERRCODE = 'check_violation',
-        MESSAGE = format('%s belongs to source family %s and cannot also come from %s (dataset %s): one code, one family',
+        MESSAGE = format('%s belongs to source family %s and cannot also come from %s (dataset %s): one family per identity',
                          NEW.factor_id, identity_family, coalesce(dataset_family, 'no family'), NEW.dataset_id);
     END IF;
   END IF;
