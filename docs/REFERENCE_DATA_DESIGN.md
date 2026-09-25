@@ -88,20 +88,41 @@ Properties:
 
 ### 3.1 Category variants come across in the data
 
-v7 already allocates one physical factor to several GHG categories the way the console does (NZC-145): Francis
-duplicated base factors and suffixed their `original_id` — `-c` commuting, `-d` downstream T&D, `-p` purchased goods
-and services, `-u` upstream T&D. Those are exactly the console's registered suffixes (0110: `-b` 3.6, `-c` 3.7, `-p`
-3.1, `-u` 3.4, `-d` 3.9), so the variant rows **arrive with the import** — none is created at enablement.
+v7 already allocates one physical factor to several categories the way the console does (NZC-145): Francis duplicated
+base factors and suffixed their `original_id`. **All ten v7 suffixes are registered variants** (authoritative map,
+Francis, 25 Sep 2026):
 
-- `v7-4521-c` parses as the commuting (3.7) variant of `v7-4521`; `v7-4521` parses as a base. Proved in the parser for
-  a suffixed and an unsuffixed id, and for every registered letter.
-- **Older tags that are not in the registry** (`-vcp` and the like) are plain ids: never parsed as variants, never
-  grouped with a base. Mapping one onto a registered suffix would be its own ruling.
-- **Load checks on every id that parses as a variant** (reported, not refused — they are data questions, and a variant
-  row prices at its own value, so nothing is mis-priced meanwhile): its base is present in the same dataset; it carries
-  the base's value and unit (a variant with a different value is not a variant, 0110); its scope matches its
-  category's (3). An id that parses as a variant with no base anywhere is the tell of a natural id that merely ends in
-  a registered letter — listed for a ruling rather than guessed.
+| Suffix | Category | Scope |
+|---|---|---|
+| `-b` | business travel (3.6) | 3 |
+| `-c` | employee commuting (3.7) | 3 |
+| `-d` | downstream transport & distribution (3.9) | 3 |
+| `-p` | purchased goods & services (3.1) | 3 |
+| `-u` | upstream transport & distribution (3.4) | 3 |
+| `-vcd` | company vehicles — cars, diesel | 1 |
+| `-vcp` | company vehicles — cars, petrol | 1 |
+| `-vh` | company vehicles — HGVs | 1 |
+| `-vvd` | company vehicles — vans, diesel | 1 |
+| `-bcp` | business travel — car, petrol (3.6) | 3 |
+
+The first five were already in the console's registry (0110); 0126 adds the other five, so the registry matches v7 and
+the variant rows **arrive with the import** — none is created at enablement. **Variants span scopes**: the
+company-vehicle ones are Scope 1 (`ghg_category` `'1'`). The registry's sixth 0110 entry, `-w` (waste, 3.5), is not a v7
+suffix; whether to retire it is a ruling, and retiring is the audited `factor.variant.retire` command.
+
+- `v7-4521-c` parses as the commuting variant of `v7-4521`; `v7-4521-vcp` as the petrol-car company-vehicle variant;
+  `v7-4521` as a base. Proved against the registry the migrations build, for an unsuffixed id and all ten suffixes.
+  An unregistered tag, and an upper-case suffix (`-C`, `-VCP`), stay plain ids.
+- **The suffix is the authority for a suffixed row's category and scope.** v7's category field is stale on suffixed
+  rows: the duplication that created them copied the base row's category (the sample's `-d` freighting rows say
+  "Upstream…" though `-d` is downstream). So a suffixed row takes its category and scope from the suffix map; an
+  unsuffixed row takes them from the category field. **Every suffixed row whose field disagrees with its suffix is
+  reported**, so the scale is visible and a genuinely wrong one can be caught.
+- **Load checks on every id that parses as a variant** (reported, not refused — a variant row prices at its own value,
+  so nothing is mis-priced meanwhile): its base is present in the same dataset; it carries the base's value and unit (a
+  variant with a different value is not a variant, 0110). An id that parses as a variant with no base anywhere is the
+  tell of a natural id that merely ends in a registered suffix — listed for a ruling rather than guessed. There is no
+  scope check on a variant: variants span scopes.
 - **What it gives the resolver.** The sub-flow rules for business travel and commuting compose `<base>-b` / `<base>-c`
   from the vehicle flow's answer; with the variants in the data, per-distance enablement needs rules, not rows. The 2c
   variant-base rule then applies to real data as designed: a category whose own variant of a base is on offer refuses
@@ -117,7 +138,13 @@ the unique keys on `legacy_factor_id` (`emission_factors_legacy_key`, `factor_id
 refuse the import outright, since definition 9759 alone is five factors in one dataset; add
 `factor_identities.legacy_original_id`; key uniqueness on `(organisation_id, dataset_id, source_system,
 legacy_original_id)` for factors and `(organisation_id, source_system, legacy_original_id)` for identities; require
-`legacy_original_id` wherever `source_system` is set; correct the column comments.
+`legacy_original_id` wherever `source_system` is set; correct the column comments. 0126 also registers v7's five missing
+suffixes (§3.1).
+
+**One code, one family (ruled 25 Sep 2026).** `v7-<original_id>` is one identity across every year and country of its
+source family. A code turning up in a second family would merge two different factors into one identity, so it is
+**refused**, not reported — and enforced in the database, not only by the loader: each identity records its family
+(0126), and a factor whose dataset belongs to another family is refused wherever it is written from.
 
 **`emission_factors`:** `source_system` (`'nzi-pro-v7'`), `legacy_original_id`, `legacy_factor_id`,
 `source_levels text[]`, `source_category`, `ghg_unit` — nullable so the synthetic seed stays valid.
@@ -125,17 +152,22 @@ legacy_original_id)` for factors and `(organisation_id, source_system, legacy_or
 **`emission_factor_datasets`:** `source_system`, `source_family`, `legacy_dataset_id`, `content_sha256`.
 
 **Load checks (refuse):** loaded rows equal extracted rows, per dataset and in total; a duplicate id within a dataset;
-an id containing `:`, `|` or whitespace; a negative factor; an unknown scope; **the same `original_id` carrying a
+an id containing `:`, `|` or whitespace; a negative factor; an unknown scope; an `original_id` in two source families;
+**the same `original_id` carrying a
 different unit or scope in another dataset** — a code reused for a different thing would price one of them wrongly; an
 active dataset whose validity overlaps another active dataset of the same source family and country; a dataset that
 exists with a different content hash (a changed edition is a new dataset; the same hash is a no-op).
 
 **Load reports (do not refuse):** the same `original_id` with a different category or label across datasets (wording
-drifts between editions; a ruling decides whether it is drift or reuse); an `original_id` shared by two source
-families; the variant checks (§3.1); units the registry does not recognise; ids that vanished from, or are new since,
+drifts between editions; a ruling decides whether it is drift or reuse); a suffixed row whose category field disagrees
+with its suffix (§3.1); the variant checks (§3.1); units the registry does not recognise; ids that vanished from, or are new since,
 the source's previous edition — above all any id a rule references.
 
-**Organisation.** Loaded into the operating organisation that owns the jobs. The tenant is the NZI firm; a client is a
+**Organisation.** Loaded into **`net-zero-international`** (Net Zero International), the real operating organisation,
+created by migration 0127 as a governed prerequisite (there is no organisation-admin screen) — not the demonstration
+organisation. It is provisioned with the reference set like any new organisation and grants nobody access: staff
+memberships are their own deliberate step. Deterministic ids and the content hash keep the load re-runnable against it.
+Why the operating organisation rather than a shared reference one: the tenant is the NZI firm; a client is a
 row inside it; portal users read through it. Selections and aliases carry foreign keys requiring same-organisation
 datasets and factors, so a global reference organisation would need those keys and about twenty-five joins rewritten and
 a cross-tenant read exception. A second organisation, if one appears, gets its own load, as `provision_organisation`
@@ -270,7 +302,9 @@ date; a scope row is annual with a monthly split, and calculation prices it at o
 Each a gated review stop (NZC-163); migrations are ruled before merge.
 
 1. **0125** — identity table, display view, provenance columns, alias re-key.
-2. **0126** — provenance keys onto `legacy_original_id` (§4). Required before the import can load at all.
+2. **0126** — provenance keys onto `legacy_original_id`; one code, one family; v7's suffixes registered (§3.1, §4).
+   Required before the import can load at all.
+   **0127** — the operating organisation, `net-zero-international`. Merged after 0126 (migrations apply in order).
 3. **The import** — transform and load into both tables, tested on a sample; Francis extracts and loads.
 4. **Re-point the enabled rules** from `electricity-demo` / `diesel-demo` to their `v7-…` ids (without it, jobs on
    real data fall to a person's pick), then re-size F2/F3 per enabled category, then retire the synthetic datasets.
@@ -281,8 +315,13 @@ Each a gated review stop (NZC-163); migrations are ruled before merge.
 
 ## 9. Inputs outstanding
 
-- The organisation list on the console database.
 - A 50–200-row sample in the extract's exact format.
 
 Recorded for later, not blocking: verification of IEA's rights behind the interim licence text; adding each currency to
-the money vocabulary and the spend accept-lists when its spend is enabled.
+the money vocabulary and the spend accept-lists when its spend is enabled; whether to retire `-w`; staff memberships in
+`net-zero-international`.
+
+## 10. Branding
+
+The organisation's branding uses the net zero. logo. **It renders on a light or white surface only, never a dark one.**
+Captured with the theme-settings branding work, not the import; Francis holds the file.
