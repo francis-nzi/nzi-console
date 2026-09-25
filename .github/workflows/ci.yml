@@ -320,6 +320,10 @@ jobs:
       # calculated number per NZC-162, with companions still off, so no T&D row appears.
       - name: A portal entry records how its electricity arrived, and acceptance carries it
         run: npx tsx --test packages/isolated-backend/tests/portalSupplySourceReal.test.ts
+      # 0127 — the real operating organisation the v7 import loads into: present, provisioned once, and open to nobody
+      # until memberships are granted as their own step.
+      - name: The operating organisation exists, is provisioned, and grants nobody access
+        run: npx tsx --test packages/isolated-backend/tests/operatingOrganisationReal.test.ts
       # 0125 — a factor's curated identity is held once for every edition: aliases folded and re-keyed by factor (seeded
       # before the migration, so the fold is proved on real prior data), curation visible in every edition, never
       # overwritten by a later one, calculated rows keeping their wording, and tenancy held through the display view.
