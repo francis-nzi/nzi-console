@@ -64,7 +64,7 @@ export function WorkspaceRail({
     <aside className="nz-rail">
       <div className="nz-brand">
         <div className="mark">N</div>
-        <div className="wm">NZI Pro<small>Insights platform</small></div>
+        <div className="wm">NZ Insights Pro<small>Staff console</small></div>
       </div>
       {sections.map((s) => (
         <div key={s.heading}>

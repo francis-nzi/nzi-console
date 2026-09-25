@@ -35,8 +35,8 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "NZI Console",
-  description: "Redesigned NZI Pro front-end (staging).",
+  title: "NZ Insights Pro",
+  description: "NZ Insights Pro — staging.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

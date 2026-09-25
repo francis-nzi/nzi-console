@@ -94,7 +94,7 @@ export function reminderMessage(input: {
     "",
     "You can see your full plan in the NZI client portal.",
     "",
-    "— NZI Pro",
+    "— NZ Insights Pro",
   ].join("\n");
 
   return { subject, body };

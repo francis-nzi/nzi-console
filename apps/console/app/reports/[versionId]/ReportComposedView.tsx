@@ -222,7 +222,7 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
 
 function Cover({ composition }: { composition: ReportComposition }) {
   return <section className="nzr-page nzr-cover">
-    <div className="nzr-brand"><span>N</span><div><b>NZI Pro</b><small>Net Zero International</small></div></div>
+    <div className="nzr-brand"><span>N</span><div><b>NZ Insights Pro</b><small>Net Zero International</small></div></div>
     <h1>{reportCompositionSectionMeta.cover.title}</h1>
     <div className="nzr-cover-client">{composition.client}</div>
     <div className="nzr-cover-meta">

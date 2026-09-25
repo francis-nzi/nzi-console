@@ -70,7 +70,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
       <header className="report-cover">
         <div className="report-brand">
           <div className="report-mark">N</div>
-          <div><b>NZI Pro</b><span>Verified carbon report</span></div>
+          <div><b>NZ Insights Pro</b><span>Verified carbon report</span></div>
           <div className="report-version"><b>{version.reportVersionId}</b><span>Manifest v{version.manifestVersion}</span></div>
         </div>
         <div className="report-client">

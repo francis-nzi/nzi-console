@@ -62,7 +62,7 @@ describe("page awareness", () => {
   });
 
   it("falls back to the product rather than inventing a page", () => {
-    assert.equal(helpContextForPath("/something-unmapped").label, "NZI Console");
+    assert.equal(helpContextForPath("/something-unmapped").label, "NZ Insights Pro");
   });
 });
 

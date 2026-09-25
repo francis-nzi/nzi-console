@@ -57,7 +57,7 @@ function LcaReport({ report }: { report: LcaReportReadModel }) {
       <header className="report-cover">
         <div className="report-brand">
           <div className="report-mark">N</div>
-          <div><b>NZI Pro</b><span>{noun}</span></div>
+          <div><b>NZ Insights Pro</b><span>{noun}</span></div>
           <div className="report-version"><b>{snapshot.id.slice(0, 8)}</b><span>Assessment v{snapshot.assessmentVersion}</span></div>
         </div>
         <h1>{noun} — {report.assessmentName}</h1>
