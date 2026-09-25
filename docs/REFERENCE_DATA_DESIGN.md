@@ -45,7 +45,7 @@ is additive — so nothing here has to be undone.
 | `business_category` | NZI's business category |
 | `levels text[]` | the curated hierarchy (levels 1–4) |
 | `source_label` | what the source called it at import — kept so later imports can be diffed |
-| `source_system`, `legacy_factor_id` | provenance (§4) |
+| `source_system`, `legacy_original_id` (0126), `legacy_factor_id` | provenance (§4) — keyed by `legacy_original_id` |
 | `version`, `curated_by`, `curated_at` | curation history |
 
 Forced row-level security with the tenant policy, grants without DELETE. **Every value row points at one:** a foreign
@@ -68,45 +68,78 @@ issued report never changes its wording.
 
 ## 3. The factor id
 
-**`v7-<factor_id>`**, where `factor_id` is v7's `definitions.factor_id` integer — the key year-values hang on, stable
-across editions by construction.
+**`v7-<original_id>`**, settled by diagnostics on live (25 Sep 2026):
 
-Not `original_id`: it is a per-year-value attribute that churns (a diagnostic found 630 of 64,051 identities with more
-than one `original_id` across years; the format changed between editions; v7 needed an 86,989-row alias crosswalk).
+- **`(dataset_id, original_id)` is unique** — zero duplicate pairs — so the id is unique within a dataset.
+- **`original_id` recurs across datasets** — 3,347 of 3,952 span more than one, up to 149 — so it is stable across
+  years *and* countries: one identity per source code, curated once, applying wherever the code is used.
+- **`definitions.factor_id` is not unique per dataset.** Definition 9759 is five distinct flight-class factors with
+  five values and identical path and unit; anchoring on it, or on a path-and-unit slug, would collide all five. It is
+  kept as secondary provenance only.
 
-- **Unique within a dataset** — to be confirmed by the uniqueness query (one definition, one row per dataset after the
-  `kgCO2e` filter). If a definition carries several units in one dataset, the id becomes `v7-<factor_id>.<unit>`, the
-  unit segment joining words with `_`.
-- **Never read as a category variant.** It ends in digits (or a `_`-joined unit), so `<id>-b` is always the
-  business-travel variant of `<id>` and nothing else (NZC-145).
-- **Safe in option keys:** no `:` or `|`.
-- **Referenced by rules via lookup, locked by test.** A rule for "car, diesel, km" is written by querying the
-  imported identities by levels, label and unit and pinning the id; each rule carries an intent assertion (for example
-  "`v7-1234` is car / diesel / km, Scope 1") so a wrong id fails CI.
+Properties:
 
-## 4. Provenance and integrity — also 0125
+- **Safe in option keys.** An `original_id` containing `:`, `|` or whitespace is refused at load and reported.
+- **Case is kept as v7 stores it.** Suffix matching is case-sensitive, so an id ending in an upper-case form of a
+  registered suffix (`-C`) would not be read as a variant; the load reports any such id for a ruling.
+- **Referenced by rules via lookup, locked by test.** A rule for "car, diesel, km" is written by querying the imported
+  identities by levels, label and unit and pinning the id; each rule carries an intent assertion (for example
+  "`v7-4521` is car / diesel / km, Scope 1") so a wrong id fails CI.
 
-**`emission_factors`:** `source_system` (`'nzi-pro-v7'`), `legacy_factor_id` (= `definitions.factor_id`, the
-identity), `legacy_original_id` (the per-year `original_id`), `source_levels text[]`, `source_category`, `ghg_unit` —
-nullable so the synthetic seed stays valid; a check requires the legacy ids whenever `source_system` is set; a unique
-index on `(organisation_id, dataset_id, source_system, legacy_factor_id)` for a one-to-one, re-runnable load.
+### 3.1 Category variants come across in the data
+
+v7 already allocates one physical factor to several GHG categories the way the console does (NZC-145): Francis
+duplicated base factors and suffixed their `original_id` — `-c` commuting, `-d` downstream T&D, `-p` purchased goods
+and services, `-u` upstream T&D. Those are exactly the console's registered suffixes (0110: `-b` 3.6, `-c` 3.7, `-p`
+3.1, `-u` 3.4, `-d` 3.9), so the variant rows **arrive with the import** — none is created at enablement.
+
+- `v7-4521-c` parses as the commuting (3.7) variant of `v7-4521`; `v7-4521` parses as a base. Proved in the parser for
+  a suffixed and an unsuffixed id, and for every registered letter.
+- **Older tags that are not in the registry** (`-vcp` and the like) are plain ids: never parsed as variants, never
+  grouped with a base. Mapping one onto a registered suffix would be its own ruling.
+- **Load checks on every id that parses as a variant** (reported, not refused — they are data questions, and a variant
+  row prices at its own value, so nothing is mis-priced meanwhile): its base is present in the same dataset; it carries
+  the base's value and unit (a variant with a different value is not a variant, 0110); its scope matches its
+  category's (3). An id that parses as a variant with no base anywhere is the tell of a natural id that merely ends in
+  a registered letter — listed for a ruling rather than guessed.
+- **What it gives the resolver.** The sub-flow rules for business travel and commuting compose `<base>-b` / `<base>-c`
+  from the vehicle flow's answer; with the variants in the data, per-distance enablement needs rules, not rows. The 2c
+  variant-base rule then applies to real data as designed: a category whose own variant of a base is on offer refuses
+  the base.
+
+## 4. Provenance and integrity
+
+**Roles.** `legacy_original_id` is the identity key (the `factor_id` is minted from it); `legacy_factor_id`
+(`definitions.factor_id`) is secondary provenance.
+
+**0125 enforces the earlier roles, and it is merged, so a new migration corrects them — 0126, before the import.** Drop
+the unique keys on `legacy_factor_id` (`emission_factors_legacy_key`, `factor_identities_legacy_key`) — the first would
+refuse the import outright, since definition 9759 alone is five factors in one dataset; add
+`factor_identities.legacy_original_id`; key uniqueness on `(organisation_id, dataset_id, source_system,
+legacy_original_id)` for factors and `(organisation_id, source_system, legacy_original_id)` for identities; require
+`legacy_original_id` wherever `source_system` is set; correct the column comments.
+
+**`emission_factors`:** `source_system` (`'nzi-pro-v7'`), `legacy_original_id`, `legacy_factor_id`,
+`source_levels text[]`, `source_category`, `ghg_unit` — nullable so the synthetic seed stays valid.
 
 **`emission_factor_datasets`:** `source_system`, `source_family`, `legacy_dataset_id`, `content_sha256`.
 
-**Load checks (refuse):** loaded rows equal extracted rows, per dataset and in total; no duplicate id within a
-dataset; no id that parses as a registered variant; no negative factor; no unknown scope; an id already present in an
-earlier edition of its source must carry the same unit, scope and `ghg_unit`; no active dataset whose validity
-overlaps another active dataset of the same source family and country; a dataset that exists with a different
-content hash is refused (a changed edition is a new dataset); the same hash is a no-op.
+**Load checks (refuse):** loaded rows equal extracted rows, per dataset and in total; a duplicate id within a dataset;
+an id containing `:`, `|` or whitespace; a negative factor; an unknown scope; **the same `original_id` carrying a
+different unit or scope in another dataset** — a code reused for a different thing would price one of them wrongly; an
+active dataset whose validity overlaps another active dataset of the same source family and country; a dataset that
+exists with a different content hash (a changed edition is a new dataset; the same hash is a no-op).
 
-**Load reports (do not refuse):** units the console's unit registry does not recognise; ids that vanished from, or
-are new since, the source's previous edition — above all any id a rule references.
+**Load reports (do not refuse):** the same `original_id` with a different category or label across datasets (wording
+drifts between editions; a ruling decides whether it is drift or reuse); an `original_id` shared by two source
+families; the variant checks (§3.1); units the registry does not recognise; ids that vanished from, or are new since,
+the source's previous edition — above all any id a rule references.
 
-**Organisation.** Loaded into the operating organisation that owns the jobs. The tenant is the NZI firm; a client is
-a row inside it; portal users read through it. Selections and aliases carry foreign keys requiring same-organisation
-datasets and factors, so a global reference organisation would need those keys and about twenty-five joins rewritten
-and a cross-tenant read exception. A second organisation, if one appears, gets its own load, as
-`provision_organisation` does for the rest of the reference set.
+**Organisation.** Loaded into the operating organisation that owns the jobs. The tenant is the NZI firm; a client is a
+row inside it; portal users read through it. Selections and aliases carry foreign keys requiring same-organisation
+datasets and factors, so a global reference organisation would need those keys and about twenty-five joins rewritten and
+a cross-tenant read exception. A second organisation, if one appears, gets its own load, as `provision_organisation`
+does for the rest of the reference set.
 
 ## 5. The import
 
@@ -122,14 +155,24 @@ re-taken after the filter.
 | `valid_from` / `valid_to` | min / max of its year-values |
 | `country_code` / `source_name` | v7 dataset |
 | `status` / `synthetic` | `'active'` / `false` |
-| `licence` | per source — **input needed** (DESNZ/DEFRA: Open Government Licence v3.0; IEA: not open, rights to confirm) |
+| `licence` | per source — DESNZ/DEFRA: Open Government Licence v3.0; the others **to confirm** (IEA is not open) |
 | `source_system` / `source_family` / `legacy_dataset_id` / `content_sha256` | provenance |
 
-**`factor_identities`** — one row per `definitions.factor_id`: `label`, `report_label`, `business_category`,
-`levels` from the v7 definition (its curated identity); `source_label` from `column_text`.
+**Source families** (confirmed): DESNZ, DEFRA and DEFRA (2023 Revision) → `uk-ghg`; IEA 2025 → `iea`; CEDA 2025
+(Watershed) → `ceda`; RICS / BRE ICE → `ice`; SWC (Small World Consulting) → `swc`; NZI → `nzi`.
 
-**`emission_factors`** — one row per definition per year: `factor_id` (§3), `label` ← `column_text` (the source's
-own wording that year), `kgco2e_per_unit` ← `factor`, `activity_unit` ← `uom` (mapped, §5.1), `scopes` ← `scope`
+**One slug collision to rule before the load.** DEFRA and DEFRA (2023 Revision) are both `uk-ghg`, so a GB 2023 original
+and its revision would share `uk-ghg-gb-2023` and overlap in validity — the load refuses both being active. Proposed:
+the revision takes the plain slug and is `active`; the original loads as `uk-ghg-gb-2023-original`, `superseded`, kept
+for provenance and for any row already priced against it.
+
+**Scopes** (confirmed): `Scope 1` / `Scope 2` / `Scope 3` → `'1'` / `'2'` / `'3'`.
+
+**`factor_identities`** — one row per `original_id`: `label`, `report_label`, `business_category`, `levels` from v7's
+curated identity for that code; `source_label` from `column_text`; `legacy_original_id`.
+
+**`emission_factors`** — one row per `original_id` per dataset: `factor_id` = `v7-<original_id>`, `label` ←
+`column_text` (the source's own wording in that dataset), `kgco2e_per_unit` ← `factor`, `activity_unit` ← `uom` (mapped, §5.1), `scopes` ← `scope`
 (mapped), `active` true, and the provenance columns (§4).
 
 ### 5.1 Units
@@ -137,9 +180,17 @@ own wording that year), `kgco2e_per_unit` ← `factor`, `activity_unit` ← `uom
 The console matches units exactly (case and surrounding space aside) against the registry in
 `unitCompatibility.ts`; an unknown unit on either side is refused, never passed. Units convert within a dimension
 (energy, volume, mass, distance, passenger-distance, freight) and not across. v7 `uom` values are mapped to the
-registry's spellings through an explicit table, ruled before the load. Anything unmapped loads verbatim and is
-reported: pickable by a person, never resolved by a rule. `kWh (Net CV)` / `kWh (Gross CV)` map to `kWh` with the
-calorific basis kept in the identity's levels and label, so two identical-looking options never sit side by side.
+registry's spellings through an explicit table (confirmed):
+
+| v7 `uom` | Console unit |
+|---|---|
+| kg, km, miles, m2, litres, kWh, passenger.km, tonne.km, tonne, tonnes | the same (straight across) |
+| cubic metres | m3 |
+| each, unit | units |
+| Room per night | nights |
+| kWh (Gross CV), kWh (Net CV) | kWh — distinct factors, the calorific basis kept in the label and `source_levels` |
+| m, million litres, per FTE Working Hour | loaded verbatim and reported: pickable by a person, never resolved by a rule until mapped |
+| currencies | money — **the currency filter is pending** (GBP first, or import all) |
 
 **Division of work:** Francis runs the `psql` extract on live and the load on the console database; the transform is
 built and tested here against a real local Postgres with a sample. The branch is gated (NZC-163) and ruled before it
@@ -200,18 +251,19 @@ date; a scope row is annual with a monthly split, and calculation prices it at o
 Each a gated review stop (NZC-163); migrations are ruled before merge.
 
 1. **0125** — identity table, display view, provenance columns, alias re-key.
-2. **The import** — transform and load into both tables, tested on a sample; Francis extracts and loads.
-3. **Re-point the enabled rules** from `electricity-demo` / `diesel-demo` to their `v7-…` ids (without it, jobs on
+2. **0126** — provenance keys onto `legacy_original_id` (§4). Required before the import can load at all.
+3. **The import** — transform and load into both tables, tested on a sample; Francis extracts and loads.
+4. **Re-point the enabled rules** from `electricity-demo` / `diesel-demo` to their `v7-…` ids (without it, jobs on
    real data fall to a person's pick), then re-size F2/F3 per enabled category, then retire the synthetic datasets.
-4. **Spanning jobs, option (a).** Needed before onboarding if any onboarding job runs April–March.
-5. **Client factor promotion** (small, independent).
-6. **After onboarding:** curation command and screen; client factor periods; variant (`-b`/`-c`) rows at per-distance
-   enablement, only for the bases the rules name.
+5. **Spanning jobs, option (a).** Needed before onboarding if any onboarding job runs April–March.
+6. **Client factor promotion** (small, independent).
+7. **After onboarding:** curation command and screen; client factor periods. (Variant rows are not created at
+   per-distance enablement: they arrive with the import, §3.1.)
 
 ## 9. Inputs outstanding
 
-- The uniqueness query (does one definition appear more than once in a dataset?).
-- Distinct `source`, `uom` and `scope` values — for the unit and scope mapping tables.
-- Licence text per source; IEA's rights in particular.
+- The currency filter: GBP first, or import every currency.
+- The DEFRA 2023 original-versus-revision slug and status (§5) — the proposal stands unless ruled otherwise.
+- Licence text for the sources other than DESNZ/DEFRA; IEA's rights in particular.
 - The organisation list on the console database.
 - A 50–200-row sample in the extract's exact format.
