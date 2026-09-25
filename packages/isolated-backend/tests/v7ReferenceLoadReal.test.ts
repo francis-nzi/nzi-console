@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { commandGrantForRole } from "@nzi/contracts";
+import { createJob } from "../src/index";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
 import { parseCsv, planV7Load, type LoadPlan } from "../src/v7ReferenceImport";
 import { loadV7Plan, V7LoadRefused } from "../src/v7ReferenceLoad";
@@ -91,6 +93,20 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
   it("refuses to load into an organisation that does not exist", async () => {
     await assert.rejects(() => loadV7Plan(database.pool, { ...plan, organisationId: "no-such-org" }),
       (error) => error instanceof V7LoadRefused && /does not exist; it is created by migration 0127/.test(error.message));
+  });
+
+  it("never auto-selects Rest of World for a job — ROW is not GLOBAL", async () => {
+    // Ruled 25 Sep 2026: ROW is a no-country-match fallback, never attached beside a country match. Job creation selects
+    // the job's own country and GLOBAL; ROW is neither.
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'client-row','Co','active')`, [ORG]);
+    await db.query(`INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status) VALUES ($1,'admin-row','admin','active')`, [ORG]);
+    const created = await createJob(database.pool, { clientId: "client-row", family: "crp", title: "FY2025", workflowStage: "Setup", owner: "A",
+      startDate: "2026-01-01", dueDate: "2026-06-30", reportingPeriodStart: "2025-01-01", reportingPeriodEnd: "2025-12-31" } as never,
+      { organisationId: ORG, actorId: "admin-row", principal: "staff", idempotencyKey: "row-job", correlationId: "row-job", grant: commandGrantForRole("admin", ORG, "admin-row") }) as { data: { jobId: string } };
+    const selected = (await db.query<{ dataset_id: string }>(
+      `SELECT dataset_id FROM nzi_console.job_dataset_selections WHERE organisation_id=$1 AND job_id=$2 ORDER BY 1`, [ORG, created.data.jobId])).rows.map((r) => r.dataset_id);
+    assert.ok(selected.includes("uk-ghg-gb-2025"), `the job's own country was not selected: ${selected.join(", ")}`);
+    assert.ok(!selected.includes("ceda-row-2025"), "Rest of World was auto-selected beside the job's own country");
   });
 
   it("is what an operator in the organisation sees through the display view, and only there", async () => {

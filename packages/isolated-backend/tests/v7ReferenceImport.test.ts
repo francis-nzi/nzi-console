@@ -139,10 +139,11 @@ describe("refusals", () => {
   });
 
   it("refuses two v7 datasets folding into one family, country and year — with the numbers a ruling needs", () => {
-    const result = plan([row({ db_id: "401", dataset_id: "8" }), row({ db_id: "402", dataset_id: "1" }),
-      row({ db_id: "403", dataset_id: "1", original_id: "SPEND-1" })]);
+    // 2021 is outside the ruled merges, so the unruled path is what runs.
+    const result = plan([row({ db_id: "401", dataset_id: "5", year: "2021" }), row({ db_id: "402", dataset_id: "71", year: "2021" }),
+      row({ db_id: "403", dataset_id: "71", year: "2021", original_id: "SPEND-1" })]);
     const collision = result.refusals.find((finding) => finding.code === "edition-collision")!;
-    assert.match(collision.examples[0]!, /uk-ghg-gb-2025: v7 datasets .* only in .*: 0, only in .*: 1, shared at the same value: 1, shared at a different value: 0/);
+    assert.match(collision.examples[0]!, /uk-ghg-gb-2021: v7 datasets .* only in .*: 0, only in .*: 1, shared at the same value: 1, shared at a different value: 0/);
   });
 
   it("merges complementary halves when ruled 'merge': one dataset, a shared code loaded once, both sources recorded", () => {
@@ -163,9 +164,51 @@ describe("refusals", () => {
     assert.deepEqual(ruled.refusals, []);
     assert.deepEqual(ruled.datasets.map((dataset) => `${dataset.datasetId}:${dataset.status}:${dataset.legacyDatasetId}`).sort(),
       ["uk-ghg-gb-2025-original:superseded:1", "uk-ghg-gb-2025:active:8"]);
-    const revised = plan([row({ db_id: "601", dataset_id: "3", year: "2023", source: "DEFRA" }),
-      row({ db_id: "602", dataset_id: "4", year: "2023", source: "DEFRA (2023 Revision)" })]);
+    const revised = plan([row({ db_id: "601", dataset_id: "5", year: "2021", source: "DEFRA" }),
+      row({ db_id: "602", dataset_id: "71", year: "2021", source: "DEFRA (2021 Revision)" })]);
     assert.deepEqual(revised.refusals, []);
-    assert.equal(revised.datasets.find((dataset) => dataset.status === "active")!.legacyDatasetId, "4", "the revision did not win");
+    assert.equal(revised.datasets.find((dataset) => dataset.status === "active")!.legacyDatasetId, "71", "the revision did not win");
+  });
+});
+
+describe("the rulings of 25 Sep 2026", () => {
+  it("merges each uk-ghg year 2022–2025 from its two v7 datasets by default, with no precedence file", () => {
+    for (const [year, a, b] of [["2022", "11", "4"], ["2023", "10", "3"], ["2024", "9", "2"], ["2025", "8", "1"]] as const) {
+      const result = plan([row({ db_id: `${year}1`, dataset_id: a, year }), row({ db_id: `${year}2`, dataset_id: b, year, original_id: "SPEND-1" })]);
+      assert.deepEqual(result.refusals, [], `${year} was not merged`);
+      assert.deepEqual(result.datasets.map((dataset) => `${dataset.datasetId}:${dataset.status}:${dataset.legacyDatasetId}`),
+        [`uk-ghg-gb-${year}:active:${[a, b].sort((x, y) => Number(x) - Number(y)).join("+")}`]);
+    }
+  });
+
+  it("still refuses a ruled merge whose halves price a shared code differently", () => {
+    const result = plan([row({ db_id: "911", dataset_id: "8" }), row({ db_id: "912", dataset_id: "1", factor: "0.9" })]);
+    assert.deepEqual(codes(result.refusals), ["merge-conflict"]);
+  });
+
+  it("lets a precedence file override a ruled merge for its slug", () => {
+    const result = plan([row({ db_id: "921", dataset_id: "8" }), row({ db_id: "922", dataset_id: "1" })], { "uk-ghg-gb-2025": "8" });
+    assert.deepEqual(result.datasets.map((dataset) => dataset.status).sort(), ["active", "superseded"]);
+  });
+
+  it("refuses an swc or ceda row with no region — a spend factor must name its country — and counts empty regions per family", () => {
+    const result = plan([
+      row({ db_id: "931", source: "CEDA 2025 (Watershed)", region: "", original_id: "561600", uom: "USD" }),
+      row({ db_id: "932", source: "SWC (Small World Consulting)", region: "null", original_id: "SWC-1", uom: "GBP" }),
+      row({ db_id: "933", source: "DESNZ", region: "" }),
+    ]);
+    const noCountry = result.refusals.find((finding) => finding.code === "no-country")!;
+    assert.equal(noCountry.count, 2);
+    assert.deepEqual(result.summary.emptyRegionByFamily, { "uk-ghg": 1, iea: 0, ceda: 1, ice: 0, swc: 1, nzi: 0 });
+  });
+
+  it("defaults uk-ghg and nzi to GB and ice to GLOBAL, reporting each", () => {
+    const result = plan([
+      row({ db_id: "941", source: "NZI", region: "", original_id: "99_1" }),
+      row({ db_id: "942", source: "RICS / BRE ICE Database V4.1 (Oct 2025)", region: "", original_id: "7", uom: "kg", year: "2026" }),
+    ]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.datasets.map((dataset) => `${dataset.datasetId}:${dataset.countryCode}`).sort(), ["ice-global-2026:GLOBAL", "nzi-gb-2025:GB"]);
+    assert.equal(result.reports.find((finding) => finding.code === "country-defaulted")!.count, 2);
   });
 });

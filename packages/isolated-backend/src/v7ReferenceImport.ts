@@ -29,11 +29,23 @@ export const FAMILIES: ReadonlyArray<readonly [prefix: string, family: string]> 
 ];
 
 /**
- * The country a dataset belongs to when the row's region is empty. Not yet ruled for every family: stated here, used by
- * the dry run, and listed in the summary so it can be confirmed before a real load.
+ * The country a dataset belongs to when the row's region is empty (ruled 25 Sep 2026). **swc and ceda have none, on
+ * purpose**: both are multi-country spend providers, so a defaulted — in effect global — spend factor would attach to
+ * every job and double-count. An swc or ceda row without a country is refused as a data gap; it must name its country
+ * or "Rest of World". Every default that is used is reported.
  */
 export const DEFAULT_COUNTRY: Readonly<Record<string, string>> = {
-  "uk-ghg": "GB", nzi: "GB", swc: "GB", ice: "GLOBAL", iea: "GLOBAL", ceda: "GLOBAL",
+  "uk-ghg": "GB", nzi: "GB", ice: "GLOBAL", iea: "GLOBAL",
+};
+
+/**
+ * Rulings on editions that fold together, applied by default (ruled 25 Sep 2026). Each uk-ghg year from 2022 to 2025 is
+ * split across two v7 datasets (8+1, 9+2, 10+3, 11+4) that share almost no codes: complementary halves of one year's
+ * set, not successive editions, so they merge — superseding one would hide real factors. A precedence file passed to
+ * the load adds rulings, or overrides one of these by naming the slug.
+ */
+export const RULED_PRECEDENCE: Readonly<Record<string, string>> = {
+  "uk-ghg-gb-2022": "merge", "uk-ghg-gb-2023": "merge", "uk-ghg-gb-2024": "merge", "uk-ghg-gb-2025": "merge",
 };
 
 /** v7 uom → the console unit registry's spelling (ruled). Anything absent loads verbatim and is reported. */
@@ -124,7 +136,11 @@ export type LoadPlan = {
   organisationId: string;
   datasets: PlannedDataset[]; identities: PlannedIdentity[]; factors: PlannedFactor[];
   refusals: Finding[]; reports: Finding[];
-  summary: { extracted: number; duplicatesCollapsed: number; skippedNotKgco2e: number; loaded: number };
+  summary: {
+    extracted: number; duplicatesCollapsed: number; skippedNotKgco2e: number; loaded: number;
+    /** Rows with an empty region, per family — counted even when none, so a zero is visible rather than assumed. */
+    emptyRegionByFamily: Record<string, number>;
+  };
 };
 
 /**
@@ -150,6 +166,8 @@ export function planV7Load(
   options: { organisationId?: string; precedence?: Precedence } = {},
 ): LoadPlan {
   const refusals = new Map<string, Finding>(), reports = new Map<string, Finding>();
+  const precedence: Precedence = { ...RULED_PRECEDENCE, ...options.precedence };
+  const emptyRegionByFamily: Record<string, number> = Object.fromEntries(FAMILIES.map(([, family]) => [family, 0]));
   const note = (into: Map<string, Finding>, code: string, message: string, example: string) => {
     const found = into.get(code) ?? { code, message, count: 0, examples: [] };
     found.count += 1;
@@ -202,9 +220,15 @@ export function planV7Load(
     if (/-w$/.test(normalised)) report("w-suffix", "a code ending in -w, the retired waste variant", `${dbId}: ${code}`);
 
     // The country: the region named in words; for IEA, whose region is empty, the code itself is the country; otherwise
-    // an empty region takes its family's default, reported. A name that cannot be matched is refused, never guessed.
+    // an empty region takes its family's default, reported — except swc and ceda, which have none and are refused. A name
+    // that cannot be matched is refused, never guessed.
     const region = clean(row.region);
+    if (!region) emptyRegionByFamily[family] = (emptyRegionByFamily[family] ?? 0) + 1;
     const named = region ?? (family === "iea" ? code : null);
+    if (!named && !DEFAULT_COUNTRY[family]) {
+      refuse("no-country", `a ${family} row with no region: a spend factor must name its country or "Rest of World" — defaulting it would attach it to every job`, `${dbId}: ${code}`);
+      continue;
+    }
     const country = named ? countryCodeFor(named) : DEFAULT_COUNTRY[family]!;
     if (!country) { refuse("unknown-country", "a country name that is not in the ISO table or its aliases", `${dbId}: ${named}`); continue; }
     if (!named) report("country-defaulted", `an empty region, placed in its family's default country (${Object.entries(DEFAULT_COUNTRY).map(([f, c]) => `${f} ${c}`).join(", ")})`, `${dbId}: ${family} → ${country}`);
@@ -248,7 +272,7 @@ export function planV7Load(
     let order: string[];
     if (members.length === 1) order = [members[0]![0]];
     else {
-      const ruled = options.precedence?.[base];
+      const ruled = precedence[base];
       if (ruled === "merge") {
         const byId = new Map<string, Row>();
         const conflicts: string[] = [];
@@ -365,6 +389,6 @@ export function planV7Load(
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
     datasets, identities, factors,
     refusals: [...refusals.values()], reports: [...reports.values()],
-    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length },
+    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily },
   };
 }

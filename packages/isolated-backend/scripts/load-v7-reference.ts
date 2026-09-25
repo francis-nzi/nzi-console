@@ -8,7 +8,8 @@
  * target organisation (net-zero-international unless told otherwise). Re-running is safe: a dataset already loaded with
  * the same content is left alone, one loaded with different content is refused.
  *
- * `--precedence` is Francis's ruling for editions the rule cannot order: `{ "<dataset slug>": "<active v7 dataset_id>" }`.
+ * `--precedence` adds rulings for editions that fold together, per dataset slug: `"<active v7 dataset_id>"` or `"merge"`.
+ * The rulings already made (uk-ghg 2022–2025 merge) are applied by default; a file entry for the same slug overrides one.
  *
  * Fail-closed on the boundary like every other write here: production APP_ENV is refused and NZI_DATABASE_BOUNDARY must
  * say isolated-non-production.
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
 
     log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run, nothing will be written"}`);
     log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e}`);
+    log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
     printFindings("Reports — shown, not blocking", plan.reports);
