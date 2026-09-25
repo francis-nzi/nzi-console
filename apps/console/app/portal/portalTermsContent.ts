@@ -1,7 +1,7 @@
 // P2b — the portal terms-of-access copy shown by PortalTermsGate. The version
 // gate is `NZI_PORTAL_TERMS_VERSION` (server, default "2026-v1"); bumping it
 // re-prompts every existing user. Update this copy and the version together.
-export const PORTAL_TERMS_HEADING = "NZI Pro Client Portal — Terms of Access";
+export const PORTAL_TERMS_HEADING = "NZ Insights Pro Client Portal — Terms of Access";
 
 export const PORTAL_TERMS: ReadonlyArray<{ title: string; body: string }> = [
   {

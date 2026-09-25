@@ -86,13 +86,22 @@ const walk = (dir, found = []) => {
 };
 
 const offences = [];
+const nameOffences = [];
 let scanned = 0;
+
+/**
+ * The product name (ruled 25 Sep 2026): user-facing copy calls the product exactly "NZ Insights Pro" — never "NZI Pro",
+ * "NZI Pro Insights Platform" or "NZI Console". "NZI" and "Net Zero International" name the company only. Word
+ * boundaries, so a report titled "NZI Professional …" is not caught; comments are not copy.
+ */
+const RETIRED_NAMES = /\bNZI Pro\b|\bNZI Console\b/;
 
 for (const root of ROOTS) {
   for (const file of walk(root)) {
     scanned += 1;
     const lines = readFileSync(file, "utf8").split("\n");
     lines.forEach((line, index) => {
+      if (RETIRED_NAMES.test(line) && !isComment(line)) nameOffences.push(`${relative(process.cwd(), file)}:${index + 1}  ${line.trim().slice(0, 110)}`);
       if (!/footprint/i.test(line)) return;
       if (isComment(line)) return;
       if (SANCTIONED.some((exception) => line.includes(exception.match))) return;
@@ -115,4 +124,10 @@ if (offences.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039)`);
+if (nameOffences.length > 0) {
+  console.error(`✖ The product is "NZ Insights Pro" in user-facing copy — not "NZI Pro" or "NZI Console" ("NZI" names the company):`);
+  for (const offence of nameOffences) console.error(`    ${offence}`);
+  process.exit(1);
+}
+
+console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), and the product is "NZ Insights Pro"`);

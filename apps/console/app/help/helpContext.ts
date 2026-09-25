@@ -49,7 +49,7 @@ function entityOf(path: string): { kind: string; id: string } | null {
 }
 
 export function helpContextForPath(path: string): HelpPageContext {
-  const page = WORKSPACES.find(([pattern]) => pattern.test(path))?.[1] ?? "NZI Console";
+  const page = WORKSPACES.find(([pattern]) => pattern.test(path))?.[1] ?? "NZ Insights Pro";
   const entity = entityOf(path);
   return {
     page,

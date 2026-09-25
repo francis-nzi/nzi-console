@@ -11,7 +11,7 @@ export default async function TraineeLoginPage({ searchParams }: { searchParams:
   const message = reason ? REASON_MESSAGE[reason] : undefined;
   return <main className="nz-auth-shell">
     <section className="nz-auth-story">
-      <div className="nz-auth-brand"><span>N</span><div><b>NZI Pro</b><small>Trainee portal</small></div></div>
+      <div className="nz-auth-brand"><span>N</span><div><b>NZ Insights Pro</b><small>Trainee portal</small></div></div>
       <div className="nz-auth-promise">
         <span className="nz-eyebrow light">Your training, your record</span>
         <h1>Training you keep, wherever you go next.</h1>
