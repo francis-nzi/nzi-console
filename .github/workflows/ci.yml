@@ -325,6 +325,10 @@ jobs:
       # overwritten by a later one, calculated rows keeping their wording, and tenancy held through the display view.
       - name: A factor's curated identity is held once, for every edition of it
         run: npx tsx --test packages/isolated-backend/tests/factorIdentityReal.test.ts
+      # 0127 — the real operating organisation the v7 import loads into: present, provisioned once, and open to nobody
+      # until memberships are granted as their own step.
+      - name: The operating organisation exists, is provisioned, and grants nobody access
+        run: npx tsx --test packages/isolated-backend/tests/operatingOrganisationReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
