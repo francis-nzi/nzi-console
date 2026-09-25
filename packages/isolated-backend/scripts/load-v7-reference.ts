@@ -3,8 +3,9 @@
  *
  *   npm run load:v7-reference -- <factor_lookup.csv> [--precedence <file.json>] [--organisation <id>] [--commit]
  *
- * A dry run unless `--commit`: it reads the extract, builds the plan, and prints every refusal and report — nothing is
- * written. With `--commit`, and only when the plan carries no refusal, it writes the plan in one transaction into the
+ * A dry run unless `--commit`: it reads the extract, builds the plan, and prints every refusal, exclusion and report —
+ * nothing is written to the database. Every excluded row (a fixed list of named reasons) is written, dry run or not, to
+ * `<extract>.exclusions.csv` beside the extract, as the auditable exclusion report. With `--commit`, and only when the plan carries no refusal, it writes the plan in one transaction into the
  * target organisation (net-zero-international unless told otherwise). Re-running is safe: a dataset already loaded with
  * the same content is left alone, one loaded with different content is refused.
  *
@@ -14,7 +15,7 @@
  * Fail-closed on the boundary like every other write here: production APP_ENV is refused and NZI_DATABASE_BOUNDARY must
  * say isolated-non-production.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
@@ -56,7 +57,14 @@ async function main(): Promise<void> {
     log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
+    printFindings(`Excluded — ${plan.excluded.length} rows skipped for a named reason, not blocking`, plan.exclusions);
     printFindings("Reports — shown, not blocking", plan.reports);
+
+    const exclusionReport = `${file.replace(/\.csv$/i, "")}.exclusions.csv`;
+    writeFileSync(exclusionReport, [["db_id", "reason", "original_id", "source", "detail"],
+      ...plan.excluded.map((row) => [row.dbId, row.reason, row.originalId ?? "", row.source ?? "", row.detail])]
+      .map((cells) => cells.map((cell) => `"${cell.replace(/"/g, "\"\"")}"`).join(",")).join("\n") + "\n");
+    log(`\nExclusion report (every excluded row): ${exclusionReport}`);
 
     if (plan.refusals.length > 0) { process.exitCode = 1; return; }
     if (!commit) { log("\nDry run complete. Re-run with --commit to write."); return; }

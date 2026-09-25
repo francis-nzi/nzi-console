@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { clean, normaliseCode, parseCsv, planV7Load, type ExtractRow } from "../src/v7ReferenceImport";
+import { clean, EXCLUSION_REASONS, normaliseCode, parseCsv, planV7Load, type ExtractRow } from "../src/v7ReferenceImport";
 import { countryCodeFor } from "../src/v7Countries";
 
 /**
@@ -59,11 +59,13 @@ describe("the plan for the synthetic extract", () => {
     assert.deepEqual(result.refusals, []);
   });
 
-  it("collapses an identical repeat, skips a row not in kgCO2e, and loads the rest", () => {
+  it("collapses an identical repeat, excludes a row not in kgCO2e and a retired -w, and loads the rest", () => {
     assert.equal(result.summary.extracted, 18);
     assert.equal(result.summary.duplicatesCollapsed, 1);
     assert.equal(result.summary.skippedNotKgco2e, 1);
-    assert.equal(result.factors.length, 16);
+    assert.deepEqual(result.excluded.map((row) => row.reason).sort(), ["not-kgco2e", "retired-w"]);
+    assert.equal(result.excluded.find((row) => row.reason === "retired-w")!.originalId, "30_300_3000_1_1-w");
+    assert.equal(result.factors.length, 15);
   });
 
   it("mints <family>-<normalised code>, stores the code verbatim, and points each row at its lookup row", () => {
@@ -109,12 +111,13 @@ describe("the plan for the synthetic extract", () => {
       "Downstream Transportation and Distribution");
   });
 
-  it("reports, without refusing: -w, unmapped units, currencies, defaulted countries and a variant with no base", () => {
+  it("reports, without refusing: unmapped units, currencies, defaulted countries and a variant with no base", () => {
     const reported = codes(result.reports);
-    for (const expected of ["w-suffix", "unmapped-unit", "currency-unit", "country-defaulted", "variant-without-base", "not-kgco2e"]) {
+    for (const expected of ["unmapped-unit", "currency-unit", "country-defaulted"]) {
       assert.ok(reported.includes(expected), `${expected} was not reported`);
     }
-    assert.match(result.reports.find((finding) => finding.code === "w-suffix")!.examples[0]!, /30_300_3000_1_1-w/);
+    // The fixture's baseless variant was its -w row, now excluded; a -b with no base stands in.
+    assert.ok(codes(plan([row({ db_id: "151", original_id: "77_700_7000_1_1-b" })]).reports).includes("variant-without-base"));
     assert.equal(result.reports.find((finding) => finding.code === "variant-differs"), undefined,
       "a variant at its base's value and unit was reported as differing");
   });
@@ -147,11 +150,11 @@ describe("refusals", () => {
   });
 
   it("refuses two v7 datasets folding into one family, country and year — with the numbers a ruling needs", () => {
-    // 2021 is outside the ruled merges, so the unruled path is what runs.
-    const result = plan([row({ db_id: "401", dataset_id: "5", year: "2021" }), row({ db_id: "402", dataset_id: "71", year: "2021" }),
-      row({ db_id: "403", dataset_id: "71", year: "2021", original_id: "SPEND-1" })]);
+    // 2020 is outside the ruled merges, so the unruled path is what runs.
+    const result = plan([row({ db_id: "401", dataset_id: "6", year: "2020" }), row({ db_id: "402", dataset_id: "71", year: "2020" }),
+      row({ db_id: "403", dataset_id: "71", year: "2020", original_id: "SPEND-1" })]);
     const collision = result.refusals.find((finding) => finding.code === "edition-collision")!;
-    assert.match(collision.examples[0]!, /uk-ghg-gb-2021: v7 datasets .* only in .*: 0, only in .*: 1, shared at the same value: 1, shared at a different value: 0/);
+    assert.match(collision.examples[0]!, /uk-ghg-gb-2020: v7 datasets .* only in .*: 0, only in .*: 1, shared at the same value: 1, shared at a different value: 0/);
   });
 
   it("merges complementary halves when ruled 'merge': one dataset, a shared code loaded once, both sources recorded", () => {
@@ -172,26 +175,31 @@ describe("refusals", () => {
     assert.deepEqual(ruled.refusals, []);
     assert.deepEqual(ruled.datasets.map((dataset) => `${dataset.datasetId}:${dataset.status}:${dataset.legacyDatasetId}`).sort(),
       ["uk-ghg-gb-2025-original:superseded:1", "uk-ghg-gb-2025:active:8"]);
-    const revised = plan([row({ db_id: "601", dataset_id: "5", year: "2021", source: "DEFRA" }),
-      row({ db_id: "602", dataset_id: "71", year: "2021", source: "DEFRA (2021 Revision)" })]);
+    const revised = plan([row({ db_id: "601", dataset_id: "6", year: "2020", source: "DEFRA" }),
+      row({ db_id: "602", dataset_id: "71", year: "2020", source: "DEFRA (2020 Revision)" })]);
     assert.deepEqual(revised.refusals, []);
     assert.equal(revised.datasets.find((dataset) => dataset.status === "active")!.legacyDatasetId, "71", "the revision did not win");
   });
 });
 
 describe("the rulings of 25 Sep 2026", () => {
-  it("merges each uk-ghg year 2022–2025 from its two v7 datasets by default, with no precedence file", () => {
-    for (const [year, a, b] of [["2022", "11", "4"], ["2023", "10", "3"], ["2024", "9", "2"], ["2025", "8", "1"]] as const) {
-      const result = plan([row({ db_id: `${year}1`, dataset_id: a, year }), row({ db_id: `${year}2`, dataset_id: b, year, original_id: "SPEND-1" })]);
-      assert.deepEqual(result.refusals, [], `${year} was not merged`);
-      assert.deepEqual(result.datasets.map((dataset) => `${dataset.datasetId}:${dataset.status}:${dataset.legacyDatasetId}`),
-        [`uk-ghg-gb-${year}:active:${[a, b].sort((x, y) => Number(x) - Number(y)).join("+")}`]);
+  it("merges each uk-ghg and nzi year 2021–2026 from its two v7 datasets by default, with no precedence file", () => {
+    for (const source of ["DESNZ", "NZI"] as const) {
+      for (const [year, a, b] of [["2021", "12", "5"], ["2022", "11", "4"], ["2023", "10", "3"], ["2024", "9", "2"], ["2025", "8", "1"], ["2026", "70", "69"]] as const) {
+        const result = plan([row({ db_id: `${year}1`, dataset_id: a, year, source }), row({ db_id: `${year}2`, dataset_id: b, year, source, original_id: "SPEND-1" })]);
+        assert.deepEqual(result.refusals, [], `${source} ${year} was not merged`);
+        const family = source === "NZI" ? "nzi" : "uk-ghg";
+        assert.deepEqual(result.datasets.map((dataset) => `${dataset.datasetId}:${dataset.status}:${dataset.legacyDatasetId}`),
+          [`${family}-gb-${year}:active:${[a, b].sort((x, y) => Number(x) - Number(y)).join("+")}`]);
+      }
     }
   });
 
-  it("still refuses a ruled merge whose halves price a shared code differently", () => {
-    const result = plan([row({ db_id: "911", dataset_id: "8" }), row({ db_id: "912", dataset_id: "1", factor: "0.9" })]);
-    assert.deepEqual(codes(result.refusals), ["merge-conflict"]);
+  it("still refuses a ruled merge whose halves price or scope a shared code differently", () => {
+    const priced = plan([row({ db_id: "911", dataset_id: "8" }), row({ db_id: "912", dataset_id: "1", factor: "0.9" })]);
+    assert.deepEqual(codes(priced.refusals), ["merge-conflict"]);
+    const scoped = plan([row({ db_id: "913", dataset_id: "8" }), row({ db_id: "914", dataset_id: "1", scope: "Scope 3" })]);
+    assert.deepEqual(codes(scoped.refusals), ["merge-conflict"]);
   });
 
   it("lets a precedence file override a ruled merge for its slug", () => {
@@ -199,22 +207,23 @@ describe("the rulings of 25 Sep 2026", () => {
     assert.deepEqual(result.datasets.map((dataset) => dataset.status).sort(), ["active", "superseded"]);
   });
 
-  it("refuses an swc or ceda row with no region — a spend factor must name its country — and counts empty regions per family", () => {
+  it("refuses a ceda row with no region, excludes an swc one, and counts empty regions per family", () => {
     const result = plan([
       row({ db_id: "931", source: "CEDA 2025 (Watershed)", region: "", original_id: "561600", uom: "USD" }),
       row({ db_id: "932", source: "SWC (Small World Consulting)", region: "null", original_id: "SWC-1", uom: "GBP" }),
       row({ db_id: "933", source: "DESNZ", region: "" }),
     ]);
-    const noCountry = result.refusals.find((finding) => finding.code === "no-country")!;
-    assert.equal(noCountry.count, 2);
+    assert.equal(result.refusals.find((finding) => finding.code === "no-country")!.count, 1);
+    assert.deepEqual(result.excluded.map((excluded) => `${excluded.dbId}:${excluded.reason}`), ["932:swc-no-country"]);
     assert.deepEqual(result.summary.emptyRegionByFamily, { "uk-ghg": 1, iea: 0, ceda: 1, ice: 0, swc: 1, nzi: 0 });
   });
 
-  it("refuses every swc row with no region and counts them, rather than erroring", () => {
+  it("excludes every swc row with no region and counts them, rather than erroring or blocking", () => {
     const swc = Array.from({ length: 4 }, (_, index) =>
       row({ db_id: `95${index}`, source: "SWC", region: "", original_id: `SWC-${index}`, uom: "GBP" }));
     const result = plan(swc);
-    assert.equal(result.refusals.find((finding) => finding.code === "no-country")!.count, 4);
+    assert.deepEqual(result.refusals, []);
+    assert.equal(result.exclusions.find((finding) => finding.code === "swc-no-country")!.count, 4);
     assert.equal(result.summary.emptyRegionByFamily.swc, 4);
     assert.equal(result.factors.length, 0);
   });
@@ -253,19 +262,20 @@ describe("the full-extract review of 25 Sep 2026", () => {
     assert.match(result.reports.find((finding) => finding.code === "suffix-aliased")!.examples[0]!, /971: 10_100_1000_1_1-cv → 10_100_1000_1_1-vcp/);
   });
 
-  it("refuses a row with no factor — NaN in any case — as factor-missing, apart from one that is not a number", () => {
+  it("excludes a row with no factor — NaN in any case — as factor-missing, and refuses one that is not a number", () => {
     const result = plan([row({ db_id: "981", factor: "NaN" }), row({ db_id: "982", original_id: "X_1", factor: "nan" }),
       row({ db_id: "983", original_id: "X_2", factor: "" }), row({ db_id: "984", original_id: "X_3", factor: "abc" })]);
-    assert.equal(result.refusals.find((finding) => finding.code === "factor-missing")!.count, 3);
+    assert.equal(result.exclusions.find((finding) => finding.code === "factor-missing")!.count, 3);
     assert.equal(result.refusals.find((finding) => finding.code === "bad-factor")!.count, 1);
   });
 
-  it("refuses a column-shifted row: a currency that is not a currency code", () => {
+  it("excludes a column-shifted row: a currency that is not a currency code", () => {
     const result = plan([
       row({ db_id: "991", original_id: "SPEND-SIC-49.1-2-b", currency: "Rail transport services", uom: "GBP", source: "DEFRA" }),
       row({ db_id: "992", original_id: "SPEND-1", currency: "GBP", uom: "GBP", source: "DEFRA" }),
     ]);
-    const shifted = result.refusals.find((finding) => finding.code === "column-shifted")!;
+    assert.deepEqual(result.refusals, []);
+    const shifted = result.exclusions.find((finding) => finding.code === "column-shifted")!;
     assert.equal(shifted.count, 1);
     assert.match(shifted.examples[0]!, /^991: SPEND-SIC-49\.1-2-b currency "Rail transport services"/);
     assert.equal(result.factors.length, 1);
@@ -286,5 +296,50 @@ describe("the full-extract review of 25 Sep 2026", () => {
     assert.deepEqual(result.datasets.map((dataset) => dataset.countryCode).sort(), ["AR", "DZ", "TW"]);
     assert.equal(result.reports.find((finding) => finding.code === "country-defaulted"), undefined);
     assert.deepEqual(codes(plan([iea("1014", "Narnia")]).refusals), ["unknown-country"]);
+  });
+});
+
+describe("the dry-run rulings of 25 Sep 2026", () => {
+  it("excludes only the five named reasons; any other bad row still refuses the whole load", () => {
+    assert.deepEqual(Object.keys(EXCLUSION_REASONS).sort(), ["column-shifted", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
+    const result = plan([
+      row({ db_id: "1101", factor: "NaN" }),
+      row({ db_id: "1102", original_id: "X_1", currency: "Rail transport services" }),
+      row({ db_id: "1103", original_id: "SWC-1", source: "SWC", region: "", uom: "GBP" }),
+      row({ db_id: "1104", original_id: "X_2", ghg_unit: "kWh(net)" }),
+      row({ db_id: "1105", original_id: "X_3-w" }),
+      row({ db_id: "1106", original_id: "X_4" }),
+    ]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.excluded.map((excluded) => `${excluded.dbId}:${excluded.reason}`),
+      ["1101:factor-missing", "1102:column-shifted", "1103:swc-no-country", "1104:not-kgco2e", "1105:retired-w"]);
+    assert.deepEqual(result.factors.map((factor) => factor.legacyDbId), ["1106"]);
+    assert.equal(result.summary.loaded, 1, "a plan with exclusions and no refusal was not loadable");
+    const halted = plan([row({ db_id: "1111", factor: "NaN" }), row({ db_id: "1112", original_id: "X_5", scope: "Scope 4" })]);
+    assert.deepEqual(codes(halted.refusals), ["unknown-scope"]);
+    assert.equal(halted.summary.loaded, 0);
+  });
+
+  it("loads a negative ICE factor and reports it, and refuses a negative anywhere else", () => {
+    const ice = plan([row({ db_id: "1201", source: "RICS / BRE ICE Database V4.1 (Oct 2025)", original_id: "526", factor: "-1.03089278",
+      uom: "kg", year: "2026", region: "", scope: "Scope 3" })]);
+    assert.deepEqual(ice.refusals, []);
+    assert.equal(ice.factors[0]!.kgco2ePerUnit, "-1.03089278");
+    assert.equal(ice.reports.find((finding) => finding.code === "ice-negative")!.count, 1);
+    for (const source of ["DESNZ", "CEDA 2025 (Watershed)", "IEA 2025", "NZI"]) {
+      const other = plan([row({ db_id: "1202", source, factor: "-0.5", region: "United Kingdom" })]);
+      assert.deepEqual(codes(other.refusals), ["negative-factor"], source);
+    }
+  });
+
+  it("lets a code's scope vary by year: each value row keeps its own, the identity carries the union", () => {
+    const result = plan([
+      row({ db_id: "1301", original_id: "SPEND-SIC-05", source: "DEFRA", uom: "GBP", dataset_id: "2", year: "2024", scope: "Scope 3" }),
+      row({ db_id: "1302", original_id: "SPEND-SIC-05", source: "DEFRA", uom: "GBP", dataset_id: "1", year: "2025", scope: "Scope 1" }),
+    ]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.factors.map((factor) => `${factor.datasetId}:${factor.scopes.join("+")}`).sort(), ["uk-ghg-gb-2024:3", "uk-ghg-gb-2025:1"]);
+    assert.deepEqual(result.identities[0]!.scopes, ["1", "3"]);
+    assert.match(result.reports.find((finding) => finding.code === "scope-by-year")!.examples[0]!, /uk-ghg-SPEND-SIC-05: 2024 S3, 2025 S1/);
   });
 });

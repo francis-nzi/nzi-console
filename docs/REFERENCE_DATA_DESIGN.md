@@ -124,11 +124,26 @@ legacy_original_id)` for factors and `(organisation_id, source_system, legacy_or
 
 **`emission_factor_datasets`:** `source_system`, `source_family`, `legacy_dataset_id`, `content_sha256`.
 
-**Load checks (refuse):** loaded rows equal extracted rows, per dataset and in total; a duplicate id within a dataset;
-an id containing `:`, `|` or whitespace; a negative factor; an unknown scope; **the same `original_id` carrying a
-different unit or scope in another dataset** — a code reused for a different thing would price one of them wrongly; an
-active dataset whose validity overlaps another active dataset of the same source family and country; a dataset that
-exists with a different content hash (a changed edition is a new dataset; the same hash is a no-op).
+**Load checks (refuse):** loaded rows equal extracted rows less exclusions, per dataset and in total; a duplicate id
+within a dataset; an id containing `:`, `|` or whitespace; a negative factor outside ICE; an unknown scope; **the same
+`original_id` carrying a different unit in another dataset** — a code reused for a different thing would price one of
+them wrongly; a ruled merge whose halves price or scope a shared code differently; an active dataset whose validity
+overlaps another active dataset of the same source family and country; a dataset that exists with a different content
+hash (a changed edition is a new dataset; the same hash is a no-op).
+
+**Load exclusions (skip, list, do not refuse)** — ruled 25 Sep 2026, a fixed list of named reasons and nothing else, so a
+new kind of bad row still halts the load: `factor-missing` (no value), `column-shifted` (a currency that is not a
+currency code), `swc-no-country` (SWC is unused), `not-kgco2e`, `retired-w`. Every excluded row is written to the
+exclusion report beside the extract.
+
+**Scope may vary by year** (ruled 25 Sep 2026). Scope is a property of each value row: DEFRA moved spend fuels and energy
+(`SPEND-SIC-05`, `SPEND-PROD-4.5.x`…) from Scope 3 to Scope 1/2 in 2025, and each year's row keeps its own. The resolver
+reads scope from the value row it selects, never from the identity.
+
+**ICE negatives — follow-up for the reporting build.** ICE's "Including Carbon Storage" timber values are negative
+(sequestration), and load as priced (ruled 25 Sep 2026). The resolver and reporting must treat them as storage/removals,
+reported separately, and **never net them into gross Scope totals** (GHG Protocol). Not yet enforced anywhere: an
+open requirement on the reporting build, not the import.
 
 **Load reports (do not refuse):** the same `original_id` with a different category or label across datasets (wording
 drifts between editions; a ruling decides whether it is drift or reuse); an `original_id` shared by two source

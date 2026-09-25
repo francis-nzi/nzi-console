@@ -12,8 +12,10 @@ import { countryCodeFor } from "./v7Countries";
  * source code within a source family becomes one identity; each family, country and year becomes one dataset, with
  * the rules for editions that fold together applied here.
  *
- * Two kinds of finding: a **refusal** stops the load (the plan is not safe to write), a **report** is shown and the load
- * goes ahead (a data question for a person, with nothing mis-priced meanwhile).
+ * Three kinds of finding: a **refusal** stops the load (the plan is not safe to write); an **exclusion** skips one row for
+ * one of a fixed list of named reasons (`EXCLUSION_REASONS`) and lists it in the auditable exclusion report, and the load
+ * goes ahead; a **report** is shown and the load goes ahead (a data question for a person, with nothing mis-priced
+ * meanwhile).
  */
 
 export const SOURCE_SYSTEM = "nzi-pro-v7";
@@ -39,14 +41,15 @@ export const DEFAULT_COUNTRY: Readonly<Record<string, string>> = {
 };
 
 /**
- * Rulings on editions that fold together, applied by default (ruled 25 Sep 2026). Each uk-ghg year from 2022 to 2025 is
- * split across two v7 datasets (8+1, 9+2, 10+3, 11+4) that share almost no codes: complementary halves of one year's
- * set, not successive editions, so they merge — superseding one would hide real factors. A precedence file passed to
- * the load adds rulings, or overrides one of these by naming the slug.
+ * Rulings on editions that fold together, applied by default (ruled 25 Sep 2026). uk-ghg and nzi carry each year from
+ * 2021 to 2026 in two v7 datasets (1+8, 2+9, 3+10, 4+11, 5+12, 69+70). The full extract shows the second is a duplicate
+ * upload (v7's tmp*.csv): a subset of the first at identical values. Merging is correct either way — a shared code
+ * loads once, a code in only one half still loads — and the guard stays: a shared code priced or scoped differently
+ * refuses the merge. A precedence file passed to the load adds rulings, or overrides one of these by naming the slug.
  */
-export const RULED_PRECEDENCE: Readonly<Record<string, string>> = {
-  "uk-ghg-gb-2022": "merge", "uk-ghg-gb-2023": "merge", "uk-ghg-gb-2024": "merge", "uk-ghg-gb-2025": "merge",
-};
+export const RULED_PRECEDENCE: Readonly<Record<string, string>> = Object.fromEntries(
+  ["2021", "2022", "2023", "2024", "2025", "2026"].flatMap((year) => [[`uk-ghg-gb-${year}`, "merge"], [`nzi-gb-${year}`, "merge"]]),
+);
 
 /** v7 uom → the console unit registry's spelling (ruled). Anything absent loads verbatim and is reported. */
 export const UNITS: Readonly<Record<string, string>> = {
@@ -135,7 +138,8 @@ export type PlannedDataset = {
   contentSha256: string;
 };
 export type PlannedIdentity = {
-  factorId: string; label: string; reportLabel: string | null; businessCategory: string | null; levels: string[];
+  /** The union of its value rows' scopes, for display. Not written: scope lives on each value row. */
+  factorId: string; scopes: string[]; label: string; reportLabel: string | null; businessCategory: string | null; levels: string[];
   sourceLabel: string; sourceFamily: string; legacyOriginalId: string; legacyDbId: string;
 };
 export type PlannedFactor = {
@@ -143,10 +147,28 @@ export type PlannedFactor = {
   sourceLevels: string[]; sourceCategory: string | null; ghgUnit: string; legacyOriginalId: string; legacyDbId: string;
 };
 export type Finding = { code: string; message: string; count: number; examples: string[] };
+
+/**
+ * The only reasons a row may be **excluded** — skipped, and listed row by row in the exclusion report — rather than
+ * refused (ruled 25 Sep 2026). A fixed, named list: a row that fails for any reason not here still refuses the whole
+ * load, so a new kind of bad row halts it rather than disappearing.
+ */
+export const EXCLUSION_REASONS = {
+  "factor-missing": "a row with no factor value (empty or NaN): there is nothing to load",
+  "column-shifted": "a currency that is not a three-letter code — the row's columns are shifted, so none of its fields can be trusted",
+  "swc-no-country": "an swc row with no region: SWC is unused, and a spend factor with no country would attach to every job",
+  "not-kgco2e": "a row not in kgCO2e: not an emission factor",
+  "retired-w": "a code ending in -w, the retired waste variant",
+} as const;
+export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
+/** One excluded row, for the auditable exclusion report. */
+export type ExcludedRow = { dbId: string; reason: ExclusionReason; originalId: string | null; source: string | null; detail: string };
+
 export type LoadPlan = {
   organisationId: string;
   datasets: PlannedDataset[]; identities: PlannedIdentity[]; factors: PlannedFactor[];
-  refusals: Finding[]; reports: Finding[];
+  /** Refusals block the load. Exclusions do not: each excluded row is listed in `excluded`. Reports are shown. */
+  refusals: Finding[]; exclusions: Finding[]; excluded: ExcludedRow[]; reports: Finding[];
   summary: {
     extracted: number; duplicatesCollapsed: number; skippedNotKgco2e: number; loaded: number;
     /** Cells written as a spelling of null ("NaN", "nan"…) and read as NULL, by spelling; and the rows carrying any. */
@@ -189,6 +211,12 @@ export function planV7Load(
   };
   const refuse = (code: string, message: string, example: string) => note(refusals, code, message, example);
   const report = (code: string, message: string, example: string) => note(reports, code, message, example);
+  const exclusions = new Map<string, Finding>();
+  const excluded: ExcludedRow[] = [];
+  const exclude = (reason: ExclusionReason, dbId: string, row: ExtractRow, detail: string) => {
+    note(exclusions, reason, EXCLUSION_REASONS[reason], `${dbId}: ${detail}`);
+    excluded.push({ dbId, reason, originalId: clean(row.original_id), source: clean(row.source), detail });
+  };
 
   const nulledCells: Record<string, number> = {};
   let rowsWithNulledCells = 0;
@@ -221,7 +249,7 @@ export function planV7Load(
   let skippedNotKgco2e = 0;
   for (const [dbId, row] of byDbId) {
     const ghgUnit = clean(row.ghg_unit);
-    if (ghgUnit !== "kgCO2e") { skippedNotKgco2e += 1; report("not-kgco2e", "rows not in kgCO2e are not emission factors and are not loaded", `${dbId}: ${ghgUnit}`); continue; }
+    if (ghgUnit !== "kgCO2e") { skippedNotKgco2e += 1; exclude("not-kgco2e", dbId, row, `ghg_unit ${ghgUnit}`); continue; }
     const verbatimCode = clean(row.original_id);
     const aliased = verbatimCode ? Object.entries(SUFFIX_ALIASES).find(([from]) => verbatimCode.endsWith(from)) : undefined;
     const code = aliased ? `${verbatimCode!.slice(0, -aliased[0].length)}${aliased[1]}` : verbatimCode;
@@ -236,30 +264,37 @@ export function planV7Load(
     const uomRaw = clean(row.uom);
     if (!code) { refuse("no-code", "a row has no original_id", dbId); continue; }
     // A currency that is not a currency code means the row's columns are shifted: nothing in it can be trusted in place.
-    if (currency && !CURRENCY.test(currency)) { refuse("column-shifted", "a currency that is not a three-letter code — the row's columns are shifted, so none of its fields can be trusted", `${dbId}: ${code} currency "${currency}", uom "${clean(row.uom)}"`); continue; }
+    if (currency && !CURRENCY.test(currency)) { exclude("column-shifted", dbId, row, `${code} currency "${currency}", uom "${clean(row.uom)}"`); continue; }
     if (!family) { refuse("unknown-source", "a source that is not in the family map", `${dbId}: ${sourceName}`); continue; }
     if (!year || !/^\d{4}$/.test(year)) { refuse("no-year", "a row without a four-digit year", dbId); continue; }
     if (!v7Dataset) { refuse("no-dataset", "a row without a dataset_id", dbId); continue; }
     if (!scope) { refuse("unknown-scope", "a scope that is not Scope 1, 2 or 3", `${dbId}: ${scopeRaw}`); continue; }
     if (!uomRaw) { refuse("no-unit", "a row without a unit", dbId); continue; }
-    if (!factor) { refuse("factor-missing", "a row with no factor value (empty or NaN): there is nothing to load", `${dbId}: ${code}`); continue; }
+    if (!factor) { exclude("factor-missing", dbId, row, code); continue; }
     if (!/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(factor)) { refuse("bad-factor", "a factor that is not a number", `${dbId}: ${factor}`); continue; }
-    if (Number(factor) < 0) { refuse("negative-factor", "a negative factor", `${dbId}: ${factor}`); continue; }
+    // Negative only for ICE (ruled 25 Sep 2026): its "Including Carbon Storage" values are real sequestration. They load
+    // as priced, and are reported, because reporting must treat them as storage/removals, never net them into gross scope
+    // totals (GHG Protocol) — REFERENCE_DATA_DESIGN §4. Every other source refuses a negative.
+    if (Number(factor) < 0) {
+      if (family !== "ice") { refuse("negative-factor", "a negative factor outside ICE", `${dbId}: ${family} ${factor}`); continue; }
+      report("ice-negative", "an ICE carbon-storage value below zero: loaded; reporting must treat it as storage/removals, not net it into gross totals", `${dbId}: ${code} ${factor}`);
+    }
     const normalised = normaliseCode(code);
     if (!normalised || /[:|\s]/.test(normalised)) { refuse("unsafe-code", "a code that cannot be a factor id (empty, or with ':', '|' or whitespace)", `${dbId}: ${code}`); continue; }
+    if (/-w$/.test(normalised)) { exclude("retired-w", dbId, row, code); continue; }
     if (/^\d$/.test(scopeRaw!)) report("scope-normalised", `a bare scope number, read as "Scope n"`, `${dbId}: ${code} "${scopeRaw}" → Scope ${scope}`);
     if (aliased) report("suffix-aliased", "a suffix the registry does not know, loaded as the registered variant it means (the v7 code is kept verbatim)", `${dbId}: ${verbatimCode} → ${code}`);
-    if (/-w$/.test(normalised)) report("w-suffix", "a code ending in -w, the retired waste variant", `${dbId}: ${code}`);
 
     // The country: the region named in words; for IEA, whose region is empty, the code itself is the country (so IEA never
     // reaches its GLOBAL default — an unmatched IEA name is refused, or 56 countries would collapse into one); otherwise
-    // an empty region takes its family's default, reported — except swc and ceda, which have none and are refused. A name
-    // that cannot be matched is refused, never guessed.
+    // an empty region takes its family's default, reported — except swc and ceda, which have none: an swc row is
+    // excluded (SWC is unused), a ceda row refused. A name that cannot be matched is refused, never guessed.
     const region = clean(row.region);
     if (!region) emptyRegionByFamily[family] = (emptyRegionByFamily[family] ?? 0) + 1;
     const named = region ?? (family === "iea" ? code : null);
+    if (!named && family === "swc") { exclude("swc-no-country", dbId, row, code); continue; }
     if (!named && !DEFAULT_COUNTRY[family]) {
-      refuse("no-country", `a ${family} row with no region: a spend factor must name its country or "Rest of World" — defaulting it would attach it to every job`, `${dbId}: ${code}`);
+      refuse("no-country",`a ${family} row with no region: a spend factor must name its country or "Rest of World" — defaulting it would attach it to every job`, `${dbId}: ${code}`);
       continue;
     }
     const country = named ? countryCodeFor(named) : DEFAULT_COUNTRY[family]!;
@@ -313,15 +348,15 @@ export function planV7Load(
         for (const row of all) {
           const seen = byId.get(row.factorId);
           if (!seen) { byId.set(row.factorId, row); continue; }
-          if (seen.kgco2ePerUnit !== row.kgco2ePerUnit || seen.activityUnit !== row.activityUnit) {
-            conflicts.push(`${row.factorId}: ${seen.kgco2ePerUnit} ${seen.activityUnit} vs ${row.kgco2ePerUnit} ${row.activityUnit}`);
+          if (seen.kgco2ePerUnit !== row.kgco2ePerUnit || seen.activityUnit !== row.activityUnit || seen.scopes.join("+") !== row.scopes.join("+")) {
+            conflicts.push(`${row.factorId}: ${seen.kgco2ePerUnit} ${seen.activityUnit} scope ${seen.scopes.join("+")} vs ${row.kgco2ePerUnit} ${row.activityUnit} scope ${row.scopes.join("+")}`);
           } else {
             report("merge-duplicate", "a code carried by both merged v7 datasets at the same value: loaded once",
               `${base}: ${row.factorId} — db ${seen.legacyDbId} loaded, db ${row.legacyDbId} not`);
           }
         }
         if (conflicts.length > 0) {
-          refuse("merge-conflict", "a merge ruled for datasets that price a shared code differently", `${base}: ${conflicts.slice(0, 3).join("; ")}`);
+          refuse("merge-conflict", "a merge ruled for datasets that price or scope a shared code differently",`${base}: ${conflicts.slice(0, 3).join("; ")}`);
           continue;
         }
         const mergedId = members.map(([id]) => id).sort((a, b) => Number(a) - Number(b)).join("+");
@@ -377,8 +412,11 @@ export function planV7Load(
     perDataset.set(row.datasetId, ids);
   }
 
-  // 5. One identity per code within its family: consistent unit and scope everywhere it appears (refused otherwise —
-  //    a code reused for a different thing would price one of them wrongly); category or wording drift is reported.
+  // 5. One identity per code within its family: a consistent unit everywhere it appears (refused otherwise — a code
+  //    reused for a different thing would price one of them wrongly); category or wording drift is reported. Scope may
+  //    vary by year (ruled 25 Sep 2026: DEFRA moved spend fuels and energy from Scope 3 to 1/2 in 2025). Scope is a
+  //    property of each value row, and the resolver reads it there; a conflict within one dataset is refused in step 3
+  //    (a merge) or step 4 (one code twice), so it cannot reach here.
   const byIdentity = new Map<string, Row[]>();
   for (const row of kept as Row[]) byIdentity.set(row.factorId, [...(byIdentity.get(row.factorId) ?? []), row]);
   const identities: PlannedIdentity[] = [];
@@ -386,16 +424,18 @@ export function planV7Load(
     // A spend factor is priced in its country's currency — CEDA's code 561600 is XCD in Antigua and USD for the rest of the
     // world — so currencies count as one unit here. Any other change of unit is a code reused for something else.
     const units = new Set(group.map((row) => (CURRENCY.test(row.activityUnit) ? "money" : row.activityUnit)));
-    const scopes = new Set(group.map((row) => row.scopes.join("+")));
-    if (units.size > 1 || scopes.size > 1) {
-      refuse("code-reused", "one code with different units or scopes across datasets", `${factorId}: ${[...units].join("/")} ${[...scopes].join("/")}`);
+    if (units.size > 1) refuse("code-reused", "one code with different units across datasets", `${factorId}: ${[...units].join("/")}`);
+    const scopes = [...new Set(group.flatMap((row) => row.scopes))].sort();
+    if (scopes.length > 1) {
+      const byYear = [...new Map([...group].sort((a, b) => a.year.localeCompare(b.year)).map((row) => [row.year, row.scopes.join("+")]))];
+      report("scope-by-year", "one code in different scopes in different years: each value row keeps its own", `${factorId}: ${byYear.map(([year, scope]) => `${year} S${scope}`).join(", ")}`);
     }
     if (new Set(group.map((row) => row.sourceCategory)).size > 1) report("category-drift", "one code with different categories across datasets", factorId);
     // The identity takes its curated fields from the most recent row carrying the code.
     const latest = [...group].sort((a, b) => b.year.localeCompare(a.year) || Number(b.legacyDbId) - Number(a.legacyDbId))[0]!;
     const lowestDbId = [...group].map((row) => row.legacyDbId).sort((a, b) => Number(a) - Number(b))[0]!;
     identities.push({
-      factorId, label: latest.label, reportLabel: latest.reportLabel, businessCategory: latest.sourceCategory,
+      factorId, scopes, label: latest.label, reportLabel: latest.reportLabel, businessCategory: latest.sourceCategory,
       levels: latest.sourceLevels, sourceLabel: latest.column, sourceFamily: latest.family,
       legacyOriginalId: latest.legacyOriginalId, legacyDbId: lowestDbId,
     });
@@ -421,7 +461,7 @@ export function planV7Load(
   return {
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
     datasets, identities, factors,
-    refusals: [...refusals.values()], reports: [...reports.values()],
+    refusals: [...refusals.values()], exclusions: [...exclusions.values()], excluded, reports: [...reports.values()],
     summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily,
       nulledCells, rowsWithNulledCells },
   };
