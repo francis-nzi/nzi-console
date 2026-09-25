@@ -22,9 +22,9 @@ const codes = (findings: { code: string }[]) => findings.map((finding) => findin
 const row = (over: Partial<ExtractRow>): ExtractRow => ({ ...FIXTURE[0]!, ...over }) as ExtractRow;
 
 describe("cleaning and ids", () => {
-  it("reads empty, 'NaN' and 'null' as absent, and nothing else", () => {
-    for (const absent of ["", "  ", "NaN", "null"]) assert.equal(clean(absent), null);
-    for (const kept of ["0", "nan", "Null value", "N/A"]) assert.equal(clean(kept), kept.trim());
+  it("reads empty and any spelling of NaN, null or None as absent, in any case, and nothing else", () => {
+    for (const absent of ["", "  ", "NaN", "nan", " NAN ", "null", "NULL", "None", "none"]) assert.equal(clean(absent), null);
+    for (const kept of ["0", "Nancy", "Null value", "N/A", "Nonetheless"]) assert.equal(clean(kept), kept.trim());
   });
 
   it("keeps a code with digits exactly — suffix and case included — and slugs a name", () => {
@@ -41,6 +41,14 @@ describe("cleaning and ids", () => {
     assert.equal(countryCodeFor("Saint Kitts and Nevis"), "KN");
     assert.equal(countryCodeFor("Rest of World"), "ROW");
     assert.equal(countryCodeFor("Narnia"), null);
+  });
+
+  it("matches the extract's spellings the ISO short names miss", () => {
+    for (const [name, code] of [["Congo", "CG"], ["Hong Kong, China", "HK"], ["Lao People’s Democratic Rep.", "LA"],
+      ["Macedonia, the former Yugoslav Republic of", "MK"], ["Slovak Republic", "SK"], ["Chinese Taipei", "TW"],
+      ["Saint Vincent and the Grenadines", "VC"], ["Taiwan (Chinese Taipei)", "TW"]] as const) {
+      assert.equal(countryCodeFor(name), code, name);
+    }
   });
 });
 
@@ -117,7 +125,7 @@ describe("refusals", () => {
     const result = plan([
       row({ db_id: "101", source: "Somebody Else" }),
       row({ db_id: "102", scope: "Scope 4" }),
-      row({ db_id: "103", factor: "NaN" }),
+      row({ db_id: "103", factor: "0.2x" }),
       row({ db_id: "104", factor: "-1" }),
       row({ db_id: "105", region: "Narnia" }),
     ]);
@@ -202,6 +210,15 @@ describe("the rulings of 25 Sep 2026", () => {
     assert.deepEqual(result.summary.emptyRegionByFamily, { "uk-ghg": 1, iea: 0, ceda: 1, ice: 0, swc: 1, nzi: 0 });
   });
 
+  it("refuses every swc row with no region and counts them, rather than erroring", () => {
+    const swc = Array.from({ length: 4 }, (_, index) =>
+      row({ db_id: `95${index}`, source: "SWC", region: "", original_id: `SWC-${index}`, uom: "GBP" }));
+    const result = plan(swc);
+    assert.equal(result.refusals.find((finding) => finding.code === "no-country")!.count, 4);
+    assert.equal(result.summary.emptyRegionByFamily.swc, 4);
+    assert.equal(result.factors.length, 0);
+  });
+
   it("defaults uk-ghg and nzi to GB and ice to GLOBAL, reporting each", () => {
     const result = plan([
       row({ db_id: "941", source: "NZI", region: "", original_id: "99_1" }),
@@ -210,5 +227,64 @@ describe("the rulings of 25 Sep 2026", () => {
     assert.deepEqual(result.refusals, []);
     assert.deepEqual(result.datasets.map((dataset) => `${dataset.datasetId}:${dataset.countryCode}`).sort(), ["ice-global-2026:GLOBAL", "nzi-gb-2025:GB"]);
     assert.equal(result.reports.find((finding) => finding.code === "country-defaulted")!.count, 2);
+  });
+});
+
+describe("the full-extract review of 25 Sep 2026", () => {
+  it("nulls every spelling of null in any case, so one code's category is stable, and counts what it nulled", () => {
+    const result = plan([
+      row({ db_id: "961", dataset_id: "5", year: "2021", level_2: "Green gas", level_3: "NaN", level_4: "" }),
+      row({ db_id: "962", dataset_id: "5", year: "2022", level_2: "Green gas", level_3: "nan", level_4: "None" }),
+      row({ db_id: "963", dataset_id: "5", year: "2023", level_2: "Green gas", level_3: "", level_4: "NULL" }),
+    ]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.factors.map((factor) => factor.sourceLevels.join("|")), Array(3).fill("Passenger vehicles|Green gas"));
+    assert.deepEqual(result.summary.nulledCells, { NaN: 1, nan: 1, None: 1, NULL: 1 });
+    assert.equal(result.summary.rowsWithNulledCells, 3);
+  });
+
+  it("loads -cv as the registered -vcp variant, keeping v7's code verbatim, and reports it", () => {
+    const result = plan([row({ db_id: "971", original_id: "10_100_1000_1_1-cv", scope: "Scope 1", category: "Company Vehicles" })]);
+    assert.deepEqual(result.refusals, []);
+    const factor = result.factors[0]!;
+    assert.equal(factor.factorId, "uk-ghg-10_100_1000_1_1-vcp");
+    assert.equal(factor.legacyOriginalId, "10_100_1000_1_1-cv");
+    assert.equal(result.identities[0]!.legacyOriginalId, "10_100_1000_1_1-cv");
+    assert.match(result.reports.find((finding) => finding.code === "suffix-aliased")!.examples[0]!, /971: 10_100_1000_1_1-cv → 10_100_1000_1_1-vcp/);
+  });
+
+  it("refuses a row with no factor — NaN in any case — as factor-missing, apart from one that is not a number", () => {
+    const result = plan([row({ db_id: "981", factor: "NaN" }), row({ db_id: "982", original_id: "X_1", factor: "nan" }),
+      row({ db_id: "983", original_id: "X_2", factor: "" }), row({ db_id: "984", original_id: "X_3", factor: "abc" })]);
+    assert.equal(result.refusals.find((finding) => finding.code === "factor-missing")!.count, 3);
+    assert.equal(result.refusals.find((finding) => finding.code === "bad-factor")!.count, 1);
+  });
+
+  it("refuses a column-shifted row: a currency that is not a currency code", () => {
+    const result = plan([
+      row({ db_id: "991", original_id: "SPEND-SIC-49.1-2-b", currency: "Rail transport services", uom: "GBP", source: "DEFRA" }),
+      row({ db_id: "992", original_id: "SPEND-1", currency: "GBP", uom: "GBP", source: "DEFRA" }),
+    ]);
+    const shifted = result.refusals.find((finding) => finding.code === "column-shifted")!;
+    assert.equal(shifted.count, 1);
+    assert.match(shifted.examples[0]!, /^991: SPEND-SIC-49\.1-2-b currency "Rail transport services"/);
+    assert.equal(result.factors.length, 1);
+  });
+
+  it("reads a bare scope number as that scope, and reports it", () => {
+    const result = plan([row({ db_id: "1001", original_id: "SPEND-SIC-49.3-5-u", scope: "3", uom: "GBP", source: "DEFRA" })]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.factors[0]!.scopes, ["3"]);
+    assert.equal(result.reports.find((finding) => finding.code === "scope-normalised")!.count, 1);
+  });
+
+  it("places each IEA row in the country its code names — never the GLOBAL default — and refuses one it cannot match", () => {
+    const iea = (dbId: string, code: string) =>
+      row({ db_id: dbId, original_id: code, source: "IEA 2025", region: "", dataset_id: "48", scope: "Scope 2", uom: "kWh" });
+    const result = plan([iea("1011", "Algeria"), iea("1012", "Argentina"), iea("1013", "Taiwan (Chinese Taipei)")]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.datasets.map((dataset) => dataset.countryCode).sort(), ["AR", "DZ", "TW"]);
+    assert.equal(result.reports.find((finding) => finding.code === "country-defaulted"), undefined);
+    assert.deepEqual(codes(plan([iea("1014", "Narnia")]).refusals), ["unknown-country"]);
   });
 });

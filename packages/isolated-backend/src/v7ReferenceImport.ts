@@ -57,15 +57,26 @@ export const UNITS: Readonly<Record<string, string>> = {
 const CALORIFIC = /^kwh \((gross|net) cv\)$/;
 const CURRENCY = /^[A-Z]{3}$/;
 
-const SCOPES: Readonly<Record<string, string>> = { "scope 1": "1", "scope 2": "2", "scope 3": "3" };
+/** A bare "1", "2" or "3" is v7's shorthand for the scope (two DEFRA rows); it is normalised and reported. */
+const SCOPES: Readonly<Record<string, string>> = { "scope 1": "1", "scope 2": "2", "scope 3": "3", 1: "1", 2: "2", 3: "3" };
+
+/**
+ * Suffixes v7 wrote that the variant registry does not know, mapped to the registered variant they mean (ruled 25 Sep
+ * 2026). A transform alias only: the registry gains no entry, and the code v7 wrote is still stored verbatim.
+ */
+export const SUFFIX_ALIASES: Readonly<Record<string, string>> = { "-cv": "-vcp" };
 
 // ── Cleaning ────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** v7 writes absence three ways: empty, the string "NaN", the string "null". All three are SQL NULL; nothing else is. */
+/**
+ * v7 writes absence as empty or as a spelling of null — "NaN", "nan", "null", "None", in any case (ruled 25 Sep 2026).
+ * All are SQL NULL; nothing else is. Case matters: "Green gas|NaN|" and "Green gas|nan|" are the same category.
+ */
+const NULL_SPELLINGS = /^(nan|null|none)$/i;
 export const clean = (value: string | undefined): string | null => {
   if (value === undefined) return null;
   const trimmed = value.trim();
-  return trimmed === "" || trimmed === "NaN" || trimmed === "null" ? null : trimmed;
+  return trimmed === "" || NULL_SPELLINGS.test(trimmed) ? null : trimmed;
 };
 
 /**
@@ -138,6 +149,8 @@ export type LoadPlan = {
   refusals: Finding[]; reports: Finding[];
   summary: {
     extracted: number; duplicatesCollapsed: number; skippedNotKgco2e: number; loaded: number;
+    /** Cells written as a spelling of null ("NaN", "nan"…) and read as NULL, by spelling; and the rows carrying any. */
+    nulledCells: Record<string, number>; rowsWithNulledCells: number;
     /** Rows with an empty region, per family — counted even when none, so a zero is visible rather than assumed. */
     emptyRegionByFamily: Record<string, number>;
   };
@@ -177,6 +190,17 @@ export function planV7Load(
   const refuse = (code: string, message: string, example: string) => note(refusals, code, message, example);
   const report = (code: string, message: string, example: string) => note(reports, code, message, example);
 
+  const nulledCells: Record<string, number> = {};
+  let rowsWithNulledCells = 0;
+  for (const row of rows) {
+    let any = false;
+    for (const value of Object.values(row)) {
+      const trimmed = value.trim();
+      if (NULL_SPELLINGS.test(trimmed)) { nulledCells[trimmed] = (nulledCells[trimmed] ?? 0) + 1; any = true; }
+    }
+    if (any) rowsWithNulledCells += 1;
+  }
+
   // 1. One row per factor_lookup row. An identical repeat (an extract that joined twice) collapses; a conflicting one
   //    is refused, because two different rows cannot both be db_id n.
   const byDbId = new Map<string, ExtractRow>();
@@ -198,8 +222,11 @@ export function planV7Load(
   for (const [dbId, row] of byDbId) {
     const ghgUnit = clean(row.ghg_unit);
     if (ghgUnit !== "kgCO2e") { skippedNotKgco2e += 1; report("not-kgco2e", "rows not in kgCO2e are not emission factors and are not loaded", `${dbId}: ${ghgUnit}`); continue; }
-    const code = clean(row.original_id);
+    const verbatimCode = clean(row.original_id);
+    const aliased = verbatimCode ? Object.entries(SUFFIX_ALIASES).find(([from]) => verbatimCode.endsWith(from)) : undefined;
+    const code = aliased ? `${verbatimCode!.slice(0, -aliased[0].length)}${aliased[1]}` : verbatimCode;
     const sourceName = clean(row.source);
+    const currency = clean(row.currency);
     const family = familyOf(sourceName);
     const year = clean(row.year);
     const v7Dataset = clean(row.dataset_id);
@@ -208,18 +235,24 @@ export function planV7Load(
     const scope = scopeRaw ? SCOPES[scopeRaw.toLowerCase()] ?? null : null;
     const uomRaw = clean(row.uom);
     if (!code) { refuse("no-code", "a row has no original_id", dbId); continue; }
+    // A currency that is not a currency code means the row's columns are shifted: nothing in it can be trusted in place.
+    if (currency && !CURRENCY.test(currency)) { refuse("column-shifted", "a currency that is not a three-letter code — the row's columns are shifted, so none of its fields can be trusted", `${dbId}: ${code} currency "${currency}", uom "${clean(row.uom)}"`); continue; }
     if (!family) { refuse("unknown-source", "a source that is not in the family map", `${dbId}: ${sourceName}`); continue; }
     if (!year || !/^\d{4}$/.test(year)) { refuse("no-year", "a row without a four-digit year", dbId); continue; }
     if (!v7Dataset) { refuse("no-dataset", "a row without a dataset_id", dbId); continue; }
     if (!scope) { refuse("unknown-scope", "a scope that is not Scope 1, 2 or 3", `${dbId}: ${scopeRaw}`); continue; }
     if (!uomRaw) { refuse("no-unit", "a row without a unit", dbId); continue; }
-    if (!factor || !/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(factor)) { refuse("bad-factor", "a factor that is not a number", `${dbId}: ${factor}`); continue; }
+    if (!factor) { refuse("factor-missing", "a row with no factor value (empty or NaN): there is nothing to load", `${dbId}: ${code}`); continue; }
+    if (!/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(factor)) { refuse("bad-factor", "a factor that is not a number", `${dbId}: ${factor}`); continue; }
     if (Number(factor) < 0) { refuse("negative-factor", "a negative factor", `${dbId}: ${factor}`); continue; }
     const normalised = normaliseCode(code);
     if (!normalised || /[:|\s]/.test(normalised)) { refuse("unsafe-code", "a code that cannot be a factor id (empty, or with ':', '|' or whitespace)", `${dbId}: ${code}`); continue; }
+    if (/^\d$/.test(scopeRaw!)) report("scope-normalised", `a bare scope number, read as "Scope n"`, `${dbId}: ${code} "${scopeRaw}" → Scope ${scope}`);
+    if (aliased) report("suffix-aliased", "a suffix the registry does not know, loaded as the registered variant it means (the v7 code is kept verbatim)", `${dbId}: ${verbatimCode} → ${code}`);
     if (/-w$/.test(normalised)) report("w-suffix", "a code ending in -w, the retired waste variant", `${dbId}: ${code}`);
 
-    // The country: the region named in words; for IEA, whose region is empty, the code itself is the country; otherwise
+    // The country: the region named in words; for IEA, whose region is empty, the code itself is the country (so IEA never
+    // reaches its GLOBAL default — an unmatched IEA name is refused, or 56 countries would collapse into one); otherwise
     // an empty region takes its family's default, reported — except swc and ceda, which have none and are refused. A name
     // that cannot be matched is refused, never guessed.
     const region = clean(row.region);
@@ -249,7 +282,7 @@ export function planV7Load(
     }
     planned.push({
       datasetId: "", factorId: `${family}-${normalised}`, label, activityUnit: unit, kgco2ePerUnit: factor, scopes: [scope],
-      sourceLevels: levels, sourceCategory: category, ghgUnit, legacyOriginalId: code, legacyDbId: dbId,
+      sourceLevels: levels, sourceCategory: category, ghgUnit, legacyOriginalId: verbatimCode!, legacyDbId: dbId,
       family, country, year, v7Dataset, sourceName: sourceName!, validFrom: clean(row.valid_from), validTo: clean(row.valid_to),
       fileName: clean(row.file_name), reportLabel: clean(row.report_label), code, column: clean(row.column_text) ?? label,
     });
@@ -364,7 +397,7 @@ export function planV7Load(
     identities.push({
       factorId, label: latest.label, reportLabel: latest.reportLabel, businessCategory: latest.sourceCategory,
       levels: latest.sourceLevels, sourceLabel: latest.column, sourceFamily: latest.family,
-      legacyOriginalId: latest.code, legacyDbId: lowestDbId,
+      legacyOriginalId: latest.legacyOriginalId, legacyDbId: lowestDbId,
     });
   }
 
@@ -389,6 +422,7 @@ export function planV7Load(
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
     datasets, identities, factors,
     refusals: [...refusals.values()], reports: [...reports.values()],
-    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily },
+    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily,
+      nulledCells, rowsWithNulledCells },
   };
 }

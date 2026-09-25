@@ -52,6 +52,7 @@ async function main(): Promise<void> {
 
     log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run, nothing will be written"}`);
     log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e}`);
+    log(`  null spellings read as NULL: ${Object.entries(plan.summary.nulledCells).map(([spelling, n]) => `"${spelling}" ${n}`).join(" · ") || "none"} cells, in ${plan.summary.rowsWithNulledCells} rows`);
     log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
