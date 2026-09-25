@@ -1,0 +1,19 @@
+db_id,original_id,dataset_id,year,factor,currency,valid_from,valid_to,scope,category,level_1,level_2,level_3,level_4,column_text,report_label,uom,ghg_unit,method,region,source
+1,10_100_1000_1_1,8,2025,0.2,,2025-01-01,2025-12-31,Scope 1,Company Vehicles,Passenger vehicles,Cars,Average car,Diesel,Passenger vehicles - Cars - Average car - Diesel,Cars: Diesel,km,kgCO2e,Activity,,DESNZ
+2,10_100_1000_1_1-c,8,2025,0.2,,2025-01-01,2025-12-31,Scope 3,Employee Commuting,Passenger vehicles,Cars,Average car,NaN,Passenger vehicles - Cars - Average car - Diesel,Commuting: Diesel car,km,kgCO2e,Activity,,DESNZ
+3,10_100_1000_1_1-vcp,8,2025,0.2,,2025-01-01,2025-12-31,Scope 1,Company Vehicles,Company Vehicles - Petrol Car,null,null,null,Company Vehicles - Petrol Car,Company Vehicles: Petrol Car,km,kgCO2e,Activity,,DESNZ
+4,20_200_2000_7_1,8,2025,0.18,,2025-01-01,2025-12-31,Scope 1,Fuels,Fuels,Gaseous fuels,Natural gas,NaN,Fuels - Gaseous fuels - Natural gas,Fuels: Natural gas,kWh (Net CV),kgCO2e,Activity,,DESNZ
+5,20_200_2000_8_1,8,2025,0.2,,2025-01-01,2025-12-31,Scope 1,Fuels,Fuels,Gaseous fuels,Natural gas,NaN,Fuels - Gaseous fuels - Natural gas,Fuels: Natural gas,kWh (Gross CV),kgCO2e,Activity,,DESNZ
+6,SPEND-SIC-49.3-5-d,8,2025,0.5,null,2025-01-01,2025-12-31,Scope 3,Downstream Transportation and Distribution,Land transport,null,null,null,Land transport services,Land transport services,GBP,kgCO2e,Spend,UK,DEFRA
+7,SPEND-SIC-49.3-5,8,2025,0.5,null,2025-01-01,2025-12-31,Scope 3,Purchased Goods and Services,Land transport,null,null,null,Land transport services,Land transport services,GBP,kgCO2e,Spend,UK,DEFRA
+8,10_100_1000_1_1,9,2024,0.21,,2024-01-01,2024-12-31,Scope 1,Company Vehicles,Passenger vehicles,Cars,Average car,Diesel,Passenger vehicles - Cars - Average car - Diesel,Cars: Diesel,km,kgCO2e,Activity,,DESNZ
+9,Norway,48,2025,0.03,,2025-01-01,2025-12-31,Scope 2,Electricity Generation,Electricity Generation,Norway,NaN,NaN,Electricity - Norway,Electricity - Norway,kWh,kgCO2e,Activity,null,IEA 2025
+10,Puerto Rico,52,2025,0.6,,2025-01-01,2025-12-31,Scope 2,Electricity Generation,Electricity Generation,Puerto Rico,NaN,NaN,Electricity - Puerto Rico,Electricity - Puerto Rico,kWh,kgCO2e,Activity,null,IEA 2025
+11,1,75,2026,0.005,,null,null,Scope 3,Aggregates and Sand,Aggregates and Sand,NaN,NaN,NaN,"Aggregates and sand, general",Aggregates and sand,kg,kgCO2e,Activity,United Kingdom,RICS / BRE ICE Database V4.1 (Oct 2025)
+12,561600,81,2025,0.3,,null,null,Scope 3,Investigation and security service,Investigation and security service,NaN,NaN,NaN,Investigation and security service,Investigation and security service,XCD,kgCO2e,Spend,Antigua and Barbuda,CEDA 2025 (Watershed)
+13,561600,193,2025,0.4,,null,null,Scope 3,Investigation and security service,Investigation and security service,NaN,NaN,NaN,Investigation and security service,Investigation and security service,USD,kgCO2e,Spend,Rest of World,CEDA 2025 (Watershed)
+14,99_100_1004_6_1,10,2023,0,,2023-01-01,2023-12-31,Scope 1,Fuels,Fuels,Gaseous fuels,Green gas,NaN,Fuels - Gaseous fuels - Green gas,Fuels: Green gas,kWh (Gross CV),kgCO2e,Activity,,NZI
+15,30_300_3000_1_1-w,8,2025,0.1,,2025-01-01,2025-12-31,Scope 3,Waste Generated in Operations,Waste,Mixed,NaN,NaN,Waste - Mixed,Waste: Mixed,tonnes,kgCO2e,Activity,,DESNZ
+16,40_400_4000_1_1,8,2025,1.2,,2025-01-01,2025-12-31,Scope 3,Water,Water,Supply,NaN,NaN,Water supply,Water supply,million litres,kgCO2e,Activity,,DESNZ
+17,50_500_5000_1_1,8,2025,0.9,,2025-01-01,2025-12-31,Scope 1,Fuels,Fuels,Liquid fuels,Oil,NaN,Fuels - Liquid fuels - Oil,Fuels: Oil,kWh (Net CV),kWh(net),Activity,,DESNZ
+1,10_100_1000_1_1,8,2025,0.2,,2025-01-01,2025-12-31,Scope 1,Company Vehicles,Passenger vehicles,Cars,Average car,Diesel,Passenger vehicles - Cars - Average car - Diesel,Cars: Diesel,km,kgCO2e,Activity,,DESNZ

@@ -334,6 +334,12 @@ jobs:
       # with the base/variant rule proved on them through the real code.
       - name: v7 provenance is keyed by original_id, and v7 suffixes are category variants
         run: npx tsx --test packages/isolated-backend/tests/provenanceOriginalIdReal.test.ts
+      # The v7 reference import (REFERENCE_DATA_DESIGN §5): a synthetic factor_lookup extract planned and loaded into
+      # net-zero-international — what lands, a re-run changing nothing, a changed edition refused rather than
+      # overwritten, a refused plan writing nothing, and tenancy through the display view. The transform's own rules run
+      # in the checks job (v7ReferenceImport.test.ts).
+      - name: The v7 reference import loads, re-runs as a no-op, and refuses what it should
+        run: npx tsx --test packages/isolated-backend/tests/v7ReferenceLoadReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
