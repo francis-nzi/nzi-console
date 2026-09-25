@@ -7,8 +7,8 @@ import { variantBasesRefused } from "../src/declarativeResolution";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
 
 /**
- * v7 provenance is keyed by original_id (0126), and v7's suffixed ids are the console's category variants
- * (REFERENCE_DATA_DESIGN §3–4).
+ * v7 provenance is keyed by original_id, one code belongs to one source family, and v7's ten suffixes are the console's
+ * category variants (0126, REFERENCE_DATA_DESIGN §3–4).
  *
  * The first half is the key change: two factors of one v7 definition in one dataset — the flight-class case, definition
  * 9759 — both load, where 0125's key refused the second; the same original_id in two datasets is one identity; and the
@@ -24,10 +24,10 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
   let database: DisposableDatabase;
   let db: pg.Client;
 
-  const dataset = (id: string, year: number) => db.query(
+  const dataset = (id: string, year: number, family = "uk-ghg", country = "GB") => db.query(
     `INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence,source_system,source_family,legacy_dataset_id,content_sha256)
-     VALUES ($1,$2,$2,$3,$4,$5,'GB','active','DESNZ','OGL v3.0','nzi-pro-v7','uk-ghg',$2,repeat('a',64))`,
-    [ORG, id, String(year), `${year}-01-01`, `${year}-12-31`]);
+     VALUES ($1,$2,$2,$3,$4,$5,$7,'active','DESNZ','OGL v3.0','nzi-pro-v7',$6,$2,repeat('a',64))`,
+    [ORG, id, String(year), `${year}-01-01`, `${year}-12-31`, family, country]);
   const factor = (datasetId: string, originalId: string, definition: string, label: string, value = 0.2, scopes = ["3"], unit = "passenger.km") => db.query(
     `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_system,legacy_original_id,legacy_factor_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,'nzi-pro-v7',$8,$9)`,
@@ -41,6 +41,8 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
     await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
     await dataset("uk-ghg-gb-2024", 2024);
     await dataset("uk-ghg-gb-2025", 2025);
+    await dataset("uk-ghg-ie-2025", 2025, "uk-ghg", "IE");
+    await dataset("iea-global-2025", 2025, "iea", "GLOBAL");
   });
 
   after(async () => { await db?.end(); await database?.end(); });
@@ -69,10 +71,28 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
     assert.equal(identities.rows[0]!.legacy_original_id, "9759-economy", "the identity does not carry the code it stands for");
   });
 
+  it("keeps one code as one identity across the years and countries of its family", async () => {
+    await factor("uk-ghg-ie-2025", "9759-economy", "9759", "Long-haul flight, economy (IE)", 0.15);
+    const identity = (await db.query<{ source_family: string }>(
+      `SELECT source_family FROM nzi_console.factor_identities WHERE factor_id='v7-9759-economy'`)).rows;
+    assert.deepEqual(identity, [{ source_family: "uk-ghg" }]);
+  });
+
+  it("refuses the same code from a second family — two different factors must never merge into one identity", async () => {
+    await assert.rejects(() => factor("iea-global-2025", "9759-economy", "9759", "Not the same factor at all", 0.9),
+      /v7-9759-economy belongs to source family uk-ghg and cannot also come from iea.*one code, one family/);
+    const landed = await db.query(`SELECT 1 FROM nzi_console.emission_factors WHERE dataset_id='iea-global-2025'`);
+    assert.equal(landed.rows.length, 0, "the refused factor was written anyway");
+  });
+
   it("refuses an imported identity or factor that does not say which source code it is", async () => {
     await assert.rejects(() => db.query(
       `INSERT INTO nzi_console.factor_identities (organisation_id,factor_id,label,source_label,source_system,legacy_factor_id,created_by)
        VALUES ($1,'v7-orphan','x','x','nzi-pro-v7','1','test')`, [ORG]), /factor_identity_provenance_shape/);
+    // A family is part of what an imported identity has to say.
+    await assert.rejects(() => db.query(
+      `INSERT INTO nzi_console.factor_identities (organisation_id,factor_id,label,source_label,source_system,legacy_factor_id,legacy_original_id,created_by)
+       VALUES ($1,'v7-nofamily','x','x','nzi-pro-v7','1','nofamily','test')`, [ORG]), /factor_identity_provenance_shape/);
     await assert.rejects(() => db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_system,legacy_factor_id)
        VALUES ($1,'uk-ghg-gb-2025','v7-nocode','x','kWh',0.1,ARRAY['2'],'nzi-pro-v7','1')`, [ORG]),
@@ -82,10 +102,14 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
 
   // ── The id shape, read against the registry the migrations build ─────────────────────────────────────
 
-  it("reads an unsuffixed v7 id as a base, and each registered suffix as its category's variant", async () => {
+  it("reads an unsuffixed v7 id as a base, and each of v7's ten suffixes as its category's variant, across scopes", async () => {
     const registry = await listCategoryVariants(db);
     assert.deepEqual(parseFactorId("v7-4521", registry).variant, null);
-    const expected: Record<string, string> = { "-b": "3.6", "-c": "3.7", "-p": "3.1", "-u": "3.4", "-d": "3.9" };
+    // Francis's authoritative map: five Scope 3 categories, four Scope 1 company-vehicle sub-types, one more 3.6.
+    const expected: Record<string, string> = {
+      "-b": "3.6", "-c": "3.7", "-d": "3.9", "-p": "3.1", "-u": "3.4",
+      "-vcd": "1", "-vcp": "1", "-vh": "1", "-vvd": "1", "-bcp": "3.6",
+    };
     for (const [suffix, category] of Object.entries(expected)) {
       const parsed = parseFactorId(`v7-4521${suffix}`, registry);
       assert.equal(parsed.base, "v7-4521", `v7-4521${suffix} did not resolve to its base`);
@@ -93,9 +117,9 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
     }
   });
 
-  it("leaves unregistered tags and an upper-case suffix as plain ids, never grouped with a base", async () => {
+  it("leaves an unregistered tag and an upper-case suffix as plain ids, never grouped with a base", async () => {
     const registry = await listCategoryVariants(db);
-    for (const id of ["v7-4521-vcp", "v7-4521-C", "v7-4521-cd"]) {
+    for (const id of ["v7-4521-xyz", "v7-4521-C", "v7-4521-VCP", "v7-4521-cd"]) {
       const parsed = parseFactorId(id, registry);
       assert.equal(parsed.variant, null, `${id} was read as a variant`);
       assert.equal(parsed.base, id);
@@ -116,7 +140,7 @@ describe("v7 provenance keyed by original_id, and v7 suffixes as category varian
     const refused = await variantBasesRefused(db, ORG, "job-v7", "3.7");
     assert.deepEqual(refused.filter((pair) => pair.baseFactorId.startsWith("v7-4521")),
       [{ baseFactorId: "v7-4521", variantFactorId: "v7-4521-c" }],
-      "commuting did not refuse the base in favour of its own variant — or treated the -vcp tag as one");
+      "commuting did not refuse the base in favour of its own -c variant — or refused it for another category's variant");
   });
 
   // ── The guard ───────────────────────────────────────────────────────────────────────────────────────

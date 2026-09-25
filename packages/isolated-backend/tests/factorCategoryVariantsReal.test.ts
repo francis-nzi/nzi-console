@@ -78,11 +78,12 @@ describe("the category-variant registry (NZC-145)", { skip: DATABASE_URL ? false
 
   // ── The seeded vocabulary ───────────────────────────────────────────────────────────
 
-  it("seeds the six current variants, each naming its GHG category", async () => {
+  it("seeds the current variants — 0110's six and v7's five more (0126) — each naming its GHG category", async () => {
     const variants = await registry();
     assert.deepEqual(
       variants.map((variant) => `${variant.suffixCode}:${variant.ghgCategory}`),
-      ["-c:3.7", "-b:3.6", "-p:3.1", "-u:3.4", "-d:3.9", "-w:3.5"],
+      // The four company-vehicle sub-types are Scope 1: variants span scopes, not only Scope 3 categories.
+      ["-c:3.7", "-b:3.6", "-p:3.1", "-u:3.4", "-d:3.9", "-w:3.5", "-vcd:1", "-vcp:1", "-vh:1", "-vvd:1", "-bcp:3.6"],
       "in the registry's own order, which is stated rather than alphabetical by suffix letter");
     for (const variant of variants) {
       assert.match(variant.suffixCode, /^-[a-z]{1,4}$/);
