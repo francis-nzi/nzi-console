@@ -325,6 +325,11 @@ jobs:
       # overwritten by a later one, calculated rows keeping their wording, and tenancy held through the display view.
       - name: A factor's curated identity is held once, for every edition of it
         run: npx tsx --test packages/isolated-backend/tests/factorIdentityReal.test.ts
+      # 0126 — v7 provenance keyed by original_id (definition 9759 is five factors in one dataset, so the definition
+      # cannot be the key), and v7's suffixed ids read as the console's category variants against the real registry,
+      # with the base/variant rule proved on them through the real code.
+      - name: v7 provenance is keyed by original_id, and v7 suffixes are category variants
+        run: npx tsx --test packages/isolated-backend/tests/provenanceOriginalIdReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
