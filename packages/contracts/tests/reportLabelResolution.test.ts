@@ -86,8 +86,18 @@ test("the resolution says where the name came from, so a drawer can explain it",
   assert.deepEqual(froms, ["row", "alias", "source", "clientFactor"]);
 });
 
-test("the alias key names one factor in one dataset", () => {
-  assert.equal(factorAliasKey("ds-1", "f-diesel"), "ds-1|f-diesel");
-  // Two datasets can each carry a factor of the same id; they are different factors.
-  assert.notEqual(factorAliasKey("ds-1", "f-diesel"), factorAliasKey("ds-2", "f-diesel"));
+test("the alias key names one factor across every edition of it (0125)", () => {
+  // Reversed deliberately (REFERENCE_DATA_DESIGN §6): a factor id is the stable cross-year identity, so the 2024 and
+  // 2025 datasets carrying it carry the same factor, and what a client calls it applies to both.
+  assert.equal(factorAliasKey("v7-1234"), "v7-1234");
+});
+
+test("the identity's curated report wording comes after the client's name and before the unchosen row label", () => {
+  const base = { rowReportLabel: FACTOR, sourceLabel: FACTOR, factorSource: "dataset" as const, identityReportLabel: "Purchased Goods and Services" };
+  assert.deepEqual(resolveReportLabel(base), { label: "Purchased Goods and Services", from: "identity" });
+  assert.deepEqual(resolveReportLabel({ ...base, alias: "Fleet fuel" }), { label: "Fleet fuel", from: "alias" });
+  assert.deepEqual(resolveReportLabel({ ...base, rowReportLabel: "Chosen" }), { label: "Chosen", from: "row" });
+  assert.deepEqual(resolveReportLabel({ ...base, identityReportLabel: "  " }), { label: FACTOR, from: "source" });
+  // A client's own factor names itself; the shared identity never applies to it.
+  assert.deepEqual(resolveReportLabel({ ...base, factorSource: "client", clientFactorLabel: "Supplier EPD" }), { label: "Supplier EPD", from: "clientFactor" });
 });

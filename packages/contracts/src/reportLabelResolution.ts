@@ -44,6 +44,8 @@ export type ReportLabelSources = {
   factorSource?: "dataset" | "client" | null;
   /** The client's alias for this dataset factor, if one is in force. */
   alias?: string | null;
+  /** The factor identity's curated report wording (0125), held once for every edition. */
+  identityReportLabel?: string | null;
   /** A client factor's own `report_label` (0034), when the row carries one. */
   clientFactorLabel?: string | null;
 };
@@ -56,7 +58,7 @@ export const rowLabelWasChosen = (rowReportLabel: string | null, sourceLabel: st
   present(rowReportLabel) && rowReportLabel.trim() !== sourceLabel.trim();
 
 /** The name to print, and where it came from — the second is what an evidence drawer shows. */
-export type ResolvedReportLabel = { label: string; from: "row" | "alias" | "clientFactor" | "source" };
+export type ResolvedReportLabel = { label: string; from: "row" | "alias" | "identity" | "clientFactor" | "source" };
 
 export function resolveReportLabel(sources: ReportLabelSources): ResolvedReportLabel {
   if (rowLabelWasChosen(sources.rowReportLabel, sources.sourceLabel)) {
@@ -68,6 +70,8 @@ export function resolveReportLabel(sources: ReportLabelSources): ResolvedReportL
     return { label: sources.sourceLabel.trim(), from: "source" };
   }
   if (present(sources.alias)) return { label: sources.alias.trim(), from: "alias" };
+  // NZI's curated report wording for the factor, the same for every edition of it (REFERENCE_DATA_DESIGN §2).
+  if (present(sources.identityReportLabel)) return { label: sources.identityReportLabel.trim(), from: "identity" };
   // Falls back to the row's own label where it has one — which, not having been chosen, equals the
   // source label anyway; taking it rather than recomputing keeps a legacy row printing what it has
   // always printed.
@@ -75,5 +79,5 @@ export function resolveReportLabel(sources: ReportLabelSources): ResolvedReportL
   return { label: sources.sourceLabel.trim(), from: "source" };
 }
 
-/** The alias key: one client's name for one shared dataset factor. */
-export const factorAliasKey = (datasetId: string, factorId: string) => `${datasetId}|${factorId}`;
+/** The alias key: one client's name for one shared factor, across every edition of it (0125). */
+export const factorAliasKey = (factorId: string) => factorId;

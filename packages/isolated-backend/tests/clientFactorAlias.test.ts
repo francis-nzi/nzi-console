@@ -91,7 +91,7 @@ describe("a client's own name for a factor (NZC-109)", { skip: DATABASE_URL ? fa
   it("renames the row on every screen the moment it is set, with no row touched", async () => {
     assert.equal(await labelOnScreen(JOB), FACTOR_LABEL, "before: the factor's own name");
 
-    await setClientFactorAlias(pool, { clientId: CLIENT, datasetId: "ds-1", factorId: "f-diesel", label: "Fleet fuel" }, context("a-1"));
+    await setClientFactorAlias(pool, { clientId: CLIENT, factorId: "f-diesel", label: "Fleet fuel" }, context("a-1"));
 
     assert.equal(await labelOnScreen(JOB), "Fleet fuel");
     // Resolved on read: the row itself is untouched, so there is nothing to migrate and nothing to
@@ -126,14 +126,14 @@ describe("a client's own name for a factor (NZC-109)", { skip: DATABASE_URL ? fa
     const issued = await createReviewedCrpSnapshot(pool, { jobId: JOB, expectedJobVersion: 1 }, context("a-snap"));
     assert.equal((await measurementOf(issued.data.snapshotId)).reportLabel, "Fleet fuel");
 
-    await setClientFactorAlias(pool, { clientId: CLIENT, datasetId: "ds-1", factorId: "f-diesel", label: "Transport fuel" }, context("a-2"));
+    await setClientFactorAlias(pool, { clientId: CLIENT, factorId: "f-diesel", label: "Transport fuel" }, context("a-2"));
     assert.equal(await labelOnScreen(JOB), "Transport fuel", "the live view follows the new name");
     // A published report is evidence a client or auditor holds. It says what it said.
     assert.equal((await measurementOf(issued.data.snapshotId)).reportLabel, "Fleet fuel");
   });
 
   it("withdraws to the factor's own name, without deleting the record of having been set", async () => {
-    await setClientFactorAlias(pool, { clientId: CLIENT, datasetId: "ds-1", factorId: "f-diesel", label: null }, context("a-3"));
+    await setClientFactorAlias(pool, { clientId: CLIENT, factorId: "f-diesel", label: null }, context("a-3"));
     assert.equal(await labelOnScreen(JOB), FACTOR_LABEL);
     const stored = await db.query<{ label: string; active: boolean }>(
       `SELECT label, active FROM nzi_console.client_factor_aliases WHERE client_id=$1 AND factor_id='f-diesel'`, [CLIENT]);
@@ -143,7 +143,7 @@ describe("a client's own name for a factor (NZC-109)", { skip: DATABASE_URL ? fa
   });
 
   it("revives the same record when the client is named again", async () => {
-    await setClientFactorAlias(pool, { clientId: CLIENT, datasetId: "ds-1", factorId: "f-diesel", label: "Fleet fuel" }, context("a-4"));
+    await setClientFactorAlias(pool, { clientId: CLIENT, factorId: "f-diesel", label: "Fleet fuel" }, context("a-4"));
     const stored = await db.query<{ label: string; active: boolean }>(
       `SELECT label, active FROM nzi_console.client_factor_aliases WHERE client_id=$1 AND factor_id='f-diesel'`, [CLIENT]);
     assert.equal(stored.rows.length, 1, "one name per client per factor, not a pile of them");
@@ -161,10 +161,10 @@ describe("a client's own name for a factor (NZC-109)", { skip: DATABASE_URL ? fa
   it("refuses a name for a factor that does not exist, and a blank one", async () => {
     // A name attached to nothing would sit in the table looking authoritative and resolve for no row.
     await assert.rejects(() => setClientFactorAlias(pool, {
-      clientId: CLIENT, datasetId: "ds-1", factorId: "f-nothing", label: "Ghost",
+      clientId: CLIENT, factorId: "f-nothing", label: "Ghost",
     }, context("a-5")), CommandValidationError);
     await assert.rejects(() => setClientFactorAlias(pool, {
-      clientId: CLIENT, datasetId: "ds-1", factorId: "f-diesel", label: "   ",
+      clientId: CLIENT, factorId: "f-diesel", label: "   ",
     }, context("a-7")), CommandValidationError);
   });
 
@@ -174,7 +174,7 @@ describe("a client's own name for a factor (NZC-109)", { skip: DATABASE_URL ? fa
     // ordering is the point — it is the same answer whether the client does not exist or belongs to
     // somebody else, so the command cannot be used to find out which.
     await assert.rejects(() => setClientFactorAlias(pool, {
-      clientId: "client-nothing", datasetId: "ds-1", factorId: "f-diesel", label: "Ghost",
+      clientId: "client-nothing", factorId: "f-diesel", label: "Ghost",
     }, context("a-6")), AuthorizationError);
   });
 
