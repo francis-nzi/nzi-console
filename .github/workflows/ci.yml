@@ -27,37 +27,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # ── The hold gate (NZC-163) ────────────────────────────────────────────────────────────────────────────────
-  #
-  # A branch awaiting a ruling is named `hold/…`, and while it is, this job fails — so a held branch cannot go
-  # green, and cannot be merged once this check is required. #290 merged ahead of the fix it was blocked on
-  # because its HOLD lived in a commit body the PR page never shows; a signal that depends on someone reading it
-  # under time pressure was always going to fail. The prefix is visible in the PR header and enforced here.
-  #
-  # Cleared after the ruling by renaming the branch off the prefix. In practice the rename did not carry the open
-  # PR (#293 closed; #294 opened for the renamed branch at the same commit), so clearing a hold means a new PR,
-  # whose checks — this one included — run on opening and pass. See the NZC-163 addendum.
-  #
-  # Only enforcing once it is a *required* status check on main — a repository setting, not something this file
-  # can make true.
-  # Superseded by ruling-gate.yml, which holds a migration by its diff as well as a hold/ branch by its name. Kept
-  # until branch protection requires the new check; then retired in its own change (see the NZC-163 addendum).
-  hold:
-    name: no branch awaiting a ruling merges
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Refuse a branch named hold/ until its ruling clears it
-        env:
-          # The PR's source branch; on a push to main there is none, and main is never on hold.
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          case "$BRANCH" in
-            hold/*)
-              echo "::error title=On hold (NZC-163)::'$BRANCH' is awaiting a ruling. Rename it without the hold/ prefix once ruled, then re-run this check."
-              exit 1 ;;
-            *) echo "'$BRANCH' is not on hold." ;;
-          esac
+  # The hold gate lives in ruling-gate.yml (NZC-163, hardened): it holds a pull request whose diff carries a migration
+  # until it is ruled, and any branch named hold/. It runs under pull_request_target from the default branch, so it is a
+  # workflow of its own; the branch-name-only job that used to sit here was retired once that check was required.
 
   checks:
     name: typecheck · build · tests
