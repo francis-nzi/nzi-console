@@ -59,6 +59,10 @@ describe("the plan for the synthetic extract", () => {
     assert.deepEqual(result.refusals, []);
   });
 
+  it("marks nothing a removal when nothing is an ICE negative", () => {
+    assert.deepEqual(result.factors.filter((factor) => factor.isRemoval), []);
+  });
+
   it("collapses an identical repeat, excludes a row not in kgCO2e and a retired -w, and loads the rest", () => {
     assert.equal(result.summary.extracted, 18);
     assert.equal(result.summary.duplicatesCollapsed, 1);
@@ -326,6 +330,7 @@ describe("the dry-run rulings of 25 Sep 2026", () => {
       uom: "kg", year: "2026", region: "", scope: "Scope 3" })]);
     assert.deepEqual(ice.refusals, []);
     assert.equal(ice.factors[0]!.kgco2ePerUnit, "-1.03089278");
+    assert.equal(ice.factors[0]!.isRemoval, true, "the ICE negative was not marked a removal");
     assert.equal(ice.reports.find((finding) => finding.code === "ice-negative")!.count, 1);
     for (const source of ["DESNZ", "CEDA 2025 (Watershed)", "IEA 2025", "NZI"]) {
       const other = plan([row({ db_id: "1202", source, factor: "-0.5", region: "United Kingdom" })]);

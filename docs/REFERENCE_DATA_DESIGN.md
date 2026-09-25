@@ -143,10 +143,15 @@ extract.
 (`SPEND-SIC-05`, `SPEND-PROD-4.5.x`…) from Scope 3 to Scope 1/2 in 2025, and each year's row keeps its own. The resolver
 reads scope from the value row it selects, never from the identity.
 
-**ICE negatives — follow-up for the reporting build.** ICE's "Including Carbon Storage" timber values are negative
-(sequestration), and load as priced (ruled 25 Sep 2026). The resolver and reporting must treat them as storage/removals,
-reported separately, and **never net them into gross Scope totals** (GHG Protocol). Not yet enforced anywhere: an
-open requirement on the reporting build, not the import.
+**Removals: `emission_factors.is_removal` (0128).** The flag marks a factor that may be negative because it represents
+stored or sequestered carbon — at present exactly ICE's "Including Carbon Storage" timber values, which load as priced
+(ruled 25 Sep 2026). The database refuses any negative factor without it (`CHECK (kgco2e_per_unit >= 0 OR
+is_removal)`), and the import sets it only on ICE negatives, so the two guard each other: a non-ICE negative reaches the
+database with `is_removal = false` and is refused. The flag defaults to false.
+
+**Removals — follow-up for the reporting build.** A factor with `is_removal` is reported separately, as
+storage/removals, and **never netted into gross Scope totals** (GHG Protocol). Nothing reads the flag yet: this is an
+open requirement on the resolver and reporting, not the import.
 
 **Load reports (do not refuse):** the same `original_id` with a different category or label across datasets (wording
 drifts between editions; a ruling decides whether it is drift or reuse); an `original_id` shared by two source

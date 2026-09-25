@@ -122,4 +122,27 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
       assert.equal(other.rows.length, 0, "another organisation can see net-zero-international's reference data");
     } finally { await db.query("ROLLBACK"); }
   });
+
+  it("writes an ICE negative as a removal, and the database still refuses a negative that is not one (0128)", async () => {
+    const iceRow = { ...parseCsv(readFileSync(resolve(here, "fixtures/v7-factor-lookup-synthetic.csv"), "utf8"))[0]!,
+      db_id: "9001", original_id: "526", source: "RICS / BRE ICE Database V4.1 (Oct 2025)", dataset_id: "75", year: "2027",
+      region: "", scope: "Scope 3", uom: "kg", factor: "-1.03089278" };
+    const ice = planV7Load([iceRow], await listCategoryVariants(db));
+    assert.deepEqual(ice.refusals, []);
+    const outcome = await loadV7Plan(database.pool, ice);
+    assert.equal(outcome.factorsInserted, 1);
+    const stored = await db.query(`SELECT kgco2e_per_unit::text AS value, is_removal FROM nzi_console.emission_factors
+      WHERE organisation_id=$1 AND dataset_id='ice-global-2027' AND factor_id='ice-526'`, [ORG]);
+    assert.deepEqual(stored.rows, [{ value: "-1.03089278", is_removal: true }]);
+    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factors WHERE organisation_id=$1 AND is_removal`), 1,
+      "a row other than the ICE negative was marked a removal");
+
+    // Defence in depth: a negative that reaches the load without the flag — past the transform's ICE-only rule — is
+    // refused by the database, and the whole plan with it.
+    const smuggled = planV7Load([{ ...iceRow, db_id: "9002", source: "DESNZ", original_id: "88_1", year: "2028", factor: "0.5" }], await listCategoryVariants(db));
+    const tampered: LoadPlan = { ...smuggled, factors: smuggled.factors.map((factor) => ({ ...factor, kgco2ePerUnit: "-0.5" })) };
+    await assert.rejects(() => loadV7Plan(database.pool, tampered), /emission_factors_kgco2e_per_unit_check/);
+    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factor_datasets WHERE organisation_id=$1 AND dataset_id='uk-ghg-gb-2028'`), 0,
+      "the refused plan left its dataset behind");
+  });
 });

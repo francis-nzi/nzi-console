@@ -145,6 +145,12 @@ export type PlannedIdentity = {
 export type PlannedFactor = {
   datasetId: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: string; scopes: string[];
   sourceLevels: string[]; sourceCategory: string | null; ghgUnit: string; legacyOriginalId: string; legacyDbId: string;
+  /**
+   * Stored or sequestered carbon (0128): true on exactly the ICE negatives, the only rows that may be negative. Written
+   * to `emission_factors.is_removal`, whose check refuses any negative without it — so a negative that got past the
+   * ICE-only rule here is still refused by the database.
+   */
+  isRemoval: boolean;
 };
 export type Finding = { code: string; message: string; count: number; examples: string[] };
 
@@ -339,6 +345,7 @@ export function planV7Load(
     planned.push({
       datasetId: "", factorId: `${family}-${normalised}`, label, activityUnit: unit, kgco2ePerUnit: factor, scopes: [scope],
       sourceLevels: levels, sourceCategory: category, ghgUnit, legacyOriginalId: verbatimCode!, legacyDbId: dbId,
+      isRemoval: family === "ice" && Number(factor) < 0,
       family, country, year, v7Dataset, sourceName: sourceName!, validFrom: clean(row.valid_from), validTo: clean(row.valid_to),
       fileName: clean(row.file_name), reportLabel: clean(row.report_label), code, column: clean(row.column_text) ?? label,
     });
@@ -477,8 +484,8 @@ export function planV7Load(
     }
   }
 
-  const factors = (kept as Row[]).map(({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId }) =>
-    ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId }));
+  const factors = (kept as Row[]).map(({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }) =>
+    ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }));
   return {
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
     datasets, identities, factors,
