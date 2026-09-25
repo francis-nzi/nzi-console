@@ -154,17 +154,29 @@ re-taken after the filter.
 | `name` / `version` | v7 dataset name / source edition |
 | `valid_from` / `valid_to` | min / max of its year-values |
 | `country_code` / `source_name` | v7 dataset |
-| `status` / `synthetic` | `'active'` / `false` |
-| `licence` | per source — DESNZ/DEFRA: Open Government Licence v3.0; the others **to confirm** (IEA is not open) |
+| `status` / `synthetic` | `'active'`, or `'superseded'` for an older edition that shares its slug (below) / `false` |
+| `licence` | the interim template for every source (below) |
 | `source_system` / `source_family` / `legacy_dataset_id` / `content_sha256` | provenance |
 
 **Source families** (confirmed): DESNZ, DEFRA and DEFRA (2023 Revision) → `uk-ghg`; IEA 2025 → `iea`; CEDA 2025
 (Watershed) → `ceda`; RICS / BRE ICE → `ice`; SWC (Small World Consulting) → `swc`; NZI → `nzi`.
 
-**One slug collision to rule before the load.** DEFRA and DEFRA (2023 Revision) are both `uk-ghg`, so a GB 2023 original
-and its revision would share `uk-ghg-gb-2023` and overlap in validity — the load refuses both being active. Proposed:
-the revision takes the plain slug and is `active`; the original loads as `uk-ghg-gb-2023-original`, `superseded`, kept
-for provenance and for any row already priced against it.
+**When two editions fold into one family, country and year** (ruled 25 Sep 2026). The newer or revised edition takes the
+plain slug and is `active`; each older one takes a suffixed slug and is `superseded` — kept for provenance and for any
+row already priced against it, never auto-selected for a job. The load applies this itself:
+
+- **Order:** an edition whose v7 name marks it as a revision ranks above the unrevised one; otherwise the later source
+  edition ranks higher.
+- **Slug of an older edition:** `-original` when it is the unrevised edition, otherwise its source edition, slugged.
+- **Refused and reported for Francis to rule:** any group the order cannot settle — two editions with the same edition
+  and no revision marker, or editions that cannot be compared.
+
+Applied: DEFRA (2023 Revision) → `uk-ghg-gb-2023`, `active`; DEFRA's original 2023 edition → `uk-ghg-gb-2023-original`,
+`superseded`.
+
+**Licence** (interim, ruled 25 Sep 2026). Every source carries the same template, which satisfies the field's NOT NULL:
+"Source: <name>. Free public information, reproduced with attribution for open stakeholder verification." Verifying
+IEA's rights is a recorded later check, not a blocker.
 
 **Scopes** (confirmed): `Scope 1` / `Scope 2` / `Scope 3` → `'1'` / `'2'` / `'3'`.
 
@@ -190,7 +202,14 @@ registry's spellings through an explicit table (confirmed):
 | Room per night | nights |
 | kWh (Gross CV), kWh (Net CV) | kWh — distinct factors, the calorific basis kept in the label and `source_levels` |
 | m, million litres, per FTE Working Hour | loaded verbatim and reported: pickable by a person, never resolved by a rule until mapped |
-| currencies | money — **the currency filter is pending** (GBP first, or import all) |
+| currencies | loaded as they are, every currency (ruled: no currency filter — one currency per spend row, so no row is multiplied); resolvable once enabled (below) |
+
+**Currencies, at enablement rather than at import.** The only import filter is `ghg_unit = 'kgCO2e'`, so spend
+factors land in every currency they are published in. For local-currency site spend to resolve, each currency is added to
+the console's money dimension as a **non-converting** unit — no exchange rates; a factor priced per EUR applies to an
+entry in EUR, never to one in GBP — and to the spend categories' accepted units. That is its own small change when spend
+in that currency is enabled; until then a non-GBP factor is pickable and never resolved by a rule, like any unmapped
+unit.
 
 **Division of work:** Francis runs the `psql` extract on live and the load on the console database; the transform is
 built and tested here against a real local Postgres with a sample. The branch is gated (NZC-163) and ruled before it
@@ -262,8 +281,8 @@ Each a gated review stop (NZC-163); migrations are ruled before merge.
 
 ## 9. Inputs outstanding
 
-- The currency filter: GBP first, or import every currency.
-- The DEFRA 2023 original-versus-revision slug and status (§5) — the proposal stands unless ruled otherwise.
-- Licence text for the sources other than DESNZ/DEFRA; IEA's rights in particular.
 - The organisation list on the console database.
 - A 50–200-row sample in the extract's exact format.
+
+Recorded for later, not blocking: verification of IEA's rights behind the interim licence text; adding each currency to
+the money vocabulary and the spend accept-lists when its spend is enabled.
