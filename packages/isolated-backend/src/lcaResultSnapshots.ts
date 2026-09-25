@@ -24,7 +24,7 @@ import { computeLcaAssessmentResult } from "./lcaCalcEngine";
 async function gatherFactorCitations(db: Queryable, organisationId: string, jobId: string, assessmentId: string): Promise<LcaFactorCitation[]> {
   const { rows: dataset } = await db.query<{ label: string; version: string; dataset: string; original_id: string }>(
     `SELECT DISTINCT f.label, d.version, d.name AS dataset, f.factor_id AS original_id
-       FROM nzi_console.emission_factors f
+       FROM nzi_console.emission_factors_display f
        JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
        JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
       WHERE f.organisation_id=$1 AND f.active=true AND (

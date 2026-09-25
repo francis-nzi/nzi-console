@@ -56,7 +56,7 @@ export function entryExtractionStub(db: Queryable): EntryExtractionModel {
       // The job's own datasets, never the whole catalogue.
       const { rows } = await db.query<{ dataset_id: string; factor_id: string; label: string; activity_unit: string }>(
         `SELECT f.dataset_id, f.factor_id, f.label, f.activity_unit
-           FROM nzi_console.emission_factors f
+           FROM nzi_console.emission_factors_display f
            JOIN nzi_console.job_dataset_selections s
              ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id)
           WHERE s.job_id=$1 AND f.active=true

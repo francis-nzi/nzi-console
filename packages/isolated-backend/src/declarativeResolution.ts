@@ -81,7 +81,7 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
   const factors = (await db.query<{ factor_id: string; dataset_id: string; version: string; label: string; activity_unit: string; scopes: string[] }>(
     `SELECT f.factor_id, f.dataset_id, d.version, f.label, f.activity_unit, f.scopes
        FROM nzi_console.job_dataset_selections s
-       JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
+       JOIN nzi_console.emission_factors_display f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
        JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (f.organisation_id, f.dataset_id)
       WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows
     .map((row): AvailableFactor => ({ factorId: row.factor_id, datasetId: row.dataset_id, datasetVersion: row.version,

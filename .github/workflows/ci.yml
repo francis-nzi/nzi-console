@@ -348,6 +348,11 @@ jobs:
       # calculated number per NZC-162, with companions still off, so no T&D row appears.
       - name: A portal entry records how its electricity arrived, and acceptance carries it
         run: npx tsx --test packages/isolated-backend/tests/portalSupplySourceReal.test.ts
+      # 0125 — a factor's curated identity is held once for every edition: aliases folded and re-keyed by factor (seeded
+      # before the migration, so the fold is proved on real prior data), curation visible in every edition, never
+      # overwritten by a later one, calculated rows keeping their wording, and tenancy held through the display view.
+      - name: A factor's curated identity is held once, for every edition of it
+        run: npx tsx --test packages/isolated-backend/tests/factorIdentityReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
