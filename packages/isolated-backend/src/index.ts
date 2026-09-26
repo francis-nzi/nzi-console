@@ -5,6 +5,7 @@ export * from "./errors";
 export * from "./auth";
 export * from "./credentials";
 export * from "./login";
+export * from "./staffEnrolment";
 export * from "./portalTerms";
 export * from "./portalAnalytics";
 export * from "./portalActions";

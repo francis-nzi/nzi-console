@@ -344,6 +344,12 @@ jobs:
       # to false, a negative without it is refused whoever writes it, and the flag cannot be cleared from a negative row.
       - name: A negative emission factor is allowed only as a removal
         run: npx tsx --test packages/isolated-backend/tests/emissionFactorRemovalsReal.test.ts
+      # 0129 — staff self-enrolment, as a security stop: the operator never holds either factor, the token is single-use,
+      # expiring and stored hashed, nothing signs in before a code is proved, five wrong codes end the link, a working
+      # account cannot be taken over, the operator's role cannot read the pending secrets, the auth role writes only
+      # enrolment audit events — and the result signs in through the ordinary staff login.
+      - name: Staff self-enrolment is safe for a real person
+        run: npx tsx --test packages/isolated-backend/tests/staffEnrolmentReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.

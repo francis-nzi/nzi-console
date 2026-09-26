@@ -331,3 +331,31 @@ the dashboard setting — the old discipline is the fallback:
 npm run migrate:status -w @nzi/isolated-backend   # read-only: what is applied, what is pending
 npm run migrate -w @nzi/isolated-backend          # applies it, in order, with the ledger
 ```
+
+## Staff enrolment (0129)
+
+How a real person gets sign-in to the console. Nobody but that person ever holds their password or their
+authenticator secret — not the operator, not the database in the clear.
+
+1. **They are on the roster.** `seed:reference-data` (in the Render Shell, with `NZI_DEMO_ORGANISATION_ID` set to the
+   target organisation) creates each member at the least-privilege role, name and address sealed. Raising a role is
+   a separate, audited act.
+2. **Issue their link** in the Render Shell of the console service:
+
+   ```
+   npm run enrol:staff -w @nzi/isolated-backend -- <userId> --actor <your name> --base-url https://<console host>
+   ```
+
+   It prints a single-use link, valid for 72 hours, **once** — the token is stored only as a hash. Send it to the
+   person privately. Issuing again revokes the previous link; `--revoke` withdraws it outright. Every issue and revoke
+   is audited under `operator:<your name>`.
+3. **They enrol** at `/enrol`: set their own password, add the key the page shows to their authenticator, and confirm
+   a code. Only that confirmation writes their credential; five wrong codes end the link. They then sign in at `/login`.
+
+The link carries its token in the URL fragment, so it never reaches a server log. Mail is suppressed on this service by
+design (see *This service sends nothing*), which is why the operator delivers the link. Someone with Render Shell
+access could use a link they issued — but that person already holds the database, and the audit trail and the
+single-use link make it visible: the real person's link would no longer work.
+
+**Not covered yet:** recovery for someone who already has working sign-in (a lost device). Enrolment refuses to
+replace an enabled credential; recovery is its own, deliberate build.
