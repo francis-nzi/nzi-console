@@ -82,7 +82,7 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
     // #290 enabled electricity ahead of this fix, and with the form sending its option key every electricity
     // quick-add with a picked factor was refused at save. Both halves, against the migrations as shipped.
     const refs = entryFactorRefsFor([{ factorSource: "dataset", datasetId: "synthetic-gb-2026", clientFactorId: null,
-      factorId: "electricity-demo", label: "UK electricity — demonstration factor", activityUnit: "kWh", synthetic: true, scopes: ["2"], datasetVersion: "2026 demo v1" }]);
+      factorId: "uk-ghg-7_400_4000_5_1", label: "UK electricity — demonstration factor", activityUnit: "kWh", synthetic: true, scopes: ["2"], datasetVersion: "2026 demo v1" }]);
     const input = emissionEntryDraftToScopeRow({
       activity: "Meter", quantity: "1000", unit: "kWh", vatPercent: "", glCode: "", spendCategoryId: "", registration: "",
       manualMode: false, manualDetail: "", factorId: refs[0]!.id, qualityTier: "Measured", dataConfidence: "M — Medium",
@@ -92,7 +92,7 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
     const created = await createScopeRow(database.pool, { ...input, jobId: JOB }, context());
     const row = (await db.query<{ factor_id: string; version: number; provenance_json: Record<string, any> }>(
       `SELECT factor_id, version, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
-    assert.equal(row.factor_id, "electricity-demo");
+    assert.equal(row.factor_id, "uk-ghg-7_400_4000_5_1");
     assert.equal(row.provenance_json.declarativeResolution.decision, "matched", "the person's pick did not match the declared factor");
     await calculateScopeRow(database.pool, { jobId: JOB, rowId: created.data.rowId, expectedVersion: row.version }, context());
     const calculated = (await db.query<{ calculated_tco2e: string }>(

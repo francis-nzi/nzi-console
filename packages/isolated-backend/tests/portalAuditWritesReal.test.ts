@@ -125,12 +125,12 @@ describe("portal writes that audit through jsonb_build_object, against real Post
   it("setPortalDataEntryBucketGrant grants a bucket and audits it", async () => {
     const result = await setPortalDataEntryBucketGrant(database.pool, staff, {
       portalUserId: "portal-main", jobId: JOB, scopeRowId: "row-elec", entryKind: "manual_activity",
-      factorIds: ["electricity-demo"], siteIds: [],
+      factorIds: ["uk-ghg-7_400_4000_5_1"], siteIds: [],
     });
     const after = await audit("portal.data_entry.bucket.grant", result.bucketGrantId);
     assert.deepEqual(after, {
       portalUserId: "portal-main", jobId: JOB, scopeRowId: "row-elec", entryKind: "manual_activity",
-      factorIds: ["electricity-demo"], siteIds: [], units: ["kWh"], pgsCategoryIds: [],
+      factorIds: ["uk-ghg-7_400_4000_5_1"], siteIds: [], units: ["kWh"], pgsCategoryIds: [],
     }, "the id lists must stay JSON arrays");
   });
 

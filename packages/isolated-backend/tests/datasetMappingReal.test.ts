@@ -32,8 +32,8 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
 
   /** The demonstration dataset's factors, as the resolver sees them. */
   const available = [
-    { factorId: "electricity-demo", scopes: ["2"], unit: "kWh" },
-    { factorId: "diesel-demo", scopes: ["1", "3"], unit: "litres" },
+    { factorId: "uk-ghg-7_400_4000_5_1", scopes: ["2"], unit: "kWh" },
+    { factorId: "uk-ghg-1_101_1011_8_1", scopes: ["1", "3"], unit: "litres" },
     { factorId: "gas-demo", scopes: ["1"], unit: "kWh" },
   ];
 
@@ -88,7 +88,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     });
     assert.equal(outcome.kind, "resolved");
     if (outcome.kind !== "resolved") return;
-    assert.equal(outcome.factorId, "electricity-demo");
+    assert.equal(outcome.factorId, "uk-ghg-7_400_4000_5_1");
     assert.equal(outcome.scope.agreement, "agrees");
   });
 
@@ -103,12 +103,14 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
 
     // Deactivated, not deleted — and able to fail: with the row switched back on, inside a transaction that
     // is rolled back, the same entry resolves to diesel again. Without this the assertion above would pass
-    // just as well if the rule had never existed or the read had stopped working.
+    // just as well if the rule had never existed or the read had stopped working. 0130 left this rule as it was, still
+    // naming the retired `diesel-demo`, so that factor is offered for this one check.
     await db.query("BEGIN");
     try {
       await db.query(`UPDATE nzi_console.input_spec_factor_rules SET active = true WHERE rule_key = 'fuel-litres'`);
       const revived = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
-        rules: await factorRulesFor(db, "1.company-vehicles"), specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
+        rules: await factorRulesFor(db, "1.company-vehicles"), specGhgCategory: "1", entry: { unit: "litres" },
+        available: [...available, { factorId: "diesel-demo", scopes: ["1", "3"], unit: "litres" }], registry });
       assert.equal(revived.kind === "resolved" ? revived.factorId : null, "diesel-demo");
     } finally {
       await db.query("ROLLBACK");
@@ -155,12 +157,12 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     // This is the exact shape that went wrong in 0109: written as `kind <> 'basis-branch' OR field IS
     // NOT NULL`, the NULL makes the whole expression NULL and the row is admitted. Enumerating each kind
     // in full is what makes the refusal real, and this is the assertion that proves it.
-    await refused(insert, ["1.company-vehicles", "no-basis", 90, "basis-branch", "diesel-demo", null, null, null],
+    await refused(insert, ["1.company-vehicles", "no-basis", 90, "basis-branch", "uk-ghg-1_101_1011_8_1", null, null, null],
       /input_spec_factor_rules_shape/);
-    await refused(insert, ["1.company-vehicles", "half-basis", 91, "basis-branch", "diesel-demo", "unit", null, null],
+    await refused(insert, ["1.company-vehicles", "half-basis", 91, "basis-branch", "uk-ghg-1_101_1011_8_1", "unit", null, null],
       /input_spec_factor_rules_shape/);
     // And an empty string is not a basis either.
-    await refused(insert, ["1.company-vehicles", "blank-basis", 92, "basis-branch", "diesel-demo", "unit", "  ", null],
+    await refused(insert, ["1.company-vehicles", "blank-basis", 92, "basis-branch", "uk-ghg-1_101_1011_8_1", "unit", "  ", null],
       /input_spec_factor_rules_shape/);
   });
 
@@ -188,7 +190,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
   });
 
   it("refuses a rule for a category that does not exist", async () => {
-    await refused(insert, ["9.not-a-category", "orphan", 97, "lookup", "diesel-demo", null, null, null],
+    await refused(insert, ["9.not-a-category", "orphan", 97, "lookup", "uk-ghg-1_101_1011_8_1", null, null, null],
       /input_spec_categories|foreign key/i);
   });
 
@@ -210,7 +212,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
     await assert.rejects(
       () => db.query(`INSERT INTO nzi_console.input_spec_factor_rules
         (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
-        VALUES ('1.company-vehicles','sneaky',99,'lookup','diesel-demo','app','app')`),
+        VALUES ('1.company-vehicles','sneaky',99,'lookup','uk-ghg-1_101_1011_8_1','app','app')`),
       /permission denied/i);
     await db.query("ROLLBACK");
 
@@ -225,7 +227,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
   let db: pg.Client;
   let registry: CategoryVariant[];
 
-  const available = [{ factorId: "diesel-demo", scopes: ["1", "3"], unit: "litres" }, { factorId: "gas-demo", scopes: ["1"], unit: "kWh" }];
+  const available = [{ factorId: "uk-ghg-1_101_1011_8_1", scopes: ["1", "3"], unit: "litres" }, { factorId: "gas-demo", scopes: ["1"], unit: "kWh" }];
 
   before(async () => {
     database = (await createDisposableDatabase("enriched"))!;
@@ -256,7 +258,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
   const withCoarserRule = async (run: () => Promise<void>) => {
     await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
-      VALUES ('1.company-vehicles','test-coarser-litres',10,'lookup','diesel-demo','test','test')`);
+      VALUES ('1.company-vehicles','test-coarser-litres',10,'lookup','uk-ghg-1_101_1011_8_1','test','test')`);
     try {
       const probe = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
         rules: await vehicleRules(), specGhgCategory: "1", entry: { unit: "litres" }, available, registry });
@@ -300,12 +302,12 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     });
     assert.equal(outcome.kind, "resolved");
     if (outcome.kind !== "resolved") return;
-    assert.equal(outcome.factorId, "diesel-demo");
+    assert.equal(outcome.factorId, "uk-ghg-1_101_1011_8_1");
     assert.equal(outcome.rule.ruleKey, "dvla-diesel", "the unit rule answered instead of the lookup");
   });
 
   it("leaves the entry unresolved when the lookup finds nothing, though a coarser rule would have matched", async () => {
-    // The anti-vacuity pairing. `unit: litres` means the coarser rule *would* resolve to `diesel-demo` — so a
+    // The anti-vacuity pairing. `unit: litres` means the coarser rule *would* resolve to `uk-ghg-1_101_1011_8_1` — so a
     // resolver that treated a failed lookup as "no opinion" would return a factor here, and this asserts it
     // does not. The vehicle might have been petrol; nobody would have known.
     await withCoarserRule(async () => {
@@ -349,7 +351,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     const attributes = vehicleAttributes(found.vehicle);
     assert.equal(attributes.fuel, "petrol", "AB12CDE is no longer a petrol in the stub");
 
-    // `unit: litres` means the coarser rule would resolve to diesel-demo if it were allowed to.
+    // `unit: litres` means the coarser rule would resolve to uk-ghg-1_101_1011_8_1 if it were allowed to.
     await withCoarserRule(async () => {
       const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
         rules: await vehicleRules(), specGhgCategory: "1",
@@ -395,7 +397,7 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     const insert = `INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field,
        basis_field_key, basis_value, created_by, updated_by)
-      VALUES ($1,$2,$3,'enriched','diesel-demo',$4,$5,$6,$7,'test','test')`;
+      VALUES ($1,$2,$3,'enriched','uk-ghg-1_101_1011_8_1',$4,$5,$6,$7,'test','test')`;
     const refused = async (values: unknown[]) => {
       await assert.rejects(() => db.query(insert, values), /input_spec_factor_rules_shape/);
     };

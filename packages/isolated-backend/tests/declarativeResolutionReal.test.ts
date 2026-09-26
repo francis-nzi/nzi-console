@@ -53,7 +53,7 @@ describe("the write path resolves declaratively where a category is switched on,
     datasetId: null, factorId: null, factorVersion: null, factorLabel: null, qualityTier: "measured" as const,
     ...over,
   });
-  const gridFactor = { datasetId: "synthetic-gb-2026", factorId: "electricity-demo", factorVersion: "2026 demo v1", factorLabel: "UK electricity — demonstration factor" };
+  const gridFactor = { datasetId: "synthetic-gb-2026", factorId: "uk-ghg-7_400_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "UK electricity — demonstration factor" };
 
   const stored = async (rowId: string) => (await db.query<{ factor_id: string | null; dataset_id: string | null; factor_version: string | null; provenance_json: Record<string, any>; lineage_json: Array<{ title: string }> }>(
     `SELECT factor_id, dataset_id, factor_version, provenance_json, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0]!;
@@ -127,9 +127,9 @@ describe("the write path resolves declaratively where a category is switched on,
 
   it("stores exactly what it was sent while the category is off — even a factor it would refuse", async () => switchedOff(["2.purchased-electricity"], async () => {
     // The T&D factor as a Scope 2 primary is wrong, and the path before 0121 takes it. Off must mean exactly that.
-    const tnd = await createScopeRow(pool, electricity({ datasetId: "synthetic-gb-2026", factorId: "electricity-td-demo", factorVersion: "2026 demo v1", factorLabel: "T&D" }), context());
+    const tnd = await createScopeRow(pool, electricity({ datasetId: "synthetic-gb-2026", factorId: "uk-ghg-13_402_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "T&D" }), context());
     const row = await stored(tnd.data.rowId);
-    assert.equal(row.factor_id, "electricity-td-demo");
+    assert.equal(row.factor_id, "uk-ghg-13_402_4000_5_1");
     assert.equal("declarativeResolution" in row.provenance_json, false, "a provenance key was added to a row in an un-enabled category");
 
     const empty = await createScopeRow(pool, electricity(), context());
@@ -142,7 +142,7 @@ describe("the write path resolves declaratively where a category is switched on,
     await enabled(["2.purchased-electricity"], async () => {
       const created = await createScopeRow(pool, electricity(), context());
       const row = await stored(created.data.rowId);
-      assert.equal(row.factor_id, "electricity-demo");
+      assert.equal(row.factor_id, "uk-ghg-7_400_4000_5_1");
       assert.equal(row.dataset_id, "synthetic-gb-2026");
       assert.equal(row.factor_version, "2026 demo v1");
       assert.equal(row.provenance_json.declarativeResolution.decision, "filled");
@@ -164,7 +164,7 @@ describe("the write path resolves declaratively where a category is switched on,
       const before = await rowCount();
       await assert.rejects(
         () => createScopeRow(pool, electricity({ ...gridFactor, factorId: "electricity-green-demo", factorLabel: "Green" }), context()),
-        (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /electricity-demo/.test(error.issues[0].message));
+        (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /uk-ghg-7_400_4000_5_1/.test(error.issues[0].message));
       assert.equal(await rowCount(), before, "a refused write left a row behind");
     });
   });
@@ -176,12 +176,12 @@ describe("the write path resolves declaratively where a category is switched on,
         (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_VALID_FOR_ROW" && /not a Scope 2 factor/.test(error.issues[0].message));
       // The seeded T&D factor is Scope 3 only, so the scope clause catches it first. Tagged {2,3} — as a library
       // may tag it — it passes the scope clause, and the companion clause is what refuses it.
-      await db.query(`UPDATE nzi_console.emission_factors SET scopes = ARRAY['2','3'] WHERE factor_id = 'electricity-td-demo'`);
+      await db.query(`UPDATE nzi_console.emission_factors SET scopes = ARRAY['2','3'] WHERE factor_id = 'uk-ghg-13_402_4000_5_1'`);
       try {
-        await assert.rejects(() => createScopeRow(pool, electricity({ ...gridFactor, factorId: "electricity-td-demo" }), context()),
+        await assert.rejects(() => createScopeRow(pool, electricity({ ...gridFactor, factorId: "uk-ghg-13_402_4000_5_1" }), context()),
           (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_VALID_FOR_ROW" && /companion/.test(error.issues[0].message));
       } finally {
-        await db.query(`UPDATE nzi_console.emission_factors SET scopes = ARRAY['3'] WHERE factor_id = 'electricity-td-demo'`);
+        await db.query(`UPDATE nzi_console.emission_factors SET scopes = ARRAY['3'] WHERE factor_id = 'uk-ghg-13_402_4000_5_1'`);
       }
     });
   });
@@ -195,14 +195,14 @@ describe("the write path resolves declaratively where a category is switched on,
       const trail = (await stored(created.data.rowId)).provenance_json.declarativeResolution;
       assert.equal(trail.decision, "override");
       assert.equal(trail.deviatedBy, ACTOR);
-      assert.equal(trail.deviatedFrom, "electricity-demo");
+      assert.equal(trail.deviatedFrom, "uk-ghg-7_400_4000_5_1");
     });
   });
 
   it("never lets an override deviate from what the row may carry", async () => {
     await enabled(["2.purchased-electricity"], async () => {
       await assert.rejects(() => createScopeRow(pool, electricity({
-        ...gridFactor, factorId: "electricity-td-demo", overrideTco2e: 1, overrideReason: "attempt",
+        ...gridFactor, factorId: "uk-ghg-13_402_4000_5_1", overrideTco2e: 1, overrideReason: "attempt",
       }), context()), (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_VALID_FOR_ROW");
     });
   });
@@ -222,7 +222,7 @@ describe("the write path resolves declaratively where a category is switched on,
       }, context()), (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED");
 
       await updateScopeRow(pool, { ...electricity(gridFactor), rowId: legacy.data.rowId, expectedVersion: await version(), enabled: true }, context());
-      assert.equal((await stored(legacy.data.rowId)).factor_id, "electricity-demo", "the correcting edit did not go through");
+      assert.equal((await stored(legacy.data.rowId)).factor_id, "uk-ghg-7_400_4000_5_1", "the correcting edit did not go through");
     });
   });
 
@@ -239,7 +239,7 @@ describe("the write path resolves declaratively where a category is switched on,
     await enabled(["1.company-vehicles"], async () => {
       const created = await createScopeRow(pool, vehicle(diesel), context());
       const row = await stored(created.data.rowId);
-      assert.equal(row.factor_id, "diesel-demo");
+      assert.equal(row.factor_id, "uk-ghg-1_101_1011_8_1");
       const trail = row.provenance_json.declarativeResolution;
       assert.equal(trail.ruleKey, "dvla-diesel");
       assert.equal(trail.assertedVehicleAttributes.trust, "asserted-at-capture");
@@ -251,7 +251,7 @@ describe("the write path resolves declaratively where a category is switched on,
     await enabled(["1.company-vehicles"], async () => {
       await assert.rejects(() => createScopeRow(pool, vehicle({ ...diesel,
         datasetId: "synthetic-gb-2026", factorId: "gas-demo", factorVersion: "2026 demo v1", factorLabel: "Gas" }), context()),
-      (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /diesel-demo/.test(error.issues[0].message));
+      (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /uk-ghg-1_101_1011_8_1/.test(error.issues[0].message));
     });
   });
 

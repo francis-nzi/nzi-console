@@ -68,7 +68,7 @@ const { defaultPortalFactorId } = ((portalDefaultModule as any).defaultPortalFac
  * entries the write path refuses with UNIT_NOT_ACCEPTED. Their resolver outcome is accurate; their premise is
  * not an input anyone can submit. Found in Stop 2a, and the reason Stop 2's own proofs go through the commands.
  *
- * **A person's pick is the factor's own id.** The CRM rows model a person picking, say, `electricity-demo`. Until
+ * **A person's pick is the factor's own id.** The CRM rows model a person picking, say, `uk-ghg-7_400_4000_5_1`. Until
  * the quick-add fix (found in Stop 2b) the form actually sent its option key, `dataset:<id>|<factor>`, which no
  * factor has: the row was stored and calculation refused it. So those rows described what the form was meant to
  * do rather than what it did, and are accurate only from that fix on.
@@ -285,7 +285,7 @@ describe("wiring characterisation — today's paths against the declarative reso
         // No plate. Today a person picks; in the CRM the unit then comes *from* that factor, which is what
         // the unit basis-branch reads. The plausible picks are the ones a consultant would make for the fuel.
         const unplated: Array<[string, string, string | null]> = [
-          ["diesel, litres", "litres", "diesel-demo"],
+          ["diesel, litres", "litres", "uk-ghg-1_101_1011_8_1"],
           ["petrol, litres", "litres", dataset === "probe" ? "probe-petrol-litres" : null],
           ["diesel car, km", "km", dataset === "probe" ? "probe-car-diesel-km" : null],
         ];
@@ -348,9 +348,9 @@ describe("wiring characterisation — today's paths against the declarative reso
         WHERE s.job_id=$1 AND f.factor_id = ANY($2) AND ${primaryFactorFor("f", "r")}
         ORDER BY f.factor_id`, [JOB_SHIPPED, allowed, spec, category])).rows.map((row) => row.factor_id);
     const allowLists: Array<[string, string, string[], string]> = [
-      ["2.purchased-electricity", "2", ["electricity-demo", "electricity-td-demo"], "electricity-demo"],
-      ["2.purchased-electricity", "2", ["electricity-demo", "electricity-us-demo"], "electricity-demo"],
-      ["1.company-vehicles", "1", ["diesel-demo", "gas-demo"], "diesel-demo"],
+      ["2.purchased-electricity", "2", ["uk-ghg-7_400_4000_5_1", "uk-ghg-13_402_4000_5_1"], "uk-ghg-7_400_4000_5_1"],
+      ["2.purchased-electricity", "2", ["uk-ghg-7_400_4000_5_1", "electricity-us-demo"], "uk-ghg-7_400_4000_5_1"],
+      ["1.company-vehicles", "1", ["uk-ghg-1_101_1011_8_1", "gas-demo"], "uk-ghg-1_101_1011_8_1"],
     ];
     for (const [category, spec, allowed, plausiblePick] of allowLists) {
       const offered = await offeredFor(category, spec, allowed);
@@ -384,7 +384,7 @@ describe("wiring characterisation — today's paths against the declarative reso
       const { outcome, factors } = await declared(JOB_SHIPPED, "1.company-vehicles", "1", { registrationFinder: plate, unit: "litres" }, { dvla: attributes });
       record({
         id: `shipped:1.company-vehicles:portal-plate-${name}-litres`, dataset: "shipped", category: "1.company-vehicles",
-        entry: `portal plate → ${name}, bucket granted diesel-demo, gas-demo, recorded in litres`,
+        entry: `portal plate → ${name}, bucket granted uk-ghg-1_101_1011_8_1, gas-demo, recorded in litres`,
         before: landed
           ? { kind: "automated", path: "portal lookup → attributes in the draft → F1 at acceptance (2d, P3)", factorId: landed,
             detail: `the declared ${landed} lands unless the reviewer records why the client's pick stands` }
@@ -431,7 +431,7 @@ describe("wiring characterisation — today's paths against the declarative reso
     // same comparison. If the harness compared the resolver with itself, or read a cached rule set, this
     // would still say identical.
     const baseline = await declared(JOB_SHIPPED, "2.purchased-electricity", "2", { unit: "kWh", supplySource: "grid" });
-    assert.equal(baseline.outcome.kind === "resolved" ? baseline.outcome.factorId : null, "electricity-demo");
+    assert.equal(baseline.outcome.kind === "resolved" ? baseline.outcome.factorId : null, "uk-ghg-7_400_4000_5_1");
 
     await db.query("BEGIN");
     try {
@@ -441,7 +441,7 @@ describe("wiring characterisation — today's paths against the declarative reso
       const mutated = await declared(JOB_SHIPPED, "2.purchased-electricity", "2", { unit: "kWh", supplySource: "grid" });
       assert.equal(mutated.outcome.kind === "resolved" ? mutated.outcome.factorId : null, "gas-demo",
         "a changed rule did not change the declarative answer — the harness is not reading the live rules");
-      assert.notEqual(mutated.outcome.kind === "resolved" ? mutated.outcome.factorId : null, "electricity-demo",
+      assert.notEqual(mutated.outcome.kind === "resolved" ? mutated.outcome.factorId : null, "uk-ghg-7_400_4000_5_1",
         "the comparison would have reported identical against a changed mapping");
     } finally {
       await db.query("ROLLBACK");
@@ -476,14 +476,14 @@ describe("wiring characterisation — today's paths against the declarative reso
     try {
       first = (await db.query<{ factor_id: string }>(
         `SELECT factor_id FROM nzi_console.emission_factors
-          WHERE factor_id IN ('electricity-demo','electricity-td-demo') AND dataset_id = 'synthetic-gb-2026'
+          WHERE factor_id IN ('uk-ghg-7_400_4000_5_1','uk-ghg-13_402_4000_5_1') AND dataset_id = 'synthetic-gb-2026'
           ORDER BY lower(label) COLLATE "C", factor_id LIMIT 1`)).rows[0]!.factor_id;
     } catch (error) {
       // A WIN1252 cluster has no "C" collation for its encoding. CI's does; say so rather than pass quietly.
       t.skip(`"C" collation unavailable here: ${(error as Error).message}`);
       return;
     }
-    assert.equal(first, "electricity-td-demo");
+    assert.equal(first, "uk-ghg-13_402_4000_5_1");
   });
 
   it("a consulted-and-unmatched lookup does not STOP across a sub-flow, so a later fallback would answer", async () => {
@@ -565,7 +565,7 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (
     ledger[`${dataset}:1.company-vehicles:plate-dieselVan-km`] = "D7";
     for (const category of ["1.company-vehicles", "3.6", "3.7"]) {
       if (category !== "1.company-vehicles") ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
-      // D2 fixed (the unit now has to reconcile): shipped went from ∅ → diesel-demo to ∅ → search, which is
+      // D2 fixed (the unit now has to reconcile): shipped went from ∅ → uk-ghg-1_101_1011_8_1 to ∅ → search, which is
       // identical; the probe's ILIKE still suggests a Scope 1 per-km van factor where a person now picks — D4.
       if (dataset === "probe" && category !== "1.company-vehicles") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";
       // D3 fixed (0119 retired fuel-litres): an unplated vehicle in litres has no declared answer and goes to a
@@ -594,8 +594,8 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (
   // client picked): the primary is identical and only the held companion diverges. The unplated vehicle bucket has
   // nothing declared without a vehicle, so the client picks, against the declared search — D5. A plated vehicle is
   // re-resolved at acceptance from its stored attributes, so it is identical by construction while the switch holds.
-  ledger["shipped:2.purchased-electricity:portal-default-electricity-demo+electricity-td-demo"] = "D6";
-  ledger["shipped:2.purchased-electricity:portal-default-electricity-demo+electricity-us-demo"] = "D6";
-  ledger["shipped:1.company-vehicles:portal-default-diesel-demo+gas-demo"] = "D5";
+  ledger["shipped:2.purchased-electricity:portal-default-uk-ghg-7_400_4000_5_1+uk-ghg-13_402_4000_5_1"] = "D6";
+  ledger["shipped:2.purchased-electricity:portal-default-uk-ghg-7_400_4000_5_1+electricity-us-demo"] = "D6";
+  ledger["shipped:1.company-vehicles:portal-default-uk-ghg-1_101_1011_8_1+gas-demo"] = "D5";
   return ledger;
 })();

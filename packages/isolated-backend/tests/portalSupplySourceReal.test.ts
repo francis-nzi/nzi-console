@@ -106,8 +106,8 @@ describe("a portal entry records how its electricity arrived, and acceptance car
     await db.query(
       `INSERT INTO nzi_console.portal_access_grants (organisation_id,grant_id,client_id,portal_user_id,job_id,data_entry_starts_at,data_entry_expires_at)
        VALUES ($1,'grant-ss',$2,$3,$4,now() - interval '1 day', now() + interval '30 days')`, [ORG, CLIENT, USER, JOB]);
-    for (const id of ["row-grid", "row-unstated", "row-rego"]) await grant(id, ["electricity-demo"]);
-    await grant("row-van", ["diesel-demo"]);
+    for (const id of ["row-grid", "row-unstated", "row-rego"]) await grant(id, ["uk-ghg-7_400_4000_5_1"]);
+    await grant("row-van", ["uk-ghg-1_101_1011_8_1"]);
   });
 
   after(async () => { await db?.end(); await database?.end(); });
@@ -134,7 +134,7 @@ describe("a portal entry records how its electricity arrived, and acceptance car
     const saved = await save("row-grid", { supplySource: "grid" });
     const bucket = await bucketFor("row-grid");
     const edited = await updatePortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version, {
-      bucketGrantId: bucket.bucketGrantId, quantity: 500, unit: "kWh", factorId: "electricity-demo", siteId: null, note: "", supplySource: "self-generated",
+      bucketGrantId: bucket.bucketGrantId, quantity: 500, unit: "kWh", factorId: "uk-ghg-7_400_4000_5_1", siteId: null, note: "", supplySource: "self-generated",
     });
     assert.equal(edited.version, 2);
     assert.equal(await stored(saved.recordId), "self-generated");
@@ -144,7 +144,7 @@ describe("a portal entry records how its electricity arrived, and acceptance car
     const bucket = await bucketFor("row-grid");
     for (const value of SUPPLY_SOURCES) {
       const saved = await createPortalDataEntryRecord(database.pool, portal, JOB, {
-        bucketGrantId: bucket.bucketGrantId, quantity: 1, unit: "kWh", factorId: "electricity-demo", siteId: null, note: "", supplySource: value,
+        bucketGrantId: bucket.bucketGrantId, quantity: 1, unit: "kWh", factorId: "uk-ghg-7_400_4000_5_1", siteId: null, note: "", supplySource: value,
       });
       assert.equal(await stored(saved.recordId), value);
     }
@@ -153,11 +153,11 @@ describe("a portal entry records how its electricity arrived, and acceptance car
   it("refuses a value the contract does not name, and one on a bucket that does not ask", async () => {
     const grid = await bucketFor("row-grid");
     await assert.rejects(() => createPortalDataEntryRecord(database.pool, portal, JOB, {
-      bucketGrantId: grid.bucketGrantId, quantity: 1, unit: "kWh", factorId: "electricity-demo", siteId: null, note: "", supplySource: "solar-ish",
+      bucketGrantId: grid.bucketGrantId, quantity: 1, unit: "kWh", factorId: "uk-ghg-7_400_4000_5_1", siteId: null, note: "", supplySource: "solar-ish",
     }), /Supply must be one of/);
     const van = await bucketFor("row-van");
     await assert.rejects(() => createPortalDataEntryRecord(database.pool, portal, JOB, {
-      bucketGrantId: van.bucketGrantId, quantity: 1, unit: "litres", factorId: "diesel-demo", siteId: null, note: "", supplySource: "grid",
+      bucketGrantId: van.bucketGrantId, quantity: 1, unit: "litres", factorId: "uk-ghg-1_101_1011_8_1", siteId: null, note: "", supplySource: "grid",
     }), /does not record how electricity arrived/);
   });
 

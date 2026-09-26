@@ -14,7 +14,7 @@ import { lookupVehicleByRegistration, vehicleAttributes } from "../src/vehicleLo
  * Sub-flow composition against the real tables and the real seeded factors (NZC-158).
  *
  * The half this suite exists for is the **rate**. An assertion that business travel resolves to
- * `diesel-demo-b` passes just as happily against a variant priced at half the base — the identity would be
+ * `uk-ghg-1_101_1011_8_1-b` passes just as happily against a variant priced at half the base — the identity would be
  * right and the number wrong, which is the harder of the two to notice. So the seeded factor rows are read
  * back and the three rates compared.
  *
@@ -97,10 +97,10 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     assert.equal(commute.kind, "resolved");
     if (travel.kind !== "resolved" || commute.kind !== "resolved") return;
 
-    assert.equal(travel.factorId, "diesel-demo-b", "business travel did not take its own variant");
-    assert.equal(commute.factorId, "diesel-demo-c", "commuting did not take its own variant");
-    assert.notEqual(travel.factorId, "diesel-demo", "business travel resolved to the Scope 1 base");
-    assert.notEqual(commute.factorId, "diesel-demo", "commuting resolved to the Scope 1 base");
+    assert.equal(travel.factorId, "uk-ghg-1_101_1011_8_1-b", "business travel did not take its own variant");
+    assert.equal(commute.factorId, "uk-ghg-1_101_1011_8_1-c", "commuting did not take its own variant");
+    assert.notEqual(travel.factorId, "uk-ghg-1_101_1011_8_1", "business travel resolved to the Scope 1 base");
+    assert.notEqual(commute.factorId, "uk-ghg-1_101_1011_8_1", "commuting resolved to the Scope 1 base");
     assert.notEqual(travel.factorId, commute.factorId, "the two categories resolved to one identity");
 
     assert.equal(travel.scope.ghgCategory, "3.6");
@@ -127,7 +127,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     // against exactly that.
     const { rows } = await db.query<{ factor_id: string; kgco2e_per_unit: string; activity_unit: string }>(
       `SELECT factor_id, kgco2e_per_unit::text, activity_unit FROM nzi_console.emission_factors
-        WHERE organisation_id = $1 AND factor_id IN ('diesel-demo','diesel-demo-b','diesel-demo-c')
+        WHERE organisation_id = $1 AND factor_id IN ('uk-ghg-1_101_1011_8_1','uk-ghg-1_101_1011_8_1-b','uk-ghg-1_101_1011_8_1-c')
         ORDER BY factor_id`, [DEMO_ORG]);
     assert.equal(rows.length, 3, "the base and its two variants are not all seeded");
 
@@ -146,8 +146,8 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
   it("STOPS when the composed variant is absent, and does not fall back to the Scope 1 base", async () => {
     // The base is present in this dataset — deliberately — so a resolver that fell back would succeed
     // here. That is what makes the assertion worth writing: it can fail.
-    const withoutVariants = available.filter((factor) => !factor.factorId.startsWith("diesel-demo-"));
-    assert.ok(withoutVariants.some((factor) => factor.factorId === "diesel-demo"),
+    const withoutVariants = available.filter((factor) => !factor.factorId.startsWith("uk-ghg-1_101_1011_8_1-"));
+    assert.ok(withoutVariants.some((factor) => factor.factorId === "uk-ghg-1_101_1011_8_1"),
       "the base must remain available, or this proves nothing");
 
     const outcome = await resolveFor("3.6", { available: withoutVariants });
@@ -171,7 +171,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     // assumed. Two captured branches on the same field and value are still the coin toss 0112 refused.
     await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, basis_field_key, basis_value, created_by, updated_by)
-      VALUES ('3.6','branch-one',80,'basis-branch','diesel-demo','unit','litres','test','test')`);
+      VALUES ('3.6','branch-one',80,'basis-branch','uk-ghg-1_101_1011_8_1','unit','litres','test','test')`);
     await assert.rejects(
       () => db.query(`INSERT INTO nzi_console.input_spec_factor_rules
         (category_code, rule_key, ordering, rule_kind, factor_base, basis_field_key, basis_value, created_by, updated_by)
@@ -186,7 +186,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
         VALUES ('3.6','branch-three',82,'enriched','gas-demo','dvla','registrationFinder','unit','litres','test','test')`)
         .then(() => db.query(`INSERT INTO nzi_console.input_spec_factor_rules
           (category_code, rule_key, ordering, rule_kind, factor_base, enrichment_source, enrichment_key_field, basis_field_key, basis_value, created_by, updated_by)
-          VALUES ('3.6','branch-four',83,'enriched','diesel-demo','dvla','registrationFinder','unit','litres','test','test')`)),
+          VALUES ('3.6','branch-four',83,'enriched','uk-ghg-1_101_1011_8_1','dvla','registrationFinder','unit','litres','test','test')`)),
       /one_branch_per_value|duplicate key/i);
 
     await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key LIKE 'branch-%'`);
@@ -199,7 +199,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     // refused by the schema while the resolver supported it.
     await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
-      VALUES ('3.6','fallback-lookup',85,'lookup','diesel-demo-b','test','test')`);
+      VALUES ('3.6','fallback-lookup',85,'lookup','uk-ghg-1_101_1011_8_1-b','test','test')`);
     const { rows } = await db.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM nzi_console.input_spec_factor_rules WHERE category_code = '3.6'`);
     assert.equal(rows[0]!.n, 2, "a category still cannot hold a sub-flow and a fallback");
@@ -216,12 +216,12 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     // direction alone cannot tell "the declared order was honoured" from "it came out that way".
     await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
       (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
-      VALUES ('3.6','order-probe-fallback',99,'lookup','diesel-demo','test','test')`);
+      VALUES ('3.6','order-probe-fallback',99,'lookup','uk-ghg-1_101_1011_8_1','test','test')`);
     // Removed in a finally: left behind by a failing assertion, this row is a shadowed base, and the invariant
     // tests below would then fail for a reason that has nothing to do with them.
     try {
       const subFlowFirst = await resolveFor("3.6");
-      assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "diesel-demo-b",
+      assert.equal(subFlowFirst.kind === "resolved" ? subFlowFirst.factorId : null, "uk-ghg-1_101_1011_8_1-b",
         "the fallback answered although it was declared behind the sub-flow");
 
       // Swap the declared numbers. Nothing else changes — same rows, same category, same dataset.
@@ -229,7 +229,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
                        WHERE category_code = '3.6' AND rule_key = 'order-probe-fallback'`);
 
       const fallbackFirst = await resolveFor("3.6");
-      assert.equal(fallbackFirst.kind === "resolved" ? fallbackFirst.factorId : null, "diesel-demo",
+      assert.equal(fallbackFirst.kind === "resolved" ? fallbackFirst.factorId : null, "uk-ghg-1_101_1011_8_1",
         "the declared ordering was ignored on the way back from the database");
     } finally {
       await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'order-probe-fallback'`);
@@ -240,7 +240,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
    * A rule that resolves the very base a category's sub-flow derives its variants from.
    *
    * **Targeted, not "any lookup near a sub-flow".** The shadowing case is a rule resolving the base the
-   * variants come from — `diesel-demo` in a category whose sub-flow produces `diesel-demo-b`. A rail or
+   * variants come from — `uk-ghg-1_101_1011_8_1` in a category whose sub-flow produces `uk-ghg-1_101_1011_8_1-b`. A rail or
    * air lookup in business travel is a different activity with a different factor entirely: it declines on
    * vehicle input and may sit anywhere in the order. Matching on "has a factor base" would refuse it, and
    * an invariant that refuses legitimate authoring gets switched off.
@@ -255,7 +255,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
    * `EXISTS` rather than joins, so one offending rule is reported once.
    *
    * The first version joined through to the referenced category's rules, and the vehicle category declares
-   * **two** rules on `diesel-demo` — the DVLA enriched rule and the unit branch — so a single shadowing
+   * **two** rules on `uk-ghg-1_101_1011_8_1` — the DVLA enriched rule and the unit branch — so a single shadowing
    * rule came back twice. It would still have failed on a violation, but an invariant whose output
    * multiplies by an unrelated count is one whose message nobody trusts. Caught by the probe below
    * asserting an exact count rather than merely "not empty".
@@ -309,11 +309,11 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     for (const ordering of [1, 900]) {
       await db.query(`INSERT INTO nzi_console.input_spec_factor_rules
         (category_code, rule_key, ordering, rule_kind, factor_base, created_by, updated_by)
-        VALUES ('3.6','shadow-probe',$1,'lookup','diesel-demo','test','test')`, [ordering]);
+        VALUES ('3.6','shadow-probe',$1,'lookup','uk-ghg-1_101_1011_8_1','test','test')`, [ordering]);
 
       const { rows } = await shadowedBases();
       assert.equal(rows.length, 1, `a shadowing rule at ordering ${ordering} was not reported`);
-      assert.equal(rows[0]!.factor_base, "diesel-demo");
+      assert.equal(rows[0]!.factor_base, "uk-ghg-1_101_1011_8_1");
 
       await db.query(`DELETE FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'shadow-probe'`);
     }
@@ -326,7 +326,7 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     await assert.rejects(
       () => db.query(`INSERT INTO nzi_console.input_spec_factor_rules
         (category_code, rule_key, ordering, rule_kind, sub_flow_category, suffix_code, factor_base, created_by, updated_by)
-        VALUES ('3.6','two-answers',91,'sub-flow','1.company-vehicles','-b','diesel-demo','test','test')`),
+        VALUES ('3.6','two-answers',91,'sub-flow','1.company-vehicles','-b','uk-ghg-1_101_1011_8_1','test','test')`),
       /input_spec_factor_rules_shape/);
 
     await assert.rejects(

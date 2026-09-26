@@ -87,7 +87,7 @@ describe("electricity resolves its primary declaratively, and nothing else has c
 
         const created = await createScopeRow(pool, entry(category, { supplySource: supply }), context());
         const stored = await row(created.data.rowId);
-        assert.equal(stored.factor_id, "electricity-demo", "the declared grid factor was not filled");
+        assert.equal(stored.factor_id, "uk-ghg-7_400_4000_5_1", "the declared grid factor was not filled");
         assert.equal(stored.supply_source, supply, "the supply source was not stored as captured");
         assert.equal(stored.provenance_json.declarativeResolution.decision, "filled");
 
@@ -105,7 +105,7 @@ describe("electricity resolves its primary declaratively, and nothing else has c
   it("refuses a different factor with no reason, naming the grid factor", async () => {
     await assert.rejects(() => createScopeRow(pool, entry("2.purchased-electricity", {
       datasetId: "synthetic-gb-2026", factorId: "electricity-green-demo", factorVersion: "2026 demo v1", factorLabel: "Green",
-    }), context()), (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /electricity-demo/.test(error.issues[0].message));
+    }), context()), (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /uk-ghg-7_400_4000_5_1/.test(error.issues[0].message));
   });
 
   it("accepts a deliberately chosen different factor with a reason, and records the choice", async () => {
@@ -118,7 +118,7 @@ describe("electricity resolves its primary declaratively, and nothing else has c
     assert.equal(trail.overrideKind, "factor-choice");
     assert.equal(trail.overrideReason, "Supplier-specific factor from the client's contract");
     assert.equal(trail.deviatedBy, ACTOR);
-    assert.equal(trail.deviatedFrom, "electricity-demo");
+    assert.equal(trail.deviatedFrom, "uk-ghg-7_400_4000_5_1");
   });
 
   it("still refuses a factor the row may not carry, whatever the reason", async () => {
@@ -132,7 +132,7 @@ describe("electricity resolves its primary declaratively, and nothing else has c
     const preview = await withTenantRead(pool, ORG, (read) => previewDeclaredFactor(read, ORG, JOB,
       { scope: "2", unit: null, supplySource: "grid" }, "2.purchased-electricity"));
     assert.deepEqual(preview, { enabled: true, reason: null, excludedFactorIds: [],
-      declared: { datasetId: "synthetic-gb-2026", factorId: "electricity-demo", label: "UK electricity — demonstration factor", unit: "kWh", version: "2026 demo v1" } });
+      declared: { datasetId: "synthetic-gb-2026", factorId: "uk-ghg-7_400_4000_5_1", label: "UK electricity — demonstration factor", unit: "kWh", version: "2026 demo v1" } });
     const off = await withTenantRead(pool, ORG, (read) => previewDeclaredFactor(read, ORG, JOB,
       { scope: "1", unit: "kWh", supplySource: null }, "1.natural-gas"));
     assert.deepEqual(off, { enabled: false, excludedFactorIds: [] });
