@@ -139,24 +139,24 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
   });
 
   it("refuses a business-travel bucket offering the base of its own variant", async () => {
-    await assert.rejects(() => grant("row-travel", ["diesel-demo"]), /base factor this category files under its own variant/);
+    await assert.rejects(() => grant("row-travel", ["uk-ghg-1_101_1011_8_1"]), /base factor this category files under its own variant/);
   });
 
   it("does not demand a vehicle factor at the grant — that depends on the entry, and meets F1 at acceptance", async () => {
-    await grant("row-van", ["diesel-demo", "gas-demo"]);
+    await grant("row-van", ["uk-ghg-1_101_1011_8_1", "gas-demo"]);
   });
 
   // ── The declared factor, from the listing to a number (P4) ───────────────────────────────────────────
 
   it("lists the declared factor, pre-selects it among several, and accepts it as matched — 0.3 t", async () => {
-    await grant("row-elec-matched", ["electricity-demo", "electricity-alt-test"]);
+    await grant("row-elec-matched", ["uk-ghg-7_400_4000_5_1", "electricity-alt-test"]);
     const bucket = await bucketFor("row-elec-matched");
-    assert.equal(bucket.declaredFactorId, "electricity-demo");
-    assert.equal(defaultPortalFactorId(bucket.factors, bucket.declaredFactorId), "electricity-demo",
+    assert.equal(bucket.declaredFactorId, "uk-ghg-7_400_4000_5_1");
+    assert.equal(defaultPortalFactorId(bucket.factors, bucket.declaredFactorId), "uk-ghg-7_400_4000_5_1",
       "with two grid factors authorised the portal did not pre-select the declared one");
     await accept(await capture("row-elec-matched", { unit: "kWh" }));
     const result = await landed("row-elec-matched");
-    assert.equal(result.factor_id, "electricity-demo");
+    assert.equal(result.factor_id, "uk-ghg-7_400_4000_5_1");
     assert.equal(result.provenance_json.declarativeResolution.decision, "matched");
     assert.equal(result.provenance_json.declarativeResolution.acceptedBy, STAFF);
     assert.equal(await calculate("row-elec-matched"), 0.3);
@@ -165,7 +165,7 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
   // ── A client's pick that is not the declared factor (P1) ─────────────────────────────────────────────
 
   it("refuses to accept the client's alternative without a reason, and writes nothing", async () => {
-    await grant("row-elec-override", ["electricity-demo", "electricity-alt-test"]);
+    await grant("row-elec-override", ["uk-ghg-7_400_4000_5_1", "electricity-alt-test"]);
     const submitted = await capture("row-elec-override", {}, "electricity-alt-test");
     await assert.rejects(() => accept(submitted), DEVIATION);
     assert.equal((await landed("row-elec-override")).factor_id, null, "a refused acceptance wrote the client's factor");
@@ -179,10 +179,10 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
   });
 
   it("switches the client's alternative to the declared factor when the reviewer chooses that", async () => {
-    await grant("row-elec-switch", ["electricity-demo", "electricity-alt-test"]);
+    await grant("row-elec-switch", ["uk-ghg-7_400_4000_5_1", "electricity-alt-test"]);
     await accept(await capture("row-elec-switch", {}, "electricity-alt-test"), { useDeclaredFactor: true });
     const result = await landed("row-elec-switch");
-    assert.equal(result.factor_id, "electricity-demo");
+    assert.equal(result.factor_id, "uk-ghg-7_400_4000_5_1");
     assert.equal(result.provenance_json.declarativeResolution.decision, "matched");
     assert.equal(result.provenance_json.declarativeResolution.switchedToDeclared, true);
     assert.equal(await calculate("row-elec-switch"), 0.3);
@@ -195,12 +195,12 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     assert.ok(found.ok);
     const suggestion = await withTenantRead(database.pool, ORG, (reader) =>
       suggestVehicleFactor(reader, ORG, JOB, found.vehicle, found.source, "1.company-vehicles", "1"));
-    assert.equal(suggestion.factor?.factorId, "diesel-demo");
+    assert.equal(suggestion.factor?.factorId, "uk-ghg-1_101_1011_8_1");
     const bucket = await bucketFor("row-van");
     assert.equal(bucket.declaredFactorId, null, "a vehicle bucket claimed a declared factor without a vehicle");
     assert.equal(defaultPortalFactorId(bucket.factors, bucket.declaredFactorId), "", "the vehicle bucket pre-selected a factor");
 
-    const submitted = await capture("row-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes }, "diesel-demo");
+    const submitted = await capture("row-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes }, "uk-ghg-1_101_1011_8_1");
     const stored = await db.query<{ detail_json: Record<string, any> }>(
       `SELECT detail_json FROM nzi_console.portal_data_entry_records WHERE bucket_grant_id=$1`, [bucket.bucketGrantId]);
     assert.deepEqual(stored.rows[0]!.detail_json, { vehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van" } });
@@ -208,7 +208,7 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
 
     await accept(submitted);
     const result = await landed("row-van");
-    assert.equal(result.factor_id, "diesel-demo");
+    assert.equal(result.factor_id, "uk-ghg-1_101_1011_8_1");
     const resolution = result.provenance_json.declarativeResolution;
     assert.equal(resolution.decision, "matched");
     assert.equal(resolution.attributesAssertedBy, USER, "the client who asserted the attributes is not named");
@@ -223,13 +223,13 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     const suggestion = await withTenantRead(database.pool, ORG, (reader) =>
       suggestVehicleFactor(reader, ORG, JOB, found.vehicle, found.source, "1.company-vehicles", "1"));
     // A diesel van priced per litre of petrol. The bucket allows petrol; acceptance, reading the lookup, refuses it.
-    await grant("row-van-contradicted", ["diesel-demo", "petrol-litres-test"]);
+    await grant("row-van-contradicted", ["uk-ghg-1_101_1011_8_1", "petrol-litres-test"]);
     const submitted = await capture("row-van-contradicted", { assertedVehicleAttributes: suggestion.attributes }, "petrol-litres-test");
     await assert.rejects(() => accept(submitted), DEVIATION);
     assert.equal((await landed("row-van-contradicted")).factor_id, null, "a refused acceptance wrote the client's factor");
     await accept(submitted, { useDeclaredFactor: true });
     const result = await landed("row-van-contradicted");
-    assert.equal(result.factor_id, "diesel-demo", "the switch did not resolve from the stored attributes");
+    assert.equal(result.factor_id, "uk-ghg-1_101_1011_8_1", "the switch did not resolve from the stored attributes");
     assert.equal(result.provenance_json.declarativeResolution.switchedToDeclared, true);
     assert.equal(result.provenance_json.declarativeResolution.attributesAssertedBy, USER);
     assert.equal(await calculate("row-van-contradicted"), 2.5);

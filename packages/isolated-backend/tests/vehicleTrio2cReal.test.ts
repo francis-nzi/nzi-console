@@ -91,13 +91,13 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
 
   it("suggests the declared factor for a looked-up diesel, and the entry calculates at it — 2.5 t", async () => {
     const suggestion = await lookup(PLATES.diesel, "1.company-vehicles", "1");
-    assert.equal(suggestion.factor?.factorId, "diesel-demo");
+    assert.equal(suggestion.factor?.factorId, "uk-ghg-1_101_1011_8_1");
     assert.equal(suggestion.factor?.resolvedBy, "declared", "the suggestion did not come from the declared resolution");
     const opts = await options("1", "1.company-vehicles");
     const optionId = `dataset:${suggestion.factor!.datasetId}|${suggestion.factor!.factorId}`;
     const row = await save(VEHICLES, draft({ registration: "AB12 CDH", factorId: optionId, unit: suggestion.factor!.unit,
       assertedVehicleAttributes: suggestion.attributes }), opts);
-    assert.equal(row.factor_id, "diesel-demo");
+    assert.equal(row.factor_id, "uk-ghg-1_101_1011_8_1");
     assert.equal(row.provenance_json.declarativeResolution.decision, "matched");
     assert.equal(row.provenance_json.declarativeResolution.assertedVehicleAttributes.trust, "asserted-at-capture");
     assert.equal(await calculate(row), 2.5);
@@ -113,15 +113,15 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
 
   it("leaves the base of its own variant out of business travel's pick list", async () => {
     const ids = (await options("3", "3.6")).map((option) => option.factorId);
-    assert.ok(!ids.includes("diesel-demo"), "business travel offers the Scope 1 base of its own variant");
-    assert.ok(ids.includes("diesel-demo-b"), "business travel lost its own variant");
-    assert.ok(ids.includes("electricity-td-demo") || ids.length > 1, "the list was emptied rather than filtered");
+    assert.ok(!ids.includes("uk-ghg-1_101_1011_8_1"), "business travel offers the Scope 1 base of its own variant");
+    assert.ok(ids.includes("uk-ghg-1_101_1011_8_1-b"), "business travel lost its own variant");
+    assert.ok(ids.includes("uk-ghg-13_402_4000_5_1") || ids.length > 1, "the list was emptied rather than filtered");
   });
 
   it("refuses that base at the write, naming the variant — in business travel and in commuting", async () => {
     const baseOption = form.entryFactorRefsFor((await read((reader) => listJobFactorOptions(reader, JOB))) as never)
-      .find((option) => option.factorId === "diesel-demo")!;
-    for (const [category, variant] of [[TRAVEL, "diesel-demo-b"], [COMMUTING, "diesel-demo-c"]] as const) {
+      .find((option) => option.factorId === "uk-ghg-1_101_1011_8_1")!;
+    for (const [category, variant] of [[TRAVEL, "uk-ghg-1_101_1011_8_1-b"], [COMMUTING, "uk-ghg-1_101_1011_8_1-c"]] as const) {
       await assert.rejects(() => save(category, draft({ factorId: baseOption.id, unit: "km" }), [baseOption]),
         (error: any) => error.issues?.[0]?.code === "FACTOR_IS_VARIANT_BASE" && error.issues[0].message.includes(variant));
     }
@@ -158,7 +158,7 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
       assert.equal(commute.factor_id, "van-km-test-c", "the change to the vehicle flow did not reach commuting");
       assert.equal(await calculate(travel), 0.25);
     } finally {
-      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'diesel-demo' WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
+      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'uk-ghg-1_101_1011_8_1' WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
       await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = false WHERE category_code IN ('3.6','3.7')`);
     }
   });

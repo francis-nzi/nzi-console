@@ -92,23 +92,23 @@ describe("a portal entry's primary factor is one its scope row may carry, at eve
   // ── The grant ────────────────────────────────────────────────────────────────────────────────────────
 
   it("refuses to grant the T&D factor on a Scope 2 row, through the command staff actually use", async () => {
-    await assert.rejects(() => grant("row-elec", ["electricity-demo", "electricity-td-demo"]), /compatible with the scope row/);
+    await assert.rejects(() => grant("row-elec", ["uk-ghg-7_400_4000_5_1", "uk-ghg-13_402_4000_5_1"]), /compatible with the scope row/);
   });
 
   it("refuses a companion factor as a primary even when its scopes claim the row's", async () => {
     // A library that tags T&D `{2,3}` passes the scope check. The companion clause is what stops it.
-    await db.query(`UPDATE nzi_console.emission_factors SET scopes=ARRAY['2','3'] WHERE factor_id='electricity-td-demo'`);
+    await db.query(`UPDATE nzi_console.emission_factors SET scopes=ARRAY['2','3'] WHERE factor_id='uk-ghg-13_402_4000_5_1'`);
     try {
-      await assert.rejects(() => grant("row-elec", ["electricity-demo", "electricity-td-demo"]), /compatible with the scope row/);
+      await assert.rejects(() => grant("row-elec", ["uk-ghg-7_400_4000_5_1", "uk-ghg-13_402_4000_5_1"]), /compatible with the scope row/);
     } finally {
-      await db.query(`UPDATE nzi_console.emission_factors SET scopes=ARRAY['3'] WHERE factor_id='electricity-td-demo'`);
+      await db.query(`UPDATE nzi_console.emission_factors SET scopes=ARRAY['3'] WHERE factor_id='uk-ghg-13_402_4000_5_1'`);
     }
   });
 
   // ── The back door: granted on 3.3, then the row is edited to Scope 2 ─────────────────────────────────
 
   it("stops offering the factor once the row's scope has moved under the grant", async () => {
-    await grant("row-td-list", ["electricity-td-demo"]);
+    await grant("row-td-list", ["uk-ghg-13_402_4000_5_1"]);
     await moveToElectricity("row-td-list");
     const bucket = (await listPortalDataEntryBuckets(database.pool, portal, JOB)).find((b) => b.scopeRowId === "row-td-list");
     assert.ok(bucket, "the bucket itself should still be listed — only the ineligible factor goes");
@@ -118,20 +118,20 @@ describe("a portal entry's primary factor is one its scope row may carry, at eve
 
   it("refuses a new entry against it", async () => {
     const bucket = (await listPortalDataEntryBuckets(database.pool, portal, JOB)).find((b) => b.scopeRowId === "row-td-list")!;
-    await assert.rejects(() => draft(bucket.bucketGrantId, "electricity-td-demo"), REFUSED);
+    await assert.rejects(() => draft(bucket.bucketGrantId, "uk-ghg-13_402_4000_5_1"), REFUSED);
   });
 
   it("refuses to submit a draft saved before the row moved", async () => {
-    const { bucketGrantId } = await grant("row-td-submit", ["electricity-td-demo"]);
-    const saved = await draft(bucketGrantId, "electricity-td-demo");
+    const { bucketGrantId } = await grant("row-td-submit", ["uk-ghg-13_402_4000_5_1"]);
+    const saved = await draft(bucketGrantId, "uk-ghg-13_402_4000_5_1");
     await moveToElectricity("row-td-submit");
     await assert.rejects(() => submitPortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version), REFUSED);
   });
 
   it("refuses to accept, onto the scope row, an entry submitted before the row moved", async () => {
     // Acceptance is where the number lands. Refusing here is the last line; the ones above are earlier ones.
-    const { bucketGrantId } = await grant("row-td-accept", ["electricity-td-demo"]);
-    const saved = await draft(bucketGrantId, "electricity-td-demo");
+    const { bucketGrantId } = await grant("row-td-accept", ["uk-ghg-13_402_4000_5_1"]);
+    const saved = await draft(bucketGrantId, "uk-ghg-13_402_4000_5_1");
     const submitted = await submitPortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version);
     await moveToElectricity("row-td-accept");
     await assert.rejects(() => decidePortalDataEntryReview(database.pool, staff, {
@@ -144,15 +144,15 @@ describe("a portal entry's primary factor is one its scope row may carry, at eve
   // ── And the legitimate path goes all the way through ─────────────────────────────────────────────────
 
   it("still takes an ordinary electricity entry from grant to the scope row", async () => {
-    const { bucketGrantId } = await grant("row-elec", ["electricity-demo"]);
+    const { bucketGrantId } = await grant("row-elec", ["uk-ghg-7_400_4000_5_1"]);
     const bucket = (await listPortalDataEntryBuckets(database.pool, portal, JOB)).find((b) => b.bucketGrantId === bucketGrantId)!;
-    assert.deepEqual(bucket.factors.map((factor) => factor.id), ["electricity-demo"]);
-    const saved = await draft(bucketGrantId, "electricity-demo");
+    assert.deepEqual(bucket.factors.map((factor) => factor.id), ["uk-ghg-7_400_4000_5_1"]);
+    const saved = await draft(bucketGrantId, "uk-ghg-7_400_4000_5_1");
     const submitted = await submitPortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version);
     await decidePortalDataEntryReview(database.pool, staff, {
       queueId: submitted.queueId, expectedSubmittedVersion: submitted.version, decision: "accept", note: "",
     });
     const landed = await db.query<{ factor_id: string }>(`SELECT factor_id FROM nzi_console.job_scope_rows WHERE scope_row_id='row-elec'`);
-    assert.equal(landed.rows[0]!.factor_id, "electricity-demo");
+    assert.equal(landed.rows[0]!.factor_id, "uk-ghg-7_400_4000_5_1");
   });
 });

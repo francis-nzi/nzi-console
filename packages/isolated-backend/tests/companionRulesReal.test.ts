@@ -29,8 +29,8 @@ describe("an entry resolves to more than one row, and market stays out of the he
   const registry: CategoryVariant[] = [];
 
   const available = [
-    { factorId: "electricity-demo", scopes: ["2"], unit: "kWh" },
-    { factorId: "electricity-td-demo", scopes: ["3"], unit: "kWh" },
+    { factorId: "uk-ghg-7_400_4000_5_1", scopes: ["2"], unit: "kWh" },
+    { factorId: "uk-ghg-13_402_4000_5_1", scopes: ["3"], unit: "kWh" },
   ];
 
   before(async () => {
@@ -87,7 +87,7 @@ describe("an entry resolves to more than one row, and market stays out of the he
   it("creates the T&D companion for grid supply", async () => {
     const outcome = await proposeFor("2.purchased-electricity", { unit: "kWh", supplySource: "grid" });
     assert.equal(outcome.proposed.length, 1, "no companion was proposed for grid supply");
-    assert.equal(outcome.proposed[0]!.factorId, "electricity-td-demo");
+    assert.equal(outcome.proposed[0]!.factorId, "uk-ghg-13_402_4000_5_1");
     assert.equal(outcome.proposed[0]!.ghgCategory, "3.3");
   });
 
@@ -111,7 +111,7 @@ describe("an entry resolves to more than one row, and market stays out of the he
     assert.equal(renewable.kind, "resolved");
     assert.equal(purchased.kind, "resolved");
     if (renewable.kind !== "resolved" || purchased.kind !== "resolved") return;
-    assert.equal(renewable.factorId, "electricity-demo");
+    assert.equal(renewable.factorId, "uk-ghg-7_400_4000_5_1");
     assert.equal(renewable.factorId, purchased.factorId,
       "renewable electricity resolved to a different location-based factor from purchased");
   });

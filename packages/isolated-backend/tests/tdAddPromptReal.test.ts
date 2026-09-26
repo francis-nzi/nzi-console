@@ -48,7 +48,7 @@ describe("every manual 3.3 entry is prompted to consider adding T&D, and nothing
   });
   const activity33 = (label: string): any => ({
     jobId: JOB, scope: "3.3", sourceLabel: label, reportLabel: label, categoryCode: "3.3", quantity: 1000, unit: "kWh",
-    datasetId: "synthetic-gb-2026", factorId: "electricity-td-demo", factorVersion: "2026 demo v1", factorLabel: "T&D", qualityTier: "measured",
+    datasetId: "synthetic-gb-2026", factorId: "uk-ghg-13_402_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "T&D", qualityTier: "measured",
   });
   const gas = (): any => ({
     jobId: JOB, scope: "1", sourceLabel: "Boiler", reportLabel: "Boiler", categoryCode: "1.natural-gas", quantity: 10, unit: "kWh",
