@@ -350,6 +350,12 @@ jobs:
       # enrolment audit events — and the result signs in through the ordinary staff login.
       - name: Staff self-enrolment is safe for a real person
         run: npx tsx --test packages/isolated-backend/tests/staffEnrolmentReal.test.ts
+      # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
+      # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
+      # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin
+      # never holds the link, and an unsent link is withdrawn.
+      - name: Staff invitations from the admin keep every enrolment property
+        run: npx tsx --test packages/isolated-backend/tests/staffInvitationsReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

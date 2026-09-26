@@ -65,6 +65,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `clientfactor.manage` | ✓ | ✓ | — | — | — |
 | `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | — | — | — | — |
 | `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |
+| `staff.invite` (issue a staff member's single-use enrolment link — access to the organisation's data) ⚑ | ✓ | — | — | — | — |
 | `audit.view` | ✓ | ⚑ own | R | ⚑ own | — |
 | `support.portal_impersonate` (enter a client's portal context) ⚑ | ✓ | ✓ | — | — | — |
 | `knowledge.capture` (offer a question + answer to the library as a draft) | ✓ | ✓ | ✓ | ✓ | ✓ |

@@ -60,6 +60,12 @@ export const capabilities = [
   "dataset.manage",
   "factor.manage",
   "admin.users",
+  // ── Staff enrolment (0129) ──
+  // Issuing someone's enrolment link is granting them sign-in to this organisation's data, so it is its own
+  // capability, held by Admin alone — not a stretch of admin.users (which no command checks), and not portal.admin,
+  // which a consultant holds for their own clients' portal users. It issues through the one enrolment path: the
+  // holder never sees the person's password or authenticator, and cannot enrol over working sign-in.
+  "staff.invite",
   "admin.lookups",
   "admin.templates",
   "admin.settings",
@@ -87,7 +93,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 7;
+export const PERMISSION_MATRIX_VERSION = 8;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 

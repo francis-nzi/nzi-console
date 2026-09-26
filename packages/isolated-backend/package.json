@@ -20,7 +20,8 @@
     "backfill:pii-encryption": "tsx scripts/backfill-pii-encryption.ts",
     "load:v7-reference": "tsx scripts/load-v7-reference.ts",
     "retire:category-variant": "tsx scripts/retire-category-variant.ts",
-    "enrol:staff": "tsx scripts/issue-staff-enrolment.ts"
+    "enrol:staff": "tsx scripts/issue-staff-enrolment.ts",
+    "staff:role": "tsx scripts/assign-staff-role.ts"
   },
   "dependencies": {
     "@nzi/charts": "*",
