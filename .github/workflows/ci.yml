@@ -340,6 +340,10 @@ jobs:
       # in the checks job (v7ReferenceImport.test.ts).
       - name: The v7 reference import loads, re-runs as a no-op, and refuses what it should
         run: npx tsx --test packages/isolated-backend/tests/v7ReferenceLoadReal.test.ts
+      # 0128 — a negative emission factor only when marked a removal (ICE's carbon-storage values): the flag defaults
+      # to false, a negative without it is refused whoever writes it, and the flag cannot be cleared from a negative row.
+      - name: A negative emission factor is allowed only as a removal
+        run: npx tsx --test packages/isolated-backend/tests/emissionFactorRemovalsReal.test.ts
       # A CRM quick-add entry with a picked factor stores the factor's own id and can be calculated. The form sent
       # its option key ("dataset:<id>|<factor>") as the factor, so every such entry was stored and then refused by
       # calculation. Crosses the seam it lived in: the console's own options and mapping into the real command.
