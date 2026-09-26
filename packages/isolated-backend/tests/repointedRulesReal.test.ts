@@ -19,11 +19,11 @@ const { defaultPortalFactorId } = ((defaultModule as any).defaultPortalFactorId 
 const { suggestVehicleFactor } = ((suggestionModule as any).suggestVehicleFactor ? suggestionModule : (suggestionModule as any).default) as typeof import("../../../apps/console/app/lib/vehicleSuggestion");
 
 /**
- * The enabled rules name the real, imported factors (0129) — proved in the capture home, `net-zero-international`, on
+ * The enabled rules name the real, imported factors (0130) — proved in the capture home, `net-zero-international`, on
  * data that came through the real v7 transform, on the console's write path and the portal's acceptance alike.
  *
  * The extract below is synthetic (NZC-020): v7's shape and v7's real codes, at invented values, so a number here can
- * only have come from the row the rule names. The demonstration set is retired by 0129 — proved by planting a synthetic
+ * only have come from the row the rule names. The demonstration set is retired by 0130 — proved by planting a synthetic
  * dataset before it runs.
  */
 
@@ -60,7 +60,7 @@ const portal = {
   issuedAt: 1, expiresAt: 2, displayName: "P", email: "p@example.invalid",
 } as unknown as PortalPrincipal;
 
-describe("the enabled rules resolve to the real factors in net-zero-international (0129)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+describe("the enabled rules resolve to the real factors in net-zero-international (0130)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let db: pg.Client;
   let job: string;
@@ -81,16 +81,16 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
 
   before(async () => {
     database = (await createDisposableDatabase("repoint", {
-      // A synthetic dataset already in place when 0129 runs, as staging's demonstration set is.
+      // A synthetic dataset already in place when 0130 runs, as staging's demonstration set is.
       onMigration: async (filename, admin) => {
         if (!filename.startsWith("0128_")) return;
         await admin.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
         await admin.query(
           `INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence,synthetic)
-           VALUES ($1,'synthetic-before-0129','Synthetic','1','2025-01-01','2025-12-31','GB','active','Fixture','Demonstration only',true)`, [ORG]);
+           VALUES ($1,'synthetic-before-0130','Synthetic','1','2025-01-01','2025-12-31','GB','active','Fixture','Demonstration only',true)`, [ORG]);
         await admin.query(
           `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
-           VALUES ($1,'synthetic-before-0129','electricity-demo','UK electricity — demonstration factor','kWh',0.3,ARRAY['2'])`, [ORG]);
+           VALUES ($1,'synthetic-before-0130','electricity-demo','UK electricity — demonstration factor','kWh',0.3,ARRAY['2'])`, [ORG]);
         await admin.query(`SELECT set_config('app.organisation_id', '', false)`);
       },
     }))!;
@@ -140,9 +140,9 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
   });
 
   it("retires the synthetic set it found — superseded and inactive, never deleted", async () => {
-    const dataset = await db.query<{ status: string }>(`SELECT status FROM nzi_console.emission_factor_datasets WHERE dataset_id='synthetic-before-0129'`);
+    const dataset = await db.query<{ status: string }>(`SELECT status FROM nzi_console.emission_factor_datasets WHERE dataset_id='synthetic-before-0130'`);
     assert.deepEqual(dataset.rows, [{ status: "superseded" }]);
-    const factor = await db.query<{ active: boolean }>(`SELECT active FROM nzi_console.emission_factors WHERE dataset_id='synthetic-before-0129'`);
+    const factor = await db.query<{ active: boolean }>(`SELECT active FROM nzi_console.emission_factors WHERE dataset_id='synthetic-before-0130'`);
     assert.deepEqual(factor.rows, [{ active: false }]);
   });
 

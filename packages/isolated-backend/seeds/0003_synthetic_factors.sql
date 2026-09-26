@@ -9,7 +9,7 @@ VALUES
   ('demo-nzi-console','synthetic-us-2026','Synthetic US activity factors','2026 demo v1','2026-01-01','2026-12-31','US','active','NZI Console test fixture','Demonstration only',true)
 ON CONFLICT (organisation_id,dataset_id) DO UPDATE SET name=EXCLUDED.name,version=EXCLUDED.version;
 
--- The factors the enabled rules name (0129) carry the real, imported ids — uk-ghg-<code> as the v7 import mints
+-- The factors the enabled rules name (0130) carry the real, imported ids — uk-ghg-<code> as the v7 import mints
 -- them — at synthetic values, so a fixture exercises the rules exactly as they are written. Everything else keeps
 -- its -demo id: no rule names it.
 INSERT INTO emission_factors

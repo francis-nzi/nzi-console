@@ -103,7 +103,7 @@ describe("a capture category reaches its factor by declared rule (NZC-149)", { s
 
     // Deactivated, not deleted — and able to fail: with the row switched back on, inside a transaction that
     // is rolled back, the same entry resolves to diesel again. Without this the assertion above would pass
-    // just as well if the rule had never existed or the read had stopped working. 0129 left this rule as it was, still
+    // just as well if the rule had never existed or the read had stopped working. 0130 left this rule as it was, still
     // naming the retired `diesel-demo`, so that factor is offered for this one check.
     await db.query("BEGIN");
     try {

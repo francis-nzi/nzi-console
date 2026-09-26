@@ -350,7 +350,7 @@ jobs:
       # enrolment audit events — and the result signs in through the ordinary staff login.
       - name: Staff self-enrolment is safe for a real person
         run: npx tsx --test packages/isolated-backend/tests/staffEnrolmentReal.test.ts
-      # 0129 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
+      # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic
       # set is retired rather than deleted.

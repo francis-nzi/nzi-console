@@ -1,4 +1,4 @@
--- 0129 The enabled factor rules name the real, imported factors — and the synthetic set is retired (ruled 26 Sep 2026).
+-- 0130 The enabled factor rules name the real, imported factors — and the synthetic set is retired (ruled 26 Sep 2026).
 --
 -- ## Why
 --
@@ -58,7 +58,7 @@ BEGIN
        WHERE category_code = expected.category_code AND companion_key = expected.rule_key AND active;
     END IF;
     IF found IS DISTINCT FROM expected.factor_base THEN
-      RAISE EXCEPTION '0129: % %/% was expected to name % and names %.',
+      RAISE EXCEPTION '0130: % %/% was expected to name % and names %.',
         expected.kind, expected.category_code, expected.rule_key, expected.factor_base, coalesce(found, 'nothing (missing or inactive)');
     END IF;
   END LOOP;
@@ -66,13 +66,13 @@ END $$;
 
 UPDATE nzi_console.input_spec_factor_rules
    SET factor_base = CASE category_code WHEN '1.company-vehicles' THEN 'uk-ghg-1_101_1011_8_1' ELSE 'uk-ghg-7_400_4000_5_1' END,
-       version = version + 1, updated_at = now(), updated_by = 'migration:0129'
+       version = version + 1, updated_at = now(), updated_by = 'migration:0130'
  WHERE (category_code, rule_key) IN (('2.purchased-electricity', 'grid-electricity'),
                                      ('2.renewable-electricity', 'grid-electricity'),
                                      ('1.company-vehicles', 'dvla-diesel'));
 
 UPDATE nzi_console.input_spec_companion_rules
-   SET factor_base = 'uk-ghg-13_402_4000_5_1', version = version + 1, updated_at = now(), updated_by = 'migration:0129'
+   SET factor_base = 'uk-ghg-13_402_4000_5_1', version = version + 1, updated_at = now(), updated_by = 'migration:0130'
  WHERE (category_code, companion_key) IN (('2.purchased-electricity', 'grid-td'), ('2.renewable-electricity', 'grid-td'));
 
 -- The synthetic set, organisation by organisation: row-level security is forced on both tables, so each is updated as
@@ -100,13 +100,13 @@ BEGIN
     SELECT category_code, companion_key, factor_base FROM nzi_console.input_spec_companion_rules WHERE active AND factor_base LIKE '%-demo%'
   ) demo;
   IF left_over IS NOT NULL THEN
-    RAISE EXCEPTION '0129: an active rule still names a demonstration factor: %.', left_over;
+    RAISE EXCEPTION '0130: an active rule still names a demonstration factor: %.', left_over;
   END IF;
   SELECT string_agg(category_code, ', ' ORDER BY category_code) INTO enabled_now
     FROM nzi_console.input_spec_categories WHERE declarative_resolution_enabled OR companions_enabled;
   IF enabled_now IS DISTINCT FROM '1.company-vehicles, 2.purchased-electricity, 2.renewable-electricity'
      OR EXISTS (SELECT 1 FROM nzi_console.input_spec_categories WHERE companions_enabled) THEN
-    RAISE EXCEPTION '0129 expected exactly the three primaries enabled, companions off; found: %.', coalesce(enabled_now, 'none');
+    RAISE EXCEPTION '0130 expected exactly the three primaries enabled, companions off; found: %.', coalesce(enabled_now, 'none');
   END IF;
 END $$;
 
