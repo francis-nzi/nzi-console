@@ -30,6 +30,12 @@ const ALIASES: Readonly<Record<string, string>> = {
   macau: "MO", macao: "MO", "palestine state of": "PS", "cape verde": "CV", "cabo verde": "CV", swaziland: "SZ",
   "hong kong sar china": "HK", "macao sar china": "MO",
   myanmar: "MM", burma: "MM",
+  // From the full extract's 151 distinct regions (25 Sep 2026), each checked against the ISO3 in CEDA's file name.
+  congo: "CG", "hong kong china": "HK", "lao people s democratic rep": "LA",
+  "macedonia the former yugoslav republic of": "MK", "slovak republic": "SK", "chinese taipei": "TW",
+  "saint vincent and the grenadines": "VC",
+  // IEA names its grid countries in the code; this one is not a region anywhere.
+  "taiwan chinese taipei": "TW",
 };
 
 const BY_NAME: ReadonlyMap<string, string> = new Map([

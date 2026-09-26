@@ -45,8 +45,8 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
 
   it("writes every dataset, identity and value row the plan holds", async () => {
     const outcome = await loadV7Plan(database.pool, plan);
-    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 16 });
-    assert.deepEqual(await counts(), { datasets: 8, factors: 16, identities: plan.identities.length });
+    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 15 }); // the fixture's -w row is excluded (retired-w)
+    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
   });
 
   it("lands v7's curated identity, the code verbatim and the lookup row, not the trigger's fallback", async () => {
@@ -76,13 +76,13 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
   it("changes nothing on a second run", async () => {
     const outcome = await loadV7Plan(database.pool, plan);
     assert.deepEqual(outcome, { datasetsInserted: 0, datasetsUnchanged: 8, identitiesInserted: 0, identitiesKept: plan.identities.length, factorsInserted: 0 });
-    assert.deepEqual(await counts(), { datasets: 8, factors: 16, identities: plan.identities.length });
+    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
   });
 
   it("refuses a changed edition of a loaded dataset, and writes nothing", async () => {
     const changed: LoadPlan = { ...plan, datasets: plan.datasets.map((dataset) => dataset.datasetId === "ice-gb-2026" ? { ...dataset, contentSha256: "f".repeat(64) } : dataset) };
     await assert.rejects(() => loadV7Plan(database.pool, changed), (error) => error instanceof V7LoadRefused && /ice-gb-2026 is already loaded with different content/.test(error.message));
-    assert.deepEqual(await counts(), { datasets: 8, factors: 16, identities: plan.identities.length });
+    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
   });
 
   it("writes nothing from a plan that carries a refusal", async () => {
@@ -121,5 +121,28 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
       const other = await db.query(`SELECT 1 FROM nzi_console.emission_factors_display WHERE dataset_id='iea-no-2025'`);
       assert.equal(other.rows.length, 0, "another organisation can see net-zero-international's reference data");
     } finally { await db.query("ROLLBACK"); }
+  });
+
+  it("writes an ICE negative as a removal, and the database still refuses a negative that is not one (0128)", async () => {
+    const iceRow = { ...parseCsv(readFileSync(resolve(here, "fixtures/v7-factor-lookup-synthetic.csv"), "utf8"))[0]!,
+      db_id: "9001", original_id: "526", source: "RICS / BRE ICE Database V4.1 (Oct 2025)", dataset_id: "75", year: "2027",
+      region: "", scope: "Scope 3", uom: "kg", factor: "-1.03089278" };
+    const ice = planV7Load([iceRow], await listCategoryVariants(db));
+    assert.deepEqual(ice.refusals, []);
+    const outcome = await loadV7Plan(database.pool, ice);
+    assert.equal(outcome.factorsInserted, 1);
+    const stored = await db.query(`SELECT kgco2e_per_unit::text AS value, is_removal FROM nzi_console.emission_factors
+      WHERE organisation_id=$1 AND dataset_id='ice-global-2027' AND factor_id='ice-526'`, [ORG]);
+    assert.deepEqual(stored.rows, [{ value: "-1.03089278", is_removal: true }]);
+    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factors WHERE organisation_id=$1 AND is_removal`), 1,
+      "a row other than the ICE negative was marked a removal");
+
+    // Defence in depth: a negative that reaches the load without the flag — past the transform's ICE-only rule — is
+    // refused by the database, and the whole plan with it.
+    const smuggled = planV7Load([{ ...iceRow, db_id: "9002", source: "DESNZ", original_id: "88_1", year: "2028", factor: "0.5" }], await listCategoryVariants(db));
+    const tampered: LoadPlan = { ...smuggled, factors: smuggled.factors.map((factor) => ({ ...factor, kgco2ePerUnit: "-0.5" })) };
+    await assert.rejects(() => loadV7Plan(database.pool, tampered), /emission_factors_kgco2e_per_unit_check/);
+    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factor_datasets WHERE organisation_id=$1 AND dataset_id='uk-ghg-gb-2028'`), 0,
+      "the refused plan left its dataset behind");
   });
 });

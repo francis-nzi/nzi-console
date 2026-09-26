@@ -80,19 +80,19 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
       const inserted = await db.query(
         `INSERT INTO nzi_console.emission_factors
            (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_system,
-            legacy_original_id,legacy_db_id,source_levels,source_category,ghg_unit)
+            legacy_original_id,legacy_db_id,source_levels,source_category,ghg_unit,is_removal)
          SELECT $1, f.dataset_id, f.factor_id, f.label, f.activity_unit, f.kgco2e::numeric, ARRAY[f.scope], $2,
                 f.legacy_original_id, f.legacy_db_id, ARRAY(SELECT jsonb_array_elements_text(f.levels::jsonb)),
-                f.source_category, f.ghg_unit
-           FROM unnest($3::text[],$4::text[],$5::text[],$6::text[],$7::text[],$8::text[],$9::text[],$10::text[],$11::text[],$12::text[],$13::text[])
-             AS f(dataset_id,factor_id,label,activity_unit,kgco2e,scope,legacy_original_id,legacy_db_id,levels,source_category,ghg_unit)
+                f.source_category, f.ghg_unit, f.is_removal
+           FROM unnest($3::text[],$4::text[],$5::text[],$6::text[],$7::text[],$8::text[],$9::text[],$10::text[],$11::text[],$12::text[],$13::text[],$14::boolean[])
+             AS f(dataset_id,factor_id,label,activity_unit,kgco2e,scope,legacy_original_id,legacy_db_id,levels,source_category,ghg_unit,is_removal)
          RETURNING factor_id`,
         [plan.organisationId, SOURCE_SYSTEM,
           batch.map((row) => row.datasetId), batch.map((row) => row.factorId), batch.map((row) => row.label),
           batch.map((row) => row.activityUnit), batch.map((row) => row.kgco2ePerUnit), batch.map((row) => row.scopes[0]!),
           batch.map((row) => row.legacyOriginalId), batch.map((row) => row.legacyDbId),
           batch.map((row) => JSON.stringify(row.sourceLevels)), batch.map((row) => row.sourceCategory),
-          batch.map((row) => row.ghgUnit)]);
+          batch.map((row) => row.ghgUnit), batch.map((row) => row.isRemoval)]);
       outcome.factorsInserted += inserted.rows.length;
     }
     return outcome;
