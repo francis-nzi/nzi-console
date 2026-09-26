@@ -352,6 +352,22 @@ authenticator secret — not the operator, not the database in the clear.
 3. **They enrol** at `/enrol`: set their own password, add the key the page shows to their authenticator, and confirm
    a code. Only that confirmation writes their credential; five wrong codes end the link. They then sign in at `/login`.
 
+**From the console, once there is an admin (matrix v8).** Everyone after the first is invited from **Platform & audit →
+Access → Invite a member of the team**, which needs `staff.invite` — held by the Admin role alone. It issues through the
+same path as the command above (same token, same `staff.enrolment.issue` event, attributed to the admin), so every
+property holds. While mail is suppressed the admin is shown the link once, to deliver privately; once the service may
+send mail, the link goes straight to the member's work address and the admin sees only that it was sent.
+
+**The first admin — once per organisation.** The roster makes everyone a Viewer, so the first person is enrolled with
+the command above and then made Admin, in the Render Shell:
+
+```
+npm run staff:role -w @nzi/isolated-backend -- <userId> admin --actor <your name> --reason "First admin for <organisation>"
+```
+
+A reason is required; the change is audited as `staff.role.assign` with the role before and after. There is
+deliberately no console route to role changes yet — role administration in the UI is its own build.
+
 The link carries its token in the URL fragment, so it never reaches a server log. Mail is suppressed on this service by
 design (see *This service sends nothing*), which is why the operator delivers the link. Someone with Render Shell
 access could use a link they issued — but that person already holds the database, and the audit trail and the
@@ -367,6 +383,6 @@ single-use link make it visible: the real person's link would no longer work.
    needs the authentication context to reach the sealing registry, which is the auth bridge's build.
 3. **MFA and device recovery.** Enrolment refuses to replace an enabled credential, so a lost authenticator has no path
    yet. Recovery is a deliberate, audited act of its own (suspend the credential, then a recovery invitation).
-4. **Email the invitation directly, once mail is enabled.** Mail is suppressed on this service by design, so the
-   operator delivers the link and sees it. When the console may send mail, the link should go straight to the member's
-   work address and the operator should see only that it was sent.
+4. ~~**Email the invitation directly, once mail is enabled.**~~ Built for invitations from the console (matrix v8):
+   when `mailDelivery` allows sending, the link goes to the member's work address, the admin never holds it, and a link
+   that could not be sent is withdrawn. The operator command stays link-only — it runs where mail is not configured.

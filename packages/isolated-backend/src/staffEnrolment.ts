@@ -44,8 +44,17 @@ const audit = (db: Queryable, input: AuditInput) => db.query(
  * the same transaction. Returns the token once — it is stored nowhere — for the operator to pass to the person.
  */
 export async function issueStaffEnrolmentInvitation(
-  pool: PoolLike, input: { organisationId: string; userId: string; actorId: string; ttlHours?: number }, now = new Date(),
+  pool: PoolLike,
+  input: {
+    organisationId: string; userId: string; actorId: string; ttlHours?: number;
+    /** Who issued it: an operator in the Render Shell (`system`), or a signed-in admin (`staff`, via inviteStaffMember). */
+    principalType?: "staff" | "system";
+    /** How the link reaches the person — recorded on the issue event. */
+    delivery?: "operator-link" | "admin-link" | "email";
+  },
+  now = new Date(),
 ): Promise<{ invitationId: string; token: string; expiresAt: string }> {
+  const principalType = input.principalType ?? "system", delivery = input.delivery ?? "operator-link";
   const userId = input.userId.trim(), actorId = input.actorId.trim();
   const ttlHours = input.ttlHours ?? ENROLMENT_TTL_HOURS;
   if (!userId || !actorId) throw new StaffEnrolmentError("A member and the issuing operator are required.");
@@ -65,7 +74,7 @@ export async function issueStaffEnrolmentInvitation(
         WHERE user_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
         RETURNING invitation_id`, [userId, now.toISOString()]);
     for (const previous of revoked.rows) {
-      await audit(db, { organisationId: input.organisationId, actorId, principalType: "system", action: "staff.enrolment.revoke",
+      await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.revoke",
         invitationId: previous.invitation_id, after: { userId, reason: "superseded by a new invitation" } });
     }
 
@@ -74,8 +83,8 @@ export async function issueStaffEnrolmentInvitation(
     await db.query(
       `INSERT INTO nzi_console.staff_enrolment_invitations (organisation_id,invitation_id,user_id,token_hash,expires_at,created_by)
        VALUES ($1,$2,$3,$4,$5,$6)`, [input.organisationId, invitationId, userId, tokenHash(token), expiresAt, actorId]);
-    await audit(db, { organisationId: input.organisationId, actorId, principalType: "system", action: "staff.enrolment.issue",
-      invitationId, after: { userId, expiresAt } });
+    await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.issue",
+      invitationId, after: { userId, expiresAt, delivery } });
     return { invitationId, token, expiresAt };
   });
 }
