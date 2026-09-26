@@ -357,5 +357,16 @@ design (see *This service sends nothing*), which is why the operator delivers th
 access could use a link they issued — but that person already holds the database, and the audit trail and the
 single-use link make it visible: the real person's link would no longer work.
 
-**Not covered yet:** recovery for someone who already has working sign-in (a lost device). Enrolment refuses to
-replace an enabled credential; recovery is its own, deliberate build.
+**Follow-ups** (logged 26 Sep 2026, in priority order):
+
+1. **Portal invitation hardening — prioritised, its own small fix.** The portal invite (0023) carries its token as
+   `?token=`, where it can reach server and proxy logs, and its setup and confirmation steps write no audit event.
+   Staff enrolment already does both properly (fragment token, stripped on load; audited steps); the portal should match.
+2. **Staff sign-in address sealing, on the auth bridge.** `staff_credentials.email_normalized` is written in the clear
+   by every staff-credential path, enrolment included — the PII inventory's "awaiting-auth-bridge" stage. Sealing it
+   needs the authentication context to reach the sealing registry, which is the auth bridge's build.
+3. **MFA and device recovery.** Enrolment refuses to replace an enabled credential, so a lost authenticator has no path
+   yet. Recovery is a deliberate, audited act of its own (suspend the credential, then a recovery invitation).
+4. **Email the invitation directly, once mail is enabled.** Mail is suppressed on this service by design, so the
+   operator delivers the link and sees it. When the console may send mail, the link should go straight to the member's
+   work address and the operator should see only that it was sent.

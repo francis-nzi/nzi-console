@@ -79,8 +79,13 @@ describe("staff self-enrolment (0129)", { skip: DATABASE_URL ? false : "NZI_TEST
     assert.ok((await invitation(first.invitationId)).revoked_at, "the first invitation is still open");
     await assert.rejects(() => startStaffEnrolment(database.pool, { token: first.token, password: PASSWORD }, KEY), invalid());
     await startStaffEnrolment(database.pool, { token: second.token, password: PASSWORD }, KEY);
-    assert.deepEqual((await audits("bea")).map((event) => event.action),
-      ["staff.enrolment.issue", "staff.enrolment.revoke", "staff.enrolment.issue", "staff.enrolment.setup"]);
+    // The revoke and the second issue are written in one transaction, so they share a timestamp and have no order
+    // between them: checked as a pair. The steps either side are separate transactions, and are checked in order.
+    const actions = (await audits("bea")).map((event) => event.action);
+    assert.equal(actions[0], "staff.enrolment.issue");
+    assert.deepEqual(actions.slice(1, 3).sort(), ["staff.enrolment.issue", "staff.enrolment.revoke"]);
+    assert.equal(actions[3], "staff.enrolment.setup");
+    assert.equal(actions.length, 4);
   });
 
   // ── Set up: nothing can sign in yet ──────────────────────────────────────────────────────────────────────
