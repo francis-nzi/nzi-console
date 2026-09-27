@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 
 export default async function ClientsPage() {
   const result = await loadScreen<{ clients: ClientScreenReadModel[] }>("clients", { clients: [] });
-  return <ScreenState result={result}>{(data) => <ClientsBoard clients={data.clients} />}</ScreenState>;
+  return <ScreenState result={result} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(data) => <ClientsBoard clients={data.clients} />}</ScreenState>;
 }

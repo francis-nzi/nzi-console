@@ -11,5 +11,5 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
     loadScreen<{ clients: ClientScreenReadModel[] }>("clients", { clients: [] }),
   ]);
-  return <ScreenState result={jobsResult}>{(data) => <JobsIndex jobs={data.jobs} clients={clientsResult.state === "success" || clientsResult.state === "degraded" ? clientsResult.data.clients : []} clientId={clientId ?? null} />}</ScreenState>;
+  return <ScreenState result={jobsResult} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => <JobsIndex jobs={data.jobs} clients={clientsResult.state === "success" || clientsResult.state === "degraded" ? clientsResult.data.clients : []} clientId={clientId ?? null} />}</ScreenState>;
 }

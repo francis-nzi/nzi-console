@@ -26,7 +26,7 @@ export default function ChartsPage() {
   const requiredPercent = requiredCharts.length ? Math.round(requiredPresent / requiredCharts.length * 100) : 0;
   const validation = validateManifest(crpProfessionalManifest, crpChartSamples, reviewedCrpSnapshotSample.id);
   const rail = <WorkspaceRail sections={NAV} activeId="emissions" user={USER} />;
-  return <ScreenState result={result}>{() => (
+  return <ScreenState result={result} chrome={{ activeId: "emissions", label: "Emissions", href: "/charts" }}>{() => (
     <AppShell rail={rail}>
       <TopBar
         searchPlaceholder="Search charts…"
