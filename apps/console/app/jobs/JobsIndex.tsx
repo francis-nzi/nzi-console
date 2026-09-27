@@ -8,7 +8,7 @@ import { jobFamilyMeta, type FamilyJob, type JobFamily } from "@nzi/mock-data";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import Link from "next/link";
 import { AppShell, SmartSearch, TopBar, WorkspaceRail } from "@nzi/ui";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { formatDate } from "../lib/formatDate";
 import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useTeamOptions } from "../clients/useReferenceOptions";
@@ -118,7 +118,7 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
     </label>;
   };
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" />}>
     <TopBar searchPlaceholder="Search jobs, clients…" crumbs={crumbTrail(scopedClient
       ? [{ label: "Clients", href: "/clients" },
          { label: scopedClient.name ?? "This client", href: `/clients/${encodeURIComponent(scopedClient.id)}` },

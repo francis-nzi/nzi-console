@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ScreenResult } from "@nzi/contracts";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
-import { NAV, USER } from "./nav";
+import { NAV } from "./nav";
 import { crumbTrail, workspaceCrumbs } from "./crumbTrail";
 
 type StateKind = "loading" | "empty" | "failed";
@@ -24,7 +24,7 @@ export function ScreenState<T>({ result, chrome, children }: { result: ScreenRes
     : result.state === "empty" ? <State kind="empty" title="Nothing here yet" detail={result.message} inShell={!!chrome} />
     : <State kind="failed" title="Workspace unavailable" detail={result.error.message} reference={result.error.correlationId ?? result.meta.requestId} inShell={!!chrome} />;
   if (!chrome) return card;
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} />}>
     <TopBar searchPlaceholder="Search clients, jobs and reports…" crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
     {card}
   </AppShell>;
@@ -44,7 +44,7 @@ function State({ kind, title, detail, reference, inShell }: { kind: StateKind; t
  * also answers portal, trainee and public paths, where a staff rail would be wrong.
  */
 export function WorkspaceNotFound({ chrome, what }: { chrome: ScreenChrome; what: string }) {
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} />}>
     <TopBar searchPlaceholder="Search clients, jobs and reports…" crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
     <div className="nz-screen-state failed" role="status" aria-live="polite"><section><span className="nz-state-icon" aria-hidden="true">?</span><div><span className="nz-eyebrow">Not found</span><h1>This {what} does not exist here</h1><p>It may have been removed, or it belongs to another organisation. <a href={chrome.href}>Back to {chrome.label}</a>.</p></div></section></div>
   </AppShell>;

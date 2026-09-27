@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
 import { type FamilyJob, type Job, type ScopeRow, type RowStatus, statusClass, statusLabel } from "@nzi/mock-data";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { CrpWorkspacePanel, type CrpStage } from "./CrpWorkspacePanels";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 
@@ -112,7 +112,7 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
   );
   const selected = job.rows.find((r) => r.id === selectedId) ?? job.rows[0]!;
 
-  const rail = <WorkspaceRail sections={NAV} activeId="jobs" user={USER} />;
+  const rail = <WorkspaceRail sections={NAV} activeId="jobs" />;
 
   const drawer = (
     <EvidenceDrawer

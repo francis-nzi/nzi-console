@@ -19,7 +19,7 @@ import { AppShell, GatedButton, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import { postBrowserCommand } from "@nzi/api-client";
 import { freightDefaultFactorIds, lcaModuleCodes, type FactorOption, type LcaAssessment, type LcaAssessmentType, type LcaComponentOption, type LcaDataQuality, type LcaLifecycleBoundary, type LcaLineItem, type LcaModuleCode, type LcaResultSnapshot, type LcaTransportLegWriteFields } from "@nzi/contracts";
-import { NAV, USER } from "../../lib/nav";
+import { NAV } from "../../lib/nav";
 import { crumbTrail, jobCrumbs } from "../../lib/crumbTrail";
 import { WorkflowStageControl } from "../WorkflowStageControl";
 import { LcaHotspotsBar, LcaModuleDonut, resolveLcaCharts, type ReviewedLcaSnapshot } from "@nzi/charts";
@@ -67,7 +67,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
   const [creating, setCreating] = useState(assessments.length === 0);
   const [expandedId, setExpandedId] = useState<string | null>(assessments.length === 1 ? assessments[0]!.id : null);
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" />}>
     <TopBar searchPlaceholder={`Search ${meta.code} job…`} crumbs={crumbTrail(jobCrumbs(header, { label: "Assessments" }))} />
     <div className="nz-head nz-family-head">
       <div className="nz-job-heading">

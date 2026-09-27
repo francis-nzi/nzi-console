@@ -1,5 +1,5 @@
 import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { ChartProof } from "./ChartProof";
 import { loadFixtureScreen } from "@nzi/api-client";
@@ -25,7 +25,7 @@ export default function ChartsPage() {
   const requiredPresent = requiredCharts.filter((chart) => resolvedIds.has(chart.id)).length;
   const requiredPercent = requiredCharts.length ? Math.round(requiredPresent / requiredCharts.length * 100) : 0;
   const validation = validateManifest(crpProfessionalManifest, crpChartSamples, reviewedCrpSnapshotSample.id);
-  const rail = <WorkspaceRail sections={NAV} activeId="emissions" user={USER} />;
+  const rail = <WorkspaceRail sections={NAV} activeId="emissions" />;
   return <ScreenState result={result} chrome={{ activeId: "emissions", label: "Emissions", href: "/charts" }}>{() => (
     <AppShell rail={rail}>
       <TopBar

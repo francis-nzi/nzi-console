@@ -23,4 +23,3 @@ export const NAV: NavSection[] = [
   },
 ];
 
-export const USER = { initials: "FD", name: "Francis Doherty", role: "Administrator" };

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { CommandSearch } from "./CommandSearch";
 import { HelpAffordance } from "./HelpAffordance";
+import { RailUserBlock } from "./RailUser";
+export { RailUserBlock, RailUserProvider, type RailUser } from "./RailUser";
 
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
@@ -57,9 +59,10 @@ export function AppShell({ rail, areas, drawer, children }: { rail: ReactNode; /
   );
 }
 
+/** The user block shows whoever is signed in, from RailUserProvider — there is deliberately no `user` prop to hard-code. */
 export function WorkspaceRail({
-  sections, activeId, user,
-}: { sections: NavSection[]; activeId?: string; user: { initials: string; name: string; role: string } }) {
+  sections, activeId,
+}: { sections: NavSection[]; activeId?: string }) {
   return (
     <aside className="nz-rail">
       <div className="nz-brand">
@@ -80,11 +83,7 @@ export function WorkspaceRail({
           </nav>
         </div>
       ))}
-      <div className="nz-railfoot">
-        <div className="av">{user.initials}</div>
-        <a className="who" href="/account" title="Account security">{user.name}<small>{user.role}</small></a>
-        <form action="/api/auth/logout" method="post"><button type="submit" className="nz-signout" aria-label={`Sign out ${user.name}`} title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button></form>
-      </div>
+      <RailUserBlock />
     </aside>
   );
 }

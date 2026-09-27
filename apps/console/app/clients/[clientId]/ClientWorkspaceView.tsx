@@ -7,7 +7,7 @@ import { AppShell, ClientWorkspaceNav, Drawer, EvidenceDrawer, TopBar, Workspace
 import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
-import { NAV, USER } from "../../lib/nav";
+import { NAV } from "../../lib/nav";
 import { useEditAccess, useHasCapability } from "../../lib/useEditAccess";
 import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
 import { AiProfileArea } from "./AiProfileArea";
@@ -128,7 +128,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const latestNote = evidence.state === "empty" ? "Not reported" : yoy.value !== null ? `${formatFigure(yoy)} vs prior reviewed year` : "No earlier reviewed year";
 
   return <AppShell
-    rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}
+    rail={<WorkspaceRail sections={NAV} activeId="clients" />}
     areas={<ClientWorkspaceNav groups={clientAreaGroups({
       analytics: history.length || null, reporting: workspace.reports.length || null,
       comms: workspace.messages.length || null, files: workspace.files.length || null,

@@ -4,7 +4,7 @@ import { AppShell, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { assessmentReadiness, type LcaAssessment, type LcaLineItem, type MappingState } from "@nzi/mock-data";
 import { formatDateTime } from "../lib/formatDate";
 import { LcaStageBar, RENDERER_VERSION, TOKENS_VERSION, type LcaStageBarData } from "@nzi/charts";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 
 type View = "inventory" | "transport" | "scenarios";
@@ -16,7 +16,7 @@ export function LcaBoard({ assessments }: { assessments: LcaAssessment[] }) {
   const [selectedLineId, setSelectedLineId] = useState(assessments[0]?.lines[0]?.id ?? "");
   const [view, setView] = useState<View>("inventory");
   const [filter, setFilter] = useState<Filter>("all");
-  if(assessments.length===0)return <AppShell rail={<WorkspaceRail sections={NAV} activeId="lca" user={USER}/>}><TopBar searchPlaceholder="Search assessments…" crumbs={crumbTrail(workspaceCrumbs("LCA / PCF / CBAM", "/lca"))}/><div className="nz-head"><div className="nz-eyebrow">Product assurance</div><h1>Life-cycle assessments</h1><div className="sub">Product emissions, boundaries, inventory evidence and scenarios</div></div><div className="nz-body nz-lca-empty"><section><i>0</i><div><h2>No assessments available</h2><p>Create an LCA or PCF job before importing a bill of materials or modelling product impacts.</p><a className="nz-btn pri" href="/jobs">Open jobs</a></div></section></div></AppShell>;
+  if(assessments.length===0)return <AppShell rail={<WorkspaceRail sections={NAV} activeId="lca"/>}><TopBar searchPlaceholder="Search assessments…" crumbs={crumbTrail(workspaceCrumbs("LCA / PCF / CBAM", "/lca"))}/><div className="nz-head"><div className="nz-eyebrow">Product assurance</div><h1>Life-cycle assessments</h1><div className="sub">Product emissions, boundaries, inventory evidence and scenarios</div></div><div className="nz-body nz-lca-empty"><section><i>0</i><div><h2>No assessments available</h2><p>Create an LCA or PCF job before importing a bill of materials or modelling product impacts.</p><a className="nz-btn pri" href="/jobs">Open jobs</a></div></section></div></AppShell>;
   const assessment = assessments.find((item) => item.id === assessmentId) ?? assessments[0]!;
   const selectedLine = assessment.lines.find((line) => line.id === selectedLineId) ?? assessment.lines[0];
   const readiness = assessmentReadiness(assessment);
@@ -28,7 +28,7 @@ export function LcaBoard({ assessments }: { assessments: LcaAssessment[] }) {
   const lines = filter === "all" ? assessment.lines : assessment.lines.filter((line) => line.mappingState === filter);
   const chooseAssessment = (id: string) => { const next = assessments.find((item) => item.id === id); if(!next)return; setAssessmentId(id); setSelectedLineId(next.lines[0]?.id??""); };
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="lca" user={USER} />} drawer={selectedLine?<EvidenceDrawer kicker={`${assessment.kind.toUpperCase()} evidence`} title={selectedLine.component} subtitle={`${selectedLine.module} · ${selectedLine.mappingState}`} actions={<><button className="nz-btn" disabled title={unavailable}>View source</button><button className="nz-btn pri" disabled title={unavailable}>Review mapping</button></>}><LineEvidence line={selectedLine} /></EvidenceDrawer>:undefined}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="lca" />} drawer={selectedLine?<EvidenceDrawer kicker={`${assessment.kind.toUpperCase()} evidence`} title={selectedLine.component} subtitle={`${selectedLine.module} · ${selectedLine.mappingState}`} actions={<><button className="nz-btn" disabled title={unavailable}>View source</button><button className="nz-btn pri" disabled title={unavailable}>Review mapping</button></>}><LineEvidence line={selectedLine} /></EvidenceDrawer>:undefined}>
     <TopBar searchPlaceholder="Search assessments, products, BOM lines…" crumbs={crumbTrail(workspaceCrumbs("LCA / PCF / CBAM", "/lca"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">{assessment.kind.toUpperCase()} · {assessment.jobNumber}</div><h1>{assessment.product}</h1><div className="sub">{assessment.client} · {assessment.boundary} · {assessment.standard}</div></div><div className="nz-head-actions"><label className="nz-sr-only" htmlFor="assessment-select">Assessment</label><select id="assessment-select" className="nz-btn" value={assessmentId} onChange={(event) => chooseAssessment(event.target.value)}>{assessments.map((item) => <option key={item.id} value={item.id}>{item.jobNumber} · {item.product}</option>)}</select><button className="nz-btn pri" disabled title={unavailable}>Import BOM</button></div></div></div>
     <div className="nz-body" style={{ paddingTop: 18 }}>

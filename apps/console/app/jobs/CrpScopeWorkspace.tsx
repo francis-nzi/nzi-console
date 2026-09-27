@@ -27,7 +27,7 @@ import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/c
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { JobAnnualMetrics } from "./JobAnnualMetrics";
 import { WorkflowStageControl } from "./WorkflowStageControl";
@@ -535,7 +535,7 @@ export function CrpScopeWorkspace({
 
   return (
     <AppShell
-      rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}
+      rail={<WorkspaceRail sections={NAV} activeId="jobs" />}
       drawer={drawer}
     >
       <TopBar

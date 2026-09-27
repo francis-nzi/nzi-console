@@ -1,5 +1,5 @@
 import { AppShell, WorkspaceRail, TopBar } from "@nzi/ui";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { KnowledgeWorkspace } from "./KnowledgeViews";
 
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default function KnowledgePage() {
   const writeEnabled = process.env.NZI_DATA_MODE === "isolated-api";
   return (
-    <AppShell rail={<WorkspaceRail sections={NAV} activeId="knowledge" user={USER} />}>
+    <AppShell rail={<WorkspaceRail sections={NAV} activeId="knowledge" />}>
       <TopBar
         searchPlaceholder="Search the knowledge library…"
         crumbs={crumbTrail(workspaceCrumbs("Knowledge", "/knowledge"))}

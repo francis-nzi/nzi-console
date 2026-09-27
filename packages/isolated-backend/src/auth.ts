@@ -10,7 +10,11 @@ export type PortalSession = { principal:"portal";sessionId:string;userId:string;
 export type PortalPrincipal=PortalSession&{displayName:string;email:string;idleLimitMinutes:number;termsVersion:string;mustAcceptTerms:boolean};
 export const PORTAL_IDLE_LIMIT_DEFAULT_MINUTES=30;
 /** NZC-022 — the role and the capabilities it resolves to in the current permission-matrix version. */
-export type StaffPrincipal = StaffSession & { role: StaffRole; matrixVersion: number; capabilities: readonly CapabilityGrant[] };
+export type StaffPrincipal = StaffSession & {
+  role: StaffRole; matrixVersion: number; capabilities: readonly CapabilityGrant[];
+  /** The membership's own name and work address, for showing who is signed in. Optional: a principal built elsewhere may not carry them. */
+  displayName?: string | null; email?: string | null;
+};
 
 export class AuthenticationError extends Error { constructor(message = "Staff authentication is required.") { super(message); this.name = "AuthenticationError"; } }
 /** `permission` is the capability refused (a PERMISSION_MATRIX.md name), or `tenant` for a record outside the caller's organisation. */
@@ -73,7 +77,7 @@ export async function resolvePortalPrincipal(pool:PoolLike,session:PortalSession
  */
 export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSession): Promise<StaffPrincipal> {
   return withAuthTransaction(pool, "read", async (db: Queryable) => {
-    const result = await db.query<{ role_id: string }>(`SELECT m.role_id FROM nzi_console.staff_sessions s
+    const result = await db.query<{ role_id: string; display_name: string | null; email: string | null }>(`SELECT m.role_id, m.display_name, m.email FROM nzi_console.staff_sessions s
       JOIN nzi_console.memberships m ON (m.organisation_id, m.user_id) = (s.organisation_id, s.user_id)
       WHERE s.organisation_id=$1 AND s.session_id=$2 AND s.user_id=$3 AND s.revoked_at IS NULL
         AND s.expires_at > now() AND m.status='active'`, [session.organisationId, session.sessionId, session.userId]);
@@ -83,7 +87,7 @@ export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSessio
       FROM nzi_console.staff_role_capabilities r
       WHERE r.role_id=$1 AND r.matrix_version=(SELECT max(matrix_version) FROM nzi_console.staff_capability_matrix_versions)
       ORDER BY r.capability`, [role]);
-    return { ...session, role, ...capabilitiesFromRows(matrix.rows) };
+    return { ...session, role, ...capabilitiesFromRows(matrix.rows), displayName: result.rows[0]?.display_name ?? null, email: result.rows[0]?.email ?? null };
   });
 }
 

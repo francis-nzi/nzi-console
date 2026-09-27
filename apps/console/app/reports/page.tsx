@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { crpProfessionalManifest } from "@nzi/charts";
-import { NAV, USER } from "../lib/nav";
+import { NAV } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import {ReportReviewInbox} from "./ReportReviewInbox";
 import {LiveReportRegister} from "./LiveReportRegister";
 
 export default function ReportsPage() {
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" />}>
     <TopBar searchPlaceholder="Search reports, jobs, clients…" crumbs={crumbTrail(workspaceCrumbs("Reports", "/reports"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Assured reporting</div><h1>Publication studio</h1><div className="sub">Create, assure and release decision-grade carbon reports</div></div><Link className="nz-btn pri" href="/report-preview">Prepare report version</Link></div></div>
     <div className="nz-body" style={{ paddingTop: 18 }}>

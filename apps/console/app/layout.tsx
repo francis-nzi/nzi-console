@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "@nzi/ui/styles.css";
+import { RailUserProvider } from "@nzi/ui";
 import { HelpProvider } from "./help/HelpProvider";
+import { sessionIdentity } from "./lib/sessionIdentity";
 
 /**
  * Inter, self-hosted (NZC-150).
@@ -39,13 +41,14 @@ export const metadata: Metadata = {
   description: "NZ Insights Pro — staging.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const identity = await sessionIdentity();
   return (
     <html lang="en" className={inter.variable}>
       <body>
         {/* Mounted once, so the ? that TopBar renders has something to open on every page —
             rather than seventeen pages each remembering to wire it up. */}
-        <HelpProvider writeEnabled={process.env.NZI_DATA_MODE === "isolated-api"}>{children}</HelpProvider>
+        <RailUserProvider user={identity}><HelpProvider writeEnabled={process.env.NZI_DATA_MODE === "isolated-api"}>{children}</HelpProvider></RailUserProvider>
       </body>
     </html>
   );

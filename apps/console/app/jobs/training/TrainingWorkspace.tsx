@@ -11,7 +11,7 @@ import {
 } from "@nzi/contracts";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import type { TrainingRunRecord } from "@nzi/isolated-backend";
-import { NAV, USER } from "../../lib/nav";
+import { NAV } from "../../lib/nav";
 import { formatDate } from "../../lib/formatDate";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { crumbTrail, jobCrumbs } from "../../lib/crumbTrail";
@@ -46,7 +46,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled }: {
   const review = useEditAccess("snapshot.review", writeEnabled);
   const places = useEditAccess("training.entitlement.manage", writeEnabled);
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" />}>
     <TopBar searchPlaceholder="Search trainees, sessions…" crumbs={crumbTrail(jobCrumbs(header, { label: "Training run" }))} />
     <div className="nz-head nz-family-head"><div className="nz-job-heading">
       <div>

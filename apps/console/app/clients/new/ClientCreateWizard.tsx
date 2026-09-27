@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { postBrowserCommand } from "@nzi/api-client";
-import { NAV, USER } from "../../lib/nav";
+import { NAV } from "../../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../../lib/crumbTrail";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, emptyClientForm, normaliseClientForm, type ClientFormState, type FieldErrors } from "../clientForm";
 import { useReferenceOptions } from "../useReferenceOptions";
@@ -94,7 +94,7 @@ export function ClientCreateWizard() {
   const last = step === STEPS.length - 1;
 
   return (
-    <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}>
+    <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" />}>
       <TopBar searchPlaceholder="Search clients…" crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients", { label: "New client", href: "/clients/new" }))} />
       <div className="nz-head">
         <div className="nz-job-titleline">
