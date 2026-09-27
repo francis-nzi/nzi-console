@@ -2,10 +2,15 @@
 
 **What this is.** The characterisation and proposed design for bringing NZ Insights Pro v7's active clients and
 their full job history — historical emissions and published reports included — into `net-zero-international`.
-**For ruling. Nothing is exported, moved or built yet.**
+**Nothing is exported, moved or built yet.**
 
-**Status (27 Sep 2026).** Characterised from code and schema only (§1). Volumes are not yet known: they need the
-read-only counts in Appendix A run against live v7 (§9). Numbered decisions for ruling are collected in §11.
+**Status (27 Sep 2026).** Characterised from code and schema only (§1). **The eight decisions in §11 are ruled**
+(recorded there, against each). The build additions asked for at that ruling — the double-count guard, LCA
+results, client custom factors — are §6.1–§6.3, with one new decision (9, the row figure) for ruling.
+
+**Gate before any migration or build.** The migrations in §10 come for ruling only once (1) Francis has run
+Appendix A and §9 is filled, and (2) Francis has recorded the data-protection decision for bringing client
+personal data into the isolated store.
 
 **Reading order:** `REFERENCE_DATA_DESIGN.md` (the governed shape this mirrors) → this document →
 `WORKFLOWS.md` §3–§8 (how v7 is used).
@@ -28,16 +33,19 @@ read-only counts in Appendix A run against live v7 (§9). Numbered decisions for
 - **v7:** its codebase (`nzi_pro_v7-POSTGRES`), read for **code and schema only** — `sql_migrations/`,
   `core/`, `api/`, `services/`, `models/`, `scripts/`. None of v7's client-data folders was read, and nothing
   here names a person or a client. (One early recursive search began walking the whole folder tree before it
-  was stopped; its output was never read. Every later search was confined to code folders.)
+  was stopped; its output was never read.)
+- **Standing rule (reaffirmed 27 Sep 2026):** every automated search, grep or glob over v7 is confined to its
+  code folders, named explicitly. Its client-data folders (`clients/`, `job_data_uploads/`, `tmp_legacy_import_*`,
+  `test_output/`, `legacy_archive/`, `assets/`, and any data file) are off-limits even to a pattern search.
 - **Console:** migrations and backend source, as of `main` at `64df7ac`.
 - **v7 has no single schema definition.** Tables come from a pg_dump baseline (`sql_migrations/0001_init.sql`)
   plus 0002–0074, from `core/migrations.py`, and from route modules that run `CREATE TABLE`/`ADD COLUMN IF NOT
   EXISTS` when first called. So the column lists below are what the code expects; **the authoritative column
   list is live `information_schema`**, captured by Appendix A before any build.
 - **Undetermined from code** (Appendix A settles each): whether `jobs.assigned_user_id` and `clients.created_at`
-  exist; the distinct values actually in use in the free-text `clients.status` and `jobs.status`; whether spend
-  entries also materialise scope rows (a double-count risk); how far stored `calc_tco2e` differs from v7's
-  recomputed totals.
+  exist; the distinct values actually in use in the free-text `clients.status` and `jobs.status`; how far stored
+  `calc_tco2e` differs from v7's recomputed totals. (Whether spend entries materialise scope rows is now settled
+  from code — they do, §6.1.)
 
 ## 2. v7's source of record
 
@@ -136,7 +144,8 @@ counter started at 0, and **staging's demo jobs already hold low sequences**. Op
 
 - **(a) Keep v7's numbers.** Write `sequence` = v7's number, refuse any clash, then set the counter to at least
   max(imported), so new jobs continue after v7. Clashes are only possible with the demo organisation's sequences,
-  which are synthetic — they would be renumbered or retired first. **Recommended.**
+  which are synthetic — they would be renumbered or retired first. **← Ruled: (a).** The counter moves past the
+  imported maximum; only demo-organisation clashes are retired, nothing else is renumbered.
 - **(b) New console numbers**, with v7's number kept as `legacy_job_number` and shown beside it. No clash; but a
   client's "J000612" would appear under a different official number.
 
@@ -160,8 +169,9 @@ counter started at 0, and **staging's demo jobs already hold low sequences**. Op
     origin columns, whoever writes;
   - `createScopeRow`, `updateScopeRow`, `calculateScopeRow`, the declarative resolver, rollforward and the
     re-point paths **refuse a migrated row** with a message naming why.
-- **Deactivate-not-delete** still applies: `enabled` is carried from v7 as is. Whether a person may later
-  **disable** a migrated row (the one mutation that doesn't alter the figure) is decision 4.
+- **Deactivate-not-delete** still applies: `enabled` is carried from v7 as is. **Ruled (decision 4): a migrated
+  row may be disabled — and nothing else** — through its own audited command with a reason. The trigger permits
+  exactly that one column change (`enabled` true → false, and back); the figure never changes.
 
 **Why one table and not a separate `migrated_scope_rows`:** every read path — totals, trajectory, portal
 dashboards, intensity — reads `job_scope_rows`. One table means historical years appear everywhere without
@@ -169,8 +179,9 @@ touching those paths; the risk moves to the write paths, which the trigger and t
 separate table would need every reader changed, and a missed reader would silently show a history with nothing
 in it.
 
-**Which figure is "as v7 recorded" — decision 2.** v7's row figure and the figure v7 showed a client can
-differ (§2.3). Proposed:
+**Which figure is "as v7 recorded" — decision 2, ruled.** v7's row figure and the figure v7 showed a client can
+differ (§2.3). **Ruled as proposed — the published report is authoritative; differences are reported, never
+corrected:**
 
 - **The published report is the authoritative historical total** for any job that has one. It is what the
   client received.
@@ -178,6 +189,22 @@ differ (§2.3). Proposed:
 - The load **reconciles**, per job, the sum of migrated row figures against the published snapshot's totals, per
   scope. A difference is **reported, never corrected**, and the console shows both, labelled.
 - For a job with **no published report**, the migrated row sum is the historical figure, marked as unpublished.
+
+**The row figure itself — decision 9 (new, for ruling).** "As v7 recorded" is ambiguous at row level, because
+v7 kept two figures that can disagree, and **v7's own code documents one of them as wrong**:
+
+- the **stored** `calc_tco2e` (or `override_tco2e`). For every spend-pushed row it was, until fixed, **stored
+  1000× too large** — v7's comment says so, and that the reported total was unaffected because reporting never
+  reads the stored column (`api/spend_data_routes.py:2434-2445`);
+- the **figure v7 reported**: `qty × factor × apply_pct / 100` (÷ 1000 when the factor is per kg), using the
+  factor **copied onto the row** (`services/monthly_emissions.py:58-65`), with `override_tco2e` taking precedence.
+
+Proposed: the migrated row's figure is **the one v7 reported** — v7's own arithmetic on v7's own recorded inputs,
+not a re-resolution (no factor is looked up; the row's copied factor is used). `migrated_record` keeps **both**,
+and a row where they differ beyond rounding is **reported**. One case v7's arithmetic cannot be replayed from the
+row alone: a monthly row whose months fall in a different dataset, which v7 re-looks-up from its factor tables at
+read time (`services/monthly_emissions.py:627-691`). Such rows keep the row-level figure, are flagged, and the
+job's published report (authoritative, decision 2) is what stands for them.
 
 ### 5.2 Reports
 
@@ -189,25 +216,26 @@ composition chain, which v7's reports cannot honestly pass (§3). Proposed colum
 - **`snapshot_json` verbatim**, plus v7's `data_hash`, **verified on import** (SHA-256 recomputed; a mismatch
   refuses that report);
 - `published_at` / `published_by`, and `is_portal_version` (from `report_reviews.portal_version_id`);
-- `pdf_sha256` and an asset reference (§5.3).
+- the PDF's **storage link only** — `storage_provider`, `file_path` or OneDrive `external_item_id`/`web_url` —
+  as provenance (§5.3).
 
 INSERT and SELECT only. A **read-only historical report view** renders it — a later build — for the console and
 for the portal's history. It is never re-composed through the console's report engine.
 
-### 5.3 PDFs — decision 3
+### 5.3 PDFs — decision 3, ruled: (b)
 
-The published PDFs are **files** on v7's server disk or in OneDrive, not in the database. Options:
-
-- **(a) Import the published PDFs** as content-addressed assets (sha256, verified against the file), from a file
-  export Francis makes alongside the SQL export. **Recommended for final/published versions only.**
-- **(b) Snapshot JSON only;** PDFs left in v7/OneDrive with the link kept as provenance.
+The published PDFs are **files** on v7's server disk or in OneDrive, not in the database. **Ruled: (b)** — this
+migration imports each report's `snapshot_json`, its hash and its **storage link only**. **No PDF binary is
+imported.** Bringing the published PDFs across as verified, content-addressed assets is a later, separately
+ruled step.
 
 ## 6. Scope rules
 
-- **Clients:** active by the §2.1 predicate. Archived clients are not imported (ruled scope).
+- **Clients:** active by the §2.1 predicate — **ruled provisionally (decision 8)**, confirmed or amended once
+  Appendix A shows the status values actually in use. Archived clients are not imported (ruled scope).
 - **Jobs:** every job of an imported client, whatever its status — full history. A job with no client (v7
   permits it for training) is outside a client's history: excluded and reported.
-- **Status mappings** (decision 5, finalised once Appendix A returns the values in use):
+- **Status mappings** (decision 5 — **ruled provisionally**; finalised once Appendix A returns the values in use):
   - clients: `Active` → `active`;
   - jobs: `Completed`/`Closed` → `complete`; `Open`, `Data Gathering Phase`, `Reporting Phase`, `Awaiting
     Client Input` → `open`, with v7's status kept verbatim as the job's `workflow_stage`; archived → `cancelled`.
@@ -222,6 +250,63 @@ The published PDFs are **files** on v7's server disk or in OneDrive, not in the 
 - **Not imported:** portal users and their credentials (re-invited through the console's own flow); CRM
   timeline, notes and touchpoints; quotes/invoices (out of scope — could follow).
 
+### 6.1 The double-count guard
+
+**Settled from v7's code: spend entries do materialise scope rows.** `sync_spend_to_scope_data`
+(`api/spend_data_routes.py:2314-2625`) aggregates each job's mapped spend entries into scope rows marked
+`data_source = 'Spend Data'`, one per (scope, factor `original_id`, site). And v7 counts four sources in two
+different ways. Its reporting total (`services/emissions_reporting.py`) is:
+
+| v7 record | Counted as a figure | Why |
+|---|---|---|
+| enabled `job_scope_rows` — including `'Spend Data'` rows and `'Employee Commuting (Consolidated)'` rows (`auto_pair_kind = 'employee_commuting'`) | **yes** | the rows |
+| enabled `job_emission_sources` except `source_type = 'employee_commuting'` (asset, vehicle, business travel) | **yes**, unioned on read | these registers are consolidated on read, never written back (`api/job_scope_data_routes.py:1170-1182`) |
+| `job_emission_sources` with `source_type = 'employee_commuting'` | **no** | already in the consolidated commuting rows (`services/employee_commuting_consolidation.py`) |
+| `job_spend_entries` | **no** | already in the `'Spend Data'` rows |
+
+**The guard is v7's own counting rule, applied in the plan:**
+
+1. **Only figure-bearing records become migrated figures:** enabled scope rows, and enabled non-commuting register
+   sources. Spend entries and commuting register sources are imported as **evidence** — linked to the row that
+   carries their figure, never counted.
+2. **Refused** (the plan cannot be loaded until resolved):
+   - a scope row stored with a register's *consolidated-on-read* `data_source` (`Asset Register (Consolidated)`,
+     `Business Travel Register (Consolidated)`) — v7 never writes these, so one in the table would be counted
+     twice beside its sources;
+   - a spend entry or commuting source that is marked as a figure anywhere in the plan.
+3. **Reported** (loaded as v7 left it, flagged for a person):
+   - an enabled `'Spend Data'` row and an enabled row from another source for the same (job, scope, `original_id`,
+     site) — v7's own known double-count (it cites job 663 in `spend_data_routes.py:2380-2387`);
+   - a job whose `'Spend Data'` rows do not sum to its mapped, non-deleted spend entries, or whose consolidated
+     commuting rows do not sum to its commuting sources;
+   - the per-job total by v7's rule, against the published report's (decision 2).
+
+### 6.2 LCA and PCF results — migrated-immutable snapshots
+
+v7 keeps LCA/PCF work in `lca_assessments` (`total_tco2e`, `review_status` `draft·in_review·verified·published`)
+and freezes results in `lca_result_snapshots` (JSONB). **Proposed:** LCA/PCF jobs import as job records like any
+other; each **verified or published** `lca_result_snapshot` imports **verbatim** into the same append-only legacy
+table as reports (§5.2), as `kind = 'lca-result'` — sealed, hash-recorded, read-only, never re-run through the
+console's LCA engine. The working assessment data (line items, transport legs, gap fills) is **not imported**:
+the frozen result is the record, and it is noted on the job that the working detail stayed in v7.
+
+### 6.3 Client custom factors — for future capture, separately
+
+Historical rows are **self-contained**: each migrated row carries the factor v7 copied onto it, and never points
+at a console factor or client factor. So custom factors are not needed for history. The question is only whether
+a client's own factors should be **available for new capture** in the console.
+
+**Proposed: yes, as a separate step after the history load, for client-level factors only.**
+
+- v7's client-level custom factors (`custom_factors` + `custom_factor_year_values`) for active clients → the
+  console's client-factor model (reusable across that client's jobs). Each is marked `source_system = 'nzi-pro-v7'`
+  with `legacy_db_id`, at its **most recent year's value**, and **active only if it was used in the client's
+  most recent job** — others imported inactive, for a person to switch on.
+- **Job-level** custom factors (`job_custom_factors`) are **not** imported as client factors: they belong to one
+  job's history, which the migrated rows already carry.
+- The exact column mapping waits on Appendix A's schema capture: these tables are created on first use in v7, and
+  their columns could not be fixed from code.
+
 ## 7. PII — everything personal, sealed on write
 
 Client personal data now enters the isolated store, so sealing is mandatory, in the same transaction as the write.
@@ -233,41 +318,47 @@ Client personal data now enters the isolated store, so sealing is mandatory, in 
 | `report_reviews`: `approved_by_name/email` | `legacy_report_versions` | a sealed column on the new table |
 | `job_emission_sources.employee_name` | register source detail | sealed (a new sealed column) |
 | `clients.crm_owner` / `client_manager` | owner (matched) or `owner_name` | existing sealed column |
-| **`job_report_versions.snapshot_json`** — contains signee names and other personal detail | `legacy_report_versions` | **decision 6** |
+| **`job_report_versions.snapshot_json`** and `lca_result_snapshots` — contain signee names and other personal detail | the legacy snapshot table | **the whole payload sealed (decision 6, ruled)** |
 
 **Decision 6 — PII inside verbatim report snapshots.** Verbatim storage and field-level sealing conflict: the
 JSON cannot be edited to seal a name without ceasing to be verbatim. Options:
 
 - **(a) Seal the whole payload** under the client's subject key: stored as ciphertext, decrypted only to render,
-  covered by a key-shred at erasure. The hash is verified before sealing and kept. **Recommended.**
+  covered by a key-shred at erasure. The hash is verified before sealing and kept. **← Ruled: (a).**
 - **(b)** Store it plaintext, and record it in the PII inventory as unsealed.
+
+**Before any of this is loaded:** Francis records the data-protection decision for bringing client personal data
+into the isolated store (the gate at the top of this document).
 
 ## 8. The process
 
-1. **Extract — Francis, read-only.** A SQL export of the in-scope rows (Appendix B lists the tables), plus the
-   published PDFs if decision 3 is (a), onto his machine. **Never committed** (NZC-020). The run records the
+1. **Extract — Francis, read-only.** A SQL export of the in-scope rows (Appendix B lists the tables) onto his
+   machine — no PDF files (decision 3). **Never committed** (NZC-020). The run records the
    extract's SHA-256.
 2. **Plan — pure, like `v7ReferenceImport`.** Extract in, validated plan out, with the three kinds of finding:
    - **refusals** block the load (a hash mismatch, a job-number clash, an orphaned FK, an unknown status);
    - **exclusions** are a closed, named list (e.g. a client-less training job, an archived client's row);
    - **reports** are shown and the load goes ahead (unmatched owners or lookups, reconciliation differences).
 3. **Load — boundary-guarded, from the Render Shell, a dry run unless `--commit`.** In FK order: clients → sites →
-   contacts → targets/baseline → jobs (+ config) → scope rows / register → report versions (+ PDFs). One
+   contacts → targets/baseline → jobs (+ config) → scope rows / register (with the §6.1 guard) → report versions
+   and LCA result snapshots. Client custom factors follow as a separate step (§6.3). One
    transaction per client, so a failure leaves whole clients or nothing.
 4. **Idempotent, reconcile-by-reading.** Each row is matched on `(org, source_system, legacy_db_id)`. Absent →
    insert; present and identical → no-op; **present and different → refused**, because history is immutable and
    a changed v7 row means v7 changed after migration — for a person to look at. Nothing is deleted: a v7 row
    missing from a later extract is reported, not removed.
-5. **Separation of duties, audit, review — decision 7.** The console's review and approval gates exist for *new*
-   work. Migrated rows arrive as v7 left them: review status carried from v7, never re-approved in the console,
-   and the import is audited as one act by the operator. That is a **ruled exemption for migrated history**, and
-   it is only safe because §5.1's immutability makes the rows unchangeable afterwards.
+5. **Separation of duties, audit, review — decision 7, ruled.** The console's review and approval gates exist for
+   *new* work. Migrated rows arrive as v7 left them: review status carried from v7, never re-approved in the
+   console, and the import is audited as one act by the operator. The exemption applies **only to rows whose
+   `origin = 'migrated'`** — enforced in the gates themselves, not by convention — and is only safe because §5.1's
+   immutability makes those rows unchangeable afterwards. Anything captured in the console afterwards, including
+   on a migrated job, meets every gate as usual.
 
 ## 9. Volumes — not yet known
 
 The load, the PII surface and the report surface cannot be sized from code. **Appendix A** is read-only SQL for
 Francis to run against live v7. It returns **counts and enumerated status values only — no names, no free text**.
-The figures come back into §9 before any build is ruled:
+The figures come back into §9 before any build is ruled. **Pending — Appendix A not yet run.**
 
 | Measure | Count |
 |---|---|
@@ -281,36 +372,56 @@ The figures come back into §9 before any build is ruled:
 
 ## 10. Migrations this will need (each through the ruling gate)
 
+Held until §9 is filled and the data-protection decision is recorded.
+
 1. Provenance columns (`source_system`, `legacy_db_id`, and the verbatim identifiers) and their partial unique
    keys on `clients`, `client_sites`, `client_contacts`, `jobs`, `job_scope_rows`, `job_emission_groups`,
-   `job_emission_sources`.
-2. `job_scope_rows.origin` + `migrated_record`, their CHECKs, and the **immutability trigger**.
-3. `legacy_report_versions`, append-only, with its sealed payload and approver columns.
-4. The PII inventory entries for every new personal-data column.
-5. If decision 1 is (a): moving the job-number counter past the imported maximum, under the same definer function.
+   `job_emission_sources` — and on the client-factor table, for §6.3.
+2. `job_scope_rows.origin` + `migrated_record` (holding both v7 figures, decision 9), their CHECKs, and the
+   **immutability trigger**, which permits exactly one change on a migrated row: `enabled` (decision 4).
+3. The legacy snapshot table (`legacy_report_versions`, with `kind` `report` | `lca-result`), append-only, with
+   its sealed payload, approver columns and storage link — no PDF asset (decision 3).
+4. The review and separation-of-duties gates exempting `origin = 'migrated'` rows, and only those (decision 7).
+5. The PII inventory entries for every new personal-data column.
+6. Moving the job-number counter past the imported maximum, under the same definer function (decision 1).
 
-## 11. Decisions for ruling
+## 11. Decisions
 
-1. **Job numbers:** keep v7's (recommended) or new ones with v7's shown beside them.
-2. **Authoritative historical total:** the published report where one exists, rows as evidence, differences
-   reported (recommended).
-3. **PDFs:** import the published ones as verified assets (recommended), or leave them in v7/OneDrive.
-4. **May a migrated row be disabled later?** (Recommended: yes, audited, with a reason — the figure itself never
-   changes.)
-5. **Status mappings,** once Appendix A shows the values in use.
-6. **PII in report snapshots:** seal the whole payload (recommended), or record it as unsealed.
-7. **The exemption from review and separation of duties for migrated history** (§8.5).
-8. **"Active client"** as `status = 'Active'` and not archived.
+Ruled 27 Sep 2026:
+
+| # | Decision | Ruling |
+|---|---|---|
+| 1 | Job numbers | **(a) Keep v7's numbers**; the counter moves past the imported maximum; only demo-organisation clashes are retired. |
+| 2 | Authoritative historical total | **The published report**; migrated rows are the evidence; differences reported, never corrected. |
+| 3 | PDFs | **(b) `snapshot_json` + hash + storage link only.** No PDF binaries in this migration; importing them is a later, separately ruled step. |
+| 4 | Disabling a migrated row | **Yes — disable only**, audited, with a reason. |
+| 5 | Status mappings | **Provisional**; finalised with Appendix A. |
+| 6 | PII in report snapshots | **(a) Seal the whole payload.** |
+| 7 | Review / separation-of-duties exemption | **Limited to `origin = 'migrated'`.** |
+| 8 | "Active client" predicate | **Provisional**; confirmed with Appendix A. |
+
+For ruling:
+
+| # | Decision | Proposed |
+|---|---|---|
+| 9 | A migrated row's figure (§5.1) | **The figure v7 reported** (v7's arithmetic on the row's own copied factor, override first), with the stored `calc_tco2e` kept beside it and any difference reported. |
+
+And, from the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
+migrated-immutable snapshots (§6.2), client-level custom factors imported for future capture as a separate step
+(§6.3).
 
 ## 12. Build sequence, once ruled
 
+0. **Gate:** Appendix A run and §9 filled; the data-protection decision recorded.
 1. Migrations (§10), ruled.
-2. Extract, with Appendix A's figures filled into §9.
-3. Transform and plan (pure, tested against a synthetic extract shaped like v7's).
+2. Extract.
+3. Transform and plan (pure, tested against a synthetic extract shaped like v7's), including the §6.1 guard and
+   the per-job reconciliation.
 4. Clients → sites → contacts → targets.
 5. Jobs → emissions (migrated, immutable).
-6. Reports (+ PDFs).
-7. The historical report view, for console and portal.
+6. Report versions and LCA result snapshots (verbatim, sealed; no PDFs).
+7. Client custom factors, for future capture (§6.3).
+8. The historical report view, for console and portal.
 
 ---
 
@@ -325,7 +436,8 @@ SELECT table_name, column_name, data_type
  WHERE table_schema = 'public'
    AND table_name IN ('clients','client_sites','client_contacts','jobs','crp_job_details','job_scope_rows',
                       'job_emission_groups','job_emission_sources','job_spend_entries','lca_assessments',
-                      'job_report_versions','report_reviews','job_files','job_custom_factors')
+                      'job_report_versions','report_reviews','job_files','job_custom_factors',
+                      'custom_factors','custom_factor_year_values','lca_result_snapshots','datasets')
  ORDER BY table_name, ordinal_position;
 
 -- 1. The status values in use (enumerations, not free text)
@@ -394,7 +506,8 @@ SELECT count(*) AS rows_checked,
 
 The tables, filtered to active clients and their jobs: `clients`, `client_sites`, `client_contacts`, `jobs`,
 `crp_job_details`, `job_scope_rows`, `job_emission_groups`, `job_emission_sources`, `job_spend_entries`,
-`lca_assessments` + `lca_result_snapshots`, `job_report_versions`, `report_reviews`, `job_custom_factors`, and the
+`lca_assessments` + `lca_result_snapshots`, `job_report_versions`, `report_reviews`, `job_custom_factors`,
+`custom_factors` + `custom_factor_year_values` (§6.3), and the
 lookups `industries_lookup`, `referrals_lookup`, `portfolios_lookup`, `job_statuses_lookup`, plus the
 rows of v7's `datasets` table that the scope rows reference (for the year and version recorded in each migrated
 figure). Exported as one file per table with a manifest of row counts and hashes. Kept off the repository.
