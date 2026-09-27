@@ -20,7 +20,7 @@
     "@nzi/isolated-backend": "*",
     "@nzi/mock-data": "*",
     "@nzi/ui": "*",
-    "next": "^15.1.6",
+    "next": "^15.5.26",
     "pagedjs": "^0.4.3",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
