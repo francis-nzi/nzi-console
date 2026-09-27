@@ -21,5 +21,5 @@ async function loadPlatformDirect():Promise<ScreenResult<PlatformPayload>>{
 
 export default async function PlatformPage() {
   const result=process.env.NZI_DATA_MODE==="isolated-api"?await loadPlatformDirect():await loadScreen<PlatformPayload>("platform",{services:[],events:[],roles:[]},"platform-governance");
-  return <ScreenState result={result}>{(data) => <PlatformBoard services={data.services} events={data.events} roles={data.roles} />}</ScreenState>;
+  return <ScreenState result={result} chrome={{ activeId: "platform", label: "Platform & audit", href: "/platform" }}>{(data) => <PlatformBoard services={data.services} events={data.events} roles={data.roles} />}</ScreenState>;
 }

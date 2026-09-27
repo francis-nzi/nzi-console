@@ -29,8 +29,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     initialArea={typeof area === "string" ? area : undefined}
   />;
   // No jobs anywhere is a real, empty jobs list — not a reason to blank the client.
-  return <ScreenState result={workspaceResult}>{(workspace) => jobResult.state === "empty"
+  return <ScreenState result={workspaceResult} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(workspace) => jobResult.state === "empty"
     ? render(workspace, [])
-    : <ScreenState result={jobResult}>{(jobData) => render(workspace, jobData.jobs)}</ScreenState>}
+    : <ScreenState result={jobResult} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(jobData) => render(workspace, jobData.jobs)}</ScreenState>}
   </ScreenState>;
 }
