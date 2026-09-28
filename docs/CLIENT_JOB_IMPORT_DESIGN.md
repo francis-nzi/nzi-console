@@ -693,11 +693,14 @@ SELECT count(*) AS rows_checked,
 read `src/v7ExtractContract.json`, which is the importer's `EXTRACT_CONTRACT`:
 
 ```
-node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract > extract.sql
-psql "<live v7 url>" -f extract.sql
+node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract --file C:/v7-extract/extract.sql
+psql "<live v7 url>" -f C:/v7-extract/extract.sql
 node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract
 ```
 
+- **`--file`, never `> extract.sql`.** Windows PowerShell's `>` re-encodes to UTF-16 with a byte-order mark, which psql
+  cannot read — the first generated script came out that way (28 Sep 2026). `--file` writes UTF-8 with no BOM itself and
+  refuses a path inside the repository: the script lives beside the extract and is deleted with it.
 - **Preflight: all drift at once.** Before any `\copy`, inside the read-only transaction, one statement checks every
   column the script reads — contract and query columns alike (the in-scope filters, the factor-lookup join) —
   resolving each table as the queries will, and raises one error listing everything missing (a missing table is

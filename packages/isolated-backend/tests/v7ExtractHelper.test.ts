@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { EXTRACT_CONTRACT, parseV7Csv, readV7Extract, V7_TABLES } from "../src/v7ClientExtract";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { columnsFor, extractSql, parseOmit, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS } from "../scripts/v7-extract-sql.mjs";
+import { assertOutsideRepository, columnsFor, extractSql, parseOmit, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS, REPOSITORY_ROOT, writeExtractSql } from "../scripts/v7-extract-sql.mjs";
 // @ts-expect-error — as above.
 import { buildManifest, countCsv } from "../scripts/v7-extract-manifest.mjs";
 import { syntheticRows, writeSyntheticExtract } from "./support/v7SyntheticExtract";
@@ -171,6 +171,43 @@ describe("the v7 extract manifest, built from the written files", () => {
         "jobs.csv: lacks required column(s) job_id",
         "datasets.csv: missing — every contract table needs a file, header-only when nothing is in scope",
       ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("writing the script with --file — the bytes psql reads, never a shell's re-encoding", () => {
+  it("writes UTF-8 with no byte-order mark and LF endings, byte-identical to what stdout gives", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-file-"));
+    try {
+      const path = join(directory, "extract.sql");
+      const run = spawnSync(process.execPath, [join(scripts, "v7-extract-sql.mjs"), "--out", "C:/v7-extract", "--file", path], { encoding: "utf8" });
+      assert.equal(run.status, 0, run.stderr);
+      assert.match(run.stderr, /\(UTF-8, no BOM\)\. Next: psql/);
+      const bytes = readFileSync(path);
+      assert.equal(bytes.subarray(0, 2).toString("latin1"), "--", "starts with the comment, not a byte-order mark");
+      assert.ok(!bytes.includes(Buffer.from("\r\n")), "LF only");
+      assert.ok(!bytes.includes(0), "no NUL bytes — not UTF-16");
+      const stdout = spawnSync(process.execPath, [join(scripts, "v7-extract-sql.mjs"), "--out", "C:/v7-extract"], { encoding: "utf8" }).stdout;
+      assert.equal(bytes.toString("utf8"), stdout);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("normalises a BOM or CRLF away, and refuses to write inside the repository", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-file-"));
+    try {
+      const path = join(directory, "extract.sql");
+      writeExtractSql(path, "\uFEFF-- a\r\n\\echo x\r\n");
+      assert.deepEqual([...readFileSync(path)], [...Buffer.from("-- a\n\\echo x\n", "utf8")]);
+      assert.throws(() => assertOutsideRepository(join(REPOSITORY_ROOT, "extract.sql")), /inside the repository/);
+      assert.throws(() => assertOutsideRepository(join(REPOSITORY_ROOT, "packages", "x.sql")), /inside the repository/);
+      assert.doesNotThrow(() => assertOutsideRepository(path));
+      const refused = spawnSync(process.execPath, [join(scripts, "v7-extract-sql.mjs"), "--out", "x", "--file", join(REPOSITORY_ROOT, "extract.sql")], { encoding: "utf8" });
+      assert.equal(refused.status, 1);
+      assert.match(refused.stderr, /inside the repository/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

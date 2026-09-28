@@ -2,8 +2,12 @@
 /**
  * Write the psql script that takes the v7 extract (docs/CLIENT_JOB_IMPORT_DESIGN.md Appendix B).
  *
- *   node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract > extract.sql
- *   psql "<live v7 url>" -f extract.sql
+ *   node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract --file C:/v7-extract/extract.sql
+ *   psql "<live v7 url>" -f C:/v7-extract/extract.sql
+ *
+ * **Use --file, not a shell redirect.** Windows PowerShell's `>` re-encodes to UTF-16 with a byte-order mark, which psql
+ * cannot read. --file writes UTF-8 with no BOM and LF line endings itself, and refuses a path inside this repository —
+ * a generated script belongs with the extract, outside version control, and is deleted with it.
  *   node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract
  *
  * Plain Node, no dependencies and no install: it reads `src/v7ExtractContract.json` — the same file the importer's
@@ -20,8 +24,8 @@
  * `--omit <table>.<column>` (repeatable, or comma-separated) and run again. A required column cannot be omitted — the
  * importer refuses an extract without it.
  */
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, relative, resolve, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -168,11 +172,33 @@ export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date
   return lines.join("\n") + "\n";
 }
 
+/** The repository this script sits in. A generated extract script is never written inside it. */
+export const REPOSITORY_ROOT = resolve(here, "../../..");
+
+/** Where --file may write: anywhere outside the repository. */
+export function assertOutsideRepository(path) {
+  const within = relative(REPOSITORY_ROOT, resolve(path));
+  if (!within.startsWith("..") && !isAbsolute(within)) {
+    throw new Error(`--file ${path}: inside the repository. Write the extract script beside the extract (e.g. <out>/extract.sql), outside version control.`);
+  }
+}
+
+/** Write the script as UTF-8, no byte-order mark, LF line endings — exactly the bytes psql reads. */
+export function writeExtractSql(path, text) {
+  assertOutsideRepository(path);
+  writeFileSync(path, Buffer.from((text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).replace(/\r\n/g, "\n"), "utf8"));
+}
+
 function main(argv) {
   const values = (flag) => argv.flatMap((item, index) => (item === flag && argv[index + 1] ? [argv[index + 1]] : []));
   const out = values("--out")[0];
-  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--omit <table>.<column>]… > extract.sql");
-  process.stdout.write(extractSql({ out, omit: parseOmit(values("--omit")) }));
+  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--file <path for the script>] [--omit <table>.<column>]…");
+  const text = extractSql({ out, omit: parseOmit(values("--omit")) });
+  const file = values("--file")[0];
+  if (!file) { process.stdout.write(text); return; }
+  writeExtractSql(file, text);
+  process.stderr.write(`Wrote ${file} (UTF-8, no BOM). Next: psql "<live v7 url>" -f ${file}
+`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
