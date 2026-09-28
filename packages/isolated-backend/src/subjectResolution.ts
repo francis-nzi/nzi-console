@@ -167,6 +167,10 @@ function readRow(
 
     // No ciphertext column at all: a JSON payload or a digest. A digest is never read.
     if (column.storage.kind === "digest") return { ...base, unavailable: "a matching digest, which is never read back" };
+    // Sealed under a document's own key, which a person's resolution never holds (decision 10).
+    if (column.storage.kind === "document-sealed") {
+      return { ...base, unavailable: "sealed under the record's own key, not this person's; retained as a record of account" };
+    }
     const value = asText(row[column.column]);
     return value === null ? { ...base, value: null, unavailable: "nothing stored" } : { ...base, value };
   });

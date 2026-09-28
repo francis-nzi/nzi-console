@@ -38,7 +38,13 @@ export type PiiStorage =
   /** Inside a JSON payload, so neither a column to seal nor a value to null. */
   | { kind: "json" }
   /** A derived digest with no plaintext beside it — the linkage family. Erasure nulls it. */
-  | { kind: "digest" };
+  | { kind: "digest" }
+  /**
+   * Ciphertext under a *document's* own content key, not a person's (0135, decision 10). No plaintext exists
+   * beside it and no subject key reaches it, so it is neither in the sealing views nor shredded with a person:
+   * it is retained as a record of account (NZC-166), and destroying `keyColumn` is reserved.
+   */
+  | { kind: "document-sealed"; keyColumn: string };
 
 /* ── Whether a datum can be reached from a subject, and when not, why ────────────────── */
 
@@ -274,6 +280,13 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     attribution: { kind: "none", because: "a dispatch payload; the address in it duplicates strategy_automation_log rather than belonging to the row" },
   },
 
+  // Records of account, sealed under their own key rather than a person's.
+  legacy_report_versions: {
+    keyColumns: ["legacy_report_id"],
+    attribution: { kind: "none", because: "an imported v7 report is a record of account, not a data subject (decision 10): the people it names are not linked to it, and its key is the report's own" },
+    appendOnly: true,
+  },
+
   // The digests, which have no plaintext at all.
   data_subject_linkage: {
     keyColumns: ["source_table", "source_id", "field"],
@@ -418,6 +431,14 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
         "them. That makes the expected answer redact-or-expire rather than retain — but 'expected' is " +
         "not 'decided', and nothing drains the table today (NZC-129).",
     } },
+
+  // ── Records of account, sealed under the document's own key (0135, NZC-166) ──────────
+  { table: "legacy_report_versions", column: "payload_sealed", label: "A historical report that names you",
+    stage: "sealed", erasure: "retain-with-basis", storage: { kind: "document-sealed", keyColumn: "content_key_wrapped" },
+    because: "v7's report snapshot, sealed whole under the report's own content key. A report is a signed record of account, so personal data inside it is retained (NZC-166); shredding its key is reserved for where retention is not lawful" },
+  { table: "legacy_report_versions", column: "particulars_sealed", label: "Your name on a historical report's record",
+    stage: "sealed", erasure: "retain-with-basis", storage: { kind: "document-sealed", keyColumn: "content_key_wrapped" },
+    because: "who generated, reviewed and finalised the version, its notes and the PDF's link — sealed under the same content key, retained with the report (NZC-166)" },
 ];
 
 /* ── Derivations ─────────────────────────────────────────────────────────────────────── */
