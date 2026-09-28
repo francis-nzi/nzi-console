@@ -361,6 +361,12 @@ jobs:
       # and not a data subject (erasing a person retains the report on its stated basis; decision 10, NZC-166).
       - name: Imported v7 reports are sealed, hash-verified records of account
         run: npx tsx --test packages/isolated-backend/tests/legacyReportVersionsReal.test.ts
+      # The v7 client-and-job import, on a synthetic extract: a dry run that is the load rolled back; one transaction
+      # per client; v7's reported figures totalling to the published snapshot; contacts and reports sealed; a re-run
+      # a no-op; a changed or edited record refusing its client alone; a job-number clash refusing its client
+      # (decision 1a); and every stored migrated_record closed at every depth with no personal data in it.
+      - name: The v7 client import loads whole clients, reconciles and re-runs safely
+        run: npx tsx --test packages/isolated-backend/tests/v7ClientLoadReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
       # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin

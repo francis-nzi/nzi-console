@@ -26,6 +26,12 @@ ruling now; the report-snapshot table waits on it (§7, decision 10).
 records; personal data inside immutable report snapshots retained as signed records of account). Decision 10 is
 ruled (§7). Migrations 0132–0134 are merged (#332).
 
+**Update, 28 Sep 2026 — importer built.** Migration 0135 (`legacy_report_versions`) is merged (#334). Decisions 9 and
+11 are ruled (§11). The importer is built and tested against a synthetic extract shaped like v7's
+(`v7ClientExtract` → `v7EmissionsFormula` → `v7ClientImport` → `v7ClientLoad`, CLI `npm run load:v7-clients`).
+Its extract contract is Appendix B. Reading v7's reporting code for the port corrected one thing in §5.1:
+**v7's reporting never reads `override_tco2e`**.
+
 **Reading order:** `REFERENCE_DATA_DESIGN.md` (the governed shape this mirrors) → this document →
 `WORKFLOWS.md` §3–§8 (how v7 is used).
 
@@ -197,7 +203,7 @@ counter started at 0, and **staging's demo jobs already hold low sequences**. Op
   **A closed list of keys, held by a CHECK:** it can carry nothing else — in particular **no personal data and no
   free text**. So register `employee_name`s and `detail_json` stay in v7, and so do v7's free-text row
   `notes` (which the console's inventory does not treat as personal data, and which v7's could contain).
-- The console's `calculated_tco2e` = v7's `override_tco2e ?? calc_tco2e`, stored once. `provenance_json` records
+- The console's `calculated_tco2e` = **the figure v7 reported** (decision 9, below), stored once. `provenance_json` records
   that it is v7's figure, with v7's factor provenance; `lineage_json` shows v7's chain. `factor_id` and
   `dataset_id` are v7's own ids, carried as text; **they are never resolved against the console's factor
   tables** (the same id may exist there — irrelevant).
@@ -234,7 +240,10 @@ v7 kept two figures that can disagree, and **v7's own code documents one of them
   1000× too large** — v7's comment says so, and that the reported total was unaffected because reporting never
   reads the stored column (`api/spend_data_routes.py:2434-2445`);
 - the **figure v7 reported**: `qty × factor × apply_pct / 100` (÷ 1000 when the factor is per kg), using the
-  factor **copied onto the row** (`services/monthly_emissions.py:58-65`), with `override_tco2e` taking precedence.
+  factor **copied onto the row** (`services/monthly_emissions.py:58-65`). **Correction (28 Sep 2026):
+  `override_tco2e` does not take precedence.** Neither of v7's reporting queries selects it
+  (`api/job_data_output_routes.py` `_load_data_output_rows`, `services/emissions_reporting.py`); only v7's setup and
+  legacy-annual import write it. So the reported figure ignores it, and `migrated_record` keeps it as recorded.
 
 Proposed: the migrated row's figure is **the one v7 reported** — v7's own arithmetic on v7's own recorded inputs,
 not a re-resolution (no factor is looked up; the row's copied factor is used). `migrated_record` keeps **both**,
@@ -242,6 +251,21 @@ and a row where they differ beyond rounding is **reported**. One case v7's arith
 row alone: a monthly row whose months fall in a different dataset, which v7 re-looks-up from its factor tables at
 read time (`services/monthly_emissions.py:627-691`). Such rows keep the row-level figure, are flagged, and the
 job's published report (authoritative, decision 2) is what stands for them.
+
+**As built (`v7EmissionsFormula`).** It is a line-for-line port of `row_metrics`, `combined_row_metrics` and
+`_build_scope_summary`, and it keeps v7's quirks, because they are what clients were shown:
+- an `apply_pct` of 0 or NULL reads as 100;
+- a unit is per-kg when "kg" appears in it, and a missing unit reads as kgCO2e;
+- `source_qty` never counts (both queries select it as NULL);
+- a register source's stored `calc_tco2e` is used when present;
+- each row is rounded to 2 dp with Python's half-even `round`, then scopes are summed and rounded; the grand total
+  is the rounded raw sum.
+
+Where v7 would consult a live table, the row's own copied factor is used and the row is **flagged**, never treated as
+exact: a month priced from another dataset, a custom factor's year value, or a unit or fallback decision that turns
+on a lookup. The job's dataset-by-month resolution is computed in Python, not stored, so a SQL export cannot carry
+it. Every monthly row is therefore flagged `monthly-dataset-map-absent`, and the per-job reconciliation is what
+proves each job.
 
 ### 5.2 Reports
 
@@ -485,15 +509,10 @@ Ruled 27 Sep 2026:
 | 7 | Review / separation-of-duties exemption | **Limited to `origin = 'migrated'`.** |
 | 8 | "Active client" predicate | **`status IN ('Active','Portfolio Owner') AND NOT archived`** (28 Sep 2026). |
 | 10 | How the report payload is sealed | **A per-report content key wrapped by `NZI_SUBJECT_MASTER_KEY`**; whole payload sealed; hash verified; the report is not a data subject. Erasure per **NZC-166** (28 Sep 2026). |
+| 9 | A migrated row's figure | **v7's reported arithmetic** — a faithful port of v7's read-time formula, proven by per-job reconciliation to the published snapshot; the stored figure kept beside it (28 Sep 2026). |
+| 11 | Which version is "the published report" | **The version `report_reviews.portal_version_id` names**, whatever its status; its status is kept verbatim, and a non-final one is reported (28 Sep 2026). |
 
-For ruling:
-
-| # | Decision | Proposed |
-|---|---|---|
-| 9 | A migrated row's figure (§5.1) | **The figure v7 reported** (v7's arithmetic on the row's own copied factor, override first), with the stored `calc_tco2e` kept beside it and any difference reported. |
-| 11 | Which portal versions are "the published report" (§9) | Of 17 portal versions only 7 are `final`. **Proposed: the `final` version a client was shown**; a non-final portal version is imported and kept, and reported, but is not the authoritative total. |
-
-And, from the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
+Nothing is open for ruling in this table. From the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
 migrated-immutable snapshots (§6.2), client-level custom factors imported for future capture as a separate step
 (§6.3).
 
@@ -509,6 +528,33 @@ migrated-immutable snapshots (§6.2), client-level custom factors imported for f
 6. Report versions and LCA result snapshots (verbatim, sealed; no PDFs).
 7. Client custom factors, for future capture (§6.3).
 8. The historical report view, for console and portal.
+
+**Where it stands (28 Sep 2026).** Steps 1 and 3 are done: 0132–0135 are merged, and 0136 (a search_path fix-forward)
+is for ruling. Steps 4–6 are the built loader, run so far only on synthetic data. What the loader does:
+- It is **one transaction per client**. A **dry run is the load, rolled back**.
+- It **reconciles by reading**: absent → inserted; identical → left alone; different → that client refused, with the
+  columns named.
+- It writes **one audit event per client and per job**: the run, the extract's SHA-256, counts, and no personal data.
+- It then **moves the job-number counter** past v7's numbers (0134).
+
+Still to come, each its own unit:
+- the review and separation-of-duties gate exemption for `origin = 'migrated'`, and the write-command guards that
+  refuse a migrated row (§5.1, §10 item 4). The database trigger already refuses changes;
+- retiring the demo-organisation job-number clashes before the load (decision 1a). The loader refuses a clashing
+  client and names it;
+- client custom factors (§6.3);
+- the historical report view.
+
+**Provisional mappings the loader applies, each reported for a person:**
+- v7's interim year and per-scope interim % → the client's scope interim targets;
+- `net_zero_year` → `net_zero_target_year`;
+- benchmark → baseline, and to `client_targets` version 1 with v7's per-scope targets, where a benchmark exists;
+- Portfolio Owner → `active`;
+- v7 row review status carried: `approved` and `rejected` are recorded as reviewed by the import, never by a
+  console reviewer (decision 7);
+- `crm_owner`, `client_manager`, industry, referral and portfolio carried as text. The existing
+  `backfill:client-references` then places them on memberships and reference values by name, and reports what it
+  cannot place.
 
 ---
 
@@ -617,12 +663,79 @@ SELECT count(*) AS rows_checked,
   FROM job_scope_rows r JOIN aj USING (job_id) WHERE r.enabled;
 ```
 
-## Appendix B — the extract (for the build stop)
+## Appendix B — the extract (the contract the importer reads)
 
-The tables, filtered to active clients and their jobs: `clients`, `client_sites`, `client_contacts`, `jobs`,
-`crp_job_details`, `job_scope_rows`, `job_emission_groups`, `job_emission_sources`, `job_spend_entries`,
-`lca_assessments` + `lca_assessments.resolved_lines_snapshot`, `job_report_versions`, `report_reviews`, `job_custom_factors`,
-`custom_factors` + `custom_factor_year_values` (§6.3), and the
-lookups `industries_lookup`, `referrals_lookup`, `portfolios_lookup`, `job_statuses_lookup`, plus the
-rows of v7's `datasets` table that the scope rows reference (for the year and version recorded in each migrated
-figure). Exported as one file per table with a manifest of row counts and hashes. Kept off the repository.
+**Read-only, on live v7, by Francis. Never committed (NZC-020).** One CSV per table, written with psql's
+`\copy (…) TO '<table>.csv' CSV HEADER`, into one directory. Beside them goes a `manifest.json`:
+
+```json
+{ "extractedAt": "2026-09-29", "tables": { "clients": { "file": "clients.csv", "rows": 433, "sha256": "<sha256 of the file>" } } }
+```
+
+- `rows` is the count psql prints after each `\copy` (`COPY n`), not a line count, because snapshots contain
+  newlines.
+- `sha256` is the file's SHA-256 (`sha256sum`, or `Get-FileHash -Algorithm SHA256`).
+- The SHA-256 of `manifest.json` itself is the extract's identity. It is recorded on every audit event of the run.
+
+**The columns** are exactly `EXTRACT_CONTRACT` in `packages/isolated-backend/src/v7ClientExtract.ts`: required columns
+first, then optional ones. A missing required column refuses the load at dry run. An optional column absent from
+v7's live schema can be left out. Select the columns by name, in any order. Keep `COPY`'s CSV conventions: NULL is an
+unquoted empty field, and the empty string is `""`. The reader tells them apart, so `snapshot_json` comes back byte for
+byte.
+
+**The filters.** Each table is restricted to active clients (decision 8) and their jobs:
+
+```sql
+-- ac: in-scope clients; aj: their jobs. Prefix each \copy query with these.
+WITH ac AS (SELECT db_id FROM clients
+             WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false)),
+     aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id)
+```
+
+| File | Rows |
+|---|---|
+| `clients` | every client. The importer applies decision 8 itself and lists the rest as excluded, so the full table is safe to take — or filter to `ac` |
+| `client_sites`, `client_contacts`, `jobs` | `client_db_id IN (SELECT db_id FROM ac)` |
+| `crp_job_details`, `job_emission_groups`, `job_emission_sources`, `job_spend_entries`, `lca_assessments`, `job_report_versions`, `report_reviews` | `job_id IN (SELECT job_id FROM aj)` |
+| `job_types` | all |
+| `datasets` | the datasets the jobs' rows, sources and groups name |
+| `job_scope_rows` | `job_id IN (SELECT job_id FROM aj)`, **plus the two reference columns below** |
+
+**`job_scope_rows`: the factor-lookup reference.** At report time v7 looks a factor up for a row (`row_metrics` in
+`services/monthly_emissions.py`). First it tries the `factor_original_id=` token in the row's notes, in the row's
+dataset. Failing that, it tries the row's `original_id` in any dataset, most recent year first. It reads the unit from
+that lookup only where the row's own unit is missing or not per-kg. This select reproduces the chain, so the importer
+does not have to flag those rows:
+
+```sql
+SELECT r.*,  -- the contract's columns, by name
+       CASE WHEN ref1.factor IS NOT NULL THEN ref1.factor ELSE ref2.factor END AS reference_factor,
+       CASE WHEN ref1.factor IS NOT NULL THEN NULLIF(trim(ref1.ghg_unit), '')
+            ELSE COALESCE(NULLIF(trim(ref2.ghg_unit), ''), NULLIF(trim(ref1.ghg_unit), '')) END AS reference_ghg_unit
+  FROM job_scope_rows r
+  JOIN aj USING (job_id)
+  LEFT JOIN LATERAL (
+    SELECT fl.factor, fl.ghg_unit FROM factor_lookup fl
+     WHERE r.dataset_id IS NOT NULL
+       AND fl.dataset_id = r.dataset_id
+       AND fl.original_id = substring(r.notes FROM '(?i)(?:^|[;( ])factor_original_id=([^;)\s]+)')
+       AND (trim(r.scope) = '' OR fl.scope = trim(r.scope))
+     ORDER BY CASE WHEN fl.scope = trim(r.scope) THEN 0 ELSE 1 END, fl.db_id
+     LIMIT 1) ref1 ON true
+  LEFT JOIN LATERAL (
+    SELECT fl.factor, fl.ghg_unit FROM factor_lookup fl LEFT JOIN datasets d ON d.dataset_id = fl.dataset_id
+     WHERE trim(COALESCE(r.original_id, '')) <> '' AND fl.original_id = trim(r.original_id)
+     ORDER BY COALESCE(d.year, 0) DESC, fl.db_id DESC
+     LIMIT 1) ref2 ON true
+```
+
+**No PDF files** (decision 3), and nothing from v7's client-data folders.
+
+**Personal data and free text in the extract.** It holds contacts, report snapshots, notes, employee names and register
+detail. The importer:
+- seals contacts (NZC-119);
+- seals each report and its particulars under the report's own key (decision 10);
+- reads `notes` only for v7's two tokens (`factor_original_id=`, `storage_reason=`), and carries no free text or name
+  into `migrated_record` at any depth. `migratedRecordProblems` enforces this, and the depth tests prove it.
+
+Once loaded, the extract is deleted from the machine it was taken on.
