@@ -143,10 +143,10 @@ describe("when a merge with no ruling matters", () => {
       changedFiles: ["apps/console/app/page.tsx", "docs/CLIENT_WORKSPACE_BACKLOG.md", "packages/isolated-backend/src/readModels.ts"] });
     assert.deepEqual([decision.pass, decision.skipped], [true, true]);
     assert.match(decision.reason, /touches no governed path — nothing to verify/);
-    // This very change touches only the gate's own files: its post-merge check will skip, as ruled.
-    const gateOnly = decidePostMerge({ prNumber: "346", ruledSha: null, verify,
-      changedFiles: [".github/workflows/ruling-gate.yml", ".github/workflows/ruling-verify.yml", "package.json", "scripts/ruling-gate.mjs", "scripts/ruling-verify.mjs", "scripts/ruling-verify.test.mjs"] });
-    assert.equal(gateOnly.skipped, true);
+    // Tests, docs and package.json are not the enforcer; changing them alone is ordinary work.
+    const around = decidePostMerge({ prNumber: "350", ruledSha: null, verify,
+      changedFiles: ["package.json", "scripts/ruling-verify.test.mjs", "scripts/ruling-lock.test.mjs", "docs/DECISIONS.md"] });
+    assert.equal(around.skipped, true);
   });
 
   it("fails an un-ruled merge that touches a governed path, naming it", () => {
@@ -160,6 +160,14 @@ describe("when a merge with no ruling matters", () => {
       assert.equal(decision.pass, false, file);
       assert.equal(decision.skipped, undefined);
       assert.match(decision.reason, new RegExp(`governed path\\(s\\): ${file.replace(/[.]/g, "\\.")}\\.`), file);
+    }
+  });
+
+  it("governs the enforcement machinery itself — the gate, the lock, this check, and the required CI checks' definitions", () => {
+    for (const file of [".github/workflows/ruling-gate.yml", ".github/workflows/ruling-verify.yml", "scripts/ruling-gate.mjs", "scripts/ruling-lock.mjs", "scripts/ruling-verify.mjs", ".github/workflows/ci.yml"]) {
+      const decision = decidePostMerge({ prNumber: "351", ruledSha: null, verify, changedFiles: [file] });
+      assert.equal(decision.pass, false, file);
+      assert.match(decision.reason, /governed path/);
     }
   });
 

@@ -112,6 +112,17 @@ export const GOVERNED_PATHS = [
   { path: "packages/isolated-backend/src/demoJobNumberRetirement.ts", why: "the job spine" },
   { path: "packages/isolated-backend/scripts/retire-demo-job-numbers.ts", why: "the job spine" },
   { path: "packages/isolated-backend/src/liveOrganisation.ts", why: "the job spine" },
+  // The enforcement machinery itself (ruled 28 Sep 2026): the gate, the lock and the post-merge check. Otherwise an
+  // unruled pull request could weaken the rule that judges every other one. The workflows run from main's copy, so a
+  // pull request cannot weaken its own judgment; this stops it merging the weakening unruled.
+  { path: ".github/workflows/ruling-gate.yml", why: "the enforcement machinery" },
+  { path: ".github/workflows/ruling-verify.yml", why: "the enforcement machinery" },
+  { path: "scripts/ruling-gate.mjs", why: "the enforcement machinery" },
+  { path: "scripts/ruling-lock.mjs", why: "the enforcement machinery" },
+  { path: "scripts/ruling-verify.mjs", why: "the enforcement machinery" },
+  // The three required CI checks (migrations, typecheck · build · tests, the browser suite) are defined here: an
+  // unruled edit could quietly weaken the guardrails every merge depends on (ruled 28 Sep 2026).
+  { path: ".github/workflows/ci.yml", why: "the required CI checks" },
 ];
 
 export const governedFiles = (files) =>

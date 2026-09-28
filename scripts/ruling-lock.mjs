@@ -7,8 +7,9 @@
 // was ruled (#342, #346). The post-merge check (ruling-verify.mjs) finds that after the fact. This stops it before:
 // a required status check on main that blocks the merge of a pull request touching a governed path unless
 //
-//   (a) a ruling is recorded for it, and
-//   (b) its current head is exactly the head that was ruled.
+//   (a) a ruling is recorded for it,
+//   (b) its current head is exactly the head that was ruled, and
+//   (c) the `ruled` label is on it now — removing the label withdraws the ruling and re-locks it.
 //
 // A squash merge of that head is then the ruled tree by construction; the post-merge check stays as confirmation.
 // A pull request touching no governed path passes as a skip — ordinary work merges exactly as before.
@@ -31,7 +32,7 @@ import { RULED_LABEL } from "./ruling-gate.mjs";
 import { findRuledHead, governedFiles } from "./ruling-verify.mjs";
 
 /** The decision, pure: what the pull request touches, its head, the ruled head (if any), and the event. */
-export function decideLock({ prNumber, changedFiles, headSha, ruledSha, action, labelName }) {
+export function decideLock({ prNumber, changedFiles, headSha, ruledSha, action, labelName, labels = [] }) {
   const governed = governedFiles(changedFiles);
   if (governed.length === 0) {
     return { pass: true, skipped: true, reason: `#${prNumber} touches no governed path — not locked; merge as usual.` };
@@ -41,6 +42,11 @@ export function decideLock({ prNumber, changedFiles, headSha, ruledSha, action, 
   const touched = `It touches governed path(s): ${governed.join(", ")}.`;
   if (!ruled) {
     return { pass: false, reason: `#${prNumber} is locked: no ruling is recorded for it. ${touched} Apply '${RULED_LABEL}' once it is ruled.` };
+  }
+  // The label is the revocable control surface (ruled 28 Sep 2026): removing it withdraws the ruling, and the
+  // unlabeled event re-runs this, so the lock closes again until the label is re-applied.
+  if (!labels.includes(RULED_LABEL)) {
+    return { pass: false, reason: `#${prNumber} is locked: '${RULED_LABEL}' is not on it — the ruling was withdrawn. ${touched} Re-apply '${RULED_LABEL}' to this head to rule it.` };
   }
   if (ruled !== headSha) {
     return { pass: false, reason: `#${prNumber} is locked: its head ${headSha.slice(0, 7)} is not the ruled head ${ruled.slice(0, 7)} — ` +
@@ -65,7 +71,7 @@ export async function runLock({ env, cwd, fetchImpl = fetch }) {
   // Only look a ruling up when it can matter: a governed change on an event that is not itself the ruling.
   const ruledNow = env.ACTION === "labeled" && env.LABEL_NAME === RULED_LABEL;
   const ruledSha = governedFiles(changedFiles).length && !ruledNow ? await findRuledHead({ repository, prNumber, token, fetchImpl }) : null;
-  return decideLock({ prNumber, changedFiles, headSha, ruledSha, action: env.ACTION ?? "", labelName: env.LABEL_NAME ?? "" });
+  return decideLock({ prNumber, changedFiles, headSha, ruledSha, action: env.ACTION ?? "", labelName: env.LABEL_NAME ?? "", labels: JSON.parse(env.LABELS ?? "[]") });
 }
 
 async function main() {
