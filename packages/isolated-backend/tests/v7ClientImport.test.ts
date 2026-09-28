@@ -199,6 +199,32 @@ describe("the v7 client-and-job plan", () => {
     assert.ok(codes(p.reports).includes("client-targets-at-v7-defaults"), "client 2 holds v7's column defaults");
   });
 
+  // ── Portfolio ownership: v7's owner→portfolio link, captured and reported ──
+
+  it("links a Portfolio Owner to its portfolio as v7 does, with its in-scope members", () => {
+    const p = plan();
+    assert.deepEqual(p.clients.map((client) => [client.legacyId, client.portfolioOwnership]), [
+      ["1", null],
+      ["2", { legacyPortfolioId: "1", name: "Beta Portfolio", memberLegacyIds: ["1"] }],
+    ], "client 1's portfolio 'beta PORTFOLIO' names it, case-insensitively; the inactive link 3 is ignored");
+    assert.equal(p.summary.portfolioOwnersLinked, 1);
+    const linked = p.reports.find((finding) => finding.code === "portfolio-owner-linked")!;
+    assert.deepEqual(linked.examples, ['client 2 owns portfolio 1 "Beta Portfolio": 1 in-scope member(s)']);
+    const outOfScope = p.reports.find((finding) => finding.code === "portfolio-owner-out-of-scope")!;
+    assert.deepEqual(outOfScope.examples, ["portfolio 2 → client 3"], "the prospect's portfolio is not carried");
+    assert.ok(!codes(p.reports).includes("portfolio-owner-unlinked"));
+  });
+
+  it("takes the lowest active link, never guesses from clients.portfolio, and flags an owner v7 never linked", () => {
+    const first = plan((rows) => { rows.portfolios_lookup.push({ portfolio_id: "9", name: "Later", portfolio_owner_client_db_id: "2", is_active: "t" }); });
+    assert.equal(first.clients[1]!.portfolioOwnership?.legacyPortfolioId, "1", "v7 orders by portfolio_id and takes the first");
+
+    const unlinked = plan((rows) => { rows.portfolios_lookup = rows.portfolios_lookup.filter((row) => row.portfolio_id !== "1"); });
+    assert.equal(unlinked.clients[1]!.portfolioOwnership, null, "no link: nothing is inferred from its own portfolio text");
+    assert.deepEqual(unlinked.reports.find((finding) => finding.code === "portfolio-owner-unlinked")!.examples, ["client 2"]);
+    assert.deepEqual(unlinked.refusals, [], "reported, not refused");
+  });
+
   // ── The extract on disk ──
 
   it("reads the extract back byte for byte — NULL apart from '', quotes, commas, newlines and non-ASCII intact", () => {

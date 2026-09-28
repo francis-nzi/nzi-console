@@ -172,6 +172,13 @@ export type PlannedClient = {
     baseline: { periodStart: string | null; periodEnd: string | null; scope1: number | null; scope2: number | null; scope3: number | null; total: number | null };
   };
   target: PlannedTarget | null;
+  /**
+   * For a Portfolio Owner client: the portfolio v7 links to it (portfolios_lookup.portfolio_owner_client_db_id — v7's
+   * "single source of truth for portfolio membership") and the in-scope clients whose portfolio carries that name.
+   * Captured with the load and reported; the console has no place to write it yet (a design decision, not an import
+   * detail). null for every other client, and for an owner v7 never linked.
+   */
+  portfolioOwnership: { legacyPortfolioId: string; name: string; memberLegacyIds: string[] } | null;
   sites: PlannedSite[]; contacts: PlannedContact[]; jobs: PlannedJob[];
 };
 export type PlannedTarget = {
@@ -225,6 +232,7 @@ export type ClientImportPlan = {
     clients: number; portfolioOwners: number; sites: number; contacts: number; jobs: number;
     rows: number; rowsEnabled: number; registerRows: number; reports: number; lcaResults: number;
     jobsPublished: number; jobsReconciled: number; jobsWithDifferences: number; maxSequence: number;
+    portfolioOwnersLinked: number;
   };
 };
 
@@ -324,7 +332,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     clients: "db_id", client_sites: "site_id", client_contacts: "contact_id", job_types: "job_type_id", jobs: "job_id",
     crp_job_details: "job_id", datasets: "dataset_id", job_scope_rows: "row_id", job_emission_groups: "group_id",
     job_emission_sources: "source_id", job_spend_entries: "entry_id", lca_assessments: "assessment_id",
-    job_report_versions: "report_version_id", report_reviews: "job_id",
+    job_report_versions: "report_version_id", report_reviews: "job_id", portfolios_lookup: "portfolio_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();
@@ -342,6 +350,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
   const groups = index("job_emission_groups");
   const crpDetails = index("crp_job_details");
   const reviews = index("report_reviews");
+  const portfolios = index("portfolios_lookup");
   index("client_sites"); index("client_contacts"); index("jobs"); index("job_scope_rows");
   index("job_emission_sources"); index("job_spend_entries"); index("lca_assessments"); index("job_report_versions");
 
@@ -356,6 +365,30 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     inScope.add(client.db_id!);
   }
   if (portfolioOwners > 0) report("client-portfolio-owner", "Portfolio Owner clients imported as active (decision 8; decision 5 provisional)", `${portfolioOwners} client(s)`);
+
+  // Portfolio ownership, as v7 resolves it (services/portfolio.py _resolve_owner_portfolio_name): an owner's portfolio
+  // is its ACTIVE portfolios_lookup link, lowest portfolio_id first; members are clients whose own portfolio names it,
+  // case-insensitively. Never guessed from clients.portfolio alone, which v7 defaults to "NZI" everywhere.
+  const ownership = new Map<string, { legacyPortfolioId: string; name: string; memberLegacyIds: string[] }>();
+  for (const link of [...portfolios.values()].sort(byNumericId("portfolio_id"))) {
+    const owner = text(link.portfolio_owner_client_db_id);
+    const name = text(link.name);
+    if (!owner || !name || (text(link.is_active) !== null && !flag(link.is_active))) continue;
+    if (!inScope.has(owner)) {
+      report("portfolio-owner-out-of-scope", "a v7 portfolio whose owner is not an in-scope client; the link is not carried", `portfolio ${link.portfolio_id} → client ${owner}`);
+      continue;
+    }
+    if (ownership.has(owner)) continue; // v7 takes the first
+    const members = [...inScope].filter((id) => id !== owner && text(clientsById.get(id)?.portfolio)?.toLowerCase() === name.toLowerCase())
+      .sort((a, b) => Number(a) - Number(b));
+    ownership.set(owner, { legacyPortfolioId: link.portfolio_id!, name, memberLegacyIds: members });
+    report("portfolio-owner-linked", "a Portfolio Owner and the portfolio v7 links to it, with its in-scope members — captured; the console has nowhere to write it yet", `client ${owner} owns portfolio ${link.portfolio_id} "${name}": ${members.length} in-scope member(s)`);
+  }
+  for (const id of inScope) {
+    if (text(clientsById.get(id)?.status) === "Portfolio Owner" && !ownership.has(id)) {
+      report("portfolio-owner-unlinked", "a Portfolio Owner client v7 never linked to a portfolio (v7's own admin screen flags these)", `client ${id}`);
+    }
+  }
 
   const childOf = (table: V7Table, row: V7Row, clientKey = "client_db_id"): "in" | "excluded" | "orphan" => {
     const clientId = row[clientKey];
@@ -474,7 +507,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       const planned = planJob(job);
       if (planned) { jobs.push(planned); maxSequence = Math.max(maxSequence, planned.sequence); }
     }
-    clients.push({ clientId, legacyId: clientLegacyId, fields, target, sites, contacts, jobs });
+    clients.push({ clientId, legacyId: clientLegacyId, fields, target, sites, contacts, jobs, portfolioOwnership: ownership.get(clientLegacyId) ?? null });
 
     function planJob(v7Job: V7Row): PlannedJob | null {
       const id = v7Job.job_id!;
@@ -834,6 +867,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       jobsPublished: jobs.filter((job) => job.reconciliation.published).length,
       jobsReconciled: jobs.filter((job) => job.reconciliation.snapshot && job.reconciliation.differences.length === 0).length,
       jobsWithDifferences: jobs.filter((job) => job.reconciliation.differences.length > 0).length, maxSequence,
+      portfolioOwnersLinked: clients.filter((client) => client.portfolioOwnership).length,
     },
   };
 }

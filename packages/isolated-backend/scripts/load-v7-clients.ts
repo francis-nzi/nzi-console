@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   const s = plan.summary;
   log(`\nv7 client-and-job load into ${organisationId} — ${commit ? "COMMIT" : "dry run: each client loaded and rolled back"}`);
   log(`  extract sha256 ${read.extractSha256}`);
-  log(`  clients ${s.clients} (${s.portfolioOwners} Portfolio Owner) · sites ${s.sites} · contacts ${s.contacts} · jobs ${s.jobs} (up to J${String(s.maxSequence).padStart(6, "0")})`);
+  log(`  clients ${s.clients} (${s.portfolioOwners} Portfolio Owner, ${s.portfolioOwnersLinked} linked to a portfolio) · sites ${s.sites} · contacts ${s.contacts} · jobs ${s.jobs} (up to J${String(s.maxSequence).padStart(6, "0")})`);
   log(`  migrated rows ${s.rows} (${s.rowsEnabled} enabled, ${s.registerRows} from registers) · report versions ${s.reports} · LCA results ${s.lcaResults}`);
   log(`  published jobs ${s.jobsPublished}: ${s.jobsReconciled} reconcile exactly, ${s.jobsWithDifferences} differ (reported, never corrected)`);
   printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);

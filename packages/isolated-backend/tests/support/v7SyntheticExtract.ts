@@ -38,7 +38,7 @@ export function syntheticRows(): Rows {
   return {
     clients: [
       { db_id: "1", client_name: "Synthetic Alpha Ltd", status: "Active", archived: "f", industry: "Manufacturing",
-        year_end_month: "March", currency: "GBP", crm_owner: "Casey Owner", client_manager: "Morgan Manager",
+        year_end_month: "March", currency: "GBP", crm_owner: "Casey Owner", portfolio: "beta PORTFOLIO", client_manager: "Morgan Manager",
         addr_line1: "1 Example Street", addr_city: "Exampleton", addr_postcode: "EX1 1AA", addr_country: "United Kingdom",
         net_zero_year: "2045", interim_year: "2030", interim_s1_pct: "42", interim_s2_pct: "42", interim_s3_pct: "25",
         target_s1_year: "2030", target_s1_pct: "50", benchmark_year: "2019", benchmark_period_start: "2019-01-01",
@@ -167,6 +167,14 @@ export function syntheticRows(): Rows {
     report_reviews: [
       { job_id: "100", portal_version_id: "7001", status: "approved", approved_by_name: "Bo Example", approved_by_email: "bo@example.invalid" },
       { job_id: "106", portal_version_id: "7010", status: "sent_for_review" },
+    ],
+    // v7's owner→portfolio links: client 2 (Portfolio Owner) owns "Beta Portfolio", of which client 1 is a member
+    // (matched case-insensitively, as v7 does); an inactive link and one owned by an out-of-scope client are not carried.
+    portfolios_lookup: [
+      { portfolio_id: "1", name: "Beta Portfolio", portfolio_owner_client_db_id: "2", is_active: "t" },
+      { portfolio_id: "2", name: "Prospect Group", portfolio_owner_client_db_id: "3", is_active: "t" },
+      { portfolio_id: "3", name: "Old Beta", portfolio_owner_client_db_id: "2", is_active: "f" },
+      { portfolio_id: "4", name: "Unowned", portfolio_owner_client_db_id: null, is_active: "t" },
     ],
   };
 }

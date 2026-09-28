@@ -760,6 +760,7 @@ WITH ac AS (SELECT db_id FROM clients
 | `client_sites`, `client_contacts`, `jobs` | `client_db_id IN (SELECT db_id FROM ac)` |
 | `crp_job_details`, `job_emission_groups`, `job_emission_sources`, `job_spend_entries`, `lca_assessments`, `job_report_versions`, `report_reviews` | `job_id IN (SELECT job_id FROM aj)` |
 | `job_types` | all |
+| `portfolios_lookup` | all — v7's owner→portfolio link (`portfolio_owner_client_db_id`, "the single source of truth for portfolio membership"); a handful of rows, no personal data. The plan reports each owner's linked portfolio and in-scope member count; the console has nowhere to write the link yet (design decision) |
 | `datasets` | the datasets the jobs' rows, sources and groups name |
 | `job_scope_rows` | `job_id IN (SELECT job_id FROM aj)`, **plus the two reference columns below** |
 
