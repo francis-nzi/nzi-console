@@ -32,7 +32,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   const [result, inputSpec, scopeRows, factors,target,intensity,sites,categories,lca,lcaComponents,training,emissions] = await Promise.all([
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
     loadScreen<{ spec: InputSpecCategory[] }>("inputSpec", { spec: [] }, "input-spec"),
-    loadScreen<{ rows: ScopeRowReadModel[];qa:ScopeQaReadiness }>("scopeRows", { rows: [],qa:{total:0,enabled:0,approved:0,pending:0,rejected:0,calculationMissing:0,qualityMissing:0,independentReviewPending:0,readyForReporting:false} }, `jobs/${jobId}/scope-rows`),
+    loadScreen<{ rows: ScopeRowReadModel[];qa:ScopeQaReadiness }>("scopeRows", { rows: [],qa:{total:0,enabled:0,approved:0,pending:0,rejected:0,calculationMissing:0,qualityMissing:0,independentReviewPending:0,migratedRows:0,readyForReporting:false} }, `jobs/${jobId}/scope-rows`),
     loadScreen<{ factors: FactorOption[];datasets:DatasetOption[] }>("factorOptions", { factors: [],datasets:[] }, `jobs/${jobId}/factors`),
     loadScreen<{target:EmissionsTargetReadModel|null}>("emissionsTarget",{target:null},`jobs/${jobId}/emissions-target`),
     loadScreen<{target:IntensityTargetReadModel|null}>("intensityTarget",{target:null},`jobs/${jobId}/intensity-target`),

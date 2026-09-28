@@ -281,7 +281,7 @@ composition chain, which v7's reports cannot honestly pass (§3). Proposed colum
 - the PDF's **storage link only** — `storage_provider`, `file_path` or OneDrive `external_item_id`/`web_url` —
   as provenance (§5.3).
 
-INSERT and SELECT only. A **read-only historical report view** renders it — a later build — for the console and
+INSERT and SELECT only. **It is an imported period’s only report (decision 12)** — the console never freezes a snapshot of a job holding migrated rows. A **read-only historical report view** renders it — a later build — for the console and
 for the portal's history. It is never re-composed through the console's report engine.
 
 ### 5.3 PDFs — decision 3, ruled: (b)
@@ -511,6 +511,7 @@ Ruled 27 Sep 2026:
 | 10 | How the report payload is sealed | **A per-report content key wrapped by `NZI_SUBJECT_MASTER_KEY`**; whole payload sealed; hash verified; the report is not a data subject. Erasure per **NZC-166** (28 Sep 2026). |
 | 9 | A migrated row's figure | **v7's reported arithmetic** — a faithful port of v7's read-time formula, proven by per-job reconciliation to the published snapshot; the stored figure kept beside it (28 Sep 2026). |
 | 11 | Which version is "the published report" | **The version `report_reviews.portal_version_id` names**, whatever its status; its status is kept verbatim, and a non-final one is reported (28 Sep 2026). |
+| 12 | May an imported period get a console snapshot | **No.** The reviewed-snapshot freeze refuses any job holding ≥1 migrated row: a console-composed report of an imported period would compose and round differently from the signed v7 report and stand beside it as a conflicting record of account. An imported period is represented only by its `legacy_report_versions` snapshot, read-only in the historical report view. New live jobs are unaffected (28 Sep 2026). |
 
 Nothing is open for ruling in this table. From the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
 migrated-immutable snapshots (§6.2), client-level custom factors imported for future capture as a separate step
@@ -541,9 +542,13 @@ Still to come, each its own unit:
 - the review and separation-of-duties gate exemption for `origin = 'migrated'`, and the write-command guards that
   refuse a migrated row (§5.1, §10 item 4). **Built:** edit, recalculate and approve/reject refuse a migrated row with
   `MIGRATED_ROW_IMMUTABLE` before the trigger would; rollforward skips one; the portal and group roll-up writes touch
-  live rows only. QA readiness and the reviewed-snapshot freeze ask no console review, tier or reviewer of a migrated
-  row — only its figure — and ask all three of every live row as before. Integrity gaps are not exempt. Decision 4’s
-  own audited disable command is not built yet, so a migrated row cannot currently be disabled from the console;
+  live rows only. QA readiness asks no console review, tier or reviewer of a migrated row — only its figure — and asks
+  all three of every live row as before. Integrity gaps are not exempt. Decision 4’s own audited disable command is
+  **deferred** (28 Sep 2026: not needed for the load; built if an operational need appears), so a migrated row cannot
+  currently be disabled from the console;
+- **decision 12 — built:** the reviewed-snapshot freeze refuses any job holding a migrated row, enabled or not, with
+  `MIGRATED_PERIOD`. QA readiness reports `migratedRows` and never calls such a job ready, and the console says why.
+  Land before imported jobs are exposed to users;
 - retiring the demo-organisation job-number clashes before the load (decision 1a). **Built:** `npm run
   retire:demo-job-numbers -- --organisation <demo id> --above 764 [--commit]` moves every job of that organisation
   numbered in v7’s range to the next free numbers above it, in order, one audit event each, and catches the counter up
