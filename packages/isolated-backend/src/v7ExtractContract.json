@@ -223,11 +223,7 @@
       "calc_tco2e",
       "data_source",
       "data_confidence",
-      "review_status",
-      "employee_name",
-      "source_name",
-      "notes",
-      "detail_json"
+      "review_status"
     ]
   },
   "job_spend_entries": {
@@ -247,9 +243,7 @@
       "currency",
       "submitted_by_portal",
       "review_status",
-      "estimated_emissions_tco2e",
-      "spend_description",
-      "notes"
+      "estimated_emissions_tco2e"
     ]
   },
   "lca_assessments": {

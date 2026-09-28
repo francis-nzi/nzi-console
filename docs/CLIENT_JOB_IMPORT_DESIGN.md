@@ -689,8 +689,16 @@ psql "<live v7 url>" -f extract.sql
 node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract
 ```
 
-- The script sets the session read-only, stops at the first error, forces UTF-8 (the snapshot hashes depend on it),
-  and writes each table with the columns and filter below. `psql` prints `COPY n` per table.
+- **Read-only twice over.** The script sets the session read-only, then runs every `\copy` inside one
+  `BEGIN ISOLATION LEVEL REPEATABLE READ; SET TRANSACTION READ ONLY;` … `COMMIT;` with a 30-minute statement timeout and
+  a 5-minute idle-in-transaction timeout. A wrong column or filter can fail; it cannot write a v7 row. The one snapshot
+  also makes the fourteen files consistent with each other.
+- It stops at the first error, forces UTF-8 (the snapshot hashes depend on it), and writes each table with the columns
+  and filter below. `psql` prints `COPY n` per table.
+- **Not extracted (ruled 28 Sep 2026):** `job_emission_sources.employee_name`, `.source_name`, `.notes`, `.detail_json`,
+  and `job_spend_entries.spend_description`, `.notes`. The importer never reads them — `detail_json` included: neither
+  the decision-9 replay nor the double-count guard takes anything from it — so they are out of the contract, not merely
+  omitted by flag.
 - If psql stops with "column … does not exist", that optional column is absent from this v7: regenerate with
   `--omit <table>.<column>` and run again. A required column cannot be omitted.
 - The manifest builder counts each file's records as the importer reads them (quoted newlines included), records
