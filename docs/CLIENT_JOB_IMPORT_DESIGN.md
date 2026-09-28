@@ -539,7 +539,11 @@ is for ruling. Steps 4–6 are the built loader, run so far only on synthetic da
 
 Still to come, each its own unit:
 - the review and separation-of-duties gate exemption for `origin = 'migrated'`, and the write-command guards that
-  refuse a migrated row (§5.1, §10 item 4). The database trigger already refuses changes;
+  refuse a migrated row (§5.1, §10 item 4). **Built:** edit, recalculate and approve/reject refuse a migrated row with
+  `MIGRATED_ROW_IMMUTABLE` before the trigger would; rollforward skips one; the portal and group roll-up writes touch
+  live rows only. QA readiness and the reviewed-snapshot freeze ask no console review, tier or reviewer of a migrated
+  row — only its figure — and ask all three of every live row as before. Integrity gaps are not exempt. Decision 4’s
+  own audited disable command is not built yet, so a migrated row cannot currently be disabled from the console;
 - retiring the demo-organisation job-number clashes before the load (decision 1a). The loader refuses a clashing
   client and names it;
 - client custom factors (§6.3);
