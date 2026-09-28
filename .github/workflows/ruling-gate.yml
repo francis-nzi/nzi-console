@@ -48,3 +48,49 @@ jobs:
           LABEL_NAME: ${{ github.event.label.name }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: node scripts/ruling-gate.mjs
+      # The ruled head, recorded for the post-merge check (ruling-verify.yml). The name carries the SHA, so the check reads
+      # it from the artifact list alone. An action's input, never a shell line; and the file exists only when the script
+      # saw the ruled label applied to the head this event names.
+      - name: Record the ruled head
+        if: ${{ always() && github.event.action == 'labeled' && github.event.label.name == 'ruled' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruled-head-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ruled-head.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # The governed-path lock (ruled 28 Sep 2026): the required pre-merge check on main. A pull request touching a governed
+  # path (scripts/ruling-verify.mjs GOVERNED_PATHS) may merge only when a ruling is recorded for it AND its current head
+  # is the ruled head; anything else is a skip. After the gate job, so the ruling it records on this very event exists
+  # first. `always()` so it decides even when the gate job holds a migration. Its own read-only token, plus reading
+  # the artifact list where the rulings are recorded.
+  lock:
+    name: governed paths merge only at the ruled head
+    needs: ruling
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Decide
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ruling-lock.mjs

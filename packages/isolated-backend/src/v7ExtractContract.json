@@ -42,8 +42,7 @@
       "benchmark_scope_1_tco2e",
       "benchmark_scope_2_tco2e",
       "benchmark_scope_3_tco2e",
-      "benchmark_total_tco2e",
-      "created_at"
+      "benchmark_total_tco2e"
     ]
   },
   "client_sites": {

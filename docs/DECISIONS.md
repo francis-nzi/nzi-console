@@ -5489,6 +5489,39 @@ migration gate, the other thing that makes migrations safe to merge).
 > and a rename that closes it. The old branch-name job in `ci.yml` is kept until branch protection requires the new
 > check, then retired in its own change.
 
+> **Addendum to NZC-163 (28 Sep 2026) — governed paths merge only at the ruled head; what merged is checked by tree.**
+>
+> *The gap.* Three times a ruled change did not reach `main` (#342, and #346 twice over — each merged an earlier head
+> of the pull request than the one ruled). "Merged SHA == ruled SHA" had never been a check: a squash merge always
+> mints a new SHA, so nothing was compared.
+>
+> *After merge* (`ruling-verify.yml`, `scripts/ruling-verify.mjs`): every ruling is recorded as an artifact
+> `ruled-head-pr-<N>-<sha>` when the label is applied; on merge, every path the pull request touched must equal the
+> ruled tree, or — where another merge changed the same file meanwhile — carry exactly the ruled change (`git
+> patch-id`). A mismatch fails, naming the paths. An un-ruled merge fails only if it touches a **governed path**
+> (`GOVERNED_PATHS`: migrations, contracts, the v7 importer, the extract helpers and contract, the loader, the TLS
+> helper, and the job spine); otherwise it is skipped, so the alarm is not tuned out.
+>
+> *Before merge — the lock* (the `lock` job of `ruling-gate.yml`, `scripts/ruling-lock.mjs`; Francis chose the middle
+> option: protect client data and schema, leave ordinary pull requests alone). A pull request touching a governed path
+> is blocked unless a ruling is recorded **and its current head is the ruled head**; a push after the ruling locks it
+> again until the new head is ruled. Anything else passes as a skip. A squash merge of the ruled head is the ruled
+> tree by construction; the post-merge check stays as confirmation, so both sides are covered.
+>
+> *Enabling it — two settings, both required* (Francis, in GitHub; the lock's own pull request cannot do it — the
+> workflow runs from `main`). In Settings → Branches → the `main` rule:
+>
+> 1. *Require status checks to pass* → add **`governed paths merge only at the ruled head`** beside the existing gate
+>    check. Without it the lock reports but does not block.
+> 2. **Turn administrator bypass off** — *Do not allow bypassing the above settings* (called *Include administrators*
+>    in older rule forms). The enforcement level recorded above is `non_admins`: an administrator can merge past a red
+>    check, and the repository owner is an administrator. All three slips this addendum answers were that one human
+>    step — a merge by the owner of a head that was not the ruled one — so with bypass left on, the lock stops everyone
+>    except the person whose merges it exists to protect, and is decorative.
+>
+> Both, or the lock is not in force. With both set, an emergency merge past it means turning bypass back on — a
+> deliberate, visible change to the rule, recorded here with its reason, rather than one click on the pull request.
+
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
 **Decision.** Activating the transmission-and-distribution companion (NZC-160 H4) has two preconditions, and both

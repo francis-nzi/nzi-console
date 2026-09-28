@@ -190,6 +190,7 @@ describe("the workflow", () => {
 
   it("passes the event through the environment, never into a shell line", () => {
     const runLines = code.split("\n").filter((line) => /^\s*run:/.test(line));
-    assert.deepEqual(runLines.map((line) => line.trim()), ["run: node scripts/ruling-gate.mjs"]);
+    // Exactly these two, the gate and the governed-path lock — each a fixed script, the event only via environment.
+    assert.deepEqual(runLines.map((line) => line.trim()), ["run: node scripts/ruling-gate.mjs", "run: node scripts/ruling-lock.mjs"]);
   });
 });

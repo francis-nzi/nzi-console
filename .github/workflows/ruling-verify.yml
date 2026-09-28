@@ -1,0 +1,41 @@
+# The ruling gate's post-merge half: what merged is what was ruled. See scripts/ruling-verify.mjs.
+#
+# A squash merge mints a new SHA, so "merged SHA == ruled SHA" could never match; the tree is what is compared. For
+# every path the pull request touched, main after the merge must hold exactly the ruled head's content — or, where
+# another merge changed the same file meanwhile, exactly the ruled change to it. A mismatch, or a merge with no ruling
+# recorded, fails here with the paths named, and 'ruled' is not treated as done until this is green.
+#
+# Same safety rules as ruling-gate.yml: pull_request_target, so it runs the default branch's copy; a read-only token
+# (plus reading the artifact list); no credentials in the checkout; the event reaches the script only via environment.
+name: Ruling verified after merge
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    name: merged tree matches the ruled head
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ruling-verify.mjs

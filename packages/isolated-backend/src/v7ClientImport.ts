@@ -170,7 +170,6 @@ export type PlannedClient = {
     netZeroTargetYear: number | null;
     interim: { year: number | null; scope1Pct: number | null; scope2Pct: number | null; scope3Pct: number | null };
     baseline: { periodStart: string | null; periodEnd: string | null; scope1: number | null; scope2: number | null; scope3: number | null; total: number | null };
-    createdAt: string | null;
   };
   target: PlannedTarget | null;
   sites: PlannedSite[]; contacts: PlannedContact[]; jobs: PlannedJob[];
@@ -917,7 +916,6 @@ function clientFields(v7: V7Row, id: string, report: Report): PlannedClient["fie
       scope2: tonnes(v7.benchmark_scope_2_tco2e, "benchmark_scope_2_tco2e"), scope3: tonnes(v7.benchmark_scope_3_tco2e, "benchmark_scope_3_tco2e"),
       total: tonnes(v7.benchmark_total_tco2e, "benchmark_total_tco2e"),
     },
-    createdAt: text(v7.created_at),
   };
 }
 
