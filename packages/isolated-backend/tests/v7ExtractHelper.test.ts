@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { EXTRACT_CONTRACT, parseV7Csv, readV7Extract, V7_TABLES } from "../src/v7ClientExtract";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { columnsFor, extractSql, parseOmit, REFERENCE_COLUMNS } from "../scripts/v7-extract-sql.mjs";
+import { columnsFor, extractSql, parseOmit, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS } from "../scripts/v7-extract-sql.mjs";
 // @ts-expect-error — as above.
 import { buildManifest, countCsv } from "../scripts/v7-extract-manifest.mjs";
 import { syntheticRows, writeSyntheticExtract } from "./support/v7SyntheticExtract";
@@ -85,6 +85,37 @@ describe("the v7 extract script, generated from the contract", () => {
       assert.ok(![...EXTRACT_CONTRACT[table].required, ...EXTRACT_CONTRACT[table].optional].includes(name), `${column} is still in the contract`);
       assert.ok(!selectedColumns(COPY_LINE.exec(copies[V7_TABLES.indexOf(table)]!)![1]!).includes(name), `${column} is still extracted`);
     }
+  });
+
+  it("preflights every column it reads — contract and query alike — before the first \\copy, in one statement", () => {
+    const lines = sql.split("\n");
+    const preflight = lines.findIndex((line) => line.startsWith("DO $preflight$"));
+    assert.ok(preflight > lines.indexOf("SET LOCAL idle_in_transaction_session_timeout = '5min';"), "inside the read-only transaction");
+    assert.ok(preflight < lines.findIndex((line) => line.startsWith("\\copy")), "before anything is copied");
+    assert.match(lines[preflight]!, /RAISE EXCEPTION 'v7 schema drift: % item\(s\) the extract reads are missing: %/);
+    const checked = new Set<string>(preflightColumns().map(([table, column]: [string, string]) => `${table}.${column}`));
+    for (const table of V7_TABLES) {
+      for (const column of [...EXTRACT_CONTRACT[table].required, ...EXTRACT_CONTRACT[table].optional]) {
+        if (REFERENCE_COLUMNS.includes(column)) continue;
+        assert.ok(checked.has(`${table}.${column}`), `${table}.${column} is read but not preflighted`);
+      }
+    }
+    for (const [table, columns] of Object.entries(QUERY_COLUMNS) as Array<[string, string[]]>) {
+      for (const column of columns) assert.ok(checked.has(`${table}.${column}`), `query column ${table}.${column} not preflighted`);
+    }
+    const omitted = new Set(preflightColumns(parseOmit(["clients.client_manager"])).map(([table, column]: [string, string]) => `${table}.${column}`));
+    assert.ok(!omitted.has("clients.client_manager"), "an omitted column is not asked for");
+    assert.ok(![...checked].some((pair) => pair.endsWith(".reference_factor")), "computed columns are not table columns");
+  });
+
+  it("asks only for what live v7 has — the 28 Sep 2026 information_schema dump", () => {
+    // v7 has created_at only on its job-level tables. The contract read clients.created_at, which live v7 lacks; the
+    // importer needed nothing from it (the console's own created_at is the import time), so it left the contract.
+    for (const table of ["clients", "client_sites", "client_contacts", "job_report_versions"] as const) {
+      assert.ok(![...EXTRACT_CONTRACT[table].required, ...EXTRACT_CONTRACT[table].optional].includes("created_at"), `${table} has no created_at in v7`);
+    }
+    assert.ok(EXTRACT_CONTRACT.jobs.optional.includes("created_at"), "jobs does, and keeps it");
+    assert.ok(EXTRACT_CONTRACT.job_report_versions.optional.includes("generated_at"), "report versions carry generated_at instead");
   });
 
   it("drops an absent optional column on request, and never a required one", () => {

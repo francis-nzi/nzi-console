@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { EXTRACT_CONTRACT, V7_TABLES, type V7Table } from "../src/v7ClientExtract";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { extractSql } from "../scripts/v7-extract-sql.mjs";
+import { extractSql, preflightSql } from "../scripts/v7-extract-sql.mjs";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { syntheticRows } from "./support/v7SyntheticExtract";
 
@@ -94,6 +94,29 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       const untouched = await db.query(`SELECT client_name FROM v7.clients WHERE db_id = '1'`);
       assert.deepEqual(untouched.rows, [{ client_name: "Synthetic Alpha Ltd" }]);
     } finally {
+      await session.end();
+    }
+  });
+
+  it("passes its preflight on a v7 with every column — and reports ALL drift at once when there is some", async () => {
+    await db.query(preflightSql());
+    const session = await database.admin();
+    try {
+      await session.query(`SET search_path = v7`);
+      await session.query("BEGIN");
+      // Three kinds of drift in three places: a contract column, a monthly column, and a table the lookup joins.
+      await session.query(`ALTER TABLE v7.clients DROP COLUMN client_manager`);
+      await session.query(`ALTER TABLE v7.job_scope_rows DROP COLUMN month_3`);
+      await session.query(`ALTER TABLE v7.factor_lookup RENAME TO factor_lookup_moved`);
+      await assert.rejects(session.query(preflightSql()), (error: Error) => {
+        assert.match(error.message, /v7 schema drift: 3 item\(s\) the extract reads are missing: clients\.client_manager, factor_lookup \(table absent\), job_scope_rows\.month_3\. Nothing was extracted/);
+        return true;
+      });
+      await session.query("ROLLBACK");
+      await session.query(preflightSql()); // and the rollback put it all back
+      await assert.doesNotReject(session.query(preflightSql(new Set(["clients.client_manager"]))), "an omitted column is not asked for");
+    } finally {
+      await session.query("ROLLBACK").catch(() => undefined);
       await session.end();
     }
   });
