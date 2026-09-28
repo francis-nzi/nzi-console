@@ -371,6 +371,11 @@ jobs:
       # counter caught up; net-zero-international is refused outright and never touched, and the v7 load then clears.
       - name: Demo job-number clashes retire without touching net-zero-international
         run: npx tsx --test packages/isolated-backend/tests/demoJobNumberRetirementReal.test.ts
+      # Decisions 4 and 7 at the command layer: edit, recalculate, approve/reject refuse a migrated row by name before the
+      # 0133 trigger would; rollforward never seeds a live row from one; the readiness and freeze gates ask no console
+      # review, tier or reviewer of a migrated row — only its figure — and ask all of them of every live row as before.
+      - name: Migrated rows are refused by the write commands and exempt from review gates only
+        run: npx tsx --test packages/isolated-backend/tests/migratedRowCommandsReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
       # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin

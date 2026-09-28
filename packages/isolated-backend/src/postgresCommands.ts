@@ -681,6 +681,22 @@ const scopeEvidence = (
       : [{ title: "Calculated result overridden", detail: `${input.overrideTco2e} tCO₂e · ${input.overrideReason}` }]),
   ],
 });
+/**
+ * A migrated row is v7's history, stored as v7 recorded it (docs/CLIENT_JOB_IMPORT_DESIGN.md §5.1). No command edits,
+ * recalculates, re-reviews or removes one. The 0133 trigger already refuses such a change whoever makes it; this says so
+ * as a command-level refusal, with the reason, before anything is attempted (defence in depth, decisions 4 and 7).
+ */
+export const MIGRATED_ROW_IMMUTABLE = "MIGRATED_ROW_IMMUTABLE";
+async function refuseMigratedRow(db: Queryable, organisationId: string, jobId: string, rowId: string, act: string): Promise<void> {
+  const found = await db.query<{ origin: string }>(
+    "SELECT origin FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3",
+    [organisationId, jobId, rowId],
+  );
+  if (found.rows[0]?.origin === "migrated")
+    throw new CommandValidationError([{ field: "rowId", code: MIGRATED_ROW_IMMUTABLE,
+      message: `This row is migrated from NZ Insights Pro v7 and is kept exactly as v7 recorded it, so it cannot be ${act} here. Its figure and review status are v7's (decisions 4 and 7).` }]);
+}
+
 async function requireCrpJob(
   db: Queryable,
   organisationId: string,
@@ -1050,9 +1066,9 @@ async function reaggregateGroupRollup(db:Queryable,organisationId:string,jobId:s
   const members=await db.query<{source_id:string;scope:string;source_type:string;quantity:string|null;unit:string|null;apply_pct:string;monthly_activity_json:Array<{month:string;quantity:number|null}>}>(`SELECT source_id,scope,source_type,quantity,unit,apply_pct,monthly_activity_json FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3 AND enabled=true AND voided_at IS NULL ORDER BY source_id`,[organisationId,jobId,groupId]);
   // Per-source canonical rows must never coexist with a roll-up (no double count).
   await db.query(`DELETE FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND source_id IN (SELECT source_id FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3)`,[organisationId,jobId,groupId]);
-  const existing=await db.query<{scope_row_id:string}>(`SELECT scope_row_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3 FOR UPDATE`,[organisationId,jobId,groupId]);
+  const existing=await db.query<{scope_row_id:string}>(`SELECT scope_row_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND group_id=$3 AND origin='live' FOR UPDATE`,[organisationId,jobId,groupId]);
   if(members.rows.length===0){
-    if(existing.rows[0])await db.query(`UPDATE nzi_console.job_scope_rows SET enabled=false,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND scope_row_id=$2`,[organisationId,existing.rows[0].scope_row_id]);
+    if(existing.rows[0])await db.query(`UPDATE nzi_console.job_scope_rows SET enabled=false,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND scope_row_id=$2 AND origin='live'`,[organisationId,existing.rows[0].scope_row_id]);
     return existing.rows[0]?{rowId:existing.rows[0].scope_row_id,enabledMemberCount:0,summedQuantity:null}:null;
   }
   const scopes=new Set(members.rows.map(m=>m.scope));
@@ -1162,6 +1178,8 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
     `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text
      FROM nzi_console.job_scope_rows r
      WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=ANY($3::text[]) AND enabled=true
+       -- A migrated row is v7's history: it never seeds a live row, so it is skipped (§5.1).
+       AND r.origin='live'
        AND NOT EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf WHERE rf.organisation_id=$1 AND rf.job_id=$4 AND rf.rolled_forward_from_row_id=r.scope_row_id)`,
     [context.organisationId,input.priorJobId,input.rowIds,input.jobId],
   );
@@ -1394,6 +1412,7 @@ export async function updateScopeRow(
     context,
     async (db) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
+      await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "edited");
       const rollup=await db.query<{group_id:string|null}>(`SELECT group_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3`,[context.organisationId,input.jobId,input.rowId]);
       if(rollup.rows[0]?.group_id)throw new CommandValidationError([{field:"rowId",code:"GROUP_ROLLUP",message:"This row is a group roll-up — edit its member sources, then roll the group up again."}]);
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null);
@@ -1497,6 +1516,7 @@ export async function calculateScopeRow(
     context,
     async (db) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
+      await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "recalculated");
       const found = await db.query<{
         version: number;
         quantity: string | null;
@@ -1775,6 +1795,7 @@ async function reviewScopeRow<
         },
       ]);
     const rowId = input.rowIds[0]!;
+    await refuseMigratedRow(db, context.organisationId, input.jobId, rowId, "reviewed");
     const found = await db.query<{
       version: number;
       enabled: boolean;
@@ -2128,6 +2149,7 @@ export async function createReviewedCrpSnapshot(
         review_status: string;
         reviewed_by: string | null;
         enabled: boolean;
+        origin: "live" | "migrated";
         dataset_id: string | null;
         dataset_name: string | null;
         dataset_version: string | null;
@@ -2136,7 +2158,7 @@ export async function createReviewedCrpSnapshot(
         alias_label: string | null;
         identity_report_label: string | null;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label,fi.report_label AS identity_report_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.origin,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label,fi.report_label AS identity_report_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site
@@ -2160,12 +2182,13 @@ export async function createReviewedCrpSnapshot(
             message: "At least one enabled scope row inside the reporting boundary is required.",
           },
         ]);
+      // Decision 7: a migrated row arrives as v7 left it — reviewed in v7, never re-approved here, and with no console
+      // quality tier — so review, tier and reviewer are not asked of it. It must still carry its figure. The exemption
+      // is for origin='migrated' alone, and is safe only because 0133 makes such a row unchangeable.
       const incomplete = enabled.filter(
         (row) =>
-          row.review_status !== "approved" ||
           (row.calculated_tco2e === null && row.override_tco2e === null) ||
-          !row.quality_tier ||
-          !row.reviewed_by,
+          (row.origin !== "migrated" && (row.review_status !== "approved" || !row.quality_tier || !row.reviewed_by)),
       );
       if (incomplete.length)
         throw new CommandValidationError([
