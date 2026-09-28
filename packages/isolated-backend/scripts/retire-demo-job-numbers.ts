@@ -31,6 +31,8 @@ async function main(): Promise<void> {
   try {
     const outcome = await retireDemoJobNumbers(pool, { organisationId, above, commit });
     log(`\nRetire demo job numbers in ${organisationId} at or below J${String(above).padStart(6, "0")} — ${commit ? "COMMIT" : "dry run, rolled back"}`);
+    const p = outcome.protectedCheck;
+    log(`  ${p.organisationId}: ${p.jobs} job(s) and ${p.auditEvents} audit event(s) — checked before, inside and after the run: unchanged, 0 touched`);
     if (outcome.moved.length === 0) { log("  Nothing to move: no job of this organisation holds a number in v7's range."); return; }
     for (const move of outcome.moved) log(`  ${move.jobId}: ${move.from} → ${move.to}`);
     log(`  ${outcome.moved.length} job(s) ${commit ? "moved" : "would move"}; counter ${commit ? "now" : "would be"} at ${outcome.counterAt}`);

@@ -49,6 +49,30 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
     await assert.rejects(retireDemoJobNumbers(database.pool, { organisationId: DEMO, above: 0, commit: true }), DemoRetirementRefused);
   });
 
+  it("aborts and rolls back if net-zero-international changes during the run — the check is not decoration", async () => {
+    // A test-only trigger that, whenever a demo job is renumbered, quietly touches net-zero-international's job too.
+    await db.query(`CREATE FUNCTION nzi_console.test_leak_into_nzi() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+      SET search_path = nzi_console, pg_temp AS $f$ BEGIN
+        IF NEW.organisation_id = 'demo-retire' THEN
+          PERFORM set_config('app.organisation_id', 'net-zero-international', true);
+          UPDATE nzi_console.jobs SET version = version + 1 WHERE organisation_id = 'net-zero-international';
+          PERFORM set_config('app.organisation_id', 'demo-retire', true);
+        END IF; RETURN NEW; END $f$`);
+    await db.query(`CREATE TRIGGER test_leak AFTER UPDATE OF sequence ON nzi_console.jobs FOR EACH ROW WHEN (pg_trigger_depth() = 0)
+      EXECUTE FUNCTION nzi_console.test_leak_into_nzi()`);
+    try {
+      const demoBefore = await jobsOf(DEMO);
+      const nziBefore = await jobsOf(NZI);
+      await assert.rejects(retireDemoJobNumbers(database.pool, { organisationId: DEMO, above: 764, commit: true }),
+        /net-zero-international changed during the run/);
+      assert.deepEqual(await jobsOf(DEMO), demoBefore, "the demo's moves were rolled back with it");
+      assert.deepEqual(await jobsOf(NZI), nziBefore, "and so was the leak");
+    } finally {
+      await db.query(`DROP TRIGGER test_leak ON nzi_console.jobs`);
+      await db.query(`DROP FUNCTION nzi_console.test_leak_into_nzi()`);
+    }
+  });
+
   it("dry-runs the move and keeps nothing", async () => {
     const before = await jobsOf(DEMO);
     const outcome = await retireDemoJobNumbers(database.pool, { organisationId: DEMO, above: 764, commit: false });
@@ -59,6 +83,8 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
   it("moves the demo's numbers above v7's range and past its own highest, in order, audited — and touches nothing else", async () => {
     const nziBefore = await jobsOf(NZI);
     const outcome = await retireDemoJobNumbers(database.pool, { organisationId: DEMO, above: 764, commit: true });
+    assert.deepEqual(outcome.protectedCheck, { organisationId: NZI, jobs: 1, auditEvents: 0, unchanged: true },
+      "net-zero-international checked before, inside and after: its one job untouched, no audit written there");
     assert.equal(outcome.moved.length, 3);
     assert.deepEqual((await jobsOf(DEMO)).map((job) => [job.job_id, job.job_number]),
       [["demo-a", "J000901"], ["demo-b", "J000902"], ["demo-c", "J000903"], ["demo-d", "J000900"]]);
