@@ -20,7 +20,7 @@ const IDENTITY = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", 
 const sha = (digit) => digit.repeat(40);
 
 describe("the decision", () => {
-  const base = { prNumber: "9", headSha: sha("a"), ruledSha: null, action: "synchronize", labelName: "" };
+  const base = { prNumber: "9", headSha: sha("a"), ruledSha: null, action: "synchronize", labelName: "", labels: ["ruled"] };
 
   it("skips a pull request that touches no governed path — ordinary work merges as before", () => {
     const decision = decideLock({ ...base, changedFiles: ["apps/console/app/page.tsx", "docs/README.md"] });
@@ -38,6 +38,14 @@ describe("the decision", () => {
     const moved = decideLock({ ...base, changedFiles: [MIGRATION], ruledSha: sha("b") });
     assert.equal(moved.pass, false);
     assert.match(moved.reason, /head aaaaaaa is not the ruled head bbbbbbb — it moved after the ruling/);
+  });
+
+  it("unlocks only while 'ruled' is on the pull request — removing the label withdraws the ruling", () => {
+    const withdrawn = decideLock({ ...base, changedFiles: [MIGRATION], ruledSha: sha("a"), action: "unlabeled", labelName: "ruled", labels: ["urgent"] });
+    assert.equal(withdrawn.pass, false, "ruled at this very head, but the label has been taken off");
+    assert.match(withdrawn.reason, /'ruled' is not on it — the ruling was withdrawn/);
+    assert.equal(decideLock({ ...base, changedFiles: [MIGRATION], ruledSha: sha("a"), labels: ["urgent", "ruled"] }).pass, true);
+    assert.equal(decideLock({ ...base, changedFiles: ["README.md"], labels: [] }).skipped, true, "an ordinary pull request needs no label");
   });
 
   it("treats the ruling event itself as the ruling of its head; any other label is not one", () => {
@@ -72,7 +80,7 @@ describe("end to end, as the workflow runs it", () => {
     let artifacts = [];
     let calls = 0;
     const fetchImpl = async () => { calls += 1; return { ok: true, json: async () => ({ artifacts }) }; };
-    const run = (event) => runLock({ cwd: gate, fetchImpl, env: { PR_NUMBER: "1", BASE_SHA: baseSha, REPOSITORY: "o/r", GITHUB_TOKEN: "t", ACTION: "synchronize", LABEL_NAME: "", ...event } });
+    const run = (event) => runLock({ cwd: gate, fetchImpl, env: { PR_NUMBER: "1", BASE_SHA: baseSha, REPOSITORY: "o/r", GITHUB_TOKEN: "t", ACTION: "synchronize", LABEL_NAME: "", LABELS: "[]", ...event } });
     const record = (head, at) => { artifacts = [...artifacts, { name: `${ARTIFACT_PREFIX}1-${head}`, created_at: at }]; };
     return { commit, run, record, calls: () => calls };
   }
@@ -90,23 +98,27 @@ describe("end to end, as the workflow runs it", () => {
     const head = pr.commit(MIGRATION, "SELECT 1;\n");
     assert.equal((await pr.run({ HEAD_SHA: head })).pass, false, "a governed change with no ruling");
 
-    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "labeled", LABEL_NAME: "ruled" })).pass, true, "the ruling event");
+    const RULED = '["ruled"]';
+    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "labeled", LABEL_NAME: "ruled", LABELS: RULED })).pass, true, "the ruling event");
     pr.record(head, "2026-09-28T10:00:00Z"); // what the gate job uploads on that event
-    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "reopened" })).pass, true, "a later event at the ruled head");
+    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "reopened", LABELS: RULED })).pass, true, "a later event at the ruled head");
+    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "unlabeled", LABEL_NAME: "ruled", LABELS: "[]" })).pass, false,
+      "the label taken off: the ruling is withdrawn, the lock closes again");
+    assert.equal((await pr.run({ HEAD_SHA: head, ACTION: "labeled", LABEL_NAME: "ruled", LABELS: RULED })).pass, true, "and re-applied, it opens");
 
     const pushed = pr.commit("README.md", "a harmless-looking follow-up\n");
-    const after = await pr.run({ HEAD_SHA: pushed });
+    const after = await pr.run({ HEAD_SHA: pushed, LABELS: RULED }); // the label stays on through a push
     assert.equal(after.pass, false, "the head moved past the ruling — exactly #342 and #346");
     assert.match(after.reason, /is not the ruled head/);
 
-    assert.equal((await pr.run({ HEAD_SHA: pushed, ACTION: "labeled", LABEL_NAME: "ruled" })).pass, true, "ruled again at the new head");
+    assert.equal((await pr.run({ HEAD_SHA: pushed, ACTION: "labeled", LABEL_NAME: "ruled", LABELS: RULED })).pass, true, "ruled again at the new head");
   });
 
   it("judges only the head its event names: a run for a head the pull request has moved past does not pass", async () => {
     const pr = setup();
     const ruled = pr.commit(MIGRATION, "SELECT 1;\n");
     pr.commit(MIGRATION, "SELECT 2;\n");
-    const stale = await pr.run({ HEAD_SHA: ruled, ACTION: "labeled", LABEL_NAME: "ruled" });
+    const stale = await pr.run({ HEAD_SHA: ruled, ACTION: "labeled", LABEL_NAME: "ruled", LABELS: '["ruled"]' });
     assert.equal(stale.pass, false);
     assert.match(stale.reason, /moved to/);
   });
@@ -128,5 +140,6 @@ describe("the workflow job", () => {
     assert.match(job, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
     assert.match(job, /persist-credentials: false/);
     assert.match(job, /run: node scripts\/ruling-lock\.mjs/);
+    assert.match(job, /LABELS: \$\{\{ toJSON\(github\.event\.pull_request\.labels\.\*\.name\) \}\}/, "the current labels, so removing 'ruled' re-locks");
   });
 });
