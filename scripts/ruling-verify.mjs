@@ -18,7 +18,8 @@
 //     `git patch-id`, which ignores line numbers and context but not content;
 //   - the set of paths must be the same: nothing ruled left out, nothing unruled added.
 //
-// Anything else fails, naming the paths. So does a merge with no ruling recorded at all. It runs under
+// Anything else fails, naming the paths. A merge with no ruling recorded fails only if it touches a governed path
+// (GOVERNED_PATHS); otherwise it is skipped, neutrally — never red for an ordinary un-ruled merge. It runs under
 // pull_request_target from the default branch, with a read-only token; the pull request's code is never executed.
 
 import { execFileSync } from "node:child_process";
@@ -85,23 +86,67 @@ export async function findRuledHead({ repository, prNumber, token, fetchImpl = f
   return newest?.sha ?? null;
 }
 
+/**
+ * The paths whose merge must be ruled (ruled 28 Sep 2026). A pull request touching none of them and never ruled is
+ * skipped, not failed — an alarm that goes red on every ordinary merge is tuned out within a week. `prefix: true`
+ * governs everything under the path.
+ */
+export const GOVERNED_PATHS = [
+  // The existing gate's set.
+  { path: "packages/isolated-backend/migrations/", prefix: true, why: "migrations" },
+  // Contracts.
+  { path: "packages/contracts/src/", prefix: true, why: "contracts" },
+  // The v7 importer, and the report sealing it writes through.
+  ...["v7ClientExtract.ts", "v7ClientImport.ts", "v7ClientLoad.ts", "v7EmissionsFormula.ts", "legacyReportSeal.ts"]
+    .map((file) => ({ path: `packages/isolated-backend/src/${file}`, why: "the v7 importer" })),
+  // The extract helpers and the contract they read.
+  { path: "packages/isolated-backend/scripts/v7-extract-sql.mjs", why: "the extract helpers" },
+  { path: "packages/isolated-backend/scripts/v7-extract-manifest.mjs", why: "the extract helpers" },
+  { path: "packages/isolated-backend/src/v7ExtractContract.json", why: "the extract contract" },
+  // The loader, and the TLS it connects over.
+  { path: "packages/isolated-backend/scripts/load-v7-clients.ts", why: "the loader" },
+  { path: "packages/isolated-backend/src/databaseTls.ts", why: "the TLS helper" },
+  // The job spine (NZC-007, NZC-025): job header, numbering, the scope-row commands and the freeze; and the one tool
+  // that renumbers jobs, with the live-organisation guard it rests on.
+  { path: "packages/isolated-backend/src/postgresCommands.ts", why: "the job spine" },
+  { path: "packages/isolated-backend/src/demoJobNumberRetirement.ts", why: "the job spine" },
+  { path: "packages/isolated-backend/scripts/retire-demo-job-numbers.ts", why: "the job spine" },
+  { path: "packages/isolated-backend/src/liveOrganisation.ts", why: "the job spine" },
+];
+
+export const governedFiles = (files) =>
+  files.filter((file) => GOVERNED_PATHS.some((entry) => (entry.prefix ? file.startsWith(entry.path) : file === entry.path)));
+
+/**
+ * The post-merge decision. `skipped` is the neutral outcome: nothing ruled, and nothing governed to require it.
+ * A failure is reserved for a ruled merge whose tree does not match, and for a governed merge that was never ruled.
+ */
+export function decidePostMerge({ prNumber, ruledSha, changedFiles, verify }) {
+  if (!ruledSha) {
+    const governed = governedFiles(changedFiles);
+    if (governed.length === 0) {
+      return { pass: true, skipped: true, reason: `No ruling recorded, and #${prNumber} touches no governed path — nothing to verify.` };
+    }
+    return { pass: false, reason: `#${prNumber} merged with no ruling recorded, and it touches governed path(s): ${governed.join(", ")}. 'ruled' was never applied to any head of it.` };
+  }
+  return verify();
+}
+
 async function main() {
   const env = process.env;
   const cwd = process.cwd();
   const { PR_NUMBER: prNumber, MERGE_SHA: mergeSha, REPOSITORY: repository, GITHUB_TOKEN: token } = env;
   if (!prNumber || !mergeSha || !repository || !token) throw new Error("PR_NUMBER, MERGE_SHA, REPOSITORY and GITHUB_TOKEN are required.");
-  let decision;
   const ruledSha = await findRuledHead({ repository, prNumber, token });
-  if (!ruledSha) {
-    decision = { pass: false, reason: `Pull request #${prNumber} merged with no ruling recorded: 'ruled' was never applied to any head of it.` };
-  } else {
-    git(cwd, ["fetch", "--no-tags", "--quiet", "origin", ruledSha, mergeSha]);
-    decision = verifyMerge({ cwd, ruledSha, mergeSha });
-  }
-  console.log(`${decision.pass ? "✓" : "✗"} #${prNumber}: ${decision.reason} [merge ${mergeSha}]`);
+  git(cwd, ["fetch", "--no-tags", "--quiet", "origin", ...(ruledSha ? [ruledSha] : []), mergeSha]);
+  const changedFiles = lines(git(cwd, ["diff", "--name-only", "--no-renames", `${mergeSha}^1`, mergeSha]));
+  const decision = decidePostMerge({ prNumber, ruledSha, changedFiles, verify: () => verifyMerge({ cwd, ruledSha, mergeSha }) });
+  const outcome = decision.skipped ? "skipped" : decision.pass ? "match" : "MISMATCH";
+  console.log(`${decision.skipped ? "–" : decision.pass ? "✓" : "✗"} #${prNumber}: ${decision.reason} [merge ${mergeSha}]`);
   if (env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(env.GITHUB_STEP_SUMMARY, `**Ruling verified after merge** — ${decision.pass ? "match" : "MISMATCH"}: ${decision.reason}\n\nMerge: \`${mergeSha}\`${ruledSha ? `, ruled: \`${ruledSha}\`` : ""}\n`);
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `**Ruling verified after merge** — ${outcome}: ${decision.reason}\n\nMerge: \`${mergeSha}\`${ruledSha ? `, ruled: \`${ruledSha}\`` : ""}\n`);
   }
+  if (decision.skipped) console.log(`::notice title=Ruling not required::${decision.reason}`);
   if (!decision.pass) {
     console.log(`::error title=Merged tree does not match the ruling::${decision.reason}`);
     process.exit(1);
