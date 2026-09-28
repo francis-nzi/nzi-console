@@ -70,6 +70,34 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
     assert.deepEqual(clients, ["1", "2"]);
   });
 
+  it("runs the emitted script's statements in order: every \\copy works read-only, and no write gets through", async () => {
+    // One session, as psql would hold: the script's own SQL lines verbatim, each \copy as the SELECT it wraps.
+    const session = await database.admin();
+    try {
+      await session.query(`SET search_path = v7`);
+      const sql: string = extractSql({ out: "unused" });
+      let copies = 0;
+      for (const line of sql.split("\n")) {
+        if (!line.trim() || line.startsWith("--") || /^\\(set|encoding|echo)\b/.test(line)) continue;
+        if (line.startsWith("\\copy")) { await session.query(COPY_LINE.exec(line)![1]!); copies += 1; continue; }
+        if (line === "COMMIT;") {
+          // Just before the script commits: inside its transaction, a write is refused outright.
+          await session.query(`SAVEPOINT probe`);
+          await assert.rejects(session.query(`UPDATE v7.clients SET client_name = 'changed' WHERE db_id = '1'`), /read-only transaction/);
+          await session.query(`ROLLBACK TO SAVEPOINT probe`);
+        }
+        await session.query(line);
+      }
+      assert.equal(copies, V7_TABLES.length, "every \\copy ran inside the read-only transaction");
+      await assert.rejects(session.query(`UPDATE v7.clients SET client_name = 'changed' WHERE db_id = '1'`), /read-only transaction/,
+        "and after it, the session itself still refuses writes");
+      const untouched = await db.query(`SELECT client_name FROM v7.clients WHERE db_id = '1'`);
+      assert.deepEqual(untouched.rows, [{ client_name: "Synthetic Alpha Ltd" }]);
+    } finally {
+      await session.end();
+    }
+  });
+
   it("computes the factor-lookup reference as v7 does: the notes token first, then the row's own code", async () => {
     const rows = (await db.query(queries.get("job_scope_rows")!)).rows;
     const reference = (id: string) => rows.filter((row) => row.row_id === id).map((row) => [row.reference_factor, row.reference_ghg_unit])[0];

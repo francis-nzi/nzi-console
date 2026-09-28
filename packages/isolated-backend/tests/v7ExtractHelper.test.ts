@@ -59,6 +59,34 @@ describe("the v7 extract script, generated from the contract", () => {
     assert.doesNotMatch(sql, /\.pdf|clients\/|job_data_uploads/i, "no PDFs, no client-data folders");
   });
 
+  it("runs every \\copy inside one read-only, repeatable-read, time-bounded transaction", () => {
+    const lines = sql.split("\n");
+    const at = (text: string) => lines.indexOf(text);
+    const firstCopy = lines.findIndex((line) => line.startsWith("\\copy"));
+    const lastCopy = lines.length - 1 - [...lines].reverse().findIndex((line) => line.startsWith("\\copy"));
+    const opening = ["BEGIN ISOLATION LEVEL REPEATABLE READ;", "SET TRANSACTION READ ONLY;",
+      "SET LOCAL statement_timeout = '30min';", "SET LOCAL idle_in_transaction_session_timeout = '5min';"];
+    opening.forEach((line, index) => {
+      assert.ok(at(line) >= 0, `missing: ${line}`);
+      assert.ok(at(line) < firstCopy, `${line} must come before the first \\copy`);
+      if (index > 0) assert.ok(at(line) > at(opening[index - 1]!), `${line} out of order`);
+    });
+    assert.ok(at("SET default_transaction_read_only = on;") < at("BEGIN ISOLATION LEVEL REPEATABLE READ;"));
+    assert.equal(lines.filter((line) => line.trim()).at(-1), "COMMIT;", "COMMIT closes the script");
+    assert.ok(at("COMMIT;") > lastCopy);
+    assert.equal(lines.filter((line) => /^(BEGIN|COMMIT|ROLLBACK)\b/.test(line)).length, 2, "one transaction, no other");
+  });
+
+  it("leaves out the free-text and personal columns the importer never reads (ruled 28 Sep 2026)", () => {
+    const never = ["job_emission_sources.employee_name", "job_emission_sources.source_name", "job_emission_sources.notes",
+      "job_emission_sources.detail_json", "job_spend_entries.spend_description", "job_spend_entries.notes"];
+    for (const column of never) {
+      const [table, name] = column.split(".") as [keyof typeof EXTRACT_CONTRACT, string];
+      assert.ok(![...EXTRACT_CONTRACT[table].required, ...EXTRACT_CONTRACT[table].optional].includes(name), `${column} is still in the contract`);
+      assert.ok(!selectedColumns(COPY_LINE.exec(copies[V7_TABLES.indexOf(table)]!)![1]!).includes(name), `${column} is still extracted`);
+    }
+  });
+
   it("drops an absent optional column on request, and never a required one", () => {
     const omit = parseOmit(["clients.client_manager,job_scope_rows.reference_factor", "report_reviews.published_by"]);
     const trimmed: string = extractSql({ out: "x", omit });
