@@ -27,3 +27,6 @@ Claude outputs/
 
 # Scratch PR bodies, written for pasting into GitHub and never part of the tree.
 pr-*-body.md
+
+# A generated v7 extract script (Appendix B) — never committed; write it outside the repository.
+/extract.sql
