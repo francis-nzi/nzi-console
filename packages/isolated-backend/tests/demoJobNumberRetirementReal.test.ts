@@ -51,7 +51,8 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
 
   it("aborts and rolls back if net-zero-international changes during the run — the check is not decoration", async () => {
     // A test-only trigger that, whenever a demo job is renumbered, quietly touches net-zero-international's job too.
-    await db.query(`CREATE FUNCTION nzi_console.test_leak_into_nzi() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+    // Created in `public`, not nzi_console: no suite invents an object in the schema the migrations own.
+    await db.query(`CREATE FUNCTION public.test_leak_into_nzi() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
       SET search_path = nzi_console, pg_temp AS $f$ BEGIN
         IF NEW.organisation_id = 'demo-retire' THEN
           PERFORM set_config('app.organisation_id', 'net-zero-international', true);
@@ -59,7 +60,7 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
           PERFORM set_config('app.organisation_id', 'demo-retire', true);
         END IF; RETURN NEW; END $f$`);
     await db.query(`CREATE TRIGGER test_leak AFTER UPDATE OF sequence ON nzi_console.jobs FOR EACH ROW WHEN (pg_trigger_depth() = 0)
-      EXECUTE FUNCTION nzi_console.test_leak_into_nzi()`);
+      EXECUTE FUNCTION public.test_leak_into_nzi()`);
     try {
       const demoBefore = await jobsOf(DEMO);
       const nziBefore = await jobsOf(NZI);
@@ -69,7 +70,7 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
       assert.deepEqual(await jobsOf(NZI), nziBefore, "and so was the leak");
     } finally {
       await db.query(`DROP TRIGGER test_leak ON nzi_console.jobs`);
-      await db.query(`DROP FUNCTION nzi_console.test_leak_into_nzi()`);
+      await db.query(`DROP FUNCTION public.test_leak_into_nzi()`);
     }
   });
 
