@@ -1,3 +1,4 @@
+import { dateOnlyOrNull } from "@nzi/contracts";
 import { sha256Hex, type LegacyReportParticulars } from "./legacyReportSeal";
 import type { Finding } from "./v7ReferenceImport";
 import { EXTRACT_CONTRACT, missingColumns, type V7Extract, type V7Row, type V7Table } from "./v7ClientExtract";
@@ -240,10 +241,10 @@ const integer = (value: string | null | undefined): number | null => {
   const parsed = pyFloat(value ?? null);
   return parsed === null ? null : Math.trunc(parsed);
 };
-const dateOnly = (value: string | null | undefined): string | null => {
-  const cleaned = text(value);
-  const match = cleaned ? /^(\d{4}-\d{2}-\d{2})/.exec(cleaned) : null;
-  return match ? match[1]! : null;
+/** The day a v7 date or timestamp cell names: the shared helper, after v7's NULL spellings, and only if it is a day. */
+const v7Day = (value: string | null | undefined): string | null => {
+  const day = dateOnlyOrNull(text(value));
+  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
 };
 const within = (value: number | null, low: number, high: number): number | null =>
   value !== null && value >= low && value <= high ? value : null;
@@ -437,7 +438,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       if (!name) { name = `Unnamed site (v7 site ${site.site_id})`; report("site-without-name", "a v7 site with no name, given a placeholder", `site ${site.site_id}`); }
       if (names.has(name.toLowerCase())) { report("site-name-repeated", "a v7 site name repeated within one client, suffixed with its v7 id", `site ${site.site_id}`); name = `${name} (v7 site ${site.site_id})`; }
       names.add(name.toLowerCase());
-      const vacated = dateOnly(site.vacated_date);
+      const vacated = v7Day(site.vacated_date);
       const archived = flag(site.archived);
       let isRegisteredOffice = flag(site.is_registered_office);
       if (isRegisteredOffice && (vacated || archived)) { isRegisteredOffice = false; report("registered-office-closed", "a closed v7 site marked registered office; the mark is dropped", `site ${site.site_id}`); }
@@ -483,8 +484,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       const statusText = text(v7Job.status) ?? "Open";
       const status = flag(v7Job.archived) ? "cancelled" : JOB_STATUS_MAP[statusText]!;
       const crp = crpDetails.get(id);
-      let periodStart = dateOnly(v7Job.reporting_period_start) ?? dateOnly(crp?.reporting_period_from);
-      let periodEnd = dateOnly(v7Job.reporting_period_end) ?? dateOnly(crp?.reporting_period_to);
+      let periodStart = v7Day(v7Job.reporting_period_start) ?? v7Day(crp?.reporting_period_from);
+      let periodEnd = v7Day(v7Job.reporting_period_end) ?? v7Day(crp?.reporting_period_to);
       if (periodStart && periodEnd && periodStart >= periodEnd) {
         report("job-period-inverted", "a job's reporting period does not run forwards; it is left unset", `job ${id}`);
         periodStart = null; periodEnd = null;
@@ -499,8 +500,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       return {
         jobId: `v7-job-${id}`, legacyId: id, sequence: Number(jobNumber.slice(1)), legacyJobNumber: jobNumber,
         legacyWfmJobNo: text(v7Job.legacy_job_no), family, title, status, workflowStage: statusText,
-        reportingYear: within(integer(v7Job.reporting_year), 1900, 2200), startDate: dateOnly(v7Job.start_date),
-        dueDate: dateOnly(v7Job.due_date), periodStart, periodEnd, ownerName: text(v7Job.crm_name),
+        reportingYear: within(integer(v7Job.reporting_year), 1900, 2200), startDate: v7Day(v7Job.start_date),
+        dueDate: v7Day(v7Job.due_date), periodStart, periodEnd, ownerName: text(v7Job.crm_name),
         createdAt: text(v7Job.created_at), detail: detailFor(family, periodStart, periodEnd), rows, reports, reconciliation,
       };
     }
@@ -890,8 +891,8 @@ function clientFields(v7: V7Row, id: string, report: Report): PlannedClient["fie
     if (parsed !== null && parsed < 0) { report("client-baseline-negative", "a negative v7 baseline figure; left unset", `client ${id} ${what}`); return null; }
     return parsed;
   };
-  let periodStart = dateOnly(v7.benchmark_period_start);
-  let periodEnd = dateOnly(v7.benchmark_period_end);
+  let periodStart = v7Day(v7.benchmark_period_start);
+  let periodEnd = v7Day(v7.benchmark_period_end);
   if (periodStart && periodEnd && periodEnd <= periodStart) {
     report("client-baseline-period-inverted", "a v7 baseline period that does not run forwards; left unset", `client ${id}`);
     periodStart = null; periodEnd = null;
