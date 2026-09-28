@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { withTenantWrite, type PoolLike } from "./postgres";
+import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
  * Move the demo organisation's job numbers out of v7's range, before the v7 load (docs/CLIENT_JOB_IMPORT_DESIGN.md
@@ -40,7 +40,24 @@ export type RetirementOutcome = {
   /** Frozen copies of a moved job's old number, which keep it. */
   frozenCopies: { trainingEntitlements: number };
   counterAt: number | null;
+  /**
+   * net-zero-international, fingerprinted before the run, inside its transaction after the moves, and after it: its jobs
+   * (count, and a digest of every id, number, version and update time) and its audit events. All three must agree, or
+   * the run aborts and rolls back — the dry run shows this, which is what makes it the gate (decision 1a).
+   */
+  protectedCheck: { organisationId: string; jobs: number; auditEvents: number; unchanged: true };
 };
+
+type Fingerprint = { jobs: number; digest: string; auditEvents: number };
+async function fingerprint(db: Queryable): Promise<Fingerprint> {
+  const jobs = (await db.query<{ n: number; digest: string }>(
+    `SELECT count(*)::int AS n, md5(coalesce(string_agg(job_id || '|' || sequence || '|' || version || '|' || updated_at::text, ',' ORDER BY job_id), '')) AS digest
+       FROM nzi_console.jobs WHERE organisation_id=$1`, [PROTECTED_ORGANISATION])).rows[0]!;
+  const audit = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE organisation_id=$1`, [PROTECTED_ORGANISATION])).rows[0]!;
+  return { jobs: jobs.n, digest: jobs.digest, auditEvents: audit.n };
+}
+const sameFingerprint = (a: Fingerprint, b: Fingerprint) => a.jobs === b.jobs && a.digest === b.digest && a.auditEvents === b.auditEvents;
+const protectedFingerprint = (pool: PoolLike) => withTenantRead(pool, PROTECTED_ORGANISATION, fingerprint);
 
 export async function retireDemoJobNumbers(
   pool: PoolLike,
@@ -54,8 +71,10 @@ export async function retireDemoJobNumbers(
     throw new DemoRetirementRefused(`--above must be v7's highest job number as an integer (764 from §9, or the dry run's "up to J…"); got ${options.above}.`);
   }
   const correlationId = `retire-demo-job-numbers-${randomUUID()}`;
+  const before = await protectedFingerprint(pool);
   const outcome: RetirementOutcome = {
     organisationId, committed: options.commit, correlationId, moved: [], frozenCopies: { trainingEntitlements: 0 }, counterAt: null,
+    protectedCheck: { organisationId: PROTECTED_ORGANISATION, jobs: before.jobs, auditEvents: before.auditEvents, unchanged: true },
   };
 
   try {
@@ -93,10 +112,22 @@ export async function retireDemoJobNumbers(
 
       // Catch the counter up to the moved numbers, so the next job is issued after them (0134; never ahead of one).
       outcome.counterAt = (await db.query<{ n: number }>(`SELECT nzi_console.advance_job_sequence_past_existing() AS n`)).rows[0]!.n;
+
+      // Inside this transaction, after every move: look at net-zero-international as its own tenant, then return.
+      await db.query(`SELECT set_config('app.organisation_id', $1, true)`, [PROTECTED_ORGANISATION]);
+      const during = await fingerprint(db);
+      await db.query(`SELECT set_config('app.organisation_id', $1, true)`, [organisationId]);
+      if (!sameFingerprint(before, during)) {
+        throw new DemoRetirementRefused(`${PROTECTED_ORGANISATION} changed during the run (${JSON.stringify(before)} → ${JSON.stringify(during)}); everything was rolled back.`);
+      }
       if (!options.commit) throw new DryRunRollback();
     });
   } catch (error) {
     if (!(error instanceof DryRunRollback)) throw error;
+  }
+  const after = await protectedFingerprint(pool);
+  if (!sameFingerprint(before, after)) {
+    throw new DemoRetirementRefused(`${PROTECTED_ORGANISATION} differs after the run (${JSON.stringify(before)} → ${JSON.stringify(after)}). Investigate before the v7 load.`);
   }
   return outcome;
 }
