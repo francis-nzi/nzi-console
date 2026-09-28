@@ -175,7 +175,12 @@ export function CrpScopeWorkspace({
   /** NZI_WRITE_API_ENABLED — the same flag the client workspace gates on. */
   writeEnabled:boolean;
 }) {
-  const qaNotice: { kind: "ok" | "warn"; text: string } = qa.readyForReporting
+  const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
+    ? {
+        kind: "warn",
+        text: "Imported from NZ Insights Pro v7: this period's record of account is its v7 report, so no console snapshot is made.",
+      }
+    : qa.readyForReporting
     ? {
         kind: "ok",
         text: `QA ready: all ${qa.enabled} enabled rows have complete calculations, quality tiers and independent approval.`,
@@ -456,7 +461,7 @@ export function CrpScopeWorkspace({
   const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
   const releaseControl = <>
     {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
-    <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting}/>
+    <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
   const assuranceSurface = dataEntryAdapterEnabled("data-assurance") ? <CrpAssuranceStage jobId={job.header.id} onGoToRow={(rowId) => { setSelectedId(rowId); if (accordionOn) setAccordionLens("category"); jumpToStage("Data entry"); }}/> : null;

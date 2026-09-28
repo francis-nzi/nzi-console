@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { commandGrantForRole } from "@nzi/contracts";
 import {
-  approveScopeRow, calculateScopeRow, CommandValidationError, createReviewedCrpSnapshot, MIGRATED_ROW_IMMUTABLE,
+  approveScopeRow, calculateScopeRow, CommandValidationError, createReviewedCrpSnapshot, MIGRATED_PERIOD, MIGRATED_ROW_IMMUTABLE,
   rollforwardScopeRows, updateScopeRow,
 } from "../src/postgresCommands";
 import { getScopeQaReadiness } from "../src/readModels";
@@ -79,30 +79,41 @@ describe("migrated rows in the write commands and the review gates", { skip: DAT
     assert.equal(created.rows[0]!.n, 0);
   });
 
-  // ── The gates exempt migrated rows, and only those (decision 7) ──
+  // ── The review counts ask nothing of a migrated row (decision 7); the job is an imported period (decision 12) ──
 
-  it("asks no console review, tier or reviewer of a migrated row — and still asks all three of a live one", async () => {
+  const liveRow = (id: string, job: string) => db.query(
+    `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,quantity,unit,calculated_tco2e)
+     VALUES ($1,$2,$3,'2','Electricity','Electricity','UK electricity','Grid',500,'kWh',0.1)`, [ORG, id, job]);
+  const freezeCodes = async (job: string) => {
+    try {
+      await createReviewedCrpSnapshot(database.pool, { jobId: job, expectedJobVersion: 1 }, context());
+      return [];
+    } catch (error) {
+      return error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+    }
+  };
+
+  it("counts no console review against a migrated row, still counts a live one, and never calls an imported period ready", async () => {
     const migratedOnly = await readiness("job-2023");
-    assert.deepEqual([migratedOnly.pending, migratedOnly.qualityMissing, migratedOnly.independentReviewPending, migratedOnly.readyForReporting], [0, 0, 0, true]);
+    assert.deepEqual([migratedOnly.pending, migratedOnly.qualityMissing, migratedOnly.independentReviewPending], [0, 0, 0]);
+    assert.deepEqual([migratedOnly.migratedRows, migratedOnly.readyForReporting], [1, false], "decision 12: an imported period is never snapshot-ready");
 
-    await db.query(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,quantity,unit,calculated_tco2e)
-      VALUES ($1,'live-1','job-mixed','2','Electricity','Electricity','UK electricity','Grid',500,'kWh',0.1)`, [ORG]);
+    await liveRow("live-1", "job-mixed");
     const mixed = await readiness("job-mixed");
-    assert.deepEqual([mixed.pending, mixed.qualityMissing, mixed.independentReviewPending, mixed.readyForReporting], [1, 1, 1, false],
-      "the live row beside it meets every gate as usual");
+    assert.deepEqual([mixed.pending, mixed.qualityMissing, mixed.independentReviewPending, mixed.migratedRows, mixed.readyForReporting], [1, 1, 1, 1, false],
+      "the live row beside it is counted as usual");
   });
 
-  it("lets the freeze pass a migrated row's review, and holds a live row to it", async () => {
-    const codes = async (job: string) => {
-      try {
-        await createReviewedCrpSnapshot(database.pool, { jobId: job, expectedJobVersion: 1 }, context());
-        return [];
-      } catch (error) {
-        return error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
-      }
-    };
-    assert.ok(!(await codes("job-2023")).includes("QA_INCOMPLETE"), "a pending, tierless migrated row is not asked for a console review");
-    assert.deepEqual(await codes("job-mixed"), ["QA_INCOMPLETE"], "the unreviewed live row still stops the freeze");
+  it("refuses to freeze any job holding a migrated row — enabled or not — and leaves a live job's gates as they were (decision 12)", async () => {
+    assert.deepEqual(await freezeCodes("job-2023"), [MIGRATED_PERIOD]);
+    assert.deepEqual(await freezeCodes("job-mixed"), [MIGRATED_PERIOD], "one migrated row beside live ones is enough");
+    await db.query(`UPDATE nzi_console.job_scope_rows SET enabled=false WHERE scope_row_id='v7-row-2'`); // 0133 permits exactly this
+    assert.deepEqual(await freezeCodes("job-mixed"), [MIGRATED_PERIOD], "a disabled migrated row still makes it an imported period");
+
+    await liveRow("live-2", "job-2024");
+    assert.deepEqual(await freezeCodes("job-2024"), ["QA_INCOMPLETE"], "a live-only job meets the freeze's gates as before");
+    const live = await readiness("job-2024");
+    assert.equal(live.migratedRows, 0);
   });
 
   it("still asks a migrated row for its figure", async () => {

@@ -372,9 +372,10 @@ jobs:
       - name: Demo job-number clashes retire without touching net-zero-international
         run: npx tsx --test packages/isolated-backend/tests/demoJobNumberRetirementReal.test.ts
       # Decisions 4 and 7 at the command layer: edit, recalculate, approve/reject refuse a migrated row by name before the
-      # 0133 trigger would; rollforward never seeds a live row from one; the readiness and freeze gates ask no console
-      # review, tier or reviewer of a migrated row — only its figure — and ask all of them of every live row as before.
-      - name: Migrated rows are refused by the write commands and exempt from review gates only
+      # 0133 trigger would; rollforward never seeds a live row from one; readiness asks no console review, tier or reviewer
+      # of a migrated row — only its figure. Decision 12: the freeze refuses any job holding a migrated row, enabled or not,
+      # and readiness never calls such a job ready; a live-only job meets every gate as before.
+      - name: Migrated rows are refused by the write commands, and an imported period is never frozen
         run: npx tsx --test packages/isolated-backend/tests/migratedRowCommandsReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the

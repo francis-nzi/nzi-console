@@ -687,6 +687,8 @@ const scopeEvidence = (
  * as a command-level refusal, with the reason, before anything is attempted (defence in depth, decisions 4 and 7).
  */
 export const MIGRATED_ROW_IMMUTABLE = "MIGRATED_ROW_IMMUTABLE";
+/** Decision 12: a job holding migrated rows is an imported period, and is never frozen into a console snapshot. */
+export const MIGRATED_PERIOD = "MIGRATED_PERIOD";
 async function refuseMigratedRow(db: Queryable, organisationId: string, jobId: string, rowId: string, act: string): Promise<void> {
   const found = await db.query<{ origin: string }>(
     "SELECT origin FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3",
@@ -2149,7 +2151,7 @@ export async function createReviewedCrpSnapshot(
         review_status: string;
         reviewed_by: string | null;
         enabled: boolean;
-        origin: "live" | "migrated";
+        origin?: "live" | "migrated";
         dataset_id: string | null;
         dataset_name: string | null;
         dataset_version: string | null;
@@ -2161,6 +2163,18 @@ export async function createReviewedCrpSnapshot(
         `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.origin,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label,fi.report_label AS identity_report_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
+      // Decision 12 (ruled 28 Sep 2026): an imported period's record of account is its signed v7 report, kept in
+      // legacy_report_versions. A console-composed snapshot of it would compose and round differently and stand beside
+      // that report as a second, conflicting record — so a job holding even one migrated row, enabled or not, is never
+      // frozen here. Read from the rows just locked, so it judges exactly what would be frozen. Live jobs are unaffected.
+      if (rowResult.rows.some((row) => row.origin === "migrated"))
+        throw new CommandValidationError([
+          {
+            field: "jobId",
+            code: MIGRATED_PERIOD,
+            message: "This job holds history imported from NZ Insights Pro v7. Its record of account is the v7 report, shown in the historical report view — a console snapshot of it would be a second, conflicting record, so none is made (decision 12).",
+          },
+        ]);
       // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site
       // outside it is excluded here and raised as an out_of_boundary gap (checked below),
       // so the live trend and this snapshot read the same boundary and cannot disagree.
@@ -2182,13 +2196,13 @@ export async function createReviewedCrpSnapshot(
             message: "At least one enabled scope row inside the reporting boundary is required.",
           },
         ]);
-      // Decision 7: a migrated row arrives as v7 left it — reviewed in v7, never re-approved here, and with no console
-      // quality tier — so review, tier and reviewer are not asked of it. It must still carry its figure. The exemption
-      // is for origin='migrated' alone, and is safe only because 0133 makes such a row unchangeable.
+      // Every row here is live: decision 12 refused any job holding a migrated row above.
       const incomplete = enabled.filter(
         (row) =>
+          row.review_status !== "approved" ||
           (row.calculated_tco2e === null && row.override_tco2e === null) ||
-          (row.origin !== "migrated" && (row.review_status !== "approved" || !row.quality_tier || !row.reviewed_by)),
+          !row.quality_tier ||
+          !row.reviewed_by,
       );
       if (incomplete.length)
         throw new CommandValidationError([
