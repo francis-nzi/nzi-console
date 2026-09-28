@@ -8,9 +8,18 @@ their full job history — historical emissions and published reports included �
 (recorded there, against each). The build additions asked for at that ruling — the double-count guard, LCA
 results, client custom factors — are §6.1–§6.3, with one new decision (9, the row figure) for ruling.
 
-**Gate before any migration or build.** The migrations in §10 come for ruling only once (1) Francis has run
-Appendix A and §9 is filled, and (2) Francis has recorded the data-protection decision for bringing client
-personal data into the isolated store.
+**The gates (28 Sep 2026).**
+
+1. **The data-protection decision — recorded.** Accepted: the full import — historical emissions, report
+   snapshots and client personal data — goes into the isolated non-production store for now, personal data
+   sealed, boundary-guarded, **with a standing commitment to replicate it to a true production environment when
+   one exists.** A conscious, accepted decision, recorded here, in `DEPLOYMENT.md` ("Personal data in the
+   isolated store") and in the PII inventory (`PII_HOSTING_DECISIONS`), beside the same decision for staff.
+2. **Appendix A — run; its schema findings folded in (§1.1); its counts still to be re-run** with the predicate
+   ruled in decision 8, and returned into §9.
+
+The §10 migrations are split accordingly: those that do not depend on the open mechanism for decision 6 come for
+ruling now; the report-snapshot table waits on it (§7, decision 10).
 
 **Reading order:** `REFERENCE_DATA_DESIGN.md` (the governed shape this mirrors) → this document →
 `WORKFLOWS.md` §3–§8 (how v7 is used).
@@ -47,6 +56,24 @@ personal data into the isolated store.
   `calc_tco2e` differs from v7's recomputed totals. (Whether spend entries materialise scope rows is now settled
   from code — they do, §6.1.)
 
+### 1.1 Corrections from live v7's schema (Appendix A)
+
+Appendix A's schema capture overturned four things the code had suggested. Folded in throughout:
+
+1. **`jobs` has no `job_family` column.** A job's family lives on its **type**: `jobs.job_type_id` →
+   `job_types`, which carries `is_crp` and (where set) `job_family`. Where `job_types.job_family` is blank, v7
+   derives it from the type's name by a fixed rule (`core/migrations.py:437-487`: *training* → training;
+   *consult*, *policy development*, *strategy workshop*, *support services* → consultancy; *life cycle* or
+   *assessment* → lca; *product carbon* or *pcf* → pcf; otherwise crp). The import uses the type's
+   `job_family` when present and v7's own rule when not — never a rule of its own. Block 2b (Appendix A) shows the
+   split.
+2. **"Published" is `report_reviews.portal_version_id` pointing at a `final` version — not `published_at`.**
+   The report a client was shown is the `job_report_versions` row that `report_reviews.portal_version_id`
+   names, with `status = 'final'`. `published_at` is not a reliable signal and is not used.
+3. **PDFs: `snapshot_json` + hash + storage link only** (decision 3, confirmed by the schema).
+4. **LCA results are on `lca_assessments.resolved_lines_snapshot`,** not a separate `lca_assessments.resolved_lines_snapshot`
+   table (§6.2).
+
 ## 2. v7's source of record
 
 ### 2.1 Clients
@@ -61,14 +88,14 @@ personal data into the isolated store.
 | `client_sites` (PK `site_id`) | `site_name`, `location` (one text address), `is_registered_office`, `vacated_date`, lat/long | soft delete: `archived`, `vacated_date` |
 | `client_contacts` (PK `contact_id`) | **PII:** `full_name`, `job_title`, `email`, `phone`; `is_primary` | no soft-delete flag |
 
-**"Active client"** is defined three ways across v7's screens. Proposed:
-`COALESCE(status,'Active') = 'Active' AND NOT COALESCE(archived, false)`.
+**"Active client"** is defined three ways across v7's screens. **Ruled (decision 8, 28 Sep 2026) — Portfolio Owners
+included:** `COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived, false)`.
 
 ### 2.2 Jobs
 
 | v7 | What it holds | Notes |
 |---|---|---|
-| `jobs` (PK `job_id` int) | `client_db_id` (nullable — training jobs may have none), `job_type_id`/`job_type`, `job_family` (`crp·consultancy·training·lca·pcf`), `job_number` (unique; `J` + 6 digits), `legacy_job_no` (WFM), `reporting_year`, `reporting_period_start/end`, `is_benchmark`, `start_date`, `due_date`, `status` (free text, default `Open`), `crm_name` (free-text owner), `quote_id`, `created_at` (no `updated_at`), `archived*`, `portal_visible`, report metadata (`baseline_year`, target years, `glossary_terms`, `intensity_metrics`) | `core/migrations.py:608`, `781`; job numbers are max+1, and some paths use `job_id+999` |
+| `jobs` (PK `job_id` int) | `client_db_id` (nullable — training jobs may have none), `job_type_id`/`job_type` — **no `job_family` here**: the family is the type's (`job_types.job_family`, `is_crp`), or v7's name rule (§1.1), `job_number` (unique; `J` + 6 digits), `legacy_job_no` (WFM), `reporting_year`, `reporting_period_start/end`, `is_benchmark`, `start_date`, `due_date`, `status` (free text, default `Open`), `crm_name` (free-text owner), `quote_id`, `created_at` (no `updated_at`), `archived*`, `portal_visible`, report metadata (`baseline_year`, target years, `glossary_terms`, `intensity_metrics`) | `core/migrations.py:608`, `781`; job numbers are max+1, and some paths use `job_id+999` |
 | `crp_job_details` (1:1) | `reporting_period_from/to`, `reporting_year`, renewal flag, order number, **PII:** `client_contact_name/email`, `report_signee_name/position` | `core/migrations.py:1043` |
 | status lookup | Open, Data Gathering Phase, Reporting Phase, Awaiting Client Input, Completed, Closed | the PATCH endpoint accepts any value |
 
@@ -79,7 +106,7 @@ personal data into the isolated store.
 | `job_scope_rows` (PK `row_id`) | `job_id`, `site_id`; `scope`, `category`, `level_1..4`, `column_text`, `report_label`; `qty`, `uom`, `month_1..12`, `apply_pct`, `source_qty/uom`; **factor copied onto the row:** `dataset_id`, `factor_db_id`, `original_id`, `factor`, `ghg_unit`; `calc_tco2e`, `override_tco2e`, `override_reason`; `data_source`, `data_confidence`, `is_custom_entry`; T&D pairing (`linked_row_id`, `is_auto_generated`, `auto_pair_kind`); `review_status`; `submitted_by_portal`; soft delete `enabled = false` |
 | `job_emission_groups` / `job_emission_sources` | the asset/vehicle/commuting/spend register; sources store `qty`, `factor`, `ghg_unit`, `calc_tco2e`, `month_1..12`, `detail_json`, **PII:** `employee_name` |
 | `job_spend_entries` | spend lines with `estimated_emissions_tco2e`, `is_deleted` |
-| `lca_assessments`, `lca_result_snapshots` | LCA/PCF results (JSONB snapshots) |
+| `lca_assessments`, `lca_assessments.resolved_lines_snapshot` | LCA/PCF results (JSONB snapshots) |
 | `crp_scope_entries` | an older entry model, read-only paths only |
 | `job_custom_factors`, `custom_factors`, `custom_factor_year_values` | client-specific factors |
 
@@ -101,7 +128,8 @@ variables).
 | `report_reviews` (one per job) | `status` (`draft·sent_for_review·changes_requested·approved`), `portal_version_id` (the frozen snapshot the client sees), `pdf_version_id`, `published_at`, `published_by`, **PII:** `approved_by_name/email` |
 | `job_report_variable_values`, `job_report_drafts`, `job_emissions_certificates` | section text and certificates |
 
-The v7 portal renders `snapshot_json`, never regenerating. **The PDFs are outside the database**: local disk or
+The v7 portal renders `snapshot_json`, never regenerating. **The published report is the `final` version that
+`report_reviews.portal_version_id` names** (§1.1) — not `published_at`. **The PDFs are outside the database**: local disk or
 OneDrive.
 
 ### 2.5 v7's own earlier import (for reference)
@@ -159,7 +187,10 @@ counter started at 0, and **staging's demo jobs already hold low sequences**. Op
 - `migrated_record jsonb` — **required when migrated, forbidden when live** — v7's row exactly: `qty`, `uom`,
   monthly values, `apply_pct`, the factor as v7 copied it (`factor`, `ghg_unit`, `dataset_id` with that
   dataset's year/version, `factor_db_id`, `original_id`), `calc_tco2e`, `override_tco2e`/`override_reason`,
-  `data_source`, `data_confidence`, `enabled`, `review_status`.
+  `data_source`, `data_confidence`, `enabled`, `review_status`, and the evidence behind it (§6.1).
+  **A closed list of keys, held by a CHECK:** it can carry nothing else — in particular **no personal data and no
+  free text**. So register `employee_name`s and `detail_json` stay in v7, and so do v7's free-text row
+  `notes` (which the console's inventory does not treat as personal data, and which v7's could contain).
 - The console's `calculated_tco2e` = v7's `override_tco2e ?? calc_tco2e`, stored once. `provenance_json` records
   that it is v7's figure, with v7's factor provenance; `lineage_json` shows v7's chain. `factor_id` and
   `dataset_id` are v7's own ids, carried as text; **they are never resolved against the console's factor
@@ -183,8 +214,8 @@ in it.
 differ (§2.3). **Ruled as proposed — the published report is authoritative; differences are reported, never
 corrected:**
 
-- **The published report is the authoritative historical total** for any job that has one. It is what the
-  client received.
+- **The published report is the authoritative historical total** for any job that has one — the `final` version
+  its `report_reviews.portal_version_id` names (§1.1). It is what the client received.
 - Row-level migrated figures are the **evidence behind it**, imported as v7 stored them.
 - The load **reconciles**, per job, the sum of migrated row figures against the published snapshot's totals, per
   scope. A difference is **reported, never corrected**, and the console shows both, labelled.
@@ -215,7 +246,8 @@ composition chain, which v7's reports cannot honestly pass (§3). Proposed colum
 - `version_number`, `status` (v7's, verbatim), `report_format`;
 - **`snapshot_json` verbatim**, plus v7's `data_hash`, **verified on import** (SHA-256 recomputed; a mismatch
   refuses that report);
-- `published_at` / `published_by`, and `is_portal_version` (from `report_reviews.portal_version_id`);
+- `is_published` — true exactly for the `final` version that `report_reviews.portal_version_id` names (§1.1);
+  v7's `published_at`/`published_by` kept verbatim as provenance, not as the signal;
 - the PDF's **storage link only** — `storage_provider`, `file_path` or OneDrive `external_item_id`/`web_url` —
   as provenance (§5.3).
 
@@ -231,8 +263,8 @@ ruled step.
 
 ## 6. Scope rules
 
-- **Clients:** active by the §2.1 predicate — **ruled provisionally (decision 8)**, confirmed or amended once
-  Appendix A shows the status values actually in use. Archived clients are not imported (ruled scope).
+- **Clients:** active by the §2.1 predicate — **ruled (decision 8): `Active` and `Portfolio Owner`, not
+  archived.** Archived clients are not imported (ruled scope).
 - **Jobs:** every job of an imported client, whatever its status — full history. A job with no client (v7
   permits it for training) is outside a client's history: excluded and reported.
 - **Status mappings** (decision 5 — **ruled provisionally**; finalised once Appendix A returns the values in use):
@@ -266,9 +298,11 @@ different ways. Its reporting total (`services/emissions_reporting.py`) is:
 
 **The guard is v7's own counting rule, applied in the plan:**
 
-1. **Only figure-bearing records become migrated figures:** enabled scope rows, and enabled non-commuting register
-   sources. Spend entries and commuting register sources are imported as **evidence** — linked to the row that
-   carries their figure, never counted.
+1. **Only figure-bearing records become migrated figures — and every one becomes a migrated `job_scope_rows` row.**
+   Enabled scope rows map one to one; each enabled non-commuting register source becomes a migrated row of its
+   own (v7 counted it as one line). No migrated figure enters the console's register tables, so the console's
+   register roll-ups never see history. Spend entries and commuting sources are **evidence**: carried inside the
+   `migrated_record` of the row that bears their figure (amounts, factor, count), never counted.
 2. **Refused** (the plan cannot be loaded until resolved):
    - a scope row stored with a register's *consolidated-on-read* `data_source` (`Asset Register (Consolidated)`,
      `Business Travel Register (Consolidated)`) — v7 never writes these, so one in the table would be counted
@@ -283,10 +317,11 @@ different ways. Its reporting total (`services/emissions_reporting.py`) is:
 
 ### 6.2 LCA and PCF results — migrated-immutable snapshots
 
-v7 keeps LCA/PCF work in `lca_assessments` (`total_tco2e`, `review_status` `draft·in_review·verified·published`)
-and freezes results in `lca_result_snapshots` (JSONB). **Proposed:** LCA/PCF jobs import as job records like any
-other; each **verified or published** `lca_result_snapshot` imports **verbatim** into the same append-only legacy
-table as reports (§5.2), as `kind = 'lca-result'` — sealed, hash-recorded, read-only, never re-run through the
+v7 keeps LCA/PCF work in `lca_assessments` (`total_tco2e`, `review_status` `draft·in_review·verified·published`),
+and freezes the result **on the assessment itself, in `lca_assessments.resolved_lines_snapshot`** (§1.1).
+**Proposed:** LCA/PCF jobs import as job records like any other; the `resolved_lines_snapshot` of each **verified
+or published** assessment imports **verbatim** into the same append-only legacy table as reports (§5.2), as
+`kind = 'lca-result'`, with its `total_tco2e` beside it — hash-recorded, read-only, never re-run through the
 console's LCA engine. The working assessment data (line items, transport legs, gap fills) is **not imported**:
 the frozen result is the record, and it is noted on the job that the working detail stayed in v7.
 
@@ -315,10 +350,10 @@ Client personal data now enters the isolated store, so sealing is mandatory, in 
 |---|---|---|
 | `client_contacts`: `full_name`, `job_title`, `email`, `phone` | `client_contacts` | `sealClientContactRow` |
 | `crp_job_details`: `client_contact_name/email`, `report_signee_name/position` | contact links / report signee fields | existing sealed signee and contact columns (0100) |
-| `report_reviews`: `approved_by_name/email` | `legacy_report_versions` | a sealed column on the new table |
-| `job_emission_sources.employee_name` | register source detail | sealed (a new sealed column) |
+| `report_reviews`: `approved_by_name/email` | `legacy_report_versions` | with the payload — decision 10 |
+| `job_emission_sources.employee_name`, register `detail_json`, row `notes` | — | **not imported** — no personal data or free text enters `migrated_record` (§5.1) |
 | `clients.crm_owner` / `client_manager` | owner (matched) or `owner_name` | existing sealed column |
-| **`job_report_versions.snapshot_json`** and `lca_result_snapshots` — contain signee names and other personal detail | the legacy snapshot table | **the whole payload sealed (decision 6, ruled)** |
+| **`job_report_versions.snapshot_json`** and `lca_assessments.resolved_lines_snapshot` — contain signee names and other personal detail | the legacy snapshot table | **the whole payload sealed (decision 6, ruled)** |
 
 **Decision 6 — PII inside verbatim report snapshots.** Verbatim storage and field-level sealing conflict: the
 JSON cannot be edited to seal a name without ceasing to be verbatim. Options:
@@ -327,8 +362,23 @@ JSON cannot be edited to seal a name without ceasing to be verbatim. Options:
   covered by a key-shred at erasure. The hash is verified before sealing and kept. **← Ruled: (a).**
 - **(b)** Store it plaintext, and record it in the PII inventory as unsealed.
 
-**Before any of this is loaded:** Francis records the data-protection decision for bringing client personal data
-into the isolated store (the gate at the top of this document).
+**How to seal it — decision 10 (new, for ruling).** Ruling 6(a) needs a key, and **every key in the sealing
+model belongs to a person**: the subject registry knows trainees, client contacts, portal users and memberships
+(`SubjectTable`), and a key-shred erases one of them. A client is not a subject, and a report snapshot names
+several people — so no existing key fits it. The inventory already has the precedent for personal data inside a
+payload: `storage: json`, erasure **pending counsel**, naming the decision it waits on (the audit and outbox
+payloads). Options:
+
+- **(a) A per-document key.** A new subject kind — the legacy snapshot itself — with its own key, so the payload
+  is ciphertext at rest and decrypted only to render. Erasure then has only two moves for a person named inside:
+  destroy the whole historical report (shred its key) or keep it. So the column is still `pending-counsel`,
+  now with a key. It widens the subject model (`SubjectTable`, the registry, export and erasure planning).
+- **(b) Plaintext, recorded honestly:** `storage: json`, erasure `pending-counsel`, as the audit payload is —
+  protected by the store's own boundary, row-level security and the ruled acceptance above.
+
+**Recommended: (a)** — it is what ruling 6 asked for — **with the erasure question named** (a report naming an
+erased person: shred the whole record, or retain it with a basis) as a decision for Francis's register. Either
+way the legacy snapshot table's migration waits on this ruling; the other §10 migrations do not.
 
 ## 8. The process
 
@@ -358,7 +408,9 @@ into the isolated store (the gate at the top of this document).
 
 The load, the PII surface and the report surface cannot be sized from code. **Appendix A** is read-only SQL for
 Francis to run against live v7. It returns **counts and enumerated status values only — no names, no free text**.
-The figures come back into §9 before any build is ruled. **Pending — Appendix A not yet run.**
+The figures come back into §9 before any build is ruled. **Pending — Appendix A's schema findings are in (§1.1);
+its counts are to be re-run with the decision-8 predicate (the queries below are corrected), and have not reached
+this document.** No figure here is estimated.
 
 | Measure | Count |
 |---|---|
@@ -372,7 +424,12 @@ The figures come back into §9 before any build is ruled. **Pending — Appendix
 
 ## 10. Migrations this will need (each through the ruling gate)
 
-Held until §9 is filled and the data-protection decision is recorded.
+The data-protection gate is cleared. Split by what they depend on:
+
+- **For ruling now** (one held PR): 1, 2, 6 below — provenance, the migrated-row origin with its immutability, and
+  the job-number counter. None of them depends on the counts or on decision 10.
+- **Waiting on decision 10:** 3 and 5 — the legacy snapshot table and its inventory entries.
+- **With the importer:** 4 — the review and separation-of-duties exemption lives in the gates' code.
 
 1. Provenance columns (`source_system`, `legacy_db_id`, and the verbatim identifiers) and their partial unique
    keys on `clients`, `client_sites`, `client_contacts`, `jobs`, `job_scope_rows`, `job_emission_groups`,
@@ -398,13 +455,14 @@ Ruled 27 Sep 2026:
 | 5 | Status mappings | **Provisional**; finalised with Appendix A. |
 | 6 | PII in report snapshots | **(a) Seal the whole payload.** |
 | 7 | Review / separation-of-duties exemption | **Limited to `origin = 'migrated'`.** |
-| 8 | "Active client" predicate | **Provisional**; confirmed with Appendix A. |
+| 8 | "Active client" predicate | **`status IN ('Active','Portfolio Owner') AND NOT archived`** (28 Sep 2026). |
 
 For ruling:
 
 | # | Decision | Proposed |
 |---|---|---|
 | 9 | A migrated row's figure (§5.1) | **The figure v7 reported** (v7's arithmetic on the row's own copied factor, override first), with the stored `calc_tco2e` kept beside it and any difference reported. |
+| 10 | How the report payload is sealed (§7) | **(a) a per-document key**, with the erasure question for a named person put to Francis's register. |
 
 And, from the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
 migrated-immutable snapshots (§6.2), client-level custom factors imported for future capture as a separate step
@@ -447,16 +505,40 @@ SELECT 'jobs', COALESCE(status,'∅'), COALESCE(archived,false), count(*) FROM j
 ORDER BY 1,2,3;
 
 -- 2. Active clients, and their jobs by family and status
-WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active')='Active' AND NOT COALESCE(archived,false))
+WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false))
 SELECT (SELECT count(*) FROM ac) AS active_clients;
 
-WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active')='Active' AND NOT COALESCE(archived,false))
-SELECT COALESCE(j.job_family,'∅') fam, COALESCE(j.status,'∅') st, COALESCE(j.archived,false) arch, count(*)
-  FROM jobs j JOIN ac ON ac.db_id = j.client_db_id GROUP BY 1,2,3 ORDER BY 1,2,3;
+-- 2b. Their jobs by family, type and status. jobs has no job_family (§1.1): the family is the type's, or v7's
+--     own name rule where the type's is blank (core/migrations.py:437-487). Type names are service names.
+WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false))
+SELECT CASE
+         WHEN lower(COALESCE(t.name, j.job_type, '')) LIKE '%training%' THEN 'training'
+         WHEN lower(COALESCE(t.name, j.job_type, '')) LIKE '%consult%'
+           OR lower(COALESCE(t.name, j.job_type, '')) LIKE '%policy development%'
+           OR lower(COALESCE(t.name, j.job_type, '')) LIKE '%strategy workshop%'
+           OR lower(COALESCE(t.name, j.job_type, '')) LIKE '%support services%' THEN 'consultancy'
+         WHEN lower(COALESCE(t.name, j.job_type, '')) LIKE '%life cycle%'
+           OR lower(COALESCE(t.name, j.job_type, '')) LIKE '%assessment%' THEN 'lca'
+         WHEN lower(COALESCE(t.name, j.job_type, '')) LIKE '%product carbon%'
+           OR lower(COALESCE(t.name, j.job_type, '')) LIKE '%pcf%' THEN 'pcf'
+         ELSE 'crp'
+       END                                   AS family_by_v7_rule,
+       COALESCE(t.name, j.job_type, '∅')     AS job_type,
+       COALESCE(t.is_crp, false)             AS is_crp,
+       COALESCE(j.status, '∅')               AS status,
+       COALESCE(j.archived, false)           AS archived,
+       count(*)
+  FROM jobs j
+  JOIN ac ON ac.db_id = j.client_db_id
+  LEFT JOIN job_types t ON t.job_type_id = j.job_type_id
+ GROUP BY 1, 2, 3, 4, 5
+ ORDER BY 1, 2, 4;
+-- If job_types.job_family exists and is set for some types, add  COALESCE(NULLIF(trim(t.job_family),''), <the CASE>)
+-- as the first column instead of the bare CASE — the type's own value wins, as it does in v7.
 
 -- 3. Entries and reports on those jobs
 WITH aj AS (SELECT j.job_id FROM jobs j JOIN clients c ON c.db_id = j.client_db_id
-             WHERE COALESCE(c.status,'Active')='Active' AND NOT COALESCE(c.archived,false))
+             WHERE COALESCE(c.status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(c.archived,false))
 SELECT
  (SELECT count(*) FROM job_scope_rows r JOIN aj USING (job_id) WHERE r.enabled)                          AS rows_enabled,
  (SELECT count(*) FROM job_scope_rows r JOIN aj USING (job_id) WHERE NOT r.enabled)                      AS rows_disabled,
@@ -465,19 +547,23 @@ SELECT
  (SELECT count(*) FROM job_emission_sources s JOIN aj USING (job_id))                                   AS register_sources,
  (SELECT count(*) FROM job_spend_entries e JOIN aj USING (job_id))                                      AS spend_entries,
  (SELECT count(*) FROM lca_assessments a JOIN aj USING (job_id))                                        AS lca_assessments,
+ (SELECT count(*) FROM lca_assessments a JOIN aj USING (job_id)
+   WHERE a.resolved_lines_snapshot IS NOT NULL AND a.review_status IN ('verified','published'))           AS lca_frozen_results,
  (SELECT count(*) FROM job_report_versions v JOIN aj USING (job_id))                                    AS report_versions,
  (SELECT count(*) FROM job_report_versions v JOIN aj USING (job_id) WHERE lower(v.status)='final')      AS final_versions,
- (SELECT count(*) FROM report_reviews rr JOIN aj USING (job_id) WHERE rr.published_at IS NOT NULL)      AS published,
+ (SELECT count(*) FROM report_reviews rr JOIN aj USING (job_id)
+    JOIN job_report_versions v ON v.report_version_id = rr.portal_version_id
+   WHERE lower(v.status) = 'final')                                                                     AS published,
  (SELECT count(*) FROM report_reviews rr JOIN aj USING (job_id) WHERE rr.portal_version_id IS NOT NULL) AS portal_versions;
 
 -- 4. Where the PDFs are
 WITH aj AS (SELECT j.job_id FROM jobs j JOIN clients c ON c.db_id = j.client_db_id
-             WHERE COALESCE(c.status,'Active')='Active' AND NOT COALESCE(c.archived,false))
+             WHERE COALESCE(c.status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(c.archived,false))
 SELECT COALESCE(v.storage_provider,'∅') provider, (v.file_path IS NOT NULL) has_path, count(*)
   FROM job_report_versions v JOIN aj USING (job_id) GROUP BY 1,2;
 
 -- 5. Contacts and sites on active clients
-WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active')='Active' AND NOT COALESCE(archived,false))
+WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false))
 SELECT
  (SELECT count(*) FROM client_contacts k JOIN ac ON ac.db_id = k.client_db_id) AS contacts,
  (SELECT count(*) FROM client_sites s JOIN ac ON ac.db_id = s.client_db_id
@@ -487,7 +573,7 @@ SELECT
 
 -- 6. Job-number range of in-scope jobs (against which staging's sequences are checked)
 WITH aj AS (SELECT j.job_number FROM jobs j JOIN clients c ON c.db_id = j.client_db_id
-             WHERE COALESCE(c.status,'Active')='Active' AND NOT COALESCE(c.archived,false))
+             WHERE COALESCE(c.status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(c.archived,false))
 SELECT min(job_number), max(job_number), count(*),
        count(*) FILTER (WHERE job_number !~ '^J[0-9]{6}$') AS non_standard
   FROM aj;
@@ -495,7 +581,7 @@ SELECT min(job_number), max(job_number), count(*),
 -- 7. Stored row figures against v7's recomputed ones (the drift in §2.3), for published jobs only
 --    — a count of rows where the stored calc differs from qty × factor × apply_pct by more than 0.1%.
 WITH aj AS (SELECT j.job_id FROM jobs j JOIN clients c ON c.db_id = j.client_db_id
-             WHERE COALESCE(c.status,'Active')='Active' AND NOT COALESCE(c.archived,false))
+             WHERE COALESCE(c.status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(c.archived,false))
 SELECT count(*) AS rows_checked,
        count(*) FILTER (WHERE r.calc_tco2e IS NOT NULL AND abs(r.calc_tco2e - r.qty * r.factor * COALESCE(r.apply_pct,100) / 100
          / CASE WHEN lower(r.ghg_unit) LIKE 'kg%' THEN 1000 ELSE 1 END) > 0.001 * greatest(abs(r.calc_tco2e), 1e-9)) AS rows_drifted
@@ -506,7 +592,7 @@ SELECT count(*) AS rows_checked,
 
 The tables, filtered to active clients and their jobs: `clients`, `client_sites`, `client_contacts`, `jobs`,
 `crp_job_details`, `job_scope_rows`, `job_emission_groups`, `job_emission_sources`, `job_spend_entries`,
-`lca_assessments` + `lca_result_snapshots`, `job_report_versions`, `report_reviews`, `job_custom_factors`,
+`lca_assessments` + `lca_assessments.resolved_lines_snapshot`, `job_report_versions`, `report_reviews`, `job_custom_factors`,
 `custom_factors` + `custom_factor_year_values` (§6.3), and the
 lookups `industries_lookup`, `referrals_lookup`, `portfolios_lookup`, `job_statuses_lookup`, plus the
 rows of v7's `datasets` table that the scope rows reference (for the year and version recorded in each migrated

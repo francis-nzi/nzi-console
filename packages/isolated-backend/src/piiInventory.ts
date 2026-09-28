@@ -446,3 +446,42 @@ export const sealedColumnOf = (column: PiiColumn): string | null =>
 /** The blind-index column, for the operational ones. */
 export const indexColumnOf = (column: PiiColumn): string | null =>
   column.storage.kind === "sealed-and-indexed" ? column.storage.index : null;
+
+/* ── Why this data is here at all ────────────────────────────────────────────────────── */
+
+/**
+ * The decisions that put real personal data into this isolated, non-production store (docs/DEPLOYMENT.md,
+ * "Personal data in the isolated store"). The columns above say how each datum is held; this says why it is held
+ * *here*, before a production environment exists — each a conscious, accepted decision, with the commitment that
+ * goes with it. A test holds the two documents to each other, so neither can quietly outgrow the other.
+ */
+export type PiiHostingDecision = {
+  population: string;
+  /** The day it was accepted. */
+  accepted: string;
+  /** What personal data it admits. */
+  admits: string;
+  /** The terms it was accepted on. */
+  terms: string;
+  /** What is owed when a true production environment exists. */
+  commitment: string;
+};
+
+const REPLICATE = "Replicate to a true production environment when one exists, and update this record, DEPLOYMENT.md and the design documents to say so.";
+
+export const PII_HOSTING_DECISIONS: ReadonlyArray<PiiHostingDecision> = [
+  {
+    population: "NZI staff",
+    accepted: "2026-09-26",
+    admits: "Real staff names and work addresses (the roster), their credentials and MFA.",
+    terms: "Sealed on write (NZC-119); passwords hashed, TOTP encrypted; row-level security; sign-in only through staff enrolment (0129).",
+    commitment: REPLICATE,
+  },
+  {
+    population: "Clients",
+    accepted: "2026-09-28",
+    admits: "The v7 client and job import (docs/CLIENT_JOB_IMPORT_DESIGN.md): active clients' contacts and sites, full job history, historical emissions and published report snapshots.",
+    terms: "Personal data sealed on write; boundary-guarded to isolated-non-production; loaded only from the Render Shell; the extract never committed.",
+    commitment: REPLICATE,
+  },
+];
