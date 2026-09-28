@@ -350,6 +350,12 @@ jobs:
       # enrolment audit events — and the result signs in through the ordinary staff login.
       - name: Staff self-enrolment is safe for a real person
         run: npx tsx --test packages/isolated-backend/tests/staffEnrolmentReal.test.ts
+      # 0132–0134 — the v7 client and job import's schema: provenance and its identity key on six tables; a migrated
+      # emissions row that is v7's figure, a closed record with no personal data, and immutable except for whether it is
+      # enabled (update, delete and live-to-migrated all refused, as the application role too); and a job-number counter
+      # that catches up to imported v7 numbers without ever moving back or ahead of them.
+      - name: The v7 import's schema holds history fixed and numbers continuous
+        run: npx tsx --test packages/isolated-backend/tests/importProvenanceReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
       # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin
