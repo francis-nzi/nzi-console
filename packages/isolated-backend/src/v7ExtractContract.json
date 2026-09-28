@@ -300,5 +300,16 @@
       "published_at",
       "published_by"
     ]
+  },
+  "portfolios_lookup": {
+    "filter": "all",
+    "required": [
+      "portfolio_id",
+      "name",
+      "portfolio_owner_client_db_id"
+    ],
+    "optional": [
+      "is_active"
+    ]
   }
 }

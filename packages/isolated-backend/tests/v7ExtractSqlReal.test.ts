@@ -64,7 +64,7 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
     assert.deepEqual(counts, {
       clients: 2, client_sites: 3, client_contacts: 4, job_types: 5, jobs: 6, crp_job_details: 1, datasets: 1,
       job_scope_rows: 9, job_emission_groups: 1, job_emission_sources: 5, job_spend_entries: 3, lca_assessments: 2,
-      job_report_versions: 3, report_reviews: 2,
+      job_report_versions: 3, report_reviews: 2, portfolios_lookup: 4,
     }, "the prospect and the archived client, their site, the client-less job and the prospect's job stay behind");
     const clients = (await db.query(queries.get("clients")!)).rows.map((row) => row.db_id);
     assert.deepEqual(clients, ["1", "2"]);
