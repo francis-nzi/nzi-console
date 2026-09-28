@@ -50,8 +50,12 @@ content.
 Shell:
 
 ```
-npm run seed:portal-acceptance
+npm run seed:portal-acceptance -- --organisation demo-nzi-console
 ```
+
+The organisation is required and never read from the environment: `NZI_DEMO_ORGANISATION_ID` names the live
+organisation since the cutover, and the seed refuses net-zero-international even when named — it writes fixtures and
+an admin membership for the seed actor.
 
 The seed writes every row **through the same commands the staff console calls** — so the rows
 carry their audit event, outbox entry, version and provenance, and the entry path is still

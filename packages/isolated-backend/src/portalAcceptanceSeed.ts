@@ -10,6 +10,7 @@ import {
 import { completeSrsAssessment, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
 import { getSrsAssessment, getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { utcDay } from "./dates";
+import { refuseLiveOrganisation } from "./liveOrganisation";
 import { withTenantRead } from "./postgres";
 import type { PoolLike, Queryable } from "./postgres";
 
@@ -145,7 +146,26 @@ async function step<T>(label: string, run: () => Promise<T>): Promise<T> {
 
 /* ── The seed ────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * The organisation the seed script targets: an explicit `--organisation <id>`, and nothing else.
+ *
+ * No environment default. `NZI_DEMO_ORGANISATION_ID` was repurposed to the live organisation at the cutover, so the
+ * default this script used to take from it would now aim acceptance fixtures — and an admin membership for the seed
+ * actor — at real client data. The live organisation is refused even when named.
+ */
+export function resolveSeedOrganisation(argv: readonly string[]): string {
+  const at = argv.indexOf("--organisation");
+  const value = at >= 0 ? argv[at + 1]?.trim() : undefined;
+  if (!value || value.startsWith("--")) {
+    throw new Error("Usage: seed:portal-acceptance -- --organisation <demo organisation id> [--withdraw-all]. The organisation is never taken from the environment.");
+  }
+  refuseLiveOrganisation(value, "The portal acceptance seed");
+  return value;
+}
+
 export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions): Promise<SeedSummary> {
+  // Before anything touches the pool: the fixtures and the admin membership are for a demo, never live data.
+  refuseLiveOrganisation(options.organisationId, "The portal acceptance seed");
   assertVocabulary();
   const { organisationId, actorId, clientId } = options;
   const log = options.log ?? (() => undefined);

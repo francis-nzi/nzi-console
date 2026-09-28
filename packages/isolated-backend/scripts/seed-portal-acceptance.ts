@@ -1,8 +1,12 @@
 /**
  * Seed the staging test client for the portal acceptance run (NZC-080).
  *
- *   npm run seed:portal-acceptance
- *   npm run seed:portal-acceptance -- --withdraw-all
+ *   npm run seed:portal-acceptance -- --organisation <demo organisation id>
+ *   npm run seed:portal-acceptance -- --organisation <demo organisation id> --withdraw-all
+ *
+ * The organisation is explicit and never read from the environment: `NZI_DEMO_ORGANISATION_ID` now names the live
+ * organisation (repurposed at the cutover), and net-zero-international is refused even when named — this seeds demo
+ * fixtures and upserts an admin membership for the seed actor.
  *
  * Produces every case `docs/STAGING_ACCEPTANCE_PORTAL_PLAN.md` and
  * `docs/STAGING_ACCEPTANCE_PORTAL_READINESS.md` ask for, so the run is a spot-check against known
@@ -51,10 +55,9 @@
  * is a dated record, and withdrawing one would misrepresent the client's history.
  */
 import { Pool } from "pg";
-import { seedPortalAcceptance, SeedStepError, STRATEGY_CASES } from "../src/portalAcceptanceSeed";
+import { resolveSeedOrganisation, seedPortalAcceptance, SeedStepError, STRATEGY_CASES } from "../src/portalAcceptanceSeed";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 
-const ORG = process.env.NZI_DEMO_ORGANISATION_ID ?? "demo-nzi-console";
 const ACTOR = process.env.SEED_ACTOR_ID ?? "acceptance-admin";
 const CLIENT_HINT = process.env.SEED_CLIENT_NAME ?? "Bushy Tails";
 const WITHDRAW_ALL = process.argv.includes("--withdraw-all");
@@ -62,6 +65,8 @@ const WITHDRAW_ALL = process.argv.includes("--withdraw-all");
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
 async function main(): Promise<void> {
+  // First, before the boundary or the pool: which organisation, stated on the command line and never the live one.
+  const ORG = resolveSeedOrganisation(process.argv);
   const url = validateDatabaseBoundary({
     appEnv: process.env.NEXT_PUBLIC_APP_ENV,
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
