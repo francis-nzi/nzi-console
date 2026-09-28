@@ -5508,10 +5508,19 @@ migration gate, the other thing that makes migrations safe to merge).
 > again until the new head is ruled. Anything else passes as a skip. A squash merge of the ruled head is the ruled
 > tree by construction; the post-merge check stays as confirmation, so both sides are covered.
 >
-> *Enabling it* (Francis, in GitHub, once this merges — the lock's own pull request cannot report it, the workflow
-> runs from `main`): Settings → Branches → the `main` rule → *Require status checks to pass* → add
-> **`governed paths merge only at the ruled head`** beside the existing gate check. Until that is ticked the lock
-> reports but does not block. The enforcement level noted above (`non_admins`) applies to it as to the gate.
+> *Enabling it — two settings, both required* (Francis, in GitHub; the lock's own pull request cannot do it — the
+> workflow runs from `main`). In Settings → Branches → the `main` rule:
+>
+> 1. *Require status checks to pass* → add **`governed paths merge only at the ruled head`** beside the existing gate
+>    check. Without it the lock reports but does not block.
+> 2. **Turn administrator bypass off** — *Do not allow bypassing the above settings* (called *Include administrators*
+>    in older rule forms). The enforcement level recorded above is `non_admins`: an administrator can merge past a red
+>    check, and the repository owner is an administrator. All three slips this addendum answers were that one human
+>    step — a merge by the owner of a head that was not the ruled one — so with bypass left on, the lock stops everyone
+>    except the person whose merges it exists to protect, and is decorative.
+>
+> Both, or the lock is not in force. With both set, an emergency merge past it means turning bypass back on — a
+> deliberate, visible change to the rule, recorded here with its reason, rather than one click on the pull request.
 
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
