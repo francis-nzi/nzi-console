@@ -8,10 +8,12 @@
  * audit event each, and the counter is caught up. A dry run unless `--commit`: the same work, rolled back.
  *
  * Refuses net-zero-international outright, and any organisation holding imported jobs. Fail-closed on the boundary like
- * every other write here.
+ * every other write here, and a non-local database is reached only over verified TLS — Supabase's CA as
+ * sslrootcert=<path> or NZI_DATABASE_CA_CERT (src/databaseTls.ts).
  */
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
+import { verifiedTlsConfig } from "../src/databaseTls";
 import { retireDemoJobNumbers } from "../src/demoJobNumberRetirement";
 
 const log = (line = "") => process.stdout.write(`${line}\n`);
@@ -27,7 +29,10 @@ async function main(): Promise<void> {
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
     isolatedDatabaseUrl: process.env.NZI_ISOLATED_DATABASE_URL,
   });
-  const pool = new Pool({ connectionString: url.toString(), max: 1, application_name: "nzi-retire-demo-job-numbers" });
+  // A non-local database is reached over verified TLS, or not at all (src/databaseTls.ts).
+  const tls = verifiedTlsConfig(url, { caCert: process.env.NZI_DATABASE_CA_CERT });
+  log(`  connection: ${tls.description}`);
+  const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 1, application_name: "nzi-retire-demo-job-numbers" });
   try {
     const outcome = await retireDemoJobNumbers(pool, { organisationId, above, commit });
     log(`\nRetire demo job numbers in ${organisationId} at or below J${String(above).padStart(6, "0")} — ${commit ? "COMMIT" : "dry run, rolled back"}`);

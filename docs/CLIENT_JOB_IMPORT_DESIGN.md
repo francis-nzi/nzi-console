@@ -426,10 +426,19 @@ basis pending confirmation, not as erasable.
    - **refusals** block the load (a hash mismatch, a job-number clash, an orphaned FK, an unknown status);
    - **exclusions** are a closed, named list (e.g. a client-less training job, an archived client's row);
    - **reports** are shown and the load goes ahead (unmatched owners or lookups, reconciliation differences).
-3. **Load — boundary-guarded, from the Render Shell, a dry run unless `--commit`.** In FK order: clients → sites →
+3. **Load — boundary-guarded, from Francis's machine, a dry run unless `--commit`.** In FK order: clients → sites →
    contacts → targets/baseline → jobs (+ config) → scope rows / register (with the §6.1 guard) → report versions
    and LCA result snapshots. Client custom factors follow as a separate step (§6.3). One
    transaction per client, so a failure leaves whole clients or nothing.
+   **Where it runs (ruled 28 Sep 2026):** on the machine that took the extract, so the extract directory never leaves
+   it and is deleted after the load (NZC-020); the Render Shell cannot see it. It reaches the isolated Supabase
+   database over its connection string with `NZI_ISOLATED_DATABASE_URL`, the boundary pair, and the three
+   `NZI_SUBJECT_*` sealing keys. **Only over verified TLS** (`src/databaseTls.ts`): Supabase's CA certificate as
+   `sslrootcert=<path>` in the URL or `NZI_DATABASE_CA_CERT` (a path or the PEM); chain and hostname both checked;
+   `no-verify`, `disable`, `allow` and `prefer` refused; a non-local host with no CA refused before anything is read.
+   `retire:demo-job-numbers` holds the same bar. Install: `npm ci` at the repo root first; a Node bundle of the loader
+   only if that fails. (`migrate.mjs` still connects encrypt-without-verify — a noted follow-up: it runs DDL, not
+   bulk personal data.)
 4. **Idempotent, reconcile-by-reading.** Each row is matched on `(org, source_system, legacy_db_id)`. Absent →
    insert; present and identical → no-op; **present and different → refused**, because history is immutable and
    a changed v7 row means v7 changed after migration — for a person to look at. Nothing is deleted: a v7 row

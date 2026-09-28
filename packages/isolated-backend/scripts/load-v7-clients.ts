@@ -13,12 +13,14 @@
  * left alone; one that differs refuses its client.
  *
  * Fail-closed on the boundary like every other write here: production APP_ENV is refused and NZI_DATABASE_BOUNDARY must
- * say isolated-non-production. Sealing keys come from the environment (NZC-119).
+ * say isolated-non-production. Sealing keys come from the environment (NZC-119). A non-local database is reached only
+ * over verified TLS — Supabase's CA as sslrootcert=<path> or NZI_DATABASE_CA_CERT (src/databaseTls.ts).
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
+import { verifiedTlsConfig } from "../src/databaseTls";
 import { readV7Extract } from "../src/v7ClientExtract";
 import { DEFAULT_ORGANISATION, planV7ClientImport, type Finding } from "../src/v7ClientImport";
 import { loadV7ClientPlan } from "../src/v7ClientLoad";
@@ -45,6 +47,8 @@ async function main(): Promise<void> {
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
     isolatedDatabaseUrl: process.env.NZI_ISOLATED_DATABASE_URL,
   });
+  // Before the extract is even read: a non-local database is reached over verified TLS, or not at all.
+  const tls = verifiedTlsConfig(url, { caCert: process.env.NZI_DATABASE_CA_CERT });
   const read = readV7Extract(directory);
   const plan = planV7ClientImport({
     extract: read.extract, headers: read.headers, extractSha256: read.extractSha256, organisationId, extractProblems: read.problems,
@@ -65,7 +69,8 @@ async function main(): Promise<void> {
   log(`\nExclusion report (every excluded record): ${exclusionReport}`);
   if (plan.refusals.length > 0) { process.exitCode = 1; return; }
 
-  const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-v7-client-load" });
+  log(`  connection: ${tls.description}`);
+  const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 2, application_name: "nzi-v7-client-load" });
   try {
     const outcome = await loadV7ClientPlan(pool, plan, { commit });
     const refused = outcome.clients.filter((client) => client.state === "refused");
