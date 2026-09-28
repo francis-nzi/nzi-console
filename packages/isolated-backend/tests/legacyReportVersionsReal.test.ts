@@ -125,6 +125,16 @@ describe("v7 report versions: sealed, hash-verified records of account (0135)", 
         WHERE legacy_report_id=$1`, [id]), /immutable records of account/, "a shred carried another change with it");
   });
 
+  it("pins the trigger function's search_path, like every other function in the schema (0136)", async () => {
+    const { rows } = await db.query<{ proname: string }>(
+      `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'nzi_console' AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+          AND NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) setting WHERE setting LIKE 'search_path=%')
+        ORDER BY 1`);
+    assert.ok(!rows.some((row) => row.proname === "refuse_legacy_report_version_change"),
+      "refuse_legacy_report_version_change resolves names through the caller's search_path");
+  });
+
   it("allows only the reserved key-shred, after which the report can be read by no one", async () => {
     const id = await insert(sealed());
     await db.query(
