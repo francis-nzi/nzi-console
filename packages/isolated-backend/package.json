@@ -20,6 +20,8 @@
     "backfill:pii-encryption": "tsx scripts/backfill-pii-encryption.ts",
     "load:v7-reference": "tsx scripts/load-v7-reference.ts",
     "load:v7-clients": "tsx scripts/load-v7-clients.ts",
+    "extract:v7-sql": "node scripts/v7-extract-sql.mjs",
+    "extract:v7-manifest": "node scripts/v7-extract-manifest.mjs",
     "retire:demo-job-numbers": "tsx scripts/retire-demo-job-numbers.ts",
     "retire:category-variant": "tsx scripts/retire-category-variant.ts",
     "enrol:staff": "tsx scripts/issue-staff-enrolment.ts",

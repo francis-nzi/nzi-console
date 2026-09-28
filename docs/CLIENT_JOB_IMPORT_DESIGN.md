@@ -678,7 +678,27 @@ SELECT count(*) AS rows_checked,
 ## Appendix B — the extract (the contract the importer reads)
 
 **Read-only, on live v7, by Francis. Never committed (NZC-020).** One CSV per table, written with psql's
-`\copy (…) TO '<table>.csv' CSV HEADER`, into one directory. Beside them goes a `manifest.json`:
+`\copy (…) TO '<table>.csv' CSV HEADER`, into one directory. Beside them goes a `manifest.json`.
+
+**The helpers do all of this — nothing to assemble by hand, and nothing to install.** Plain Node, no dependencies; both
+read `src/v7ExtractContract.json`, which is the importer's `EXTRACT_CONTRACT`:
+
+```
+node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract > extract.sql
+psql "<live v7 url>" -f extract.sql
+node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract
+```
+
+- The script sets the session read-only, stops at the first error, forces UTF-8 (the snapshot hashes depend on it),
+  and writes each table with the columns and filter below. `psql` prints `COPY n` per table.
+- If psql stops with "column … does not exist", that optional column is absent from this v7: regenerate with
+  `--omit <table>.<column>` and run again. A required column cannot be omitted.
+- The manifest builder counts each file's records as the importer reads them (quoted newlines included), records
+  its SHA-256, writes `"rows": 0` for a header-only file, and refuses — writing nothing — if a file or a required
+  column is missing. Compare its counts with psql's `COPY n` lines.
+- `clients` is taken filtered to decision 8's clients (the table below allows either; the helper takes the narrower).
+
+The manifest looks like:
 
 ```json
 { "extractedAt": "2026-09-29", "tables": { "clients": { "file": "clients.csv", "rows": 433, "sha256": "<sha256 of the file>" } } }
