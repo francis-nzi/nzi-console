@@ -9,8 +9,11 @@
  * Plain Node, no dependencies and no install: it reads `src/v7ExtractContract.json` — the same file the importer's
  * `EXTRACT_CONTRACT` is — so the script can never ask for a column set the importer does not read.
  *
- * **Read-only on v7.** The script sets the session read-only, selects only, and writes nothing on the server: every
- * `\copy` writes to a file on the machine running psql. No PDFs, and nothing from v7's client-data folders.
+ * **Read-only on v7, twice over.** The session is set read-only, and every `\copy` runs inside one
+ * `BEGIN ISOLATION LEVEL REPEATABLE READ; SET TRANSACTION READ ONLY;` … `COMMIT;`, with statement and idle timeouts — so
+ * a wrong column or filter can fail, but cannot write a v7 row. The script selects only; every `\copy` writes to a file
+ * on the machine running psql, and the one snapshot makes the fourteen files consistent with each other. No PDFs, and
+ * nothing from v7's client-data folders.
  *
  * **An optional column v7 does not have.** v7 adds columns on first use, so a deployment may lack an optional one. psql
  * then stops at that table (`ON_ERROR_STOP`) with "column … does not exist": re-generate with
@@ -28,6 +31,10 @@ export const CONTRACT = JSON.parse(readFileSync(resolve(here, "../src/v7ExtractC
 export const PRELUDE =
   "WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false)), " +
   "aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id)";
+
+/** How long one query may run, and how long the transaction may sit idle between `\copy` calls. */
+export const STATEMENT_TIMEOUT = "30min";
+export const IDLE_TIMEOUT = "5min";
 
 /** The two columns computed by the lookup v7 makes at report time, not read from `job_scope_rows` itself. */
 export const REFERENCE_COLUMNS = ["reference_factor", "reference_ghg_unit"];
@@ -101,13 +108,20 @@ export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date
     ...(omit.size ? [`-- Omitted optional columns (absent from this v7): ${[...omit].sort().join(", ")}`] : []),
     "\\set ON_ERROR_STOP on",
     "\\encoding UTF8",
+    // Belt and braces: the session refuses writes, and so does the one transaction every \copy runs inside. Repeatable
+    // read gives all fourteen files one consistent snapshot of v7; the timeouts bound how long it can hold one.
     "SET default_transaction_read_only = on;",
+    "BEGIN ISOLATION LEVEL REPEATABLE READ;",
+    "SET TRANSACTION READ ONLY;",
+    `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
+    `SET LOCAL idle_in_transaction_session_timeout = '${IDLE_TIMEOUT}';`,
     "",
   ];
   for (const table of Object.keys(CONTRACT)) {
     lines.push(`\\echo ${table}`);
     lines.push(`\\copy (${selectFor(table, omit)}) TO ${quoted(`${directory}/${table}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
+  lines.push("", "COMMIT;");
   return lines.join("\n") + "\n";
 }
 
