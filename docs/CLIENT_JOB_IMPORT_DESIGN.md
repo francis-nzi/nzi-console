@@ -544,8 +544,11 @@ Still to come, each its own unit:
   live rows only. QA readiness and the reviewed-snapshot freeze ask no console review, tier or reviewer of a migrated
   row — only its figure — and ask all three of every live row as before. Integrity gaps are not exempt. Decision 4’s
   own audited disable command is not built yet, so a migrated row cannot currently be disabled from the console;
-- retiring the demo-organisation job-number clashes before the load (decision 1a). The loader refuses a clashing
-  client and names it;
+- retiring the demo-organisation job-number clashes before the load (decision 1a). **Built:** `npm run
+  retire:demo-job-numbers -- --organisation <demo id> --above 764 [--commit]` moves every job of that organisation
+  numbered in v7’s range to the next free numbers above it, in order, one audit event each, and catches the counter up
+  (0134). It refuses net-zero-international outright and any organisation holding imported jobs. Until it runs, the
+  loader refuses a clashing client and names it;
 - client custom factors (§6.3);
 - the historical report view.
 
