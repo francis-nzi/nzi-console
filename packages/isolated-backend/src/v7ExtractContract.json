@@ -1,0 +1,311 @@
+{
+  "clients": {
+    "filter": "active-clients",
+    "required": [
+      "db_id",
+      "client_name",
+      "status",
+      "archived"
+    ],
+    "optional": [
+      "industry",
+      "description_long",
+      "website",
+      "year_end_month",
+      "company_reg",
+      "headquarters",
+      "addr_line1",
+      "addr_line2",
+      "addr_city",
+      "addr_region",
+      "addr_postcode",
+      "addr_country",
+      "currency",
+      "crm_owner",
+      "client_manager",
+      "portfolio",
+      "referral",
+      "net_zero_year",
+      "interim_year",
+      "interim_s1_pct",
+      "interim_s2_pct",
+      "interim_s3_pct",
+      "target_s1_year",
+      "target_s1_pct",
+      "target_s2_year",
+      "target_s2_pct",
+      "target_s3_year",
+      "target_s3_pct",
+      "benchmark_year",
+      "benchmark_period_start",
+      "benchmark_period_end",
+      "benchmark_scope_1_tco2e",
+      "benchmark_scope_2_tco2e",
+      "benchmark_scope_3_tco2e",
+      "benchmark_total_tco2e",
+      "created_at"
+    ]
+  },
+  "client_sites": {
+    "filter": "client",
+    "required": [
+      "site_id",
+      "client_db_id",
+      "site_name"
+    ],
+    "optional": [
+      "location",
+      "is_registered_office",
+      "vacated_date",
+      "archived",
+      "latitude",
+      "longitude"
+    ]
+  },
+  "client_contacts": {
+    "filter": "client",
+    "required": [
+      "contact_id",
+      "client_db_id",
+      "full_name"
+    ],
+    "optional": [
+      "job_title",
+      "email",
+      "phone",
+      "is_primary"
+    ]
+  },
+  "job_types": {
+    "filter": "all",
+    "required": [
+      "job_type_id",
+      "name"
+    ],
+    "optional": [
+      "job_family",
+      "job_group",
+      "is_crp"
+    ]
+  },
+  "jobs": {
+    "filter": "client",
+    "required": [
+      "job_id",
+      "client_db_id",
+      "job_number",
+      "status"
+    ],
+    "optional": [
+      "job_type_id",
+      "job_type",
+      "title",
+      "legacy_job_no",
+      "reporting_year",
+      "reporting_period_start",
+      "reporting_period_end",
+      "start_date",
+      "due_date",
+      "crm_name",
+      "archived",
+      "created_at"
+    ]
+  },
+  "crp_job_details": {
+    "filter": "job",
+    "required": [
+      "job_id"
+    ],
+    "optional": [
+      "reporting_period_from",
+      "reporting_period_to"
+    ]
+  },
+  "datasets": {
+    "filter": "referenced-datasets",
+    "required": [
+      "dataset_id"
+    ],
+    "optional": [
+      "year",
+      "version"
+    ]
+  },
+  "job_scope_rows": {
+    "filter": "job-with-reference",
+    "required": [
+      "row_id",
+      "job_id",
+      "scope",
+      "original_id",
+      "qty",
+      "uom",
+      "factor",
+      "ghg_unit",
+      "enabled"
+    ],
+    "optional": [
+      "site_id",
+      "dataset_id",
+      "factor_db_id",
+      "category",
+      "level_1",
+      "level_2",
+      "level_3",
+      "level_4",
+      "column_text",
+      "report_label",
+      "notes",
+      "apply_pct",
+      "month_1",
+      "month_2",
+      "month_3",
+      "month_4",
+      "month_5",
+      "month_6",
+      "month_7",
+      "month_8",
+      "month_9",
+      "month_10",
+      "month_11",
+      "month_12",
+      "calc_tco2e",
+      "override_tco2e",
+      "data_source",
+      "data_confidence",
+      "is_custom_entry",
+      "linked_row_id",
+      "is_auto_generated",
+      "auto_pair_kind",
+      "review_status",
+      "reference_factor",
+      "reference_ghg_unit"
+    ]
+  },
+  "job_emission_groups": {
+    "filter": "job",
+    "required": [
+      "group_id",
+      "job_id"
+    ],
+    "optional": [
+      "dataset_id",
+      "factor_db_id",
+      "original_id",
+      "factor",
+      "ghg_unit",
+      "uom",
+      "enabled"
+    ]
+  },
+  "job_emission_sources": {
+    "filter": "job",
+    "required": [
+      "source_id",
+      "job_id",
+      "scope",
+      "source_type",
+      "enabled"
+    ],
+    "optional": [
+      "group_id",
+      "source_subtype",
+      "site_id",
+      "category",
+      "dataset_id",
+      "factor_db_id",
+      "original_id",
+      "qty",
+      "uom",
+      "factor",
+      "ghg_unit",
+      "apply_pct",
+      "calc_tco2e",
+      "data_source",
+      "data_confidence",
+      "review_status",
+      "employee_name",
+      "source_name",
+      "notes",
+      "detail_json"
+    ]
+  },
+  "job_spend_entries": {
+    "filter": "job",
+    "required": [
+      "entry_id",
+      "job_id",
+      "amount_gross",
+      "is_deleted"
+    ],
+    "optional": [
+      "site_id",
+      "factor_db_id",
+      "factor_original_id",
+      "mapped_scope",
+      "conversion_currency",
+      "currency",
+      "submitted_by_portal",
+      "review_status",
+      "estimated_emissions_tco2e",
+      "spend_description",
+      "notes"
+    ]
+  },
+  "lca_assessments": {
+    "filter": "job",
+    "required": [
+      "assessment_id",
+      "job_id",
+      "review_status"
+    ],
+    "optional": [
+      "resolved_lines_snapshot",
+      "total_tco2e"
+    ]
+  },
+  "job_report_versions": {
+    "filter": "job",
+    "required": [
+      "report_version_id",
+      "job_id",
+      "version_number",
+      "status",
+      "snapshot_json",
+      "data_hash"
+    ],
+    "optional": [
+      "report_format",
+      "version_label",
+      "notes",
+      "file_name",
+      "file_path",
+      "storage_provider",
+      "external_item_id",
+      "external_web_url",
+      "external_path",
+      "generated_at",
+      "generated_by",
+      "reviewed_at",
+      "reviewed_by",
+      "finalized_at",
+      "finalized_by",
+      "superseded_at",
+      "superseded_by"
+    ]
+  },
+  "report_reviews": {
+    "filter": "job",
+    "required": [
+      "job_id",
+      "portal_version_id"
+    ],
+    "optional": [
+      "status",
+      "approved_by_name",
+      "approved_by_email",
+      "published_at",
+      "published_by"
+    ]
+  }
+}

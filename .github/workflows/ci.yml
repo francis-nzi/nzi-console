@@ -367,6 +367,10 @@ jobs:
       # (decision 1a); and every stored migrated_record closed at every depth with no personal data in it.
       - name: The v7 client import loads whole clients, reconciles and re-runs safely
         run: npx tsx --test packages/isolated-backend/tests/v7ClientLoadReal.test.ts
+      # Appendix B — every query the extract helper generates, run against a v7-shaped schema of synthetic rows: each
+      # parses, returns exactly EXTRACT_CONTRACT's columns, keeps decision 8's scope, and computes v7's factor-lookup reference.
+      - name: The generated v7 extract queries select exactly what the importer reads
+        run: npx tsx --test packages/isolated-backend/tests/v7ExtractSqlReal.test.ts
       # Decision 1a — the demo organisation’s job numbers move above v7’s range before the load, in order, audited, the
       # counter caught up; net-zero-international is refused outright and never touched, and the v7 load then clears.
       - name: Demo job-number clashes retire without touching net-zero-international
