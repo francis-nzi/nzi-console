@@ -48,3 +48,14 @@ jobs:
           LABEL_NAME: ${{ github.event.label.name }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: node scripts/ruling-gate.mjs
+      # The ruled head, recorded for the post-merge check (ruling-verify.yml). The name carries the SHA, so the check reads
+      # it from the artifact list alone. An action's input, never a shell line; and the file exists only when the script
+      # saw the ruled label applied to the head this event names.
+      - name: Record the ruled head
+        if: ${{ always() && github.event.action == 'labeled' && github.event.label.name == 'ruled' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruled-head-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ruled-head.json
+          if-no-files-found: ignore
+          retention-days: 90

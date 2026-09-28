@@ -21,11 +21,13 @@
 // and diffed by name only.
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const MIGRATIONS_DIR = "packages/isolated-backend/migrations/";
 export const RULED_LABEL = "ruled";
+/** Written when a ruling is applied to the head this run judged; ruling-gate.yml uploads it for ruling-verify.mjs. */
+export const RULED_RECORD = "ruled-head.json";
 
 /**
  * The decision, as a pure function of the event: which branch, what happened, which label it happened to, the labels
@@ -76,6 +78,13 @@ function main() {
       labels: JSON.parse(env.LABELS ?? "[]"),
       changedFiles: changedFilesBetween(cwd, baseSha, headSha),
     });
+  }
+  // Record the ruling — any pull request, migration or not — against the head it was applied to, so the post-merge check
+  // (ruling-verify.mjs) can compare what merged with what was ruled. Only the act of applying the label, only for the
+  // head this event names: a stale ruling event records nothing.
+  if (env.ACTION === "labeled" && env.LABEL_NAME === RULED_LABEL && fetched === headSha) {
+    writeFileSync(RULED_RECORD, `${JSON.stringify({ pr: Number(prNumber), head: headSha, base: baseSha })}\n`);
+    console.log(`Ruling recorded for #${prNumber} at head ${headSha}.`);
   }
   console.log(`${decision.pass ? "✓" : "✗"} ${decision.reason} [head ${headSha}]`);
   if (env.GITHUB_STEP_SUMMARY) {
