@@ -5522,6 +5522,39 @@ migration gate, the other thing that makes migrations safe to merge).
 > Both, or the lock is not in force. With both set, an emergency merge past it means turning bypass back on — a
 > deliberate, visible change to the rule, recorded here with its reason, rather than one click on the pull request.
 
+> **Addendum to NZC-163 (28 Sep 2026) — the rules in force, in one place, and the bootstrap ledger.**
+>
+> *The rules.*
+>
+> 1. **Both branch settings are required** on `main`: the status checks **`governed paths merge only at the ruled
+>    head`** (the lock) and **`no unruled migration or held branch merges`** (the gate — its display name does not
+>    contain "gate"), alongside the three CI checks; **and administrator bypass off**. Either missing and the lock is
+>    not in force.
+> 2. **The `ruled` label is the revocable control.** A governed pull request passes only while a ruling is recorded,
+>    its current head is the ruled head, **and** the label is on it now. Removing the label withdraws the ruling and
+>    re-locks it; a push moves the head and re-locks it. **The label must stay on through the merge.**
+> 3. **The enforcer is governed by its own rule.** `GOVERNED_PATHS` (`scripts/ruling-verify.mjs`, 22 paths) covers
+>    the client-data and schema code *and* the machinery: `ruling-gate.yml`, `ruling-verify.yml`, `ruling-gate.mjs`,
+>    `ruling-lock.mjs`, `ruling-verify.mjs`, and **`ci.yml`**, which defines the three required CI checks. An unruled
+>    change to any of them is locked before merge and flagged after it.
+>
+> *Bootstrap ledger — the merges before the lock was live.* Each verified by tree against the head that was ruled
+> (`verifyMerge`, run locally and replayed with `main`'s own checker against the live artifact list).
+>
+> | PR | Merge | Ruled head | Tree | Ruling recorded | Post-merge check |
+> |---|---|---|---|---|---|
+> | #344 | `153be74` | `1eb3932` | match, 5 paths | before recording existed | — |
+> | #345 | `ab6449f` | `24a7a00` | match; the shared doc a concurrent change, `patch-id` identical | before recording existed | — |
+> | #346 | `c770c7d` | `0a55153` | **mismatch** — merged `ba66086`; re-landed as #347 | — | red (no ruling recorded) |
+> | #347 | `105f221` | `63f9d1f` | match, 3 paths | — | green (not governed then: skip) |
+> | #348 | `afae791` | `7f01e0f` | match, 8 paths | after merge (21:08) — GitHub fires `labeled` on a closed PR | red at merge; **green on re-run** |
+> | #349 | `6f4f4e2` | `16833a8` | match | — | green (not governed then: skip) |
+> | #350 | `04c8777` | `a232ea7` | match, 1 path | — | green |
+> | #351 | `67260cc` | `da6802c` | match, 5 paths | after merge (21:37) | red at merge; an honest re-run replays **MATCH** — green once re-run |
+>
+> #351 is the last bootstrap merge; with it `main` governs 22 paths including `ci.yml`. From here every governed pull
+> request is ruled-and-labelled at its exact head before it can merge, and verified by tree after.
+
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
 **Decision.** Activating the transmission-and-distribution companion (NZC-160 H4) has two preconditions, and both
