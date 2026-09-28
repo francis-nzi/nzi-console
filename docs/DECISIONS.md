@@ -5550,10 +5550,22 @@ migration gate, the other thing that makes migrations safe to merge).
 > | #348 | `afae791` | `7f01e0f` | match, 8 paths | after merge (21:08) — GitHub fires `labeled` on a closed PR | red at merge; **green on re-run** |
 > | #349 | `6f4f4e2` | `16833a8` | match | — | green (not governed then: skip) |
 > | #350 | `04c8777` | `a232ea7` | match, 1 path | — | green |
-> | #351 | `67260cc` | `da6802c` | match, 5 paths | after merge (21:37) | red at merge; an honest re-run replays **MATCH** — green once re-run |
+> | #351 | `67260cc` | `da6802c` | match, 5 paths | after merge (21:37) | red at merge; **green on re-run** (attempt 2, 22:10) |
 >
 > #351 is the last bootstrap merge; with it `main` governs 22 paths including `ci.yml`. From here every governed pull
 > request is ruled-and-labelled at its exact head before it can merge, and verified by tree after.
+>
+> *The first pull request through the live lock — the end-to-end proof.* #352 (`--file`, touching the governed
+> extract generator), from GitHub's own records:
+>
+> | When | Event | Lock (`governed paths merge only at the ruled head`) |
+> |---|---|---|
+> | 22:12:45 | opened at `9e3e697` | **locked** — "no ruling is recorded for it. It touches governed path(s): …/v7-extract-sql.mjs" |
+> | 22:13:46 | `ruled` applied at `9e3e697` | **passed on the head match** (no skip notice); ruling recorded `ruled-head-pr-352-9e3e697…` at 22:13:58 |
+> | merge | `1cf6b0b` | post-merge **green**; tree **matches** `9e3e697` on all 3 paths |
+>
+> #353 (`ba7beb8`, this ledger, docs only) matches its ruled head `5baa3c5`. The enforcement works end to end: blocked
+> without a ruling, released only at the ruled head with the label on, confirmed by tree after the merge.
 
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
