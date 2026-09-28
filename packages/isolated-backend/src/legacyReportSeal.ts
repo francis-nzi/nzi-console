@@ -29,6 +29,14 @@ export type LegacyReportParticulars = {
   externalItemId?: string | null;
   externalWebUrl?: string | null;
   externalPath?: string | null;
+  /** On the published (portal) version only: v7's review record for the job (`report_reviews`). */
+  approvedByName?: string | null;
+  approvedByEmail?: string | null;
+  reviewStatus?: string | null;
+  publishedAt?: string | null;
+  publishedBy?: string | null;
+  /** On an LCA result: the assessment's total, kept beside its frozen lines (§6.2). */
+  totalTco2e?: number | null;
 };
 
 export type SealedLegacyReport = {
