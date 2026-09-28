@@ -96,6 +96,46 @@ export function parseOmit(values) {
   return omit;
 }
 
+/**
+ * Columns the queries read that are not extract columns of their own: the in-scope filters and the factor-lookup join.
+ * A missing one fails the \copy as surely as a missing contract column, so the preflight checks them too.
+ */
+export const QUERY_COLUMNS = {
+  clients: ["db_id", "status", "archived"],
+  jobs: ["job_id", "client_db_id"],
+  job_scope_rows: ["job_id", "dataset_id", "scope", "original_id", "notes"],
+  job_emission_sources: ["job_id", "dataset_id"],
+  job_emission_groups: ["job_id", "dataset_id"],
+  factor_lookup: ["db_id", "dataset_id", "scope", "original_id", "factor", "ghg_unit"],
+  datasets: ["dataset_id", "year"],
+};
+
+/** Every (table, column) the script reads, contract and query alike, less any omitted — sorted, de-duplicated. */
+export function preflightColumns(omit = new Set()) {
+  const pairs = new Set();
+  for (const table of Object.keys(CONTRACT)) {
+    for (const column of columnsFor(table, omit)) if (!REFERENCE_COLUMNS.includes(column)) pairs.add(`${table}.${column}`);
+  }
+  for (const [table, columns] of Object.entries(QUERY_COLUMNS)) for (const column of columns) pairs.add(`${table}.${column}`);
+  return [...pairs].sort().map((pair) => pair.split("."));
+}
+
+/**
+ * One statement, before any \copy: every column the script reads, resolved exactly as the queries will resolve it
+ * (`to_regclass` on the search path, then the table's own columns), and ONE error listing everything missing — so a
+ * drifted schema shows its whole drift on the first run, not one column per run under ON_ERROR_STOP. A missing table
+ * is reported as the table, once. Read-only: it only reads the catalogue.
+ */
+export function preflightSql(omit = new Set()) {
+  const values = preflightColumns(omit).map(([table, column]) => `('${table}','${column}')`).join(",");
+  return "DO $preflight$ DECLARE missing text; count integer; BEGIN " +
+    "SELECT string_agg(item, ', ' ORDER BY item), count(*) INTO missing, count FROM (" +
+    "SELECT DISTINCT CASE WHEN to_regclass(w.t) IS NULL THEN w.t || ' (table absent)' ELSE w.t || '.' || w.c END AS item " +
+    `FROM (VALUES ${values}) AS w(t, c) ` +
+    "WHERE to_regclass(w.t) IS NULL OR NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = to_regclass(w.t) AND a.attname = w.c AND a.attnum > 0 AND NOT a.attisdropped)" +
+    ") m; IF missing IS NOT NULL THEN RAISE EXCEPTION 'v7 schema drift: % item(s) the extract reads are missing: %. Nothing was extracted. Required columns are a contract change; an absent optional column can be left out with --omit <table>.<column>.', count, missing; END IF; END $preflight$;";
+}
+
 /** The whole psql script. */
 export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date().toISOString().slice(0, 10) } = {}) {
   const directory = out.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
@@ -115,6 +155,9 @@ export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date
     "SET TRANSACTION READ ONLY;",
     `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
     `SET LOCAL idle_in_transaction_session_timeout = '${IDLE_TIMEOUT}';`,
+    "",
+    "\\echo preflight: every column the extract reads, checked against this v7 before anything is copied",
+    preflightSql(omit),
     "",
   ];
   for (const table of Object.keys(CONTRACT)) {

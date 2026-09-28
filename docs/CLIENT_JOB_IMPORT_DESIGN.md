@@ -698,6 +698,16 @@ psql "<live v7 url>" -f extract.sql
 node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract
 ```
 
+- **Preflight: all drift at once.** Before any `\copy`, inside the read-only transaction, one statement checks every
+  column the script reads — contract and query columns alike (the in-scope filters, the factor-lookup join) —
+  resolving each table as the queries will, and raises one error listing everything missing (a missing table is
+  named once). Nothing is copied unless the whole schema fits. So one run either passes clean or shows every
+  mismatch; `ON_ERROR_STOP` no longer reveals them one per run.
+- **Reconciled to live v7 (information_schema dump, 28 Sep 2026).** v7 has `created_at` only on its job-level tables;
+  `clients`, `client_sites`, `client_contacts` and `job_report_versions` have none (report versions carry
+  `generated_at`). The contract asked for exactly one column v7 lacks, `clients.created_at` — the importer needs
+  nothing from it (the console's `created_at` is the import time, which is true), so it left the contract; no v7
+  date is invented for it. Against the dump, the preflight now finds 0 of 208 missing.
 - **Read-only twice over.** The script sets the session read-only, then runs every `\copy` inside one
   `BEGIN ISOLATION LEVEL REPEATABLE READ; SET TRANSACTION READ ONLY;` … `COMMIT;` with a 30-minute statement timeout and
   a 5-minute idle-in-transaction timeout. A wrong column or filter can fail; it cannot write a v7 row. The one snapshot

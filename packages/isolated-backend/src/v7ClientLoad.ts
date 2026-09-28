@@ -183,7 +183,6 @@ async function loadClient(
     { column: "baseline_scope2_tco2e", value: f.baseline.scope2, type: "numeric" },
     { column: "baseline_scope3_tco2e", value: f.baseline.scope3, type: "numeric" },
     { column: "baseline_total_tco2e", value: f.baseline.total, type: "numeric" },
-    ...(f.createdAt ? [{ column: "created_at", value: f.createdAt, type: "timestamptz" }] : []),
   ], `client ${client.clientId}`));
 
   // ── Sites ──

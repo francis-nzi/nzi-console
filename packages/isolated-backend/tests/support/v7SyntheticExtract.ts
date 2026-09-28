@@ -43,7 +43,7 @@ export function syntheticRows(): Rows {
         net_zero_year: "2045", interim_year: "2030", interim_s1_pct: "42", interim_s2_pct: "42", interim_s3_pct: "25",
         target_s1_year: "2030", target_s1_pct: "50", benchmark_year: "2019", benchmark_period_start: "2019-01-01",
         benchmark_period_end: "2019-12-31", benchmark_scope_1_tco2e: "10", benchmark_scope_2_tco2e: "5",
-        benchmark_scope_3_tco2e: "30", benchmark_total_tco2e: "45", created_at: "2021-02-03 10:00:00" },
+        benchmark_scope_3_tco2e: "30", benchmark_total_tco2e: "45" },
       { db_id: "2", client_name: "Synthetic Beta Group", status: "Portfolio Owner", archived: "f", currency: "EUR",
         net_zero_year: "2050", interim_year: "2035", interim_s1_pct: "50", interim_s2_pct: "50", interim_s3_pct: "50" },
       { db_id: "3", client_name: "Synthetic Prospect", status: "Prospect", archived: "f" },
