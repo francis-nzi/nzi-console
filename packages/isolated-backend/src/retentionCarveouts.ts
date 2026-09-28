@@ -181,6 +181,20 @@ export const RETENTION_CARVEOUTS: ReadonlyArray<RetentionCarveout> = [
     onErasure: "PENDING_NZC_139",
     auditLabel: "Financial records retained",
   },
+  {
+    key: "legacy-report-records-of-account",
+    appliesTo: { table: "legacy_report_versions", columns: ["payload_sealed", "particulars_sealed"], subjectClass: "any" },
+    basis: "PENDING_NZC_139",
+    basisNote:
+      "An issued carbon report is a signed record of account — what a client was told, and relied on — so NZC-166 " +
+      "retains the personal data inside an imported report rather than erasing it, and reserves shredding the " +
+      "report's content key for where retention is not lawful. The retention is decided; the lawful ground for it " +
+      "is confirmed with counsel in the DSAR build (NZC-138–141), which is why the basis here is still pending.",
+    retention: { kind: "PENDING_NZC_139" },
+    // Decided by NZC-166 rather than left open: retain, never shred on a person's request alone.
+    onErasure: "retain",
+    auditLabel: "Named in a historical report, retained as a record of account",
+  },
 ];
 
 /** Still waiting on counsel: an unstated basis, an unstated period, or no decision recorded against it. */

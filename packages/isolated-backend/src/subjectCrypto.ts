@@ -101,6 +101,35 @@ export const sealForSubject = (plaintext: string, subjectKey: Buffer): SealedVal
 /** Read one field back. Throws if the ciphertext was tampered with — GCM authenticates. */
 export const openForSubject = (value: SealedValue, subjectKey: Buffer): string => unseal(value, subjectKey);
 
+/* ── Per-document content keys ───────────────────────────────────────────────────────── */
+
+/**
+ * A data key for one *document* — an imported v7 report version — wrapped by the same master key.
+ *
+ * Deliberately not a subject key (decision 10, NZC-166): a report is a record of account, not a person, so its
+ * key is never registered in `data_subject_keys` and erasing a person never reaches it. Same envelope, separate
+ * names, so a call site says which kind of key it holds.
+ */
+export function createContentKey(masterKey: string): { key: Buffer; wrapped: WrappedKey } {
+  const key = randomBytes(KEY_BYTES);
+  return { key, wrapped: seal(key.toString("base64"), keyFrom(masterKey, "The master key")) };
+}
+
+export class ContentKeyShreddedError extends Error {
+  constructor() {
+    super("That document's content key has been destroyed; its contents cannot be read.");
+    this.name = "ContentKeyShreddedError";
+  }
+}
+
+export function unwrapContentKey(wrapped: WrappedKey | null, masterKey: string): Buffer {
+  if (!wrapped) throw new ContentKeyShreddedError();
+  return Buffer.from(unseal(wrapped, keyFrom(masterKey, "The master key")), "base64");
+}
+
+export const sealForDocument = (plaintext: string, contentKey: Buffer): SealedValue => seal(plaintext, contentKey);
+export const openForDocument = (value: SealedValue, contentKey: Buffer): string => unseal(value, contentKey);
+
 /* ── The blind index ─────────────────────────────────────────────────────────────────── */
 
 /**

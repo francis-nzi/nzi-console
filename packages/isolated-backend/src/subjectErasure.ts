@@ -158,11 +158,15 @@ export function planColumn(
   // This is where the scaffold's block nearly failed to fire: `pending-counsel` was not on this list, so a
   // real erasure returned `nothing-held` for both undecided stores while the worst-case helper reported
   // them blocking. The gate would have read as armed and passed every subject through.
+  //
+  // A document-sealed record is the same case: no link names the people inside a historical report, so the
+  // traversal finding nothing says nothing about whether this person is in one. It is retained on its basis.
   const SPOKEN_FOR_ELSEWHERE = ["not-attributable", "redact-or-retain", "redact-on-erasure", "pending-counsel"];
-  if (held.considered && held.rows === 0 && !SPOKEN_FOR_ELSEWHERE.includes(column.erasure)) {
+  const spokenForElsewhere = SPOKEN_FOR_ELSEWHERE.includes(column.erasure) || column.storage.kind === "document-sealed";
+  if (held.considered && held.rows === 0 && !spokenForElsewhere) {
     return { ...base, outcome: "nothing-held", because: `no ${column.table} record for this person` };
   }
-  if (!held.considered && !SPOKEN_FOR_ELSEWHERE.includes(column.erasure)) {
+  if (!held.considered && !spokenForElsewhere) {
     return {
       ...base, outcome: "nothing-held",
       because: `nothing links this person to ${column.table}`,

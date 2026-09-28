@@ -356,6 +356,11 @@ jobs:
       # that catches up to imported v7 numbers without ever moving back or ahead of them.
       - name: The v7 import's schema holds history fixed and numbers continuous
         run: npx tsx --test packages/isolated-backend/tests/importProvenanceReal.test.ts
+      # 0135 — v7's report versions as records of account: each sealed whole under its own content key wrapped by the
+      # master key, hash-verified against v7's data_hash, append-only except the reserved key-shred, tenant-confined,
+      # and not a data subject (erasing a person retains the report on its stated basis; decision 10, NZC-166).
+      - name: Imported v7 reports are sealed, hash-verified records of account
+        run: npx tsx --test packages/isolated-backend/tests/legacyReportVersionsReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
       # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin

@@ -92,6 +92,14 @@ describe("the PII inventory (NZC-125)", () => {
       if (column.erasure === "not-attributable") {
         assert.ok(!isAttributable(column), `${name} claims no subject path but the inventory gives it one`);
       }
+      if (column.storage.kind === "document-sealed") {
+        // A record of account (decision 10, NZC-166): sealed under the document's key, so no person's shred
+        // reaches it, no subject path leads to it, and it is retained on a stated basis — never silently.
+        assert.equal(column.erasure, "retain-with-basis", `${name} is document-sealed and must be retained with a basis`);
+        assert.ok(!isAttributable(column), `${name} is a document, not a subject, and must not be attributed to one`);
+        assert.equal(sealedColumnOf(column), null, `${name} must stay out of the subject-key sealing views`);
+        assert.ok(column.storage.keyColumn.trim(), `${name} must name the column holding its wrapped key`);
+      }
       if (column.erasure === "association-to-tombstone") {
         assert.equal(attributionOf(column).kind, "pointer",
           `${name} dangles to a tombstone, which is only meaningful for a pointer`);
