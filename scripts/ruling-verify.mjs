@@ -120,6 +120,9 @@ export const GOVERNED_PATHS = [
   { path: "scripts/ruling-gate.mjs", why: "the enforcement machinery" },
   { path: "scripts/ruling-lock.mjs", why: "the enforcement machinery" },
   { path: "scripts/ruling-verify.mjs", why: "the enforcement machinery" },
+  // The three required CI checks (migrations, typecheck · build · tests, the browser suite) are defined here: an
+  // unruled edit could quietly weaken the guardrails every merge depends on (ruled 28 Sep 2026).
+  { path: ".github/workflows/ci.yml", why: "the required CI checks" },
 ];
 
 export const governedFiles = (files) =>

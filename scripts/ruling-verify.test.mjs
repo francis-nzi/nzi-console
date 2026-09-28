@@ -163,8 +163,8 @@ describe("when a merge with no ruling matters", () => {
     }
   });
 
-  it("governs the enforcement machinery itself — an unruled change to the gate, the lock or this check is caught", () => {
-    for (const file of [".github/workflows/ruling-gate.yml", ".github/workflows/ruling-verify.yml", "scripts/ruling-gate.mjs", "scripts/ruling-lock.mjs", "scripts/ruling-verify.mjs"]) {
+  it("governs the enforcement machinery itself — the gate, the lock, this check, and the required CI checks' definitions", () => {
+    for (const file of [".github/workflows/ruling-gate.yml", ".github/workflows/ruling-verify.yml", "scripts/ruling-gate.mjs", "scripts/ruling-lock.mjs", "scripts/ruling-verify.mjs", ".github/workflows/ci.yml"]) {
       const decision = decidePostMerge({ prNumber: "351", ruledSha: null, verify, changedFiles: [file] });
       assert.equal(decision.pass, false, file);
       assert.match(decision.reason, /governed path/);
