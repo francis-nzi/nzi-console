@@ -5539,3 +5539,36 @@ NZC-163 and NZC-155 (the same move from a documented intention to a mechanism).
 > 4. **Then the flag**, in its own migration, which this entry's gate (`companionActivationGateReal`) lets through.
 >
 > Its own review stop, sequenced independently of the data import, and re-sized against real data before the flag.
+
+### NZC-165 — Client-confidential data and client PII accepted in the isolated non-production store, for now [Decided 28 Sep 2026 — Francis]
+
+**Decision.** The v7 client and job import (`docs/CLIENT_JOB_IMPORT_DESIGN.md`) brings **client-confidential data and
+client personal data** into this isolated non-production store: active clients' contacts and sites, their full job
+history, historical emissions and published report snapshots. Accepted **as an interim position**: personal data
+sealed on write, boundary-guarded to isolated-non-production, loaded only from the Render Shell, the extract never
+committed — **with a standing commitment to replicate to a true production environment when one exists.**
+
+It mirrors the acceptance of NZI staff personal data (26 Sep 2026, staff enrolment, 0129). Both are recorded in
+`DEPLOYMENT.md` ("Personal data in the isolated store — accepted decisions") and in the PII inventory as
+`PII_HOSTING_DECISIONS`, where a test holds the two records to each other.
+
+**What it does not cover.** Anything that widens what personal data this service holds comes back as a decision of
+its own. Replication to production, when it happens, updates this entry, `DEPLOYMENT.md` and the inventory.
+
+### NZC-166 — Erasure across live records; personal data in immutable historical report snapshots retained as records of account [Decided 28 Sep 2026 — Francis]
+
+**Decision.** Erasure is **honoured across live and operational records** — contacts, portal users, staff, trainees,
+and every live row that names a person — by the mechanisms already built (key-shred, digest nulling, tombstoned
+associations; NZC-138–142).
+
+**Personal data inside an immutable historical report snapshot is retained**, under a **records-retention / legal
+basis**: a published report is a **signed record of account**, and its content cannot be edited without ceasing to
+be the record. Each legacy snapshot is sealed whole under its own **content key, wrapped by
+`NZI_SUBJECT_MASTER_KEY`**; the report is **not a data subject** (CLIENT_JOB_IMPORT_DESIGN decision 10). **Shredding
+a report's content key is reserved for where retention is not lawful** — the whole record then goes, never a part.
+
+**Still to confirm.** The lawful basis is confirmed with counsel in the DSAR build (NZC-138–141). Until it is, the
+inventory records this personal data as retained with that basis pending confirmation — not as erasable, and not
+silently kept. NZC-138 is the question counsel will weigh it against: each client controls its own data, and NZI
+asserts no retention basis over a client's staff data; a report is NZI's own signed deliverable, which is the
+distinction this decision rests on.
