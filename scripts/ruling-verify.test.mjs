@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
-import { ARTIFACT_PREFIX, findRuledHead, verifyMerge } from "./ruling-verify.mjs";
+import { ARTIFACT_PREFIX, decidePostMerge, findRuledHead, GOVERNED_PATHS, governedFiles, verifyMerge } from "./ruling-verify.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = resolve(HERE, "ruling-gate.mjs");
@@ -132,6 +132,47 @@ describe("a ruled head on a branch whose earlier work was already squash-merged"
     other.git(["commit", "--quiet", "-m", "only the follow-up"]);
     const mergeB = other.git(["rev-parse", "HEAD"]);
     assert.deepEqual(verifyMerge({ cwd: other.dir, ruledSha: ruledB, mergeSha: mergeB }).problems, ["b.txt: ruled, but not in the merge"]);
+  });
+});
+
+describe("when a merge with no ruling matters", () => {
+  const verify = () => { throw new Error("verify must not run without a ruled head"); };
+
+  it("skips, neutrally, an un-ruled merge that touches nothing governed — the alarm stays quiet on ordinary work", () => {
+    const decision = decidePostMerge({ prNumber: "400", ruledSha: null, verify,
+      changedFiles: ["apps/console/app/page.tsx", "docs/CLIENT_WORKSPACE_BACKLOG.md", "packages/isolated-backend/src/readModels.ts"] });
+    assert.deepEqual([decision.pass, decision.skipped], [true, true]);
+    assert.match(decision.reason, /touches no governed path — nothing to verify/);
+    // This very change touches only the gate's own files: its post-merge check will skip, as ruled.
+    const gateOnly = decidePostMerge({ prNumber: "346", ruledSha: null, verify,
+      changedFiles: [".github/workflows/ruling-gate.yml", ".github/workflows/ruling-verify.yml", "package.json", "scripts/ruling-gate.mjs", "scripts/ruling-verify.mjs", "scripts/ruling-verify.test.mjs"] });
+    assert.equal(gateOnly.skipped, true);
+  });
+
+  it("fails an un-ruled merge that touches a governed path, naming it", () => {
+    for (const file of [
+      "packages/isolated-backend/migrations/0137_example.sql", "packages/contracts/src/commands.ts",
+      "packages/isolated-backend/src/v7ClientImport.ts", "packages/isolated-backend/src/v7ExtractContract.json",
+      "packages/isolated-backend/scripts/v7-extract-sql.mjs", "packages/isolated-backend/scripts/load-v7-clients.ts",
+      "packages/isolated-backend/src/databaseTls.ts", "packages/isolated-backend/src/postgresCommands.ts",
+    ]) {
+      const decision = decidePostMerge({ prNumber: "401", ruledSha: null, verify, changedFiles: ["README.md", file] });
+      assert.equal(decision.pass, false, file);
+      assert.equal(decision.skipped, undefined);
+      assert.match(decision.reason, new RegExp(`governed path\\(s\\): ${file.replace(/[.]/g, "\\.")}\\.`), file);
+    }
+  });
+
+  it("verifies a ruled merge by tree, whatever it touches", () => {
+    const mismatch = { pass: false, reason: "differs" };
+    assert.equal(decidePostMerge({ prNumber: "402", ruledSha: "a".repeat(40), changedFiles: ["README.md"], verify: () => mismatch }), mismatch);
+  });
+
+  it("governs files that exist — a rename cannot quietly leave the list governing nothing", () => {
+    const root = resolve(HERE, "..");
+    for (const entry of GOVERNED_PATHS) assert.ok(existsSync(join(root, entry.path)), `${entry.path} (${entry.why}) no longer exists`);
+    assert.deepEqual(governedFiles(["packages/contracts/src/nested/x.ts", "packages/contracts/README.md", "packages/isolated-backend/src/v7ClientImport.tsx"]),
+      ["packages/contracts/src/nested/x.ts"], "prefixes govern beneath them; exact paths match exactly");
   });
 });
 
