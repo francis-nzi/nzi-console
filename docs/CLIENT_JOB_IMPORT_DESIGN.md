@@ -540,8 +540,11 @@ is for ruling. Steps 4–6 are the built loader, run so far only on synthetic da
 Still to come, each its own unit:
 - the review and separation-of-duties gate exemption for `origin = 'migrated'`, and the write-command guards that
   refuse a migrated row (§5.1, §10 item 4). The database trigger already refuses changes;
-- retiring the demo-organisation job-number clashes before the load (decision 1a). The loader refuses a clashing
-  client and names it;
+- retiring the demo-organisation job-number clashes before the load (decision 1a). **Built:** `npm run
+  retire:demo-job-numbers -- --organisation <demo id> --above 764 [--commit]` moves every job of that organisation
+  numbered in v7’s range to the next free numbers above it, in order, one audit event each, and catches the counter up
+  (0134). It refuses net-zero-international outright and any organisation holding imported jobs. Until it runs, the
+  loader refuses a clashing client and names it;
 - client custom factors (§6.3);
 - the historical report view.
 

@@ -367,6 +367,10 @@ jobs:
       # (decision 1a); and every stored migrated_record closed at every depth with no personal data in it.
       - name: The v7 client import loads whole clients, reconciles and re-runs safely
         run: npx tsx --test packages/isolated-backend/tests/v7ClientLoadReal.test.ts
+      # Decision 1a — the demo organisation’s job numbers move above v7’s range before the load, in order, audited, the
+      # counter caught up; net-zero-international is refused outright and never touched, and the v7 load then clears.
+      - name: Demo job-number clashes retire without touching net-zero-international
+        run: npx tsx --test packages/isolated-backend/tests/demoJobNumberRetirementReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
       # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin
