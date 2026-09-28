@@ -21,6 +21,11 @@ results, client custom factors — are §6.1–§6.3, with one new decision (9, 
 The §10 migrations are split accordingly: those that do not depend on the open mechanism for decision 6 come for
 ruling now; the report-snapshot table waits on it (§7, decision 10).
 
+**Update, 28 Sep 2026.** §9 is filled with the final counts. Both decisions are recorded in `DECISIONS.md`:
+**NZC-165** (client data and PII accepted in the isolated store, interim) and **NZC-166** (erasure across live
+records; personal data inside immutable report snapshots retained as signed records of account). Decision 10 is
+ruled (§7). Migrations 0132–0134 are merged (#332).
+
 **Reading order:** `REFERENCE_DATA_DESIGN.md` (the governed shape this mirrors) → this document →
 `WORKFLOWS.md` §3–§8 (how v7 is used).
 
@@ -66,7 +71,8 @@ Appendix A's schema capture overturned four things the code had suggested. Folde
    *consult*, *policy development*, *strategy workshop*, *support services* → consultancy; *life cycle* or
    *assessment* → lca; *product carbon* or *pcf* → pcf; otherwise crp). The import uses the type's
    `job_family` when present and v7's own rule when not — never a rule of its own. Block 2b (Appendix A) shows the
-   split.
+   split. **Confirmed from the data (28 Sep 2026): `is_crp` does not track the type's name, so it is not used on
+   its own** — the family is `job_types.job_family`, with v7's name rule as the fallback.
 2. **"Published" is `report_reviews.portal_version_id` pointing at a `final` version — not `published_at`.**
    The report a client was shown is the `job_report_versions` row that `report_reviews.portal_version_id`
    names, with `status = 'final'`. `published_at` is not a reliable signal and is not used.
@@ -362,7 +368,7 @@ JSON cannot be edited to seal a name without ceasing to be verbatim. Options:
   covered by a key-shred at erasure. The hash is verified before sealing and kept. **← Ruled: (a).**
 - **(b)** Store it plaintext, and record it in the PII inventory as unsealed.
 
-**How to seal it — decision 10 (new, for ruling).** Ruling 6(a) needs a key, and **every key in the sealing
+**How to seal it — decision 10, ruled 28 Sep 2026.** Ruling 6(a) needs a key, and **every key in the sealing
 model belongs to a person**: the subject registry knows trainees, client contacts, portal users and memberships
 (`SubjectTable`), and a key-shred erases one of them. A client is not a subject, and a report snapshot names
 several people — so no existing key fits it. The inventory already has the precedent for personal data inside a
@@ -376,9 +382,16 @@ payloads). Options:
 - **(b) Plaintext, recorded honestly:** `storage: json`, erasure `pending-counsel`, as the audit payload is —
   protected by the store's own boundary, row-level security and the ruled acceptance above.
 
-**Recommended: (a)** — it is what ruling 6 asked for — **with the erasure question named** (a report naming an
-erased person: shred the whole record, or retain it with a basis) as a decision for Francis's register. Either
-way the legacy snapshot table's migration waits on this ruling; the other §10 migrations do not.
+**Ruled — neither option as written: a per-report content key.** Each legacy snapshot is sealed whole under its
+**own content key, wrapped by `NZI_SUBJECT_MASTER_KEY`** — envelope encryption. The payload's SHA-256 is verified
+against v7's `data_hash` before sealing, and kept. **The report is not a data subject**: the subject registry, its
+`SubjectTable` and its export/erasure planning are unchanged, and a report's key is not a person's key.
+
+**Erasure (NZC-166).** Erasure is honoured across live and operational records. Personal data inside an immutable
+historical report snapshot is **retained under a records-retention/legal basis** — a report is a signed record of
+account. Shredding a report's content key is **reserved** for where retention is not lawful. The lawful basis is
+confirmed with counsel in the DSAR build (NZC-138–141); the inventory records the column as retained with that
+basis pending confirmation, not as erasable.
 
 ## 8. The process
 
@@ -404,23 +417,38 @@ way the legacy snapshot table's migration waits on this ruling; the other §10 m
    immutability makes those rows unchangeable afterwards. Anything captured in the console afterwards, including
    on a migrated job, meets every gate as usual.
 
-## 9. Volumes — not yet known
+## 9. Volumes — final (28 Sep 2026)
 
-The load, the PII surface and the report surface cannot be sized from code. **Appendix A** is read-only SQL for
-Francis to run against live v7. It returns **counts and enumerated status values only — no names, no free text**.
-The figures come back into §9 before any build is ruled. **Pending — Appendix A's schema findings are in (§1.1);
-its counts are to be re-run with the decision-8 predicate (the queries below are corrected), and have not reached
-this document.** No figure here is estimated.
+From Appendix A, run by Francis on live v7 with the decision-8 predicate. Counts and enumerated values only.
 
 | Measure | Count |
 |---|---|
-| Active clients | — |
-| Their jobs, by family and status | — |
-| Scope rows (enabled / disabled) · of which v7-synthesised | — |
-| Register sources · spend entries · LCA assessments | — |
-| Report versions · final · published · portal versions · PDFs by storage provider | — |
-| Contacts · sites (live / vacated or archived) | — |
-| Job-number range of in-scope jobs · clashes with staging's sequences | — |
+| In-scope clients | **433** — 431 `Active` + 2 `Portfolio Owner` (2 `Prospect` excluded) |
+| Their jobs | **763** |
+| Scope rows | **5,893 enabled** + **2,045 disabled** — of which **961 v7-synthesised** (`WFM Import` / `Legacy Annual Upload`) |
+| Register sources · spend entries · LCA assessments | **822** · **798** · **1** |
+| Report versions | **78** — **7 `final`**, **17 portal versions**, **0 with `published_at`** |
+| PDFs, by storage | **44 local with no path** · **34 OneDrive** |
+| Contacts · sites | **438** · **401 live** + **21 closed** |
+| Job-number range | **J000001–J000764** |
+| Rows whose stored figure drifts from v7's arithmetic | **~47** |
+| Jobs by type × `is_crp` × status (block 2b) | **not yet in this document** — the breakdown itself was not among the figures received; to be added from the block-2b run |
+
+**What the figures change:**
+
+- **`published_at` is never set (0)** — confirming §1.1: the published signal is `report_reviews.portal_version_id`.
+  But there are **17 portal versions and only 7 `final` versions**, so some portal versions are not final. Which
+  of the 17 count as *the published report* for decision 2 — only those that are `final`, or every version a
+  client was shown — is **a question for ruling before the importer's reconciliation is built**.
+- **44 PDFs have no path.** Their storage link (decision 3) is empty: the snapshot and hash come across, the link
+  is recorded as absent — reported per report, not refused.
+- **The job numbers start at J000001**, so they **will** clash with staging's demo-organisation jobs, which were
+  numbered from 1. Retiring those clashes (decision 1a) is a step before the load, not a contingency.
+- **~47 drifting rows** are reported under decision 9: the migrated figure is v7's arithmetic, the stored figure
+  kept beside it.
+- **961 of 7,938 rows are v7-synthesised** history (WFM or annual-workbook totals, `factor = 1`): imported,
+  labelled as such (§6).
+- **One LCA assessment**: §6.2 applies to a single record.
 
 ## 10. Migrations this will need (each through the ruling gate)
 
@@ -456,13 +484,14 @@ Ruled 27 Sep 2026:
 | 6 | PII in report snapshots | **(a) Seal the whole payload.** |
 | 7 | Review / separation-of-duties exemption | **Limited to `origin = 'migrated'`.** |
 | 8 | "Active client" predicate | **`status IN ('Active','Portfolio Owner') AND NOT archived`** (28 Sep 2026). |
+| 10 | How the report payload is sealed | **A per-report content key wrapped by `NZI_SUBJECT_MASTER_KEY`**; whole payload sealed; hash verified; the report is not a data subject. Erasure per **NZC-166** (28 Sep 2026). |
 
 For ruling:
 
 | # | Decision | Proposed |
 |---|---|---|
 | 9 | A migrated row's figure (§5.1) | **The figure v7 reported** (v7's arithmetic on the row's own copied factor, override first), with the stored `calc_tco2e` kept beside it and any difference reported. |
-| 10 | How the report payload is sealed (§7) | **(a) a per-document key**, with the erasure question for a named person put to Francis's register. |
+| 11 | Which portal versions are "the published report" (§9) | Of 17 portal versions only 7 are `final`. **Proposed: the `final` version a client was shown**; a non-final portal version is imported and kept, and reported, but is not the authoritative total. |
 
 And, from the ruling's build additions, proposed for confirmation: the double-count guard (§6.1), LCA results as
 migrated-immutable snapshots (§6.2), client-level custom factors imported for future capture as a separate step
