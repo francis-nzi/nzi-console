@@ -48,7 +48,7 @@ surface is a disclosure, not a display bug. The criteria below are weighted acco
 ## Part 1 — data setup (prerequisite)
 
 Shares the client and strategy set-up in `STAGING_ACCEPTANCE_PORTAL_PLAN.md` Part 1 — do that
-first — the same `npm run seed:portal-acceptance` produces both halves in one run, including the
+first — the same `npm run seed:portal-acceptance -- --organisation demo-nzi-console` produces both halves in one run, including the
 completed assessment and the four reverse-link cases below.
 
 The seed goes through `srs.assessment.start` / `.item.set` / `.complete`, the same commands the

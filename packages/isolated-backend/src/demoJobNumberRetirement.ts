@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { LIVE_ORGANISATION } from "./liveOrganisation";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -28,7 +29,7 @@ import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "
  * are records of what the number was when they were made, and stay as written. They are counted and reported.
  */
 
-export const PROTECTED_ORGANISATION = "net-zero-international";
+export const PROTECTED_ORGANISATION = LIVE_ORGANISATION;
 export const RETIREMENT_ACTOR = "maintenance:retire-demo-job-numbers";
 
 export class DemoRetirementRefused extends Error {}
