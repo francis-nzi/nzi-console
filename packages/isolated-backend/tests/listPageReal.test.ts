@@ -191,7 +191,7 @@ describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? 
       assert.deepEqual(names(owners), ["Alder Foods", "Birch Retail", "Delta 100% Ltd", "Echo_Co", "Cedar Works"]);
       const ownersDesc = await clientsIn(ORG_A, clientQuery({ sort: { key: "owner", dir: "desc" } }));
       assert.deepEqual(names(ownersDesc), ["Echo_Co", "Delta 100% Ltd", "Birch Retail", "Alder Foods", "Cedar Works"]);
-      assert.deepEqual(names(await clientsIn(ORG_A, clientQuery({ sort: { key: "footprint", dir: "desc" } }))).slice(0, 2), ["Alder Foods", "Delta 100% Ltd"]);
+      assert.deepEqual(names(await clientsIn(ORG_A, clientQuery({ sort: { key: "emissions", dir: "desc" } }))).slice(0, 2), ["Alder Foods", "Delta 100% Ltd"]);
     });
 
     it("pages, reports the page count, and serves a page past the end as the last page", async () => {
@@ -215,7 +215,7 @@ describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? 
       const { summary } = await clientsIn(ORG_A, clientQuery({ pageSize: 2 }));
       // The average is over the clients with a completeness recorded (80, 40, 90) — two have none, and an unknown is
       // not a nought. The board used to average in the browser with a missing value counted as 0.
-      assert.deepEqual(summary, { clients: 5, openJobs: 2, averageCompleteness: 70, atRisk: 1, withoutOwner: 1, deliveryClients: 4, deliveryWithoutJobs: 2, activeWithoutFootprint: 1 });
+      assert.deepEqual(summary, { clients: 5, openJobs: 2, averageCompleteness: 70, atRisk: 1, withoutOwner: 1, deliveryClients: 4, deliveryWithoutJobs: 2, activeWithoutEmissions: 1 });
       const retail = (await clientsIn(ORG_A, clientQuery({ filters: { industry: ["Retail"] } }))).summary;
       assert.deepEqual([retail.clients, retail.atRisk, retail.averageCompleteness], [2, 1, 65]);
     });

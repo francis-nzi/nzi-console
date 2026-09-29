@@ -106,7 +106,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   const filtered = hasActiveFilters(query);
   const ownershipComplete = summary.withoutOwner === 0;
   const deliveryLinked = summary.deliveryClients > 0 && summary.deliveryWithoutJobs === 0;
-  const footprintsRecorded = summary.activeWithoutFootprint === 0;
+  const footprintsRecorded = summary.activeWithoutEmissions === 0;
 
   const drawer = selected ? (
     <EvidenceDrawer
@@ -128,7 +128,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
     { key: "name", header: "Client", sortKey: "name", cell: (c) => <Link href={`/clients/${encodeURIComponent(c.id)}`} className="nz-table-link" style={{ fontWeight: 500 }}>{c.name}</Link> },
     { key: "industry", header: "Industry", sortKey: "industry", cell: (c) => c.sector || <span className="muted">Unspecified</span> },
     { key: "status", header: "Status", sortKey: "status", cell: (c) => <span className={`nz-st ${clientStatusMeta[c.status].cls}`}>{clientStatusMeta[c.status].label}</span> },
-    { key: "footprint", header: "Latest tCO₂e", sortKey: "footprint", numeric: true, cell: (c) => c.latestFootprint ? c.latestFootprint.replace(" tCO₂e", "") : <span className="muted">—</span> },
+    { key: "emissions", header: "Latest tCO₂e", sortKey: "emissions", numeric: true, cell: (c) => c.latestFootprint ? c.latestFootprint.replace(" tCO₂e", "") : <span className="muted">—</span> },
     { key: "completeness", header: "Data completeness", sortKey: "completeness", cell: (c) => c.completeness > 0 ? <Completeness pct={c.completeness} /> : <span className="muted">—</span> },
     { key: "openJobs", header: "Open jobs", sortKey: "openJobs", numeric: true, cell: (c) => c.openJobs },
     { key: "nextReport", header: "Next report", cell: (c) => c.nextReportDue || <span className="muted">—</span> },

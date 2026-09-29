@@ -1,3 +1,5 @@
+import { utcDay } from "./dayValues";
+
 /**
  * One list query, shared by every paged list (docs/LIST_PARITY_DESIGN.md §2).
  *
@@ -70,7 +72,8 @@ function readAll(params: ListParams, key: string): string[] {
 const isDay = (value: string): boolean => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  // A real calendar day survives the round trip; 2026-02-30 comes back as 2026-03-02.
+  return !Number.isNaN(parsed.getTime()) && utcDay(parsed) === value;
 };
 
 export function defineListSpec<S extends string, F extends string>(spec: ListSpec<S, F>): ListSpec<S, F> {
@@ -191,7 +194,7 @@ export const hasActiveFilters = <S extends string, F extends string>(query: List
 // ── The two lists ────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const clientListSpec = defineListSpec({
-  sortKeys: ["name", "industry", "status", "owner", "footprint", "completeness", "openJobs"] as const,
+  sortKeys: ["name", "industry", "status", "owner", "emissions", "completeness", "openJobs"] as const,
   defaultSort: { key: "name", dir: "asc" },
   filters: { industry: "value", status: "value", owner: "value", portfolio: "value", manager: "value" },
 });

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { familyHasReportingPeriod, hasActiveFilters, JOB_STATUS_ALL, jobDateIssues, jobListSpec, jobWorkflowStages, PAGE_SIZES, plausibleYearRange, reportingYearForPeriod, todayInLondon, type CommandInputMap, type JobListFilterKey, type JobListQuery } from "@nzi/contracts";
+import { familyHasReportingPeriod, hasActiveFilters, JOB_STATUS_ALL, jobDateIssues, jobListSpec, jobWorkflowStages, PAGE_SIZES, plausibleYearRange, reportingYearForPeriod, todayInLondon, utcDay, type CommandInputMap, type JobListFilterKey, type JobListQuery } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type JobFamily } from "@nzi/mock-data";
 import type { ClientScreenReadModel, JobListPage, JobListRow } from "@nzi/isolated-backend";
@@ -21,7 +21,7 @@ type Draft = CommandInputMap["job.create"];
 const EMPTY_DATES = { startDate: "", dueDate: "", reportingPeriodStart: "", reportingPeriodEnd: "" };
 
 const STATUS_LABELS: Record<string, string> = { draft: "Draft", open: "Open", "on-hold": "On hold", complete: "Complete", cancelled: "Cancelled" };
-const addDays = (day: string, days: number) => { const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); };
+const addDays = (day: string, days: number) => { const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return utcDay(date); };
 
 export function JobsIndex({ page, query, clients }: { page: JobListPage; query: JobListQuery; clients: ClientScreenReadModel[] }) {
   const router = useRouter();

@@ -22,7 +22,7 @@ export type ClientListRow = {
 };
 export type ClientListSummary = {
   clients: number; openJobs: number; averageCompleteness: number | null; atRisk: number;
-  withoutOwner: number; deliveryClients: number; deliveryWithoutJobs: number; activeWithoutFootprint: number;
+  withoutOwner: number; deliveryClients: number; deliveryWithoutJobs: number; activeWithoutEmissions: number;
 };
 export type ClientListPage = ListPage<ClientListRow, ClientListFilterKey, ClientListSummary>;
 
@@ -42,7 +42,7 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
       coalesce(${clean("ow.display_name")}, ${clean("c.owner_name")}) AS owner,
       ${clean("c.portfolio")} AS portfolio,
       coalesce(${clean("mg.display_name")}, ${clean("c.client_manager")}) AS manager,
-      c.location, c.member_since, c.latest_footprint_tco2e AS footprint, c.yoy_percent, c.completeness_percent AS completeness,
+      c.location, c.member_since, c.latest_footprint_tco2e AS latest_emissions, c.yoy_percent, c.completeness_percent AS completeness,
       c.next_report_due_label,
       (SELECT count(*) FROM nzi_console.jobs j WHERE (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
          AND j.status IN ('draft','open','on-hold'))::int AS open_jobs,
@@ -61,7 +61,7 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
   },
   sort: {
     name: { column: "name", text: true }, industry: { column: "industry", text: true }, status: { column: "status", text: true },
-    owner: { column: "owner", text: true }, footprint: { column: "footprint" }, completeness: { column: "completeness" }, openJobs: { column: "open_jobs" },
+    owner: { column: "owner", text: true }, emissions: { column: "latest_emissions" }, completeness: { column: "completeness" }, openJobs: { column: "open_jobs" },
   },
   tiebreak: "client_id",
   pageColumns: `
@@ -75,10 +75,10 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
     count(*) FILTER (WHERE owner IS NULL OR owner = 'Unassigned')::int AS without_owner,
     count(*) FILTER (WHERE status <> 'prospect')::int AS delivery_clients,
     count(*) FILTER (WHERE status <> 'prospect' AND job_count = 0)::int AS delivery_without_jobs,
-    count(*) FILTER (WHERE status = 'active' AND footprint IS NULL)::int AS active_without_footprint`,
+    count(*) FILTER (WHERE status = 'active' AND latest_emissions IS NULL)::int AS active_without_emissions`,
 });
 
-const footprint = (value: unknown) => value === null || value === undefined ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
+const emissionsLabel = (value: unknown) => value === null || value === undefined ? null : `${Number(value).toLocaleString("en-GB")} tCO₂e`;
 const percentage = (value: unknown) => value === null || value === undefined ? null : `${Number(value) > 0 ? "+" : "−"}${Math.abs(Number(value)).toFixed(1)}%`;
 const text = (value: unknown) => value === null || value === undefined ? null : String(value);
 
@@ -88,7 +88,7 @@ export async function listClients(db: Queryable, query: ClientListQuery): Promis
       id: String(row.client_id), name: String(row.name), status: row.status as ClientStatus,
       sector: text(row.industry) ?? "", owner: text(row.owner) ?? "", portfolio: text(row.portfolio), clientManager: text(row.manager),
       location: text(row.location) ?? "", memberSince: row.member_since === null ? "" : String(row.member_since),
-      latestFootprint: footprint(row.footprint), yoy: percentage(row.yoy_percent), completeness: Number(row.completeness ?? 0),
+      latestFootprint: emissionsLabel(row.latest_emissions), yoy: percentage(row.yoy_percent), completeness: Number(row.completeness ?? 0),
       openJobs: Number(row.open_jobs), nextReportDue: text(row.next_report_due_label) ?? "",
       contact: (row.primary_contact as ClientListRow["contact"] | null) ?? { name: "", role: "", email: "" },
       jobs: (row.jobs as ClientListRow["jobs"] | null) ?? [],
@@ -97,7 +97,7 @@ export async function listClients(db: Queryable, query: ClientListQuery): Promis
       clients: Number(row.clients ?? 0), openJobs: Number(row.open_jobs ?? 0),
       averageCompleteness: row.average_completeness === null || row.average_completeness === undefined ? null : Number(row.average_completeness),
       atRisk: Number(row.at_risk ?? 0), withoutOwner: Number(row.without_owner ?? 0), deliveryClients: Number(row.delivery_clients ?? 0),
-      deliveryWithoutJobs: Number(row.delivery_without_jobs ?? 0), activeWithoutFootprint: Number(row.active_without_footprint ?? 0),
+      deliveryWithoutJobs: Number(row.delivery_without_jobs ?? 0), activeWithoutEmissions: Number(row.active_without_emissions ?? 0),
     }),
   });
 }
