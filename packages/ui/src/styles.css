@@ -1774,6 +1774,7 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-linkish{border:0;background:none;padding:0;color:var(--a-ink);font:inherit;font-weight:600;cursor:pointer;text-align:left}
 .nz-a-linkish:hover{color:var(--a-accent-ink);text-decoration:underline}
 .nz-a-muted{color:var(--a-ink-3)}
+.nz-a-sub{margin-top:2px;font-size:11px;color:var(--a-ink-3)}
 .nz-a-caption{margin-top:10px}
 
 /* The shared DataList, restyled to the design inside admin */
@@ -1792,6 +1793,8 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-admin .nz-tbl tr.row:hover td{background:var(--a-surface-2)}
 .nz-admin .nz-tbl th.num,.nz-admin .nz-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 .nz-admin .nz-sort{color:inherit}
+/* The sorted column keeps the admin ink — the console-wide rule above would give it the operational ink, unreadable in dark */
+.nz-admin th[aria-sort="ascending"] .nz-sort,.nz-admin th[aria-sort="descending"] .nz-sort{color:var(--a-ink)}
 .nz-admin .nz-sort-mark{color:var(--a-ink-3)}
 .nz-admin .nz-list-empty{padding:26px 18px;text-align:center;color:var(--a-ink-2);display:flex;flex-direction:column;gap:4px;font-size:13px}
 .nz-admin .nz-list-empty b{color:var(--a-ink)}

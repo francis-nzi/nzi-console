@@ -23,7 +23,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     group: "Delivery",
     items: [
-      { id: "job-types", label: "Job types", icon: "briefcase", href: "/admin/job-types", phase: "C", capability: "admin.lookups",
+      { id: "job-types", label: "Job types", icon: "briefcase", href: "/admin/job-types", capability: "admin.lookups",
         description: "The services NZI sells, each with a default price, effort and VAT, linked to the milestone template a new job of that type starts from." },
       { id: "milestone-templates", label: "Milestone templates", icon: "flag", href: "/admin/milestone-templates", phase: "C", capability: "admin.templates",
         description: "The default delivery schedule a new job’s three milestones are generated from — the upstream of the milestone command, and of Risk on new jobs." },

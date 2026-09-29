@@ -448,6 +448,10 @@ jobs:
       # lookup value, text untouched; version bump and one audit event per client; the client loader stays identical.
       - name: The v7 client links fill only what is empty, and the client loader still reads its clients as identical
         run: npx tsx --test packages/isolated-backend/tests/v7ClientLinkLoadReal.test.ts
+      # Jobs configuration (admin C1): migration 0139 — one default VAT rate and template, one item per kind, the file
+      # type key immutable and system types protected by grant; job types unique by name, family locked while in use.
+      - name: Job types are never deleted, keep their names, and keep their family while jobs use them
+        run: npx tsx --test packages/isolated-backend/tests/jobTypesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

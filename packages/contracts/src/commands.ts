@@ -1,4 +1,5 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
+import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
@@ -53,6 +54,10 @@ export type CommandKey =
   | "reference.value.update"
   | "reference.value.deactivate"
   | "reference.value.reinstate"
+  | "job_type.create"
+  | "job_type.update"
+  | "job_type.deactivate"
+  | "job_type.reinstate"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -519,6 +524,11 @@ export type CommandInputMap = {
   "reference.value.update": { categoryKey: string; valueId: string; label: string; code?: string | null; sortOrder: number; expectedVersion: number };
   "reference.value.deactivate": { categoryKey: string; valueId: string; expectedVersion: number };
   "reference.value.reinstate": { categoryKey: string; valueId: string; expectedVersion: number };
+  /** Job types (admin C1): the services the firm sells — added, edited, deactivated or reinstated, never deleted. */
+  "job_type.create": JobTypeFields;
+  "job_type.update": JobTypeFields & { jobTypeId: string; expectedVersion: number };
+  "job_type.deactivate": { jobTypeId: string; expectedVersion: number };
+  "job_type.reinstate": { jobTypeId: string; expectedVersion: number };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -673,6 +683,16 @@ const lookupIssues = (issues: CommandIssue[], input: { categoryKey: string; labe
   else if (input.label.trim().length > LOOKUP_LABEL_MAX) issues.push({ field: "label", code: "TOO_LONG", message: `A label is at most ${LOOKUP_LABEL_MAX} characters.` });
   if (input.code !== undefined && input.code !== null && input.code.trim().length > LOOKUP_CODE_MAX) issues.push({ field: "code", code: "TOO_LONG", message: `A code is at most ${LOOKUP_CODE_MAX} characters.` });
   if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
+};
+/** A job type's own fields: a name and optional code within bounds, one family, amounts to two places (admin C1). */
+const jobTypeIssues = (issues: CommandIssue[], input: JobTypeFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A name is required." });
+  else if (input.name.trim().length > JOB_TYPE_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${JOB_TYPE_NAME_MAX} characters.` });
+  if (input.code !== undefined && input.code !== null && input.code.trim().length > JOB_TYPE_CODE_MAX) issues.push({ field: "code", code: "TOO_LONG", message: `A code is at most ${JOB_TYPE_CODE_MAX} characters.` });
+  if (!isJobTypeFamily(input.family)) issues.push({ field: "family", code: "INVALID", message: "Choose the job family." });
+  if (input.description !== undefined && input.description !== null && input.description.length > JOB_TYPE_DESCRIPTION_MAX) issues.push({ field: "description", code: "TOO_LONG", message: `A description is at most ${JOB_TYPE_DESCRIPTION_MAX} characters.` });
+  if (input.defaultPriceExVat !== undefined && input.defaultPriceExVat !== null && !isTwoDecimalAmount(input.defaultPriceExVat, JOB_TYPE_PRICE_MAX)) issues.push({ field: "defaultPriceExVat", code: "INVALID", message: "A price is an amount from 0, to two decimal places." });
+  if (input.estimatedHours !== undefined && input.estimatedHours !== null && !isTwoDecimalAmount(input.estimatedHours, JOB_TYPE_HOURS_MAX)) issues.push({ field: "estimatedHours", code: "INVALID", message: "Hours are a number from 0, to two decimal places." });
 };
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
@@ -1030,6 +1050,32 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
     required(issues, "valueId", input.valueId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Job types (admin C1). Firm configuration like the lookups, so admin.lookups (the design's chip); deactivated, never
+  // deleted (R3), and a deactivation says why, as a lookup's does.
+  "job_type.create": { key: "job_type.create", label: "Add a job type", permission: "admin.lookups", reasonRequired: false, transaction: "job type + audit + outbox + idempotency", auditAction: "job_type.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    jobTypeIssues(issues, input);
+    return issues;
+  } },
+  "job_type.update": { key: "job_type.update", label: "Edit a job type", permission: "admin.lookups", reasonRequired: false, transaction: "versioned job type + audit + outbox + idempotency", auditAction: "job_type.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    jobTypeIssues(issues, input);
+    required(issues, "jobTypeId", input.jobTypeId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "job_type.deactivate": { key: "job_type.deactivate", label: "Deactivate a job type", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "job_type.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "jobTypeId", input.jobTypeId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "job_type.reinstate": { key: "job_type.reinstate", label: "Reinstate a job type", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "job_type.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobTypeId", input.jobTypeId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
