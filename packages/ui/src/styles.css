@@ -1756,6 +1756,49 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-mono{font-family:var(--a-mono);font-size:12px}
 .nz-a-pre{margin:0;padding:10px;border-radius:8px;background:var(--a-surface-2);border:1px solid var(--a-line);font-family:var(--a-mono);font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
 
+/* Admin A2 — the Lookups screen, and the shared DataList in the admin language (still scoped under .nz-admin). */
+.nz-a-hint-strip{display:flex;gap:9px;align-items:flex-start;background:var(--a-surface-2);border:1px solid var(--a-line);border-left:3px solid var(--a-accent);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--a-ink-2);margin-bottom:16px}
+.nz-a-hint-strip>span{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--a-accent-ink);color:var(--a-accent-ink);font-family:var(--a-mono);font-size:10px;font-weight:600;display:grid;place-items:center;margin-top:1px}
+.nz-a-hint-strip b{color:var(--a-ink)}
+.nz-a-catbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.nz-admin .nz-a-cat{border:1px solid var(--a-line);background:var(--a-surface);color:var(--a-ink-2);padding:6px 11px;border-radius:20px;font-size:12.5px;font-weight:500;display:inline-flex;gap:7px;align-items:center}
+.nz-a-cat .n{font-family:var(--a-mono);font-size:10.5px;color:var(--a-ink-3)}
+.nz-admin .nz-a-cat:hover{border-color:var(--a-accent)}
+.nz-admin .nz-a-cat.on{background:var(--a-accent);border-color:var(--a-accent);color:#fff}
+.nz-a-cat.on .n{color:rgba(255,255,255,.85)}
+.nz-a-seg{display:inline-flex;background:var(--a-surface-2);border:1px solid var(--a-line);border-radius:8px;padding:2px;align-self:flex-end}
+.nz-a-seg button{border:0;background:none;color:var(--a-ink-2);padding:6px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer}
+.nz-a-seg button .n{font-family:var(--a-mono);font-size:10.5px;color:var(--a-ink-3)}
+.nz-a-seg button.on{background:var(--a-surface);color:var(--a-ink);box-shadow:var(--a-shadow)}
+.nz-a-notice{margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-ok-bg);color:var(--a-ok);font-size:12.5px;font-weight:500}
+.nz-a-linkish{border:0;background:none;padding:0;color:var(--a-ink);font:inherit;font-weight:600;cursor:pointer;text-align:left}
+.nz-a-linkish:hover{color:var(--a-accent-ink);text-decoration:underline}
+.nz-a-muted{color:var(--a-ink-3)}
+.nz-a-caption{margin-top:10px}
+
+/* The shared DataList, restyled to the design inside admin */
+.nz-admin .nz-datalist-toolbar{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end;padding:0 0 10px}
+.nz-admin .nz-datalist-toolbar .nz-fl{margin:0;font-size:11.5px;font-weight:600;color:var(--a-ink-2)}
+.nz-admin .nz-inp,.nz-admin .nz-sel{height:auto;padding:8px 10px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-surface-2);color:var(--a-ink);font-size:13px;font-family:inherit}
+.nz-admin .nz-inp:focus,.nz-admin .nz-sel:focus{outline:2px solid var(--a-accent-weak);border-color:var(--a-accent);background:var(--a-surface)}
+.nz-admin .nz-btn{height:auto;padding:8px 13px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-surface);color:var(--a-ink);font-weight:500;font-size:13px}
+.nz-admin .nz-btn:disabled{opacity:.5}
+.nz-admin .nz-datalist-count{margin:0 0 8px;font-size:12px;color:var(--a-ink-3);font-family:var(--a-mono)}
+.nz-admin .nz-panel.nz-datalist-table{overflow-x:auto;border:1px solid var(--a-line);border-radius:var(--a-r);background:var(--a-surface);box-shadow:var(--a-shadow)}
+.nz-admin .nz-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.nz-admin .nz-tbl th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--a-ink-3);padding:10px 14px;border-bottom:1px solid var(--a-line);white-space:nowrap;background:var(--a-surface-2)}
+.nz-admin .nz-tbl td{padding:11px 14px;border-bottom:1px solid var(--a-line-2);vertical-align:middle;color:var(--a-ink);font-size:13px}
+.nz-admin .nz-tbl tbody tr:last-child td{border-bottom:0}
+.nz-admin .nz-tbl tr.row:hover td{background:var(--a-surface-2)}
+.nz-admin .nz-tbl th.num,.nz-admin .nz-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.nz-admin .nz-sort{color:inherit}
+.nz-admin .nz-sort-mark{color:var(--a-ink-3)}
+.nz-admin .nz-list-empty{padding:26px 18px;text-align:center;color:var(--a-ink-2);display:flex;flex-direction:column;gap:4px;font-size:13px}
+.nz-admin .nz-list-empty b{color:var(--a-ink)}
+.nz-admin .nz-datalist-pager{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:flex-end;padding:12px 0 4px}
+.nz-admin .nz-datalist-pager .nz-fl{margin:0;font-size:11.5px;color:var(--a-ink-2)}
+.nz-admin .nz-datalist-page{font-size:12.5px;color:var(--a-ink-2);align-self:center;font-family:var(--a-mono)}
+
 @media (max-width:920px){
   .nz-a-app{grid-template-columns:1fr}
   .nz-a-rail{position:fixed;left:0;top:0;bottom:0;width:246px;z-index:50;transform:translateX(-100%);transition:transform .2s}

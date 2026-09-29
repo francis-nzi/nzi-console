@@ -1,3 +1,4 @@
+import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
@@ -48,6 +49,10 @@ export type CommandKey =
   | "job.intensityValue.set"
   | "strategy.library.upsert"
   | "strategy.library.deactivate"
+  | "reference.value.create"
+  | "reference.value.update"
+  | "reference.value.deactivate"
+  | "reference.value.reinstate"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -509,6 +514,11 @@ export type CommandInputMap = {
   /** Open a dated assessment, stamped with the framework version in force. */
   "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
   "strategy.library.deactivate": { strategyId: string; expectedVersion: number; reason: string };
+  /** The reference-value engine (admin A2): a lookup value is added, edited, deactivated or reinstated — never deleted. */
+  "reference.value.create": { categoryKey: string; label: string; code?: string | null; sortOrder?: number };
+  "reference.value.update": { categoryKey: string; valueId: string; label: string; code?: string | null; sortOrder: number; expectedVersion: number };
+  "reference.value.deactivate": { categoryKey: string; valueId: string; expectedVersion: number };
+  "reference.value.reinstate": { categoryKey: string; valueId: string; expectedVersion: number };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -656,6 +666,14 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
   return issues;
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
+/** A lookup value's own fields: a managed category, a label within bounds, an optional short code, a whole sort order. */
+const lookupIssues = (issues: CommandIssue[], input: { categoryKey: string; label: string; code?: string | null; sortOrder?: number }) => {
+  if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
+  if (!text(input.label)) issues.push({ field: "label", code: "REQUIRED", message: "A label is required." });
+  else if (input.label.trim().length > LOOKUP_LABEL_MAX) issues.push({ field: "label", code: "TOO_LONG", message: `A label is at most ${LOOKUP_LABEL_MAX} characters.` });
+  if (input.code !== undefined && input.code !== null && input.code.trim().length > LOOKUP_CODE_MAX) issues.push({ field: "code", code: "TOO_LONG", message: `A code is at most ${LOOKUP_CODE_MAX} characters.` });
+  if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
+};
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
   if (typeof bodyHtml !== "string" || bodyHtml.trim().length === 0) { issues.push({ field: "bodyHtml", code: "REQUIRED", message: "Section body is required." }); return issues; }
@@ -983,6 +1001,35 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "strategyId", input.strategyId);
     // Withdrawing a lever changes what every consultant can reach, so it carries a reason.
     required(issues, "reason", input.reason);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // The reference-value engine (admin A2). Lookups are firm configuration, so every change is admin.lookups; a value is
+  // deactivated, never deleted (R3), and a deactivation carries a reason (ruled P7).
+  "reference.value.create": { key: "reference.value.create", label: "Add a lookup value", permission: "admin.lookups", reasonRequired: false, transaction: "reference value + audit + outbox + idempotency", auditAction: "reference.value.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    lookupIssues(issues, input);
+    return issues;
+  } },
+  "reference.value.update": { key: "reference.value.update", label: "Edit a lookup value", permission: "admin.lookups", reasonRequired: false, transaction: "versioned reference value + audit + outbox + idempotency", auditAction: "reference.value.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    lookupIssues(issues, input);
+    required(issues, "valueId", input.valueId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "reference.value.deactivate": { key: "reference.value.deactivate", label: "Deactivate a lookup value", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "reference.value.deactivated", validate: (input, context) => {
+    // Deactivating takes a value out of every picker, so it says why (ruled P7).
+    const issues = baseIssues(context, true);
+    if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
+    required(issues, "valueId", input.valueId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "reference.value.reinstate": { key: "reference.value.reinstate", label: "Reinstate a lookup value", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "reference.value.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
+    required(issues, "valueId", input.valueId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },

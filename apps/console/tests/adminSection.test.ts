@@ -22,7 +22,7 @@ describe("admin access is checked by every admin page", () => {
   const found = pages(adminDir);
 
   it("finds the admin pages", () => {
-    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "page.tsx"]);
+    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "lookups/page.tsx", "page.tsx"]);
   });
 
   for (const path of pages(adminDir)) {
@@ -31,7 +31,7 @@ describe("admin access is checked by every admin page", () => {
       const source = readFileSync(path, "utf8");
       const check = source.indexOf(`if (access.state !== "allowed") return null;`);
       assert.ok(source.indexOf("await adminAccess()") >= 0 && check > source.indexOf("await adminAccess()"), "resolves access, then refuses");
-      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()"]) {
+      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories("]) {
         const at = source.indexOf(read);
         if (at >= 0) assert.ok(at > check, `${read} comes after the access check`);
       }
@@ -52,9 +52,10 @@ describe("the admin rail follows the approved design", () => {
   });
 
   it("shows every unbuilt area with its roadmap phase (ruled P9), and links each to its own page", () => {
-    const unbuilt = ADMIN_ITEMS.filter((item) => item.id !== "overview");
+    const LIVE = ["overview", "lookups"];
+    const unbuilt = ADMIN_ITEMS.filter((item) => !LIVE.includes(item.id));
     assert.ok(unbuilt.every((item) => item.phase && item.href === `/admin/${item.id}`));
-    assert.equal(ADMIN_ITEMS.find((item) => item.id === "lookups")?.phase, "A2", "Lookups is the next to arrive");
+    assert.equal(ADMIN_ITEMS.find((item) => item.id === "lookups")?.phase, undefined, "Lookups is live (A2)");
   });
 
   it("names the governing capability wherever a phase's writes have one", () => {

@@ -12,7 +12,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     group: "Foundation",
     items: [
-      { id: "lookups", label: "Lookups", icon: "list", href: "/admin/lookups", phase: "A2", capability: "admin.lookups",
+      { id: "lookups", label: "Lookups", icon: "list", href: "/admin/lookups", capability: "admin.lookups",
         description: "One engine for every simple reference list — industries, referrals, portfolios, payment terms, units and more. Values are edited, reordered and deactivated, never deleted, and stay resolved on records that already use them." },
       { id: "team", label: "Team & access", icon: "users", href: "/admin/team", phase: "B", capability: "admin.users",
         description: "Staff records, role assignment against the versioned capability matrix, and deactivation — replacing today’s command-line-only path." },
