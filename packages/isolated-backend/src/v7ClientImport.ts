@@ -43,11 +43,17 @@ export type ExcludedRecord = { table: V7Table; legacyId: string; reason: Exclusi
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Every `data_source` v7's code writes. Anything else is carried as "Other" and reported — never as free text. */
+/**
+ * Every `data_source` v7 writes: the values its code sets, and the ones live v7 was found to hold (extract of 29 Sep
+ * 2026) — v7's own enumerations, not free text. Anything else is carried as "Other" and reported — never as its text.
+ */
 export const KNOWN_DATA_SOURCES = [
   "Company Data", "Spend Data", "WFM Import", "Legacy Annual Upload", "Previous Year Import",
   "Employee Commuting Template", "Employee Commuting Direct Entry", "Employee Commuting (Consolidated)",
   "Source Register", "Asset Register", "Business Travel Register",
+  // Found in live v7, 29 Sep 2026: rows and register sources a client entered in v7's portal, and three more of v7's
+  // own labels.
+  "Client Portal", "Previous Year", "Business Travel Data", "Custom Dataset",
 ] as const;
 /** v7 never writes these to a row; one in the table would be counted twice beside its sources (§6.1). */
 export const CONSOLIDATED_ON_READ = ["Asset Register (Consolidated)", "Business Travel Register (Consolidated)"] as const;
@@ -58,6 +64,8 @@ const COMMUTING_CONSOLIDATED = "Employee Commuting (Consolidated)";
 export const JOB_STATUS_MAP: Readonly<Record<string, "open" | "complete">> = {
   Open: "open", "Data Gathering Phase": "open", "Reporting Phase": "open", "Awaiting Client Input": "open",
   Completed: "complete", Closed: "complete",
+  // Found in live v7, 29 Sep 2026 (30 jobs): v7's fullest "closed" — like Completed and Closed, complete.
+  "Job Closed - All Reports, Invoices and Support Completed": "complete",
 };
 const ACTIVE_CLIENT_STATUSES = ["Active", "Portfolio Owner"];
 const REVIEW_STATUSES = ["pending", "submitted", "approved", "rejected"] as const;
