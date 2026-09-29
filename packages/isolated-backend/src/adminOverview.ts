@@ -37,6 +37,8 @@ export type AdminOverview = {
 export const ADMIN_AUDIT_ACTIONS = [
   "reference.%", "team.%", "staff.role.%", "staff.invite%", "staff.enrolment.issue", "staff.enrolment.revoke",
   "strategy.library.%", "factor.variant.%", "milestones.imported",
+  // Jobs configuration (admin C): the job-type and template commands, and the import that fills them.
+  "job_type.%", "milestone_template.%", "jobs_config.imported",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

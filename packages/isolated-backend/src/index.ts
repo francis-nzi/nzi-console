@@ -46,6 +46,7 @@ export * from "./jobTypes";
 export * from "./milestoneTemplates";
 export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";
 export { loadV7ClientLinks, planClientLinks } from "./v7ClientLinkLoad";
+export { loadV7JobsConfig, planV7JobsConfig, V7_JOBS_CONFIG_TABLES } from "./v7JobsConfigLoad";
 export { likePattern } from "./listPage";
 export * from "./inputSpecRecords";
 export * from "./inputSpecFactorRules";

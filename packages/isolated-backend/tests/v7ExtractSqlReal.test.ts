@@ -70,6 +70,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       // The admin lookups (A3): configuration, taken whole — `all`, not scoped by client.
       industries_lookup: 3, referrals_lookup: 1, payment_terms_lookup: 2, positions_lookup: 1, processes_lookup: 1, client_teams_lookup: 1,
       action_categories_lookup: 1, governance_subjects_lookup: 1, bd_bin_reasons_lookup: 1, uom_lookup: 2, job_item_categories_lookup: 2,
+      // Jobs configuration (admin C4): taken whole, except the completions — those of the in-scope jobs only.
+      vat_rates_lookup: 3, milestone_templates: 3, milestone_template_items: 7, job_template_milestone_completions: 1, job_file_types_lookup: 3,
     }, "the prospect and the archived client, their site, the client-less job and the prospect's job stay behind");
     const clients = (await db.query(queries.get("clients")!)).rows.map((row) => row.db_id);
     assert.deepEqual(clients, ["1", "2"]);
