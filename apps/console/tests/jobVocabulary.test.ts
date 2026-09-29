@@ -32,6 +32,8 @@ const KEPT: Record<string, string> = {
     "Spheres of Influence — stakeholder engagement, not a unit of work.",
   "packages/ui/src/styles.css":
     "`nz-engagement-badge` styles that tracker's badge; the surrounding comment names the same subsystem.",
+  "apps/console/app/admin/adminNav.ts":
+    "The approved admin design's 'Engagement' rail group — message templates, report templates, CRM — is how NZI engages clients and prospects, not a job.",
 };
 
 const AREAS = ["apps/console/app", "packages/ui/src"];

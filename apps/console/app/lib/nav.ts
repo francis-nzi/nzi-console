@@ -19,6 +19,8 @@ export const NAV: NavSection[] = [
       { id: "bd", label: "Sales", icon: "trend", href: "/sales" },
       { id: "knowledge", label: "Knowledge", icon: "file", href: "/knowledge" },
       { id: "platform", label: "Platform & audit", icon: "settings", href: "/platform" },
+      // Shown only to a holder of an admin capability (GatedNavLink); /admin authorises every request itself.
+      { id: "admin", label: "Admin", icon: "settings", href: "/admin", capabilityPrefix: "admin." },
     ],
   },
 ];

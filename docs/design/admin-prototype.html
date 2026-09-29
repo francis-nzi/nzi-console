@@ -1,0 +1,690 @@
+<title>NZI Admin Console</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Layout concept: fixed instrument-panel frame — deep-quiet left rail, calm top bar, one working canvas.
+     Governance (audit, provenance, deactivate-not-delete, capability + environment) rendered as first-class UI. */
+  :root{
+    --bg:#F2F5F3; --surface:#FFFFFF; --surface-2:#F7F9F8; --rail:#12201B; --rail-2:#1B2E27; --rail-ink:#C9D6D0; --rail-ink-2:#7E938B;
+    --ink:#17201C; --ink-2:#586460; --ink-3:#8A938E; --line:#DEE4E1; --line-2:#EAEEEC;
+    --accent:#0E7C5A; --accent-ink:#0B6349; --accent-weak:#E2F0EA;
+    --ok:#0B7A4B; --ok-bg:#DFF3E9; --warn:#8A5A0F; --warn-bg:#FBEFD6; --bad:#B23A2B; --bad-bg:#FBE7E3; --muted-bg:#EDF1EF;
+    --shadow:0 1px 2px rgba(16,32,26,.05),0 8px 24px -12px rgba(16,32,26,.14);
+    --shadow-lg:0 24px 60px -24px rgba(16,32,26,.35);
+    --f-sans:"Hanken Grotesk",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --r:10px; --r-sm:7px;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0D1310; --surface:#141C18; --surface-2:#101713; --rail:#0A100D; --rail-2:#141F1A; --rail-ink:#B7C6BF; --rail-ink-2:#6C7F77;
+    --ink:#E8EDEA; --ink-2:#A3AEA8; --ink-3:#727C77; --line:#25302A; --line-2:#1C251F;
+    --accent:#3FBE8C; --accent-ink:#57CF9F; --accent-weak:#12271F;
+    --ok:#48C089; --ok-bg:#122A1F; --warn:#D9A648; --warn-bg:#2C2411; --bad:#E0796B; --bad-bg:#2E1815; --muted-bg:#1A231E;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6); --shadow-lg:0 28px 70px -28px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0D1310; --surface:#141C18; --surface-2:#101713; --rail:#0A100D; --rail-2:#141F1A; --rail-ink:#B7C6BF; --rail-ink-2:#6C7F77;
+    --ink:#E8EDEA; --ink-2:#A3AEA8; --ink-3:#727C77; --line:#25302A; --line-2:#1C251F;
+    --accent:#3FBE8C; --accent-ink:#57CF9F; --accent-weak:#12271F;
+    --ok:#48C089; --ok-bg:#122A1F; --warn:#D9A648; --warn-bg:#2C2411; --bad:#E0796B; --bad-bg:#2E1815; --muted-bg:#1A231E;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6); --shadow-lg:0 28px 70px -28px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{margin:0;font-weight:600;text-wrap:balance;letter-spacing:-.01em}
+  button{font-family:inherit;font-size:inherit;cursor:pointer}
+  a{color:var(--accent-ink);text-decoration:none}
+  ::selection{background:var(--accent-weak)}
+
+  .app{display:grid;grid-template-columns:246px 1fr;height:100%;min-height:0}
+
+  /* ── Rail ─────────────────────────────────────────── */
+  .rail{background:var(--rail);color:var(--rail-ink);display:flex;flex-direction:column;min-height:0;border-right:1px solid rgba(0,0,0,.2)}
+  .brand{display:flex;align-items:center;gap:10px;padding:16px 16px 14px}
+  .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,var(--accent),#0B6349);display:grid;place-items:center;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+  .mark svg{width:17px;height:17px}
+  .brand b{color:#fff;font-size:14.5px;font-weight:600;letter-spacing:-.02em;line-height:1.05;display:block}
+  .brand span{color:var(--rail-ink-2);font-family:var(--f-mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+  .nav{overflow-y:auto;padding:6px 10px 16px;flex:1;min-height:0}
+  .nav-group{margin-top:14px}
+  .nav-group>p{margin:0 0 4px;padding:0 8px;font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--rail-ink-2)}
+  .nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:var(--rail-ink);padding:7px 8px;border-radius:7px;font-size:13px;font-weight:500;transition:background .12s,color .12s}
+  .nav-item svg{width:16px;height:16px;flex:none;opacity:.82}
+  .nav-item .count{margin-left:auto;font-family:var(--f-mono);font-size:10.5px;color:var(--rail-ink-2);background:rgba(255,255,255,.05);padding:1px 6px;border-radius:20px}
+  .nav-item:hover{background:var(--rail-2);color:#fff}
+  .nav-item.on{background:var(--rail-2);color:#fff}
+  .nav-item.on svg{opacity:1;color:var(--accent-ink)}
+  .nav-item.on .count{color:var(--rail-ink);background:rgba(63,190,140,.16)}
+  .rail-foot{border-top:1px solid rgba(255,255,255,.07);padding:12px 14px;display:flex;align-items:center;gap:10px}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--rail-2);display:grid;place-items:center;font-size:11px;font-weight:600;color:#fff;flex:none}
+  .rail-foot .who{min-width:0}
+  .rail-foot .who b{display:block;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rail-foot .who span{color:var(--rail-ink-2);font-size:11px}
+
+  /* ── Main ─────────────────────────────────────────── */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .topbar{display:flex;align-items:center;gap:12px;padding:11px 22px;border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+  .hamb{display:none;background:none;border:1px solid var(--line);border-radius:8px;width:34px;height:34px;color:var(--ink-2);align-items:center;justify-content:center;flex:none}
+  .crumb{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-3);min-width:0}
+  .crumb b{color:var(--ink);font-weight:600}
+  .crumb .sep{opacity:.5}
+  .search{margin-left:auto;position:relative;display:flex;align-items:center}
+  .search svg{position:absolute;left:9px;width:15px;height:15px;color:var(--ink-3)}
+  .search input{width:210px;max-width:32vw;padding:7px 10px 7px 30px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);font-size:13px;font-family:inherit}
+  .search input:focus{outline:2px solid var(--accent-weak);border-color:var(--accent);background:var(--surface)}
+  .env{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:10.5px;font-weight:500;color:var(--warn);background:var(--warn-bg);padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .env i{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  .icon-btn{background:none;border:1px solid var(--line);border-radius:8px;width:34px;height:34px;color:var(--ink-2);display:grid;place-items:center;flex:none}
+  .icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+
+  .canvas{overflow-y:auto;flex:1;min-height:0}
+  .wrap{max-width:1120px;margin:0 auto;padding-block:26px;padding-left:22px;padding-right:22px}
+  .proto-note{background:var(--accent-weak);color:var(--accent-ink);font-size:12px;font-weight:500;text-align:center;padding:6px 16px;border-bottom:1px solid var(--line)}
+  .proto-note b{font-weight:700}
+
+  .page-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+  .page-head .eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink);font-weight:500}
+  .page-head h1{font-size:23px;margin-top:3px}
+  .page-head p{margin:6px 0 0;color:var(--ink-2);max-width:60ch;font-size:13.5px}
+  .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .cap{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-2);background:var(--muted-bg);border:1px solid var(--line);padding:4px 8px;border-radius:6px}
+  .cap svg{width:12px;height:12px;opacity:.7}
+
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:500;font-size:13px;transition:background .12s,border-color .12s}
+  .btn:hover{background:var(--surface-2)}
+  .btn svg{width:15px;height:15px}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.pri:hover{background:var(--accent-ink)}
+  .btn.sm{padding:5px 10px;font-size:12.5px}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--ink-2)}
+  .btn.ghost:hover{background:var(--surface-2);color:var(--ink)}
+
+  /* cards / metrics */
+  .grid{display:grid;gap:14px}
+  .cols-4{grid-template-columns:repeat(4,1fr)}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .cols-2{grid-template-columns:1.6fr 1fr}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+  .pad{padding:16px 18px}
+  .metric .l{font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:7px}
+  .metric .l svg{width:14px;height:14px;color:var(--accent-ink)}
+  .metric .v{font-size:27px;font-weight:600;letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums}
+  .metric .s{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+
+  .sec-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .sec-card{display:flex;flex-direction:column;gap:9px;text-align:left;padding:15px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);transition:border-color .12s,transform .12s}
+  .sec-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .sec-card .ic{width:32px;height:32px;border-radius:8px;background:var(--accent-weak);color:var(--accent-ink);display:grid;place-items:center}
+  .sec-card .ic svg{width:17px;height:17px}
+  .sec-card b{font-size:13.5px;font-weight:600}
+  .sec-card p{margin:0;font-size:12px;color:var(--ink-2);line-height:1.4}
+  .sec-card .foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--ink-3);font-family:var(--f-mono)}
+
+  .panel-title{display:flex;align-items:center;gap:9px;padding:14px 18px;border-bottom:1px solid var(--line-2)}
+  .panel-title h3{font-size:14px}
+  .panel-title .badge{margin-left:auto}
+
+  .feed{display:flex;flex-direction:column}
+  .feed-row{display:flex;gap:11px;padding:11px 18px;border-bottom:1px solid var(--line-2);align-items:flex-start}
+  .feed-row:last-child{border-bottom:0}
+  .feed-dot{width:26px;height:26px;border-radius:7px;background:var(--muted-bg);display:grid;place-items:center;flex:none;color:var(--ink-2)}
+  .feed-dot svg{width:13px;height:13px}
+  .feed-row .t{font-size:12.8px}
+  .feed-row .t b{font-weight:600}
+  .feed-row .m{font-size:11.5px;color:var(--ink-3);margin-top:1px;font-family:var(--f-mono)}
+
+  /* table */
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:2px}
+  .seg button{border:0;background:none;color:var(--ink-2);padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500}
+  .seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+  .filter{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface-2)}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr{cursor:pointer;transition:background .1s}
+  tbody tr:hover{background:var(--surface-2)}
+  .num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--f-mono);font-size:12.5px}
+  .mono{font-family:var(--f-mono);font-size:12px;color:var(--ink-2)}
+  .primary-cell{font-weight:600;color:var(--ink)}
+  td .sub{font-size:11.5px;color:var(--ink-3)}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .badge i{width:6px;height:6px;border-radius:50%}
+  .b-ok{background:var(--ok-bg);color:var(--ok)} .b-ok i{background:var(--ok)}
+  .b-off{background:var(--muted-bg);color:var(--ink-3)} .b-off i{background:var(--ink-3)}
+  .b-warn{background:var(--warn-bg);color:var(--warn)} .b-warn i{background:var(--warn)}
+  .prov{font-family:var(--f-mono);font-size:10px;letter-spacing:.02em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:var(--muted-bg);color:var(--ink-3);border:1px solid var(--line)}
+  .inuse{font-family:var(--f-mono);font-size:12px;color:var(--ink-2)}
+  .inuse.zero{color:var(--ink-3)}
+
+  .catbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .cat{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);padding:6px 11px;border-radius:20px;font-size:12.5px;font-weight:500;display:inline-flex;gap:7px;align-items:center}
+  .cat .n{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3)}
+  .cat:hover{border-color:var(--accent)}
+  .cat.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .cat.on .n{color:rgba(255,255,255,.8)}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(16,26,22,.42);opacity:0;pointer-events:none;transition:opacity .18s;z-index:40}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:404px;max-width:92vw;background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);transform:translateX(100%);transition:transform .2s cubic-bezier(.4,0,.2,1);z-index:41;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+  .drawer.on{transform:none}
+  .drawer-head{display:flex;align-items:flex-start;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line-2)}
+  .drawer-head .eyebrow{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink)}
+  .drawer-head h3{font-size:16px;margin-top:3px}
+  .drawer-body{overflow-y:auto;flex:1;padding:18px;display:flex;flex-direction:column;gap:15px}
+  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px;letter-spacing:.01em}
+  .field input,.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);font-size:13px;font-family:inherit}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent-weak);border-color:var(--accent);background:var(--surface)}
+  .field .hint{font-size:11px;color:var(--ink-3);margin-top:4px}
+  .field.mono input{font-family:var(--f-mono)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .switch{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+  .switch .tx b{font-size:13px} .switch .tx p{margin:1px 0 0;font-size:11.5px;color:var(--ink-3)}
+  .tog{width:38px;height:22px;border-radius:20px;background:var(--line);border:0;position:relative;flex:none;transition:background .15s}
+  .tog::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .tog.on{background:var(--accent)} .tog.on::after{transform:translateX(16px)}
+  .drawer-foot{border-top:1px solid var(--line-2);padding:13px 18px;display:flex;flex-direction:column;gap:10px}
+  .audit-line{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-3);font-family:var(--f-mono)}
+  .audit-line svg{width:13px;height:13px}
+  .foot-btns{display:flex;gap:8px}
+  .foot-btns .btn{flex:1;justify-content:center}
+  .danger{color:var(--bad);border-color:transparent;background:transparent}
+  .danger:hover{background:var(--bad-bg)}
+
+  /* milestone items */
+  .mitems{display:flex;flex-direction:column;gap:8px}
+  .mitem{display:grid;grid-template-columns:22px 1fr 92px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+  .mitem .k{width:22px;height:22px;border-radius:6px;background:var(--accent-weak);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-mono);font-size:11px;font-weight:600}
+  .mitem b{font-size:13px} .mitem .kind{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3)}
+  .mitem .off{font-family:var(--f-mono);font-size:12px;color:var(--ink-2);text-align:right}
+
+  /* org settings */
+  .settings{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .fieldset{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+  .fieldset>h4{font-size:13px;padding:13px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:8px}
+  .fieldset .fs-body{padding:16px;display:flex;flex-direction:column;gap:13px}
+  .locked{position:relative}
+  .locked .fs-body{filter:blur(3px);opacity:.5;pointer-events:none;user-select:none}
+  .lock-note{position:absolute;inset:38px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px}
+  .lock-note svg{width:22px;height:22px;color:var(--ink-3)}
+  .lock-note b{font-size:13px}
+  .lock-note span{font-size:12px;color:var(--ink-2);max-width:34ch}
+
+  .placeholder{text-align:center;padding:60px 24px;border:1px dashed var(--line);border-radius:var(--r);background:var(--surface-2)}
+  .placeholder .ic{width:44px;height:44px;border-radius:11px;background:var(--muted-bg);color:var(--ink-2);display:grid;place-items:center;margin:0 auto 14px}
+  .placeholder .ic svg{width:22px;height:22px}
+  .placeholder h3{font-size:16px}
+  .placeholder p{color:var(--ink-2);max-width:44ch;margin:8px auto 0;font-size:13px}
+  .placeholder .phase{display:inline-block;margin-top:14px;font-family:var(--f-mono);font-size:11px;color:var(--accent-ink);background:var(--accent-weak);padding:4px 10px;border-radius:20px}
+
+  .hint-strip{display:flex;gap:9px;align-items:flex-start;background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--ink-2);margin-bottom:16px}
+  .hint-strip svg{width:15px;height:15px;color:var(--accent-ink);flex:none;margin-top:1px}
+
+  @media (max-width:920px){
+    .app{grid-template-columns:1fr}
+    .rail{position:fixed;top:0;left:0;bottom:0;width:246px;z-index:50;transform:translateX(-100%);transition:transform .2s}
+    .rail.on{transform:none}
+    .hamb{display:inline-flex}
+    .cols-4{grid-template-columns:repeat(2,1fr)}
+    .cols-2{grid-template-columns:1fr}
+    .sec-cards{grid-template-columns:1fr 1fr}
+    .settings{grid-template-columns:1fr}
+  }
+  @media (max-width:560px){
+    .cols-4{grid-template-columns:1fr 1fr}
+    .sec-cards{grid-template-columns:1fr}
+    .search input{width:140px}
+    .wrap{padding-left:16px;padding-right:16px}
+    .head-actions .cap{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <aside class="rail" id="rail">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 10l7-7 7 7"/></svg></span>
+      <div><b>NZ Insights Pro</b><span>Admin</span></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="rail-foot">
+      <div class="avatar">FD</div>
+      <div class="who"><b>Francis Doherty</b><span>Owner · Admin</span></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamb" id="hamb" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="crumb" id="crumb"></div>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg><input placeholder="Search settings…" aria-label="Search settings"></div>
+      <span class="env" title="Reads and writes the isolated, non-production database"><i></i>Staging · isolated</span>
+      <button class="icon-btn" id="theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg></button>
+    </div>
+    <div class="proto-note">Design prototype for review — a redesign of the admin section. Sample data; actions demonstrate the intended patterns and are not saved.</div>
+    <div class="canvas"><div class="wrap" id="view"></div></div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<script>
+/* ---------- icons ---------- */
+const I = {
+  home:'<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3"/><circle cx="3.5" cy="12" r="1.3"/><circle cx="3.5" cy="18" r="1.3"/>',
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M17 5.5a3 3 0 0 1 0 5.8M16.5 20a5.5 5.5 0 0 0-3-4.9"/>',
+  building:'<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>',
+  briefcase:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/>',
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  coin:'<circle cx="12" cy="12" r="8"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/><path d="M12 16h.01"/>',
+  cart:'<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.5 12h11L21 7H6"/>',
+  truck:'<rect x="1.5" y="6" width="13" height="10" rx="1"/><path d="M14.5 9h4l3 3v4h-7z"/><circle cx="6" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6M9 16h6M9 8h3"/>',
+  funnel:'<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+  atom:'<circle cx="12" cy="12" r="2"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(120 12 12)"/>',
+  sliders:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/>',
+  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+  lock:'<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  shield:'<path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  edit:'<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 6l4 4"/>',
+  check:'<path d="M5 12l4 4L19 7"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  tag:'<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
+  archive:'<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>',
+};
+const svg=(n,w=16)=>`<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${I[n]||''}</svg>`;
+
+/* ---------- nav model ---------- */
+const NAV=[
+  {group:null,items:[{id:'home',label:'Overview',icon:'home'}]},
+  {group:'Foundation',items:[
+    {id:'lookups',label:'Lookups',icon:'list',count:'22'},
+    {id:'team',label:'Team & access',icon:'users',count:'14'},
+    {id:'org',label:'Organisation',icon:'building'},
+  ]},
+  {group:'Delivery',items:[
+    {id:'jobtypes',label:'Job types',icon:'briefcase',count:'5'},
+    {id:'milestones',label:'Milestone templates',icon:'flag',count:'3'},
+    {id:'filetypes',label:'File types',icon:'file',count:'2'},
+  ]},
+  {group:'Commercial',items:[
+    {id:'tax',label:'Tax & currency',icon:'coin',count:'9'},
+    {id:'catalogue',label:'Service catalogue',icon:'cart',count:'48'},
+    {id:'suppliers',label:'Suppliers',icon:'truck'},
+  ]},
+  {group:'Engagement',items:[
+    {id:'messages',label:'Message templates',icon:'mail'},
+    {id:'reports',label:'Report templates',icon:'doc'},
+    {id:'crm',label:'CRM & pipeline',icon:'funnel'},
+  ]},
+  {group:'Carbon data',items:[
+    {id:'factors',label:'Factor library',icon:'atom',count:'80k'},
+    {id:'custom',label:'Custom factors',icon:'sliders'},
+    {id:'methodology',label:'Methodology',icon:'book'},
+  ]},
+];
+const PHASE={team:'B',org:'D',filetypes:'C',tax:'E',catalogue:'E',suppliers:'E',messages:'F',reports:'H',crm:'F',factors:'G',custom:'G',methodology:'G'};
+const LABELS={};NAV.forEach(g=>g.items.forEach(i=>LABELS[i.id]=i.label));
+
+/* ---------- data ---------- */
+const LOOKUPS={
+  industries:{label:'Industries',n:44,note:'SIC-coded sectors used on the client record.',cols:['code'],
+    rows:[
+      {name:'Manufacturing',code:'C',sort:10,use:63,active:true,prov:'v7'},
+      {name:'Construction',code:'F',sort:20,use:48,active:true,prov:'v7'},
+      {name:'Professional services',code:'M',sort:30,use:41,active:true,prov:'v7'},
+      {name:'Wholesale & retail',code:'G',sort:40,use:37,active:true,prov:'v7'},
+      {name:'Transport & storage',code:'H',sort:50,use:22,active:true,prov:'v7'},
+      {name:'Information & communication',code:'J',sort:60,use:19,active:true,prov:'v7'},
+      {name:'Financial services',code:'K',sort:70,use:14,active:true,prov:'v7'},
+      {name:'Hospitality',code:'I',sort:80,use:9,active:true,prov:'v7'},
+      {name:'Agriculture',code:'A',sort:90,use:6,active:true,prov:'v7'},
+      {name:'Mining & quarrying',code:'B',sort:100,use:0,active:false,prov:'seed'},
+    ]},
+  referrals:{label:'Referrals',n:2,note:'How a client first came to NZI.',cols:[],
+    rows:[{name:'Existing client',code:'REF-EX',sort:10,use:118,active:true,prov:'v7'},{name:'Partner network',code:'REF-PN',sort:20,use:57,active:true,prov:'v7'}]},
+  portfolios:{label:'Portfolios',n:2,note:'Owner-led client groupings.',cols:[],
+    rows:[{name:'Net Zero International',code:'NZI',sort:10,use:301,active:true,prov:'v7'},{name:'Net Zero Nordics',code:'NZN',sort:20,use:132,active:true,prov:'v7'}]},
+  payment:{label:'Payment terms',n:4,note:'Applied to quotes and invoices.',cols:[],
+    rows:[{name:'14 days',code:'NET14',sort:10,use:12,active:true,prov:'v7'},{name:'30 days',code:'NET30',sort:20,use:284,active:true,prov:'v7'},{name:'60 days',code:'NET60',sort:30,use:41,active:true,prov:'v7'},{name:'On receipt',code:'DUE',sort:40,use:3,active:true,prov:'added'}]},
+  uom:{label:'Units of measure',n:11,note:'Quantities on job items and suppliers.',cols:[],
+    rows:[{name:'Each',code:'EA',sort:10,use:120,active:true,prov:'v7'},{name:'Hour',code:'HR',sort:20,use:512,active:true,prov:'v7'},{name:'Day',code:'DAY',sort:30,use:88,active:true,prov:'v7'},{name:'Kilometre',code:'KM',sort:40,use:31,active:true,prov:'v7'},{name:'Tonne',code:'T',sort:50,use:12,active:true,prov:'v7'}]},
+  itemcat:{label:'Job item categories',n:10,note:'Groups the service catalogue.',cols:[],
+    rows:[{name:'Consultancy',code:'CONS',sort:10,use:22,active:true,prov:'v7'},{name:'Verification',code:'VER',sort:20,use:8,active:true,prov:'v7'},{name:'Training',code:'TRN',sort:30,use:11,active:true,prov:'v7'},{name:'Software',code:'SW',sort:40,use:4,active:true,prov:'v7'},{name:'Disbursements',code:'DISB',sort:50,use:0,active:false,prov:'v7'}]},
+};
+const LOOKUP_ORDER=['industries','referrals','portfolios','payment','uom','itemcat'];
+
+const JOBTYPES=[
+  {name:'Carbon Report — Standard',code:'CRP-STD',family:'Carbon reporting',price:4500,hours:40,vat:'20%',tmpl:'Standard CRP',active:true,prov:'v7'},
+  {name:'Carbon Report — Plus',code:'CRP-PLUS',family:'Carbon reporting',price:7500,hours:65,vat:'20%',tmpl:'Standard CRP',active:true,prov:'v7'},
+  {name:'PAS 2060 Verification',code:'VER-2060',family:'Advisory',price:6000,hours:48,vat:'20%',tmpl:'—',active:true,prov:'v7'},
+  {name:'Product LCA',code:'LCA-PROD',family:'LCA',price:9800,hours:80,vat:'20%',tmpl:'LCA delivery',active:true,prov:'v7'},
+  {name:'Training — Half day',code:'TRN-HALF',family:'Training',price:900,hours:6,vat:'20%',tmpl:'—',active:false,prov:'added'},
+];
+const MTEMPLATES=[
+  {name:'Standard CRP',def:true,active:true,jobtypes:['Carbon Report — Standard','Carbon Report — Plus'],
+   items:[{k:'DC',kind:'data_collection',name:'Data collection',off:14},{k:'FD',kind:'first_draft',name:'First draft',off:35},{k:'FR',kind:'final_report',name:'Final report',off:56}]},
+  {name:'Express CRP',def:false,active:true,jobtypes:[],
+   items:[{k:'DC',kind:'data_collection',name:'Data collection',off:7},{k:'FD',kind:'first_draft',name:'First draft',off:18},{k:'FR',kind:'final_report',name:'Final report',off:28}]},
+  {name:'LCA delivery',def:false,active:true,jobtypes:['Product LCA'],
+   items:[{k:'DC',kind:'data_collection',name:'Inventory collection',off:21},{k:'FD',kind:'first_draft',name:'Model & draft',off:49},{k:'FR',kind:'final_report',name:'Final LCA report',off:70}]},
+];
+const FEED=[
+  {who:'Priya Anand',act:'updated the VAT rate',obj:'Standard 20%',t:'today · 09:41',ic:'edit'},
+  {who:'System import',act:'backfilled 1,022 milestones from v7',obj:'run v7-milestones-39dd1d89',t:'today · 08:02',ic:'check'},
+  {who:'Francis Doherty',act:'deactivated the lookup value',obj:'Mining & quarrying',t:'yesterday · 17:20',ic:'archive'},
+  {who:'Tom Reilly',act:'added a payment term',obj:'On receipt',t:'yesterday · 14:55',ic:'plus'},
+  {who:'Priya Anand',act:'edited the milestone template',obj:'Standard CRP',t:'2 days ago',ic:'flag'},
+];
+
+/* ---------- helpers ---------- */
+const el=id=>document.getElementById(id);
+const PROVLABEL={v7:'Imported · v7',added:'Added here',seed:'Seeded'};
+const badge=(active)=>active?'<span class="badge b-ok"><i></i>Active</span>':'<span class="badge b-off"><i></i>Inactive</span>';
+const money=n=>'£'+n.toLocaleString('en-GB');
+let state={view:'home',cat:'industries'};
+
+/* ---------- render: nav ---------- */
+function renderNav(){
+  el('nav').innerHTML=NAV.map(g=>{
+    const items=g.items.map(i=>`<button class="nav-item ${state.view===i.id?'on':''}" data-view="${i.id}">${svg(i.icon)}<span>${i.label}</span>${i.count?`<span class="count">${i.count}</span>`:''}</button>`).join('');
+    return (g.group?`<div class="nav-group"><p>${g.group}</p>${items}</div>`:`<div class="nav-group" style="margin-top:6px">${items}</div>`);
+  }).join('');
+  el('nav').querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{go(b.dataset.view);el('rail').classList.remove('on');});
+}
+function crumb(){
+  const name=LABELS[state.view]||'Overview';
+  el('crumb').innerHTML=`<span>Admin</span><span class="sep">/</span>${state.view==='home'?'<b>Overview</b>':`<b>${name}</b>`}`;
+}
+
+/* ---------- views ---------- */
+function go(v){state.view=v;renderNav();crumb();renderView();el('view').scrollTo?.(0,0);el('canvas')?.scrollTo?.(0,0);document.querySelector('.canvas').scrollTop=0;}
+
+function renderView(){
+  const v=state.view;
+  if(v==='home')return viewHome();
+  if(v==='lookups')return viewLookups();
+  if(v==='jobtypes')return viewJobTypes();
+  if(v==='milestones')return viewMilestones();
+  if(v==='org')return viewOrg();
+  return viewPlaceholder(v);
+}
+
+function viewHome(){
+  const cards=[
+    {id:'lookups',t:'Lookups',d:'Reference values used across clients, jobs and documents.',c:'22 categories',icon:'list'},
+    {id:'jobtypes',t:'Job types',d:'Service definitions with price, hours and VAT.',c:'5 active',icon:'briefcase'},
+    {id:'milestones',t:'Milestone templates',d:'Default delivery schedules that drive job Risk.',c:'3 templates',icon:'flag'},
+    {id:'tax',t:'Tax & currency',d:'VAT rates, currencies and payment terms.',c:'9 records',icon:'coin'},
+    {id:'org',t:'Organisation',d:'Company profile, branding and finance settings.',c:'Set up',icon:'building'},
+    {id:'team',t:'Team & access',d:'Staff, roles and the capability matrix.',c:'14 people',icon:'users'},
+  ];
+  el('view').innerHTML=`
+    <div class="page-head">
+      <div><div class="eyebrow">Administration</div><h1>Configuration overview</h1>
+      <p>Everything the console is built from — the lookups, templates and settings behind clients, jobs, quotes and reports.</p></div>
+      <div class="head-actions"><span class="cap">${svg('shield',12)} Admin role</span></div>
+    </div>
+    <div class="grid cols-4" style="margin-bottom:22px">
+      ${metric('list','22','Lookup categories','across 6 groups')}
+      ${metric('briefcase','433','Clients configured','net-zero-international')}
+      ${metric('flag','3','Milestone templates','1 set as default')}
+      ${metric('clock','305','Clients need a template','no milestone plan yet')}
+    </div>
+    <div class="grid cols-2">
+      <div>
+        <div class="sec-cards">${cards.map(c=>`
+          <button class="sec-card" data-view="${c.id}">
+            <span class="ic">${svg(c.icon,17)}</span>
+            <b>${c.t}</b><p>${c.d}</p>
+            <span class="foot"><span>${c.c}</span>${svg('edit',13)}</span>
+          </button>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="panel-title">${svg('clock',15)}<h3>Recent changes</h3><span class="badge b-off badge" style="margin-left:auto"><i></i>Audit log</span></div>
+        <div class="feed">${FEED.map(f=>`
+          <div class="feed-row"><span class="feed-dot">${svg(f.ic,13)}</span>
+          <div><div class="t"><b>${f.who}</b> ${f.act} <b>${f.obj}</b></div><div class="m">${f.t}</div></div></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  bindCards();
+}
+function metric(icon,v,l,s){return `<div class="card pad metric"><div class="l">${svg(icon,14)}${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;}
+
+function viewLookups(){
+  const c=LOOKUPS[state.cat];
+  const hasCode=c.cols.includes('code')||c.rows.some(r=>r.code);
+  el('view').innerHTML=`
+    <div class="page-head">
+      <div><div class="eyebrow">Foundation</div><h1>Lookups</h1>
+      <p>One engine for every simple reference list. Values can be edited, reordered and deactivated — never deleted — and stay resolved on records that already use them.</p></div>
+      <div class="head-actions"><span class="cap">${svg('shield',12)} admin.lookups</span><button class="btn pri" id="addval">${svg('plus',15)} Add value</button></div>
+    </div>
+    <div class="hint-strip">${svg('info',15)}<div>For <b>net-zero-international</b> these are imported fresh from v7 — the console had no values for this tenant before. Matching is by exact label; anything unmatched is reported, never guessed.</div></div>
+    <div class="catbar">${LOOKUP_ORDER.map(k=>`<button class="cat ${state.cat===k?'on':''}" data-cat="${k}">${LOOKUPS[k].label}<span class="n">${LOOKUPS[k].n}</span></button>`).join('')}</div>
+    <div class="toolbar">
+      <div class="seg"><button class="on">All</button><button>Active</button><button>Inactive</button></div>
+      <div class="filter"><span class="mono" style="color:var(--ink-3)">${c.note}</span></div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Value</th>${hasCode?'<th>Code</th>':''}<th class="num">Sort</th><th class="num">In use</th><th>Source</th><th>Status</th><th></th></tr></thead>
+      <tbody>${c.rows.map((r,i)=>`
+        <tr data-row="${i}">
+          <td class="primary-cell">${r.name}</td>
+          ${hasCode?`<td class="mono">${r.code||'—'}</td>`:''}
+          <td class="num">${r.sort}</td>
+          <td class="num"><span class="inuse ${r.use===0?'zero':''}">${r.use}</span></td>
+          <td><span class="prov">${PROVLABEL[r.prov]}</span></td>
+          <td>${badge(r.active)}</td>
+          <td style="text-align:right">${svg('edit',15)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  el('view').querySelectorAll('.cat').forEach(b=>b.onclick=()=>{state.cat=b.dataset.cat;viewLookups();});
+  el('view').querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>openLookup(c.rows[+tr.dataset.row],c.label,hasCode));
+  el('addval').onclick=()=>openLookup(null,c.label,hasCode);
+}
+
+function viewJobTypes(){
+  el('view').innerHTML=`
+    <div class="page-head">
+      <div><div class="eyebrow">Delivery</div><h1>Job types</h1>
+      <p>The services NZI sells. Each carries a default price, effort and VAT, and links to the milestone template a new job of this type starts from.</p></div>
+      <div class="head-actions"><span class="cap">${svg('shield',12)} admin.lookups</span><button class="btn pri" id="addjt">${svg('plus',15)} New job type</button></div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Job type</th><th>Family</th><th class="num">Default price</th><th class="num">Est. hours</th><th class="num">VAT</th><th>Milestone template</th><th>Status</th></tr></thead>
+      <tbody>${JOBTYPES.map((r,i)=>`
+        <tr data-row="${i}">
+          <td><div class="primary-cell">${r.name}</div><div class="sub mono">${r.code}</div></td>
+          <td>${r.family}</td>
+          <td class="num">${money(r.price)}</td>
+          <td class="num">${r.hours}</td>
+          <td class="num">${r.vat}</td>
+          <td>${r.tmpl==='—'?'<span style="color:var(--ink-3)">—</span>':r.tmpl}</td>
+          <td>${badge(r.active)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  el('view').querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>openJobType(JOBTYPES[+tr.dataset.row]));
+  el('addjt').onclick=()=>openJobType(null);
+}
+
+function viewMilestones(){
+  el('view').innerHTML=`
+    <div class="page-head">
+      <div><div class="eyebrow">Delivery</div><h1>Milestone templates</h1>
+      <p>Each template sets the three delivery milestones a new job is scheduled from. These drive the Risk traffic-light on clients and jobs.</p></div>
+      <div class="head-actions"><span class="cap">${svg('shield',12)} admin.templates</span><button class="btn pri" id="addmt">${svg('plus',15)} New template</button></div>
+    </div>
+    <div class="grid cols-3">${MTEMPLATES.map((t,i)=>`
+      <button class="card pad sec-card" data-row="${i}" style="cursor:pointer">
+        <div style="display:flex;align-items:center;gap:9px;width:100%">
+          <span class="ic">${svg('flag',17)}</span>
+          <div style="min-width:0"><b>${t.name}</b><div class="sub mono" style="font-size:11px;color:var(--ink-3)">${t.items.length} milestones</div></div>
+          ${t.def?'<span class="badge b-ok" style="margin-left:auto"><i></i>Default</span>':'<span style="margin-left:auto"></span>'}
+        </div>
+        <div class="mitems" style="width:100%;margin-top:4px">${t.items.map(m=>`
+          <div class="mitem"><span class="k">${m.k}</span><div><b>${m.name}</b><div class="kind">${m.kind}</div></div><div class="off">+${m.off}d</div></div>`).join('')}
+        </div>
+        <div class="foot" style="width:100%">${t.jobtypes.length?t.jobtypes.length+' job type'+(t.jobtypes.length>1?'s':''):'No job types linked'}${svg('edit',13)}</div>
+      </button>`).join('')}
+    </div>`;
+  el('view').querySelectorAll('[data-row]').forEach(b=>b.onclick=()=>openMilestone(MTEMPLATES[+b.dataset.row]));
+  el('addmt').onclick=()=>openMilestone(null);
+}
+
+function viewOrg(){
+  el('view').innerHTML=`
+    <div class="page-head">
+      <div><div class="eyebrow">Foundation</div><h1>Organisation</h1>
+      <p>The company profile behind quotes, invoices, certificates and report footers.</p></div>
+      <div class="head-actions"><span class="cap">${svg('shield',12)} admin.settings</span><button class="btn pri">${svg('check',15)} Save changes</button></div>
+    </div>
+    <div class="settings">
+      <div class="fieldset">
+        <h4>${svg('building',15)} Company profile</h4>
+        <div class="fs-body">
+          ${field('Legal name','Net Zero International Ltd')}
+          ${field('Display name','Net Zero International')}
+          <div class="row2">${field('Company number','09847221',1)}${field('VAT number','GB 284 5566 01',1)}</div>
+          ${fieldArea('Registered address','2 Angel Square\\nManchester M60 0AG\\nUnited Kingdom')}
+          ${field('Certificate signatory','Francis Doherty — Chief Executive')}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="fieldset">
+          <h4>${svg('doc',15)} Document defaults</h4>
+          <div class="fs-body">
+            ${fieldSel('Default currency',['GBP — £','EUR — €','AED — د.إ'])}
+            ${fieldSel('Default payment terms',['30 days','14 days','60 days','On receipt'])}
+            ${fieldArea('Report footer','Net Zero International Ltd · Registered in England 09847221 · netzero.international')}
+          </div>
+        </div>
+        <div class="fieldset locked">
+          <h4>${svg('lock',15)} Bank details</h4>
+          <div class="fs-body">
+            ${field('Account name','••••••••')}
+            <div class="row2">${field('Sort code','••-••-••',1)}${field('Account no.','••••••••',1)}</div>
+          </div>
+          <div class="lock-note">${svg('lock',22)}<b>Restricted to Admin + Finance</b><span>Bank details appear on invoices. Editing needs the Finance capability, and they are never exposed on a public endpoint.</span></div>
+        </div>
+      </div>
+    </div>`;
+}
+function field(l,v,half){return `<div class="field${half?' mono':''}"><label>${l}</label><input value="${v}"></div>`;}
+function fieldArea(l,v){return `<div class="field"><label>${l}</label><textarea rows="3">${v.replace(/\\n/g,'\n')}</textarea></div>`;}
+function fieldSel(l,opts){return `<div class="field"><label>${l}</label><select>${opts.map(o=>`<option>${o}</option>`).join('')}</select></div>`;}
+
+function viewPlaceholder(v){
+  el('view').innerHTML=`
+    <div class="page-head"><div><div class="eyebrow">${groupOf(v)}</div><h1>${LABELS[v]}</h1></div></div>
+    <div class="placeholder">
+      <div class="ic">${svg(iconOf(v),22)}</div>
+      <h3>${LABELS[v]}</h3>
+      <p>${PH_DESC[v]||'This admin area follows the same list, edit and audit pattern shown in Lookups and Job types.'}</p>
+      <span class="phase">Roadmap · Phase ${PHASE[v]||'—'}</span>
+    </div>`;
+}
+const PH_DESC={
+  team:'Staff records, role assignment against the versioned capability matrix, and deactivation — replacing today’s command-line-only path.',
+  filetypes:'The job file-type vocabulary and its storage mapping, with two protected system types that cannot be removed.',
+  tax:'VAT rates (typed %, one default), currencies (code, symbol, rate) and payment terms — the typed lookups behind quotes and invoices.',
+  catalogue:'The service catalogue of billable items — code, unit, default hours, cost and sell price, VAT — reused by quotes, invoices and job lines.',
+  suppliers:'Subcontractors and their rate card. Contact details are sealed as third-party personal data.',
+  messages:'Email and notification templates with subject and body, previewed before they are used for invites, quotes and reminders.',
+  reports:'Report templates, their variables and versions, assignable per client.',
+  crm:'Pipeline stages, service lines, tags and automation rules for business development.',
+  factors:'The emission-factor library — already imported — gains curation, dataset archiving and factor-variant management.',
+  custom:'Reusable global custom factors, reconciled with the per-client factors that already exist.',
+  methodology:'Country and scope methodology rows, reconciled against the console’s input specification.',
+};
+function groupOf(v){let g='';NAV.forEach(x=>{if(x.items.some(i=>i.id===v))g=x.group||'Administration';});return g;}
+function iconOf(v){let ic='sliders';NAV.forEach(x=>x.items.forEach(i=>{if(i.id===v)ic=i.icon;}));return ic;}
+
+/* ---------- drawer ---------- */
+function drawer(html){el('drawer').innerHTML=html;el('drawer').classList.add('on');el('drawer').setAttribute('aria-hidden','false');el('scrim').classList.add('on');
+  el('drawer').querySelectorAll('[data-close]').forEach(b=>b.onclick=closeDrawer);
+  el('drawer').querySelectorAll('.tog').forEach(t=>t.onclick=()=>t.classList.toggle('on'));
+}
+function closeDrawer(){el('drawer').classList.remove('on');el('drawer').setAttribute('aria-hidden','true');el('scrim').classList.remove('on');}
+el('scrim').onclick=closeDrawer;
+
+const footAudit=(v,who)=>`<div class="drawer-foot"><div class="audit-line">${svg('shield',13)} Every change is recorded in the audit log · ${v}</div><div class="foot-btns"><button class="btn" data-close>Cancel</button><button class="btn pri" data-close>${svg('check',15)} Save</button></div></div>`;
+
+function openLookup(r,cat,hasCode){
+  const isNew=!r;
+  drawer(`
+    <div class="drawer-head"><div><div class="eyebrow">${cat}</div><h3>${isNew?'New value':r.name}</h3></div><button class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="drawer-body">
+      <div class="field"><label>Label</label><input value="${isNew?'':r.name}" placeholder="e.g. Professional services"><div class="hint">Shown in pickers and on records.</div></div>
+      ${hasCode?`<div class="field mono"><label>Code</label><input value="${isNew?'':(r.code||'')}" placeholder="Optional short code"></div>`:''}
+      <div class="row2"><div class="field mono"><label>Sort order</label><input value="${isNew?'':r.sort}"></div>
+      <div class="field"><label>Source</label><input value="${isNew?'Added here':PROVLABEL[r.prov]}" disabled style="color:var(--ink-3)"></div></div>
+      <div class="switch"><div class="tx"><b>Active</b><p>Inactive values leave the pickers but still show on existing records.</p></div><button class="tog ${isNew||r.active?'on':''}" aria-label="Active"></button></div>
+      ${!isNew&&r.use>0?`<div class="hint-strip">${svg('info',15)}<div>In use on <b>${r.use}</b> record${r.use>1?'s':''}. Deactivating keeps it resolved on those; it cannot be deleted.</div></div>`:''}
+    </div>
+    ${isNew?footAudit('new'):`<div class="drawer-foot"><div class="audit-line">${svg('shield',13)} Recorded in the audit log · v${(r.use%4)+2}</div><div class="foot-btns"><button class="btn ${r.active?'danger':''}" data-close>${r.active?svg('archive',15)+' Deactivate':svg('check',15)+' Reinstate'}</button><button class="btn pri" data-close>${svg('check',15)} Save</button></div></div>`}
+  `);
+}
+function openJobType(r){
+  const isNew=!r;
+  drawer(`
+    <div class="drawer-head"><div><div class="eyebrow">Job type</div><h3>${isNew?'New job type':r.name}</h3></div><button class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="drawer-body">
+      <div class="field"><label>Name</label><input value="${isNew?'':r.name}"></div>
+      <div class="row2"><div class="field mono"><label>Code</label><input value="${isNew?'':r.code}"></div>
+      <div class="field"><label>Family</label><select><option ${r&&r.family==='Carbon reporting'?'selected':''}>Carbon reporting</option><option ${r&&r.family==='Advisory'?'selected':''}>Advisory</option><option ${r&&r.family==='LCA'?'selected':''}>LCA</option><option ${r&&r.family==='Training'?'selected':''}>Training</option></select></div></div>
+      <div class="row2"><div class="field mono"><label>Default price (ex VAT)</label><input value="${isNew?'':r.price}"></div>
+      <div class="field mono"><label>Estimated hours</label><input value="${isNew?'':r.hours}"></div></div>
+      <div class="row2"><div class="field"><label>VAT rate</label><select><option>Standard — 20%</option><option>Reduced — 5%</option><option>Zero — 0%</option></select></div>
+      <div class="field"><label>Milestone template</label><select><option>Standard CRP</option><option>Express CRP</option><option>LCA delivery</option><option>None</option></select></div></div>
+      <div class="switch"><div class="tx"><b>Active</b><p>Available when creating a new job.</p></div><button class="tog ${isNew||r.active?'on':''}"></button></div>
+    </div>
+    ${footAudit(isNew?'new':'v'+((r.hours%3)+2))}
+  `);
+}
+function openMilestone(t){
+  const isNew=!t;
+  drawer(`
+    <div class="drawer-head"><div><div class="eyebrow">Milestone template</div><h3>${isNew?'New template':t.name}</h3></div><button class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="drawer-body">
+      <div class="field"><label>Template name</label><input value="${isNew?'':t.name}"></div>
+      <div class="switch"><div class="tx"><b>Default template</b><p>New jobs use this unless their job type sets another.</p></div><button class="tog ${t&&t.def?'on':''}"></button></div>
+      <div>
+        <label style="display:block;font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:7px">Milestones · offset from job start</label>
+        <div class="mitems">${(t?t.items:[{k:'DC',kind:'data_collection',name:'Data collection',off:14},{k:'FD',kind:'first_draft',name:'First draft',off:35},{k:'FR',kind:'final_report',name:'Final report',off:56}]).map(m=>`
+          <div class="mitem"><span class="k">${m.k}</span><div><b>${m.name}</b><div class="kind">${m.kind}</div></div><div class="off">+${m.off}d</div></div>`).join('')}
+        </div>
+        <div class="hint" style="font-size:11px;color:var(--ink-3);margin-top:8px">The three kinds map to the Risk rule. Each carries its own due offset.</div>
+      </div>
+      <div class="field"><label>Linked job types</label><input value="${isNew?'':(t.jobtypes.join(', ')||'None')}"></div>
+    </div>
+    ${footAudit(isNew?'new':'v2')}
+  `);
+}
+
+/* ---------- chrome ---------- */
+function bindCards(){el('view').querySelectorAll('.sec-card[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));}
+el('hamb').onclick=()=>el('rail').classList.toggle('on');
+el('theme').onclick=()=>{const r=document.documentElement;const dark=r.getAttribute('data-theme')==='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme:dark)').matches);r.setAttribute('data-theme',dark?'light':'dark');};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+
+renderNav();crumb();renderView();
+</script>
