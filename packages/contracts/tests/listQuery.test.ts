@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   changeListQuery, clientListSpec, defaultListQuery, defineListSpec, hasActiveFilters, jobListSpec, listQueryToSearchParams,
-  nextSort, parseListQuery, RISK_LEVELS, RISK_RANK,
+  nextSort, parseListQuery, RISK_LEVELS, RISK_RANK, type ListSpec,
 } from "../src/index";
 
 /**
@@ -114,12 +114,15 @@ describe("changing a list", () => {
 
 describe("Risk on both lists (PR 2)", () => {
   it("is a filter and a sort key on Clients and Jobs, and round-trips through the URL", () => {
-    for (const spec of [clientListSpec, jobListSpec] as const) {
+    // Generic, so each spec keeps its own key types (a union of the two specs is not one ListSpec).
+    const roundTrip = <S extends string, F extends string>(spec: ListSpec<S, F>) => {
       const { query, issues } = parseListQuery({ risk: "Not set", sort: "risk", dir: "asc" }, spec);
       assert.deepEqual(issues, []);
       assert.deepEqual(query.filters, { risk: ["Not set"] });
       assert.equal(listQueryToSearchParams(query, spec).toString(), "risk=Not+set&sort=risk&dir=asc");
-    }
+    };
+    roundTrip(clientListSpec);
+    roundTrip(jobListSpec);
   });
   it("orders its levels by severity: Overdue 3 > Due 2 > Healthy 1 > Not set 0 (ruled R5)", () => {
     assert.deepEqual([...RISK_LEVELS], ["Overdue", "Due", "Healthy", "Not set"]);
