@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { ensureDisposableDatabase } from "./support/database";
-import { listClients } from "../src/readModels";
+import { listAllClients } from "../src/readModels";
 import { importReferenceValues } from "../src/referenceData";
 import { withTenantRead } from "../src/postgres";
 
@@ -104,7 +104,7 @@ describe("a client's references, read from the database", { skip: DATABASE_URL ?
 
   after(async () => { await pool?.end(); });
 
-  const clients = () => withTenantRead(pool, ORG, (db) => listClients(db));
+  const clients = () => withTenantRead(pool, ORG, (db) => listAllClients(db));
   const find = async (id: string) => (await clients()).find((client) => client.id === id)!;
 
   it("renders every never-matched sector exactly as the firm typed it", async () => {

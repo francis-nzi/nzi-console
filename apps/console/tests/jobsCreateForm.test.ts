@@ -41,7 +41,10 @@ describe("the jobs list opens on the work", () => {
   it("keeps all four stat tiles, which were never the problem", () => {
     const tiles = jobsCode().match(/<Metric label=/g) ?? [];
     assert.equal(tiles.length, 4, "four tiles, unchanged");
-    for (const label of ["Active jobs", "Carbon reporting", "Average progress", "Due within 30 days"]) {
+    // The first tile was "Active jobs" while it counted every job, cancelled and complete included. It now counts the
+    // filtered set on the server — every status but cancelled, by default (ruled D5) — and is named for that.
+    assert.ok(jobsCode().includes(`narrowed ? "Matching jobs" : "Jobs"`), "the count tile names what it counts");
+    for (const label of ["Carbon reporting", "Average progress", "Due within 30 days"]) {
       assert.ok(jobsCode().includes(label), `${label} survives`);
     }
   });
@@ -143,12 +146,10 @@ describe("only a reporting family is asked for a period", () => {
     const code = jobsCode();
     assert.ok(code.includes("familyHasReportingPeriod(draft.family)"), "the form asks the predicate");
     assert.ok(code.includes("{hasPeriod ? <>"), "and hides the block when it says no");
-    // Exactly one literal may remain, and it must be the stat tile — a count of CRP jobs is
-    // genuinely about CRP, not about whether a family reports on a period. Identified by what it
-    // is rather than by a character offset, so reformatting the line does not fail this.
+    // No literal remains. The one that did was the CRP stat tile — a count genuinely about CRP, not about whether a
+    // family reports on a period — and that count is now the server's summary over the filtered set (listReads.ts).
     const literal = code.split("\n").filter((line) => line.includes(`family === "crp"`));
-    assert.equal(literal.length, 1, `expected one remaining literal, found:\n  ${literal.join("\n  ")}`);
-    assert.ok(literal[0]!.includes("activeCrp"), `the survivor must be the stat tile, not: ${literal[0]!.trim()}`);
+    assert.equal(literal.length, 0, `expected no remaining literal, found:\n  ${literal.join("\n  ")}`);
   });
 
   it("clears a period already typed when the family stops needing one", () => {

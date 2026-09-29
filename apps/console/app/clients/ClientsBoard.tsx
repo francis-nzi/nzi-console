@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell, WorkspaceRail, TopBar, EvidenceDrawer } from "@nzi/ui";
-import { type Client, type ClientStatus, clientStatusMeta } from "@nzi/mock-data";
+import { AppShell, DataList, EvidenceDrawer, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { clientStatusMeta } from "@nzi/mock-data";
+import { clientListSpec, hasActiveFilters, PAGE_SIZES, type ClientListFilterKey, type ClientListQuery } from "@nzi/contracts";
+import type { ClientListPage, ClientListRow } from "@nzi/isolated-backend";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
-
-type Filter = "all" | ClientStatus;
+import { useListNavigation } from "../lib/useListNavigation";
 
 function Completeness({ pct }: { pct: number }) {
   const color = pct >= 85 ? "var(--emerald)" : pct >= 50 ? "var(--amber)" : "var(--coral)";
@@ -22,7 +23,7 @@ function Completeness({ pct }: { pct: number }) {
   );
 }
 
-function ClientDrawer({ c }: { c: Client }) {
+function ClientDrawer({ c }: { c: ClientListRow }) {
   const meta = clientStatusMeta[c.status];
   const banner =
     c.status === "at-risk"
@@ -50,18 +51,20 @@ function ClientDrawer({ c }: { c: Client }) {
         <div>{banner.text}</div>
       </div>
 
-      <div className="nz-kv"><span className="k">Account owner</span><span className="v">{c.owner}</span></div>
+      <div className="nz-kv"><span className="k">Account owner</span><span className="v">{c.owner || "Unassigned"}</span></div>
+      <div className="nz-kv"><span className="k">Client manager</span><span className="v">{c.clientManager ?? "Unassigned"}</span></div>
+      <div className="nz-kv"><span className="k">Portfolio</span><span className="v">{c.portfolio ?? "Unassigned"}</span></div>
       <div className="nz-kv"><span className="k">Status</span><span className="v">{meta.label}</span></div>
-      <div className="nz-kv"><span className="k">Member since</span><span className="v">{c.memberSince}</span></div>
+      <div className="nz-kv"><span className="k">Member since</span><span className="v">{c.memberSince || "—"}</span></div>
       <div className="nz-kv"><span className="k">Latest emissions</span><span className="v">{c.latestFootprint ?? "—"}</span></div>
       <div className="nz-kv"><span className="k">Change vs prior year</span><span className="v">{c.yoy ?? "—"}</span></div>
       <div className="nz-kv"><span className="k">Data completeness</span><span className="v">{c.completeness}%</span></div>
       <div className="nz-kv"><span className="k">Open jobs</span><span className="v">{c.openJobs}</span></div>
-      <div className="nz-kv"><span className="k">Next report due</span><span className="v">{c.nextReportDue}</span></div>
+      <div className="nz-kv"><span className="k">Next report due</span><span className="v">{c.nextReportDue || "—"}</span></div>
 
-      <div className="nz-sect">Active jobs</div>
+      <div className="nz-sect">Jobs</div>
       {c.jobs.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--t3)" }}>No open jobs.</div>
+        <div style={{ fontSize: 12, color: "var(--t3)" }}>No jobs on record.</div>
       ) : (
         c.jobs.map((j) => (
           <div key={j.number} className="nz-kv">
@@ -72,132 +75,115 @@ function ClientDrawer({ c }: { c: Client }) {
       )}
 
       <div className="nz-sect">Primary contact</div>
-      <div className="nz-kv"><span className="k">{c.contact.name}</span><span className="v">{c.contact.role}</span></div>
-      <div className="nz-kv"><span className="k">Email</span><span className="v" style={{ color: "var(--emerald)" }}>{c.contact.email}</span></div>
+      <div className="nz-kv"><span className="k">{c.contact.name || "—"}</span><span className="v">{c.contact.role}</span></div>
+      <div className="nz-kv"><span className="k">Email</span><span className="v" style={{ color: "var(--emerald)" }}>{c.contact.email || "—"}</span></div>
     </>
   );
 }
 
-export function ClientsBoard({ clients }: { clients: Client[] }) {
+const FILTERS: Array<{ key: ClientListFilterKey; label: string; allLabel: string }> = [
+  { key: "industry", label: "Industry", allLabel: "All industries" },
+  { key: "status", label: "Status", allLabel: "All statuses" },
+  { key: "owner", label: "Owner", allLabel: "All owners" },
+  { key: "portfolio", label: "Portfolio", allLabel: "All portfolios" },
+  { key: "manager", label: "Client manager", allLabel: "All client managers" },
+];
+
+const statusLabel = (value: string) => clientStatusMeta[value as keyof typeof clientStatusMeta]?.label ?? value;
+
+export function ClientsBoard({ page, query }: { page: ClientListPage; query: ClientListQuery }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string>(clients[0]?.id ?? "");
-  const [filter, setFilter] = useState<Filter>("all");
-  const rows = useMemo(
-    () => (filter === "all" ? clients : clients.filter((c) => c.status === filter)),
-    [clients, filter],
-  );
-
-  if (clients.length === 0) return <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}><TopBar searchPlaceholder="Search clients…" crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))} /><div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
-
-  const selected = clients.find((c) => c.id === selectedId) ?? clients[0]!;
-
-  const activeJobs = clients.reduce((n, c) => n + c.openJobs, 0);
-  const avgCompleteness = Math.round(clients.reduce((n, c) => n + c.completeness, 0) / clients.length);
-  const dueSoon = clients.filter((c) => /202|Overdue/.test(c.nextReportDue)).length;
-  const atRisk = clients.filter((client) => client.status === "at-risk").length;
-  const deliveryClients = clients.filter((client) => client.status !== "prospect");
-  const ownershipComplete = clients.every((client) => client.owner.trim() && client.owner !== "Unassigned");
-  const deliveryLinked = deliveryClients.length > 0 && deliveryClients.every((client) => client.jobs.length > 0);
-  const footprintsRecorded = clients.filter((client) => client.status === "active").every((client) => Boolean(client.latestFootprint));
-
-  const filters: { id: Filter; label: string }[] = [
-    { id: "all", label: `All ${clients.length}` },
-    { id: "active", label: "Active" },
-    { id: "onboarding", label: "Onboarding" },
-    { id: "at-risk", label: "At risk" },
-    { id: "prospect", label: "Prospect" },
-  ];
-
+  const nav = useListNavigation(clientListSpec, query, "/clients");
+  const [selectedId, setSelectedId] = useState<string>(page.rows[0]?.id ?? "");
   const rail = <WorkspaceRail sections={NAV} activeId="clients" user={USER} />;
+  const topBar = <TopBar crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))} />;
 
-  const drawer = (
+  // No clients at all is a different state from none matching the filters, and keeps its own call to action.
+  if (page.unfilteredTotal === 0) return <AppShell rail={rail}>{topBar}<div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
+
+  const selected = page.rows.find((c) => c.id === selectedId) ?? page.rows[0];
+  const { summary } = page;
+  const filtered = hasActiveFilters(query);
+  const ownershipComplete = summary.withoutOwner === 0;
+  const deliveryLinked = summary.deliveryClients > 0 && summary.deliveryWithoutJobs === 0;
+  const footprintsRecorded = summary.activeWithoutEmissions === 0;
+
+  const drawer = selected ? (
     <EvidenceDrawer
       kicker={`Client · ${clientStatusMeta[selected.status].label.toLowerCase()}`}
       title={selected.name}
-      subtitle={`${selected.sector} · ${selected.location}`}
+      subtitle={[selected.sector, selected.location].filter(Boolean).join(" · ")}
       actions={
         <>
-          <button type="button" className="nz-btn" onClick={() => router.push(`/jobs?client=${selected.id}`)}>New job</button>
-          <button type="button" className="nz-btn pri" onClick={() => router.push(`/clients/${selected.id}`)}>Open client</button>
+          <button type="button" className="nz-btn" onClick={() => router.push(`/jobs?client=${encodeURIComponent(selected.id)}`)}>New job</button>
+          <button type="button" className="nz-btn pri" onClick={() => router.push(`/clients/${encodeURIComponent(selected.id)}`)}>Open client</button>
         </>
       }
     >
       <ClientDrawer c={selected} />
     </EvidenceDrawer>
-  );
+  ) : undefined;
+
+  const columns: DataListColumn<ClientListRow>[] = [
+    { key: "name", header: "Client", sortKey: "name", cell: (c) => <Link href={`/clients/${encodeURIComponent(c.id)}`} className="nz-table-link" style={{ fontWeight: 500 }}>{c.name}</Link> },
+    { key: "industry", header: "Industry", sortKey: "industry", cell: (c) => c.sector || <span className="muted">Unspecified</span> },
+    { key: "status", header: "Status", sortKey: "status", cell: (c) => <span className={`nz-st ${clientStatusMeta[c.status].cls}`}>{clientStatusMeta[c.status].label}</span> },
+    { key: "emissions", header: "Latest tCO₂e", sortKey: "emissions", numeric: true, cell: (c) => c.latestFootprint ? c.latestFootprint.replace(" tCO₂e", "") : <span className="muted">—</span> },
+    { key: "completeness", header: "Data completeness", sortKey: "completeness", cell: (c) => c.completeness > 0 ? <Completeness pct={c.completeness} /> : <span className="muted">—</span> },
+    { key: "openJobs", header: "Open jobs", sortKey: "openJobs", numeric: true, cell: (c) => c.openJobs },
+    { key: "nextReport", header: "Next report", cell: (c) => c.nextReportDue || <span className="muted">—</span> },
+    { key: "owner", header: "Owner", sortKey: "owner", cell: (c) => c.owner || <span className="muted">Unassigned</span> },
+  ];
+
+  const filters: DataListFilter[] = FILTERS.map(({ key, label, allLabel }) => ({
+    key, label, allLabel, value: query.filters[key]?.[0] ?? "",
+    options: page.filterOptions[key].map((option) => ({ ...option, label: key === "status" ? statusLabel(option.value) : option.label })),
+  }));
 
   return (
     <AppShell rail={rail} drawer={drawer}>
-      <TopBar
-        searchPlaceholder="Search clients…"
-        crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))}
-      />
+      {topBar}
 
       <div className="nz-head">
         <div className="nz-job-titleline">
           <div>
             <div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>
-            <div className="sub">Relationships, delivery health and reporting readiness across {clients.length} organisations</div>
+            <div className="sub">Relationships, delivery health and reporting readiness across {page.unfilteredTotal.toLocaleString("en-GB")} organisations</div>
           </div>
           <Link className="nz-btn pri" href="/clients/new">+ Add client</Link>
         </div>
       </div>
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
-        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{atRisk?`${atRisk} relationship${atRisk===1?"":"s"} need focused attention.`:"No relationships are currently marked at risk."}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
+        {/* Every figure here is over the filtered set, computed by the server — never over the page on screen. */}
+        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{summary.atRisk?`${summary.atRisk} relationship${summary.atRisk===1?"":"s"} need focused attention.`:`No ${filtered ? "matching clients are" : "relationships are"} currently marked at risk.`}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
         <div className="nz-metrics">
-          <div className="nz-metric"><div className="l">Clients</div><div className="v num">{clients.length}</div></div>
-          <div className="nz-metric"><div className="l">Open jobs</div><div className="v num">{activeJobs}</div></div>
-          <div className="nz-metric"><div className="l">Reports due / overdue</div><div className="v num">{dueSoon}</div></div>
-          <div className="nz-metric"><div className="l">Avg data completeness</div><div className="v num">{avgCompleteness}%</div></div>
+          <div className="nz-metric"><div className="l">{filtered ? "Matching clients" : "Clients"}</div><div className="v num">{summary.clients.toLocaleString("en-GB")}</div></div>
+          <div className="nz-metric"><div className="l">Open jobs</div><div className="v num">{summary.openJobs.toLocaleString("en-GB")}</div></div>
+          <div className="nz-metric"><div className="l">Without an owner</div><div className="v num">{summary.withoutOwner.toLocaleString("en-GB")}</div></div>
+          <div className="nz-metric"><div className="l">Avg data completeness</div><div className="v num">{summary.averageCompleteness === null ? "—" : `${summary.averageCompleteness}%`}</div></div>
         </div>
 
-        <div className="nz-toolbar" style={{ padding: "0 0 12px" }}>
-          <div className="nz-filters">
-            {filters.map((f) => (
-              <button type="button" key={f.id} aria-pressed={filter===f.id} className={filter === f.id ? "on" : undefined} onClick={() => setFilter(f.id)}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="nz-panel nz-client-table">
-          <table className="nz-tbl">
-            <thead>
-              <tr>
-                <th>Client</th><th>Sector</th><th>Status</th><th className="num">Latest tCO₂e</th>
-                <th>Data completeness</th><th className="num">Open jobs</th><th>Next report</th><th>Owner</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => {
-                const meta = clientStatusMeta[c.status];
-                return (
-                  <tr
-                    key={c.id}
-                    className={`row${c.id === selectedId ? " sel" : ""}`}
-                    onClick={() => setSelectedId(c.id)}
-                    onDoubleClick={() => router.push(`/clients/${c.id}`)}
-                    onKeyDown={(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setSelectedId(c.id)}}}
-                    tabIndex={0}
-                    aria-selected={c.id===selectedId}
-                  >
-                    <td style={{ fontWeight: 500 }}>{c.name}</td>
-                    <td>{c.sector}</td>
-                    <td><span className={`nz-st ${meta.cls}`}>{meta.label}</span></td>
-                    <td className="num">{c.latestFootprint ? c.latestFootprint.replace(" tCO₂e", "") : <span className="muted">—</span>}</td>
-                    <td>{c.completeness > 0 ? <Completeness pct={c.completeness} /> : <span className="muted">—</span>}</td>
-                    <td className="num">{c.openJobs}</td>
-                    <td>{c.nextReportDue}</td>
-                    <td>{c.owner}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {rows.length===0?<div className="nz-list-empty"><b>No clients match this relationship stage</b><span>Choose another filter to return to the recorded portfolio.</span></div>:null}
-        </div>
+        <DataList
+          label="Clients"
+          tableClassName="nz-client-table"
+          rows={page.rows}
+          rowKey={(c) => c.id}
+          columns={columns}
+          search={{ value: query.search, label: "Search clients", placeholder: "Client name or industry…", onChange: nav.search }}
+          filters={filters}
+          onFilter={(key, value) => nav.filter(key as ClientListFilterKey, value)}
+          sort={query.sort}
+          onSort={(key) => nav.sort(key as ClientListQuery["sort"]["key"])}
+          paging={{ page: page.page, pageCount: page.pageCount, pageSize: page.pageSize, pageSizes: PAGE_SIZES, total: page.total }}
+          onPage={nav.page}
+          onPageSize={nav.pageSize}
+          onClear={filtered ? () => nav.clear() : undefined}
+          noMatches={<><b>No clients match these filters</b><span>Clear the search or a filter to return to the full portfolio.</span></>}
+          selectedKey={selected?.id}
+          onSelect={(c) => setSelectedId(c.id)}
+          busy={nav.pending}
+        />
       </div>
     </AppShell>
   );

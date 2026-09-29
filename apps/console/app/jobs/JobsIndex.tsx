@@ -1,38 +1,41 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { familyHasReportingPeriod, jobDateIssues, jobWorkflowStages, plausibleYearRange, reportingYearForPeriod, type CommandInputMap } from "@nzi/contracts";
+import { familyHasReportingPeriod, hasActiveFilters, JOB_STATUS_ALL, jobDateIssues, jobListSpec, jobWorkflowStages, PAGE_SIZES, plausibleYearRange, reportingYearForPeriod, todayInLondon, utcDay, type CommandInputMap, type JobListFilterKey, type JobListQuery } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
-import { jobFamilyMeta, type FamilyJob, type JobFamily } from "@nzi/mock-data";
-import type { ClientScreenReadModel } from "@nzi/isolated-backend";
+import { jobFamilyMeta, type JobFamily } from "@nzi/mock-data";
+import type { ClientScreenReadModel, JobListPage, JobListRow } from "@nzi/isolated-backend";
 import Link from "next/link";
-import { AppShell, SmartSearch, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, DataList, SmartSearch, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { formatDate } from "../lib/formatDate";
 import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useTeamOptions } from "../clients/useReferenceOptions";
+import { useListNavigation } from "../lib/useListNavigation";
 
-type Filter = "all" | JobFamily;
 const initialStage: Record<JobFamily, string> = { crp: jobWorkflowStages.crp[0], consultancy: jobWorkflowStages.consultancy[0], lca: jobWorkflowStages.lca[0], pcf: jobWorkflowStages.pcf[0], training: jobWorkflowStages.training[0] };
 
 type Draft = CommandInputMap["job.create"];
 
 const EMPTY_DATES = { startDate: "", dueDate: "", reportingPeriodStart: "", reportingPeriodEnd: "" };
 
-export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: FamilyJob[]; clients: ClientScreenReadModel[]; clientId?: string | null }) {
+const STATUS_LABELS: Record<string, string> = { draft: "Draft", open: "Open", "on-hold": "On hold", complete: "Complete", cancelled: "Cancelled" };
+const addDays = (day: string, days: number) => { const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return utcDay(date); };
+
+export function JobsIndex({ page, query, clients }: { page: JobListPage; query: JobListQuery; clients: ClientScreenReadModel[] }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<Filter>("all");
+  const nav = useListNavigation(jobListSpec, query, "/jobs");
   // `?client=` scopes the portfolio to one client — the route the client trail's "Jobs"
-  // crumb points at. The client's name is resolved from the record, or from the jobs
-  // themselves when the client list is degraded; it is never invented.
+  // crumb points at. It is an ordinary server-side filter now. The client's name is resolved
+  // from the record, or from the jobs themselves when the client list is degraded; it is never invented.
+  const clientId = query.filters.client?.[0] ?? null;
   const scopedClient = clientId === null ? null : {
     id: clientId,
     name: clients.find((client) => client.id === clientId)?.name
-      ?? allJobs.find((job) => job.header.clientId === clientId)?.header.client
+      ?? page.rows.find((job) => job.clientId === clientId)?.client
       ?? null,
   };
-  const jobs = scopedClient === null ? allJobs : allJobs.filter((job) => job.header.clientId === scopedClient.id);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
@@ -45,11 +48,10 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
   // Creating from a client's own jobs list starts on that client.
   const firstClient = (scopedClient && eligibleClients.some((client) => client.id === scopedClient.id) ? scopedClient.id : eligibleClients[0]?.id) ?? "";
   const [draft, setDraft] = useState<Draft>({ clientId: firstClient, family: "crp", title: "", workflowStage: initialStage.crp, owner: "", clientManagerUserId: null, ...EMPTY_DATES });
-  const rows = useMemo(() => filter === "all" ? jobs : jobs.filter((job) => job.header.family === filter), [filter, jobs]);
-  const filters: Filter[] = ["all", "crp", "consultancy", "lca", "pcf", "training"];
-  const averageProgress = jobs.length ? Math.round(jobs.reduce((sum, job) => sum + job.header.progressPct, 0) / jobs.length) : 0;
-  const activeCrp = jobs.filter((job) => job.header.family === "crp").length;
-  const dueSoon = jobs.filter((job) => { const due = Date.parse(job.header.dueDate); return Number.isFinite(due) && due >= Date.now() && due - Date.now() < 30 * 86400000; }).length;
+  const { summary } = page;
+  // The client scope is where the page is, not a filter someone applied — Clear filters keeps it.
+  const narrowed = hasActiveFilters({ ...query, filters: { ...query.filters, client: undefined } });
+  const keep = clientId === null ? {} : { client: [clientId] };
 
   /**
    * The job's client manager defaults to the client's own (NZC-092) and stays changeable.
@@ -118,8 +120,28 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
     </label>;
   };
 
+  const columns: DataListColumn<JobListRow>[] = [
+    { key: "number", header: "Job", sortKey: "number", cell: (job) => <Link href={`/jobs/${encodeURIComponent(job.id)}`} className="nz-table-link">{job.number}</Link> },
+    { key: "family", header: "Family", sortKey: "family", cell: (job) => <span className="nz-st est" title={jobFamilyMeta[job.family]?.label}>{jobFamilyMeta[job.family]?.code ?? job.family}</span> },
+    { key: "client", header: "Client", sortKey: "client", cell: (job) => job.client },
+    { key: "title", header: "Title", sortKey: "title", cell: (job) => job.title },
+    { key: "status", header: "Status", sortKey: "status", cell: (job) => STATUS_LABELS[job.status] ?? job.status },
+    { key: "stage", header: "Stage", cell: (job) => job.workflowStage },
+    { key: "dueDate", header: "End date", sortKey: "dueDate", cell: (job) => formatDate(job.dueDate) },
+    { key: "manager", header: "Client manager", sortKey: "manager", cell: (job) => job.manager ?? <span className="muted">Unassigned</span> },
+    { key: "progress", header: "Progress", numeric: true, cell: (job) => <span className="nz-job-progress"><i><span style={{ width: `${job.progressPct}%` }} /></i><b className="num">{job.progressPct}%</b></span> },
+  ];
+  // Ruled D5: no status chosen means every status except cancelled, and the control says so.
+  const filters: DataListFilter[] = [
+    { key: "manager", label: "Client manager", allLabel: "All client managers", value: query.filters.manager?.[0] ?? "", options: page.filterOptions.manager },
+    { key: "family", label: "Job family", allLabel: "All families", value: query.filters.family?.[0] ?? "",
+      options: page.filterOptions.family.map((option) => ({ ...option, label: jobFamilyMeta[option.value as JobFamily]?.label ?? option.label })) },
+    { key: "status", label: "Status", allLabel: "All except cancelled", value: query.filters.status?.[0] ?? "",
+      options: [{ value: JOB_STATUS_ALL, label: "All statuses" }, ...page.filterOptions.status.map((option) => ({ ...option, label: STATUS_LABELS[option.value] ?? option.label }))] },
+  ];
+
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
-    <TopBar searchPlaceholder="Search jobs, clients…" crumbs={crumbTrail(scopedClient
+    <TopBar crumbs={crumbTrail(scopedClient
       ? [{ label: "Clients", href: "/clients" },
          { label: scopedClient.name ?? "This client", href: `/clients/${encodeURIComponent(scopedClient.id)}` },
          { label: "Jobs", href: clientJobsHref(scopedClient.id), current: true }]
@@ -131,7 +153,8 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
       {/* The dark "NZI delivery command" band and its ✓ trust pills are gone (Part 1, Task B). They
           restated the platform's own assurances above the work rather than showing any of it, so
           the page now opens on the four numbers and the table. */}
-      <div className="nz-metrics"><Metric label="Active jobs" value={String(jobs.length)} note="Across all service families"/><Metric label="Carbon reporting" value={String(activeCrp)} note="CRP jobs"/><Metric label="Average progress" value={jobs.length?`${averageProgress}%`:"Not available"} note={jobs.length?"Portfolio completion":"No job evidence"}/><Metric label="Due within 30 days" value={String(dueSoon)} note={jobs.length?(dueSoon?"Requires delivery focus":"No immediate deadlines"):"No jobs scheduled"}/></div>
+      {/* Over the filtered set, from the server — never over the page on screen. */}
+      <div className="nz-metrics"><Metric label={narrowed ? "Matching jobs" : "Jobs"} value={summary.jobs.toLocaleString("en-GB")} note={query.filters.status ? "In the chosen status" : "Excluding cancelled"}/><Metric label="Carbon reporting" value={summary.carbonReporting.toLocaleString("en-GB")} note="CRP jobs"/><Metric label="Average progress" value={summary.averageProgress === null ? "Not available" : `${summary.averageProgress}%`} note={summary.jobs ? "Portfolio completion" : "No job evidence"}/><Metric label="Due within 30 days" value={summary.dueWithin30Days.toLocaleString("en-GB")} note={summary.jobs ? (summary.dueWithin30Days ? "Requires delivery focus" : "No immediate deadlines") : "No jobs scheduled"}/></div>
       {eligibleClients.length===0&&<div className="nz-banner warn nz-job-prerequisite"><div><b>A client is required before a job can be created.</b><div>Prospects are not eligible for delivery jobs. Create or onboard a client first.</div></div><a className="nz-btn" href="/clients">Open client portfolio</a></div>}
       {notice && <div className={`nz-banner ${notice.kind}`} role="status"><div>{notice.text}</div></div>}
       {creating && <form className="nz-panel nz-job-create" onSubmit={createJob}>
@@ -174,8 +197,33 @@ export function JobsIndex({ jobs: allJobs, clients, clientId = null }: { jobs: F
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button type="button" className="nz-btn" disabled={saving} onClick={() => setCreating(false)}>Cancel</button><button className="nz-btn pri" disabled={saving || !draft.clientId}>{saving ? "Creating…" : "Create and assign number"}</button></div>
       </form>}
-      <div className="nz-toolbar" style={{ padding: "0 0 12px" }}><div className="nz-filters">{filters.map((id) => <button type="button" aria-pressed={filter===id} key={id} className={filter === id ? "on" : undefined} onClick={() => setFilter(id)}>{id === "all" ? `All ${jobs.length}` : jobFamilyMeta[id].code}</button>)}</div></div>
-      <div className="nz-panel nz-job-table"><table className="nz-tbl"><thead><tr><th>Job</th><th>Family</th><th>Client</th><th>Title</th><th>Stage</th><th>Due</th><th>Client manager</th><th className="num">Progress</th></tr></thead><tbody>{rows.map(({ header }) => <tr key={header.id} className="row"><td><a href={`/jobs/${header.id}`} className="nz-table-link">{header.number}</a></td><td><span className="nz-st est">{jobFamilyMeta[header.family].code}</span></td><td>{header.client}</td><td>{header.title}</td><td>{header.workflowStage}</td><td>{formatDate(header.dueDate)}</td><td>{header.owner}</td><td><span className="nz-job-progress"><i><span style={{width:`${header.progressPct}%`}}/></i><b className="num">{header.progressPct}%</b></span></td></tr>)}</tbody></table>{rows.length===0&&<div className="nz-list-empty"><b>{jobs.length!==0?"No jobs match this family":scopedClient?"No jobs for this client yet":"No jobs yet"}</b><span>{jobs.length!==0?"Choose another family filter to return to active delivery work.":scopedClient?"This client has no delivery jobs on record.":"Create the first governed job after an eligible client exists."}</span></div>}</div>
+      <DataList
+        label="Jobs"
+        tableClassName="nz-job-table"
+        rows={page.rows}
+        rowKey={(job) => job.id}
+        columns={columns}
+        search={{ value: query.search, label: "Search jobs", placeholder: "Job number, client or title…", onChange: nav.search }}
+        filters={filters}
+        onFilter={(key, value) => nav.filter(key as JobListFilterKey, value)}
+        extraControls={<div className="nz-datalist-dates" role="group" aria-label="End date">
+          <label className="nz-fl">End date from<input className="nz-inp" type="date" value={query.filters.dueFrom?.[0] ?? ""} onChange={(event) => nav.filter("dueFrom", event.target.value)} /></label>
+          <label className="nz-fl">End date to<input className="nz-inp" type="date" value={query.filters.dueTo?.[0] ?? ""} onChange={(event) => nav.filter("dueTo", event.target.value)} /></label>
+          <button type="button" className="nz-btn" onClick={() => { const today = todayInLondon(); nav.filters({ dueFrom: [today], dueTo: [addDays(today, 60)] }); }}>Next 60 days</button>
+        </div>}
+        sort={query.sort}
+        onSort={(key) => nav.sort(key as JobListQuery["sort"]["key"])}
+        paging={{ page: page.page, pageCount: page.pageCount, pageSize: page.pageSize, pageSizes: PAGE_SIZES, total: page.total }}
+        onPage={nav.page}
+        onPageSize={nav.pageSize}
+        onClear={narrowed ? () => nav.clear(keep) : undefined}
+        noMatches={page.unfilteredTotal === 0
+          ? <><b>No jobs yet</b><span>Create the first governed job after an eligible client exists.</span></>
+          : scopedClient && !narrowed
+          ? <><b>No jobs for this client yet</b><span>This client has no delivery jobs on record.</span></>
+          : <><b>No jobs match these filters</b><span>Clear the search or a filter to return to active delivery work.</span></>}
+        busy={nav.pending}
+      />
     </div>
   </AppShell>;
 }

@@ -95,7 +95,7 @@ export function ClientCreateWizard() {
 
   return (
     <AppShell rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}>
-      <TopBar searchPlaceholder="Search clients…" crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients", { label: "New client", href: "/clients/new" }))} />
+      <TopBar crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients", { label: "New client", href: "/clients/new" }))} />
       <div className="nz-head">
         <div className="nz-job-titleline">
           <div>

@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -11,11 +11,18 @@ export type ScreenResult<T> =
 export type ScreenContract<T> = { key: ScreenKey; isEmpty: (data: T) => boolean; validate: (value: unknown) => boolean };
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const rows = (value: unknown, field: string) => record(value) && Array.isArray(value[field]);
+const listPage = (value: unknown) => rows(value, "rows") && record(value) && typeof value.total === "number" && typeof value.unfilteredTotal === "number"
+  && typeof value.page === "number" && typeof value.pageCount === "number" && record(value.filterOptions) && record(value.summary);
 
 export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   control: { key: "control", validate: record, isEmpty: () => false },
   clients: { key: "clients", validate: (value) => rows(value, "clients"), isEmpty: (value) => record(value) && (value.clients as unknown[]).length === 0 },
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
+  // The paged lists (docs/LIST_PARITY_DESIGN.md). Never "empty" here: the board tells "no clients yet"
+  // (`unfilteredTotal` 0) from "none match these filters" (`total` 0) itself, and keeps its toolbar for the second —
+  // collapsing both into the generic "Nothing here yet" would hide the filters that caused it.
+  clientList: { key: "clientList", validate: listPage, isEmpty: () => false },
+  jobList: { key: "jobList", validate: listPage, isEmpty: () => false },
   job: { key: "job", validate: (value) => record(value) && record(value.job), isEmpty: () => false },
   scopeRows: { key: "scopeRows", validate: (value) => rows(value, "rows"), isEmpty: () => false },
   // The live aggregation (NZC-144). Never empty: a job with no entries has emissions of nought, which is
@@ -100,3 +107,4 @@ export * from "./entryProvenance";
 export * from "./aiAssist";
 export * from "./activityDistribution";
 export * from "./reportLabelResolution";
+export * from "./listQuery";

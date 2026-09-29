@@ -86,7 +86,11 @@ describe("breadcrumbs", () => {
   it("the client's jobs crumb resolves to a route that filters to that client", () => {
     const index = read("apps/console/app/jobs/JobsIndex.tsx");
     assert.match(index, /clientId/, "the jobs index accepts the client scope");
-    assert.match(index, /allJobs\.filter\(\(job\) => job\.header\.clientId === scopedClient\.id\)/);
-    assert.match(read("apps/console/app/jobs/page.tsx"), /searchParams/, "the route reads ?client=");
+    // The scope is a server-side filter now (docs/LIST_PARITY_DESIGN.md): `?client=` is the list's own `client` filter,
+    // read by the page with the rest of the query and applied in SQL — not a filter over every job in the browser.
+    assert.match(index, /const clientId = query\.filters\.client\?\.\[0\] \?\? null;/);
+    assert.match(read("packages/contracts/src/listQuery.ts"), /filters: \{ client: "value",/, "the jobs list takes a client filter");
+    assert.match(read("packages/isolated-backend/src/listReads.ts"), /client: \{ kind: "equals", column: "client_id" \}/, "applied to the job's client");
+    assert.match(read("apps/console/app/jobs/page.tsx"), /parseListQuery\(await searchParams, jobListSpec\)/, "the route reads ?client=");
   });
 });

@@ -68,7 +68,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
   const [expandedId, setExpandedId] = useState<string | null>(assessments.length === 1 ? assessments[0]!.id : null);
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
-    <TopBar searchPlaceholder={`Search ${meta.code} job…`} crumbs={crumbTrail(jobCrumbs(header, { label: "Assessments" }))} />
+    <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Assessments" }))} />
     <div className="nz-head nz-family-head">
       <div className="nz-job-heading">
         <div>

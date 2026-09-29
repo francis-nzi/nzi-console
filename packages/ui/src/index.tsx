@@ -9,6 +9,7 @@ export { Collapsible } from "./Collapsible";
 export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from "./HelpAffordance";
 export { SmartSearch, type SmartSearchOption } from "./SmartSearch";
 export { InfoTip } from "./InfoTip";
+export { DataList, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
 
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"
@@ -89,11 +90,17 @@ export function WorkspaceRail({
   );
 }
 
-export function TopBar({ crumbs, searchPlaceholder = "Search…" }: { crumbs: ReactNode; searchPlaceholder?: string }) {
+/**
+ * The top bar's search is the workspace jumper — it goes to Clients, Jobs, Reports and the rest, and has never
+ * searched records. Its placeholder used to be set per page ("Search clients…", "Search jobs, clients…"), which
+ * promised a search it did not do; it now says what it does, once, here (ruled D6). Searching records is each list's
+ * own toolbar.
+ */
+export function TopBar({ crumbs }: { crumbs: ReactNode }) {
   return (
     <div className="nz-topbar">
       <div className="nz-crumbs">{crumbs}</div>
-      <CommandSearch placeholder={searchPlaceholder} icon={<Icon name="search" />} />
+      <CommandSearch placeholder="Go to a workspace…" icon={<Icon name="search" />} />
       {/* Rendered here rather than passed per page: seventeen pages compose a TopBar, and
           "on every page" cannot depend on each of them remembering. Renders nothing when no
           help provider is mounted. */}

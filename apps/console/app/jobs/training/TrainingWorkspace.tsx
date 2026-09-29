@@ -47,7 +47,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled }: {
   const places = useEditAccess("training.entitlement.manage", writeEnabled);
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
-    <TopBar searchPlaceholder="Search trainees, sessions…" crumbs={crumbTrail(jobCrumbs(header, { label: "Training run" }))} />
+    <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Training run" }))} />
     <div className="nz-head nz-family-head"><div className="nz-job-heading">
       <div>
         <div className="nz-family-titleline"><span className="nz-eyebrow">{meta.label}</span><span className="nz-st est">{meta.code}</span></div>

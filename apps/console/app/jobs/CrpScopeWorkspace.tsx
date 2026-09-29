@@ -544,7 +544,7 @@ export function CrpScopeWorkspace({
       drawer={drawer}
     >
       <TopBar
-        searchPlaceholder="Search sources, factors…"
+       
         crumbs={crumbTrail(jobCrumbs(job.header, { label: "Scope rows" }))}
       />
       <div className="nz-head">

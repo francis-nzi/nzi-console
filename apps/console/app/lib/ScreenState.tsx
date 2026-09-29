@@ -25,7 +25,7 @@ export function ScreenState<T>({ result, chrome, children }: { result: ScreenRes
     : <State kind="failed" title="Workspace unavailable" detail={result.error.message} reference={result.error.correlationId ?? result.meta.requestId} inShell={!!chrome} />;
   if (!chrome) return card;
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} user={USER} />}>
-    <TopBar searchPlaceholder="Search clients, jobs and reports…" crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
+    <TopBar crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
     {card}
   </AppShell>;
 }
@@ -45,7 +45,7 @@ function State({ kind, title, detail, reference, inShell }: { kind: StateKind; t
  */
 export function WorkspaceNotFound({ chrome, what }: { chrome: ScreenChrome; what: string }) {
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId={chrome.activeId} user={USER} />}>
-    <TopBar searchPlaceholder="Search clients, jobs and reports…" crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
+    <TopBar crumbs={crumbTrail(workspaceCrumbs(chrome.label, chrome.href))} />
     <div className="nz-screen-state failed" role="status" aria-live="polite"><section><span className="nz-state-icon" aria-hidden="true">?</span><div><span className="nz-eyebrow">Not found</span><h1>This {what} does not exist here</h1><p>It may have been removed, or it belongs to another organisation. <a href={chrome.href}>Back to {chrome.label}</a>.</p></div></section></div>
   </AppShell>;
 }

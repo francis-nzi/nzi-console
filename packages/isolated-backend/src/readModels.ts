@@ -133,7 +133,11 @@ const asDetail = (family: JobFamily, value: unknown): JobDetail => {
   return value as JobDetail;
 };
 
-export async function listClients(db: Queryable, clientId?: string): Promise<ClientScreenReadModel[]> {
+/**
+ * Every client, unpaged — for the screens that genuinely need the whole set (the Control Room, the job-create client
+ * picker, one client by id). The Clients list page reads `listClients` (listReads.ts), which pages on the server.
+ */
+export async function listAllClients(db: Queryable, clientId?: string): Promise<ClientScreenReadModel[]> {
   const { rows } = await db.query<ClientRow>(`SELECT c.client_id, c.version, c.name, c.status, c.sector, c.location, c.owner_name,
       c.member_since, c.latest_footprint_tco2e, c.yoy_percent, c.completeness_percent,
       c.next_report_due_label, c.contact_name, c.contact_role, c.contact_email,
@@ -342,7 +346,7 @@ const mapSnapshotRow = (row: SnapshotRow): ReviewedCrpSnapshotReadModel => ({ id
  * latest reviewed snapshot (the prior year's for YoY) — never a shared fixture.
  */
 export async function getClientWorkspace(db: Queryable, clientId: string): Promise<ClientWorkspaceReadModel | null> {
-  const [client] = await listClients(db, clientId);
+  const [client] = await listAllClients(db, clientId);
   if (!client) return null;
 
   // Adjunct reads fail soft; essential ones do not. See `ClientWorkspaceDegradation`.
@@ -504,7 +508,8 @@ export async function listAuditEvents(db:Queryable,limit=100,options:{ownerUserI
 
 export async function listReportVersionRegister(db:Queryable):Promise<ReportVersionRegisterItem[]>{const {rows}=await db.query<{report_version_id:string;job_id:string;job_number:string;client_name:string;reporting_year:number|null;status:ReportVersionRegisterItem["status"];manifest_version:number;reviewed_snapshot_id:string;data_hash:string;created_at:Date|string;published_at:Date|string|null;approval_count:string;comment_count:string}>(`SELECT r.report_version_id,r.job_id,j.job_number,c.name AS client_name,j.reporting_year,r.status,r.manifest_version,r.reviewed_snapshot_id,r.data_hash,r.created_at,r.published_at,count(DISTINCT a.approval_id)::text AS approval_count,count(DISTINCT m.comment_id)::text AS comment_count FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) LEFT JOIN nzi_console.portal_report_approvals a ON (a.organisation_id,a.report_version_id)=(r.organisation_id,r.report_version_id) LEFT JOIN nzi_console.portal_report_comments m ON (m.organisation_id,m.report_version_id)=(r.organisation_id,r.report_version_id) GROUP BY r.organisation_id,r.report_version_id,j.organisation_id,j.job_id,c.organisation_id,c.client_id ORDER BY r.created_at DESC,r.report_version_id DESC`);const iso=(value:Date|string)=>value instanceof Date?value.toISOString():String(value);return rows.map(row=>({reportVersionId:row.report_version_id,jobId:row.job_id,jobNumber:row.job_number,client:row.client_name,reportingYear:row.reporting_year,status:row.status,manifestVersion:row.manifest_version,snapshotId:row.reviewed_snapshot_id,dataHash:row.data_hash,createdAt:iso(row.created_at),publishedAt:row.published_at==null?null:iso(row.published_at),approvalCount:Number(row.approval_count),commentCount:Number(row.comment_count)}));}
 
-export async function listJobs(db: Queryable): Promise<JobScreenReadModel[]> {
+/** Every job, unpaged — see `listAllClients`. The Jobs list page reads `listJobs` (listReads.ts). */
+export async function listAllJobs(db: Queryable): Promise<JobScreenReadModel[]> {
   const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.version, j.client_id, c.name AS client_name, j.sequence, j.job_number,
       j.job_family, j.title, j.reporting_year, j.status, j.workflow_stage, j.owner_name, j.start_date, j.due_date,
       j.reporting_period_start, j.reporting_period_end,

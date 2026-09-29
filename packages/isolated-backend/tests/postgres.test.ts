@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listClients,listDatasetRegistry,listGrantedPortalJobs,listJobApplicableCategories,listJobEmissionSourceRegister,listJobFactorOptions,listReportVersionRegister,listStaffRoleGovernance, listJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
+import {getCrpReportVersion, getCurrentPublishedCrpReport,getGrantedPublishedCrpReport,listAuditEvents,listAllClients,listDatasetRegistry,listGrantedPortalJobs,listJobApplicableCategories,listJobEmissionSourceRegister,listJobFactorOptions,listReportVersionRegister,listStaffRoleGovernance, listAllJobs, listScopeRows, withTenantRead, type Queryable } from "../src/index";
 
 describe("isolated Postgres adapter", () => {
   it("maps canonical client and family-job rows into their screen contracts", async () => {
@@ -9,9 +9,9 @@ describe("isolated Postgres adapter", () => {
         ? [{ client_id: "client-a", name: "Synthetic Client", status: "active", sector: "Services", location: "London, UK", owner_name: "A. Owner", member_since: 2026, latest_footprint_tco2e: "1418", yoy_percent: "-7.4", completeness_percent: 92, next_report_due_label: "31 Mar 2027", contact_name: "Synthetic Team", contact_role: "ESG", contact_email: "team@synthetic.invalid", open_jobs: "1", jobs: [{ number: "J000612", year: 2026, status: "Data entry" }], sites: [{ id: "site-a", name: "London HQ" }] }]
         : [{ job_id: "job-a", client_id: "client-a", client_name: "Synthetic Client", sequence: 612, job_number: "J000612", job_family: "crp", title: "Synthetic CRP", reporting_year: 2026, status: "open", workflow_stage: "Data entry", owner_name: "A. Owner", start_date: "2026-01-01", due_date: "2026-03-31", quote_id: null, progress_percent: 66, detail_json: { kind: "crp", reportingPeriod: "2026", includedScopes: ["1", "2", "3"], reviewedRows: 10, totalRows: 15 } }] }),
     } as Queryable;
-    assert.equal((await listClients(db))[0]?.latestFootprint, "1,418 tCO₂e");
-    assert.deepEqual((await listClients(db))[0]?.sites, [{ id: "site-a", name: "London HQ" }]);
-    assert.equal((await listJobs(db))[0]?.header.number, "J000612");
+    assert.equal((await listAllClients(db))[0]?.latestFootprint, "1,418 tCO₂e");
+    assert.deepEqual((await listAllClients(db))[0]?.sites, [{ id: "site-a", name: "London HQ" }]);
+    assert.equal((await listAllJobs(db))[0]?.header.number, "J000612");
   });
 
   it("sets the runtime role and tenant context inside a read-only transaction", async () => {

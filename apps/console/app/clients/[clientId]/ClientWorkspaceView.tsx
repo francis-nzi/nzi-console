@@ -135,7 +135,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     })} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
     {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
-    <TopBar searchPlaceholder="Search this client…" crumbs={crumbTrail(clientCrumbs(client))} />
+    <TopBar crumbs={crumbTrail(clientCrumbs(client))} />
     <div className="nz-head"><div className="nz-client-head">
       <ClientLogoBadge client={client} onOpen={() => openDrawer({ kind: "identity" })} />
       <div className="nz-client-identity">
