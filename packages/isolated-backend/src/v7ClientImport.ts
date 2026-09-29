@@ -341,6 +341,11 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     crp_job_details: "job_id", datasets: "dataset_id", job_scope_rows: "row_id", job_emission_groups: "group_id",
     job_emission_sources: "source_id", job_spend_entries: "entry_id", lca_assessments: "assessment_id",
     job_report_versions: "report_version_id", report_reviews: "job_id", portfolios_lookup: "portfolio_id", job_plan: "job_id",
+    // The admin lookups (A3) — the client import does not read them; load:v7-lookups does.
+    industries_lookup: "industry_id", referrals_lookup: "referral_id", payment_terms_lookup: "term_id", positions_lookup: "position_id",
+    processes_lookup: "process_id", client_teams_lookup: "client_team_id", action_categories_lookup: "category_id",
+    governance_subjects_lookup: "governance_subject_id", bd_bin_reasons_lookup: "bin_reason_id", uom_lookup: "uom_id",
+    job_item_categories_lookup: "category_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();

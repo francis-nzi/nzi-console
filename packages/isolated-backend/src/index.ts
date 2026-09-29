@@ -42,6 +42,7 @@ export * from "./readModels";
 export * from "./listReads";
 export * from "./adminOverview";
 export * from "./referenceEngine";
+export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";
 export { likePattern } from "./listPage";
 export * from "./inputSpecRecords";
 export * from "./inputSpecFactorRules";

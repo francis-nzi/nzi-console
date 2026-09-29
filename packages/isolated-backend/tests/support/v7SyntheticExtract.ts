@@ -188,6 +188,23 @@ export function syntheticRows(): Rows {
       { job_id: "103", data_collection_due: null, first_draft_due: null, final_report_due: "2025-01-01",
         data_collection_completed_at: null, first_draft_completed_at: null, final_report_completed_at: null },
     ],
+    // v7's admin lookups (admin A3). A label differing from a seeded one only in case and spacing, an inactive value, and
+    // the three tables that carry a sort order.
+    industries_lookup: [
+      { industry_id: "1", name: "Manufacturing", is_active: "t" },
+      { industry_id: "2", name: " retail ", is_active: "t" },
+      { industry_id: "3", name: "Mining", is_active: "f" },
+    ],
+    referrals_lookup: [{ referral_id: "1", name: "Existing client", is_active: "t" }],
+    payment_terms_lookup: [{ term_id: "1", name: "30 days", is_active: "t" }, { term_id: "2", name: "60 days", is_active: "t" }],
+    positions_lookup: [{ position_id: "1", name: "Consultant", is_active: "t" }],
+    processes_lookup: [{ process_id: "1", name: "Client Onboarding", is_active: "t" }],
+    client_teams_lookup: [{ client_team_id: "1", name: "Sustainability", is_active: "t" }],
+    action_categories_lookup: [{ category_id: "1", name: "Governance", is_active: "t" }],
+    governance_subjects_lookup: [{ governance_subject_id: "1", name: "Board", is_active: "t" }],
+    bd_bin_reasons_lookup: [{ bin_reason_id: "1", name: "No budget", is_active: "t", sort_order: "10" }],
+    uom_lookup: [{ uom_id: "1", name: "Hour", is_active: "t", sort_order: "20" }, { uom_id: "2", name: "Day", is_active: "t", sort_order: "10" }],
+    job_item_categories_lookup: [{ category_id: "1", name: "Consultancy", is_active: "t", sort_order: "10" }, { category_id: "2", name: "Disbursements", is_active: "f", sort_order: "50" }],
   };
 }
 
