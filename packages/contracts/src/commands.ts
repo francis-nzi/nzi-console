@@ -1,4 +1,5 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
+import { isMilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
@@ -58,6 +59,11 @@ export type CommandKey =
   | "job_type.update"
   | "job_type.deactivate"
   | "job_type.reinstate"
+  | "milestone_template.create"
+  | "milestone_template.update"
+  | "milestone_template.set_default"
+  | "milestone_template.deactivate"
+  | "milestone_template.reinstate"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -529,6 +535,12 @@ export type CommandInputMap = {
   "job_type.update": JobTypeFields & { jobTypeId: string; expectedVersion: number };
   "job_type.deactivate": { jobTypeId: string; expectedVersion: number };
   "job_type.reinstate": { jobTypeId: string; expectedVersion: number };
+  /** Milestone templates (admin C2): the schedule is written with the template; the default moves, never lapses. */
+  "milestone_template.create": MilestoneTemplateFields;
+  "milestone_template.update": MilestoneTemplateFields & { templateId: string; expectedVersion: number };
+  "milestone_template.set_default": { templateId: string; expectedVersion: number };
+  "milestone_template.deactivate": { templateId: string; expectedVersion: number };
+  "milestone_template.reinstate": { templateId: string; expectedVersion: number };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -693,6 +705,25 @@ const jobTypeIssues = (issues: CommandIssue[], input: JobTypeFields) => {
   if (input.description !== undefined && input.description !== null && input.description.length > JOB_TYPE_DESCRIPTION_MAX) issues.push({ field: "description", code: "TOO_LONG", message: `A description is at most ${JOB_TYPE_DESCRIPTION_MAX} characters.` });
   if (input.defaultPriceExVat !== undefined && input.defaultPriceExVat !== null && !isTwoDecimalAmount(input.defaultPriceExVat, JOB_TYPE_PRICE_MAX)) issues.push({ field: "defaultPriceExVat", code: "INVALID", message: "A price is an amount from 0, to two decimal places." });
   if (input.estimatedHours !== undefined && input.estimatedHours !== null && !isTwoDecimalAmount(input.estimatedHours, JOB_TYPE_HOURS_MAX)) issues.push({ field: "estimatedHours", code: "INVALID", message: "Hours are a number from 0, to two decimal places." });
+};
+/** A template's own fields: a name within bounds, and a schedule of at most one item per kind, at least one included. */
+const milestoneTemplateIssues = (issues: CommandIssue[], input: MilestoneTemplateFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A name is required." });
+  else if (input.name.trim().length > MILESTONE_TEMPLATE_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${MILESTONE_TEMPLATE_NAME_MAX} characters.` });
+  if (input.description !== undefined && input.description !== null && input.description.length > MILESTONE_TEMPLATE_DESCRIPTION_MAX) issues.push({ field: "description", code: "TOO_LONG", message: `A description is at most ${MILESTONE_TEMPLATE_DESCRIPTION_MAX} characters.` });
+  if (!Array.isArray(input.items)) { issues.push({ field: "items", code: "REQUIRED", message: "A template needs its milestones." }); return; }
+  const seen = new Set<string>();
+  for (const item of input.items) {
+    const kind = isMilestoneKind(item?.kind) ? item.kind : null;
+    if (!kind) { issues.push({ field: "items", code: "INVALID", message: `A milestone is one of ${MILESTONE_KINDS.join(", ")}.` }); continue; }
+    if (seen.has(kind)) issues.push({ field: `items.${kind}`, code: "DUPLICATE", message: "Each milestone appears once in a template." });
+    seen.add(kind);
+    if (!text(item.label)) issues.push({ field: `items.${kind}.label`, code: "REQUIRED", message: "Each milestone needs a label." });
+    else if (item.label.trim().length > MILESTONE_ITEM_LABEL_MAX) issues.push({ field: `items.${kind}.label`, code: "TOO_LONG", message: `A label is at most ${MILESTONE_ITEM_LABEL_MAX} characters.` });
+    if (!Number.isInteger(item.daysOffset) || item.daysOffset < 0 || item.daysOffset > MILESTONE_OFFSET_MAX) issues.push({ field: `items.${kind}.daysOffset`, code: "INVALID", message: `An offset is a whole number of days from 0 to ${MILESTONE_OFFSET_MAX}.` });
+    if (typeof item.included !== "boolean") issues.push({ field: `items.${kind}.included`, code: "INVALID", message: "Say whether the milestone is scheduled." });
+  }
+  if (!input.items.some((item) => item?.included === true)) issues.push({ field: "items", code: "REQUIRED", message: "A template schedules at least one milestone." });
 };
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
@@ -1076,6 +1107,38 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "job_type.reinstate": { key: "job_type.reinstate", label: "Reinstate a job type", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "job_type.reinstated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "jobTypeId", input.jobTypeId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Milestone templates (admin C2). Templates are admin.templates (the design's chip). Moving the default and
+  // deactivating each change what new jobs are scheduled from, so each says why (ruled plan, §3).
+  "milestone_template.create": { key: "milestone_template.create", label: "Add a milestone template", permission: "admin.templates", reasonRequired: false, transaction: "template + its items + audit + outbox + idempotency", auditAction: "milestone_template.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    milestoneTemplateIssues(issues, input);
+    return issues;
+  } },
+  "milestone_template.update": { key: "milestone_template.update", label: "Edit a milestone template", permission: "admin.templates", reasonRequired: false, transaction: "versioned template + its items + audit + outbox + idempotency", auditAction: "milestone_template.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    milestoneTemplateIssues(issues, input);
+    required(issues, "templateId", input.templateId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "milestone_template.set_default": { key: "milestone_template.set_default", label: "Make a template the default", permission: "admin.templates", reasonRequired: true, transaction: "default moved atomically + audit + outbox + idempotency", auditAction: "milestone_template.default_set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "templateId", input.templateId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "milestone_template.deactivate": { key: "milestone_template.deactivate", label: "Deactivate a milestone template", permission: "admin.templates", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "milestone_template.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "templateId", input.templateId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "milestone_template.reinstate": { key: "milestone_template.reinstate", label: "Reinstate a milestone template", permission: "admin.templates", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "milestone_template.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "templateId", input.templateId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },

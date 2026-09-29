@@ -452,6 +452,10 @@ jobs:
       # type key immutable and system types protected by grant; job types unique by name, family locked while in use.
       - name: Job types are never deleted, keep their names, and keep their family while jobs use them
         run: npx tsx --test packages/isolated-backend/tests/jobTypesReal.test.ts
+      # Milestone templates (admin C2): the schedule written with the template, one item per kind, a dropped kind kept not
+      # deleted; the default moved atomically with a reason and never deactivated (Q6); admin.templates; tenant-scoped.
+      - name: Milestone templates keep one default, never delete a milestone, and move the default atomically
+        run: npx tsx --test packages/isolated-backend/tests/milestoneTemplatesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

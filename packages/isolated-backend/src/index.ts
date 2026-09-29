@@ -43,6 +43,7 @@ export * from "./listReads";
 export * from "./adminOverview";
 export * from "./referenceEngine";
 export * from "./jobTypes";
+export * from "./milestoneTemplates";
 export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";
 export { loadV7ClientLinks, planClientLinks } from "./v7ClientLinkLoad";
 export { likePattern } from "./listPage";
