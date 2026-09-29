@@ -764,6 +764,7 @@ WITH ac AS (SELECT db_id FROM clients
 | `portfolios_lookup` | all — v7's owner→portfolio link (`portfolio_owner_client_db_id`, "the single source of truth for portfolio membership"); a handful of rows, no personal data. The plan reports each owner's linked portfolio and in-scope member count; the console has nowhere to write the link yet (design decision) |
 | `datasets` | the datasets the jobs' rows, sources and groups name |
 | `job_scope_rows` | `job_id IN (SELECT job_id FROM aj)`, **plus the two reference columns below** |
+| `job_plan` | `job_id IN (SELECT job_id FROM aj)` — the three delivery milestones (due, completed at, completed by), added for milestone Risk (docs/LIST_PARITY_DESIGN.md §7). The client import does not read it; `load-v7-milestones` does, from a `--tables job_plan` subset extract. Whenever it is copied, `v7_client_risk.csv` (v7's own client Risk on the London operating day) is derived beside it for the parity check |
 
 **`job_scope_rows`: the factor-lookup reference.** At report time v7 looks a factor up for a row (`row_metrics` in
 `services/monthly_emissions.py`). First it tries the `factor_original_id=` token in the row's notes, in the row's

@@ -176,6 +176,18 @@ export function syntheticRows(): Rows {
       { portfolio_id: "3", name: "Old Beta", portfolio_owner_client_db_id: "2", is_active: "f" },
       { portfolio_id: "4", name: "Unowned", portfolio_owner_client_db_id: null, is_active: "t" },
     ],
+    // v7's job plans (PR 2). The client import does not read them; the milestone backfill does. Job 101 carries the
+    // dirty case (ruled A2): a first draft "completed by" someone with no completion time.
+    job_plan: [
+      { job_id: "100", data_collection_due: "2023-03-01", first_draft_due: "2023-06-01", final_report_due: "2023-09-01",
+        data_collection_completed_at: "2023-02-27 09:00:00", data_collection_completed_by: "Ada Example",
+        first_draft_completed_at: "2023-05-30 16:30:00.25", first_draft_completed_by: "Ada Example",
+        final_report_completed_at: "2023-09-01 12:00:00", final_report_completed_by: "Ada Example" },
+      { job_id: "101", data_collection_due: "2026-09-20", first_draft_due: "2026-11-01", final_report_due: null,
+        data_collection_completed_at: null, first_draft_completed_at: null, first_draft_completed_by: "Ada Example", final_report_completed_at: null },
+      { job_id: "103", data_collection_due: null, first_draft_due: null, final_report_due: "2025-01-01",
+        data_collection_completed_at: null, first_draft_completed_at: null, final_report_completed_at: null },
+    ],
   };
 }
 
@@ -193,11 +205,25 @@ export const syntheticHeaders = (): Record<V7Table, string[]> =>
 const csvCell = (value: string | null) => (value === null ? "" : `"${value.replace(/"/g, "\"\"")}"`);
 
 /** Written as `COPY … CSV HEADER` would: NULL unquoted-empty, every value quoted. Returns the manifest's hash. */
-export function writeSyntheticExtract(directory: string, rows: Rows = syntheticRows()): string {
+/**
+ * v7's own client Risk as the extract derives it beside `job_plan` (the parity file, PR 2), on a fixed operating day:
+ * both in-scope clients are Overdue — client 1 by job 101's data collection, client 2 by archived job 103's report.
+ */
+export const SYNTHETIC_OPERATING_DAY = "2026-09-29";
+export const syntheticParity = (): Array<Record<string, string>> => [
+  { client_db_id: "1", operating_day: SYNTHETIC_OPERATING_DAY, v7_milestone_status: "red" },
+  { client_db_id: "2", operating_day: SYNTHETIC_OPERATING_DAY, v7_milestone_status: "red" },
+];
+
+export function writeSyntheticExtract(directory: string, rows: Rows = syntheticRows(), parity = syntheticParity()): string {
   mkdirSync(directory, { recursive: true });
   const extract = syntheticExtract(rows);
   const headers = syntheticHeaders();
-  const manifest: { extractedAt: string; tables: Record<string, { file: string; rows: number; sha256: string }> } = { extractedAt: "synthetic", tables: {} };
+  const manifest: { extractedAt: string; tables: Record<string, { file: string; rows: number; sha256: string }>; derived?: Record<string, { file: string; rows: number; sha256: string }> } = { extractedAt: "synthetic", tables: {} };
+  const parityHeader = ["client_db_id", "operating_day", "v7_milestone_status"];
+  const parityBody = [parityHeader.join(","), ...parity.map((row) => parityHeader.map((column) => csvCell(row[column] ?? null)).join(","))].join("\n") + "\n";
+  writeFileSync(join(directory, "v7_client_risk.csv"), parityBody, "utf8");
+  manifest.derived = { v7_client_risk: { file: "v7_client_risk.csv", rows: parity.length, sha256: createHash("sha256").update(parityBody, "utf8").digest("hex") } };
   for (const table of V7_TABLES) {
     const body = [headers[table].join(","), ...extract[table].map((row) => headers[table].map((column) => csvCell(row[column] ?? null)).join(","))].join("\n") + "\n";
     const file = `${table}.csv`;

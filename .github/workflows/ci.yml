@@ -423,6 +423,14 @@ jobs:
       # as a wrong number here. Nothing in the list SQL names an organisation — row-level security does the scoping.
       - name: The paged lists search, filter, sort and page within one tenant
         run: npx tsx --test packages/isolated-backend/tests/listPageReal.test.ts
+      # Milestone Risk (PR 2): v7's rule at every boundary, in SQL and in TypeScript over the same rows; the client
+      # roll-up; row-level security on job_milestones and its facet; Risk filtered and sorted by severity in the lists.
+      - name: Milestone Risk holds at its boundaries, rolls up, and stays in its tenant
+        run: npx tsx --test packages/isolated-backend/tests/milestoneRiskReal.test.ts
+      # The job_plan backfill: dry run keeps nothing, provenance and audit on commit, idempotent, v7 wins only where
+      # the console has not touched a row, both-sides changes refused by job and kind, never another tenant's rows.
+      - name: The milestone backfill is idempotent, and never overwrites a console edit
+        run: npx tsx --test packages/isolated-backend/tests/v7MilestoneLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

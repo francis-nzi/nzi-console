@@ -340,7 +340,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     clients: "db_id", client_sites: "site_id", client_contacts: "contact_id", job_types: "job_type_id", jobs: "job_id",
     crp_job_details: "job_id", datasets: "dataset_id", job_scope_rows: "row_id", job_emission_groups: "group_id",
     job_emission_sources: "source_id", job_spend_entries: "entry_id", lca_assessments: "assessment_id",
-    job_report_versions: "report_version_id", report_reviews: "job_id", portfolios_lookup: "portfolio_id",
+    job_report_versions: "report_version_id", report_reviews: "job_id", portfolios_lookup: "portfolio_id", job_plan: "job_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();

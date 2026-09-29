@@ -311,5 +311,23 @@
     "optional": [
       "is_active"
     ]
+  },
+  "job_plan": {
+    "filter": "job",
+    "required": [
+      "job_id",
+      "data_collection_due",
+      "first_draft_due",
+      "final_report_due",
+      "data_collection_completed_at",
+      "first_draft_completed_at",
+      "final_report_completed_at"
+    ],
+    "optional": [
+      "data_collection_completed_by",
+      "first_draft_completed_by",
+      "final_report_completed_by",
+      "updated_at"
+    ]
   }
 }

@@ -79,7 +79,11 @@ export function parseV7Csv(text: string): { header: string[]; rows: V7Row[] } {
 export type ExtractManifest = {
   /** When and by whom it was taken — free text is not needed and not read. */
   extractedAt?: string;
+  /** Present when the extract took only some tables (`--tables`, ruled R2): whole for these, and nothing else. */
+  subset?: V7Table[];
   tables: Partial<Record<V7Table, { file: string; rows: number; sha256: string }>>;
+  /** Files derived in the same snapshot rather than copied from a table — v7's own client Risk, for the parity check. */
+  derived?: Partial<Record<"v7_client_risk", { file: string; rows: number; sha256: string }>>;
 };
 
 export type ReadExtract = {
@@ -90,18 +94,27 @@ export type ReadExtract = {
   headers: Partial<Record<V7Table, string[]>>;
   /** A file whose bytes or row count disagree with the manifest, or a table the manifest does not name. */
   problems: string[];
+  /** v7's own client Risk (the parity file), when the extract carries one — verified like any table. */
+  parity: V7Row[] | null;
 };
 
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 
-/** Read an extract directory. Everything that is wrong with it is returned, not thrown, so a dry run lists it all. */
-export function readV7Extract(directory: string): ReadExtract {
+/**
+ * Read an extract directory. Everything that is wrong with it is returned, not thrown, so a dry run lists it all.
+ *
+ * `tables` reads only those (the milestone backfill reads `job_plan`); a manifest that says it is a subset is refused
+ * for any table outside it, so a reader can never mistake a partial extract for a whole one.
+ */
+export function readV7Extract(directory: string, options: { tables?: readonly V7Table[] } = {}): ReadExtract {
   const manifestBytes = readFileSync(join(directory, "manifest.json"));
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as ExtractManifest;
   const problems: string[] = [];
   const headers: Partial<Record<V7Table, string[]>> = {};
   const extract = {} as Record<V7Table, V7Row[]>;
-  for (const table of V7_TABLES) {
+  for (const table of V7_TABLES) extract[table] = [];
+  for (const table of options.tables ?? V7_TABLES) {
+    if (manifest.subset && !manifest.subset.includes(table)) { problems.push(`${table}: the extract is a subset (${manifest.subset.join(", ")}) and does not include it`); continue; }
     const entry = manifest.tables?.[table];
     if (!entry) { problems.push(`${table}: not in the manifest`); extract[table] = []; continue; }
     const bytes = readFileSync(join(directory, entry.file));
@@ -111,7 +124,15 @@ export function readV7Extract(directory: string): ReadExtract {
     headers[table] = parsed.header;
     extract[table] = parsed.rows;
   }
-  return { extract, extractSha256: sha256(manifestBytes), headers, problems };
+  let parity: V7Row[] | null = null;
+  const derived = manifest.derived?.v7_client_risk;
+  if (derived) {
+    const bytes = readFileSync(join(directory, derived.file));
+    if (sha256(bytes) !== derived.sha256) problems.push(`v7_client_risk: ${derived.file} does not hash to the manifest's sha256`);
+    parity = parseV7Csv(bytes.toString("utf8")).rows;
+    if (parity.length !== derived.rows) problems.push(`v7_client_risk: ${parity.length} rows, the manifest says ${derived.rows}`);
+  }
+  return { extract, extractSha256: sha256(manifestBytes), headers, problems, parity };
 }
 
 /** The columns a header lacks, against the contract. */

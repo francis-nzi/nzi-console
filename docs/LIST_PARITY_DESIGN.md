@@ -192,3 +192,63 @@ industries, owners and portfolios:
 
 **Delivery.** PR 1 covers §2–§5, with D1 as ruled. It is governed: it opens for ruling, and it merges only with
 `ruled` on that head. The migration in PR 1 is frozen once opened.
+
+---
+
+## 7. PR 2 — milestone Risk (ruled 29 Sep 2026, built)
+
+The PR 2 plan was reviewed before any of this was built, and its findings from v7's code are restated where they matter. This section
+records the rulings and what was built.
+
+**The rulings.**
+
+- **R1 — the client roll-up's job set.** Provisionally **(b)**: cancelled jobs are excluded. v7 rolls up over every job
+  (`api/client_index_routes.py:150–154`, no status predicate). The choice is confirmed on the dry-run numbers before
+  commit. The dry run reports both (a) and (b), and names every client where (b) differs from v7, with the job and
+  milestone behind it. Changing it is one line: `CLIENT_RISK_JOBS` in `milestoneRisk.ts`.
+- **R2 — `job_plan` only.** `--tables job_plan` for the SQL generator and the manifest. The manifest records the
+  subset, and the extract is deleted after the load.
+- **R3 — re-runs.** v7 wins where the console has not touched the row. Where both sides changed, the job is refused and
+  reported by job and kind, never silently.
+- **R4 — who completed it.** v7's text is kept verbatim as `completed_by_label` (staff, unsealed, in the PII inventory).
+  `completed_by_user_id` is set only on an exact, unique match to a membership. The report gives counts, not values.
+- **R5 — rank.** Overdue 3 > Due 2 > Healthy 1 > Not set 0.
+- **R6 — colours.** A status role, distinct from the scope-identity hues, with the label always beside the dot.
+- **R7 — read side only.** The milestone command, the job-page control and the audit trail for edits are PR 3.
+  Console-created jobs read "Not set" until then.
+- **A1 — the operating day.** The console judges Risk on `todayInLondon()`. v7's `CURRENT_DATE` is UTC and turns over
+  an hour early during British Summer Time. This is a **deliberate, more correct deviation** from v7. The parity check
+  substitutes the same London day into v7's own rule, so the differences it reports are real rule differences, not
+  timezone artefacts.
+- **A2 — dirty v7 data.** A "completed by" with no completion keeps the due date, drops the label, and is counted. A
+  completion with no "completed by" is fine.
+
+**As built.**
+
+- **Migration `0137_job_milestones.sql`:** operational and mutable. The application role may SELECT, INSERT and
+  UPDATE, with no DELETE. RLS is forced. The primary key is `(organisation, job, kind)`.
+  - The v7 identity (`source_system`, `legacy_db_id` = `<v7 job_id>:<kind>`) and `legacy_values` — the v7 values as
+    last loaded — are what R3 compares. A console edit is therefore never mistaken for a v7 change.
+  - There is no separate job index: the primary key already leads with `(organisation_id, job_id)`.
+  - The migration is frozen from the moment the PR opens; any correction is 0138.
+- **`milestoneRisk.ts`:** the one definition. It holds:
+  - the SQL fragments both lists read — a per-job rank, and a per-client rank over the R1 job set;
+  - `riskOf`, the same rule in TypeScript.
+  - A real-database test runs both over the same rows on three operating days.
+  - `jobs.due_date` is not referenced, and a test changes it wildly to prove it.
+- **Contract:** `job_plan` is added to the extract contract. The three due dates and three completions are
+  **required**, so an omitted completion cannot silently read as unfinished. "Completed by" and `updated_at` are
+  optional.
+  - Whenever `job_plan` is copied, `v7_client_risk.csv` is written beside it, in the same snapshot, and recorded in the
+    manifest under `derived`. It holds v7's `_RISK_CASE_SQL` verbatim, with the London day substituted.
+- **`load-v7-milestones`:** a separate step from the client load. That load treats history as immutable, and would
+  refuse clients whose v7 data moved on since the first extract. This step reads only `job_plan`, one transaction per
+  client, and a dry run is the load rolled back. It writes one audit event per client touched.
+  - A `job_plan` row whose job is not in the console is reported, never created.
+- **The lists:**
+  - Risk is a column, a faceted filter (a fixed vocabulary of four levels, in severity order, with zero counts shown),
+    and a sort on severity (ascending puts Overdue first, as v7's does).
+  - Both specs take the operating day as a bound parameter.
+  - The Overdue count joins both summaries, and the Clients hero line leads with it.
+- **D2:** `clientStatusMeta["at-risk"]` reads "At risk (relationship)", which is the one source of that label. The
+  Clients drawer banner no longer implies milestone risk.

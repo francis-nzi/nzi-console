@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   changeListQuery, clientListSpec, defaultListQuery, defineListSpec, hasActiveFilters, jobListSpec, listQueryToSearchParams,
-  nextSort, parseListQuery,
+  nextSort, parseListQuery, RISK_LEVELS, RISK_RANK,
 } from "../src/index";
 
 /**
@@ -40,7 +40,7 @@ describe("parseListQuery", () => {
   });
 
   it("ignores parameters that are not the list's (a page URL can carry others)", () => {
-    const { query, issues } = parseListQuery({ utm_source: "email", risk: "Overdue" }, clientListSpec);
+    const { query, issues } = parseListQuery({ utm_source: "email", view: "compact" }, clientListSpec);
     assert.deepEqual(issues, []);
     assert.deepEqual(query.filters, {});
   });
@@ -109,6 +109,21 @@ describe("changing a list", () => {
     assert.equal(hasActiveFilters({ ...defaultListQuery(clientListSpec), search: "a" }), true);
     assert.equal(hasActiveFilters({ ...defaultListQuery(clientListSpec), filters: { owner: ["Ann"] } }), true);
     assert.equal(hasActiveFilters({ ...defaultListQuery(clientListSpec), sort: { key: "owner", dir: "desc" } }), false);
+  });
+});
+
+describe("Risk on both lists (PR 2)", () => {
+  it("is a filter and a sort key on Clients and Jobs, and round-trips through the URL", () => {
+    for (const spec of [clientListSpec, jobListSpec] as const) {
+      const { query, issues } = parseListQuery({ risk: "Not set", sort: "risk", dir: "asc" }, spec);
+      assert.deepEqual(issues, []);
+      assert.deepEqual(query.filters, { risk: ["Not set"] });
+      assert.equal(listQueryToSearchParams(query, spec).toString(), "risk=Not+set&sort=risk&dir=asc");
+    }
+  });
+  it("orders its levels by severity: Overdue 3 > Due 2 > Healthy 1 > Not set 0 (ruled R5)", () => {
+    assert.deepEqual([...RISK_LEVELS], ["Overdue", "Due", "Healthy", "Not set"]);
+    assert.deepEqual(RISK_LEVELS.map((level) => RISK_RANK[level]), [3, 2, 1, 0]);
   });
 });
 

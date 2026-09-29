@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { EXTRACT_CONTRACT, parseV7Csv, readV7Extract, V7_TABLES } from "../src/v7ClientExtract";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { assertOutsideRepository, columnsFor, extractSql, parseOmit, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS, REPOSITORY_ROOT, writeExtractSql } from "../scripts/v7-extract-sql.mjs";
+import { assertOutsideRepository, columnsFor, extractSql, parseOmit, parseTables, PARITY_FILE, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS, REPOSITORY_ROOT, V7_RISK_CASE_SQL, v7ClientRiskSql, writeExtractSql } from "../scripts/v7-extract-sql.mjs";
 // @ts-expect-error — as above.
 import { buildManifest, countCsv } from "../scripts/v7-extract-manifest.mjs";
 import { syntheticRows, writeSyntheticExtract } from "./support/v7SyntheticExtract";
@@ -29,12 +29,13 @@ describe("the v7 extract script, generated from the contract", () => {
   const sql: string = extractSql({ out: "C:\\v7 extract\\", generatedAt: "2026-09-29" });
   const copies = sql.split("\n").filter((line) => line.startsWith("\\copy"));
 
-  it("copies every contract table once, in order, each on one line, into the named directory", () => {
-    assert.equal(copies.length, V7_TABLES.length);
+  it("copies every contract table once, in order, each on one line, into the named directory — then v7's own client Risk", () => {
+    // job_plan is a contract table (PR 2), so the parity file is derived beside it, last, in the same snapshot.
+    assert.equal(copies.length, V7_TABLES.length + 1);
     copies.forEach((line, index) => {
       const match = COPY_LINE.exec(line);
       assert.ok(match, `not a single-line \\copy: ${line.slice(0, 80)}`);
-      assert.equal(match[2], `C:/v7 extract/${V7_TABLES[index]}.csv`);
+      assert.equal(match[2], `C:/v7 extract/${index < V7_TABLES.length ? V7_TABLES[index] : PARITY_FILE}.csv`);
     });
   });
 
@@ -132,6 +133,63 @@ describe("the v7 extract script, generated from the contract", () => {
   });
 });
 
+describe("a subset extract — job_plan alone, for the milestone backfill (ruled R2)", () => {
+  const subset: string = extractSql({ out: "C:/v7-extract", tables: parseTables(["job_plan"]) });
+  const copies = subset.split("\n").filter((line) => line.startsWith("\\copy"));
+
+  it("copies job_plan and v7's own client Risk, and nothing else — no client personal data is re-written", () => {
+    assert.deepEqual(copies.map((line) => COPY_LINE.exec(line)![2]), ["C:/v7-extract/job_plan.csv", `C:/v7-extract/${PARITY_FILE}.csv`]);
+    assert.match(subset, /-- A subset \(--tables\): job_plan\. Build the manifest with the same --tables\./);
+  });
+
+  it("keeps decision 8's scope: only the plans of in-scope clients' jobs", () => {
+    assert.match(COPY_LINE.exec(copies[0]!)![1]!, /FROM job_plan t WHERE t\.job_id IN \(SELECT job_id FROM aj\)/);
+  });
+
+  it("still runs in one read-only, repeatable-read transaction, preflighted first", () => {
+    const lines = subset.split("\n");
+    const begin = lines.indexOf("BEGIN ISOLATION LEVEL REPEATABLE READ;");
+    const preflight = lines.findIndex((line) => line.startsWith("DO $preflight$"));
+    const commit = lines.indexOf("COMMIT;");
+    assert.ok(begin >= 0 && begin < preflight && preflight < lines.indexOf(copies[0]!) && lines.indexOf(copies[1]!) < commit);
+  });
+
+  it("preflights only what the subset reads — job_plan's columns and the scope's, not the factor lookup", () => {
+    const checked = new Set<string>(preflightColumns(new Set(), ["job_plan"]).map(([table, column]: [string, string]) => `${table}.${column}`));
+    for (const column of [...EXTRACT_CONTRACT.job_plan.required, ...EXTRACT_CONTRACT.job_plan.optional]) assert.ok(checked.has(`job_plan.${column}`), column);
+    for (const pair of ["clients.db_id", "clients.status", "clients.archived", "jobs.job_id", "jobs.client_db_id"]) assert.ok(checked.has(pair), pair);
+    assert.ok(![...checked].some((pair) => /^(factor_lookup|datasets|job_scope_rows|job_emission|clients\.client_name)/.test(pair)), "nothing the subset does not read");
+  });
+
+  it("refuses a table the contract does not name", () => {
+    assert.throws(() => parseTables(["job_plans"]), /not a contract table/);
+    assert.deepEqual(parseTables([]), V7_TABLES, "none named is every table");
+  });
+
+  it("requires the milestone dates and completions, so an omitted one cannot silently read as unfinished", () => {
+    for (const kind of ["data_collection", "first_draft", "final_report"]) {
+      assert.throws(() => parseOmit([`job_plan.${kind}_due`]), /required/);
+      assert.throws(() => parseOmit([`job_plan.${kind}_completed_at`]), /required/);
+      assert.doesNotThrow(() => parseOmit([`job_plan.${kind}_completed_by`]));
+    }
+  });
+});
+
+describe("v7's own client Risk, for the parity check (ruled A1)", () => {
+  it("is v7's _RISK_CASE_SQL verbatim, with only CURRENT_DATE replaced by the London operating day", () => {
+    const sql: string = v7ClientRiskSql();
+    const expected = V7_RISK_CASE_SQL.replaceAll("CURRENT_DATE", "od.d").replace(/\s+/g, " ").trim();
+    assert.ok(sql.includes(expected), "the rule is v7's, character for character bar the day");
+    assert.doesNotMatch(sql, /CURRENT_DATE/, "never v7's UTC clock");
+    assert.match(sql, /od AS \(SELECT \(now\(\) AT TIME ZONE 'Europe\/London'\)::date AS d\)/);
+    assert.equal((V7_RISK_CASE_SQL.match(/CURRENT_DATE/g) ?? []).length, 6, "six comparisons in v7's rule, all substituted");
+  });
+
+  it("rolls up over every job of the client, as v7's list does — no status predicate", () => {
+    assert.match(v7ClientRiskSql(), /FROM ac c CROSS JOIN od LEFT JOIN jobs j ON j\.client_db_id = c\.db_id LEFT JOIN job_plan jp ON jp\.job_id = j\.job_id GROUP BY c\.db_id, od\.d/);
+  });
+});
+
 describe("the v7 extract manifest, built from the written files", () => {
   it("counts records as the importer's reader does — quoted newlines, doubled quotes, NULL rows", () => {
     const text = 'a,b\n"x\ny","1 ""q"""\n,\n"",\n';
@@ -151,6 +209,42 @@ describe("the v7 extract manifest, built from the written files", () => {
       assert.deepEqual(manifest.tables, expected.tables, "every file's rows and sha256 as the writer recorded them");
       writeFileSync(join(directory, "manifest.json"), JSON.stringify(manifest, null, 2));
       assert.deepEqual(readV7Extract(directory).problems, []);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+
+  it("records a subset and its parity file, and a subset reader refuses any other table", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-manifest-"));
+    try {
+      writeSyntheticExtract(directory);
+      const { manifest, problems } = buildManifest(directory, { extractedAt: "synthetic", only: ["job_plan"] });
+      assert.deepEqual(problems, []);
+      assert.deepEqual(Object.keys(manifest.tables), ["job_plan"]);
+      assert.deepEqual(manifest.subset, ["job_plan"]);
+      assert.equal(manifest.derived.v7_client_risk.rows, 2);
+      writeFileSync(join(directory, "manifest.json"), JSON.stringify(manifest, null, 2));
+      const read = readV7Extract(directory, { tables: ["job_plan"] });
+      assert.deepEqual(read.problems, []);
+      assert.equal(read.extract.job_plan.length, 3);
+      assert.equal(read.parity?.length, 2);
+      assert.match(readV7Extract(directory, { tables: ["clients"] }).problems[0]!, /a subset \(job_plan\) and does not include it/);
+      assert.ok(readV7Extract(directory).problems.length > 0, "a whole-extract reader refuses a subset");
+
+      unlinkSync(join(directory, "v7_client_risk.csv"));
+      assert.match(buildManifest(directory, { only: ["job_plan"] }).problems.join(), /v7_client_risk\.csv: missing/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a parity file that does not hash to the manifest", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-manifest-"));
+    try {
+      writeSyntheticExtract(directory);
+      writeFileSync(join(directory, "v7_client_risk.csv"), "client_db_id,operating_day,v7_milestone_status\n1,2026-09-29,green\n2,2026-09-29,red\n");
+      assert.match(readV7Extract(directory, { tables: ["job_plan"] }).problems.join(), /v7_client_risk: v7_client_risk\.csv does not hash/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -220,7 +314,7 @@ describe("the helpers run on bare Node, with nothing installed", () => {
     try {
       const generated = spawnSync(process.execPath, [join(scripts, "v7-extract-sql.mjs"), "--out", directory], { encoding: "utf8" });
       assert.equal(generated.status, 0, generated.stderr);
-      assert.equal(generated.stdout.split("\n").filter((line) => line.startsWith("\\copy")).length, V7_TABLES.length);
+      assert.equal(generated.stdout.split("\n").filter((line) => line.startsWith("\\copy")).length, V7_TABLES.length + 1);
       const usage = spawnSync(process.execPath, [join(scripts, "v7-extract-sql.mjs")], { encoding: "utf8" });
       assert.equal(usage.status, 1);
 

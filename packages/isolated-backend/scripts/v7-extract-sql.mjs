@@ -19,6 +19,12 @@
  * on the machine running psql, and the one snapshot makes the fourteen files consistent with each other. No PDFs, and
  * nothing from v7's client-data folders.
  *
+ * **A subset: `--tables job_plan`** (ruled R2 for the milestone backfill). Only the named tables are copied, the preflight
+ * checks only what they read, and the manifest records the subset — so a milestone-only extract never re-writes client
+ * personal data to disk. When `job_plan` is copied, `v7_client_risk.csv` is written beside it: v7's own client Risk,
+ * computed in the same snapshot with the London operating day substituted for CURRENT_DATE (ruled A1), for the
+ * backfill's parity check.
+ *
  * **An optional column v7 does not have.** v7 adds columns on first use, so a deployment may lack an optional one. psql
  * then stops at that table (`ON_ERROR_STOP`) with "column … does not exist": re-generate with
  * `--omit <table>.<column>` (repeatable, or comma-separated) and run again. A required column cannot be omitted — the
@@ -114,14 +120,71 @@ export const QUERY_COLUMNS = {
   datasets: ["dataset_id", "year"],
 };
 
+/** Query columns needed only when a particular table is copied; clients and jobs (the prelude) are always read. */
+const QUERY_COLUMNS_FOR = {
+  factor_lookup: ["job_scope_rows"], datasets: ["job_scope_rows", "datasets"], job_scope_rows: ["job_scope_rows"],
+  job_emission_sources: ["datasets", "job_emission_sources"], job_emission_groups: ["datasets", "job_emission_groups"],
+};
+
 /** Every (table, column) the script reads, contract and query alike, less any omitted — sorted, de-duplicated. */
-export function preflightColumns(omit = new Set()) {
+export function preflightColumns(omit = new Set(), tables = Object.keys(CONTRACT)) {
   const pairs = new Set();
-  for (const table of Object.keys(CONTRACT)) {
+  for (const table of tables) {
     for (const column of columnsFor(table, omit)) if (!REFERENCE_COLUMNS.includes(column)) pairs.add(`${table}.${column}`);
   }
-  for (const [table, columns] of Object.entries(QUERY_COLUMNS)) for (const column of columns) pairs.add(`${table}.${column}`);
+  for (const [table, columns] of Object.entries(QUERY_COLUMNS)) {
+    const neededBy = QUERY_COLUMNS_FOR[table];
+    if (neededBy && !neededBy.some((user) => tables.includes(user))) continue;
+    for (const column of columns) pairs.add(`${table}.${column}`);
+  }
   return [...pairs].sort().map((pair) => pair.split("."));
+}
+
+/**
+ * v7's client Risk SQL, verbatim from api/client_index_routes.py:33–47 (_RISK_CASE_SQL). Kept verbatim so the parity
+ * check compares against v7's rule and not a restatement of it; {@link v7ClientRiskSql} substitutes the operating day
+ * for CURRENT_DATE and changes nothing else.
+ */
+export const V7_RISK_CASE_SQL = `
+    CASE
+        WHEN bool_or(
+            (jp.data_collection_completed_at IS NULL AND jp.data_collection_due IS NOT NULL AND jp.data_collection_due < (CURRENT_DATE - INTERVAL '1 day'))
+            OR (jp.first_draft_completed_at IS NULL AND jp.first_draft_due IS NOT NULL AND jp.first_draft_due < (CURRENT_DATE - INTERVAL '1 day'))
+            OR (jp.final_report_completed_at IS NULL AND jp.final_report_due IS NOT NULL AND jp.final_report_due < (CURRENT_DATE - INTERVAL '1 day'))
+        ) THEN 'red'
+        WHEN bool_or(
+            (jp.data_collection_completed_at IS NULL AND jp.data_collection_due IS NOT NULL AND jp.data_collection_due <= (CURRENT_DATE + INTERVAL '7 day'))
+            OR (jp.first_draft_completed_at IS NULL AND jp.first_draft_due IS NOT NULL AND jp.first_draft_due <= (CURRENT_DATE + INTERVAL '7 day'))
+            OR (jp.final_report_completed_at IS NULL AND jp.final_report_due IS NOT NULL AND jp.final_report_due <= (CURRENT_DATE + INTERVAL '7 day'))
+        ) THEN 'amber'
+        ELSE 'green'
+    END
+`;
+
+/** The parity file's name — not a contract table: derived, in the same snapshot, from tables the extract reads. */
+export const PARITY_FILE = "v7_client_risk";
+
+/**
+ * v7's own client Risk, one row per in-scope client, as v7's list computes it (client_index_routes.py:150–154: every
+ * job of the client, no status predicate) — but on the **London** operating day, not v7's UTC CURRENT_DATE, which turns
+ * over an hour early in summer. That substitution is the only change (ruled A1), so any difference the backfill then
+ * reports is a real rule difference, not a timezone artefact. `operating_day` is written on every row: the backfill
+ * judges the console's Risk against the same day.
+ */
+export function v7ClientRiskSql() {
+  const riskCase = V7_RISK_CASE_SQL.replaceAll("CURRENT_DATE", "od.d").replace(/\s+/g, " ").trim();
+  return `${PRELUDE}, od AS (SELECT (now() AT TIME ZONE 'Europe/London')::date AS d) ` +
+    `SELECT c.db_id AS client_db_id, od.d AS operating_day, ${riskCase} AS v7_milestone_status ` +
+    "FROM ac c CROSS JOIN od LEFT JOIN jobs j ON j.client_db_id = c.db_id LEFT JOIN job_plan jp ON jp.job_id = j.job_id " +
+    "GROUP BY c.db_id, od.d ORDER BY c.db_id";
+}
+
+/** `--tables`: contract tables, kept in contract order. None named means every table. */
+export function parseTables(values) {
+  const named = values.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);
+  if (named.length === 0) return Object.keys(CONTRACT);
+  for (const table of named) if (!CONTRACT[table]) throw new Error(`--tables ${table}: not a contract table`);
+  return Object.keys(CONTRACT).filter((table) => named.includes(table));
 }
 
 /**
@@ -130,8 +193,8 @@ export function preflightColumns(omit = new Set()) {
  * drifted schema shows its whole drift on the first run, not one column per run under ON_ERROR_STOP. A missing table
  * is reported as the table, once. Read-only: it only reads the catalogue.
  */
-export function preflightSql(omit = new Set()) {
-  const values = preflightColumns(omit).map(([table, column]) => `('${table}','${column}')`).join(",");
+export function preflightSql(omit = new Set(), tables = Object.keys(CONTRACT)) {
+  const values = preflightColumns(omit, tables).map(([table, column]) => `('${table}','${column}')`).join(",");
   return "DO $preflight$ DECLARE missing text; count integer; BEGIN " +
     "SELECT string_agg(item, ', ' ORDER BY item), count(*) INTO missing, count FROM (" +
     "SELECT DISTINCT CASE WHEN to_regclass(w.t) IS NULL THEN w.t || ' (table absent)' ELSE w.t || '.' || w.c END AS item " +
@@ -141,7 +204,7 @@ export function preflightSql(omit = new Set()) {
 }
 
 /** The whole psql script. */
-export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date().toISOString().slice(0, 10) } = {}) {
+export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(CONTRACT), generatedAt = new Date().toISOString().slice(0, 10) } = {}) {
   const directory = out.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
   const quoted = (path) => `'${path.replace(/'/g, "''")}'`;
   const lines = [
@@ -150,6 +213,7 @@ export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date
     "-- READ-ONLY: every statement is a SELECT, and the session refuses writes. Files land on this machine, never the server.",
     `-- Output: ${directory}/<table>.csv. Then: node packages/isolated-backend/scripts/v7-extract-manifest.mjs ${directory}`,
     ...(omit.size ? [`-- Omitted optional columns (absent from this v7): ${[...omit].sort().join(", ")}`] : []),
+    ...(tables.length < Object.keys(CONTRACT).length ? [`-- A subset (--tables): ${tables.join(", ")}. Build the manifest with the same --tables.`] : []),
     "\\set ON_ERROR_STOP on",
     "\\encoding UTF8",
     // Belt and braces: the session refuses writes, and so does the one transaction every \copy runs inside. Repeatable
@@ -161,12 +225,16 @@ export function extractSql({ out = ".", omit = new Set(), generatedAt = new Date
     `SET LOCAL idle_in_transaction_session_timeout = '${IDLE_TIMEOUT}';`,
     "",
     "\\echo preflight: every column the extract reads, checked against this v7 before anything is copied",
-    preflightSql(omit),
+    preflightSql(omit, tables),
     "",
   ];
-  for (const table of Object.keys(CONTRACT)) {
+  for (const table of tables) {
     lines.push(`\\echo ${table}`);
     lines.push(`\\copy (${selectFor(table, omit)}) TO ${quoted(`${directory}/${table}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
+  }
+  if (tables.includes("job_plan")) {
+    lines.push(`\\echo ${PARITY_FILE} (v7's own client Risk on the London operating day, for the parity check)`);
+    lines.push(`\\copy (${v7ClientRiskSql()}) TO ${quoted(`${directory}/${PARITY_FILE}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
   lines.push("", "COMMIT;");
   return lines.join("\n") + "\n";
@@ -192,8 +260,8 @@ export function writeExtractSql(path, text) {
 function main(argv) {
   const values = (flag) => argv.flatMap((item, index) => (item === flag && argv[index + 1] ? [argv[index + 1]] : []));
   const out = values("--out")[0];
-  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--file <path for the script>] [--omit <table>.<column>]…");
-  const text = extractSql({ out, omit: parseOmit(values("--omit")) });
+  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--file <path for the script>] [--tables <table>[,…]] [--omit <table>.<column>]…");
+  const text = extractSql({ out, omit: parseOmit(values("--omit")), tables: parseTables(values("--tables")) });
   const file = values("--file")[0];
   if (!file) { process.stdout.write(text); return; }
   writeExtractSql(file, text);

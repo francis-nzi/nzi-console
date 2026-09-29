@@ -11,6 +11,10 @@
  * It refuses, writing no manifest, when a file is missing, has no header, or lacks a column the importer requires: the
  * importer would refuse that extract anyway, and a manifest is a claim that the extract is whole.
  *
+ * **A subset** (`--tables job_plan`, ruled R2): only the named tables are required, and the manifest says so under
+ * `subset` — a reader then knows the extract is whole *for those tables* and nothing more. When `job_plan` is in the
+ * extract, v7's own client Risk (`v7_client_risk.csv`, the parity check) is required too, and recorded under `derived`.
+ *
  * Read-only on the files; it writes only `manifest.json` beside them.
  */
 import { createHash } from "node:crypto";
@@ -54,10 +58,14 @@ export function countCsv(text) {
   return { header, rows: records };
 }
 
-export function buildManifest(directory, { extractedAt = new Date().toISOString().slice(0, 10) } = {}) {
+const PARITY_FILE = "v7_client_risk";
+const PARITY_COLUMNS = ["client_db_id", "operating_day", "v7_milestone_status"];
+
+export function buildManifest(directory, { extractedAt = new Date().toISOString().slice(0, 10), only = Object.keys(CONTRACT) } = {}) {
   const problems = [];
   const tables = {};
   for (const [table, entry] of Object.entries(CONTRACT)) {
+    if (!only.includes(table)) continue;
     const file = `${table}.csv`;
     const path = join(directory, file);
     if (!existsSync(path)) { problems.push(`${file}: missing — every contract table needs a file, header-only when nothing is in scope`); continue; }
@@ -68,19 +76,43 @@ export function buildManifest(directory, { extractedAt = new Date().toISOString(
     if (missing.length) problems.push(`${file}: lacks required column(s) ${missing.join(", ")}`);
     tables[table] = { file, rows, sha256: createHash("sha256").update(bytes).digest("hex") };
   }
-  return { manifest: { extractedAt, tables }, problems };
+  const subset = only.length < Object.keys(CONTRACT).length ? only : undefined;
+  let derived;
+  if (only.includes("job_plan")) {
+    const file = `${PARITY_FILE}.csv`;
+    const path = join(directory, file);
+    if (!existsSync(path)) problems.push(`${file}: missing — v7's own client Risk is written beside job_plan, for the parity check`);
+    else {
+      const bytes = readFileSync(path);
+      const { header, rows } = countCsv(bytes.toString("utf8"));
+      const missing = PARITY_COLUMNS.filter((column) => !(header ?? []).includes(column));
+      if (missing.length) problems.push(`${file}: lacks column(s) ${missing.join(", ")}`);
+      derived = { [PARITY_FILE]: { file, rows, sha256: createHash("sha256").update(bytes).digest("hex") } };
+    }
+  }
+  return { manifest: { extractedAt, ...(subset ? { subset } : {}), tables, ...(derived ? { derived } : {}) }, problems };
+}
+
+/** `--tables`, as the SQL generator reads it: contract tables in contract order; none means every table. */
+export function parseTables(values) {
+  const named = values.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);
+  if (named.length === 0) return Object.keys(CONTRACT);
+  for (const table of named) if (!CONTRACT[table]) throw new Error(`--tables ${table}: not a contract table`);
+  return Object.keys(CONTRACT).filter((table) => named.includes(table));
 }
 
 function main(argv) {
   const directory = argv[0];
-  if (!directory || directory.startsWith("--")) throw new Error("Usage: v7-extract-manifest.mjs <extract directory>");
-  const { manifest, problems } = buildManifest(directory);
+  if (!directory || directory.startsWith("--")) throw new Error("Usage: v7-extract-manifest.mjs <extract directory> [--tables <table>[,…]]");
+  const only = parseTables(argv.flatMap((item, index) => (item === "--tables" && argv[index + 1] ? [argv[index + 1]] : [])));
+  const { manifest, problems } = buildManifest(directory, { only });
   if (problems.length) throw new Error(`no manifest written:\n  ${problems.join("\n  ")}`);
   const text = JSON.stringify(manifest, null, 2) + "\n";
   writeFileSync(join(directory, "manifest.json"), text, "utf8");
-  for (const [table, entry] of Object.entries(manifest.tables)) process.stdout.write(`  ${table.padEnd(22)} ${String(entry.rows).padStart(7)} rows  ${entry.sha256.slice(0, 16)}…\n`);
+  for (const [table, entry] of [...Object.entries(manifest.tables), ...Object.entries(manifest.derived ?? {})]) process.stdout.write(`  ${table.padEnd(22)} ${String(entry.rows).padStart(7)} rows  ${entry.sha256.slice(0, 16)}…\n`);
+  if (manifest.subset) process.stdout.write(`  (a subset: ${manifest.subset.join(", ")})\n`);
   process.stdout.write(`\nmanifest.json written — extract sha256 ${createHash("sha256").update(text).digest("hex")}\n`);
-  process.stdout.write("Compare the row counts with psql's COPY n lines. Next: npm run load:v7-clients -- <directory> (a dry run).\n");
+  process.stdout.write(`Compare the row counts with psql's COPY n lines. Next: npm run ${manifest.subset?.includes("job_plan") ? "load:v7-milestones" : "load:v7-clients"} -- <directory> (a dry run).\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -26,7 +26,7 @@ const jobQuery = (change: Partial<JobListQuery> = {}): JobListQuery => ({ ...def
 
 describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
-  const clientsIn = (org: string, query: ClientListQuery) => withTenantRead(database.pool, org, (db) => listClients(db, query));
+  const clientsIn = (org: string, query: ClientListQuery) => withTenantRead(database.pool, org, (db) => listClients(db, query, { today: TODAY }));
   const jobsIn = (org: string, query: JobListQuery) => withTenantRead(database.pool, org, (db) => listJobs(db, query, { today: TODAY }));
   const names = (page: { rows: Array<{ name: string }> }) => page.rows.map((row) => row.name);
 
@@ -128,7 +128,7 @@ describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? 
     });
 
     it("refuses to read at all without a tenant", async () => {
-      await assert.rejects(() => withTenantRead(database.pool, "", (db) => listClients(db, clientQuery())));
+      await assert.rejects(() => withTenantRead(database.pool, "", (db) => listClients(db, clientQuery(), { today: TODAY })));
     });
   });
 
@@ -215,7 +215,7 @@ describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? 
       const { summary } = await clientsIn(ORG_A, clientQuery({ pageSize: 2 }));
       // The average is over the clients with a completeness recorded (80, 40, 90) — two have none, and an unknown is
       // not a nought. The board used to average in the browser with a missing value counted as 0.
-      assert.deepEqual(summary, { clients: 5, openJobs: 2, averageCompleteness: 70, atRisk: 1, withoutOwner: 1, deliveryClients: 4, deliveryWithoutJobs: 2, activeWithoutEmissions: 1 });
+      assert.deepEqual(summary, { clients: 5, openJobs: 2, averageCompleteness: 70, atRisk: 1, overdue: 0, withoutOwner: 1, deliveryClients: 4, deliveryWithoutJobs: 2, activeWithoutEmissions: 1 });
       const retail = (await clientsIn(ORG_A, clientQuery({ filters: { industry: ["Retail"] } }))).summary;
       assert.deepEqual([retail.clients, retail.atRisk, retail.averageCompleteness], [2, 1, 65]);
     });
@@ -267,7 +267,7 @@ describe("the paged lists, read from the database", { skip: TEST_DATABASE_URL ? 
     it("computes the metric strip over the filtered set, from the operating day given", async () => {
       // Progress averages the jobs that record one (50, 100); J000004 records none. Due within 30 days of 29 Sep:
       // J000001 (9 Oct) — J000004 (31 Mar) is not, and J000002 is cancelled so outside the default view.
-      assert.deepEqual((await jobsIn(ORG_A, jobQuery())).summary, { jobs: 3, carbonReporting: 2, averageProgress: 75, dueWithin30Days: 1 });
+      assert.deepEqual((await jobsIn(ORG_A, jobQuery())).summary, { jobs: 3, carbonReporting: 2, averageProgress: 75, dueWithin30Days: 1, overdue: 0 });
     });
   });
 });

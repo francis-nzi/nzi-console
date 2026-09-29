@@ -1,4 +1,4 @@
-import { clientListSpec, parseListQuery } from "@nzi/contracts";
+import { clientListSpec, parseListQuery, todayInLondon } from "@nzi/contracts";
 import { listClients, withTenantRead } from "@nzi/isolated-backend";
 import { apiFailure, requireIsolatedApiContext } from "../../../lib/isolatedDatabase";
 
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   if (issues.length > 0) return Response.json({ code: "LIST_QUERY_INVALID", message: issues.join(" ") }, { status: 400 });
   try {
     const { pool, organisationId } = requireIsolatedApiContext();
-    return Response.json(await withTenantRead(pool, organisationId, (db) => listClients(db, query)));
+    return Response.json(await withTenantRead(pool, organisationId, (db) => listClients(db, query, { today: todayInLondon() })));
   } catch (error) {
     return apiFailure(error);
   }

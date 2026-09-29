@@ -7,7 +7,7 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type JobFamily } from "@nzi/mock-data";
 import type { ClientScreenReadModel, JobListPage, JobListRow } from "@nzi/isolated-backend";
 import Link from "next/link";
-import { AppShell, DataList, SmartSearch, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { AppShell, DataList, RiskBadge, RiskLegend, SmartSearch, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
 import { formatDate } from "../lib/formatDate";
 import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
@@ -126,6 +126,7 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
     { key: "client", header: "Client", sortKey: "client", cell: (job) => job.client },
     { key: "title", header: "Title", sortKey: "title", cell: (job) => job.title },
     { key: "status", header: "Status", sortKey: "status", cell: (job) => STATUS_LABELS[job.status] ?? job.status },
+    { key: "risk", header: "Risk", sortKey: "risk", cell: (job) => <RiskBadge risk={job.risk} /> },
     { key: "stage", header: "Stage", cell: (job) => job.workflowStage },
     { key: "dueDate", header: "End date", sortKey: "dueDate", cell: (job) => formatDate(job.dueDate) },
     { key: "manager", header: "Client manager", sortKey: "manager", cell: (job) => job.manager ?? <span className="muted">Unassigned</span> },
@@ -138,6 +139,7 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
       options: page.filterOptions.family.map((option) => ({ ...option, label: jobFamilyMeta[option.value as JobFamily]?.label ?? option.label })) },
     { key: "status", label: "Status", allLabel: "All except cancelled", value: query.filters.status?.[0] ?? "",
       options: [{ value: JOB_STATUS_ALL, label: "All statuses" }, ...page.filterOptions.status.map((option) => ({ ...option, label: STATUS_LABELS[option.value] ?? option.label }))] },
+    { key: "risk", label: "Risk", allLabel: "All risk levels", value: query.filters.risk?.[0] ?? "", options: page.filterOptions.risk },
   ];
 
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
@@ -197,6 +199,7 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button type="button" className="nz-btn" disabled={saving} onClick={() => setCreating(false)}>Cancel</button><button className="nz-btn pri" disabled={saving || !draft.clientId}>{saving ? "Creating…" : "Create and assign number"}</button></div>
       </form>}
+      <RiskLegend />
       <DataList
         label="Jobs"
         tableClassName="nz-job-table"

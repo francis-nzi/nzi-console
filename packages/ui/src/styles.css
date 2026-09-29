@@ -1560,3 +1560,15 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-datalist-pager .nz-fl{margin:0;min-width:110px;flex:0 0 auto}
 .nz-datalist-page{font-size:12.5px;color:var(--t2);align-self:center}
 .nz-datalist-table td:first-child a{white-space:nowrap}
+
+/* Risk — a semantic status role, never a scope hue (ruled R6). Scope identity is --s1/--s2/--s3; these are the deeper
+   status tints, so no colour means both a scope and a risk state. The label always sits beside the dot. */
+:root{--risk-overdue:#B23A2B;--risk-overdue-bg:#FDEBE8;--risk-due:#8A6410;--risk-due-bg:#FFF4DC;--risk-healthy:#0B7A4B;--risk-healthy-bg:#DFF5E9;--risk-notset:#51605A;--risk-notset-bg:#EEF1EF}
+.nz-risk{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:2px 8px 2px 7px;border-radius:20px;white-space:nowrap}
+.nz-risk i{width:7px;height:7px;border-radius:50%;flex:none}
+.nz-risk.overdue{background:var(--risk-overdue-bg);color:var(--risk-overdue)}.nz-risk.overdue i{background:var(--risk-overdue)}
+.nz-risk.due{background:var(--risk-due-bg);color:var(--risk-due)}.nz-risk.due i{background:var(--risk-due)}
+.nz-risk.healthy{background:var(--risk-healthy-bg);color:var(--risk-healthy)}.nz-risk.healthy i{background:var(--risk-healthy)}
+.nz-risk.notset{background:var(--risk-notset-bg);color:var(--risk-notset)}.nz-risk.notset i{background:var(--risk-notset)}
+.nz-risk-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;font-size:12px;color:var(--t2)}
+.nz-risk-legend-note{color:var(--t3);font-size:11.5px}
