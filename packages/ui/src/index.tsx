@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { CommandSearch } from "./CommandSearch";
 import { HelpAffordance } from "./HelpAffordance";
+import { GatedNavLink } from "./GatedNavLink";
 
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
@@ -10,6 +11,10 @@ export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from ".
 export { SmartSearch, type SmartSearchOption } from "./SmartSearch";
 export { InfoTip } from "./InfoTip";
 export { RiskBadge, RiskLegend, type RiskValue } from "./Risk";
+export { GatedNavLink } from "./GatedNavLink";
+export { DrawerEditor } from "./admin/DrawerEditor";
+export { FieldRow, NumberField, SelectField, Switch, TextAreaField, TextField, type SelectOption } from "./admin/Fields";
+export { AuditLine, CapabilityChip, EnvBadge, ProvenanceBadge, StatusBadge, type Provenance } from "./admin/Governance";
 export { DataList, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
 
 export type IconName =
@@ -38,7 +43,8 @@ export function Icon({ name }: { name: IconName }) {
   );
 }
 
-export type NavItem = { id: string; label: string; icon: IconName; href: string; count?: number };
+/** `capabilityPrefix` — shown only to a holder of a capability in that family (e.g. "admin."); see GatedNavLink. */
+export type NavItem = { id: string; label: string; icon: IconName; href: string; count?: number; capabilityPrefix?: string };
 export type NavSection = { heading: string; items: NavItem[] };
 
 export { ClientWorkspaceNav } from "./ClientWorkspaceNav";
@@ -72,13 +78,16 @@ export function WorkspaceRail({
         <div key={s.heading}>
           <div className="nz-navsec">{s.heading}</div>
           <nav className="nz-nav" aria-label={s.heading}>
-            {s.items.map((it) => (
-              <a key={it.id} href={it.href} className={it.id === activeId ? "active" : undefined} aria-current={it.id === activeId ? "page" : undefined}>
-                <Icon name={it.icon} />
-                {it.label}
-                {typeof it.count === "number" && <span className="count">{it.count}</span>}
-              </a>
-            ))}
+            {s.items.map((it) => {
+              const link = (
+                <a key={it.id} href={it.href} className={it.id === activeId ? "active" : undefined} aria-current={it.id === activeId ? "page" : undefined}>
+                  <Icon name={it.icon} />
+                  {it.label}
+                  {typeof it.count === "number" && <span className="count">{it.count}</span>}
+                </a>
+              );
+              return it.capabilityPrefix ? <GatedNavLink key={it.id} capabilityPrefix={it.capabilityPrefix}>{link}</GatedNavLink> : link;
+            })}
           </nav>
         </div>
       ))}

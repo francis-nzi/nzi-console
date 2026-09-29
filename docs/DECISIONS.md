@@ -117,6 +117,9 @@ Type: **Inter** throughout (no Space Grotesk). Palette: Emerald `#0BA75E` primar
 Midnight `#0B1B2B`, Signal Amber `#FFC24B`, Drop Coral `#FF5C48`, Mint Tint `#DFF5E9`. Locked in
 `packages/ui`.
 
+**Amended for `/admin` only by NZC-167 (29 Sep 2026)** — the admin section is a scoped pilot of a new visual
+language (Hanken Grotesk and IBM Plex Mono, the admin palette, a three-state theme). Everywhere else, this decision stands.
+
 **Amendment 30 Aug 2026 (WCAG 2.1 AA).** The rendered axe scan found the muted-text tokens below
 WCAG-AA contrast. Brand colours (Emerald/Pine/Midnight/Amber/Coral/Mint) are unchanged; only muted greys
 were darkened to pass 4.5:1: `--t3` `#8A968F` → **`#616B65`** (5.5:1 on white, 5.2:1 on `--paper`; an
@@ -5650,3 +5653,22 @@ inventory records this personal data as retained with that basis pending confirm
 silently kept. NZC-138 is the question counsel will weigh it against: each client controls its own data, and NZI
 asserts no retention basis over a client's staff data; a report is NZI's own signed deliverable, which is the
 distinction this decision rests on.
+
+### NZC-167 — Admin visual language, as a scoped pilot (amends NZC-003 for `/admin` only) [Decided 29 Sep 2026 — Francis]
+
+**Decision.** The approved admin design (`docs/design/admin-prototype.html`, with its notes) is adopted **inside the
+admin section only**. Its tokens and typefaces live under the `.nz-admin` root, so nothing outside `/admin` changes:
+
+- **Typefaces:** Hanken Grotesk (UI and headings) and IBM Plex Mono (codes, rates, IDs, counts, eyebrow labels).
+  Both are SIL OFL, and both are **self-hosted with `next/font/local`** (`apps/console/app/fonts/`, with their
+  licences), never fetched at build time (NZC-150).
+- **Palette:** the admin light and dark token sets, with accent `#0E7C5A` (light) and `#3FBE8C` (dark). Status reuses
+  the Risk tokens.
+- **Theme:** three states — system, light and dark — for `/admin` only. The rest of the console has no dark mode.
+
+**Why scoped.** The admin section is the pilot for a console-wide visual refresh (the design notes). Scoping it means
+the pilot can be judged in use before the language is carried outward. The rest of the console keeps NZC-003 (Inter,
+emerald) unchanged.
+
+**What this does not decide.** Rolling the language out to the rest of the console is a later decision, which would
+supersede NZC-003 rather than amend it.

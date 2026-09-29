@@ -431,6 +431,10 @@ jobs:
       # the console has not touched a row, both-sides changes refused by job and kind, never another tenant's rows.
       - name: The milestone backfill is idempotent, and never overwrites a console edit
         run: npx tsx --test packages/isolated-backend/tests/v7MilestoneLoadReal.test.ts
+      # The admin overview (admin Phase A1): the organisation's own figures only; linked, named-but-not-linked and
+      # nothing-to-link kept apart; recent changes that are administration, newest first, never another tenant's.
+      - name: The admin overview reads the organisation's own configuration and changes
+        run: npx tsx --test packages/isolated-backend/tests/adminOverviewReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
