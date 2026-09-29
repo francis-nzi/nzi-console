@@ -1,6 +1,7 @@
-import { clientListSpec, dateOnlyOrNull, JOB_STATUS_ALL, jobListSpec, type ClientListFilterKey, type ClientListQuery, type JobListFilterKey, type JobListQuery, type ListPage } from "@nzi/contracts";
+import { clientListSpec, dateOnlyOrNull, JOB_STATUS_ALL, jobListSpec, RISK_LEVELS, type ClientListFilterKey, type ClientListQuery, type JobListFilterKey, type JobListQuery, type ListPage, type RiskLevel } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import { defineListSql, readListPage } from "./listPage";
+import { clientRiskRankSql, jobRiskRankSql, riskLabelSql } from "./milestoneRisk";
 import type { ClientStatus, JobFamily, JobScreenReadModel } from "./readModels";
 
 /**
@@ -19,9 +20,11 @@ export type ClientListRow = {
   location: string; memberSince: string; latestFootprint: string | null; yoy: string | null; completeness: number;
   openJobs: number; nextReportDue: string; contact: { name: string; role: string; email: string };
   jobs: Array<{ number: string; year: number; status: string }>;
+  /** The milestone traffic light — the worst of the client's jobs (milestoneRisk.ts). Not the `at-risk` status. */
+  risk: RiskLevel;
 };
 export type ClientListSummary = {
-  clients: number; openJobs: number; averageCompleteness: number | null; atRisk: number;
+  clients: number; openJobs: number; averageCompleteness: number | null; atRisk: number; overdue: number;
   withoutOwner: number; deliveryClients: number; deliveryWithoutJobs: number; activeWithoutEmissions: number;
 };
 export type ClientListPage = ListPage<ClientListRow, ClientListFilterKey, ClientListSummary>;
@@ -29,15 +32,23 @@ export type ClientListPage = ListPage<ClientListRow, ClientListFilterKey, Client
 export type JobListRow = {
   id: string; number: string; legacyNumber: string | null; family: JobFamily; clientId: string; client: string; title: string;
   status: JobScreenReadModel["header"]["status"]; workflowStage: string; dueDate: string | null; manager: string | null; progressPct: number;
+  risk: RiskLevel;
 };
-export type JobListSummary = { jobs: number; carbonReporting: number; averageProgress: number | null; dueWithin30Days: number };
+export type JobListSummary = { jobs: number; carbonReporting: number; averageProgress: number | null; dueWithin30Days: number; overdue: number };
 export type JobListPage = ListPage<JobListRow, JobListFilterKey, JobListSummary>;
+
+/**
+ * Risk, as both lists carry it: the rank (3 Overdue … 0 Not set), its label, and `risk_order` — the rank reversed, so
+ * an ascending sort puts Overdue first, as v7's does.
+ */
+const riskColumns = `r.risk_rank, 3 - r.risk_rank AS risk_order, ${riskLabelSql("r.risk_rank")} AS risk`;
+const riskFilter = { kind: "equals", column: "risk", facet: { noneLabel: "Not set", values: RISK_LEVELS } } as const;
 
 /** A blank string is no value at all. */
 const clean = (expression: string) => `nullif(btrim(${expression}), '')`;
 
 const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilterKey>({
-  base: `SELECT c.organisation_id, c.client_id, c.name, c.status::text AS status,
+  base: `SELECT c.organisation_id, c.client_id, c.name, c.status::text AS status, ${riskColumns},
       coalesce(${clean("sv.label")}, ${clean("c.sector")}) AS industry,
       coalesce(${clean("ow.display_name")}, ${clean("c.owner_name")}) AS owner,
       ${clean("c.portfolio")} AS portfolio,
@@ -50,7 +61,8 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
     FROM nzi_console.clients c
     LEFT JOIN nzi_console.reference_values sv ON (sv.organisation_id, sv.value_id) = (c.organisation_id, c.sector_value_id)
     LEFT JOIN nzi_console.memberships ow ON (ow.organisation_id, ow.user_id) = (c.organisation_id, c.owner_user_id)
-    LEFT JOIN nzi_console.memberships mg ON (mg.organisation_id, mg.user_id) = (c.organisation_id, c.client_manager_user_id)`,
+    LEFT JOIN nzi_console.memberships mg ON (mg.organisation_id, mg.user_id) = (c.organisation_id, c.client_manager_user_id)
+    CROSS JOIN LATERAL (SELECT ${clientRiskRankSql("c", "$1::date")} AS risk_rank) r`,
   search: ["name", "industry"],
   filters: {
     industry: { kind: "equals", column: "industry", facet: { noneLabel: "Unspecified" } },
@@ -58,8 +70,10 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
     owner: { kind: "equals", column: "owner", facet: { noneLabel: "Unassigned" } },
     portfolio: { kind: "equals", column: "portfolio", facet: { noneLabel: "Unassigned" } },
     manager: { kind: "equals", column: "manager", facet: { noneLabel: "Unassigned" } },
+    risk: riskFilter,
   },
   sort: {
+    risk: { column: "risk_order" },
     name: { column: "name", text: true }, industry: { column: "industry", text: true }, status: { column: "status", text: true },
     owner: { column: "owner", text: true }, emissions: { column: "latest_emissions" }, completeness: { column: "completeness" }, openJobs: { column: "open_jobs" },
   },
@@ -72,6 +86,7 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
        FROM nzi_console.jobs j WHERE (j.organisation_id, j.client_id) = (base.organisation_id, base.client_id)), '[]'::jsonb) AS jobs`,
   summary: `count(*)::int AS clients, coalesce(sum(open_jobs), 0)::int AS open_jobs, round(avg(completeness))::int AS average_completeness,
     count(*) FILTER (WHERE status = 'at-risk')::int AS at_risk,
+    count(*) FILTER (WHERE risk_rank = 3)::int AS overdue,
     count(*) FILTER (WHERE owner IS NULL OR owner = 'Unassigned')::int AS without_owner,
     count(*) FILTER (WHERE status <> 'prospect')::int AS delivery_clients,
     count(*) FILTER (WHERE status <> 'prospect' AND job_count = 0)::int AS delivery_without_jobs,
@@ -82,8 +97,10 @@ const emissionsLabel = (value: unknown) => value === null || value === undefined
 const percentage = (value: unknown) => value === null || value === undefined ? null : `${Number(value) > 0 ? "+" : "−"}${Math.abs(Number(value)).toFixed(1)}%`;
 const text = (value: unknown) => value === null || value === undefined ? null : String(value);
 
-export async function listClients(db: Queryable, query: ClientListQuery): Promise<ClientListPage> {
+/** `context.today` is the operating day (`todayInLondon`), which Risk is judged against — never the database clock. */
+export async function listClients(db: Queryable, query: ClientListQuery, context: { today: string }): Promise<ClientListPage> {
   return readListPage(db, clientSql, clientListSpec, query, {
+    baseParams: [context.today],
     mapRow: (row) => ({
       id: String(row.client_id), name: String(row.name), status: row.status as ClientStatus,
       sector: text(row.industry) ?? "", owner: text(row.owner) ?? "", portfolio: text(row.portfolio), clientManager: text(row.manager),
@@ -92,11 +109,12 @@ export async function listClients(db: Queryable, query: ClientListQuery): Promis
       openJobs: Number(row.open_jobs), nextReportDue: text(row.next_report_due_label) ?? "",
       contact: (row.primary_contact as ClientListRow["contact"] | null) ?? { name: "", role: "", email: "" },
       jobs: (row.jobs as ClientListRow["jobs"] | null) ?? [],
+      risk: row.risk as RiskLevel,
     }),
     mapSummary: (row) => ({
       clients: Number(row.clients ?? 0), openJobs: Number(row.open_jobs ?? 0),
       averageCompleteness: row.average_completeness === null || row.average_completeness === undefined ? null : Number(row.average_completeness),
-      atRisk: Number(row.at_risk ?? 0), withoutOwner: Number(row.without_owner ?? 0), deliveryClients: Number(row.delivery_clients ?? 0),
+      atRisk: Number(row.at_risk ?? 0), overdue: Number(row.overdue ?? 0), withoutOwner: Number(row.without_owner ?? 0), deliveryClients: Number(row.delivery_clients ?? 0),
       deliveryWithoutJobs: Number(row.delivery_without_jobs ?? 0), activeWithoutEmissions: Number(row.active_without_emissions ?? 0),
     }),
   });
@@ -107,7 +125,7 @@ export async function listClients(db: Queryable, query: ClientListQuery): Promis
  * days" means the same day the rest of the platform means — and a test can fix it.
  */
 const jobSql = defineListSql<JobListQuery["sort"]["key"], JobListFilterKey>({
-  base: `SELECT j.organisation_id, j.job_id, j.sequence, j.job_number, j.legacy_job_number, j.job_family::text AS family,
+  base: `SELECT ${riskColumns}, j.organisation_id, j.job_id, j.sequence, j.job_number, j.legacy_job_number, j.job_family::text AS family,
       j.client_id, c.name AS client, j.title, j.status::text AS status, j.workflow_stage, j.due_date, j.progress_percent,
       $1::date AS operating_day,
       /* Ruled D3: the job's manager, then the job's owner, then the client's manager. */
@@ -115,25 +133,28 @@ const jobSql = defineListSql<JobListQuery["sort"]["key"], JobListFilterKey>({
     FROM nzi_console.jobs j
     JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
     LEFT JOIN nzi_console.memberships jm ON (jm.organisation_id, jm.user_id) = (j.organisation_id, j.client_manager_user_id)
-    LEFT JOIN nzi_console.memberships cm ON (cm.organisation_id, cm.user_id) = (c.organisation_id, c.client_manager_user_id)`,
+    LEFT JOIN nzi_console.memberships cm ON (cm.organisation_id, cm.user_id) = (c.organisation_id, c.client_manager_user_id)
+    CROSS JOIN LATERAL (SELECT ${jobRiskRankSql("j", "$1::date")} AS risk_rank) r`,
   search: ["job_number", "legacy_job_number", "title", "client"],
   filters: {
     client: { kind: "equals", column: "client_id" },
     manager: { kind: "equals", column: "manager", facet: { noneLabel: "Unassigned" } },
     family: { kind: "equals", column: "family", facet: { noneLabel: "Unspecified" } },
     status: { kind: "equals", column: "status", facet: { noneLabel: "Unspecified" }, whenAbsent: "status <> 'cancelled'", allValue: JOB_STATUS_ALL },
+    risk: riskFilter,
     dueFrom: { kind: "onOrAfter", column: "due_date" },
     dueTo: { kind: "onOrBefore", column: "due_date" },
   },
   sort: {
     number: { column: "sequence" }, client: { column: "client", text: true }, title: { column: "title", text: true },
     family: { column: "family", text: true }, manager: { column: "manager", text: true }, dueDate: { column: "due_date" },
-    status: { column: "status", text: true },
+    status: { column: "status", text: true }, risk: { column: "risk_order" },
   },
   tiebreak: "sequence",
   summary: `count(*)::int AS jobs, count(*) FILTER (WHERE family = 'crp')::int AS carbon_reporting,
     round(avg(progress_percent))::int AS average_progress,
-    count(*) FILTER (WHERE due_date >= operating_day AND due_date < operating_day + 30)::int AS due_within_30_days`,
+    count(*) FILTER (WHERE due_date >= operating_day AND due_date < operating_day + 30)::int AS due_within_30_days,
+    count(*) FILTER (WHERE risk_rank = 3)::int AS overdue`,
 });
 
 export async function listJobs(db: Queryable, query: JobListQuery, context: { today: string }): Promise<JobListPage> {
@@ -143,12 +164,12 @@ export async function listJobs(db: Queryable, query: JobListQuery, context: { to
       id: String(row.job_id), number: String(row.job_number), legacyNumber: text(row.legacy_job_number), family: row.family as JobFamily,
       clientId: String(row.client_id), client: String(row.client), title: String(row.title), status: row.status as JobListRow["status"],
       workflowStage: String(row.workflow_stage), dueDate: dateOnlyOrNull(row.due_date as Date | string | null), manager: text(row.manager),
-      progressPct: Number(row.progress_percent ?? 0),
+      progressPct: Number(row.progress_percent ?? 0), risk: row.risk as RiskLevel,
     }),
     mapSummary: (row) => ({
       jobs: Number(row.jobs ?? 0), carbonReporting: Number(row.carbon_reporting ?? 0),
       averageProgress: row.average_progress === null || row.average_progress === undefined ? null : Number(row.average_progress),
-      dueWithin30Days: Number(row.due_within_30_days ?? 0),
+      dueWithin30Days: Number(row.due_within_30_days ?? 0), overdue: Number(row.overdue ?? 0),
     }),
   });
 }

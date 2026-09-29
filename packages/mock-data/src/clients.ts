@@ -90,7 +90,8 @@ export const clients: Client[] = [
 export const clientStatusMeta: Record<ClientStatus, { cls: string; label: string }> = {
   active: { cls: "done", label: "Active" },
   onboarding: { cls: "est", label: "Onboarding" },
-  "at-risk": { cls: "nof", label: "At risk" },
+  // Ruled D2: a relationship status, named so it cannot be read as the milestone Risk column. Stored value unchanged.
+  "at-risk": { cls: "nof", label: "At risk (relationship)" },
   prospect: { cls: "need", label: "Prospect" },
 };
 

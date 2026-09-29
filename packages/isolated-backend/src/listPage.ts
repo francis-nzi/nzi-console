@@ -28,8 +28,15 @@ export type ListSqlFilter =
    * predicate applied when the filter is not given at all; `allValue` is the value that means "no filter", for a list
    * whose default is not everything (the Jobs status default, ruled D5).
    */
-  | { kind: "equals"; column: string; facet?: { noneLabel: string }; whenAbsent?: string; allValue?: string }
+  | { kind: "equals"; column: string; facet?: ListFacet; whenAbsent?: string; allValue?: string }
   | { kind: "onOrAfter" | "onOrBefore"; column: string };
+
+/**
+ * Where a filter's options come from. `noneLabel` names a blank. `values`, when given, is a fixed vocabulary (Risk):
+ * every value is offered in that order, with a count of 0 where the data has none — the options then do not depend on
+ * which levels happen to be present, and the order is the vocabulary's, not the counts'.
+ */
+export type ListFacet = { noneLabel: string; values?: readonly string[] };
 
 export type ListSqlSpec<S extends string, F extends string> = {
   /**
@@ -153,7 +160,13 @@ export async function readListPage<Row, S extends string, F extends string, Summ
         if (chosen === filter.allValue || options.some((option) => option.value === chosen)) continue;
         options.push({ value: chosen, label: chosen === NONE_VALUE ? noneLabel : chosen, count: 0 });
       }
-      options.sort((a, b) => (a.value === NONE_VALUE ? 1 : 0) - (b.value === NONE_VALUE ? 1 : 0) || b.count - a.count || a.label.localeCompare(b.label, "en-GB"));
+      const fixed = filter.facet!.values;
+      if (fixed) {
+        for (const value of fixed) if (!options.some((option) => option.value === value)) options.push({ value, label: value, count: 0 });
+        options.sort((a, b) => fixed.indexOf(a.value) - fixed.indexOf(b.value));
+      } else {
+        options.sort((a, b) => (a.value === NONE_VALUE ? 1 : 0) - (b.value === NONE_VALUE ? 1 : 0) || b.count - a.count || a.label.localeCompare(b.label, "en-GB"));
+      }
       filterOptions[key] = options;
     });
   }

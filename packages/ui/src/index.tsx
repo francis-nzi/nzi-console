@@ -9,6 +9,7 @@ export { Collapsible } from "./Collapsible";
 export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from "./HelpAffordance";
 export { SmartSearch, type SmartSearchOption } from "./SmartSearch";
 export { InfoTip } from "./InfoTip";
+export { RiskBadge, RiskLegend, type RiskValue } from "./Risk";
 export { DataList, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
 
 export type IconName =

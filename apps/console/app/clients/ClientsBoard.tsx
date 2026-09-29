@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell, DataList, EvidenceDrawer, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { AppShell, DataList, EvidenceDrawer, RiskBadge, RiskLegend, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { clientStatusMeta } from "@nzi/mock-data";
 import { clientListSpec, hasActiveFilters, PAGE_SIZES, type ClientListFilterKey, type ClientListQuery } from "@nzi/contracts";
 import type { ClientListPage, ClientListRow } from "@nzi/isolated-backend";
@@ -27,7 +27,7 @@ function ClientDrawer({ c }: { c: ClientListRow }) {
   const meta = clientStatusMeta[c.status];
   const banner =
     c.status === "at-risk"
-      ? { kind: "warn" as const, text: "At risk — a report is overdue or data is stalled. Prioritise for outreach." }
+      ? { kind: "warn" as const, text: "At risk (relationship) — flagged by the account team. Milestone risk is the Risk column, shown separately." }
       : c.status === "prospect"
       ? { kind: "warn" as const, text: "Prospect — proposal sent, not yet onboarded. No live job." }
       : c.status === "onboarding"
@@ -55,6 +55,7 @@ function ClientDrawer({ c }: { c: ClientListRow }) {
       <div className="nz-kv"><span className="k">Client manager</span><span className="v">{c.clientManager ?? "Unassigned"}</span></div>
       <div className="nz-kv"><span className="k">Portfolio</span><span className="v">{c.portfolio ?? "Unassigned"}</span></div>
       <div className="nz-kv"><span className="k">Status</span><span className="v">{meta.label}</span></div>
+      <div className="nz-kv"><span className="k">Risk</span><span className="v"><RiskBadge risk={c.risk} /></span></div>
       <div className="nz-kv"><span className="k">Member since</span><span className="v">{c.memberSince || "—"}</span></div>
       <div className="nz-kv"><span className="k">Latest emissions</span><span className="v">{c.latestFootprint ?? "—"}</span></div>
       <div className="nz-kv"><span className="k">Change vs prior year</span><span className="v">{c.yoy ?? "—"}</span></div>
@@ -87,6 +88,7 @@ const FILTERS: Array<{ key: ClientListFilterKey; label: string; allLabel: string
   { key: "owner", label: "Owner", allLabel: "All owners" },
   { key: "portfolio", label: "Portfolio", allLabel: "All portfolios" },
   { key: "manager", label: "Client manager", allLabel: "All client managers" },
+  { key: "risk", label: "Risk", allLabel: "All risk levels" },
 ];
 
 const statusLabel = (value: string) => clientStatusMeta[value as keyof typeof clientStatusMeta]?.label ?? value;
@@ -128,6 +130,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
     { key: "name", header: "Client", sortKey: "name", cell: (c) => <Link href={`/clients/${encodeURIComponent(c.id)}`} className="nz-table-link" style={{ fontWeight: 500 }}>{c.name}</Link> },
     { key: "industry", header: "Industry", sortKey: "industry", cell: (c) => c.sector || <span className="muted">Unspecified</span> },
     { key: "status", header: "Status", sortKey: "status", cell: (c) => <span className={`nz-st ${clientStatusMeta[c.status].cls}`}>{clientStatusMeta[c.status].label}</span> },
+    { key: "risk", header: "Risk", sortKey: "risk", cell: (c) => <RiskBadge risk={c.risk} /> },
     { key: "emissions", header: "Latest tCO₂e", sortKey: "emissions", numeric: true, cell: (c) => c.latestFootprint ? c.latestFootprint.replace(" tCO₂e", "") : <span className="muted">—</span> },
     { key: "completeness", header: "Data completeness", sortKey: "completeness", cell: (c) => c.completeness > 0 ? <Completeness pct={c.completeness} /> : <span className="muted">—</span> },
     { key: "openJobs", header: "Open jobs", sortKey: "openJobs", numeric: true, cell: (c) => c.openJobs },
@@ -156,7 +159,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
         {/* Every figure here is over the filtered set, computed by the server — never over the page on screen. */}
-        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{summary.atRisk?`${summary.atRisk} relationship${summary.atRisk===1?"":"s"} need focused attention.`:`No ${filtered ? "matching clients are" : "relationships are"} currently marked at risk.`}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
+        <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{summary.overdue?`${summary.overdue} client${summary.overdue===1?" has":"s have"} an overdue milestone.`:summary.atRisk?`${summary.atRisk} relationship${summary.atRisk===1?"":"s"} need focused attention.`:`No ${filtered ? "matching clients are" : "relationships are"} currently marked at risk.`}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
         <div className="nz-metrics">
           <div className="nz-metric"><div className="l">{filtered ? "Matching clients" : "Clients"}</div><div className="v num">{summary.clients.toLocaleString("en-GB")}</div></div>
           <div className="nz-metric"><div className="l">Open jobs</div><div className="v num">{summary.openJobs.toLocaleString("en-GB")}</div></div>
@@ -164,6 +167,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
           <div className="nz-metric"><div className="l">Avg data completeness</div><div className="v num">{summary.averageCompleteness === null ? "—" : `${summary.averageCompleteness}%`}</div></div>
         </div>
 
+        <RiskLegend />
         <DataList
           label="Clients"
           tableClassName="nz-client-table"

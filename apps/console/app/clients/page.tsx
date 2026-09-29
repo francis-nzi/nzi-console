@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 /** Fixture mode has no client records: an honest empty page, which the board shows as "no clients yet". */
 const NO_CLIENTS: ClientListPage = {
   rows: [], total: 0, unfilteredTotal: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE, pageCount: 1,
-  filterOptions: { industry: [], status: [], owner: [], portfolio: [], manager: [] },
-  summary: { clients: 0, openJobs: 0, averageCompleteness: null, atRisk: 0, withoutOwner: 0, deliveryClients: 0, deliveryWithoutJobs: 0, activeWithoutEmissions: 0 },
+  filterOptions: { industry: [], status: [], owner: [], portfolio: [], manager: [], risk: [] },
+  summary: { clients: 0, openJobs: 0, averageCompleteness: null, atRisk: 0, overdue: 0, withoutOwner: 0, deliveryClients: 0, deliveryWithoutJobs: 0, activeWithoutEmissions: 0 },
 };
 
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

@@ -191,12 +191,22 @@ export function nextSort<S extends string>(current: ListSort<S>, key: S): ListSo
 export const hasActiveFilters = <S extends string, F extends string>(query: ListQuery<S, F>): boolean =>
   query.search.trim() !== "" || Object.values(query.filters).some((values) => Array.isArray(values) && values.length > 0);
 
+// ── Risk (PR 2) ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The milestone traffic light, most severe first. The rule itself is `milestoneRisk.ts` in the isolated backend;
+ * this is only the vocabulary and the order (ruled R5: Overdue 3 > Due 2 > Healthy 1 > Not set 0).
+ */
+export const RISK_LEVELS = ["Overdue", "Due", "Healthy", "Not set"] as const;
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+export const RISK_RANK: Readonly<Record<RiskLevel, number>> = { Overdue: 3, Due: 2, Healthy: 1, "Not set": 0 };
+
 // ── The two lists ────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const clientListSpec = defineListSpec({
-  sortKeys: ["name", "industry", "status", "owner", "emissions", "completeness", "openJobs"] as const,
+  sortKeys: ["name", "industry", "status", "owner", "emissions", "completeness", "openJobs", "risk"] as const,
   defaultSort: { key: "name", dir: "asc" },
-  filters: { industry: "value", status: "value", owner: "value", portfolio: "value", manager: "value" },
+  filters: { industry: "value", status: "value", owner: "value", portfolio: "value", manager: "value", risk: "value" },
 });
 export type ClientListSortKey = (typeof clientListSpec.sortKeys)[number];
 export type ClientListFilterKey = keyof typeof clientListSpec.filters;
@@ -208,9 +218,9 @@ export type ClientListQuery = ListQuery<ClientListSortKey, ClientListFilterKey>;
  */
 export const JOB_STATUS_ALL = "all";
 export const jobListSpec = defineListSpec({
-  sortKeys: ["number", "client", "title", "family", "manager", "dueDate", "status"] as const,
+  sortKeys: ["number", "client", "title", "family", "manager", "dueDate", "status", "risk"] as const,
   defaultSort: { key: "number", dir: "desc" },
-  filters: { client: "value", manager: "value", family: "value", status: "value", dueFrom: "date", dueTo: "date" },
+  filters: { client: "value", manager: "value", family: "value", status: "value", risk: "value", dueFrom: "date", dueTo: "date" },
 });
 export type JobListSortKey = (typeof jobListSpec.sortKeys)[number];
 export type JobListFilterKey = keyof typeof jobListSpec.filters;

@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 /** Fixture mode has no job records: an honest empty page, which the list shows as "no jobs yet". */
 const NO_JOBS: JobListPage = {
   rows: [], total: 0, unfilteredTotal: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE, pageCount: 1,
-  filterOptions: { client: [], manager: [], family: [], status: [], dueFrom: [], dueTo: [] },
-  summary: { jobs: 0, carbonReporting: 0, averageProgress: null, dueWithin30Days: 0 },
+  filterOptions: { client: [], manager: [], family: [], status: [], risk: [], dueFrom: [], dueTo: [] },
+  summary: { jobs: 0, carbonReporting: 0, averageProgress: null, dueWithin30Days: 0, overdue: 0 },
 };
 
 export default async function JobsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

@@ -252,6 +252,10 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     keyColumns: ["automation_log_id"],
     attribution: { kind: "none", because: "an address with no pointer to a person-row; it is also part of a unique constraint, so it is operational rather than display-only and wants a blind index before anything else" },
   },
+  job_milestones: {
+    keyColumns: ["job_id", "kind"],
+    attribution: { kind: "none", because: "who completed a milestone is free text as the source recorded it; the id beside it is set only on an exact match and is an id, not the name" },
+  },
   job_scope_rows: {
     keyColumns: ["scope_row_id"],
     attribution: { kind: "none", because: "a vehicle registration identifies a keeper who is not in our data at all" },
@@ -373,6 +377,9 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
     storage: sealed("owner_name_sealed"), because: "free text with no user id" },
   { table: "strategy_automation_log", column: "recipient_email", label: "Reminder recipient", stage: "deferred", erasure: "not-attributable",
     storage: sealed("recipient_email_sealed"), because: "operational rather than display-only: part of a unique constraint, so its plaintext cannot be dropped until that moves to a digest" },
+  // Staff, not client data, and unsealed by ruling (PR 2, R4): the name v7 recorded against a completed milestone.
+  { table: "job_milestones", column: "completed_by_label", label: "Milestone completed by", stage: "deferred", erasure: "not-attributable",
+    storage: { kind: "plaintext" }, because: "a staff member's name as v7 recorded it, kept in the clear by ruling (R4); free text with no reliable subject" },
   { table: "job_scope_rows", column: "asset_identifier", label: "Asset identifier", stage: "deferred", erasure: "not-attributable",
     storage: sealed("asset_identifier_sealed"), because: "a vehicle registration identifies a keeper who is not in our data" },
   { table: "job_emission_sources", column: "detail_json", label: "Emission source detail", stage: "deferred", erasure: "not-attributable",
