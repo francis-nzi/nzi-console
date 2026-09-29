@@ -329,5 +329,110 @@
       "final_report_completed_by",
       "updated_at"
     ]
+  },
+  "industries_lookup": {
+    "filter": "all",
+    "required": [
+      "industry_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "referrals_lookup": {
+    "filter": "all",
+    "required": [
+      "referral_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "payment_terms_lookup": {
+    "filter": "all",
+    "required": [
+      "term_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "positions_lookup": {
+    "filter": "all",
+    "required": [
+      "position_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "processes_lookup": {
+    "filter": "all",
+    "required": [
+      "process_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "client_teams_lookup": {
+    "filter": "all",
+    "required": [
+      "client_team_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "action_categories_lookup": {
+    "filter": "all",
+    "required": [
+      "category_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "governance_subjects_lookup": {
+    "filter": "all",
+    "required": [
+      "governance_subject_id",
+      "name",
+      "is_active"
+    ],
+    "optional": []
+  },
+  "bd_bin_reasons_lookup": {
+    "filter": "all",
+    "required": [
+      "bin_reason_id",
+      "name",
+      "is_active"
+    ],
+    "optional": [
+      "sort_order"
+    ]
+  },
+  "uom_lookup": {
+    "filter": "all",
+    "required": [
+      "uom_id",
+      "name",
+      "is_active"
+    ],
+    "optional": [
+      "sort_order"
+    ]
+  },
+  "job_item_categories_lookup": {
+    "filter": "all",
+    "required": [
+      "category_id",
+      "name",
+      "is_active"
+    ],
+    "optional": [
+      "sort_order"
+    ]
   }
 }

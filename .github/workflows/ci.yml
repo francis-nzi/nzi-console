@@ -440,6 +440,10 @@ jobs:
       # idempotent replay, before-and-after audit, a deactivated value still resolving; the Lookups list, in one tenant.
       - name: The reference-value engine never deletes, and stays in its tenant
         run: npx tsx --test packages/isolated-backend/tests/referenceEngineReal.test.ts
+      # The v7 lookup reconcile (admin A3): identity, then normalised label (reinstating an archived match), else insert;
+      # is_active and sort order carried; seeded-only reported, never archived; owners linked; idempotent; R4 re-runs.
+      - name: The v7 lookup reconcile never archives, and never overwrites a console edit
+        run: npx tsx --test packages/isolated-backend/tests/v7LookupLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

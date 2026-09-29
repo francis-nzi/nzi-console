@@ -67,6 +67,9 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       clients: 2, client_sites: 3, client_contacts: 4, job_types: 5, jobs: 6, crp_job_details: 1, datasets: 1,
       job_scope_rows: 9, job_emission_groups: 1, job_emission_sources: 5, job_spend_entries: 3, lca_assessments: 2,
       job_report_versions: 3, report_reviews: 2, portfolios_lookup: 4, job_plan: 3,
+      // The admin lookups (A3): configuration, taken whole — `all`, not scoped by client.
+      industries_lookup: 3, referrals_lookup: 1, payment_terms_lookup: 2, positions_lookup: 1, processes_lookup: 1, client_teams_lookup: 1,
+      action_categories_lookup: 1, governance_subjects_lookup: 1, bd_bin_reasons_lookup: 1, uom_lookup: 2, job_item_categories_lookup: 2,
     }, "the prospect and the archived client, their site, the client-less job and the prospect's job stay behind");
     const clients = (await db.query(queries.get("clients")!)).rows.map((row) => row.db_id);
     assert.deepEqual(clients, ["1", "2"]);
