@@ -444,6 +444,10 @@ jobs:
       # is_active and sort order carried; seeded-only reported, never archived; owners linked; idempotent; R4 re-runs.
       - name: The v7 lookup reconcile never archives, and never overwrites a console edit
         run: npx tsx --test packages/isolated-backend/tests/v7LookupLoadReal.test.ts
+      # The v7 client-link backfill (admin A4): exact and unique only, fill-NULL-only, conflicts reported, never creates a
+      # lookup value, text untouched; version bump and one audit event per client; the client loader stays identical.
+      - name: The v7 client links fill only what is empty, and the client loader still reads its clients as identical
+        run: npx tsx --test packages/isolated-backend/tests/v7ClientLinkLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
