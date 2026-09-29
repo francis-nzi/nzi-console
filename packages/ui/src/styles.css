@@ -1760,6 +1760,43 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-hint-strip{display:flex;gap:9px;align-items:flex-start;background:var(--a-surface-2);border:1px solid var(--a-line);border-left:3px solid var(--a-accent);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--a-ink-2);margin-bottom:16px}
 .nz-a-hint-strip>span{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--a-accent-ink);color:var(--a-accent-ink);font-family:var(--a-mono);font-size:10px;font-weight:600;display:grid;place-items:center;margin-top:1px}
 .nz-a-hint-strip b{color:var(--a-ink)}
+.nz-a-hint-strip.warn{border-left-color:var(--a-warn);background:var(--a-warn-bg)}
+.nz-a-hint-strip.warn>span{border-color:var(--a-warn);color:var(--a-warn)}
+
+/* Milestone templates (admin C2): the design's card grid, the schedule rows, and the child-row editor */
+.nz-a-mt-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.nz-a-mt-grid>li{display:flex}
+.nz-admin .nz-a-mt-card{display:flex;flex-direction:column;gap:10px;width:100%;padding:15px 16px;text-align:left;cursor:pointer;color:inherit;font:inherit;background:var(--a-surface);border:1px solid var(--a-line);border-radius:var(--a-r);box-shadow:var(--a-shadow)}
+.nz-a-mt-card:hover{border-color:var(--a-accent)}
+.nz-a-mt-card:focus-visible{outline:2px solid var(--a-accent);outline-offset:2px}
+.nz-a-mt-card.inactive{opacity:.72}
+.nz-a-mt-head{display:flex;align-items:center;gap:9px;width:100%}
+.nz-a-mt-head .nz-a-badge{margin-left:auto}
+.nz-a-mt-ic{width:30px;height:30px;flex:none;border-radius:8px;background:var(--a-accent-weak);color:var(--a-accent-ink);display:grid;place-items:center;font-size:14px}
+.nz-a-mt-title{display:flex;flex-direction:column;min-width:0}
+.nz-a-mt-title b{font-size:13.5px;font-weight:600}
+.nz-a-mt-card .foot{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:auto;font-family:var(--a-mono);font-size:11px;color:var(--a-ink-3)}
+.nz-a-mitems{display:flex;flex-direction:column;gap:8px;width:100%}
+.nz-a-mitem{display:grid;grid-template-columns:22px 1fr 72px;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--a-line);border-radius:9px;background:var(--a-surface-2)}
+.nz-a-mitem .k{width:22px;height:22px;border-radius:6px;background:var(--a-accent-weak);color:var(--a-accent-ink);display:grid;place-items:center;font-family:var(--a-mono);font-size:10.5px;font-weight:600}
+.nz-a-mitem b{display:block;font-size:13px;font-weight:600}
+.nz-a-mitem .kind{display:block;font-family:var(--a-mono);font-size:10.5px;color:var(--a-ink-3)}
+.nz-a-mitem .off{font-family:var(--a-mono);font-size:12px;color:var(--a-ink-2);text-align:right;font-variant-numeric:tabular-nums}
+.nz-a-mt-editor{border:0;margin:0;padding:0;min-width:0}
+.nz-a-mt-editor legend{padding:0;margin-bottom:7px;font-size:11.5px;font-weight:600;color:var(--a-ink-2)}
+.nz-a-mt-editor .nz-a-hint{margin-top:8px}
+.nz-a-mitem.edit{grid-template-columns:22px minmax(0,1fr) 104px;grid-template-areas:"k body off" ". inc inc"}
+.nz-a-mitem.edit .k{grid-area:k}
+.nz-a-mitem.edit .body{grid-area:body;min-width:0}
+.nz-a-mitem.edit .off{grid-area:off;display:flex;align-items:center;gap:5px;justify-content:flex-end;flex-wrap:wrap}
+.nz-a-mitem.edit .inc{grid-area:inc;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--a-ink-2);cursor:pointer}
+.nz-a-mitem.edit input:not([type=checkbox]){width:100%;padding:6px 8px;border:1px solid var(--a-line);border-radius:7px;background:var(--a-surface);color:var(--a-ink);font:inherit;font-size:13px}
+.nz-a-mitem.edit .off input{width:62px;text-align:right;font-family:var(--a-mono)}
+.nz-a-mitem.edit input[aria-invalid="true"]{border-color:var(--a-bad)}
+.nz-a-mitem.edit .nz-a-error{flex-basis:100%;font-size:11px}
+.nz-a-mitem.excluded{background:transparent;border-style:dashed}
+.nz-a-mitem.excluded .k{background:var(--a-muted-bg);color:var(--a-ink-3)}
+.nz-a-mitem.excluded input:not([type=checkbox]){color:var(--a-ink-3)}
 .nz-a-catbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
 .nz-admin .nz-a-cat{border:1px solid var(--a-line);background:var(--a-surface);color:var(--a-ink-2);padding:6px 11px;border-radius:20px;font-size:12.5px;font-weight:500;display:inline-flex;gap:7px;align-items:center}
 .nz-a-cat .n{font-family:var(--a-mono);font-size:10.5px;color:var(--a-ink-3)}

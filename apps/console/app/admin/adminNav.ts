@@ -25,7 +25,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: "job-types", label: "Job types", icon: "briefcase", href: "/admin/job-types", capability: "admin.lookups",
         description: "The services NZI sells, each with a default price, effort and VAT, linked to the milestone template a new job of that type starts from." },
-      { id: "milestone-templates", label: "Milestone templates", icon: "flag", href: "/admin/milestone-templates", phase: "C", capability: "admin.templates",
+      { id: "milestone-templates", label: "Milestone templates", icon: "flag", href: "/admin/milestone-templates", capability: "admin.templates",
         description: "The default delivery schedule a new job’s three milestones are generated from — the upstream of the milestone command, and of Risk on new jobs." },
       { id: "file-types", label: "File types", icon: "file", href: "/admin/file-types", phase: "C", capability: "admin.lookups",
         description: "The job file-type vocabulary and its storage mapping, with two protected system types that cannot be removed." },
