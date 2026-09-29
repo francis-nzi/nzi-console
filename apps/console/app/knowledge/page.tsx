@@ -19,7 +19,7 @@ export default function KnowledgePage() {
   return (
     <AppShell rail={<WorkspaceRail sections={NAV} activeId="knowledge" user={USER} />}>
       <TopBar
-        searchPlaceholder="Search the knowledge library…"
+       
         crumbs={crumbTrail(workspaceCrumbs("Knowledge", "/knowledge"))}
       />
       <KnowledgeWorkspace writeEnabled={writeEnabled} />

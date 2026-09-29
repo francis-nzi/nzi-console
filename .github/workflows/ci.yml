@@ -418,6 +418,11 @@ jobs:
       # match nothing, and an archived industry that must still resolve for the clients that chose it.
       - name: Client references resolve, and fall back
         run: npx tsx --test packages/isolated-backend/tests/clientReferenceRead.test.ts
+      # The paged Clients and Jobs lists (docs/LIST_PARITY_DESIGN.md). Two organisations sharing an industry, an
+      # owner and a portfolio: a search, a filter, a filter option or a count that crossed the boundary would show up
+      # as a wrong number here. Nothing in the list SQL names an organisation — row-level security does the scoping.
+      - name: The paged lists search, filter, sort and page within one tenant
+        run: npx tsx --test packages/isolated-backend/tests/listPageReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

@@ -29,7 +29,7 @@ export default function ChartsPage() {
   return <ScreenState result={result} chrome={{ activeId: "emissions", label: "Emissions", href: "/charts" }}>{() => (
     <AppShell rail={rail}>
       <TopBar
-        searchPlaceholder="Search charts…"
+       
         crumbs={crumbTrail(workspaceCrumbs("Emissions", "/charts", { label: "Chart library", href: "/charts" }))}
       />
       <div className="nz-head">

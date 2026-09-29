@@ -156,7 +156,7 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
   return (
     <AppShell rail={rail} drawer={showEvidence ? drawer : undefined}>
       <TopBar
-        searchPlaceholder="Search sources, factors…"
+       
         crumbs={
           <>
             Clients <span className="muted">/</span> <b>{job.client}</b>{" "}

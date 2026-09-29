@@ -1541,3 +1541,22 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-site-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nz-site-tab-count{min-width:20px;padding:1px 6px;border-radius:20px;background:var(--line2);color:var(--t3);font-size:11px;font-weight:700}
 .nz-site-tab.on .nz-site-tab-count{background:var(--card);color:var(--deep)}
+
+/* DataList — the shared list surface (docs/LIST_PARITY_DESIGN.md). Toolbar wraps rather than scrolls at phone width. */
+.nz-datalist-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;padding:0 0 10px}
+.nz-datalist-toolbar .nz-fl{margin:0;min-width:150px;flex:0 1 180px}
+.nz-datalist-toolbar .nz-datalist-search{flex:1 1 260px;min-width:220px}
+.nz-datalist-toolbar .nz-datalist-dates{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.nz-datalist-toolbar .nz-datalist-dates .nz-fl{min-width:140px;flex:0 1 150px}
+.nz-datalist-clear{align-self:flex-end}
+.nz-datalist-count{margin:0 0 8px;font-size:12px;color:var(--t2)}
+.nz-datalist-table{overflow-x:auto}
+.nz-datalist-table table[aria-busy="true"] tbody{opacity:.55}
+.nz-sort{border:none;background:none;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;cursor:pointer;display:inline-flex;gap:5px;align-items:center}
+.nz-sort-mark{font-size:9px;color:var(--t3)}
+th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var(--t1)}
+.nz-tbl tr.row:focus-visible{outline:3px solid #0B7A4B;outline-offset:-3px}
+.nz-datalist-pager{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:flex-end;gap:10px;padding:12px 0 4px}
+.nz-datalist-pager .nz-fl{margin:0;min-width:110px;flex:0 0 auto}
+.nz-datalist-page{font-size:12.5px;color:var(--t2);align-self:center}
+.nz-datalist-table td:first-child a{white-space:nowrap}
