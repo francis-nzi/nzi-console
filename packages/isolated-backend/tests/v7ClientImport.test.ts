@@ -177,6 +177,25 @@ describe("the v7 client-and-job plan", () => {
     assert.ok(codes(refused.refusals).includes("migrated-record-not-closed"));
   });
 
+  it("maps the status live v7 was found to use for a fully closed job to complete, keeping v7's text as the stage", () => {
+    const status = "Job Closed - All Reports, Invoices and Support Completed";
+    const p = plan((rows) => { rows.jobs[1]!.status = status; });
+    assert.deepEqual(p.refusals, [], "no longer a refusal");
+    const job = p.clients.flatMap((client) => client.jobs).find((candidate) => candidate.legacyId === "101")!;
+    assert.deepEqual([job.status, job.workflowStage], ["complete", status]);
+  });
+
+  it("carries the data_source values found in live v7 by name, inside the closed shape", () => {
+    for (const source of ["Client Portal", "Previous Year", "Business Travel Data", "Custom Dataset"]) {
+      const p = plan((rows) => { rows.job_scope_rows[0]!.data_source = source; });
+      const row = rowOf(p, "v7-row-1000");
+      assert.equal(row.migratedRecord.data_source, source, source);
+      assert.ok(!row.migratedRecord.flags?.includes("data-source-unlisted"), `${source} is listed`);
+      assert.deepEqual(migratedRecordProblems(row.migratedRecord), [], `${source} passes the closed shape`);
+      assert.ok(!codes(p.reports).includes("data-source-unlisted"));
+    }
+  });
+
   it("carries an unlisted data_source as 'Other', reported, never as its text", () => {
     const p = plan((rows) => { rows.job_scope_rows[0]!.data_source = "Typed in by ZZSENTINEL Person"; });
     assert.deepEqual(p.refusals, []);

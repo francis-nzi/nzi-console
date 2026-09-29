@@ -299,7 +299,8 @@ ruled step.
   permits it for training) is outside a client's history: excluded and reported.
 - **Status mappings** (decision 5 — **ruled provisionally**; finalised once Appendix A returns the values in use):
   - clients: `Active` → `active`;
-  - jobs: `Completed`/`Closed` → `complete`; `Open`, `Data Gathering Phase`, `Reporting Phase`, `Awaiting
+  - jobs: `Completed`/`Closed`/`Job Closed - All Reports, Invoices and Support Completed` → `complete` (the third found
+    in live v7 on 29 Sep 2026, 30 jobs); `Open`, `Data Gathering Phase`, `Reporting Phase`, `Awaiting
     Client Input` → `open`, with v7's status kept verbatim as the job's `workflow_stage`; archived → `cancelled`.
 - **Deactivated sub-records import as deactivated:** archived or vacated sites (`vacated_effective`), disabled
   rows (`enabled = false`), superseded/archived report versions (status verbatim), deleted spend entries (voided).
