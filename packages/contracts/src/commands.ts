@@ -2,6 +2,7 @@ import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLook
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
+import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
@@ -81,6 +82,13 @@ export type CommandKey =
   | "staff.deactivate"
   | "staff.reinstate"
   | "staff.rate.set"
+  | "organisation.profile.update"
+  | "organisation.logo.set"
+  | "organisation.logo.remove"
+  | "organisation.bank.set"
+  | "organisation.intensityDefault.set"
+  | "organisation.intensityDefault.deactivate"
+  | "organisation.intensityDefaults.apply"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -585,6 +593,15 @@ export type CommandInputMap = {
   "staff.reinstate": { userId: string; expectedVersion: number };
   /** A rate from a date (R9 (c)). With `supersedesRateId` it corrects that row instead, and needs a reason. */
   "staff.rate.set": { userId: string; effectiveFrom: string; costPerHour?: number | null; sellPerHour?: number | null; currency?: string; supersedesRateId?: string | null };
+  // Organisation settings (admin Phase D, D1). The profile is saved whole, under its version; the bank details apart.
+  "organisation.profile.update": OrganisationProfileFields & { expectedVersion: number };
+  "organisation.logo.set": { fileName: string; contentType: ClientLogoContentType; dataBase64: string };
+  "organisation.logo.remove": Record<string, never>;
+  "organisation.bank.set": OrganisationBankFields & { expectedVersion: number };
+  "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number };
+  "organisation.intensityDefault.deactivate": { metricKey: string; expectedVersion: number };
+  /** Q5: the defaults onto every client that has no intensity metric — the count the admin confirmed, or refused. */
+  "organisation.intensityDefaults.apply": { expectedClients: number };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -1327,6 +1344,59 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if ((input.costPerHour ?? null) === null && (input.sellPerHour ?? null) === null) issues.push({ field: "costPerHour", code: "REQUIRED", message: "Give a cost rate, a sell rate, or both." });
     if (input.currency !== undefined && !isCurrencyCode(input.currency)) issues.push({ field: "currency", code: "INVALID", message: "A three-letter currency code, e.g. GBP." });
     if (correcting && !text(input.supersedesRateId)) issues.push({ field: "supersedesRateId", code: "INVALID", message: "Name the rate being corrected." });
+    return issues;
+  } },
+  // Organisation settings (admin Phase D, D1; ruled phaseD-org-settings-plan.md). admin.settings throughout (Admin, matrix
+  // v8). The bank details are their own command, and always say why (Q2); applying the intensity defaults to existing
+  // clients does too (Q5).
+  "organisation.profile.update": { key: "organisation.profile.update", label: "Edit the organisation profile", permission: "admin.settings", reasonRequired: false, transaction: "versioned profile + audit + outbox + idempotency", auditAction: "organisation.profile.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    for (const key of ORGANISATION_PROFILE_FIELDS) {
+      const value = (input as Record<string, unknown>)[key];
+      if (value !== null && typeof value !== "string") issues.push({ field: key, code: "INVALID", message: "Text, or empty." });
+    }
+    if (issues.length === 0) issues.push(...profileIssues(normaliseProfile(input)));
+    return issues;
+  } },
+  "organisation.logo.set": { key: "organisation.logo.set", label: "Upload the organisation logo", permission: "admin.settings", reasonRequired: false, transaction: "logo asset + profile pointer + audit + outbox + idempotency", auditAction: "organisation.logo.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "fileName", input.fileName);
+    if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." });
+    if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." });
+    else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` });
+    return issues;
+  } },
+  "organisation.logo.remove": { key: "organisation.logo.remove", label: "Remove the organisation logo", permission: "admin.settings", reasonRequired: false, transaction: "profile pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "organisation.logo.removed", validate: (_input, context) => baseIssues(context, false) },
+  "organisation.bank.set": { key: "organisation.bank.set", label: "Set the organisation's bank details", permission: "admin.settings", reasonRequired: true, transaction: "versioned bank details + audit (no values) + outbox + idempotency", auditAction: "organisation.bank.set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    for (const key of ORGANISATION_BANK_FIELDS) {
+      const value = (input as Record<string, unknown>)[key];
+      if (value !== null && typeof value !== "string") issues.push({ field: key, code: "INVALID", message: "Text, or empty." });
+    }
+    if (issues.length === 0) issues.push(...bankIssues(normaliseBank(input)));
+    return issues;
+  } },
+  "organisation.intensityDefault.set": { key: "organisation.intensityDefault.set", label: "Define a default intensity metric", permission: "admin.settings", reasonRequired: false, transaction: "versioned default definition + audit + outbox + idempotency", auditAction: "organisation.intensity_default.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "label", input.label);
+    required(issues, "unitWording", input.unitWording);
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(input.metricKey ?? "")) issues.push({ field: "metricKey", code: "INVALID", message: "A metric key is lower-case letters, digits, dashes or underscores." });
+    if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
+    if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "organisation.intensityDefault.deactivate": { key: "organisation.intensityDefault.deactivate", label: "Deactivate a default intensity metric", permission: "admin.settings", reasonRequired: false, transaction: "versioned default definition (inactive) + audit + outbox + idempotency", auditAction: "organisation.intensity_default.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "metricKey", input.metricKey);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "organisation.intensityDefaults.apply": { key: "organisation.intensityDefaults.apply", label: "Apply the intensity defaults to clients with none", permission: "admin.settings", reasonRequired: true, transaction: "defaults onto every client without a metric + one audit + outbox + idempotency", auditAction: "organisation.intensity_defaults.applied", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    if (!Number.isInteger(input.expectedClients) || input.expectedClients < 1) issues.push({ field: "expectedClients", code: "INVALID", message: "Confirm how many clients this applies to." });
     return issues;
   } },
   "client.strategy.assign": { key: "client.strategy.assign", label: "Add a strategy to the plan", permission: "strategy.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_strategy_assigned", validate: (input, context) => {

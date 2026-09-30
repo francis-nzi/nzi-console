@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
 import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
+import { applyIntensityDefaultsToClient } from "./organisationSettings";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
@@ -248,6 +249,8 @@ export async function createClient(
           fullName: contactName, jobTitle: input.contactRole ?? null, email: input.contactEmail ?? null, phone: null, isPrimary: true, roles: [],
         });
       }
+      // The organisation's intensity-metric defaults (admin Phase D): every new client starts with them.
+      await applyIntensityDefaultsToClient(db, context.organisationId, clientId, context.actorId, context.correlationId);
       return {
         data: { clientId, name: input.name.trim(), status: input.status },
         entityType: "client",

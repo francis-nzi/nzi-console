@@ -1834,6 +1834,12 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--a-line)}.nz-a-section h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;font-weight:600;color:var(--a-ink)}.nz-a-section p{margin:0 0 8px;font-size:12.5px;color:var(--a-ink-2)}
 .nz-a-history{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px;font-size:12.5px;color:var(--a-ink)}.nz-a-history li{overflow-wrap:anywhere}
 .nz-a-subform{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-surface-2)}
+/* Organisation (admin D1): sub-headings in the profile form, the logo preview, the bank card and its facts. */
+.nz-a-subhead{margin:16px 0 6px;font-size:12px;font-weight:600;color:var(--a-ink-2);text-transform:uppercase;letter-spacing:.04em}
+.nz-a-logo-row{display:flex;gap:14px;align-items:center;margin-bottom:10px}.nz-a-logo{width:72px;height:72px;object-fit:contain;border:1px solid var(--a-line);border-radius:10px;background:#fff;padding:6px;flex:none}
+.nz-a-logo-empty{display:grid;place-items:center;font-size:28px;font-weight:600;color:var(--a-ink-2);background:var(--a-surface-2)}
+.nz-a-sensitive{border-left:3px solid var(--a-accent);padding-left:14px}
+.nz-a-facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0 0 10px;font-size:13px}.nz-a-facts dt{color:var(--a-ink-2)}.nz-a-facts dd{margin:0;overflow-wrap:anywhere}
 .nz-a-linkish{border:0;background:none;padding:0;color:var(--a-ink);font:inherit;font-weight:600;cursor:pointer;text-align:left}
 .nz-a-linkish:hover{color:var(--a-accent-ink);text-decoration:underline}
 .nz-a-muted{color:var(--a-ink-3)}
