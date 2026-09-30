@@ -456,6 +456,10 @@ jobs:
       # deleted; the default moved atomically with a reason and never deactivated (Q6); admin.templates; tenant-scoped.
       - name: Milestone templates keep one default, never delete a milestone, and move the default atomically
         run: npx tsx --test packages/isolated-backend/tests/milestoneTemplatesReal.test.ts
+      # The v7 jobs-configuration import (admin C4): identity, then the natural key, else insert; one default or the entity is
+      # refused; the first three template items as the three kinds; R4 re-runs; a savepoint per entity.
+      - name: The v7 jobs configuration imports by key, keeps one default, and never overwrites a console edit
+        run: npx tsx --test packages/isolated-backend/tests/v7JobsConfigLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

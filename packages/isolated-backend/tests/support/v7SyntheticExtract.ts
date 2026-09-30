@@ -62,15 +62,15 @@ export function syntheticRows(): Rows {
       { contact_id: "24", client_db_id: "2", full_name: "Cy Example", email: null, is_primary: "f" },
     ],
     job_types: [
-      { job_type_id: "1", name: "Carbon Reduction Plan", job_family: "crp", is_crp: "t" },
+      { job_type_id: "1", name: "Carbon Reduction Plan", job_family: "crp", is_crp: "t", unit_price_ex_vat: "975", estimated_hours: "12.5", vat_rate_id: "1", is_active: "t", description: "CRP only" },
       { job_type_id: "2", name: "Consultancy - Strategy Workshop", job_family: null, is_crp: "f" },
-      { job_type_id: "3", name: "Life Cycle Assessment", job_family: "", is_crp: "f" },
+      { job_type_id: "3", name: "Life Cycle Assessment", job_family: "", is_crp: "f", unit_price_ex_vat: "0", is_active: "t" },
       // Flagged is_crp, and training by name: is_crp does not track the name, so it is never the rule (§1.1).
       { job_type_id: "4", name: "Training Course", job_family: null, is_crp: "t" },
-      { job_type_id: "5", name: "Footprint Service", job_family: null, job_group: "pcf", is_crp: "f" },
+      { job_type_id: "5", name: "Footprint Service", job_family: null, job_group: "pcf", is_crp: "f", is_active: "f" },
     ],
     jobs: [
-      { job_id: "100", client_db_id: "1", job_type_id: "1", job_number: "J000612", title: "CRP 2023", status: "Completed", archived: "f",
+      { job_id: "100", client_db_id: "1", job_type_id: "1", milestone_template_id: "1", job_number: "J000612", title: "CRP 2023", status: "Completed", archived: "f",
         reporting_year: "2023", legacy_job_no: "WFM-4411", crm_name: "Casey Owner", start_date: "2024-01-05", due_date: "2024-03-01", created_at: "2024-01-05 09:00:00" },
       { job_id: "101", client_db_id: "1", job_type_id: "2", job_number: "J000613", title: null, status: "Open", archived: "f" },
       { job_id: "102", client_db_id: "2", job_type_id: "3", job_number: "J000614", title: "LCA — Widget", status: "Reporting Phase", archived: "f" },
@@ -205,6 +205,37 @@ export function syntheticRows(): Rows {
     bd_bin_reasons_lookup: [{ bin_reason_id: "1", name: "No budget", is_active: "t", sort_order: "10" }],
     uom_lookup: [{ uom_id: "1", name: "Hour", is_active: "t", sort_order: "20" }, { uom_id: "2", name: "Day", is_active: "t", sort_order: "10" }],
     job_item_categories_lookup: [{ category_id: "1", name: "Consultancy", is_active: "t", sort_order: "10" }, { category_id: "2", name: "Disbursements", is_active: "f", sort_order: "50" }],
+    // Jobs configuration (admin C4). One default VAT rate and one default template; a template with a fourth, undated
+    // item (a checklist tick v7 keeps beyond the three) that job 100 ticked; a two-item template (→ DC, FD, as v7 maps
+    // by order); an archived template; v7's two core file types and one of its own.
+    vat_rates_lookup: [
+      { vat_rate_id: "1", name: "20% Standard Rate", rate_pct: "20", is_default: "t", is_active: "t" },
+      { vat_rate_id: "2", name: "No VAT", rate_pct: "0", is_default: "f", is_active: "t" },
+      { vat_rate_id: "3", name: "5%", rate_pct: "5.00", is_default: "f", is_active: "t" },
+    ],
+    milestone_templates: [
+      { template_id: "1", template_name: "Standard CRP", description: "The house schedule", is_active: "t", is_default: "t" },
+      { template_id: "2", template_name: "Express", is_active: "t", is_default: "f" },
+      { template_id: "3", template_name: "Quarterly (retired)", is_active: "f", is_default: "f" },
+    ],
+    milestone_template_items: [
+      { item_id: "11", template_id: "1", milestone_name: "Data collection", days_offset: "14", sort_order: "1" },
+      { item_id: "13", template_id: "1", milestone_name: "Final report", days_offset: "56", sort_order: "3" },
+      { item_id: "12", template_id: "1", milestone_name: "First draft", days_offset: "35", sort_order: "2" },
+      { item_id: "14", template_id: "1", milestone_name: "Client sign-off", days_offset: "70", sort_order: "4" },
+      { item_id: "21", template_id: "2", milestone_name: "Data in", days_offset: "7", sort_order: "1" },
+      { item_id: "22", template_id: "2", milestone_name: "Report", days_offset: "28", sort_order: "2" },
+      { item_id: "31", template_id: "3", milestone_name: "Quarterly report", days_offset: "90", sort_order: "1" },
+    ],
+    job_template_milestone_completions: [
+      { completion_id: "1", job_id: "100", item_id: "14", is_complete: "t" },
+      { completion_id: "2", job_id: "105", item_id: "14", is_complete: "t" },
+    ],
+    job_file_types_lookup: [
+      { file_type_id: "1", file_type_key: "client_provided", display_name: "Client Provided (Evidence)", storage_folder_key: "client-provided", sort_order: "10", is_active: "t" },
+      { file_type_id: "2", file_type_key: "generated_report", display_name: "Generated Report", storage_folder_key: "generated-reports", sort_order: "20", is_active: "t" },
+      { file_type_id: "3", file_type_key: "site_photos", display_name: "Site photos", storage_folder_key: "site-photos", sort_order: "30", is_active: "t" },
+    ],
   };
 }
 

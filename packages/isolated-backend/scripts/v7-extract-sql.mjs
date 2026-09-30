@@ -233,7 +233,7 @@ export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(C
     lines.push(`\\copy (${selectFor(table, omit)}) TO ${quoted(`${directory}/${table}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
   if (tables.includes("job_plan")) {
-    lines.push(`\\echo ${PARITY_FILE} (v7's own client Risk on the London operating day, for the parity check)`);
+    lines.push(`\\echo ${PARITY_FILE} (the client Risk v7 itself computes on the London operating day, for the parity check)`);
     lines.push(`\\copy (${v7ClientRiskSql()}) TO ${quoted(`${directory}/${PARITY_FILE}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
   lines.push("", "COMMIT;");

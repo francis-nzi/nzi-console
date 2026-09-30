@@ -346,6 +346,9 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     processes_lookup: "process_id", client_teams_lookup: "client_team_id", action_categories_lookup: "category_id",
     governance_subjects_lookup: "governance_subject_id", bd_bin_reasons_lookup: "bin_reason_id", uom_lookup: "uom_id",
     job_item_categories_lookup: "category_id",
+    // Jobs configuration (admin C4) — read by load:v7-jobs-config, not the client import.
+    vat_rates_lookup: "vat_rate_id", milestone_templates: "template_id", milestone_template_items: "item_id",
+    job_template_milestone_completions: "completion_id", job_file_types_lookup: "file_type_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();

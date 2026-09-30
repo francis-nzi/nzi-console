@@ -84,7 +84,12 @@
     "optional": [
       "job_family",
       "job_group",
-      "is_crp"
+      "is_crp",
+      "description",
+      "unit_price_ex_vat",
+      "vat_rate_id",
+      "estimated_hours",
+      "is_active"
     ]
   },
   "jobs": {
@@ -107,7 +112,8 @@
       "due_date",
       "crm_name",
       "archived",
-      "created_at"
+      "created_at",
+      "milestone_template_id"
     ]
   },
   "crp_job_details": {
@@ -327,7 +333,8 @@
       "data_collection_completed_by",
       "first_draft_completed_by",
       "final_report_completed_by",
-      "updated_at"
+      "updated_at",
+      "override_dates"
     ]
   },
   "industries_lookup": {
@@ -433,6 +440,66 @@
     ],
     "optional": [
       "sort_order"
+    ]
+  },
+  "vat_rates_lookup": {
+    "filter": "all",
+    "required": [
+      "vat_rate_id",
+      "name",
+      "rate_pct"
+    ],
+    "optional": [
+      "is_default",
+      "is_active"
+    ]
+  },
+  "milestone_templates": {
+    "filter": "all",
+    "required": [
+      "template_id",
+      "template_name"
+    ],
+    "optional": [
+      "description",
+      "is_active",
+      "is_default"
+    ]
+  },
+  "milestone_template_items": {
+    "filter": "all",
+    "required": [
+      "item_id",
+      "template_id",
+      "milestone_name",
+      "days_offset"
+    ],
+    "optional": [
+      "sort_order"
+    ]
+  },
+  "job_template_milestone_completions": {
+    "filter": "job",
+    "required": [
+      "completion_id",
+      "job_id",
+      "item_id"
+    ],
+    "optional": [
+      "is_complete"
+    ]
+  },
+  "job_file_types_lookup": {
+    "filter": "all",
+    "required": [
+      "file_type_id",
+      "file_type_key",
+      "display_name"
+    ],
+    "optional": [
+      "storage_folder_key",
+      "sort_order",
+      "is_active"
     ]
   }
 }
