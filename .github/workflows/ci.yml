@@ -494,6 +494,10 @@ jobs:
       # defaults versioned, applied by client.create, and onto existing clients only by the confirmed, audited apply.
       - name: The organisation profile is typed and governed, and its bank details never leave their table
         run: npx tsx --test packages/isolated-backend/tests/organisationSettingsReal.test.ts
+      # The v7 organisation-profile import (admin Phase D, D2): fill-empty-only, digests not values in legacy_values, the
+      # logo through the inspector, a bank row in the extract refuses everything, no value in the outcome or audit.
+      - name: v7 fills the organisation profile once and never overwrites it, and never carries the bank details
+        run: npx tsx --test packages/isolated-backend/tests/v7OrgSettingsLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
