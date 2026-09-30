@@ -473,6 +473,11 @@ jobs:
       # audit, access, Risk after each command, and the PR 2 backfill refusing a job completed here.
       - name: Milestones are generated from the template, moved only when the template owns them, and never overwritten by v7
         run: npx tsx --test packages/isolated-backend/tests/milestoneCommandReal.test.ts
+      # job.update (ruled J1–J6): every job-linked table classified (and an unclassified one blocks, fail-closed), the
+      # period refused once period-bound data exists, the window and automatic datasets re-derived and audited, manual
+      # ones kept with recomputed warnings, imported and closed jobs guarded, one job-version bump, v7 loaders unaffected.
+      - name: A job's schedule moves only where nothing depends on it, and the move is audited whole
+        run: npx tsx --test packages/isolated-backend/tests/jobUpdateReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
