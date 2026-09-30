@@ -1,7 +1,8 @@
 export type BrowserCommandResult<T> =
   | { state: "success"; data: T; replayed: boolean }
   | { state: "conflict"; message: string }
-  | { state: "validation_failed"; message: string; issues: { field: string; message: string }[] }
+  /** `code` is the command's own (NO_CHANGE, LAST_ADMIN…), so a screen can say what happened rather than only show the message. */
+  | { state: "validation_failed"; message: string; issues: { field: string; message: string; code?: string }[] }
   | { state: "failed"; message: string; retryable: boolean };
 
 export type BrowserCommandTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -19,7 +20,7 @@ async function sendBrowserCommand<T>(method: "POST" | "PATCH" | "PUT", path: str
       },
       body: JSON.stringify(input),
     });
-    const payload = await response.json().catch(() => ({})) as { data?: T; message?: string; issues?: { field: string; message: string }[] };
+    const payload = await response.json().catch(() => ({})) as { data?: T; message?: string; issues?: { field: string; message: string; code?: string }[] };
     if (response.ok && payload.data) return { state: "success", data: payload.data, replayed: response.headers.get("x-idempotent-replay") === "true" };
     if (response.status === 409) return { state: "conflict", message: payload.message ?? "The record changed; refresh and retry." };
     if (response.status === 422) return { state: "validation_failed", message: payload.message ?? "Check the highlighted information.", issues: payload.issues ?? [] };
