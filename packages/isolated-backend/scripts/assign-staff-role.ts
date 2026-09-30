@@ -1,18 +1,19 @@
 /**
- * Change a staff member's role (audited, with a reason).
+ * Change a staff member's role (audited, with a reason) — the break-glass (ruled Q9).
  *
  *   npm run staff:role -- <userId> <admin|consultant|reviewer|finance|viewer> --actor <your name> --reason "<why>" [--organisation <id>]
  *
- * The bootstrap for the first admin: `seed:reference-data` creates every member at the least-privilege role, so one
- * person is made Admin here — which carries `staff.invite` (matrix v8) — and invites the rest from Platform & audit →
- * Access. Run in the Render Shell of the console service. There is deliberately no console route to this: role
- * administration in the UI is its own build.
+ * Roles are changed in the console, on Admin → Team & access. This is for when no admin can sign in to do it — and for
+ * an organisation's first admin. It runs the same `staff.role.assign` command as the console, with the same guards
+ * (never the organisation's last active admin) and the same audit event, as the `system` principal. Run in the Render
+ * Shell of the console service.
  *
  * Fail-closed on the boundary like every other write here.
  */
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
-import { assignStaffRole } from "../src/staffInvitations";
+import { CommandValidationError } from "../src/postgresCommands";
+import { assignStaffRole } from "../src/staffAdmin";
 
 const argument = (name: string) => { const at = process.argv.indexOf(name); return at > 0 ? process.argv[at + 1] : undefined; };
 const USAGE = 'Usage: staff:role <userId> <role> --actor <your name> --reason "<why>" [--organisation <id>]';
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  process.stderr.write(`\nstaff:role failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  const detail = error instanceof CommandValidationError ? error.issues.map((issue) => issue.message).join(" ") : error instanceof Error ? error.message : String(error);
+  process.stderr.write(`\nstaff:role failed: ${detail}\n`);
   process.exitCode = 1;
 });

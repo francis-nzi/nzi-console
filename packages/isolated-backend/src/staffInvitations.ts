@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { isStaffRole, type StaffRole } from "@nzi/contracts";
 import type { StaffPrincipal } from "./auth";
 import { requireCapability } from "./auth";
 import { mailDelivery, smtpSettingsFrom, type MailDelivery, type Mailer } from "./mailer";
@@ -122,35 +120,5 @@ export async function listStaffEnrolmentRoster(pool: PoolLike, principal: StaffP
         : new Date(row.expires_at!) <= now ? { state: "expired" as const, at: iso(row.expires_at!) }
         : { state: "open" as const, at: iso(row.expires_at!) },
     }));
-  });
-}
-
-/**
- * Change a member's role — an operator act in the Render Shell, audited, with a reason. The bootstrap for the first
- * admin: the roster creates everyone at the least-privilege role, so somebody has to be made Admin before anyone can
- * invite from the console. There is deliberately no console route to this; role administration in the UI is its own
- * build, behind its own capability.
- */
-export async function assignStaffRole(
-  pool: PoolLike, input: { organisationId: string; userId: string; role: string; actorId: string; reason: string },
-): Promise<{ from: string; to: StaffRole }> {
-  const userId = input.userId.trim(), actorId = input.actorId.trim(), reason = input.reason.trim();
-  if (!isStaffRole(input.role)) throw new StaffEnrolmentError(`${input.role} is not a staff role.`);
-  if (!userId || !actorId) throw new StaffEnrolmentError("A member and the operator making the change are required.");
-  if (reason.length < 8) throw new StaffEnrolmentError("A role change needs a reason.");
-  const role = input.role;
-  return withTenantWrite(pool, input.organisationId, async (db) => {
-    const found = await db.query<{ role_id: string; status: string }>(`SELECT role_id, status FROM nzi_console.memberships WHERE user_id=$1 FOR UPDATE`, [userId]);
-    const member = found.rows[0];
-    if (!member) throw new StaffEnrolmentError(`${userId} is not a member of ${input.organisationId}.`);
-    if (member.status !== "active") throw new StaffEnrolmentError(`${userId}'s membership is ${member.status}, not active.`);
-    if (member.role_id === role) throw new StaffEnrolmentError(`${userId} already has the ${role} role.`);
-    await db.query(`UPDATE nzi_console.memberships SET role_id=$2 WHERE user_id=$1`, [userId, role]);
-    const eventId = `audit-${randomUUID()}`;
-    await db.query(
-      `INSERT INTO nzi_console.audit_events (organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,reason,before_json,after_json)
-       VALUES ($1,$2,$3,'system','staff.role.assign','membership',$4,$2,$5,$6::jsonb,$7::jsonb)`,
-      [input.organisationId, eventId, actorId, userId, reason, JSON.stringify({ role: member.role_id }), JSON.stringify({ role })]);
-    return { from: member.role_id, to: role };
   });
 }

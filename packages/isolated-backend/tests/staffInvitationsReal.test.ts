@@ -7,7 +7,9 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import { AuthorizationError, completeStaffMfa, resolveStaffPrincipal, startStaffLogin, totpCode, type StaffPrincipal } from "../src/index";
 import type { MailMessage } from "../src/mailer";
 import { completeStaffEnrolment, issueStaffEnrolmentInvitation, StaffEnrolmentError, startStaffEnrolment } from "../src/staffEnrolment";
-import { assignStaffRole, inviteStaffMember, listStaffEnrolmentRoster } from "../src/staffInvitations";
+import { assignStaffRole } from "../src/staffAdmin";
+import { inviteStaffMember, listStaffEnrolmentRoster } from "../src/staffInvitations";
+import { CommandValidationError } from "../src/postgresCommands";
 
 /**
  * Staff invitations from the admin (matrix v8, `staff.invite`), against a real database in net-zero-international.
@@ -88,7 +90,8 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
     assert.equal(assigned!.principal_type, "system");
     assert.equal(assigned!.entity_id, "lead");
     assert.equal(assigned!.reason, "First admin for net-zero-international");
-    assert.deepEqual([assigned!.before_json, assigned!.after_json], [{ role: "viewer" }, { role: "admin" }]);
+    // The operator path runs the console command (ruled Q9): the same event, ids and roles only.
+    assert.deepEqual([assigned!.before_json.role, assigned!.after_json.role, assigned!.after_json.userId], ["viewer", "admin", "lead"]);
 
     admin = await resolveStaffPrincipal(database.pool, await signIn("lead@example.org", secret));
     assert.equal(admin.role, "admin");
@@ -187,9 +190,10 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
   it("the role command refuses an unknown role, no reason, no change, and a non-member", async () => {
     const assign = (userId: string, role: string, reason = "Needs to publish reports") =>
       assignStaffRole(database.pool, { organisationId: ORG, userId, role, actorId: "operator:francis", reason });
-    await assert.rejects(() => assign("sam", "superuser"), /not a staff role/);
-    await assert.rejects(() => assign("sam", "reviewer", "because"), /needs a reason/);
-    await assert.rejects(() => assign("lead", "admin"), /already has the admin role/);
-    await assert.rejects(() => assign("nobody", "reviewer"), /not a member/);
+    const says = (pattern: RegExp) => (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => pattern.test(issue.message));
+    await assert.rejects(() => assign("sam", "superuser"), says(/not a staff role/));
+    await assert.rejects(() => assign("sam", "reviewer", "because"), says(/needs a reason/));
+    await assert.rejects(() => assign("lead", "admin"), says(/already has the admin role/));
+    await assert.rejects(() => assign("nobody", "reviewer"), says(/not a member/));
   });
 });

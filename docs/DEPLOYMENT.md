@@ -382,8 +382,13 @@ the command above and then made Admin, in the Render Shell:
 npm run staff:role -w @nzi/isolated-backend -- <userId> admin --actor <your name> --reason "First admin for <organisation>"
 ```
 
-A reason is required; the change is audited as `staff.role.assign` with the role before and after. There is
-deliberately no console route to role changes yet — role administration in the UI is its own build.
+A reason is required; the change is audited as `staff.role.assign` with the role before and after.
+
+**After that, roles change in the console:** **Admin → Team & access** (`admin.users`), where a person is also added,
+edited, deactivated and reinstated, each with a reason. `staff:role` stays only as the **break-glass** for when no admin
+can sign in (ruled Q9): it runs the same `staff.role.assign` command as the console — the same guards, never the
+organisation's last active admin, and the same audit event — as the `system` principal, with `--actor` recorded as
+`operator:<name>`. The database refuses the last-admin change too (0141's deferred trigger), whatever path attempts it.
 
 The link carries its token in the URL fragment, so it never reaches a server log. Mail is suppressed on this service by
 design (see *This service sends nothing*), which is why the operator delivers the link. Someone with Render Shell

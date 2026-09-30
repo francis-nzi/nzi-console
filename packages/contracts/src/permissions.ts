@@ -62,7 +62,7 @@ export const capabilities = [
   "admin.users",
   // ── Staff enrolment (0129) ──
   // Issuing someone's enrolment link is granting them sign-in to this organisation's data, so it is its own
-  // capability, held by Admin alone — not a stretch of admin.users (which no command checks), and not portal.admin,
+  // capability, held by Admin alone — not a stretch of admin.users (which governs the roster itself — roles, deactivation; admin Phase B), and not portal.admin,
   // which a consultant holds for their own clients' portal users. It issues through the one enrolment path: the
   // holder never sees the person's password or authenticator, and cannot enrol over working sign-in.
   "staff.invite",
