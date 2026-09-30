@@ -16,7 +16,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         description: "One engine for every simple reference list — industries, referrals, portfolios, payment terms, units and more. Values are edited, reordered and deactivated, never deleted, and stay resolved on records that already use them." },
       { id: "team", label: "Team & access", icon: "users", href: "/admin/team", capability: "admin.users",
         description: "Staff records, role assignment against the versioned capability matrix, and deactivation — replacing today’s command-line-only path." },
-      { id: "organisation", label: "Organisation", icon: "building", href: "/admin/organisation", phase: "D", capability: "admin.settings",
+      { id: "organisation", label: "Organisation", icon: "building", href: "/admin/organisation", capability: "admin.settings",
         description: "The company profile behind quotes, invoices, certificates and report footers. Bank details are restricted to Admin and Finance, and never exposed on a public endpoint." },
     ],
   },

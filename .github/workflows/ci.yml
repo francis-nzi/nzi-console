@@ -489,6 +489,11 @@ jobs:
       # no name or address in the report or any audit payload; R4 re-runs.
       - name: v7 staff enrich the roster and never overrule it, and the import names nobody
         run: npx tsx --test packages/isolated-backend/tests/v7StaffLoadReal.test.ts
+      # Organisation settings (admin Phase D, D1): 0142 provisioning and grants; the typed profile and derived footer; bank
+      # details admin.settings-only, masked, a reason for every change, never in a payload; the logo inspector; intensity
+      # defaults versioned, applied by client.create, and onto existing clients only by the confirmed, audited apply.
+      - name: The organisation profile is typed and governed, and its bank details never leave their table
+        run: npx tsx --test packages/isolated-backend/tests/organisationSettingsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
