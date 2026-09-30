@@ -31,6 +31,7 @@ export type CommandKey =
   | "job.milestone.complete"
   | "job.milestone.reopen"
   | "job.milestone.reschedule"
+  | "job.update"
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
@@ -474,6 +475,9 @@ export type CommandInputMap = {
   "job.milestone.reopen": { jobId: string; kind: MilestoneKind; expectedVersion: number };
   /** Recompute the uncompleted template rows from the job's template (optionally a new one; null = none) and anchor. */
   "job.milestone.reschedule": { jobId: string; milestoneTemplateId?: string | null; expectedVersion: number };
+  /** Edit a job's start date, reporting period and milestone template (ruled job-update-plan.md, J1–J6). A field
+   *  left out is unchanged. A period change needs a reason (J5), and is refused once period-bound data exists (J1). */
+  "job.update": { jobId: string; expectedVersion: number; startDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
@@ -978,6 +982,20 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "jobId", input.jobId);
     if (input.milestoneTemplateId !== undefined && input.milestoneTemplateId !== null && !text(input.milestoneTemplateId)) issues.push({ field: "milestoneTemplateId", code: "INVALID", message: "Choose a template, or none." });
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // job.update (ruled J1–J6). The guards that need the job and its data (closed, imported, family, period-bound data,
+  // and the reason a period change needs) are the command's, where the job is locked; here, only the shape.
+  "job.update": { key: "job.update", label: "Edit a job's schedule", permission: "job.manage", reasonRequired: false, transaction: "job + emissions window + datasets + template milestones + audit + outbox + idempotency", auditAction: "job.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    for (const field of ["startDate", "reportingPeriodStart", "reportingPeriodEnd"] as const) {
+      const value = input[field];
+      if (value !== undefined && value !== null && !isCalendarDay(value)) issues.push({ field, code: "INVALID", message: "A date is a calendar date." });
+    }
+    if (input.startDate === null) issues.push({ field: "startDate", code: "REQUIRED", message: "A job has a start date." });
+    if (input.milestoneTemplateId !== undefined && input.milestoneTemplateId !== null && !text(input.milestoneTemplateId)) issues.push({ field: "milestoneTemplateId", code: "INVALID", message: "Choose a template, or none." });
     return issues;
   } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },

@@ -75,8 +75,11 @@ describe("the suites' fixtures name only what the migrations create", () => {
       const source = readFileSync(resolve(here, file), "utf8");
       scanned += 1;
       const referenced = new Set([...source.matchAll(/nzi_console\.([a-z_][a-z0-9_]*)/g)].map((match) => match[1]!.toLowerCase()));
+      // A table the suite creates itself exists by the time it is named — job.update's fail-closed test adds a
+      // table no migration will ever create, to prove an unclassified one blocks. Only CREATE TABLE counts.
+      const ownTables = new Set([...source.matchAll(CREATES[0]!)].map((match) => match[1]!.toLowerCase()));
       for (const name of referenced) {
-        if (!created.has(name)) unresolved.push(`${file}: nzi_console.${name}`);
+        if (!created.has(name) && !ownTables.has(name)) unresolved.push(`${file}: nzi_console.${name}`);
       }
     }
     assert.ok(scanned >= 40, `only ${scanned} suites scanned — the answer would be empty for the wrong reason`);

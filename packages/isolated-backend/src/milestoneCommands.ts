@@ -1,4 +1,6 @@
-import { londonDayOf, MILESTONE_KINDS, todayInLondon, type CommandContext, type CommandInputMap, type MilestoneKind, type RiskLevel } from "@nzi/contracts";
+import { anchorOf, familyHasReportingPeriod, londonDayOf, planReschedule, todayInLondon, type CommandContext, type CommandInputMap, type MilestoneKind, type ReschedulePreview, type RiskLevel, type ScheduleAnchor, type WorkflowJobFamily } from "@nzi/contracts";
+// The schedule rules live in @nzi/contracts (ruled J6) so the job page's previews run the same function; re-exported here.
+export { anchorOf, planReschedule, type ReschedulePreview } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import { milestoneRisk, riskOf } from "./milestoneRisk";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -28,18 +30,11 @@ type Row = {
   due_source: "template" | "manual" | "import"; template_id: string | null; due_basis: DueBasis | null; version: number; source_system: string | null;
 };
 export type DueBasis = { templateId: string; templateVersion: number; itemLabel: string; anchor: string; anchorFrom: "start_date" | "reporting_period_start"; daysOffset: number };
+export type MilestoneTemplateWithItems = Template;
 type Template = { templateId: string; name: string; version: number; active: boolean; items: Array<{ kind: MilestoneKind; label: string; daysOffset: number; included: boolean }> };
 type JobHead = { job_id: string; client_id: string; version: number; start_date: string | null; period_start: string | null; milestone_template_id: string | null };
 
 const ROW_COLUMNS = `kind, due_date::text AS due_date, completed_at, completed_by_user_id, completed_by_label, due_source, template_id, due_basis, version, source_system`;
-
-/** The anchor, as v7 computes it: the later of the start date and the reporting-period start; the start when there is no period. */
-export function anchorOf(startDate: string | null, periodStart: string | null): { anchor: string; from: DueBasis["anchorFrom"] } | null {
-  if (!startDate && !periodStart) return null;
-  if (!startDate) return { anchor: periodStart!, from: "reporting_period_start" };
-  if (periodStart && periodStart > startDate) return { anchor: periodStart, from: "reporting_period_start" };
-  return { anchor: startDate, from: "start_date" };
-}
 
 async function readTemplate(db: Queryable, org: string, templateId: string): Promise<Template | null> {
   const { rows: [row] } = await db.query<{ template_id: string; name: string; version: number; active: boolean; items: Template["items"] }>(
@@ -79,6 +74,15 @@ const stateOf = (row: Row): MilestoneState => {
     basis: row.due_basis, version: row.version,
   };
 };
+/** A job's milestone rows as the schedule plan reads them, without a lock — for a preview in a read-only transaction. */
+export async function readScheduleRows(db: Queryable, org: string, jobId: string): Promise<Map<MilestoneKind, Row>> {
+  const { rows } = await db.query<Row>(`SELECT ${ROW_COLUMNS} FROM nzi_console.job_milestones WHERE organisation_id = $1 AND job_id = $2`, [org, jobId]);
+  return new Map(rows.map((row) => [row.kind, row]));
+}
+
+/** A job's milestones as the audit and the panel carry them, in the kinds' order. */
+export async function milestoneStatesOf(db: Queryable, org: string, jobId: string): Promise<MilestoneState[]> { return statesOf(db, org, jobId); }
+
 async function statesOf(db: Queryable, org: string, jobId: string): Promise<MilestoneState[]> {
   const { rows } = await db.query<Row>(
     `SELECT ${ROW_COLUMNS} FROM nzi_console.job_milestones WHERE organisation_id = $1 AND job_id = $2
@@ -110,7 +114,7 @@ export async function templateForNewJob(db: Queryable, org: string, input: { mil
   return fallback ? readTemplate(db, org, fallback.template_id) : null;
 }
 
-const basisFor = (template: Template, item: Template["items"][number], anchor: NonNullable<ReturnType<typeof anchorOf>>): DueBasis => ({
+const basisFor = (template: Template, item: Template["items"][number], anchor: ScheduleAnchor): DueBasis => ({
   templateId: template.templateId, templateVersion: template.version, itemLabel: item.label, anchor: anchor.anchor, anchorFrom: anchor.from, daysOffset: item.daysOffset,
 });
 
@@ -227,30 +231,55 @@ export function reopenMilestone(pool: PoolLike, input: CommandInputMap["job.mile
   });
 }
 
-export type ReschedulePreview = Array<{ kind: MilestoneKind; action: "generate" | "move" | "keep" | "clear" | "unchanged"; from: string | null; to: string | null; because: string }>;
-
 /**
- * What a reschedule does, kind by kind — shared by the command and the panel's preview, so the preview is the rule.
- * Template rows that are not completed move (or are cleared, if the template no longer schedules their kind); a kind
- * with no row that the template schedules is generated; manual, imported and completed rows are kept.
+ * Apply a reschedule to a job's milestones (Q11): only uncompleted template rows move; manual, imported and completed
+ * rows stay; a kind with no row the template schedules is generated (Q7's per-job apply); a kind it no longer schedules
+ * is cleared but kept (M3, fix 1). Shared by job.milestone.reschedule and job.update (ruled J6).
+ *
+ * **It never reads or writes the job row** — no version check, no bump: the calling command owns the job's version,
+ * checked once and bumped once. Each milestone row it touches versions on its own, with `updated_by` = the actor (so the
+ * PR 2 backfill's R3 rule refuses a job rescheduled here).
  */
-export function planReschedule(rows: ReadonlyMap<MilestoneKind, Pick<Row, "due_date" | "completed_at" | "due_source">>, template: Template | null,
-  anchor: ReturnType<typeof anchorOf>): ReschedulePreview {
-  return MILESTONE_KINDS.map((kind) => {
-    const row = rows.get(kind);
-    const item = template?.items.find((candidate) => candidate.kind === kind && candidate.included);
-    const to = item && anchor ? addDays(anchor.anchor, item.daysOffset) : null;
-    if (row && row.completed_at) return { kind, action: "keep", from: row.due_date, to: row.due_date, because: "completed — never moved" };
-    if (row && row.due_source !== "template") return { kind, action: "keep", from: row.due_date, to: row.due_date, because: row.due_source === "manual" ? "set by hand — never moved" : "from v7 — never moved" };
-    if (!row) return to ? { kind, action: "generate", from: null, to, because: "scheduled by the template" } : { kind, action: "unchanged", from: null, to: null, because: "not scheduled" };
-    if (!to) return row.due_date === null ? { kind, action: "unchanged", from: null, to: null, because: "not scheduled" } : { kind, action: "clear", from: row.due_date, to: null, because: "the template no longer schedules it" };
-    return row.due_date === to ? { kind, action: "unchanged", from: to, to, because: "already on the template's date" } : { kind, action: "move", from: row.due_date, to, because: "recomputed from the template" };
-  });
+export async function applyReschedule(db: Queryable, org: string, actorId: string,
+  job: { jobId: string; startDate: string | null; periodStart: string | null }, template: Template | null): Promise<ReschedulePreview> {
+  const rows = await lockRows(db, org, job.jobId);
+  const anchor = anchorOf(job.startDate, job.periodStart);
+  const plan = planReschedule(rows, template, anchor);
+  for (const step of plan) {
+    const item = template?.items.find((candidate) => candidate.kind === step.kind && candidate.included);
+    if (step.action === "generate" || step.action === "move") {
+      const basis = JSON.stringify(basisFor(template!, item!, anchor!));
+      if (step.action === "generate") {
+        await db.query(
+          `INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, due_source, template_id, due_basis, updated_by)
+           VALUES ($1, $2, $3, $4::date, 'template', $5, $6::jsonb, $7)`, [org, job.jobId, step.kind, step.to, template!.templateId, basis, actorId]);
+      } else {
+        await db.query(
+          `UPDATE nzi_console.job_milestones SET due_date = $4::date, template_id = $5, due_basis = $6::jsonb, version = version + 1, updated_at = now(), updated_by = $7
+            WHERE organisation_id = $1 AND job_id = $2 AND kind = $3`, [org, job.jobId, step.kind, step.to, template!.templateId, basis, actorId]);
+      }
+    } else if (step.action === "clear") {
+      // M3, fix 1: kept as the template's now-empty slot — its template_id stays; its date and basis go; not made manual.
+      await db.query(
+        `UPDATE nzi_console.job_milestones SET due_date = NULL, due_basis = NULL, template_id = coalesce($4, template_id), version = version + 1, updated_at = now(), updated_by = $5
+          WHERE organisation_id = $1 AND job_id = $2 AND kind = $3`, [org, job.jobId, step.kind, template?.templateId ?? null, actorId]);
+    } else if (step.action === "unchanged" && rows.get(step.kind)?.due_source === "template" && template && rows.get(step.kind)!.due_date !== null) {
+      // Same date, possibly a different template: the row's basis follows the template now in force.
+      await db.query(
+        `UPDATE nzi_console.job_milestones SET template_id = $4, due_basis = $5::jsonb WHERE organisation_id = $1 AND job_id = $2 AND kind = $3 AND template_id IS DISTINCT FROM $4`,
+        [org, job.jobId, step.kind, template.templateId, JSON.stringify(basisFor(template, item!, anchor!))]);
+    }
+  }
+  return plan;
 }
-function addDays(day: string, days: number): string {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  const moved = new Date(Date.UTC(y, m - 1, d + days));
-  return `${moved.getUTCFullYear()}-${String(moved.getUTCMonth() + 1).padStart(2, "0")}-${String(moved.getUTCDate()).padStart(2, "0")}`;
+
+/** The template a job names, checked as a reschedule or job.update needs it: present, and active. */
+export async function templateForReschedule(db: Queryable, org: string, templateId: string | null): Promise<Template | null> {
+  if (!templateId) return null;
+  const template = await readTemplate(db, org, templateId);
+  if (!template) throw new CommandValidationError([{ field: "milestoneTemplateId", code: "NOT_FOUND", message: "That milestone template is not available." }]);
+  if (!template.active) throw new CommandValidationError([{ field: "milestoneTemplateId", code: "INACTIVE", message: "That milestone template is inactive; choose an active one." }]);
+  return template;
 }
 
 export function rescheduleMilestones(pool: PoolLike, input: CommandInputMap["job.milestone.reschedule"], context: CommandContext): Promise<StoredOutcome<MilestoneCommandResult & { preview: ReschedulePreview }>> {
@@ -259,43 +288,13 @@ export function rescheduleMilestones(pool: PoolLike, input: CommandInputMap["job
     const job = await lockJob(db, org, input.jobId);
     if (job.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, job.version);
     const templateId = input.milestoneTemplateId === undefined ? job.milestone_template_id : input.milestoneTemplateId;
-    const template = templateId ? await readTemplate(db, org, templateId) : null;
-    if (templateId && !template) throw new CommandValidationError([{ field: "milestoneTemplateId", code: "NOT_FOUND", message: "That milestone template is not available." }]);
-    if (template && !template.active) throw new CommandValidationError([{ field: "milestoneTemplateId", code: "INACTIVE", message: "That milestone template is inactive; choose an active one." }]);
+    const template = await templateForReschedule(db, org, templateId);
     const before = await statesOf(db, org, input.jobId);
-    const rows = await lockRows(db, org, input.jobId);
-    const anchor = anchorOf(job.start_date, job.period_start);
-    const preview = planReschedule(rows, template, anchor);
-
     if (templateId !== job.milestone_template_id) {
       await db.query(`UPDATE nzi_console.jobs SET milestone_template_id = $3, version = version + 1, updated_at = now() WHERE organisation_id = $1 AND job_id = $2`,
         [org, input.jobId, templateId]);
     }
-    for (const step of preview) {
-      const item = template?.items.find((candidate) => candidate.kind === step.kind && candidate.included);
-      if (step.action === "generate" || step.action === "move") {
-        const basis = JSON.stringify(basisFor(template!, item!, anchor!));
-        if (step.action === "generate") {
-          await db.query(
-            `INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, due_source, template_id, due_basis, updated_by)
-             VALUES ($1, $2, $3, $4::date, 'template', $5, $6::jsonb, $7)`, [org, input.jobId, step.kind, step.to, template!.templateId, basis, context.actorId]);
-        } else {
-          await db.query(
-            `UPDATE nzi_console.job_milestones SET due_date = $4::date, template_id = $5, due_basis = $6::jsonb, version = version + 1, updated_at = now(), updated_by = $7
-              WHERE organisation_id = $1 AND job_id = $2 AND kind = $3`, [org, input.jobId, step.kind, step.to, template!.templateId, basis, context.actorId]);
-        }
-      } else if (step.action === "clear") {
-        // M3, fix 1: kept as the template's now-empty slot — its template_id stays; its date and basis go; not made manual.
-        await db.query(
-          `UPDATE nzi_console.job_milestones SET due_date = NULL, due_basis = NULL, template_id = coalesce($4, template_id), version = version + 1, updated_at = now(), updated_by = $5
-            WHERE organisation_id = $1 AND job_id = $2 AND kind = $3`, [org, input.jobId, step.kind, template?.templateId ?? null, context.actorId]);
-      } else if (step.action === "unchanged" && rows.get(step.kind)?.due_source === "template" && template && rows.get(step.kind)!.due_date !== null) {
-        // Same date, possibly a different template: the row's basis follows the template now in force.
-        await db.query(
-          `UPDATE nzi_console.job_milestones SET template_id = $4, due_basis = $5::jsonb WHERE organisation_id = $1 AND job_id = $2 AND kind = $3 AND template_id IS DISTINCT FROM $4`,
-          [org, input.jobId, step.kind, template.templateId, JSON.stringify(basisFor(template, item!, anchor!))]);
-      }
-    }
+    const preview = await applyReschedule(db, org, context.actorId, { jobId: input.jobId, startDate: job.start_date, periodStart: job.period_start }, template);
     return {
       data: { jobId: input.jobId, changed: preview.some((step) => step.action !== "keep" && step.action !== "unchanged") || templateId !== job.milestone_template_id,
         milestones: await statesOf(db, org, input.jobId), clientId: job.client_id, preview },
@@ -329,7 +328,10 @@ export async function listJobSetupOptions(db: Queryable): Promise<JobSetupOption
 // ── The read (the job page's panel) ────────────────────────────────────────────────────────────────────────────
 
 export type JobMilestonesView = {
-  jobId: string; jobVersion: number; anchor: ReturnType<typeof anchorOf>;
+  jobId: string; jobVersion: number; anchor: ScheduleAnchor | null;
+  /** The job's schedule, for job.update's form: what it holds, and whether its dates may change here (ruled J3, J4). */
+  schedule: { family: WorkflowJobFamily; status: string; imported: boolean; hasPeriod: boolean; startDate: string | null; dueDate: string | null;
+    reportingPeriodStart: string | null; reportingPeriodEnd: string | null; reportingYear: number | null };
   template: { templateId: string; name: string; active: boolean } | null;
   milestones: Array<MilestoneState & { risk: Exclude<RiskLevel, "Not set"> | null }>;
   risk: RiskLevel;
@@ -339,8 +341,9 @@ export type JobMilestonesView = {
 };
 
 export async function readJobMilestones(db: Queryable, jobId: string, operatingDay: string = todayInLondon()): Promise<JobMilestonesView | null> {
-  const { rows: [job] } = await db.query<JobHead & { organisation_id: string }>(
-    `SELECT organisation_id, job_id, client_id, version, start_date::text AS start_date, reporting_period_start::text AS period_start, milestone_template_id
+  const { rows: [job] } = await db.query<JobHead & { organisation_id: string; job_family: WorkflowJobFamily; status: string; source_system: string | null; due_date: string | null; period_end: string | null; reporting_year: number | null }>(
+    `SELECT organisation_id, job_id, client_id, version, start_date::text AS start_date, reporting_period_start::text AS period_start, milestone_template_id,
+            job_family, status, source_system, due_date::text AS due_date, reporting_period_end::text AS period_end, reporting_year
        FROM nzi_console.jobs WHERE job_id = $1`, [jobId]);
   if (!job) return null;
   const org = job.organisation_id;
@@ -357,6 +360,8 @@ export async function readJobMilestones(db: Queryable, jobId: string, operatingD
   }
   return {
     jobId, jobVersion: job.version, anchor,
+    schedule: { family: job.job_family, status: job.status, imported: job.source_system !== null, hasPeriod: familyHasReportingPeriod(job.job_family), startDate: job.start_date, dueDate: job.due_date,
+      reportingPeriodStart: job.period_start, reportingPeriodEnd: job.period_end, reportingYear: job.reporting_year },
     template: current ? { templateId: current.templateId, name: current.name, active: current.active } : null,
     milestones: states.map((state) => ({ ...state, risk: milestoneRisk({ dueDate: state.dueDate, completedAt: state.completedAt }, operatingDay) })),
     risk: riskOf(states.map((state) => ({ dueDate: state.dueDate, completedAt: state.completedAt })), operatingDay),

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
+import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
@@ -530,19 +531,7 @@ export async function createJob(
         `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
         [context.organisationId, jobId, reportingFrom, reportingTo],
       );
-      await db.query(
-        `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
-        SELECT $1,$2,d.dataset_id,'automatic','Matched reporting period and geography.',$5 FROM nzi_console.emission_factor_datasets d
-        WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$3 AND d.valid_to>=$4 AND d.country_code IN ('GB','GLOBAL')
-        ON CONFLICT DO NOTHING`,
-        [
-          context.organisationId,
-          jobId,
-          reportingFrom,
-          reportingTo,
-          context.actorId,
-        ],
-      );
+      await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, context.actorId);
     }
     return {
       data: {
@@ -1751,18 +1740,7 @@ export async function addManualDataset(
         validTo = dateOnly(item.valid_to),
         reportingFrom = dateOnly(item.reporting_from),
         reportingTo = dateOnly(item.reporting_to);
-      const warnings: string[] = [];
-      if (validFrom > reportingFrom || validTo < reportingTo)
-        warnings.push("Dataset does not cover the complete reporting period.");
-      if (
-        item.dataset_country !== item.job_country &&
-        item.dataset_country !== "GLOBAL"
-      )
-        warnings.push(
-          `Dataset geography ${item.dataset_country} differs from job geography ${item.job_country}.`,
-        );
-      if (item.status !== "active")
-        warnings.push(`Dataset status is ${item.status}.`);
+      const warnings = datasetCoverageWarnings({ validFrom, validTo, country: item.dataset_country, status: item.status }, { from: reportingFrom, to: reportingTo }, item.job_country);
       const inserted = await db.query(
         `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,warnings_json,selected_by) VALUES ($1,$2,$3,'manual',$4,$5::jsonb,$6) ON CONFLICT (organisation_id,job_id,dataset_id) DO NOTHING RETURNING dataset_id`,
         [
