@@ -464,6 +464,10 @@ jobs:
       # version bump and one audit event per job; PR 3's generation compared with the dates imported from v7. No milestone changes.
       - name: The v7 job links fill only what is empty, and the template mapping is checked against v7's own dates
         run: npx tsx --test packages/isolated-backend/tests/v7JobLinkLoadReal.test.ts
+      # Job file types (admin C3): the key set once and never updated, a system type never deactivated, a reason to
+      # deactivate, names and keys unique; admin.lookups; tenant-scoped.
+      - name: Job file types keep their key, never lose a system type, and are never deleted
+        run: npx tsx --test packages/isolated-backend/tests/jobFileTypesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

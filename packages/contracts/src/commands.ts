@@ -1,5 +1,6 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { isMilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
+import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
@@ -64,6 +65,10 @@ export type CommandKey =
   | "milestone_template.set_default"
   | "milestone_template.deactivate"
   | "milestone_template.reinstate"
+  | "job_file_type.create"
+  | "job_file_type.update"
+  | "job_file_type.deactivate"
+  | "job_file_type.reinstate"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -541,6 +546,11 @@ export type CommandInputMap = {
   "milestone_template.set_default": { templateId: string; expectedVersion: number };
   "milestone_template.deactivate": { templateId: string; expectedVersion: number };
   "milestone_template.reinstate": { templateId: string; expectedVersion: number };
+  /** Job file types (admin C3): the key is set once, at create, and never again; a system type is never deactivated. */
+  "job_file_type.create": FileTypeEditableFields & { fileTypeKey: string };
+  "job_file_type.update": FileTypeEditableFields & { fileTypeId: string; expectedVersion: number };
+  "job_file_type.deactivate": { fileTypeId: string; expectedVersion: number };
+  "job_file_type.reinstate": { fileTypeId: string; expectedVersion: number };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -724,6 +734,13 @@ const milestoneTemplateIssues = (issues: CommandIssue[], input: MilestoneTemplat
     if (typeof item.included !== "boolean") issues.push({ field: `items.${kind}.included`, code: "INVALID", message: "Say whether the milestone is scheduled." });
   }
   if (!input.items.some((item) => item?.included === true)) issues.push({ field: "items", code: "REQUIRED", message: "A template schedules at least one milestone." });
+};
+/** A file type's editable fields: a display name within bounds, a folder key, a whole sort order (admin C3). */
+const fileTypeIssues = (issues: CommandIssue[], input: FileTypeEditableFields) => {
+  if (!text(input.displayName)) issues.push({ field: "displayName", code: "REQUIRED", message: "A display name is required." });
+  else if (input.displayName.trim().length > FILE_TYPE_NAME_MAX) issues.push({ field: "displayName", code: "TOO_LONG", message: `A display name is at most ${FILE_TYPE_NAME_MAX} characters.` });
+  if (typeof input.storageFolderKey !== "string" || !FILE_TYPE_FOLDER_PATTERN.test(input.storageFolderKey.trim())) issues.push({ field: "storageFolderKey", code: "INVALID", message: "A folder is lower-case letters, digits and hyphens, up to 41 characters." });
+  if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
 };
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
@@ -1139,6 +1156,33 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "milestone_template.reinstate": { key: "milestone_template.reinstate", label: "Reinstate a milestone template", permission: "admin.templates", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "milestone_template.reinstated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "templateId", input.templateId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Job file types (admin C3). Firm configuration, so admin.lookups (the design's chip). The key is set at create and is
+  // never an update field; a deactivation says why, as a lookup's does.
+  "job_file_type.create": { key: "job_file_type.create", label: "Add a job file type", permission: "admin.lookups", reasonRequired: false, transaction: "file type + audit + outbox + idempotency", auditAction: "job_file_type.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (typeof input.fileTypeKey !== "string" || !FILE_TYPE_KEY_PATTERN.test(input.fileTypeKey.trim())) issues.push({ field: "fileTypeKey", code: "INVALID", message: "A key is lower-case letters, digits and underscores, starting with a letter (2–41 characters). It can never be changed." });
+    fileTypeIssues(issues, input);
+    return issues;
+  } },
+  "job_file_type.update": { key: "job_file_type.update", label: "Edit a job file type", permission: "admin.lookups", reasonRequired: false, transaction: "versioned file type + audit + outbox + idempotency", auditAction: "job_file_type.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    fileTypeIssues(issues, input);
+    required(issues, "fileTypeId", input.fileTypeId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "job_file_type.deactivate": { key: "job_file_type.deactivate", label: "Deactivate a job file type", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "job_file_type.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "fileTypeId", input.fileTypeId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "job_file_type.reinstate": { key: "job_file_type.reinstate", label: "Reinstate a job file type", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "job_file_type.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "fileTypeId", input.fileTypeId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
