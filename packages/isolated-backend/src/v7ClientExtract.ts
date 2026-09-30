@@ -22,7 +22,8 @@ export type V7Extract = Readonly<Record<V7Table, readonly V7Row[]>>;
  * How the extract selects each table's rows (Appendix B): in-scope clients, their jobs, and what those reference.
  */
 export type ExtractFilter = "active-clients" | "client" | "job" | "job-with-reference" | "referenced-datasets" | "all";
-export type ExtractTableContract = { filter: string; required: readonly string[]; optional: readonly string[] };
+/** `keys` / `keyColumn`: the `keys` filter's allow-list (admin D2) — only those rows are copied. */
+export type ExtractTableContract = { filter: string; required: readonly string[]; optional: readonly string[]; keyColumn?: string; keys?: readonly string[] };
 
 /**
  * What the importer reads from each file. `required` columns must be in the header or the load refuses — a live

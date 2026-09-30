@@ -516,5 +516,35 @@
       "archived",
       "position"
     ]
+  },
+  "system_settings": {
+    "filter": "keys",
+    "keyColumn": "setting_key",
+    "keys": [
+      "company_display_name",
+      "company_legal_name",
+      "company_registration_number",
+      "vat_number",
+      "registered_address_line_1",
+      "registered_address_line_2",
+      "registered_address_city",
+      "registered_address_region",
+      "registered_address_postcode",
+      "registered_address_country",
+      "contact_email",
+      "contact_phone",
+      "website_url",
+      "nzi_logo_b64",
+      "nzi_logo_mime",
+      "nzi_logo_file"
+    ],
+    "required": [
+      "setting_key",
+      "setting_value"
+    ],
+    "optional": [
+      "setting_type",
+      "updated_at"
+    ]
   }
 }

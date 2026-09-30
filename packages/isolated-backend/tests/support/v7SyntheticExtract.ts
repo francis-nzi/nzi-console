@@ -247,6 +247,30 @@ export function syntheticRows(): Rows {
       { user_id: "erin@example.test", full_name: "Erin Example", email: "erin@example.test", status: "Active", role: "Admin", user_type: "internal", archived: "t", position: null },
       { user_id: "portal@client.test", full_name: "Portal Person", email: "portal@client.test", status: "Active", role: "ClientViewer", user_type: "client_portal", archived: "f", position: null },
     ],
+    // v7's organisation profile (admin D2): key-value rows, invented. The bank rows are here so the extract proves it
+    // never copies them (the keys filter), and the importer would refuse one if it ever arrived.
+    system_settings: [
+      { setting_key: "company_display_name", setting_value: "Example Org", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "company_legal_name", setting_value: "Example Organisation Limited", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "company_registration_number", setting_value: "12345678", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "vat_number", setting_value: "123456789", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_line_1", setting_value: "1 Example Street", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_line_2", setting_value: "", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_city", setting_value: "London", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_region", setting_value: "", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_postcode", setting_value: "EX1 2MP", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "registered_address_country", setting_value: "United Kingdom", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "contact_email", setting_value: "info@example.test", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "contact_phone", setting_value: "", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "website_url", setting_value: "https://example.test", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "nzi_logo_b64", setting_value: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "nzi_logo_mime", setting_value: "image/png", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "nzi_logo_file", setting_value: "nzi-logo.png", setting_type: "file", updated_at: "2026-03-17 10:00:00" },
+      { setting_key: "bank_account_name", setting_value: "Example Organisation Ltd", setting_type: "text", updated_at: "2026-08-14 10:00:00" },
+      { setting_key: "bank_sort_code", setting_value: "12-34-56", setting_type: "text", updated_at: "2026-08-14 10:00:00" },
+      { setting_key: "bank_account_number", setting_value: "87654321", setting_type: "text", updated_at: "2026-08-14 10:00:00" },
+      { setting_key: "archive_retention_days", setting_value: "365", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
+    ],
   };
 }
 

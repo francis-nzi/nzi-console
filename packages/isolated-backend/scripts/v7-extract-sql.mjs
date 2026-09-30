@@ -68,6 +68,15 @@ const FILTERS = {
   client: (t) => `FROM ${t} t WHERE t.client_db_id IN (SELECT db_id FROM ac)`,
   job: (t) => `FROM ${t} t WHERE t.job_id ${inJobs}`,
   all: (t) => `FROM ${t} t`,
+  // An explicit allow-list of rows by key (admin D2: `system_settings`, ruled Q4). Only the listed keys are selected, so a
+  // row the contract does not name — the company's bank details — is never copied to disk. Keys are checked as plain
+  // identifiers before they reach the SQL.
+  keys: (t, entry) => {
+    const column = entry.keyColumn;
+    const keys = entry.keys ?? [];
+    if (!/^[a-z_][a-z0-9_]*$/.test(column ?? "") || keys.length === 0 || !keys.every((key) => /^[a-z0-9_]+$/.test(key))) throw new Error(`${t}: a keys filter needs a keyColumn and plain lower-case keys`);
+    return `FROM ${t} t WHERE t.${column} IN (${keys.map((key) => `'${key}'`).join(", ")})`;
+  },
   "referenced-datasets": (t) => `FROM ${t} t WHERE t.dataset_id IN (SELECT dataset_id FROM job_scope_rows WHERE job_id ${inJobs} ` +
     `UNION SELECT dataset_id FROM job_emission_sources WHERE job_id ${inJobs} UNION SELECT dataset_id FROM job_emission_groups WHERE job_id ${inJobs})`,
 };
@@ -89,7 +98,7 @@ export function selectFor(table, omit = new Set()) {
   }
   const filter = FILTERS[entry.filter];
   if (!filter) throw new Error(`${table}: unknown filter "${entry.filter}" in the contract`);
-  return `${PRELUDE} SELECT ${columns.map((column) => `t.${column}`).join(", ")} ${filter(table)} ORDER BY t.${key}`;
+  return `${PRELUDE} SELECT ${columns.map((column) => `t.${column}`).join(", ")} ${filter(table, entry)} ORDER BY t.${key}`;
 }
 
 /** Check `--omit` entries: real tables, real optional columns, never a required one. */
