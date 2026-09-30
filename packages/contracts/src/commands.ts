@@ -1,6 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
+import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
@@ -17,7 +18,7 @@ import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
-import type { Capability, CommandGrant } from "./permissions";
+import { staffRoles, type Capability, type CommandGrant, type StaffRole } from "./permissions";
 import { isCrpReportSectionKey } from "./reportSections";
 import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaGapFillWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaScenarioMultiplierWriteFields, LcaScenarioWriteFields, LcaTransportLegWriteFields } from "./jobFamilies";
 import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
@@ -74,6 +75,12 @@ export type CommandKey =
   | "job_file_type.update"
   | "job_file_type.deactivate"
   | "job_file_type.reinstate"
+  | "staff.add"
+  | "staff.update"
+  | "staff.role.assign"
+  | "staff.deactivate"
+  | "staff.reinstate"
+  | "staff.rate.set"
   | "client.strategy.assign"
   | "client.strategy.update"
   | "client.strategy.remove"
@@ -346,7 +353,8 @@ export function isAllowedJobStageTransition(family: WorkflowJobFamily, from: str
 export type CommandContext = {
   organisationId: string;
   actorId: string;
-  principal: "staff";
+  /** `system` is the operator break-glass (`staff:role`, ruled Q9); every console request is `staff`. */
+  principal: "staff" | "system";
   idempotencyKey: string;
   correlationId: string;
   reason?: string;
@@ -569,6 +577,14 @@ export type CommandInputMap = {
   "job_file_type.update": FileTypeEditableFields & { fileTypeId: string; expectedVersion: number };
   "job_file_type.deactivate": { fileTypeId: string; expectedVersion: number };
   "job_file_type.reinstate": { fileTypeId: string; expectedVersion: number };
+  // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
+  "staff.add": { displayName: string; email: string; positionValueId?: string | null };
+  "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
+  "staff.role.assign": { userId: string; expectedVersion: number; role: StaffRole };
+  "staff.deactivate": { userId: string; expectedVersion: number };
+  "staff.reinstate": { userId: string; expectedVersion: number };
+  /** A rate from a date (R9 (c)). With `supersedesRateId` it corrects that row instead, and needs a reason. */
+  "staff.rate.set": { userId: string; effectiveFrom: string; costPerHour?: number | null; sellPerHour?: number | null; currency?: string; supersedesRateId?: string | null };
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
@@ -714,6 +730,11 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
   if (!text(context.correlationId)) issues.push({ field: "correlationId", code: "REQUIRED", message: "Correlation ID is required." });
   if (reasonRequired && !text(context.reason)) issues.push({ field: "reason", code: "REQUIRED", message: "A reason is required for this command." });
   return issues;
+};
+/** A person's display name: present, within bounds (admin Phase B). */
+const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
+  if (!text(name)) issues.push({ field: "displayName", code: "REQUIRED", message: "A name is required." });
+  else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
 /** A lookup value's own fields: a managed category, a label within bounds, an optional short code, a whole sort order. */
@@ -1252,6 +1273,60 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     required(issues, "fileTypeId", input.fileTypeId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which
+  // are finance.manage (R9 (c): finance.view also reaches Consultant). A role change, a deactivation and a reinstatement
+  // each say why. The guards that need the roster — the last active admin, and changing yourself — are the command's.
+  "staff.add": { key: "staff.add", label: "Add a member of staff", permission: "admin.users", reasonRequired: false, transaction: "membership (sealed) + audit + outbox + idempotency", auditAction: "staff.added", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    staffNameIssues(issues, input.displayName);
+    if (!isWorkEmail(input.email)) issues.push({ field: "email", code: "INVALID", message: "Enter a work email address." });
+    if (input.positionValueId !== undefined && input.positionValueId !== null && !text(input.positionValueId)) issues.push({ field: "positionValueId", code: "INVALID", message: "Choose a position, or none." });
+    return issues;
+  } },
+  "staff.update": { key: "staff.update", label: "Edit a member of staff", permission: "admin.users", reasonRequired: false, transaction: "versioned membership (sealed) + audit + outbox + idempotency", auditAction: "staff.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "userId", input.userId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    staffNameIssues(issues, input.displayName);
+    if (input.positionValueId !== undefined && input.positionValueId !== null && !text(input.positionValueId)) issues.push({ field: "positionValueId", code: "INVALID", message: "Choose a position, or none." });
+    return issues;
+  } },
+  // Audited as staff.role.assign, the action the operator command has always written, so a person's role history reads
+  // as one series whichever path made the change.
+  "staff.role.assign": { key: "staff.role.assign", label: "Change a member's role", permission: "admin.users", reasonRequired: true, transaction: "versioned membership + last-admin check + audit + outbox + idempotency", auditAction: "staff.role.assign", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "userId", input.userId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (!oneOf(input.role, staffRoles)) issues.push({ field: "role", code: "INVALID", message: "Choose one of the five roles." });
+    return issues;
+  } },
+  "staff.deactivate": { key: "staff.deactivate", label: "Deactivate a member of staff", permission: "admin.users", reasonRequired: true, transaction: "deactivation (never deletion) + last-admin check + audit + outbox + idempotency", auditAction: "staff.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "userId", input.userId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "staff.reinstate": { key: "staff.reinstate", label: "Reinstate a member of staff", permission: "admin.users", reasonRequired: true, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "staff.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "userId", input.userId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // A correction needs a reason; a rate from a new date does not. Neither is ever an edit in place.
+  "staff.rate.set": { key: "staff.rate.set", label: "Set a staff rate", permission: "finance.manage", reasonRequired: false, transaction: "append-only rate row + audit + outbox + idempotency", auditAction: "staff.rate.set", validate: (input, context) => {
+    const correcting = input.supersedesRateId !== undefined && input.supersedesRateId !== null;
+    const issues = baseIssues(context, correcting);
+    required(issues, "userId", input.userId);
+    if (!isCalendarDay(input.effectiveFrom)) issues.push({ field: "effectiveFrom", code: "INVALID", message: "The date the rate applies from." });
+    for (const field of ["costPerHour", "sellPerHour"] as const) {
+      const value = input[field];
+      if (value !== undefined && value !== null && !isTwoDecimalAmount(value, STAFF_RATE_MAX)) issues.push({ field, code: "INVALID", message: "An hourly amount from 0, to two decimal places." });
+    }
+    if ((input.costPerHour ?? null) === null && (input.sellPerHour ?? null) === null) issues.push({ field: "costPerHour", code: "REQUIRED", message: "Give a cost rate, a sell rate, or both." });
+    if (input.currency !== undefined && !isCurrencyCode(input.currency)) issues.push({ field: "currency", code: "INVALID", message: "A three-letter currency code, e.g. GBP." });
+    if (correcting && !text(input.supersedesRateId)) issues.push({ field: "supersedesRateId", code: "INVALID", message: "Name the rate being corrected." });
     return issues;
   } },
   "client.strategy.assign": { key: "client.strategy.assign", label: "Add a strategy to the plan", permission: "strategy.manage", reasonRequired: false, transaction: "client action + audit + outbox + idempotency", auditAction: "client_strategy_assigned", validate: (input, context) => {

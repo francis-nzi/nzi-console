@@ -478,6 +478,12 @@ jobs:
       # ones kept with recomputed warnings, imported and closed jobs guarded, one job-version bump, v7 loaders unaffected.
       - name: A job's schedule moves only where nothing depends on it, and the move is audited whole
         run: npx tsx --test packages/isolated-backend/tests/jobUpdateReal.test.ts
+      # Team & access (admin Phase B, B1): 0141 — never deleted (DELETE revoked), never without an admin (the deferred
+      # trigger and the command lock, raced), never yourself; sealed writes and no name or email in any audit payload;
+      # deactivation ending sign-in while the person still resolves; the break-glass through the command; append-only,
+      # finance.manage-gated rates.
+      - name: The roster is governed, never deleted, never left without an admin, and its audit holds no personal data
+        run: npx tsx --test packages/isolated-backend/tests/staffAdminReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

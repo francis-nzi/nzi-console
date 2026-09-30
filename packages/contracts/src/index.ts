@@ -115,4 +115,5 @@ export * from "./adminLookups";
 export * from "./adminJobTypes";
 export * from "./adminMilestoneTemplates";
 export * from "./adminFileTypes";
+export * from "./adminStaff";
 export * from "./jobSchedule";
