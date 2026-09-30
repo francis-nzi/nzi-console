@@ -1812,6 +1812,10 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-linkish:hover{color:var(--a-accent-ink);text-decoration:underline}
 .nz-a-muted{color:var(--a-ink-3)}
 .nz-a-sub{margin-top:2px;font-size:11px;color:var(--a-ink-3)}
+/* A system value's lock (admin C3): beside its status, and in its drawer's notice */
+.nz-a-status-cell{display:inline-flex;align-items:center;gap:6px}
+.nz-a-lock{flex:none;color:var(--a-ink-3)}
+.nz-a-hint-strip>span .nz-a-lock{color:inherit;width:10px;height:10px}
 .nz-a-caption{margin-top:10px}
 
 /* The shared DataList, restyled to the design inside admin */
