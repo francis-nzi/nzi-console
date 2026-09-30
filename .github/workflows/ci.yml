@@ -460,6 +460,10 @@ jobs:
       # refused; the first three template items as the three kinds; R4 re-runs; a savepoint per entity.
       - name: The v7 jobs configuration imports by key, keeps one default, and never overwrites a console edit
         run: npx tsx --test packages/isolated-backend/tests/v7JobsConfigLoadReal.test.ts
+      # The v7 job links and the milestone parity check (admin C5): exact by v7 id, fill-NULL-only, conflicts reported, a
+      # version bump and one audit event per job; PR 3's generation compared with the dates imported from v7. No milestone changes.
+      - name: The v7 job links fill only what is empty, and the template mapping is checked against v7's own dates
+        run: npx tsx --test packages/isolated-backend/tests/v7JobLinkLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
