@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-  formatSortCode, maskAccountNumber, maskSortCode, normaliseBank, normaliseProfile, organisationFooter, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS,
+  formatSortCode, maskAccountNumber, maskSortCode, normaliseBank, normaliseProfile, organisationFooter, organisationShortName, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS,
   type CapabilityGrant, type CommandContext, type CommandInputMap, type OrganisationBankFields, type OrganisationProfileFields,
 } from "@nzi/contracts";
 import { capabilityScope } from "./access";
@@ -30,17 +30,17 @@ import type { PoolLike, Queryable } from "./postgres";
 // ── Reads ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ProfileRow = {
-  legal_name: string | null; display_name: string | null; registration_number: string | null; vat_number: string | null;
+  legal_name: string | null; display_name: string | null; short_name: string | null; registration_number: string | null; vat_number: string | null;
   address_line_1: string | null; address_line_2: string | null; address_city: string | null; address_region: string | null; address_postcode: string | null;
   address_country: string | null; contact_email: string | null; contact_phone: string | null; website_url: string | null; footer_override: string | null;
   signatory_user_id: string | null; signatory_title: string | null; logo_asset_id: string | null; version: number; updated_at: Date; updated_by: string;
   source_system: string | null;
 };
-const PROFILE_COLUMNS = `legal_name, display_name, registration_number, vat_number, address_line_1, address_line_2, address_city, address_region,
+const PROFILE_COLUMNS = `legal_name, display_name, short_name, registration_number, vat_number, address_line_1, address_line_2, address_city, address_region,
   address_postcode, address_country, contact_email, contact_phone, website_url, footer_override, signatory_user_id, signatory_title, logo_asset_id,
   version, updated_at, updated_by, source_system`;
 const COLUMN: Record<keyof OrganisationProfileFields, keyof ProfileRow> = {
-  legalName: "legal_name", displayName: "display_name", registrationNumber: "registration_number", vatNumber: "vat_number",
+  legalName: "legal_name", displayName: "display_name", shortName: "short_name", registrationNumber: "registration_number", vatNumber: "vat_number",
   addressLine1: "address_line_1", addressLine2: "address_line_2", addressCity: "address_city", addressRegion: "address_region",
   addressPostcode: "address_postcode", addressCountry: "address_country", contactEmail: "contact_email", contactPhone: "contact_phone",
   websiteUrl: "website_url", footerOverride: "footer_override", signatoryUserId: "signatory_user_id", signatoryTitle: "signatory_title",
@@ -80,6 +80,19 @@ export async function readOrganisationProfile(db: Queryable, organisationId: str
   };
 }
 
+/** What a client-facing surface names the organisation with (D3): names, footer and whether there is a logo — never the bank details. */
+export type OrganisationBrand = { displayName: string; shortName: string; legalName: string; footer: string; logoAssetId: string | null };
+
+export async function readOrganisationBrand(db: Queryable, organisationId: string): Promise<OrganisationBrand> {
+  const profile = await readOrganisationProfile(db, organisationId);
+  if (!profile) throw new Error(`${organisationId} has no organisation profile; 0142 provisions one.`);
+  const displayName = profile.fields.displayName ?? profile.fields.legalName ?? organisationId;
+  return {
+    displayName, shortName: organisationShortName(profile.fields) || displayName, legalName: profile.fields.legalName ?? displayName,
+    footer: profile.footer || displayName, logoAssetId: profile.logo?.assetId ?? null,
+  };
+}
+
 export type OrganisationBankView = {
   version: number; configured: boolean; revealed: boolean;
   accountName: string | null; sortCode: string | null; accountNumber: string | null; updatedAt: string;
@@ -113,7 +126,7 @@ export type IntensityDefault = {
   metricKey: string; version: number; label: string; unitWording: string; divider: number; iconKey: string;
   isStandard: boolean; valueSource: "entered" | "site-floor-area"; active: boolean; ordering: number;
 };
-type DefaultRow = { metric_key: string; version: number; label: string; unit_wording: string; divider: number; icon_key: string; is_standard: boolean; value_source: "entered" | "site-floor-area"; active: boolean; ordering: number };
+type DefaultRow = { metric_key: string; version: number; label: string; unit_wording: string; divider: number; icon_key: string; is_standard: boolean; value_source: "entered" | "site-floor-area"; active: boolean; ordering: number; unit_kind?: "text" | "currency" };
 const toDefault = (row: DefaultRow): IntensityDefault => ({
   metricKey: row.metric_key, version: row.version, label: row.label, unitWording: row.unit_wording, divider: row.divider, iconKey: row.icon_key,
   isStandard: row.is_standard, valueSource: row.value_source, active: row.active, ordering: row.ordering,
@@ -238,7 +251,7 @@ export function setOrganisationBank(pool: PoolLike, input: CommandInputMap["orga
 async function latestDefault(db: Queryable, org: string, metricKey: string): Promise<DefaultRow | null> {
   await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('intensity-default:' || $1 || ':' || $2, 0))`, [org, metricKey]);
   const { rows: [row] } = await db.query<DefaultRow>(
-    `SELECT metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering
+    `SELECT metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, unit_kind
        FROM nzi_console.organisation_intensity_metric_defaults WHERE organisation_id = $1 AND metric_key = $2 ORDER BY version DESC LIMIT 1`, [org, metricKey]);
   return row ?? null;
 }
@@ -252,10 +265,10 @@ export function setIntensityDefault(pool: PoolLike, input: CommandInputMap["orga
     const version = (previous?.version ?? 0) + 1;
     await db.query(
       `INSERT INTO nzi_console.organisation_intensity_metric_defaults
-         (organisation_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12)`,
+         (organisation_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id, unit_kind)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12, $13)`,
       [org, input.metricKey, version, input.label.trim(), input.unitWording.trim(), input.divider, input.iconKey, previous?.is_standard ?? false,
-        previous?.value_source ?? "entered", input.ordering ?? previous?.ordering ?? 99, context.actorId, context.correlationId]);
+        previous?.value_source ?? "entered", input.ordering ?? previous?.ordering ?? 99, context.actorId, context.correlationId, previous?.unit_kind ?? "text"]);
     return {
       data: { organisationId: org, version, changed: previous ? ["label", "unitWording", "divider", "iconKey", "ordering"].filter((field) => {
         const was = { label: previous.label, unitWording: previous.unit_wording, divider: previous.divider, iconKey: previous.icon_key, ordering: previous.ordering } as Record<string, unknown>;
@@ -277,10 +290,10 @@ export function deactivateIntensityDefault(pool: PoolLike, input: CommandInputMa
     const version = previous.version + 1;
     await db.query(
       `INSERT INTO nzi_console.organisation_intensity_metric_defaults
-         (organisation_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10, $11, $12)`,
+         (organisation_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id, unit_kind)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10, $11, $12, $13)`,
       [org, input.metricKey, version, previous.label, previous.unit_wording, previous.divider, previous.icon_key, previous.is_standard, previous.value_source,
-        previous.ordering, context.actorId, context.correlationId]);
+        previous.ordering, context.actorId, context.correlationId, previous.unit_kind ?? "text"]);
     return { data: { organisationId: org, version, changed: ["active"], metricKey: input.metricKey }, entityType: "organisation", entityId: org,
       topic: "organisation.intensity_default.deactivated", before: { version: previous.version, active: true } };
   });
@@ -293,8 +306,8 @@ export function deactivateIntensityDefault(pool: PoolLike, input: CommandInputMa
 export async function applyIntensityDefaultsToClient(db: Queryable, org: string, clientId: string, actorId: string, correlationId: string): Promise<number> {
   const inserted = await db.query(
     `INSERT INTO nzi_console.client_intensity_metrics
-       (organisation_id, client_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id)
-     SELECT $1, $2, d.metric_key, 1, d.label, d.unit_wording, d.divider, d.icon_key, d.is_standard, d.value_source, true, d.ordering, $3, $4
+       (organisation_id, client_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id, unit_kind)
+     SELECT $1, $2, d.metric_key, 1, d.label, d.unit_wording, d.divider, d.icon_key, d.is_standard, d.value_source, true, d.ordering, $3, $4, d.unit_kind
        FROM (SELECT DISTINCT ON (metric_key) * FROM nzi_console.organisation_intensity_metric_defaults WHERE organisation_id = $1 ORDER BY metric_key, version DESC) d
       WHERE d.active
         AND NOT EXISTS (SELECT 1 FROM nzi_console.client_intensity_metrics m WHERE (m.organisation_id, m.client_id) = ($1, $2))

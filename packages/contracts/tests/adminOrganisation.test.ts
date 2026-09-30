@@ -6,7 +6,7 @@ import {
 
 /** Organisation settings (admin Phase D, D1): the pure rules the command and the screen share — and 0142's CHECKs hold again. */
 const blank: OrganisationProfileFields = {
-  legalName: null, displayName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
+  legalName: null, displayName: null, shortName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
   addressPostcode: null, addressCountry: null, contactEmail: null, contactPhone: null, websiteUrl: null, footerOverride: null, signatoryUserId: null, signatoryTitle: null,
 };
 

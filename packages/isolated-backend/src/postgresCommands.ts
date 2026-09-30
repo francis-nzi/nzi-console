@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
 import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
-import { applyIntensityDefaultsToClient } from "./organisationSettings";
+import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
@@ -2015,7 +2015,10 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   const validation=validateManifest(crpProfessionalManifest,charts,input.reviewedSnapshotId);
   if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));
   const reportVersionId=randomUUID();
-  await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3))`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null]);
+  // D3 (ruled Q2): the issuer — the organisation's names, footer and logo as they stand now — frozen with the client's logo, so
+  // a later change to the profile never alters a document already validated.
+  const issuer=await readOrganisationBrand(db,context.organisationId);
+  await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId]);
   return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
 });}
 

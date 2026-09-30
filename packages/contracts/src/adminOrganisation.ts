@@ -7,6 +7,8 @@
 export type OrganisationProfileFields = {
   legalName: string | null;
   displayName: string | null;
+  /** The short form client-facing copy uses — "your NZI consultant" (D3). Falls back to the display name. */
+  shortName: string | null;
   registrationNumber: string | null;
   vatNumber: string | null;
   addressLine1: string | null;
@@ -23,7 +25,7 @@ export type OrganisationProfileFields = {
   signatoryTitle: string | null;
 };
 export const ORGANISATION_PROFILE_FIELDS = [
-  "legalName", "displayName", "registrationNumber", "vatNumber", "addressLine1", "addressLine2", "addressCity", "addressRegion",
+  "legalName", "displayName", "shortName", "registrationNumber", "vatNumber", "addressLine1", "addressLine2", "addressCity", "addressRegion",
   "addressPostcode", "addressCountry", "contactEmail", "contactPhone", "websiteUrl", "footerOverride", "signatoryUserId", "signatoryTitle",
 ] as const satisfies ReadonlyArray<keyof OrganisationProfileFields>;
 
@@ -32,7 +34,7 @@ export const ORGANISATION_BANK_FIELDS = ["accountName", "sortCode", "accountNumb
 
 /** Text limits, as 0142 holds them. */
 export const ORGANISATION_TEXT_MAX: Record<Exclude<keyof OrganisationProfileFields, "registrationNumber" | "vatNumber" | "contactEmail" | "contactPhone" | "websiteUrl" | "signatoryUserId">, number> = {
-  legalName: 200, displayName: 120, addressLine1: 200, addressLine2: 200, addressCity: 100, addressRegion: 100, addressPostcode: 20,
+  legalName: 200, displayName: 120, shortName: 20, addressLine1: 200, addressLine2: 200, addressCity: 100, addressRegion: 100, addressPostcode: 20,
   addressCountry: 100, footerOverride: 500, signatoryTitle: 120,
 };
 export const BANK_ACCOUNT_NAME_MAX = 140;
@@ -101,6 +103,11 @@ export function organisationFooter(profile: Pick<OrganisationProfileFields, "leg
     profile.registrationNumber ? `Company No. ${profile.registrationNumber}` : null,
     profile.vatNumber ? `VAT No. ${profile.vatNumber}` : null,
   ].filter((part): part is string => Boolean(part)).join(" | ");
+}
+
+/** The name client-facing copy uses (D3): the short name, else the display name, else the legal name. One function, so no surface guesses. */
+export function organisationShortName(profile: Pick<OrganisationProfileFields, "shortName" | "displayName" | "legalName">): string {
+  return profile.shortName ?? profile.displayName ?? profile.legalName ?? "";
 }
 
 /** Bank details as the screen shows them unless someone asks: the last digits only. */

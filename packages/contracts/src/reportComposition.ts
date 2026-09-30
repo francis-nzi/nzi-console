@@ -255,7 +255,14 @@ export type ReportComposition = {
   targets: ReportTargetsSection | ReportSectionGap;
   plan: ReportPlanSection | ReportSectionGap;
   srs: ReportSrsSection | ReportSectionGap;
+  /**
+   * Who issued it, frozen at validation (D3, ruled Q2): the organisation's display and short name, its footer and its
+   * logo as they stood then. A composition frozen before D3 has none; its report version's backfilled columns stand in.
+   */
+  issuer?: ReportIssuer;
 };
+
+export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };
 
 /* ── Composing ───────────────────────────────────────────────────────────────────────── */
 

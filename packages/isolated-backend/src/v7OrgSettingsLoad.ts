@@ -28,7 +28,7 @@ import type { V7Row, V7Table } from "./v7ClientExtract";
 export const ORG_SETTINGS_RUN_PREFIX = "v7-org-settings-";
 export const V7_ORG_SETTINGS_TABLES: readonly V7Table[] = ["system_settings"];
 
-type ProfileField = Exclude<keyof OrganisationProfileFields, "footerOverride" | "signatoryUserId" | "signatoryTitle">;
+type ProfileField = Exclude<keyof OrganisationProfileFields, "shortName" | "footerOverride" | "signatoryUserId" | "signatoryTitle">;
 /** v7's key for each profile field (`services/company_profile.py`). */
 export const V7_PROFILE_KEYS: Record<string, ProfileField> = {
   company_legal_name: "legalName", company_display_name: "displayName", company_registration_number: "registrationNumber", vat_number: "vatNumber",
@@ -76,7 +76,7 @@ export function planV7OrgSettings(extract: Partial<Record<V7Table, readonly V7Ro
     if (!LOGO_KEYS.includes(key)) plan.unknownKeys.push(key);
   }
   const blankFields: OrganisationProfileFields = {
-    legalName: null, displayName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
+    legalName: null, displayName: null, shortName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
     addressPostcode: null, addressCountry: null, contactEmail: null, contactPhone: null, websiteUrl: null, footerOverride: null, signatoryUserId: null, signatoryTitle: null,
   };
   const normalised = normaliseProfile({ ...blankFields, ...raw });
@@ -122,7 +122,8 @@ export async function loadV7OrgSettings(pool: PoolLike, organisationId: string, 
         `SELECT *, version FROM nzi_console.organisation_profiles WHERE organisation_id = $1 FOR UPDATE`, [organisationId]);
       if (!profile) throw new Error(`${organisationId} has no profile row; 0142 provisions one.`);
       outcome.version = { before: profile.version, after: profile.version };
-      const neverEdited = profile.updated_by === "migration:0142" || profile.updated_by.startsWith(ORG_SETTINGS_RUN_PREFIX);
+      // Not yet edited by a person: last written by a migration (0142 provisioning it, 0143 setting the short name) or by this import.
+      const neverEdited = profile.updated_by.startsWith("migration:") || profile.updated_by.startsWith(ORG_SETTINGS_RUN_PREFIX);
       const previous = profile.legacy_values ?? {};
       const legacy: Record<string, string> = { ...previous };
       const sets: Array<[string, string]> = [];

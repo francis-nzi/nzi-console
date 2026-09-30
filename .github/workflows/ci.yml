@@ -498,6 +498,11 @@ jobs:
       # logo through the inspector, a bank row in the extract refuses everything, no value in the outcome or audit.
       - name: v7 fills the organisation profile once and never overwrites it, and never carries the bank details
         run: npx tsx --test packages/isolated-backend/tests/v7OrgSettingsLoadReal.test.ts
+      # Organisation consumers (admin Phase D, D3a): 0143 backfills issued reports and certificates to exactly what they
+      # printed, the verify function reads the certificate's own issuer, the short name, turnover classified as currency,
+      # the one carried-across turnover value scaled and audited; validate freezes the issuer and publish carries it.
+      - name: What was issued keeps the issuer it was issued under, and the profile is the one source for the rest
+        run: npx tsx --test packages/isolated-backend/tests/organisationConsumersReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

@@ -10,6 +10,7 @@
 //
 //   Issuing certificates consumes the place the booking was funded from, through
 //   consume_training_entitlement(), for the same reason.
+import { readOrganisationBrand } from "./organisationSettings";
 import { createHash, randomUUID } from "node:crypto";
 import {
   trainingCertificateDecision, isAllowedTrainingRunStageTransition,
@@ -198,10 +199,12 @@ export function issueTrainingCertificates(pool: PoolLike, input: CommandInputMap
       await db.query(
         `INSERT INTO nzi_console.training_certificates
           (organisation_id, certificate_id, course_run_id, booking_id, certificate_number, verify_code, status,
-           attended_minutes, required_minutes, attendance_pct, policy_snapshot_json, certificate_hash, issued_by)
-         VALUES ($1,$2,$3,$4,$5,$6,'issued',$7,$8,$9,$10,$11,$12)`,
+           attended_minutes, required_minutes, attendance_pct, policy_snapshot_json, certificate_hash, issued_by, issuer_name)
+         VALUES ($1,$2,$3,$4,$5,$6,'issued',$7,$8,$9,$10,$11,$12,$13)`,
         [context.organisationId, certificateId, record.run.id, booking.id, certificateNumber, verifyCode,
-          attended, required, decision.attendancePct, JSON.stringify({ minAttendancePct: record.minAttendancePct }), certificateHash, context.actorId]);
+          attended, required, decision.attendancePct, JSON.stringify({ minAttendancePct: record.minAttendancePct }), certificateHash, context.actorId,
+          // D3: the issuer as it stands today, frozen — the verify page shows it however the profile changes later.
+          (await readOrganisationBrand(db, context.organisationId)).displayName]);
       issuedIds.push(certificateId);
 
       // The place is spent when the training is certified, not when it was booked.
