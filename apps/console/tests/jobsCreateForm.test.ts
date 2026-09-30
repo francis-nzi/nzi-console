@@ -54,12 +54,13 @@ describe("the jobs list opens on the work", () => {
   });
 });
 
-describe("the create-job form asks about the job, then its dates", () => {
-  it("is two blocks, each with a legend", () => {
+describe("the create-job form asks about the job, then its dates, then its milestones", () => {
+  it("is three blocks, each with a legend", () => {
     const code = jobsCode();
-    assert.equal((code.match(/nz-job-block/g) ?? []).length, 2, "About the job, and Dates");
+    assert.equal((code.match(/nz-job-block/g) ?? []).length, 3, "About the job, Dates, and Milestones (PR 3)");
     assert.ok(code.includes("<legend>About the job</legend>"));
     assert.ok(code.includes("<legend>Dates</legend>"));
+    assert.ok(code.includes("<legend>Milestones</legend>"));
   });
 
   it("carries the four dates the brief names, in the words the consultant reads", () => {

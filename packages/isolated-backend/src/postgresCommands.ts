@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
@@ -415,6 +416,10 @@ export type CreateJobResult = {
   sequence: number;
   clientId: string;
   family: CommandInputMap["job.create"]["family"];
+  /** PR 3: the job type it is of, the template its milestones came from, and the milestones generated (none ⇒ Not set). */
+  jobTypeId: string | null;
+  milestoneTemplateId: string | null;
+  milestones: MilestoneState[];
 };
 export async function createJob(
   pool: PoolLike,
@@ -422,6 +427,18 @@ export async function createJob(
   context: CommandContext,
 ): Promise<StoredOutcome<CreateJobResult>> {
   return runPostgresCommand(pool, "job.create", input, context, async (db) => {
+    // PR 3, before a number is allocated: the job type (active, and of this job's family — M7) and the template its
+    // milestones come from — the explicit choice, else the type's, else the organisation's default; active only.
+    let jobTypeTemplateId: string | null = null;
+    if (input.jobTypeId) {
+      const { rows: [type] } = await db.query<{ family: string; active: boolean; milestone_template_id: string | null }>(
+        `SELECT family, active, milestone_template_id FROM nzi_console.job_types WHERE organisation_id=$1 AND job_type_id=$2`, [context.organisationId, input.jobTypeId]);
+      if (!type) throw new CommandValidationError([{ field: "jobTypeId", code: "NOT_FOUND", message: "That job type is not available." }]);
+      if (!type.active) throw new CommandValidationError([{ field: "jobTypeId", code: "INACTIVE", message: "That job type is inactive; choose an active one." }]);
+      if (type.family !== input.family) throw new CommandValidationError([{ field: "jobTypeId", code: "FAMILY_MISMATCH", message: "That job type is of another family; a job takes its type's family." }]);
+      jobTypeTemplateId = type.milestone_template_id;
+    }
+    const template = await templateForNewJob(db, context.organisationId, { milestoneTemplateId: input.milestoneTemplateId, jobTypeTemplateId });
     const jobId = randomUUID();
     const allocated = await db.query<{ sequence: number }>(
       "SELECT nzi_console.allocate_job_sequence() AS sequence",
@@ -469,8 +486,8 @@ export async function createJob(
                 };
     const inserted = await db.query<{ job_number: string }>(
       `INSERT INTO nzi_console.jobs
-      (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year, owner_name, client_manager_user_id, start_date, due_date, reporting_period_start, reporting_period_end, progress_percent, detail_json)
-      VALUES ($1,$2,$3,$4,$5,$6,'open',$7,$8,$9,$10,$11,$12,$13,$14,0,$15::jsonb) RETURNING job_number`,
+      (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year, owner_name, client_manager_user_id, start_date, due_date, reporting_period_start, reporting_period_end, progress_percent, detail_json, job_type_id, milestone_template_id)
+      VALUES ($1,$2,$3,$4,$5,$6,'open',$7,$8,$9,$10,$11,$12,$13,$14,0,$15::jsonb,$16,$17) RETURNING job_number`,
       [
         context.organisationId,
         jobId,
@@ -489,8 +506,15 @@ export async function createJob(
         input.reportingPeriodStart ?? null,
         input.reportingPeriodEnd ?? null,
         JSON.stringify(detail),
+        input.jobTypeId || null,
+        // M8: the template the job was scheduled from is recorded on it, so a later default change never alters it.
+        template?.templateId ?? null,
       ],
     );
+    // Generated in this transaction, with the job (fixes v7's no-plan-until-edited): one row per included item.
+    const milestones = template
+      ? await generateMilestones(db, context.organisationId, context.actorId, { jobId, startDate: input.startDate, periodStart: input.reportingPeriodStart ?? null }, template)
+      : [];
     if (familyHasReportingPeriod(input.family)) {
       // NZC-070 asked that a reporting window be the client's financial year rather than
       // 1 Jan–31 Dec, and this reconstructed one from the labelled year plus the client's
@@ -527,6 +551,9 @@ export async function createJob(
         sequence,
         clientId: input.clientId,
         family: input.family,
+        jobTypeId: input.jobTypeId || null,
+        milestoneTemplateId: template?.templateId ?? null,
+        milestones,
       },
       entityType: "job",
       entityId: jobId,

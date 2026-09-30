@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { familyHasReportingPeriod, hasActiveFilters, JOB_STATUS_ALL, jobDateIssues, jobListSpec, jobWorkflowStages, PAGE_SIZES, plausibleYearRange, reportingYearForPeriod, todayInLondon, utcDay, type CommandInputMap, type JobListFilterKey, type JobListQuery } from "@nzi/contracts";
 import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type JobFamily } from "@nzi/mock-data";
-import type { ClientScreenReadModel, JobListPage, JobListRow } from "@nzi/isolated-backend";
+import type { ClientScreenReadModel, JobListPage, JobListRow, JobSetupOptions } from "@nzi/isolated-backend";
 import Link from "next/link";
 import { AppShell, DataList, RiskBadge, RiskLegend, SmartSearch, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { NAV, USER } from "../lib/nav";
@@ -23,7 +23,7 @@ const EMPTY_DATES = { startDate: "", dueDate: "", reportingPeriodStart: "", repo
 const STATUS_LABELS: Record<string, string> = { draft: "Draft", open: "Open", "on-hold": "On hold", complete: "Complete", cancelled: "Cancelled" };
 const addDays = (day: string, days: number) => { const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return utcDay(date); };
 
-export function JobsIndex({ page, query, clients }: { page: JobListPage; query: JobListQuery; clients: ClientScreenReadModel[] }) {
+export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templates: [] } }: { page: JobListPage; query: JobListQuery; clients: ClientScreenReadModel[]; setup?: JobSetupOptions }) {
   const router = useRouter();
   const nav = useListNavigation(jobListSpec, query, "/jobs");
   // `?client=` scopes the portfolio to one client — the route the client trail's "Jobs"
@@ -48,6 +48,16 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
   // Creating from a client's own jobs list starts on that client.
   const firstClient = (scopedClient && eligibleClients.some((client) => client.id === scopedClient.id) ? scopedClient.id : eligibleClients[0]?.id) ?? "";
   const [draft, setDraft] = useState<Draft>({ clientId: firstClient, family: "crp", title: "", workflowStage: initialStage.crp, owner: "", clientManagerUserId: null, ...EMPTY_DATES });
+  // PR 3: the milestones a new job starts with. "auto" is the job type's template, else the organisation's default.
+  const [schedule, setSchedule] = useState<"auto" | "none" | string>("auto");
+  const chosenType = setup.jobTypes.find((type) => type.jobTypeId === draft.jobTypeId) ?? null;
+  const defaultTemplate = setup.templates.find((template) => template.isDefault) ?? null;
+  const autoTemplate = chosenType ? (chosenType.milestoneTemplateId && chosenType.milestoneTemplateActive ? chosenType.milestoneTemplateName : null) : defaultTemplate?.name ?? null;
+  const autoLabel = chosenType
+    ? chosenType.milestoneTemplateId ? chosenType.milestoneTemplateActive ? `From the job type — ${chosenType.milestoneTemplateName}` : "From the job type — its template is inactive, so none" : `From the default — ${defaultTemplate?.name ?? "none set"}`
+    : defaultTemplate ? `From the default — ${defaultTemplate.name}` : "Default — none set, so no milestones";
+  const scheduledFrom = schedule === "none" ? null : schedule === "auto" ? autoTemplate : setup.templates.find((template) => template.templateId === schedule)?.name ?? null;
+  const anchorDay = [draft.startDate, familyHasReportingPeriod(draft.family) ? draft.reportingPeriodStart ?? "" : ""].filter((day) => day && day.length === 10).sort().at(-1) ?? null;
   const { summary } = page;
   // The client scope is where the page is, not a filter someone applied — Clear filters keeps it.
   const narrowed = hasActiveFilters({ ...query, filters: { ...query.filters, client: undefined } });
@@ -94,10 +104,12 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
     }
     setFieldIssues({});
     setSaving(true); setNotice(null); submissionKey.current ??= crypto.randomUUID();
-    const result = await postBrowserCommand<{ jobId: string; jobNumber: string }>("/api/isolated/commands/jobs", draft, submissionKey.current);
+    const input = { ...draft, jobTypeId: draft.jobTypeId || null, ...(schedule === "auto" ? {} : { milestoneTemplateId: schedule === "none" ? null : schedule }) };
+    const result = await postBrowserCommand<{ jobId: string; jobNumber: string; milestones: unknown[] }>("/api/isolated/commands/jobs", input, submissionKey.current);
     setSaving(false);
     if (result.state === "success") {
-      submissionKey.current = null; setCreating(false); setNotice({ kind: "ok", text: `${result.data.jobNumber} was created and assigned atomically.` }); router.refresh(); return;
+      const scheduled = result.data.milestones.length;
+      submissionKey.current = null; setCreating(false); setSchedule("auto"); setNotice({ kind: "ok", text: `${result.data.jobNumber} was created and assigned atomically${scheduled ? `, with ${scheduled} milestone${scheduled === 1 ? "" : "s"} scheduled` : " — no milestones scheduled, so its Risk reads Not set"}.` }); router.refresh(); return;
     }
     if (result.state !== "failed" || !result.retryable) submissionKey.current = null;
     if (result.state === "validation_failed") {
@@ -166,7 +178,15 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
           <legend>About the job</legend>
           <div className="nz-job-create-grid">
             <label className="nz-fl" style={{ margin: 0 }}>Client<select className="nz-sel" required value={draft.clientId} onChange={(e) => selectClient(e.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-            <label className="nz-fl" style={{ margin: 0 }}>Job family<select className="nz-sel" value={draft.family} onChange={(e) => { const family = e.target.value as JobFamily; setDraft({ ...draft, family, workflowStage: initialStage[family], ...(familyHasReportingPeriod(family) ? {} : { reportingPeriodStart: null, reportingPeriodEnd: null }) }); setFieldIssues({}); }}>{Object.entries(jobFamilyMeta).map(([id, meta]) => <option key={id} value={id}>{meta.code} · {meta.label}</option>)}</select></label>
+            <label className="nz-fl" style={{ margin: 0 }}>Job type <span className="nz-optional">optional</span><select className="nz-sel" value={draft.jobTypeId ?? ""} onChange={(e) => {
+              const type = setup.jobTypes.find((candidate) => candidate.jobTypeId === e.target.value) ?? null;
+              if (!type) { setDraft({ ...draft, jobTypeId: null }); return; }
+              const family = type.family as JobFamily;
+              setDraft({ ...draft, jobTypeId: type.jobTypeId, family, title: draft.title.trim() ? draft.title : type.name, workflowStage: initialStage[family], ...(familyHasReportingPeriod(family) ? {} : { reportingPeriodStart: null, reportingPeriodEnd: null }) });
+              setFieldIssues({});
+            }}><option value="">None</option>{setup.jobTypes.map((type) => <option key={type.jobTypeId} value={type.jobTypeId}>{type.name}</option>)}</select>
+              {fieldIssues.jobTypeId ? <small className="nz-field-issue" role="alert">{fieldIssues.jobTypeId}</small> : <small className="nz-hint">Sets the family, and the template its milestones start from.</small>}</label>
+            <label className="nz-fl" style={{ margin: 0 }}>Job family<select className="nz-sel" disabled={chosenType !== null} aria-describedby={chosenType ? "family-from-type" : undefined} value={draft.family} onChange={(e) => { const family = e.target.value as JobFamily; setDraft({ ...draft, family, workflowStage: initialStage[family], ...(familyHasReportingPeriod(family) ? {} : { reportingPeriodStart: null, reportingPeriodEnd: null }) }); setFieldIssues({}); }}>{Object.entries(jobFamilyMeta).map(([id, meta]) => <option key={id} value={id}>{meta.code} · {meta.label}</option>)}</select>{chosenType ? <small className="nz-hint" id="family-from-type">From the job type.</small> : null}</label>
             {/* The label is the caller's, in the same shape as the fields either side of it, so
                 this row looks and reads like the rest of the block. */}
             <div className="nz-fl" style={{ margin: 0 }}>
@@ -194,6 +214,20 @@ export function JobsIndex({ page, query, clients }: { page: JobListPage; query: 
                 <small className="nz-hint" id="reporting-year-help">The year the reporting period ends in.</small>
               </label>
             </> : null}
+          </div>
+        </fieldset>
+
+        <fieldset className="nz-job-block">
+          <legend>Milestones</legend>
+          <div className="nz-job-create-grid">
+            <label className="nz-fl" style={{ margin: 0, gridColumn: "span 2" }}>Schedule from<select className="nz-sel" value={schedule} onChange={(e) => setSchedule(e.target.value)}>
+              <option value="auto">{autoLabel}</option>
+              {setup.templates.map((template) => <option key={template.templateId} value={template.templateId}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}
+              <option value="none">No milestones</option>
+            </select>{fieldIssues.milestoneTemplateId ? <small className="nz-field-issue" role="alert">{fieldIssues.milestoneTemplateId}</small> : null}</label>
+            <p className="nz-hint" style={{ gridColumn: "span 2", margin: 0 }} role="note">{scheduledFrom
+              ? <>Data collection, first draft and final report will be scheduled from <b>{scheduledFrom}</b>{anchorDay ? <>, anchored on {formatDate(anchorDay)} — the later of the start and the reporting-period start</> : " once the dates are in"}.</>
+              : <>No milestones will be scheduled, so the job’s Risk reads Not set until a template is applied on its page.</>}</p>
           </div>
         </fieldset>
 

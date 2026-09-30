@@ -10,6 +10,8 @@ import { CrpScopeWorkspace } from "../CrpScopeWorkspace";
 import { LcaWorkspace } from "../lca/LcaWorkspace";
 import { TrainingWorkspace } from "../training/TrainingWorkspace";
 import { jobModuleEnabled } from "../../lib/jobModuleFlags";
+import { JobMilestonesPanel } from "../JobMilestonesPanel";
+import type { JobMilestonesView } from "@nzi/isolated-backend";
 import type { TrainingRunRecord, JobEmissions } from "@nzi/isolated-backend";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +31,7 @@ const EMPTY_EMISSIONS = (jobId: string): JobEmissions => ({
 
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const [result, inputSpec, scopeRows, factors,target,intensity,sites,categories,lca,lcaComponents,training,emissions] = await Promise.all([
+  const [result, inputSpec, scopeRows, factors,target,intensity,sites,categories,lca,lcaComponents,training,emissions,milestonesResult] = await Promise.all([
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
     loadScreen<{ spec: InputSpecCategory[] }>("inputSpec", { spec: [] }, "input-spec"),
     loadScreen<{ rows: ScopeRowReadModel[];qa:ScopeQaReadiness }>("scopeRows", { rows: [],qa:{total:0,enabled:0,approved:0,pending:0,rejected:0,calculationMissing:0,qualityMissing:0,independentReviewPending:0,migratedRows:0,readyForReporting:false} }, `jobs/${jobId}/scope-rows`),
@@ -42,6 +44,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     loadScreen<{components:LcaComponentOption[];categories:{id:string;name:string}[]}>("lcaComponents",{components:[],categories:[]},`jobs/${jobId}/lca-components`),
     loadScreen<{runs:TrainingRunRecord[]}>("training",{runs:[]},`jobs/${jobId}/training-runs`),
     loadScreen<JobEmissions>("emissions", EMPTY_EMISSIONS(jobId), `jobs/${jobId}/emissions`),
+    loadScreen<{ view: JobMilestonesView | null }>("jobMilestones", { view: null }, `jobs/${jobId}/milestones`),
   ]);
   // The governed spec, keyed by category code for the surfaces that render against it (NZC-102).
   // A degraded spec read yields an empty map: the accordion then renders its category with no
@@ -50,15 +53,21 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     (inputSpec.state === "success" || inputSpec.state === "degraded" ? inputSpec.data.spec : [])
       .map((category) => [category.categoryCode, category]));
 
+  // The Milestones panel (PR 3), the same on every family's page. A failed read says so — never an empty panel that
+  // reads as "no milestones" (truth before apparent availability).
+  const milestones = milestonesResult.state === "success" || milestonesResult.state === "degraded"
+    ? milestonesResult.data.view ? <JobMilestonesPanel view={milestonesResult.data.view} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} /> : null
+    : milestonesResult.state === "loading" || milestonesResult.state === "empty" ? null
+    : <section className="nz-body nz-milestones-body"><div className="nz-panel nz-milestones"><div className="nz-banner warn" role="alert"><div>The milestones could not be read just now, so none are shown — this is not "Not set".</div></div></div></section>;
   return <ScreenState result={result} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => {
     const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
     if (!job) notFound();
-    if (job.header.family === "crp") return <ScreenState result={emissions} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(emissionsData) => <ScreenState result={scopeRows} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(scopeData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={target} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{targetData=><ScreenState result={intensity} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{intensityData=><ScreenState result={sites} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{siteData=><ScreenState result={categories} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{categoryData=><CrpScopeWorkspace specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} emissions={emissionsData} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
-    if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(lcaData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={lcaComponents} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(componentData) => <LcaWorkspace job={job} assessments={lcaData.assessments} factors={factorData.factors} components={componentData.components} categories={componentData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>;
+    if (job.header.family === "crp") return <ScreenState result={emissions} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(emissionsData) => <ScreenState result={scopeRows} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(scopeData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={target} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{targetData=><ScreenState result={intensity} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{intensityData=><ScreenState result={sites} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{siteData=><ScreenState result={categories} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{categoryData=><CrpScopeWorkspace milestones={milestones} specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} emissions={emissionsData} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
+    if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(lcaData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={lcaComponents} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(componentData) => <LcaWorkspace milestones={milestones} job={job} assessments={lcaData.assessments} factors={factorData.factors} components={componentData.components} categories={componentData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>;
     // Track C — the training module, behind `job-module-training`; FamilyWorkspace still
     // serves training jobs while the flag is off. `today` is resolved here, on the server,
     // so every place's expiry is judged against one date rather than the viewer's clock.
-    if (job.header.family === "training" && jobModuleEnabled("job-module-training")) return <ScreenState result={training} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(trainingData) => <TrainingWorkspace job={job} runs={trainingData.runs} today={todayInLondon()} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>;
-    return <FamilyWorkspace job={job} />;
+    if (job.header.family === "training" && jobModuleEnabled("job-module-training")) return <ScreenState result={training} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(trainingData) => <TrainingWorkspace milestones={milestones} job={job} runs={trainingData.runs} today={todayInLondon()} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>;
+    return <FamilyWorkspace job={job} milestones={milestones} />;
   }}</ScreenState>;
 }

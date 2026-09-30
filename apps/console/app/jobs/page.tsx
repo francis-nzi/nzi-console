@@ -1,5 +1,5 @@
 import { DEFAULT_PAGE_SIZE, jobListSpec, listQueryToSearchParams, parseListQuery } from "@nzi/contracts";
-import type { ClientScreenReadModel, JobListPage } from "@nzi/isolated-backend";
+import type { ClientScreenReadModel, JobListPage, JobSetupOptions } from "@nzi/isolated-backend";
 import { loadScreen } from "../lib/loadScreen";
 import { ScreenState } from "../lib/ScreenState";
 import { JobsIndex } from "./JobsIndex";
@@ -17,10 +17,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   // A hand-edited or stale link renders on the defaults rather than failing; the API refuses anything else.
   const { query } = parseListQuery(await searchParams, jobListSpec);
   const search = listQueryToSearchParams(query, jobListSpec).toString();
-  const [jobsResult, clientsResult] = await Promise.all([
+  const [jobsResult, clientsResult, setupResult] = await Promise.all([
     loadScreen<JobListPage>("jobList", NO_JOBS, search ? `job-list?${search}` : "job-list"),
     // The create form's client picker needs every client, not a page of them.
     loadScreen<{ clients: ClientScreenReadModel[] }>("clients", { clients: [] }),
+    // PR 3: the job types and templates the create form offers.
+    loadScreen<JobSetupOptions>("jobSetupOptions", { jobTypes: [], templates: [] }, "job-setup-options"),
   ]);
-  return <ScreenState result={jobsResult} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => <JobsIndex page={data} query={query} clients={clientsResult.state === "success" || clientsResult.state === "degraded" ? clientsResult.data.clients : []} />}</ScreenState>;
+  return <ScreenState result={jobsResult} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => <JobsIndex page={data} query={query} clients={clientsResult.state === "success" || clientsResult.state === "degraded" ? clientsResult.data.clients : []}
+    setup={setupResult.state === "success" || setupResult.state === "degraded" ? setupResult.data : undefined} />}</ScreenState>;
 }

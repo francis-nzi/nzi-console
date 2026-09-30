@@ -1,5 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
+import type { ReactNode } from "react";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
 import {
@@ -153,6 +154,7 @@ export function CrpScopeWorkspace({
   purchasedGoodsCategories,
   emissions,
   writeEnabled,
+  milestones,
 }: {
   /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
   specs: Record<string, InputSpecCategory>;
@@ -174,6 +176,8 @@ export function CrpScopeWorkspace({
   emissions:JobEmissions;
   /** NZI_WRITE_API_ENABLED — the same flag the client workspace gates on. */
   writeEnabled:boolean;
+  /** The job's Milestones panel (PR 3), rendered under the stage control — the same on every family's page. */
+  milestones?: ReactNode;
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
     ? {
@@ -561,6 +565,7 @@ export function CrpScopeWorkspace({
         </div>
       </div>
       <WorkflowStageControl job={job} />
+      {milestones}
       {/* Job-specific, so it belongs in the job content column and not above the app chrome — rendered
           from the page it pushed the whole left rail down the screen. Sticky within the column so the
           totals stay in view while entries are typed below them. */}

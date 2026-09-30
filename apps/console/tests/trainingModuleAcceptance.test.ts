@@ -26,7 +26,8 @@ describe("training module", () => {
     assert.match(read("apps/console/app/lib/jobModuleFlags.ts"), /"job-module-training"/);
     assert.match(jobPage, /family === "training" && jobModuleEnabled\("job-module-training"\)/);
     // The generic workspace is still the fallthrough — the flag off must not mean a blank page.
-    assert.match(jobPage, /return <FamilyWorkspace job=\{job\} \/>;/);
+    // (PR 3 passes every workspace the Milestones panel; the fallthrough is otherwise unchanged.)
+    assert.match(jobPage, /return <FamilyWorkspace job=\{job\} milestones=\{milestones\} \/>;/);
   });
 
   it("gates every mutation on the capability the matrix declares", () => {

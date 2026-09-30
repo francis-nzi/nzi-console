@@ -82,6 +82,15 @@ export const todayInLondon = (now: Date = new Date()): string =>
   }).format(now);
 
 /**
+ * The platform day an instant falls on — the day a person in London would say it happened (NZC-105).
+ *
+ * For a stored instant read as a day: a completion's `completed_at`, compared with a due date or shown as "completed
+ * on". A back-dated completion is stored as the start of its day in London, which is the previous evening in UTC in
+ * summer — read with `utcDay` it would display a day early; read here it is exactly the day that was chosen.
+ */
+export const londonDayOf = (instant: Date | string): string => todayInLondon(instant instanceof Date ? instant : new Date(instant));
+
+/**
  * An instant as the platform's clock shows it, in the form a `datetime-local` input takes
  * (`YYYY-MM-DDTHH:mm`) — and back again (NZC-114).
  *

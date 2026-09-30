@@ -46,8 +46,8 @@ describe("milestone Risk, read from the database", { skip: TEST_DATABASE_URL ? f
       db.query(`INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, due_date)
         VALUES ($1, $2, $3, $4, 'crp', $2, $5, 'Setup', '2030-01-01')`, [org, id, clientId, sequence++, status]);
     const milestone = (org: string, jobId: string, kind: string, due: string | null, completed: boolean) =>
-      db.query(`INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, completed_at, updated_by)
-        VALUES ($1, $2, $3, $4::date, CASE WHEN $5 THEN now() END, 'seed')`, [org, jobId, kind, due, completed]);
+      db.query(`INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, completed_at, updated_by, due_source)
+        VALUES ($1, $2, $3, $4::date, CASE WHEN $5 THEN now() END, 'seed', 'manual')`, [org, jobId, kind, due, completed]);
     try {
       for (const org of [ORG_A, ORG_B]) {
         await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
@@ -196,7 +196,7 @@ describe("milestone Risk, read from the database", { skip: TEST_DATABASE_URL ? f
 
     it("refuses writing a milestone into another organisation", async () => {
       await assert.rejects(withTenantWrite(database.pool, ORG_A, (db) => db.query(
-        `INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, updated_by) VALUES ($1, 'x-overdue', 'first_draft', '2026-10-01', 't')`, [ORG_B])),
+        `INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, updated_by, due_source) VALUES ($1, 'x-overdue', 'first_draft', '2026-10-01', 't', 'manual')`, [ORG_B])),
         /row-level security/);
     });
 

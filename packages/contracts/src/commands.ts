@@ -1,5 +1,5 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
-import { isMilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
+import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
@@ -27,6 +27,10 @@ export type CommandKey =
   | "client.update"
   | "job.create"
   | "job.stage.change"
+  | "job.milestone.set"
+  | "job.milestone.complete"
+  | "job.milestone.reopen"
+  | "job.milestone.reschedule"
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
@@ -459,7 +463,17 @@ export type CommandInputMap = {
    *
    * `reportingYear` is absent on purpose: it is derived from `reportingPeriodEnd` and never sent.
    */
-  "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; clientManagerUserId?: string | null; startDate: string; dueDate: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null };
+  "job.create": { clientId: string; family: "crp" | "consultancy" | "lca" | "pcf" | "training"; title: string; workflowStage: string; owner: string; clientManagerUserId?: string | null; startDate: string; dueDate: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null;
+    /** PR 3: the job type the job is of (its family must match), and its milestone template — a string is the per-job
+     *  choice, null is "no milestones", omitted falls back to the job type's, then the organisation's default. */
+    jobTypeId?: string | null; milestoneTemplateId?: string | null };
+  /** PR 3 — the milestone command. A kind's date by hand (null clears it); refused on a completed milestone. */
+  "job.milestone.set": { jobId: string; kind: MilestoneKind; dueDate: string | null; expectedVersion?: number };
+  /** Completed today, or on a past day (M5); idempotent — an already-completed milestone is returned unchanged. */
+  "job.milestone.complete": { jobId: string; kind: MilestoneKind; completedAt?: string; expectedVersion?: number };
+  "job.milestone.reopen": { jobId: string; kind: MilestoneKind; expectedVersion: number };
+  /** Recompute the uncompleted template rows from the job's template (optionally a new one; null = none) and anchor. */
+  "job.milestone.reschedule": { jobId: string; milestoneTemplateId?: string | null; expectedVersion: number };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
@@ -742,6 +756,15 @@ const fileTypeIssues = (issues: CommandIssue[], input: FileTypeEditableFields) =
   if (typeof input.storageFolderKey !== "string" || !FILE_TYPE_FOLDER_PATTERN.test(input.storageFolderKey.trim())) issues.push({ field: "storageFolderKey", code: "INVALID", message: "A folder is lower-case letters, digits and hyphens, up to 41 characters." });
   if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
 };
+/** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const isCalendarDay = (value: unknown): value is string =>
+  typeof value === "string" && ISO_DAY.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value); // date-helper-exempt: validating a plain date round-trips, it is not reading an instant
+const milestoneIssues = (issues: CommandIssue[], input: { jobId: string; kind: unknown; expectedVersion?: number }) => {
+  required(issues, "jobId", input.jobId);
+  if (!isMilestoneKind(input.kind)) issues.push({ field: "kind", code: "INVALID", message: "A milestone is data collection, first draft or final report." });
+  if (input.expectedVersion !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
   if (typeof bodyHtml !== "string" || bodyHtml.trim().length === 0) { issues.push({ field: "bodyHtml", code: "REQUIRED", message: "Section body is required." }); return issues; }
@@ -930,6 +953,33 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.update": { key: "client.update", label: "Update client", permission: "client.edit", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "job.create": { key: "job.create", label: "Create job", permission: "job.manage", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); issues.push(...jobDateIssues(input, { family: oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const) ? input.family : undefined })); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "job.manage", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  // PR 3 — the milestone command. Delivery work on a job, so job.manage and the job's client scope, as a stage change.
+  "job.milestone.set": { key: "job.milestone.set", label: "Set a milestone's due date", permission: "job.manage", reasonRequired: false, transaction: "milestone (manual) + audit + outbox + idempotency", auditAction: "job.milestone.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    milestoneIssues(issues, input);
+    if (input.dueDate !== null && !isCalendarDay(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "A due date is a calendar date, or none to clear it." });
+    return issues;
+  } },
+  "job.milestone.complete": { key: "job.milestone.complete", label: "Complete a milestone", permission: "job.manage", reasonRequired: false, transaction: "milestone completion + audit + outbox + idempotency", auditAction: "job.milestone.completed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    milestoneIssues(issues, input);
+    if (input.completedAt !== undefined && !isCalendarDay(input.completedAt)) issues.push({ field: "completedAt", code: "INVALID", message: "A completion date is a calendar date." });
+    return issues;
+  } },
+  "job.milestone.reopen": { key: "job.milestone.reopen", label: "Reopen a milestone", permission: "job.manage", reasonRequired: true, transaction: "completion cleared + audit + outbox + idempotency", auditAction: "job.milestone.reopened", validate: (input, context) => {
+    // Clearing a recorded completion rewrites what the job says happened, so it says why (Q12).
+    const issues = baseIssues(context, true);
+    milestoneIssues(issues, input);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "job.milestone.reschedule": { key: "job.milestone.reschedule", label: "Reschedule milestones from the template", permission: "job.manage", reasonRequired: false, transaction: "job template + template milestones + audit + outbox + idempotency", auditAction: "job.milestone.rescheduled", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (input.milestoneTemplateId !== undefined && input.milestoneTemplateId !== null && !text(input.milestoneTemplateId)) issues.push({ field: "milestoneTemplateId", code: "INVALID", message: "Choose a template, or none." });
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.update": { key: "scope.row.update", label: "Update scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + audit + outbox + idempotency", auditAction: "scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.calculate": { key: "scope.row.calculate", label: "Calculate scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "factor validation + numeric calculation + lineage", auditAction: "scope_row_calculated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
