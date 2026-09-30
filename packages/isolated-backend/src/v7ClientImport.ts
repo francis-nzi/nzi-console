@@ -349,6 +349,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     // Jobs configuration (admin C4) — read by load:v7-jobs-config, not the client import.
     vat_rates_lookup: "vat_rate_id", milestone_templates: "template_id", milestone_template_items: "item_id",
     job_template_milestone_completions: "completion_id", job_file_types_lookup: "file_type_id",
+    // Staff (admin B2) — read by load:v7-staff, not the client import. v7's user id is the email address.
+    users: "user_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();

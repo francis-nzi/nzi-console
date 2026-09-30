@@ -236,6 +236,17 @@ export function syntheticRows(): Rows {
       { file_type_id: "2", file_type_key: "generated_report", display_name: "Generated Report", storage_folder_key: "generated-reports", sort_order: "20", is_active: "t" },
       { file_type_id: "3", file_type_key: "site_photos", display_name: "Site photos", storage_folder_key: "site-photos", sort_order: "30", is_active: "t" },
     ],
+    // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
+    // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
+    // Disabled, one archived, and one is a portal login held in the staff table.
+    users: [
+      { user_id: "ada@example.test", full_name: "Ada Example", email: "ada@example.test", status: "Active", role: "SuperAdmin", user_type: "internal", archived: "f", position: "Chief Executive Officer" },
+      { user_id: "ben@example.test", full_name: "Ben Example", email: "BEN@Example.test", status: "Active", role: "Admin", user_type: "internal", archived: "f", position: " chief  executive officer " },
+      { user_id: "cara@example.test", full_name: "Cara Example", email: "cara@example.test", status: "Active", role: "Admin", user_type: "internal", archived: "f", position: "Astronaut" },
+      { user_id: "dan@example.test", full_name: "Dan Example", email: "dan@example.test", status: "Disabled", role: "Admin", user_type: "internal", archived: "f", position: null },
+      { user_id: "erin@example.test", full_name: "Erin Example", email: "erin@example.test", status: "Active", role: "Admin", user_type: "internal", archived: "t", position: null },
+      { user_id: "portal@client.test", full_name: "Portal Person", email: "portal@client.test", status: "Active", role: "ClientViewer", user_type: "client_portal", archived: "f", position: null },
+    ],
   };
 }
 

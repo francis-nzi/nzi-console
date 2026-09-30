@@ -52,6 +52,7 @@ export * from "./staffAdmin";
 export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";
 export { loadV7ClientLinks, planClientLinks } from "./v7ClientLinkLoad";
 export { loadV7JobsConfig, planV7JobsConfig, V7_JOBS_CONFIG_TABLES } from "./v7JobsConfigLoad";
+export { loadV7Staff, planV7Staff, V7_STAFF_TABLES } from "./v7StaffLoad";
 export { loadV7JobLinks, planJobLinks } from "./v7JobLinkLoad";
 export { likePattern } from "./listPage";
 export * from "./inputSpecRecords";
