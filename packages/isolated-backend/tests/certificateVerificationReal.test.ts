@@ -56,8 +56,8 @@ describe("a stranger can verify a certificate, and see only what the contract sa
     await db.query(
       `INSERT INTO nzi_console.training_certificates
          (organisation_id,certificate_id,course_run_id,booking_id,certificate_number,
-          attended_minutes,required_minutes,attendance_pct,certificate_hash,issued_by,verify_code)
-       VALUES ($1,'cert','run','book','NZI-0001',360,360,100,'hash','seed',$2)`, [org, code]);
+          attended_minutes,required_minutes,attendance_pct,certificate_hash,issued_by,verify_code,issuer_name)
+       VALUES ($1,'cert','run','book','NZI-0001',360,360,100,'hash','seed',$2,'Net Zero International')`, [org, code]);
   };
 
   before(async () => {

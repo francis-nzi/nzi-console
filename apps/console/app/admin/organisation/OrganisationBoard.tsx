@@ -123,7 +123,7 @@ function ProfileForm({ profile, roster, editing, status, report, saved }: CardPr
 
   return <div className="nz-a-section">
     <h3>Company profile</h3>
-    <FieldRow>{field("legalName", "Legal name", { maxLength: 200 })}{field("displayName", "Display name", { maxLength: 120, hint: "The name on screens, reports and the portal." })}</FieldRow>
+    <FieldRow>{field("legalName", "Legal name", { maxLength: 200 })}{field("displayName", "Display name", { maxLength: 120, hint: "The name on screens, reports and the portal." })}{field("shortName", "Short name", { maxLength: 20, hint: "Used in client-facing copy, e.g. “your NZI consultant”. Empty uses the display name." })}</FieldRow>
     <FieldRow>{field("registrationNumber", "Company registration number", { mono: true })}{field("vatNumber", "VAT number", { mono: true, placeholder: "e.g. GB123456789" })}</FieldRow>
     <FieldRow>{field("websiteUrl", "Website", { placeholder: "https://" })}{field("contactEmail", "Contact email")}{field("contactPhone", "Contact phone")}</FieldRow>
     <h4 className="nz-a-subhead">Registered address</h4>

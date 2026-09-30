@@ -3,7 +3,7 @@ import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
   composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity,
-  type ReportComposition, type ReportEmissionsSection, type ReportIntensitySection,
+  type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
@@ -285,8 +285,8 @@ export async function composeReport(db: Queryable, input: {
 export async function composeForReportVersion(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string;
 }): Promise<ReportComposition> {
-  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string }>(
-    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id
+  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string } & IssuerColumns>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, ${ISSUER_COLUMNS}
      FROM nzi_console.report_versions r
      JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
      WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
@@ -329,7 +329,7 @@ export async function composeForReportVersion(db: Queryable, input: {
     }))
     .sort((a, b) => a.year - b.year);
 
-  return composeReport(db, {
+  const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
     clientId: row.client_id,
     issuedAt: input.issuedAt,
@@ -342,6 +342,9 @@ export async function composeForReportVersion(db: Queryable, input: {
       annualComparison: payload.annualComparison ?? [],
     },
   });
+  // D3: the issuer the version froze at validation travels with what the report says.
+  const issuer = issuerOf(row);
+  return issuer ? { ...composed, issuer } : composed;
 }
 
 export type FreezeCompositionResult = { compositionId: string; dataHash: string; reused: boolean };
@@ -376,10 +379,23 @@ export async function freezeReportComposition(db: Queryable, input: {
   return { compositionId, dataHash, reused: false };
 }
 
-/** What an issued report actually said — read back, never rebuilt. */
+/** What an issued report actually said — read back, never rebuilt. A composition frozen before D3 carries no issuer; its report
+ *  version's backfilled columns (exactly what it printed) stand in, so it renders as it always did. */
 export async function getReportComposition(db: Queryable, reportVersionId: string): Promise<ReportComposition | null> {
-  const result = await db.query<{ payload_json: ReportComposition }>(
-    `SELECT payload_json FROM nzi_console.report_compositions
-     WHERE report_version_id = $1`, [reportVersionId]);
-  return result.rows[0]?.payload_json ?? null;
+  const result = await db.query<{ payload_json: ReportComposition } & IssuerColumns>(
+    `SELECT c.payload_json, ${ISSUER_COLUMNS.replace(/r\./g, "v.")}
+       FROM nzi_console.report_compositions c
+       JOIN nzi_console.report_versions v ON (v.organisation_id, v.report_version_id) = (c.organisation_id, c.report_version_id)
+      WHERE c.report_version_id = $1`, [reportVersionId]);
+  const row = result.rows[0];
+  if (!row) return null;
+  const issuer = row.payload_json.issuer ?? issuerOf(row);
+  return issuer ? { ...row.payload_json, issuer } : row.payload_json;
 }
+
+type IssuerColumns = { issuer_display_name: string | null; issuer_short_name: string | null; issuer_footer: string | null; issuer_logo_asset_id: string | null };
+const ISSUER_COLUMNS = "r.issuer_display_name, r.issuer_short_name, r.issuer_footer, r.issuer_logo_asset_id";
+const issuerOf = (row: Partial<IssuerColumns>): ReportIssuer | null => !row.issuer_display_name ? null : {
+  displayName: row.issuer_display_name, shortName: row.issuer_short_name ?? row.issuer_display_name,
+  footer: row.issuer_footer ?? row.issuer_display_name, logoAssetId: row.issuer_logo_asset_id ?? null,
+};

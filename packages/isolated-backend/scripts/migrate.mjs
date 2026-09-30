@@ -338,6 +338,8 @@ async function runCli() {
 const [command = "status", argument] = process.argv.slice(2);
 const actor = `migrate:${command}${process.env.USER || process.env.USERNAME ? ` (${process.env.USER ?? process.env.USERNAME})` : ""}`;
 const client = new pg.Client({ connectionString: connectionString(), ssl: { rejectUnauthorized: false } });
+// A migration that corrects data says what it corrected (RAISE NOTICE); the deploy log is where that must land.
+client.on("notice", (notice) => console.log(`  notice: ${notice.message}`));
 await client.connect();
 try {
   if (command === "status") await status(client);
