@@ -185,7 +185,7 @@ describe("the milestone backfill, against a real database", { skip: TEST_DATABAS
 
   it("R3: a milestone made in the console, which v7 also records, is refused and reported", async () => {
     const admin = await database.admin();
-    try { await admin.query(`INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, updated_by) VALUES ($1, 'j103', 'data_collection', '2026-10-10', 'user:ada')`, [ORG]); }
+    try { await admin.query(`INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, updated_by, due_source) VALUES ($1, 'j103', 'data_collection', '2026-10-10', 'user:ada', 'manual')`, [ORG]); }
     finally { await admin.end(); }
     const more = plan(...BASE.map((r) => r.job_id === "103" ? { ...r, data_collection_due: "2026-10-12" } : r) as Array<Record<string, string | null>>);
     const outcome = await loadV7Milestones(database.pool, ORG, planV7Milestones(more), { commit: false });

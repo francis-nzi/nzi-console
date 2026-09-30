@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { AppShell, GatedButton, NziIcon, TopBar, WorkspaceRail } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
@@ -32,8 +33,8 @@ import { crumbTrail, jobCrumbs } from "../../lib/crumbTrail";
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 
-export function TrainingWorkspace({ job, runs, today, writeEnabled }: {
-  job: FamilyJob; runs: TrainingRunRecord[]; today: string; writeEnabled: boolean;
+export function TrainingWorkspace({ job, runs, today, writeEnabled, milestones }: {
+  job: FamilyJob; runs: TrainingRunRecord[]; today: string; writeEnabled: boolean; milestones?: ReactNode;
 }) {
   const { header } = job;
   const meta = jobFamilyMeta[header.family];
@@ -57,6 +58,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled }: {
       </div>
       <span className="nz-status"><span className="d" />{record ? trainingRunStageLabels[record.run.workflowStageKey as TrainingRunStage] ?? record.run.workflowStageKey : header.workflowStage}</span>
     </div></div>
+    {milestones}
 
     <div className="nz-body nz-family-body">
       {notice ? <div className="nz-banner ok" role="status">{notice}</div> : null}

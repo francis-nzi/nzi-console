@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview" | "jobMilestones" | "jobSetupOptions";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -47,6 +47,9 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // Not empty at zero runs: a training job can hold places before anything is scheduled,
   // and the module says so in its own words rather than showing a bare empty screen.
   training: { key: "training", validate: (value) => rows(value, "runs"), isEmpty: () => false },
+  // PR 3. Never empty: a job with no milestones reads "Not set", which the panel says in its own words.
+  jobMilestones: { key: "jobMilestones", validate: (value) => record(value) && ("view" in value), isEmpty: () => false },
+  jobSetupOptions: { key: "jobSetupOptions", validate: (value) => rows(value, "jobTypes") && rows(value, "templates"), isEmpty: () => false },
   portal: { key: "portal", validate: record, isEmpty: () => false },
   // The staff portal preview (NZC-087). Its own contract because it is its own payload: reusing
   // clientWorkspace's key validated the preview against a shape describing a different screen —

@@ -14,6 +14,7 @@
 // Gap-filling, the calc engine, scenarios, charts and the report manifest are
 // later slices.
 import { Fragment, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, GatedButton, TopBar, WorkspaceRail } from "@nzi/ui";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
@@ -57,8 +58,8 @@ const MODULE_LABEL: Record<LcaModuleCode, string> = {
   D: "D · Benefits beyond boundary",
 };
 
-export function LcaWorkspace({ job, assessments, factors, components, categories }: {
-  job: FamilyJob; assessments: LcaAssessment[]; factors: FactorOption[];
+export function LcaWorkspace({ job, assessments, factors, components, categories, milestones }: {
+  job: FamilyJob; assessments: LcaAssessment[]; factors: FactorOption[]; milestones?: ReactNode;
   components: LcaComponentOption[]; categories: { id: string; name: string }[];
 }) {
   const { header } = job;
@@ -80,6 +81,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
       </div>
     </div>
     <WorkflowStageControl job={job} />
+    {milestones}
     <div className="nz-body nz-family-body">
       {notice && <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div>}
       <section className="nz-panel nz-config-panel" id="lca-assessment-register">

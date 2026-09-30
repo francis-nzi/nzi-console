@@ -468,6 +468,11 @@ jobs:
       # deactivate, names and keys unique; admin.lookups; tenant-scoped.
       - name: Job file types keep their key, never lose a system type, and are never deleted
         run: npx tsx --test packages/isolated-backend/tests/jobFileTypesReal.test.ts
+      # The milestone command (PR 3): generation at job.create (explicit, job type, default; active only; included items;
+      # the later anchor), set / complete (back-dated as the London day) / reopen / reschedule (template rows only), 0140,
+      # audit, access, Risk after each command, and the PR 2 backfill refusing a job completed here.
+      - name: Milestones are generated from the template, moved only when the template owns them, and never overwritten by v7
+        run: npx tsx --test packages/isolated-backend/tests/milestoneCommandReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

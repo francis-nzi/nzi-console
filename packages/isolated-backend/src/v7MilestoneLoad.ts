@@ -242,8 +242,8 @@ async function loadJob(db: Queryable, org: string, job: ConsoleJob, planned: Pla
     if (action === "insert") {
       await db.query(
         `INSERT INTO nzi_console.job_milestones (organisation_id, job_id, kind, due_date, completed_at, completed_by_user_id, completed_by_label,
-           source_system, legacy_db_id, legacy_values, updated_by)
-         VALUES ($1, $2, $3, $4::date, $5::timestamptz, $6, $7, $10, $11, $8::jsonb, $9)`,
+           source_system, legacy_db_id, legacy_values, updated_by, due_source)
+         VALUES ($1, $2, $3, $4::date, $5::timestamptz, $6, $7, $10, $11, $8::jsonb, $9, 'import')`,
         [...values, SOURCE_SYSTEM, milestone.legacyDbId]);
       counts.inserted += 1;
     } else {
