@@ -501,5 +501,20 @@
       "sort_order",
       "is_active"
     ]
+  },
+  "users": {
+    "filter": "all",
+    "required": [
+      "user_id",
+      "full_name",
+      "email",
+      "status",
+      "role",
+      "user_type"
+    ],
+    "optional": [
+      "archived",
+      "position"
+    ]
   }
 }
