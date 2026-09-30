@@ -1835,6 +1835,11 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-history{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px;font-size:12.5px;color:var(--a-ink)}.nz-a-history li{overflow-wrap:anywhere}
 .nz-a-subform{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-surface-2)}
 /* Organisation (admin D1): sub-headings in the profile form, the logo preview, the bank card and its facts. */
+/* Action feedback (admin D1 fast-follow): the button and what happened, side by side. */
+.nz-a-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.nz-a-status{font-size:12.5px;font-weight:500;min-height:1em}.nz-a-status.saved{color:var(--a-ok)}.nz-a-status.nochange{color:var(--a-ink-2)}.nz-a-status.conflict,.nz-a-status.error{color:var(--a-bad)}
+.nz-a-spinner{display:inline-block;width:11px;height:11px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:nz-state-spin .8s linear infinite}
+@media (prefers-reduced-motion:reduce){.nz-a-spinner{animation:none;border-right-color:currentColor;opacity:.6}}
 .nz-a-subhead{margin:16px 0 6px;font-size:12px;font-weight:600;color:var(--a-ink-2);text-transform:uppercase;letter-spacing:.04em}
 .nz-a-logo-row{display:flex;gap:14px;align-items:center;margin-bottom:10px}.nz-a-logo{width:72px;height:72px;object-fit:contain;border:1px solid var(--a-line);border-radius:10px;background:#fff;padding:6px;flex:none}
 .nz-a-logo-empty{display:grid;place-items:center;font-size:28px;font-weight:600;color:var(--a-ink-2);background:var(--a-surface-2)}
