@@ -307,7 +307,12 @@ export async function readStaffRates(db: Queryable, holder: { capabilities: read
   return { current: rates.find((rate) => rate.supersededBy === null && rate.effectiveFrom <= today) ?? null, rates };
 }
 
-export type StaffRateResult = { rateId: string; userId: string; effectiveFrom: string; costPerHour: number | null; sellPerHour: number | null; currency: string; supersedesRateId: string | null };
+/**
+ * What a rate command returns — and so what its audit event, idempotency record and outbox event hold: which row, from
+ * when, what it corrects, and which fields were set. **Never the amounts**: those live in the finance-gated table alone,
+ * and the audit is read by a wider audience than finance.manage may one day be.
+ */
+export type StaffRateResult = { rateId: string; userId: string; effectiveFrom: string; supersedesRateId: string | null; set: Array<"costPerHour" | "sellPerHour" | "currency"> };
 
 /** A rate from a date, or a correction of one (a new row superseding it). Append-only: nothing is ever edited or deleted. */
 export function setStaffRate(pool: PoolLike, input: CommandInputMap["staff.rate.set"], context: CommandContext): Promise<StoredOutcome<StaffRateResult>> {
@@ -335,7 +340,8 @@ export function setStaffRate(pool: PoolLike, input: CommandInputMap["staff.rate.
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [context.organisationId, rateId, input.userId, input.effectiveFrom, fields.costPerHour, fields.sellPerHour, fields.currency, supersedesRateId, context.actorId]);
     return {
-      data: { rateId, userId: input.userId, effectiveFrom: input.effectiveFrom, ...fields, supersedesRateId },
+      data: { rateId, userId: input.userId, effectiveFrom: input.effectiveFrom, supersedesRateId,
+        set: [...(fields.costPerHour !== null ? ["costPerHour" as const] : []), ...(fields.sellPerHour !== null ? ["sellPerHour" as const] : []), "currency" as const] },
       entityType: "staff_rate", entityId: rateId, topic: "staff.rate.set",
     };
   });

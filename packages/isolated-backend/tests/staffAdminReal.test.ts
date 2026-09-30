@@ -36,7 +36,7 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
   const q = (sql: string, params: unknown[] = []) => admin(async (db) => (await db.query(sql, params)).rows);
   const member = async (userId: string) => (await q(`SELECT * FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2`, [ORG, userId]))[0];
   const version = async (userId: string) => (await member(userId)).version as number;
-  const auditOf = (auditEventId: string) => q(`SELECT action, entity_type, entity_id, reason, before_json, after_json, principal_type FROM nzi_console.audit_events WHERE audit_event_id = $1`, [auditEventId]).then((rows) => rows[0]);
+  const auditOf = (auditEventId: string) => q(`SELECT action, entity_type, entity_id, reason, before_json, after_json, principal_type, correlation_id FROM nzi_console.audit_events WHERE audit_event_id = $1`, [auditEventId]).then((rows) => rows[0]);
   const person = async (userId: string, role: StaffRole, name: string, email: string, org = ORG) => q(
     `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email) VALUES ($1, $2, $3, 'active', $4, $5)`, [org, userId, role, name, email]);
 
@@ -245,7 +245,17 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
     it("are finance.manage only — Admin and Finance set and read them; Consultant (who holds finance.view) cannot", async () => {
       await assert.rejects(setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-01-01", costPerHour: 40 }, context("cal", "consultant")), /finance\.manage|permission/i);
       await assert.rejects(withTenantRead(database.pool, ORG, (db) => readStaffRates(db, holder("consultant"), "vic", "2026-09-30")), /finance\.manage/);
-      await setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-01-01", costPerHour: 40, sellPerHour: 95 }, context("fin", "finance"));
+      const set = await setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-01-01", costPerHour: 40, sellPerHour: 95 }, context("fin", "finance"));
+      // The audit records which row and which fields — never the amounts (they live in the finance-gated table alone).
+      const audit = await auditOf(set.auditEventId);
+      assert.deepEqual(audit.after_json, { rateId: set.data.rateId, userId: "vic", effectiveFrom: "2026-01-01", supersedesRateId: null, set: ["costPerHour", "sellPerHour", "currency"] });
+      const idempotency = await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND outcome_json->>'auditEventId' = $2`, [ORG, set.auditEventId]);
+      const outbox = await q(`SELECT payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1 AND correlation_id = $2`, [ORG, audit.correlation_id]);
+      assert.deepEqual([idempotency.length, outbox.length], [1, 1], "the idempotency record and the outbox event were both found");
+      const amount = /(40|95)(.0+)?/;
+      for (const [where, value] of [["audit", audit.after_json], ["idempotency", idempotency[0].outcome_json.data], ["outbox", outbox[0].payload_json]] as const) {
+        assert.ok(!amount.test(JSON.stringify(value)), `an amount reached the ${where}: ${JSON.stringify(value)}`);
+      }
       const rates = await withTenantRead(database.pool, ORG, (db) => readStaffRates(db, holder("admin"), "vic", "2026-09-30"));
       assert.deepEqual([rates.current?.costPerHour, rates.current?.sellPerHour, rates.current?.currency], [40, 95, "GBP"]);
     });
@@ -255,7 +265,8 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
       await assert.rejects(setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-07-01", costPerHour: 46 }, context("fin", "finance")), issue("effectiveFrom", "DUPLICATE"));
       const july = (await q(`SELECT rate_id FROM nzi_console.staff_rates WHERE organisation_id = $1 AND user_id = 'vic' AND effective_from = '2026-07-01'`, [ORG]))[0].rate_id;
       await assert.rejects(setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-07-01", costPerHour: 46, supersedesRateId: july }, context("fin", "finance")), issue("reason", "REQUIRED"));
-      await setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-07-01", costPerHour: 46, sellPerHour: 100, supersedesRateId: july }, context("fin", "finance", "Typo in the cost"));
+      const corrected = await setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-07-01", costPerHour: 46, sellPerHour: 100, supersedesRateId: july }, context("fin", "finance", "Typo in the cost"));
+      assert.deepEqual([corrected.data.supersedesRateId, corrected.data.set, "costPerHour" in corrected.data], [july, ["costPerHour", "sellPerHour", "currency"], false]);
       await assert.rejects(setStaffRate(database.pool, { userId: "vic", effectiveFrom: "2026-07-01", costPerHour: 47, supersedesRateId: july }, context("fin", "finance", "again")), issue("supersedesRateId", "ALREADY_SUPERSEDED"));
       const rates = await withTenantRead(database.pool, ORG, (db) => readStaffRates(db, holder("finance"), "vic", "2026-09-30"));
       assert.equal(rates.rates.length, 3, "every row kept");
