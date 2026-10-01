@@ -17,7 +17,7 @@ import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  activeMetrics, intensityUnit, intensityUnitShort, resolveIntensity,
+  activeMetrics, intensityPer, intensityUnit, intensityUnitShort, resolveIntensity,
   type IntensityMetricDefinition, type ResolvedIntensity,
 } from "@nzi/contracts";
 import type { PortalIntensityReadModel, PortalIntensityYear } from "@nzi/isolated-backend";
@@ -46,7 +46,9 @@ const isResolved = (point: Point): point is ResolvedPoint => point.intensity.sta
  * "Per m² floor area". The unit wording alone is enough when the label says the same thing
  * ("employee" / "Employees"); a symbol like "£m" needs the label to mean anything.
  */
-function metricName(definition: IntensityMetricDefinition): string {
+function metricName(definition: IntensityMetricDefinition, currency: string): string {
+  // A currency measure names its money in the client's currency, then what it is: "Per £m turnover" (D3c).
+  if (definition.unitKind === "currency") return `Per ${intensityPer(definition, { currency })} ${definition.label.trim().toLowerCase()}`;
   const unit = definition.unitWording.trim(), label = definition.label.trim().toLowerCase();
   if (!unit) return `Per ${label}`;
   const said = label.includes(unit.toLowerCase()) || unit.toLowerCase().includes(label);
@@ -54,20 +56,21 @@ function metricName(definition: IntensityMetricDefinition): string {
 }
 
 /** One year on one measure, through the shared resolver. The denominator's own reason wins. */
-function intensityFor(year: PortalIntensityYear, definition: IntensityMetricDefinition): ResolvedIntensity {
+function intensityFor(year: PortalIntensityYear, definition: IntensityMetricDefinition, currency: string): ResolvedIntensity {
   const denominator = year.denominators[definition.key];
   const resolved = resolveIntensity({
     definition,
     emissionsTco2e: year.totalTco2e,
     value: denominator?.value ?? null,
     source: denominator?.source === "none" ? undefined : denominator?.source,
+    currency,
   });
   if (resolved.state === "unavailable" && denominator?.reason) return { ...resolved, reason: denominator.reason };
   return resolved;
 }
 
-const seriesFor = (years: readonly PortalIntensityYear[], definition: IntensityMetricDefinition): Point[] =>
-  years.map((year) => ({ year: year.year, intensity: intensityFor(year, definition) }));
+const seriesFor = (years: readonly PortalIntensityYear[], definition: IntensityMetricDefinition, currency: string): Point[] =>
+  years.map((year) => ({ year: year.year, intensity: intensityFor(year, definition, currency) }));
 
 export function PortalIntensity() {
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -109,6 +112,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
   const org = useOrganisationName();
   const metrics = useMemo(() => activeMetrics(model.metrics), [model.metrics]);
   const years = model.years;
+  const currency = model.currency;
   const [metricKey, setMetricKey] = useState<string>("");
   const chosen = metrics.find((metric) => metric.key === metricKey) ?? metrics[0] ?? null;
 
@@ -146,7 +150,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
     </p>
 
     <div className="nz-pi-tiles">
-      {metrics.map((metric) => <MetricTile key={metric.key} definition={metric} points={seriesFor(years, metric)} />)}
+      {metrics.map((metric) => <MetricTile key={metric.key} definition={metric} currency={currency} points={seriesFor(years, metric, currency)} />)}
     </div>
 
     <section className="nz-pi-card" aria-label="Intensity over time">
@@ -155,10 +159,10 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
         <span className="sp" />
         <label className="nz-sr-only" htmlFor="nz-pi-metric">Measure</label>
         <select id="nz-pi-metric" value={chosen?.key ?? ""} onChange={(event) => setMetricKey(event.target.value)}>
-          {metrics.map((metric) => <option key={metric.key} value={metric.key}>{metricName(metric)}</option>)}
+          {metrics.map((metric) => <option key={metric.key} value={metric.key}>{metricName(metric, currency)}</option>)}
         </select>
       </div>
-      {chosen ? <MetricChart definition={chosen} points={seriesFor(years, chosen)} /> : null}
+      {chosen ? <MetricChart definition={chosen} currency={currency} points={seriesFor(years, chosen, currency)} /> : null}
       <p className="nz-pi-foot">
         Intensity = your assured emissions divided by the measure shown. Measures and their icons are set with
         {org.your("consultant")}; the values are recorded each reporting year. <b>Lower is better.</b>
@@ -173,7 +177,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
 
 /* ── Tiles ──────────────────────────────────────────────────────────────────────────── */
 
-function MetricTile({ definition, points }: { definition: IntensityMetricDefinition; points: Point[] }) {
+function MetricTile({ definition, currency, points }: { definition: IntensityMetricDefinition; currency: string; points: Point[] }) {
   const resolved = points.filter(isResolved);
   const current = resolved[resolved.length - 1] ?? null;
   const previous = resolved[resolved.length - 2] ?? null;
@@ -187,7 +191,7 @@ function MetricTile({ definition, points }: { definition: IntensityMetricDefinit
   return <article className="nz-pi-tile">
     <div className="nz-pi-tile-top">
       <span className="ic"><IntensityMetricIcon iconKey={definition.iconKey} size={18} /></span>
-      <span className="nm">{metricName(definition)}</span>
+      <span className="nm">{metricName(definition, currency)}</span>
     </div>
 
     {current === null
@@ -198,7 +202,7 @@ function MetricTile({ definition, points }: { definition: IntensityMetricDefinit
       : <>
         <div className="nz-pi-big">
           {figure(current.intensity.value)}
-          <span className="u">{intensityUnit(definition)}</span>
+          <span className="u">{intensityUnit(definition, { currency })}</span>
         </div>
         {change === null || previous === null
           ? <p className="nz-pi-note">{fy(current.year)} is the first year this measure resolves — a year-on-year change needs two.</p>
@@ -211,7 +215,7 @@ function MetricTile({ definition, points }: { definition: IntensityMetricDefinit
           : null}
         <div className="nz-pi-spark">
           <Sparkline values={resolved.map((point) => point.intensity.value)} improving={direction !== "up"}
-            label={`${definition.label} intensity, ${resolved.map((point) => `${fy(point.year)} ${figure(point.intensity.value)}`).join(", ")} ${intensityUnitShort(definition)}`} />
+            label={`${definition.label} intensity, ${resolved.map((point) => `${fy(point.year)} ${figure(point.intensity.value)}`).join(", ")} ${intensityUnitShort(definition, { currency })}`} />
         </div>
       </>}
   </article>;
@@ -246,16 +250,16 @@ function niceMax(value: number): number {
   return step * magnitude;
 }
 
-function MetricChart({ definition, points }: { definition: IntensityMetricDefinition; points: Point[] }) {
+function MetricChart({ definition, currency, points }: { definition: IntensityMetricDefinition; currency: string; points: Point[] }) {
   const resolved = points.filter(isResolved);
-  const unit = intensityUnit(definition);
+  const unit = intensityUnit(definition, { currency });
 
   const years = <div className="nz-pi-years">
     {points.slice().reverse().map((point) => <div key={point.year}>
       <span className="k">{fy(point.year)}</span>
       <span className={`v${point.intensity.state === "resolved" ? "" : " na"}`}>
         {point.intensity.state === "resolved"
-          ? `${figure(point.intensity.value)} ${intensityUnitShort(definition)}`
+          ? `${figure(point.intensity.value)} ${intensityUnitShort(definition, { currency })}`
           : `Unavailable — ${point.intensity.reason}`}
       </span>
     </div>)}

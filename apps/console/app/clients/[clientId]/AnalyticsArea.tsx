@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CRP_RESOLVER_VERSION, EmissionsScopeDonut, IntensityBasesIndexed, IntensityPathway, RENDERER_VERSION, ScopeYearOnYearBar, TOKENS_VERSION } from "@nzi/charts";
 import {
-  activeMetrics, indexedSeries, intensityUnit, intensityUnitShort, resolveIntensity,
+  activeMetrics, indexedSeries, intensityDenominatorText, intensityPer, intensityUnit, intensityUnitShort, resolveIntensity,
   type IntensityMetricDefinition, type ResolvedIntensity,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel, ClientYearFigure } from "@nzi/isolated-backend";
@@ -29,12 +29,12 @@ type ChartProvenance = {
 const ALL = "__all__";
 const figure = (value: number) => value >= 100 ? Math.round(value).toLocaleString("en-GB") : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
-/** One year's intensity on one metric, resolved through the shared computation. */
-function intensityFor(year: ClientYearFigure, definition: IntensityMetricDefinition): ResolvedIntensity {
+/** One year's intensity on one metric, resolved through the shared computation — in the client's currency (D3c). */
+function intensityFor(year: ClientYearFigure, definition: IntensityMetricDefinition, currency: string): ResolvedIntensity {
   const denominator = year.denominators[definition.key];
   const resolved = resolveIntensity({
     definition, emissionsTco2e: year.totalTco2e, value: denominator?.value ?? null,
-    source: denominator?.source === "none" ? undefined : denominator?.source,
+    source: denominator?.source === "none" ? undefined : denominator?.source, currency,
   });
   // Keep the resolver's reason unless the denominator itself explained why it is missing.
   if (resolved.state === "unavailable" && denominator?.reason) return { ...resolved, reason: denominator.reason };
@@ -48,6 +48,8 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
   onDrawer: (request: DrawerRequest) => void;
 }) {
   const { client, history, targets, actuals, intensityMetrics } = workspace;
+  // NOT NULL (0060, default GBP); optional only in the shared profile-fields type.
+  const currency = client.profile.currency ?? "GBP";
   const years = [...history].sort((a, b) => a.year - b.year);
   const metrics = activeMetrics(intensityMetrics);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
@@ -93,7 +95,7 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
             }} />}
         </section>
 
-        <IntensityChart years={years} metrics={metrics} metricKey={metricKey} onMetric={setMetricKey}
+        <IntensityChart years={years} metrics={metrics} metricKey={metricKey} onMetric={setMetricKey} currency={currency}
           clientId={client.id} provenance={provenance} manage={manage} />
 
         <ClientPathway client={{ id: client.id, name: client.name }} targets={targets} actuals={actuals ?? []} />
@@ -120,15 +122,16 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
           </div>
         </section>
 
-        <IntensityDetail year={selected} years={years} metrics={metrics} metricKey={metricKey}
+        <IntensityDetail year={selected} years={years} metrics={metrics} metricKey={metricKey} currency={currency}
           onEvidence={() => onEvidence("intensity")} manage={manage} />
       </div>
     </div>
   </>;
 }
 
-function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provenance, manage }: {
+function IntensityChart({ years, metrics, metricKey, onMetric, currency, clientId, provenance, manage }: {
   years: ClientYearFigure[];
+  currency: string;
   metrics: IntensityMetricDefinition[];
   metricKey: string;
   onMetric: (key: string) => void;
@@ -140,10 +143,10 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
   const picker = <>
     {manage}
     <select className="nz-sel" value={metricKey} onChange={(event) => onMetric(event.target.value)} aria-label="Intensity metric" style={{ marginRight: 8 }}>
-      {metrics.map((metric) => <option key={metric.key} value={metric.key}>per {metric.unitWording}</option>)}
+      {metrics.map((metric) => <option key={metric.key} value={metric.key}>per {intensityPer(metric, { currency })}</option>)}
       {metrics.length > 1 ? <option value={ALL}>All metrics (indexed)</option> : null}
     </select>
-    <span className="hint">{definition ? intensityUnit(definition) : "indexed · base = 100"}</span>
+    <span className="hint">{definition ? intensityUnit(definition, { currency }) : "indexed · base = 100"}</span>
   </>;
   const head = <CardHead eyebrow="Year on year" title="Emissions intensity" right={picker} />;
 
@@ -155,7 +158,7 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
 
   if (metricKey === ALL) {
     const series = metrics.map((metric) => {
-      const points = indexedSeries(years.map((year) => ({ year: year.year, intensity: intensityFor(year, metric) })));
+      const points = indexedSeries(years.map((year) => ({ year: year.year, intensity: intensityFor(year, metric, currency) })));
       return points === null ? null : { key: metric.key, label: metric.label, points };
     }).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
     const commonBase = years.map((year) => year.year).find((year) => series.every((entry) => entry.points.some((point) => point.year === year))) ?? null;
@@ -183,7 +186,7 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
   }
 
   if (!definition) return <section className="nz-panel">{head}<Empty text="That metric is no longer defined for this client." /></section>;
-  const resolved = years.map((year) => ({ year, intensity: intensityFor(year, definition) }))
+  const resolved = years.map((year) => ({ year, intensity: intensityFor(year, definition, currency) }))
     .filter((entry) => entry.intensity.state === "resolved") as Array<{ year: ClientYearFigure; intensity: Extract<ResolvedIntensity, { state: "resolved" }> }>;
 
   return <section className="nz-panel">{head}
@@ -192,11 +195,11 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
         <p className="sub" style={{ margin: "8px 0" }}>{resolved.length === 1
           ? `Only ${fyLabel(resolved[0]!.year.year)} resolves on this metric — a trend needs two years.`
           : "No reporting year resolves on this metric."}</p>
-        <MetricReasons years={years} definition={definition} />
+        <MetricReasons years={years} definition={definition} currency={currency} />
       </div>
       : <>
         <IntensityPathway showChrome={false} data={{
-          spec: { id: `client-intensity-${clientId}-${definition.key}`, type: "intensity_pathway", title: `Emissions intensity per ${definition.unitWording}`, family: "crp", specVersion: 1 },
+          spec: { id: `client-intensity-${clientId}-${definition.key}`, type: "intensity_pathway", title: `Emissions intensity per ${intensityPer(definition, { currency })}`, family: "crp", specVersion: 1 },
           unit: resolved[resolved.length - 1]!.intensity.unitShort, state: "success",
           metric: definition.key === "turnover" ? "turnover" : definition.valueSource === "site-floor-area" ? "floor-area" : "employee",
           actual: resolved.map((entry) => ({ year: entry.year.year, value: entry.intensity.value })),
@@ -205,7 +208,7 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
         }} />
         <div className="nz-card-b">
           {years.slice().reverse().map((year) => {
-            const intensity = intensityFor(year, definition);
+            const intensity = intensityFor(year, definition, currency);
             return <div className="nz-cw-kv" key={year.snapshotId}>
               <span className="k">{fyLabel(year.year)}</span>
               <span className="v">{intensity.state === "resolved"
@@ -219,15 +222,16 @@ function IntensityChart({ years, metrics, metricKey, onMetric, clientId, provena
 }
 
 /** Why a metric does not resolve — the reason, never a silent gap. */
-function MetricReasons({ years, definition }: { years: ClientYearFigure[]; definition: IntensityMetricDefinition }) {
-  const reasons = Array.from(new Set(years.map((year) => intensityFor(year, definition))
+function MetricReasons({ years, definition, currency }: { years: ClientYearFigure[]; definition: IntensityMetricDefinition; currency: string }) {
+  const reasons = Array.from(new Set(years.map((year) => intensityFor(year, definition, currency))
     .filter((intensity) => intensity.state === "unavailable")
     .map((intensity) => (intensity as Extract<ResolvedIntensity, { state: "unavailable" }>).reason)));
   return <>{reasons.map((reason) => <p className="nz-maps" key={reason}>{reason}</p>)}</>;
 }
 
-function IntensityDetail({ year, years, metrics, metricKey, onEvidence, manage }: {
+function IntensityDetail({ year, years, metrics, metricKey, currency, onEvidence, manage }: {
   year: ClientYearFigure | null;
+  currency: string;
   years: ClientYearFigure[];
   metrics: IntensityMetricDefinition[];
   metricKey: string;
@@ -241,9 +245,9 @@ function IntensityDetail({ year, years, metrics, metricKey, onEvidence, manage }
     return <section className="nz-panel">{head}
       <div className="nz-card-b">
         {year ? metrics.map((metric) => {
-          const intensity = intensityFor(year, metric);
+          const intensity = intensityFor(year, metric, currency);
           return <div className="nz-cw-kv" key={metric.key}>
-            <span className="k"><IntensityMetricIcon iconKey={metric.iconKey} size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />Intensity · per {metric.unitWording}</span>
+            <span className="k"><IntensityMetricIcon iconKey={metric.iconKey} size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />Intensity · per {intensityPer(metric, { currency })}</span>
             <span className="v">{intensity.state === "resolved" ? `${figure(intensity.value)} ${intensity.unitShort}` : <span className="muted" title={intensity.reason}>Unavailable</span>}</span>
           </div>;
         }) : null}
@@ -254,8 +258,8 @@ function IntensityDetail({ year, years, metrics, metricKey, onEvidence, manage }
 
   const definition = metrics.find((metric) => metric.key === metricKey);
   if (!definition) return <section className="nz-panel">{head}<div className="nz-card-b">{maps}</div></section>;
-  const current = intensityFor(year, definition);
-  const earliest = years.map((entry) => ({ entry, intensity: intensityFor(entry, definition) }))
+  const current = intensityFor(year, definition, currency);
+  const earliest = years.map((entry) => ({ entry, intensity: intensityFor(entry, definition, currency) }))
     .find((item) => item.intensity.state === "resolved");
   const comparable = earliest && earliest.entry.year !== year.year && current.state === "resolved" && earliest.intensity.state === "resolved";
   const change = comparable && current.state === "resolved" && earliest!.intensity.state === "resolved"
@@ -263,7 +267,7 @@ function IntensityDetail({ year, years, metrics, metricKey, onEvidence, manage }
 
   return <section className="nz-panel">{head}
     <div className="nz-card-b">
-      <div className="nz-cw-kv"><span className="k"><IntensityMetricIcon iconKey={definition.iconKey} size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />Intensity · per {definition.unitWording}</span>
+      <div className="nz-cw-kv"><span className="k"><IntensityMetricIcon iconKey={definition.iconKey} size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />Intensity · per {intensityPer(definition, { currency })}</span>
         <span className="v">{current.state === "resolved" ? `${figure(current.value)} ${current.unitShort}` : <span className="muted">Unavailable</span>}</span></div>
       <div className="nz-cw-kv"><span className="k">vs {earliest ? fyLabel(earliest.entry.year) : "earlier year"}</span>
         <span className={`v${change === null ? "" : change <= 0 ? " ok" : " up"}`}>{change === null
@@ -271,7 +275,7 @@ function IntensityDetail({ year, years, metrics, metricKey, onEvidence, manage }
           : `${change <= 0 ? "−" : "+"}${Math.abs(change).toFixed(1)}%`}</span></div>
       <div className="nz-cw-kv"><span className="k">{definition.label}</span>
         <span className="v">{current.state === "resolved"
-          ? `${current.denominator.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${definition.unitWording}${current.source === "site-floor-area" ? " · in-service sites" : ""}`
+          ? `${intensityDenominatorText(definition, current.denominator, { currency })}${current.source === "site-floor-area" ? " · in-service sites" : ""}`
           : <span className="muted">Not recorded</span>}</span></div>
       {current.state === "unavailable" ? <p className="sub" style={{ margin: "8px 0 0" }}>{current.reason}</p> : null}
       {maps}

@@ -56,7 +56,12 @@ describe("intensity metrics", () => {
   });
 
   it("carries the divider into the unit wording", () => {
-    assert.match(read("packages/contracts/src/intensityMetrics.ts"), /tCO₂e per \$\{definition\.divider\.toLocaleString/);
+    const contract = read("packages/contracts/src/intensityMetrics.ts");
+    // The divider is spoken in the one per-phrase every unit is built from (D3c), and a currency metric reads in the
+    // client's currency rather than its stored wording.
+    assert.match(contract, /return `\$\{definition\.divider\.toLocaleString\("en-GB"\)\} \$\{plural\(definition\.unitWording\)\}`/);
+    assert.match(contract, /return `tCO₂e per \$\{intensityPer\(definition, context\)\}`/);
+    assert.match(contract, /if \(definition\.unitKind === "currency"\) return currencyAmount\(context\.currency, definition\.divider\)/);
     assert.match(drawer, /intensityUnit\(\{ unitWording/, "the editor shows what the definition will read as");
   });
 

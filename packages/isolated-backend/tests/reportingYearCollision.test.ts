@@ -82,7 +82,7 @@ describe("two periods under one label — client history", () => {
 
 describe("two periods under one label — the intensity denominator", () => {
   const definitions: IntensityMetricDefinition[] = [{
-    key: "turnover", version: 1, label: "Turnover", unitWording: "£m", divider: 1_000_000,
+    key: "turnover", version: 1, label: "Turnover", unitWording: "£m", unitKind: "currency", divider: 1_000_000,
     iconKey: "coins", isStandard: true, valueSource: "entered", active: true, ordering: 1,
   }];
   const value = (reportingYear: number, from: string, to: string, amount: number): IntensityMetricValue => ({

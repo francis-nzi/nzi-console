@@ -10,7 +10,8 @@ import type { PoolLike } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 export * from "./intensityMetricRecords";
 
-export type SetIntensityMetricResult = { clientId: string; metricKey: string; version: number };
+/** `unitKind` is in the result so the audit event, whose after_json is this data, records the kind (D3c). */
+export type SetIntensityMetricResult = { clientId: string; metricKey: string; version: number; unitKind: "text" | "currency" };
 
 /** Define or redefine one metric. Standard metrics keep their identity: only wording, divider and icon move. */
 export function setClientIntensityMetric(pool: PoolLike, input: CommandInputMap["client.intensityMetric.set"], context: CommandContext): Promise<StoredOutcome<SetIntensityMetricResult>> {
@@ -25,19 +26,21 @@ export function setClientIntensityMetric(pool: PoolLike, input: CommandInputMap[
 
     const version = (previous?.version ?? 0) + 1;
     const ordering = input.ordering ?? previous?.ordering ?? 99;
+    // Absent from the input, the metric keeps its kind; a new one counts a thing (D3c).
+    const unitKind = input.unitKind ?? previous?.unit_kind ?? "text";
     await db.query(
       `INSERT INTO nzi_console.client_intensity_metrics
         (organisation_id,client_id,metric_key,version,label,unit_wording,divider,icon_key,is_standard,value_source,active,ordering,set_by,correlation_id,unit_kind)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11,$12,$13,$14)`,
       [context.organisationId, input.clientId, input.metricKey, version, input.label.trim(), input.unitWording.trim(),
         input.divider, input.iconKey, previous?.is_standard ?? false, previous?.value_source ?? "entered", ordering,
-        context.actorId, context.correlationId, previous?.unit_kind ?? "text"]);
+        context.actorId, context.correlationId, unitKind]);
 
     return {
-      data: { clientId: input.clientId, metricKey: input.metricKey, version },
+      data: { clientId: input.clientId, metricKey: input.metricKey, version, unitKind },
       entityType: "client_intensity_metric", entityId: `${input.clientId}:${input.metricKey}`, topic: "client.intensity_metric.set",
-      ...(previous ? { before: { label: previous.label, unitWording: previous.unit_wording, divider: previous.divider, iconKey: previous.icon_key, active: previous.active } } : {}),
-      after: { label: input.label.trim(), unitWording: input.unitWording.trim(), divider: input.divider, iconKey: input.iconKey, active: true },
+      ...(previous ? { before: { label: previous.label, unitWording: previous.unit_wording, divider: previous.divider, iconKey: previous.icon_key, unitKind: previous.unit_kind, active: previous.active } } : {}),
+      after: { label: input.label.trim(), unitWording: input.unitWording.trim(), divider: input.divider, iconKey: input.iconKey, unitKind, active: true },
     };
   });
 }
@@ -64,7 +67,7 @@ export function deactivateClientIntensityMetric(pool: PoolLike, input: CommandIn
         context.actorId, context.correlationId, previous.unit_kind]);
 
     return {
-      data: { clientId: input.clientId, metricKey: input.metricKey, version },
+      data: { clientId: input.clientId, metricKey: input.metricKey, version, unitKind: previous.unit_kind },
       entityType: "client_intensity_metric", entityId: `${input.clientId}:${input.metricKey}`, topic: "client.intensity_metric.deactivated",
       before: { active: true }, after: { active: false },
     };

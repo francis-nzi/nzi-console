@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  activeMetrics, indexedSeries, intensityUnit, intensityUnitShort, resolveIntensity,
+  activeMetrics, currencySymbol, indexedSeries, intensityDenominatorText, intensityPer, intensityUnit, intensityUnitShort, resolveIntensity,
   suggestIconKey, isIntensityIconKey, type IntensityMetricDefinition,
 } from "../src/intensityMetrics";
 
@@ -11,54 +11,113 @@ import {
  * shows — including when it shows nothing.
  */
 
+const GBP = { currency: "GBP" };
+
 const metric = (over: Partial<IntensityMetricDefinition> = {}): IntensityMetricDefinition => ({
-  key: "employees", version: 1, label: "Employees", unitWording: "employee", divider: 1,
+  key: "employees", version: 1, label: "Employees", unitWording: "employee", unitKind: "text", divider: 1,
   iconKey: "people", isStandard: true, valueSource: "entered", active: true, ordering: 1, ...over,
 });
 
 test("intensity is emissions × divider ÷ value", () => {
-  const perHead = resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 240 });
+  const perHead = resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 240, currency: "GBP" });
   assert.equal(perHead.state, "resolved");
   if (perHead.state === "resolved") assert.ok(Math.abs(perHead.value - 7.108) < 0.001);
 
   // The divider is part of the meaning: the same data per 1,000 is a thousand times larger.
-  const perThousand = resolveIntensity({ definition: metric({ divider: 1000 }), emissionsTco2e: 1706, value: 240 });
+  const perThousand = resolveIntensity({ definition: metric({ divider: 1000 }), emissionsTco2e: 1706, value: 240, currency: "GBP" });
   if (perThousand.state === "resolved" && perHead.state === "resolved") {
     assert.ok(Math.abs(perThousand.value - perHead.value * 1000) < 0.001);
   }
 });
 
 test("the unit says the divider out loud, and pluralises the noun", () => {
-  assert.equal(intensityUnit(metric()), "tCO₂e / employee");
-  assert.equal(intensityUnit(metric({ divider: 1000 })), "tCO₂e per 1,000 employees");
-  assert.equal(intensityUnit(metric({ unitWording: "box", divider: 100 })), "tCO₂e per 100 boxes");
-  assert.equal(intensityUnit(metric({ unitWording: "lorry", divider: 10 })), "tCO₂e per 10 lorries");
+  assert.equal(intensityUnit(metric(), GBP), "tCO₂e / employee");
+  assert.equal(intensityUnit(metric({ divider: 1000 }), GBP), "tCO₂e per 1,000 employees");
+  assert.equal(intensityUnit(metric({ unitWording: "box", divider: 100 }), GBP), "tCO₂e per 100 boxes");
+  assert.equal(intensityUnit(metric({ unitWording: "lorry", divider: 10 }), GBP), "tCO₂e per 10 lorries");
   // A notation is not a noun and must never gain an "s" — "1,000,000 £ms" is nonsense.
-  assert.equal(intensityUnit(metric({ unitWording: "m²", divider: 1000 })), "tCO₂e per 1,000 m²");
-  assert.equal(intensityUnit(metric({ unitWording: "£m", divider: 1 })), "tCO₂e / £m");
-  assert.equal(intensityUnit(metric({ unitWording: "£m", divider: 1000000 })), "tCO₂e per 1,000,000 £m");
-  assert.equal(intensityUnit(metric({ unitWording: "kWh", divider: 100 })), "tCO₂e per 100 kWh");
-  assert.equal(intensityUnit(metric({ unitWording: "m³", divider: 10 })), "tCO₂e per 10 m³");
-  assert.equal(intensityUnitShort(metric({ divider: 1000 })), "tCO₂e/1k employees");
+  assert.equal(intensityUnit(metric({ unitWording: "m²", divider: 1000 }), GBP), "tCO₂e per 1,000 m²");
+  assert.equal(intensityUnit(metric({ unitWording: "£m", divider: 1 }), GBP), "tCO₂e / £m");
+  // A unit that already carries its magnitude is never prefixed again — "per 1,000,000 £m" counted the million twice.
+  assert.equal(intensityUnit(metric({ unitWording: "£m", divider: 1000000 }), GBP), "tCO₂e per £m");
+  assert.equal(intensityUnit(metric({ unitWording: "kWh", divider: 100 }), GBP), "tCO₂e per 100 kWh");
+  assert.equal(intensityUnit(metric({ unitWording: "m³", divider: 10 }), GBP), "tCO₂e per 10 m³");
+  assert.equal(intensityUnitShort(metric({ divider: 1000 }), GBP), "tCO₂e/1k employees");
+});
+
+test("a currency metric reads in the client's currency, with the magnitude once (D3c)", () => {
+  const turnover = (divider: IntensityMetricDefinition["divider"]) => metric({ key: "turnover", label: "Turnover", unitWording: "£m", unitKind: "currency", divider });
+  // Every divider, in sterling: the symbol joins its magnitude, and an unnamed magnitude is spoken.
+  const sterling: Array<[IntensityMetricDefinition["divider"], string, string]> = [
+    [1, "tCO₂e per £", "tCO₂e/£"],
+    [10, "tCO₂e per £10", "tCO₂e/£10"],
+    [100, "tCO₂e per £100", "tCO₂e/£100"],
+    [1000, "tCO₂e per £k", "tCO₂e/£k"],
+    [10000, "tCO₂e per £10,000", "tCO₂e/£10,000"],
+    [100000, "tCO₂e per £100,000", "tCO₂e/£100,000"],
+    [1000000, "tCO₂e per £m", "tCO₂e/£m"],
+  ];
+  for (const [divider, long, short] of sterling) {
+    assert.equal(intensityUnit(turnover(divider), GBP), long, `long, per ${divider}`);
+    assert.equal(intensityUnitShort(turnover(divider), GBP), short, `short, per ${divider}`);
+  }
+  // The stored wording ("£m") is informational: a euro client reads euros, not pounds.
+  assert.equal(intensityUnit(turnover(1000000), { currency: "EUR" }), "tCO₂e per €m");
+  assert.equal(intensityUnit(turnover(1000), { currency: "USD" }), "tCO₂e per $k");
+  assert.equal(intensityUnitShort(turnover(1000000), { currency: "EUR" }), "tCO₂e/€m");
+  // A code with no symbol is written as the code, and a code is a word: it takes a space.
+  assert.equal(intensityUnit(turnover(1000000), { currency: "AED" }), "tCO₂e per AED m");
+  assert.equal(intensityUnit(turnover(1000), { currency: "CHF" }), "tCO₂e per CHF k");
+  assert.equal(intensityUnit(turnover(1), { currency: "AED" }), "tCO₂e per AED");
+  assert.equal(intensityUnitShort(turnover(1000000), { currency: "AED" }), "tCO₂e/AED m");
+  // Q5: the one client stored as "UAE" (a country, not a currency) reads as dirhams.
+  assert.equal(intensityUnit(turnover(1000000), { currency: "UAE" }), "tCO₂e per AED m");
+  assert.equal(intensityUnit(turnover(1000000), { currency: " gbp " }), "tCO₂e per £m", "trimmed and case-blind");
+});
+
+test("currencySymbol is the one place a currency becomes a symbol (D3c)", () => {
+  assert.deepEqual(["GBP", "EUR", "USD", "AED", "UAE", "eur", "JPY"].map(currencySymbol), ["£", "€", "$", "AED", "AED", "€", "JPY"]);
+});
+
+test("the per-phrase and the denominator follow the same rules (D3c)", () => {
+  const turnover = metric({ key: "turnover", label: "Turnover", unitWording: "£m", unitKind: "currency", divider: 1000000 });
+  assert.equal(intensityPer(turnover, GBP), "£m");
+  assert.equal(intensityPer(turnover, { currency: "AED" }), "AED m");
+  assert.equal(intensityPer(metric(), GBP), "employee");
+  assert.equal(intensityPer(metric({ divider: 1000 }), GBP), "1,000 employees");
+  // A currency value is whole units (0143): money, never "12,500,000 £m".
+  assert.equal(intensityDenominatorText(turnover, 12_500_000, GBP), "£12,500,000");
+  assert.equal(intensityDenominatorText(turnover, 3_000_000, { currency: "UAE" }), "AED 3,000,000");
+  assert.equal(intensityDenominatorText(metric(), 240, GBP), "240 employee");
+});
+
+test("the resolver stamps the unit in the client's currency, so what is frozen is right (D3c)", () => {
+  const turnover = metric({ key: "turnover", label: "Turnover", unitWording: "£m", unitKind: "currency", divider: 1000000 });
+  const euros = resolveIntensity({ definition: turnover, emissionsTco2e: 50, value: 12_500_000, currency: "EUR" });
+  assert.equal(euros.state, "resolved");
+  if (euros.state === "resolved") {
+    assert.equal(euros.value, 4, "50 tCO₂e over €12.5m is 4 tCO₂e per €m");
+    assert.deepEqual([euros.unit, euros.unitShort], ["tCO₂e per €m", "tCO₂e/€m"]);
+  }
 });
 
 test("a missing value is unavailable, never zero", () => {
-  const none = resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: null });
+  const none = resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: null, currency: "GBP" });
   assert.equal(none.state, "unavailable");
   if (none.state === "unavailable") assert.match(none.reason, /No employees value was recorded/);
 
   // Nothing to divide by, and nothing to divide.
-  assert.equal(resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 0 }).state, "unavailable");
-  const noTotal = resolveIntensity({ definition: metric(), emissionsTco2e: null, value: 240 });
+  assert.equal(resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 0, currency: "GBP" }).state, "unavailable");
+  const noTotal = resolveIntensity({ definition: metric(), emissionsTco2e: null, value: 240, currency: "GBP" });
   assert.equal(noTotal.state, "unavailable");
   if (noTotal.state === "unavailable") assert.match(noTotal.reason, /No assured total/);
 });
 
 test("a site-derived metric explains itself differently from a typed one", () => {
   const floor = metric({ key: "floor-area", label: "Floor area", unitWording: "m²", valueSource: "site-floor-area", isStandard: false });
-  const missing = resolveIntensity({ definition: floor, emissionsTco2e: 1706, value: null });
+  const missing = resolveIntensity({ definition: floor, emissionsTco2e: 1706, value: null, currency: "GBP" });
   if (missing.state === "unavailable") assert.match(missing.reason, /No floor area could be resolved/);
-  const resolved = resolveIntensity({ definition: floor, emissionsTco2e: 1706, value: 3400 });
+  const resolved = resolveIntensity({ definition: floor, emissionsTco2e: 1706, value: 3400, currency: "GBP" });
   if (resolved.state === "resolved") assert.equal(resolved.source, "site-floor-area");
 });
 
@@ -74,8 +133,8 @@ test("the active set puts the standard pair first, and drops what was deactivate
 
 test("indexing needs two years, and reports the real figure alongside", () => {
   const years = [
-    { year: 2023, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1842, value: 230 }) },
-    { year: 2024, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 240 }) },
+    { year: 2023, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1842, value: 230, currency: "GBP" }) },
+    { year: 2024, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 240, currency: "GBP" }) },
   ];
   const series = indexedSeries(years)!;
   assert.equal(series[0]!.value, 100, "the first resolved year is the base");
@@ -83,7 +142,7 @@ test("indexing needs two years, and reports the real figure alongside", () => {
   assert.ok(Math.abs(series[1]!.absolute - 7.108) < 0.001, "the real figure travels with the index");
   // One point is not a shape.
   assert.equal(indexedSeries(years.slice(0, 1)), null);
-  assert.equal(indexedSeries([{ year: 2024, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: null }) }]), null);
+  assert.equal(indexedSeries([{ year: 2024, intensity: resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: null, currency: "GBP" }) }]), null);
 });
 
 test("an icon is suggested from the name and always resolves to the curated set", () => {

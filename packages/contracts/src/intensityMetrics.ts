@@ -16,12 +16,21 @@
 export const intensityDividers = [1, 10, 100, 1000, 10000, 100000, 1000000] as const;
 export type IntensityDivider = (typeof intensityDividers)[number];
 
+/**
+ * What the denominator counts (0143). A `text` metric counts the thing its wording names. A `currency` metric counts
+ * whole units of the client's currency and stores no symbol: the symbol is derived at display from the currency, so
+ * the same metric reads "per £m" for one client and "per €m" for another.
+ */
+export type IntensityUnitKind = "text" | "currency";
+export const intensityUnitKinds: readonly IntensityUnitKind[] = ["text", "currency"];
+
 export type IntensityMetricDefinition = {
   key: string;
   version: number;
   label: string;
-  /** The noun the denominator counts — "employee", "£m", "m²", "vehicle". */
+  /** The noun the denominator counts — "employee", "m²", "vehicle". Informational only on a `currency` metric. */
   unitWording: string;
+  unitKind: IntensityUnitKind;
   divider: IntensityDivider;
   /** A key into the curated icon set, resolved at render time. Never an image or an emoji. */
   iconKey: string;
@@ -72,16 +81,75 @@ export type ResolvedIntensity =
   | { state: "unavailable"; metricKey: string; reason: string };
 
 /**
+ * The symbol a currency is written with — the one function Phase E swaps its currency lookup into; the signature
+ * stays. A code with no symbol here is written as the code itself ("AED"), which the unit then spaces ("AED m").
+ *
+ * `UAE` is read as `AED` (D3, Q5): one client's currency was stored as the country rather than the currency code.
+ * The display reads it correctly here; the stored value is corrected through a governed `client.update`.
+ */
+export function currencySymbol(code: string): string {
+  const normalised = code.trim().toUpperCase();
+  const iso = normalised === "UAE" ? "AED" : normalised;
+  return CURRENCY_SYMBOLS[iso] ?? iso;
+}
+const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = { GBP: "£", EUR: "€", USD: "$" };
+
+/** "£m", "€k", "$", "£100", "AED m" — the money the denominator is counted in, magnitude included. */
+function currencyAmount(currency: string, divider: number): string {
+  const symbol = currencySymbol(currency);
+  // A symbol joins its magnitude ("£m"); a code is a word and takes a space ("AED m").
+  const joiner = /^[A-Z]{2,}$/.test(symbol) ? " " : "";
+  if (divider === 1) return symbol;
+  if (divider === 1000000) return `${symbol}${joiner}m`;
+  if (divider === 1000) return `${symbol}${joiner}k`;
+  return `${symbol}${joiner}${divider.toLocaleString("en-GB")}`;
+}
+
+/**
+ * A text unit that already carries a magnitude — "£m", "$k", "AED m" — counts millions or thousands itself, so the
+ * divider is never spoken again: "tCO₂e per 1,000,000 £m" counts the million twice.
+ */
+const carriesMagnitude = (wording: string) => /^([£$€]|[A-Z]{3}\s)\s*(m|k|bn)$/i.test(wording.trim());
+
+/** Where the unit is read: the currency of the client whose figures these are (the job's client, the portal's). */
+export type IntensityUnitContext = { currency: string };
+
+/**
  * The unit label, with the divider spoken aloud: a divider of 1,000 against "employee"
  * reads "tCO₂e per 1,000 employees", because the number means nothing without it.
+ * A `currency` metric reads in the client's currency: "tCO₂e per £m", "tCO₂e per €k", "tCO₂e per AED m".
  */
-export function intensityUnit(definition: Pick<IntensityMetricDefinition, "unitWording" | "divider">): string {
-  if (definition.divider === 1) return `tCO₂e / ${definition.unitWording}`;
-  return `tCO₂e per ${definition.divider.toLocaleString("en-GB")} ${plural(definition.unitWording)}`;
+export function intensityUnit(definition: Pick<IntensityMetricDefinition, "unitWording" | "divider" | "unitKind">, context: IntensityUnitContext): string {
+  if (definition.unitKind === "text" && definition.divider === 1) return `tCO₂e / ${definition.unitWording}`;
+  return `tCO₂e per ${intensityPer(definition, context)}`;
+}
+
+/**
+ * What one unit of intensity is per — "£m", "€k", "AED m", "1,000 employees", "employee" — for the places that say
+ * "per …" without the tCO₂e: a selector, a chart title, "Intensity · per £m". The same rules as `intensityUnit`.
+ */
+export function intensityPer(definition: Pick<IntensityMetricDefinition, "unitWording" | "divider" | "unitKind">, context: IntensityUnitContext): string {
+  if (definition.unitKind === "currency") return currencyAmount(context.currency, definition.divider);
+  if (definition.divider === 1 || carriesMagnitude(definition.unitWording)) return definition.unitWording.trim();
+  return `${definition.divider.toLocaleString("en-GB")} ${plural(definition.unitWording)}`;
+}
+
+/**
+ * The denominator itself, as a reader should see it. A currency metric's value is whole units of the client's
+ * currency (0143), so it reads as money — "£12,500,000", "AED 3,000,000" — never "12,500,000 £m". A text metric
+ * reads as its number and its wording, as it always has.
+ */
+export function intensityDenominatorText(definition: Pick<IntensityMetricDefinition, "unitWording" | "unitKind">, value: number, context: IntensityUnitContext): string {
+  const amount = value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+  if (definition.unitKind !== "currency") return `${amount} ${definition.unitWording}`;
+  const symbol = currencySymbol(context.currency);
+  return /^[A-Z]{2,}$/.test(symbol) ? `${symbol} ${amount}` : `${symbol}${amount}`;
 }
 
 /** A compact form for chart axes and tooltips, where the long form will not fit. */
-export function intensityUnitShort(definition: Pick<IntensityMetricDefinition, "unitWording" | "divider">): string {
+export function intensityUnitShort(definition: Pick<IntensityMetricDefinition, "unitWording" | "divider" | "unitKind">, context: IntensityUnitContext): string {
+  if (definition.unitKind === "currency") return `tCO₂e/${currencyAmount(context.currency, definition.divider)}`;
+  if (definition.divider !== 1 && carriesMagnitude(definition.unitWording)) return `tCO₂e/${definition.unitWording.trim()}`;
   const unit = definition.divider === 1 ? definition.unitWording : `${compactDivider(definition.divider)} ${plural(definition.unitWording)}`;
   return `tCO₂e/${unit}`;
 }
@@ -106,6 +174,8 @@ export function resolveIntensity(input: {
   emissionsTco2e: number | null;
   value: number | null;
   source?: IntensityDenominatorSource;
+  /** The client's currency, so the stamped unit of a currency metric is right at source — and frozen as such. */
+  currency: string;
 }): ResolvedIntensity {
   const { definition, emissionsTco2e, value } = input;
   const metricKey = definition.key;
@@ -127,8 +197,8 @@ export function resolveIntensity(input: {
     state: "resolved", metricKey,
     value: (emissionsTco2e * definition.divider) / value,
     denominator: value,
-    unit: intensityUnit(definition),
-    unitShort: intensityUnitShort(definition),
+    unit: intensityUnit(definition, { currency: input.currency }),
+    unitShort: intensityUnitShort(definition, { currency: input.currency }),
     source: input.source ?? (definition.valueSource === "site-floor-area" ? "site-floor-area" : "recorded"),
   };
 }
