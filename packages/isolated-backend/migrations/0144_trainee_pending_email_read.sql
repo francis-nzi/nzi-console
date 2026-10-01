@@ -19,10 +19,16 @@
 --   organisation_id   the tenant policy's column
 --   trainee_id        whose change it is
 --   new_email         the address shown to the person ("pending: X")
---   confirmed_at, expires_at, requested_at   whether it is still pending, and the latest one
+--   confirmed_at, cancelled_at, expires_at, requested_at   whether it is still pending, and the latest one
+--
+-- ## And a change the person cancelled is not pending
+--
+-- The read also excluded only confirmed and expired changes, so a change the person cancelled went on showing as
+-- "pending" until it expired. The read now requires `cancelled_at IS NULL` too, which is why `cancelled_at` is the
+-- seventh column here.
 --
 -- No `INSERT`, `UPDATE` or `DELETE` — a change is still requested, confirmed and cancelled only through the auth
--- role. No access to `token_hash`, `current_email`, `cancelled_at` or the sealed and index columns. Row-level
+-- role. No access to `token_hash`, `current_email`, `change_id` or the sealed and index columns. Row-level
 -- security (0072, FORCE) is unchanged, so the read stays confined to the tenant.
 --
 -- `new_email` is still plaintext ("awaiting-auth-bridge" in the PII inventory); when it moves to its sealed column,
@@ -30,7 +36,7 @@
 
 BEGIN;
 
-GRANT SELECT (organisation_id, trainee_id, new_email, confirmed_at, expires_at, requested_at)
+GRANT SELECT (organisation_id, trainee_id, new_email, confirmed_at, cancelled_at, expires_at, requested_at)
   ON nzi_console.trainee_email_changes TO nzi_console_app;
 
 COMMIT;

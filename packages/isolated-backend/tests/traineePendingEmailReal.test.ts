@@ -13,7 +13,7 @@ import { getTraineePortal } from "../src/traineePortal";
  */
 const ORG = "org-pending";
 const OTHER = "org-other";
-const EXPECTED_COLUMNS = ["confirmed_at", "expires_at", "new_email", "organisation_id", "requested_at", "trainee_id"];
+const EXPECTED_COLUMNS = ["cancelled_at", "confirmed_at", "expires_at", "new_email", "organisation_id", "requested_at", "trainee_id"];
 
 describe("A trainee's pending sign-in change, read by the app role (0144)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
@@ -54,6 +54,22 @@ describe("A trainee's pending sign-in change, read by the app role (0144)", { sk
     assert.equal(model.details.pendingEmail, "new-tr-1@example.test");
   });
 
+  it("does not show a change the person cancelled as pending, though it has not expired", async () => {
+    await admin.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+    // A newer request, cancelled an hour later: unexpired, unconfirmed — and not pending.
+    await admin.query(`INSERT INTO nzi_console.trainee_email_changes (organisation_id, change_id, trainee_id, current_email, new_email, token_hash, expires_at, requested_at, cancelled_at)
+      VALUES ($1, 'cancelled', 'tr-1', 'alan@example.test', 'withdrawn@example.test', 'hash-cancelled', now() + interval '1 day', now() + interval '1 minute', now() + interval '1 hour')`, [ORG]);
+    const model = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01" }));
+    assert.equal(model.details.pendingEmail, "new-tr-1@example.test", "the live request, not the newer cancelled one");
+    // Cancel the live one too: nothing is pending.
+    await admin.query(`UPDATE nzi_console.trainee_email_changes SET cancelled_at = now() WHERE change_id = $1`, [`${ORG}-live`]);
+    const none = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01" }));
+    assert.equal(none.details.pendingEmail, null, "a cancelled change is not pending");
+    // Put the fixture back for the tests that follow.
+    await admin.query(`UPDATE nzi_console.trainee_email_changes SET cancelled_at = NULL WHERE change_id = $1`, [`${ORG}-live`]);
+    await admin.query(`DELETE FROM nzi_console.trainee_email_changes WHERE change_id = 'cancelled'`);
+  });
+
   it("grants exactly the columns that read uses, and nothing at table level", async () => {
     const { rows: columns } = await admin.query<{ column_name: string; privilege_type: string }>(
       `SELECT column_name, privilege_type FROM information_schema.column_privileges
@@ -68,7 +84,7 @@ describe("A trainee's pending sign-in change, read by the app role (0144)", { sk
   });
 
   it("keeps the confirmation token's hash, the current address and the sealed columns from the app role", async () => {
-    for (const column of ["token_hash", "current_email", "cancelled_at", "change_id", "new_email_sealed", "current_email_bidx"]) {
+    for (const column of ["token_hash", "current_email", "change_id", "new_email_sealed", "current_email_bidx"]) {
       await assert.rejects(asApp(ORG, `SELECT ${column} FROM nzi_console.trainee_email_changes`), /permission denied/, column);
     }
   });

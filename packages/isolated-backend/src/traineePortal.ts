@@ -127,7 +127,7 @@ export async function getTraineePortal(
       [input.traineeId]),
     db.query<{ new_email: string }>(
       `SELECT new_email FROM nzi_console.trainee_email_changes
-       WHERE trainee_id=$1 AND confirmed_at IS NULL AND expires_at > now()
+       WHERE trainee_id=$1 AND confirmed_at IS NULL AND cancelled_at IS NULL AND expires_at > now()
        ORDER BY requested_at DESC LIMIT 1`, [input.traineeId]),
     db.query<{ booking_id: string; issuer_name: string }>(
       `SELECT booking_id, issuer_name FROM nzi_console.training_certificates
