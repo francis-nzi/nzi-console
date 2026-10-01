@@ -72,6 +72,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       action_categories_lookup: 1, governance_subjects_lookup: 1, bd_bin_reasons_lookup: 1, uom_lookup: 2, job_item_categories_lookup: 2,
       // Jobs configuration (admin C4): taken whole, except the completions — those of the in-scope jobs only.
       vat_rates_lookup: 3, milestone_templates: 3, milestone_template_items: 7, job_template_milestone_completions: 1, job_file_types_lookup: 3,
+      // Currencies (admin E1): both of v7's tables, taken whole.
+      currency_lookup: 5, currencies_lookup: 4,
       // Staff (admin B2): taken whole — the portal login too, which the importer refuses. Only the ruled columns are read.
       users: 6,
       // Organisation settings (admin D2): the 16 allow-listed keys of 20 — the bank rows and anything else stay behind.

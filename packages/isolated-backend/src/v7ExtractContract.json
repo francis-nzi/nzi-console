@@ -454,6 +454,31 @@
       "is_active"
     ]
   },
+  "currency_lookup": {
+    "filter": "all",
+    "required": [
+      "currency_id",
+      "currency_code",
+      "currency_name"
+    ],
+    "optional": [
+      "symbol",
+      "is_default",
+      "is_active",
+      "sort_order"
+    ]
+  },
+  "currencies_lookup": {
+    "filter": "all",
+    "required": [
+      "currency_code"
+    ],
+    "optional": [
+      "symbol",
+      "name",
+      "is_active"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

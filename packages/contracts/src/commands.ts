@@ -1,6 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
+import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -77,6 +78,16 @@ export type CommandKey =
   | "job_file_type.update"
   | "job_file_type.deactivate"
   | "job_file_type.reinstate"
+  | "vat.create"
+  | "vat.update"
+  | "vat.set_default"
+  | "vat.deactivate"
+  | "vat.reinstate"
+  | "currency.create"
+  | "currency.update"
+  | "currency.set_default"
+  | "currency.deactivate"
+  | "currency.reinstate"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -589,6 +600,17 @@ export type CommandInputMap = {
   "job_file_type.update": FileTypeEditableFields & { fileTypeId: string; expectedVersion: number };
   "job_file_type.deactivate": { fileTypeId: string; expectedVersion: number };
   "job_file_type.reinstate": { fileTypeId: string; expectedVersion: number };
+  // Commercial lookups (admin Phase E1; ruled phaseE plan E-Q1–E-Q3). admin.lookups throughout; exactly one default each.
+  "vat.create": VatRateEditableFields;
+  "vat.update": VatRateEditableFields & { vatRateId: string; expectedVersion: number };
+  "vat.set_default": { vatRateId: string; expectedVersion: number };
+  "vat.deactivate": { vatRateId: string; expectedVersion: number };
+  "vat.reinstate": { vatRateId: string; expectedVersion: number };
+  "currency.create": CurrencyEditableFields & { code: string };
+  "currency.update": CurrencyEditableFields & { code: string; expectedVersion: number };
+  "currency.set_default": { code: string; expectedVersion: number };
+  "currency.deactivate": { code: string; expectedVersion: number };
+  "currency.reinstate": { code: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -801,6 +823,32 @@ const fileTypeIssues = (issues: CommandIssue[], input: FileTypeEditableFields) =
   else if (input.displayName.trim().length > FILE_TYPE_NAME_MAX) issues.push({ field: "displayName", code: "TOO_LONG", message: `A display name is at most ${FILE_TYPE_NAME_MAX} characters.` });
   if (typeof input.storageFolderKey !== "string" || !FILE_TYPE_FOLDER_PATTERN.test(input.storageFolderKey.trim())) issues.push({ field: "storageFolderKey", code: "INVALID", message: "A folder is lower-case letters, digits and hyphens, up to 41 characters." });
   if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
+};
+/** A VAT rate's editable fields: a name within bounds, a percentage 0–100 to two places (admin E1). */
+const vatRateIssues = (issues: CommandIssue[], input: VatRateEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A name is required." });
+  else if (input.name.trim().length > VAT_RATE_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${VAT_RATE_NAME_MAX} characters.` });
+  if (!isVatPercentage(input.ratePct)) issues.push({ field: "ratePct", code: "INVALID", message: "A rate is a percentage from 0 to 100, to two places at most." });
+};
+/** A currency's editable fields: a name and a symbol within bounds (admin E1). */
+const currencyIssues = (issues: CommandIssue[], input: CurrencyEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A name is required." });
+  else if (input.name.trim().length > CURRENCY_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${CURRENCY_NAME_MAX} characters.` });
+  if (!text(input.symbol)) issues.push({ field: "symbol", code: "REQUIRED", message: "A symbol is required — the code itself (\"AED\") if the currency has no sign of its own." });
+  else if (input.symbol.trim().length > CURRENCY_SYMBOL_MAX) issues.push({ field: "symbol", code: "TOO_LONG", message: `A symbol is at most ${CURRENCY_SYMBOL_MAX} characters.` });
+};
+const currencyCodeIssue = (issues: CommandIssue[], code: unknown) => {
+  if (!isCurrencyCodeForSet(code)) issues.push({ field: "code", code: "INVALID", message: code === "UAE"
+    ? "\"UAE\" is the country, not a currency: the UAE dirham is AED."
+    : "A currency code is its three-letter ISO-4217 code in capitals, e.g. GBP." });
+};
+const vatIdIssues = (issues: CommandIssue[], input: { vatRateId: string; expectedVersion: number }) => {
+  required(issues, "vatRateId", input.vatRateId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+const currencyIdIssues = (issues: CommandIssue[], input: { code: string; expectedVersion: number }) => {
+  currencyCodeIssue(issues, input.code);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1295,6 +1343,60 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     required(issues, "fileTypeId", input.fileTypeId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Commercial lookups (admin Phase E1). admin.lookups; a deactivation needs a reason, and so does moving the default.
+  "vat.create": { key: "vat.create", label: "Add a VAT rate", permission: "admin.lookups", reasonRequired: false, transaction: "VAT rate + audit + outbox + idempotency", auditAction: "vat.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    vatRateIssues(issues, input);
+    return issues;
+  } },
+  "vat.update": { key: "vat.update", label: "Edit a VAT rate", permission: "admin.lookups", reasonRequired: false, transaction: "versioned VAT rate + audit + outbox + idempotency", auditAction: "vat.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    vatRateIssues(issues, input);
+    vatIdIssues(issues, input);
+    return issues;
+  } },
+  "vat.set_default": { key: "vat.set_default", label: "Make a VAT rate the default", permission: "admin.lookups", reasonRequired: true, transaction: "default moved (one per organisation) + audit + outbox + idempotency", auditAction: "vat.default_set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    vatIdIssues(issues, input);
+    return issues;
+  } },
+  "vat.deactivate": { key: "vat.deactivate", label: "Deactivate a VAT rate", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "vat.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    vatIdIssues(issues, input);
+    return issues;
+  } },
+  "vat.reinstate": { key: "vat.reinstate", label: "Reinstate a VAT rate", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "vat.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    vatIdIssues(issues, input);
+    return issues;
+  } },
+  "currency.create": { key: "currency.create", label: "Add a currency", permission: "admin.lookups", reasonRequired: false, transaction: "currency + audit + outbox + idempotency", auditAction: "currency.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    currencyCodeIssue(issues, input.code);
+    currencyIssues(issues, input);
+    return issues;
+  } },
+  "currency.update": { key: "currency.update", label: "Edit a currency", permission: "admin.lookups", reasonRequired: false, transaction: "versioned currency + audit + outbox + idempotency", auditAction: "currency.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    currencyIssues(issues, input);
+    currencyIdIssues(issues, input);
+    return issues;
+  } },
+  "currency.set_default": { key: "currency.set_default", label: "Make a currency the default", permission: "admin.lookups", reasonRequired: true, transaction: "default moved (one per organisation) + audit + outbox + idempotency", auditAction: "currency.default_set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    currencyIdIssues(issues, input);
+    return issues;
+  } },
+  "currency.deactivate": { key: "currency.deactivate", label: "Deactivate a currency", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "currency.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    currencyIdIssues(issues, input);
+    return issues;
+  } },
+  "currency.reinstate": { key: "currency.reinstate", label: "Reinstate a currency", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "currency.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    currencyIdIssues(issues, input);
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which

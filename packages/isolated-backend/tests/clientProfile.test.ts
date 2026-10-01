@@ -23,6 +23,8 @@ const pool = (calls: Call[], updateRows: Array<{ version: number }>, currentRows
       if (sql.includes("UPDATE nzi_console.clients")) return { rows: updateRows };
       if (sql.includes("SELECT version FROM nzi_console.clients")) return { rows: currentRows };
       // The governed-field read before an update (FYE + baseline), matching the fixture profile so nothing is re-baselined.
+      // E1: client.update checks a changed currency against the organisation's active currencies.
+      if (sql.includes("FROM nzi_console.currencies")) return { rows: [{ active: true }] };
       if (sql.includes("financial_year_end_month, baseline_period_start")) return { rows: (currentRows.length ? currentRows : updateRows.map((row) => ({ version: row.version - 1 }))).map((row) => ({ financial_year_end_month: 12, baseline_period_start: "2022-08-01", baseline_period_end: "2023-07-31", baseline_scope1_tco2e: null, baseline_scope2_tco2e: null, baseline_scope3_tco2e: null, baseline_total_tco2e: null, ...row })) };
       return { rows: [] };
     },

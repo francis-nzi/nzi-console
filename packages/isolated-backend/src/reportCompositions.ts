@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
   composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
-  overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit,
+  overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit, withCurrencyDirectory,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
+import { readCurrencyDirectory } from "./commercialLookups";
 import { listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
@@ -128,16 +129,18 @@ async function composeIntensity(db: Queryable, input: {
   const [definitions, values, clientRows] = await Promise.all([
     listClientIntensityMetrics(db, input.clientId),
     listJobIntensityValues(db, input.jobId, input.snapshot.reportingYear),
-    db.query<{ currency: string }>(`SELECT currency FROM nzi_console.clients WHERE client_id = $1`, [input.clientId]),
+    db.query<{ currency: string; organisation_id: string }>(`SELECT currency, organisation_id FROM nzi_console.clients WHERE client_id = $1`, [input.clientId]),
   ]);
-  // The client's currency, so a currency metric is frozen reading "tCO₂e per £m" (or €m, AED m) — D3c.
+  // The client's currency, so a currency metric is frozen reading "tCO₂e per £m" (or €m, AED m) — D3c — in the issuing
+  // organisation's own symbols (E1: its `currencies`, read here and held only for the synchronous work below).
   const currency = clientRows.rows[0]?.currency ?? "GBP";
+  const directory = clientRows.rows[0] ? await readCurrencyDirectory(db, clientRows.rows[0].organisation_id) : [];
   const live = activeMetrics(definitions);
   if (live.length === 0) {
     return { state: "unavailable", reason: "No intensity measures were set up for this client when the report was issued." };
   }
   return {
-    metrics: live.map((definition) => {
+    metrics: withCurrencyDirectory(directory, () => live.map((definition) => {
       const recorded = values.find((value) => value.metricKey === definition.key) ?? null;
       const resolved = resolveIntensity({
         definition,
@@ -157,7 +160,7 @@ async function composeIntensity(db: Queryable, input: {
           // inventing a second explanation for the same gap.
           : resolved.reason,
       };
-    }),
+    })),
     provenance: provenanceFrom(input.snapshot),
   };
 }

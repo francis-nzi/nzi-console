@@ -34,6 +34,9 @@ describe("Currency intensity (D3c), against a real database", { skip: TEST_DATAB
     // A euro client, a dirham client stored as "UAE" (Q5), and a sterling one.
     await q(`INSERT INTO nzi_console.clients (organisation_id, client_id, name, status, currency) VALUES
       ($1, 'eu', 'Euro Client', 'active', 'EUR'), ($1, 'ae', 'Dirham Client', 'active', 'UAE'), ($1, 'gb', 'Sterling Client', 'active', 'GBP')`, [ORG]);
+    // E1: the organisation's set (0145 provisioned GBP; an admin adds the euro, with a symbol of their own choosing) —
+    // what currencySymbol reads in a report. "EU€" is not the built-in €, so a report reading it proves the table is read.
+    await q(`INSERT INTO nzi_console.currencies (organisation_id, code, name, symbol, created_by, updated_by) VALUES ($1, 'EUR', 'Euro', 'EU€', 'ada', 'ada')`, [ORG]);
   });
   after(async () => { await database?.end(); });
 
@@ -77,7 +80,7 @@ describe("Currency intensity (D3c), against a real database", { skip: TEST_DATAB
     assert.ok(intensity && !("state" in intensity), "the intensity section composed");
     const revenue = intensity.metrics.find((metric) => metric.key === "revenue");
     // 35 tCO₂e over €7,000,000 at the per-€k divider the metric now carries: 0.005 tCO₂e per €k.
-    assert.equal(revenue?.unit, "tCO₂e per €k");
+    assert.equal(revenue?.unit, "tCO₂e per EU€k", "frozen in the issuing organisation's own symbol (E1), not a built-in one");
     assert.ok(Math.abs((revenue?.value ?? 0) - 0.005) < 1e-9);
     assert.equal(intensity.metrics.find((metric) => metric.key === "vehicles")?.unit, "tCO₂e / vehicle", "a text metric reads as it always has");
   });

@@ -236,6 +236,21 @@ export function syntheticRows(): Rows {
       { file_type_id: "2", file_type_key: "generated_report", display_name: "Generated Report", storage_folder_key: "generated-reports", sort_order: "20", is_active: "t" },
       { file_type_id: "3", file_type_key: "site_photos", display_name: "Site photos", storage_folder_key: "site-photos", sort_order: "30", is_active: "t" },
     ],
+    // v7's two currency tables (admin E1), as live v7 holds them: the current one with its default, an inactive row and
+    // the dirham stored as the country "UAE"; the legacy one repeating three codes and adding one of its own.
+    currency_lookup: [
+      { currency_id: "1", currency_code: "GBP", currency_name: "British Pound", symbol: "£", is_default: "t", is_active: "t", sort_order: "10" },
+      { currency_id: "2", currency_code: "EUR", currency_name: "Euro", symbol: "€", is_default: "f", is_active: "t", sort_order: "20" },
+      { currency_id: "3", currency_code: "USD", currency_name: "US Dollar", symbol: "$", is_default: "f", is_active: "t", sort_order: "30" },
+      { currency_id: "4", currency_code: "AUD", currency_name: "Australian Dollar", symbol: "A$", is_default: "f", is_active: "f", sort_order: "40" },
+      { currency_id: "5", currency_code: "UAE", currency_name: "UAE Dirham", symbol: "د.إ", is_default: "f", is_active: "t", sort_order: "50" },
+    ],
+    currencies_lookup: [
+      { currency_code: "GBP", symbol: "£", name: "Pound Sterling", is_active: "t" },
+      { currency_code: "USD", symbol: "$", name: "US Dollar", is_active: "t" },
+      { currency_code: "EUR", symbol: "€", name: "Euro", is_active: "t" },
+      { currency_code: "CHF", symbol: "CHF", name: "Swiss Franc", is_active: "t" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.

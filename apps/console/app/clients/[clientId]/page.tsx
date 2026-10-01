@@ -4,6 +4,7 @@ import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
 import { dataEntryAdapterEnabled } from "../../lib/featureFlags";
 import { ClientWorkspaceView } from "./ClientWorkspaceView";
+import { WithCurrencyDirectory } from "../../lib/currencyDirectory";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     initialArea={typeof area === "string" ? area : undefined}
   />;
   // No jobs anywhere is a real, empty jobs list — not a reason to blank the client.
-  return <ScreenState result={workspaceResult} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(workspace) => jobResult.state === "empty"
+  // E1: intensity units read in the organisation's own currency symbols.
+  return <WithCurrencyDirectory><ScreenState result={workspaceResult} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(workspace) => jobResult.state === "empty"
     ? render(workspace, [])
     : <ScreenState result={jobResult} chrome={{ activeId: "clients", label: "Clients", href: "/clients" }}>{(jobData) => render(workspace, jobData.jobs)}</ScreenState>}
-  </ScreenState>;
+  </ScreenState></WithCurrencyDirectory>;
 }

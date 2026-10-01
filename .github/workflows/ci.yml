@@ -511,6 +511,13 @@ jobs:
       # client's currency, and an issued report freezes the unit in it ("tCO₂e per €m"), never the bare wording.
       - name: Turnover intensity reads in the client's currency, and an issued report keeps what it said
         run: npx tsx --test packages/isolated-backend/tests/currencyIntensityReal.test.ts
+      # E1 (0145): currencies in their own table with exactly one default (and VAT rates now too), the one "UAE" client
+      # corrected to AED and audited, the vat.* and currency.* commands, client.update validating its currency, and the
+      # directory currencySymbol reads; then v7's two currency tables consolidated by load:v7-currencies.
+      - name: VAT rates and currencies are edited with exactly one default, and the client currency is one of them
+        run: npx tsx --test packages/isolated-backend/tests/commercialLookupsReal.test.ts
+      - name: v7's two currency tables arrive as one clean ISO set, with no UAE alias
+        run: npx tsx --test packages/isolated-backend/tests/v7CurrenciesLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

@@ -11,6 +11,7 @@ import { LcaWorkspace } from "../lca/LcaWorkspace";
 import { TrainingWorkspace } from "../training/TrainingWorkspace";
 import { jobModuleEnabled } from "../../lib/jobModuleFlags";
 import { JobMilestonesPanel } from "../JobMilestonesPanel";
+import { WithCurrencyDirectory } from "../../lib/currencyDirectory";
 import type { JobMilestonesView } from "@nzi/isolated-backend";
 import type { TrainingRunRecord, JobEmissions } from "@nzi/isolated-backend";
 
@@ -59,7 +60,8 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     ? milestonesResult.data.view ? <JobMilestonesPanel view={milestonesResult.data.view} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} /> : null
     : milestonesResult.state === "loading" || milestonesResult.state === "empty" ? null
     : <section className="nz-body nz-milestones-body"><div className="nz-panel nz-milestones"><div className="nz-banner warn" role="alert"><div>The milestones could not be read just now, so none are shown — this is not "Not set".</div></div></div></section>;
-  return <ScreenState result={result} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => {
+  // E1: the annual metrics read their units in the organisation's own currency symbols.
+  return <WithCurrencyDirectory><ScreenState result={result} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => {
     const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
     if (!job) notFound();
     if (job.header.family === "crp") return <ScreenState result={emissions} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(emissionsData) => <ScreenState result={scopeRows} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(scopeData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={target} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{targetData=><ScreenState result={intensity} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{intensityData=><ScreenState result={sites} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{siteData=><ScreenState result={categories} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{categoryData=><CrpScopeWorkspace milestones={milestones} specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} emissions={emissionsData} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
@@ -69,5 +71,5 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     // so every place's expiry is judged against one date rather than the viewer's clock.
     if (job.header.family === "training" && jobModuleEnabled("job-module-training")) return <ScreenState result={training} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(trainingData) => <TrainingWorkspace milestones={milestones} job={job} runs={trainingData.runs} today={todayInLondon()} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>;
     return <FamilyWorkspace job={job} milestones={milestones} />;
-  }}</ScreenState>;
+  }}</ScreenState></WithCurrencyDirectory>;
 }

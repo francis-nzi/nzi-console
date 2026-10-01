@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
 import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
 import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
+import { assertClientCurrency } from "./commercialLookups";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
@@ -224,6 +225,9 @@ export async function createClient(
     context,
     async (db) => {
       const clientId = randomUUID();
+      // E-Q3 (admin E1): a new client's currency is one of the organisation's active currencies — nothing is held yet,
+      // so the check always runs. Written as clientProfileValues writes it: an omitted currency is GBP.
+      await assertClientCurrency(db, context.organisationId, input.currency ?? "GBP", null);
       const profile = clientProfileValues(input);
       // NZC-022 "own clients" — the creating staff user owns the client.
       await db.query(
@@ -319,13 +323,16 @@ export async function updateClient(
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
   return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
-    const prior = await db.query<ClientGovernedRow>(
-      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
+    const prior = await db.query<ClientGovernedRow & { currency: string }>(
+      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientId],
     );
     const before = prior.rows[0];
     if (!before) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
     if (before.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, before.version);
+    // E-Q3 (admin E1): the currency written is the organisation's — checked against its active set, the held value
+    // always standing. Written as clientProfileValues writes it: an omitted currency is GBP.
+    await assertClientCurrency(db, context.organisationId, input.currency ?? "GBP", before.currency);
     const governed = clientGovernedChanges(before, input);
     // NZC-068 / PERMISSION_MATRIX ⚑ — a baseline change is a re-baseline: its own
     // capability (own clients for a Consultant), always a reason, always a governed event.

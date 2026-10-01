@@ -90,7 +90,8 @@ describe("the jobs-configuration import, against a real database", { skip: TEST_
       await db.query(`SELECT nzi_console.provision_organisation($1)`, [OTHER]);
       for (const org of [ORG, OTHER]) await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, 'admin', 'active', 'Ada')`, [org, `admin-${org}`]);
       // What the console already holds in ORG: a VAT rate and a template matched by key, a job type by name, one of its own.
-      await db.query(`INSERT INTO nzi_console.vat_rates (organisation_id, vat_rate_id, name, rate_pct, created_by, updated_by) VALUES ($1, 'vat:zero', 'No VAT', 0, 'seed', 'seed')`, [ORG]);
+      // A lone rate is the default: since 0145 an organisation holding any rate holds exactly one default, at commit.
+      await db.query(`INSERT INTO nzi_console.vat_rates (organisation_id, vat_rate_id, name, rate_pct, is_default, created_by, updated_by) VALUES ($1, 'vat:zero', 'No VAT', 0, true, 'seed', 'seed')`, [ORG]);
       await db.query(`INSERT INTO nzi_console.milestone_templates (organisation_id, template_id, name, created_by, updated_by) VALUES ($1, 'mt:express', 'express', 'seed', 'seed')`, [ORG]);
       for (const [kind, off] of [["data_collection", 5], ["first_draft", 10], ["final_report", 20]] as const) {
         await db.query(`INSERT INTO nzi_console.milestone_template_items (organisation_id, template_id, kind, label, days_offset, created_by, updated_by) VALUES ($1, 'mt:express', $2, $2, $3, 'seed', 'seed')`, [ORG, kind, off]);
