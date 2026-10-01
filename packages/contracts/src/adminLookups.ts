@@ -2,7 +2,8 @@ import { defineListSpec, type ListQuery } from "./listQuery";
 
 /**
  * The reference-value engine's lookups (admin Phase A2; ruled P3): the categories the Lookups screen manages, in the
- * order its chips show them. Industries and referrals are 0089's; the ten others are 0138's.
+ * order its chips show them. Industries and referrals are 0089's; the ten after them 0138's; CRM tags and BD service
+ * lines 0150's (admin F2).
  *
  * Deliberately a closed list rather than "every category": `emission_category` is a reference category too, but its
  * codes live in the migration-owned input spec (0093) and it is not edited here. A command naming any category outside
@@ -11,6 +12,7 @@ import { defineListSpec, type ListQuery } from "./listQuery";
 export const LOOKUP_CATEGORIES = [
   "industries", "referrals", "portfolios", "payment_terms", "positions", "processes",
   "client_teams", "action_categories", "governance_subjects", "bd_bin_reasons", "units_of_measure", "job_item_categories",
+  "crm_tags", "bd_service_lines",
 ] as const;
 export type LookupCategory = (typeof LOOKUP_CATEGORIES)[number];
 export const isLookupCategory = (value: unknown): value is LookupCategory =>

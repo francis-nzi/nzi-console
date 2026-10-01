@@ -49,8 +49,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         description: "The wording of the messages the console sends — subject and body over each message's declared tokens, previewed against sample values. The set of messages is fixed in code." },
       { id: "report-templates", label: "Report templates", icon: "doc", href: "/admin/report-templates", phase: "H", capability: "admin.templates",
         description: "Report templates, their variables and versions, assignable per client." },
-      { id: "crm-pipeline", label: "CRM & pipeline", icon: "funnel", href: "/admin/crm-pipeline", phase: "F", capability: "admin.lookups",
-        description: "Pipeline stages, service lines, tags and automation rules for business development." },
+      { id: "crm-pipeline", label: "CRM & pipeline", icon: "funnel", href: "/admin/crm-pipeline", capability: "admin.lookups",
+        description: "The business-development funnel — ordered stages, each with a probability — beside the CRM tags and BD service lines kept in Lookups. Automation rules belong to the CRM workstream." },
     ],
   },
   {

@@ -119,6 +119,7 @@ export * from "./adminCommercialLookups";
 export * from "./adminServiceCatalogue";
 export * from "./adminSuppliers";
 export * from "./messageTemplates";
+export * from "./adminCrmBd";
 export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";

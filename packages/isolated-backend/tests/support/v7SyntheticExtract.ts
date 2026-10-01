@@ -301,6 +301,30 @@ export function syntheticRows(): Rows {
       { template_id: "4", template_key: "introduction", template_name: "Introduction", channel: "email", message_type: "general",
         subject_template: "Hello", body_template: "<p>An introduction.</p>", is_active: "f" },
     ],
+    // v7's CRM tags (admin F2): its four seeds (colours carried by v7, never shown), one inactive, and one with no name.
+    crm_tags: [
+      { tag_id: "1", tag_name: "follow-up", color_hex: "#F59E0B", is_active: "t" },
+      { tag_id: "2", tag_name: "risk", color_hex: "#EF4444", is_active: "t" },
+      { tag_id: "3", tag_name: "finance", color_hex: null, is_active: "t" },
+      { tag_id: "4", tag_name: "client-waiting", color_hex: "#3B82F6", is_active: "f" },
+      { tag_id: "5", tag_name: "  ", color_hex: null, is_active: "t" },
+    ],
+    // v7's BD service lines (admin F2): keyed by their text key, which is how v7's leads name them.
+    bd_service_lines: [
+      { service_key: "carbon-reduction-plan", service_name: "Carbon Reduction Plans", sort_order: "1", is_active: "t" },
+      { service_key: "consultancy", service_name: "Consultancy", sort_order: "3", is_active: "t" },
+      { service_key: "market-targeting", service_name: "Industry & Role Targeting", sort_order: "0", is_active: "t" },
+      { service_key: "life-cycle-assessments", service_name: "Life Cycle Assessments (LCA)", sort_order: "5", is_active: "f" },
+    ],
+    // v7's BD funnel (admin F2): its four seeds, a stage whose key cannot be a console key, and one in the same name.
+    bd_funnel_stages: [
+      { stage_id: "1", stage_key: "lead", stage_name: "Lead", stage_order: "1", probability_pct: "10", is_active: "t" },
+      { stage_id: "2", stage_key: "qualified", stage_name: "Qualified", stage_order: "2", probability_pct: "35", is_active: "t" },
+      { stage_id: "3", stage_key: "proposal", stage_name: "Proposal", stage_order: "3", probability_pct: "65.5", is_active: "t" },
+      { stage_id: "4", stage_key: "closed", stage_name: "Closed", stage_order: "4", probability_pct: "100", is_active: "t" },
+      { stage_id: "5", stage_key: "On Hold!", stage_name: "On hold", stage_order: "5", probability_pct: "0", is_active: "f" },
+      { stage_id: "6", stage_key: "lead-2", stage_name: "lead", stage_order: "6", probability_pct: "5", is_active: "t" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.

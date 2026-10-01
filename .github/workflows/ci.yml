@@ -538,6 +538,10 @@ jobs:
       # serialises its client, and this fails if pg's warning is ever emitted on that path.
       - name: A transaction client is asked for one query at a time
         run: npx tsx --test packages/isolated-backend/tests/serialisedQueriesReal.test.ts
+      # F2 (0150): CRM tags and BD service lines as lookups (service lines keyed by v7's key), the BD funnel typed — a key
+      # set once, ordered with no default flag, the last active stage kept — and the three v7 loaders.
+      - name: CRM and BD lookups are governed, and the funnel always has a way in
+        run: npx tsx --test packages/isolated-backend/tests/crmBdLookupsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

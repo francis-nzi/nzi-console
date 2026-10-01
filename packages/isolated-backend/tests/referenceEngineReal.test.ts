@@ -52,10 +52,11 @@ describe("the reference-value engine, against the database", { skip: TEST_DATABA
   after(async () => { await database?.end(); });
 
   describe("migration 0138", () => {
-    it("adds the ten lookups, and the engine offers exactly its twelve, in the design's order", async () => {
+    it("adds the ten lookups, and the engine offers exactly its fourteen (0150 adds two), in the design's order", async () => {
       const categories = await withTenantRead(database.pool, ORG_A, listLookupCategories);
       assert.deepEqual(categories.map((category) => category.key), [...LOOKUP_CATEGORIES]);
-      assert.ok(categories.every((category) => !category.carriesCode || category.key === "industries"), "no new category carries a code (P4)");
+      // P4 (0138): none of its ten carries a code. Industries carry SIC; F2's BD service lines carry v7's key, by design (0150).
+      assert.ok(categories.every((category) => !category.carriesCode || category.key === "industries" || category.key === "bd_service_lines"), "no other category carries a code (P4)");
       assert.ok(!categories.some((category) => (category.key as string) === "emission_category"), "the input spec's category is not edited here");
     });
 

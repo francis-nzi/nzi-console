@@ -50,6 +50,7 @@ export * from "./serviceCatalogue";
 export * from "./jobTypeTemplates";
 export * from "./suppliers";
 export * from "./messageTemplates";
+export * from "./bdFunnelStages";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";

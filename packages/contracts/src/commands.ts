@@ -5,6 +5,7 @@ import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPerc
 import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
+import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -114,6 +115,10 @@ export type CommandKey =
   | "message_template.update"
   | "message_template.deactivate"
   | "message_template.reinstate"
+  | "bd_stage.create"
+  | "bd_stage.update"
+  | "bd_stage.deactivate"
+  | "bd_stage.reinstate"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -666,6 +671,11 @@ export type CommandInputMap = {
   "message_template.update": { templateKey: string; expectedVersion: number; subject: string; body: string };
   "message_template.deactivate": { templateKey: string; expectedVersion: number };
   "message_template.reinstate": { templateKey: string; expectedVersion: number };
+  // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
+  "bd_stage.create": BdStageEditableFields & { stageKey: string };
+  "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
+  "bd_stage.deactivate": { stageId: string; expectedVersion: number };
+  "bd_stage.reinstate": { stageId: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -956,6 +966,17 @@ const messageTemplateContentIssues = (issues: CommandIssue[], input: { templateK
     if (definition) for (const message of messageTemplateTokenIssues(value, definition)) issues.push({ field, code: "UNKNOWN_TOKEN", message });
   }
   if (definition && text(input.body)) for (const message of messageTemplateRequiredIssues(input.body, definition)) issues.push({ field: "body", code: "MISSING_TOKEN", message });
+};
+/** A funnel stage's definition (admin F2): a name, a whole order, a probability from 0 to 100 to two places. */
+const bdStageIssues = (issues: CommandIssue[], input: BdStageEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A stage's name is required." });
+  else if (input.name.trim().length > BD_STAGE_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${BD_STAGE_NAME_MAX} characters.` });
+  if (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > BD_STAGE_ORDER_MAX) issues.push({ field: "sortOrder", code: "INVALID", message: "The order is a whole number from 0." });
+  if (!isStageProbability(input.probabilityPct)) issues.push({ field: "probabilityPct", code: "INVALID", message: "A probability is a percentage from 0 to 100, to two places." });
+};
+const bdStageIdIssues = (issues: CommandIssue[], input: { stageId: string; expectedVersion: number }) => {
+  required(issues, "stageId", input.stageId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1653,6 +1674,29 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     messageTemplateKeyIssues(issues, input.templateKey);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.
+  "bd_stage.create": { key: "bd_stage.create", label: "Add a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "funnel stage + audit + outbox + idempotency", auditAction: "bd_stage.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (typeof input.stageKey !== "string" || !BD_STAGE_KEY_PATTERN.test(input.stageKey)) issues.push({ field: "stageKey", code: "INVALID", message: "A key is lower-case letters, digits and - (up to 40), e.g. qualified. It can never be changed." });
+    bdStageIssues(issues, input);
+    return issues;
+  } },
+  "bd_stage.update": { key: "bd_stage.update", label: "Edit a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "versioned funnel stage + audit + outbox + idempotency", auditAction: "bd_stage.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    bdStageIssues(issues, input);
+    bdStageIdIssues(issues, input);
+    return issues;
+  } },
+  "bd_stage.deactivate": { key: "bd_stage.deactivate", label: "Deactivate a funnel stage", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion; never the last active stage) + audit + outbox + idempotency", auditAction: "bd_stage.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    bdStageIdIssues(issues, input);
+    return issues;
+  } },
+  "bd_stage.reinstate": { key: "bd_stage.reinstate", label: "Reinstate a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "bd_stage.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    bdStageIdIssues(issues, input);
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which
