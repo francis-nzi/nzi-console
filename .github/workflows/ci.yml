@@ -522,6 +522,10 @@ jobs:
       # with finance.manage and never in the audit, and load:v7-job-items resolving references against the organisation.
       - name: Catalogue items keep their code, and their cost and sell stay with finance
         run: npx tsx --test packages/isolated-backend/tests/serviceCatalogueReal.test.ts
+      # E3 (0147): job-type templates — set whole against their own version, dropped items kept as not included, an item
+      # active to be added and a held one staying, and load:v7-job-type-items resolving types and items by v7 identity.
+      - name: A job type's included items are set whole, never deleted, and imported by identity
+        run: npx tsx --test packages/isolated-backend/tests/jobTypeTemplatesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

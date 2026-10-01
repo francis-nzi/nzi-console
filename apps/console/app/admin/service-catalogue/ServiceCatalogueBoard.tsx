@@ -51,6 +51,7 @@ export function ServiceCatalogueBoard({ page, pickers, query, editing, pricing, 
       ? <span className="nz-a-muted" title="Cost and sell need finance.manage">restricted</span>
       : <span className="nz-a-mono">{money(row.amounts.sell, row.currency)}</span> },
     { key: "vat", header: "VAT", cell: (row) => row.vatRate ?? <span className="nz-a-muted">—</span> },
+    { key: "inUse", header: "Job types", numeric: true, cell: (row) => <span className={`nz-a-mono${row.inUse === 0 ? " nz-a-muted" : ""}`} title="Job types whose included items name this item">{count.format(row.inUse)}</span> },
     { key: "source", header: "Source", cell: (row) => <ProvenanceBadge provenance={row.provenance} /> },
     { key: "status", header: "Status", sortKey: "status", cell: (row) => <StatusBadge active={row.active} /> },
   ];

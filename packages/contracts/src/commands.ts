@@ -2,7 +2,7 @@ import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLook
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
-import { isCatalogueAmount, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, type JobItemEditableFields } from "./adminServiceCatalogue";
+import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -94,6 +94,7 @@ export type CommandKey =
   | "job_item.deactivate"
   | "job_item.reinstate"
   | "job_item.price.set"
+  | "job_type.items.set"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -624,6 +625,8 @@ export type CommandInputMap = {
   "job_item.deactivate": { itemId: string; expectedVersion: number };
   "job_item.reinstate": { itemId: string; expectedVersion: number };
   "job_item.price.set": { itemId: string; expectedVersion: number; defaultCostAmount: number | null; defaultSellAmount: number | null };
+  // Job-type templates (admin Phase E3): the included items, set whole and in order, against the template's own version.
+  "job_type.items.set": { jobTypeId: string; expectedItemsVersion: number; items: JobTypeTemplateEntry[] };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -1455,6 +1458,23 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
       const value = input[field];
       if (value !== null && !isCatalogueAmount(value, JOB_ITEM_AMOUNT_MAX)) issues.push({ field, code: "INVALID", message: "An amount is a number from 0, to two places — or blank, not yet priced." });
     }
+    return issues;
+  } },
+  // Job-type templates (admin Phase E3). admin.lookups; the template's own version, apart from the type's definition.
+  "job_type.items.set": { key: "job_type.items.set", label: "Set a job type's included items", permission: "admin.lookups", reasonRequired: false, transaction: "versioned template (never deleted: dropped items kept as not included) + audit + outbox + idempotency", auditAction: "job_type.items_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobTypeId", input.jobTypeId);
+    if (!positive(input.expectedItemsVersion)) issues.push({ field: "expectedItemsVersion", code: "INVALID", message: "Expected template version must be positive." });
+    if (!Array.isArray(input.items)) { issues.push({ field: "items", code: "INVALID", message: "The included items are a list." }); return issues; }
+    if (input.items.length > JOB_TYPE_ITEMS_MAX) issues.push({ field: "items", code: "TOO_MANY", message: `A template includes at most ${JOB_TYPE_ITEMS_MAX} items.` });
+    const seen = new Set<string>();
+    input.items.forEach((item, index) => {
+      if (!item || !text(item.itemId)) { issues.push({ field: `items.${index}.itemId`, code: "REQUIRED", message: "Each included item names a catalogue item." }); return; }
+      if (seen.has(item.itemId)) issues.push({ field: `items.${index}.itemId`, code: "DUPLICATE", message: "An item is included once; set its quantity instead." });
+      seen.add(item.itemId);
+      if (!isTemplateQuantity(item.quantity)) issues.push({ field: `items.${index}.quantity`, code: "INVALID", message: "A quantity is above 0, to two places." });
+      if (typeof item.isRequired !== "boolean") issues.push({ field: `items.${index}.isRequired`, code: "INVALID", message: "Say whether the item is required." });
+    });
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which

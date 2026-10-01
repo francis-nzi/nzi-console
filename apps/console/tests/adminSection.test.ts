@@ -31,7 +31,7 @@ describe("admin access is checked by every admin page", () => {
       const source = readFileSync(path, "utf8");
       const check = source.indexOf(`if (access.state !== "allowed") return null;`);
       assert.ok(source.indexOf("await adminAccess()") >= 0 && check > source.indexOf("await adminAccess()"), "resolves access, then refuses");
-      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
+      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listJobTypeTemplates(", "listTemplateCatalogue(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
         const at = source.indexOf(read);
         if (at >= 0) assert.ok(at > check, `${read} comes after the access check`);
       }

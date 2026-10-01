@@ -1834,6 +1834,11 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-seg a{color:var(--a-ink-2);padding:6px 11px;border-radius:6px;font-size:12.5px;font-weight:500;text-decoration:none}
 .nz-a-seg a:hover{color:var(--a-ink)}
 .nz-a-seg a.on{background:var(--a-surface);color:var(--a-ink);box-shadow:var(--a-shadow)}
+/* Admin E3: a job type's included items, one card per item. */
+.nz-a-template-items{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:10px}
+.nz-a-template-items li{border:1px solid var(--a-line);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:120px 1fr auto;gap:8px 14px;align-items:center}
+.nz-a-template-item-name{grid-column:1/-1;font-size:13px}
+.nz-a-template-item-actions{display:flex;gap:10px;justify-content:flex-end}
 .nz-a-notice{margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-ok-bg);color:var(--a-ok);font-size:12.5px;font-weight:500}
 /* Team & access (admin B1): the drawer sections (rates, history) and the rate sub-form. */
 .nz-a-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--a-line)}.nz-a-section h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;font-weight:600;color:var(--a-ink)}.nz-a-section p{margin:0 0 8px;font-size:12.5px;color:var(--a-ink-2)}

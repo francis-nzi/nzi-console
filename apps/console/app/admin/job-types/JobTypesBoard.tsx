@@ -2,9 +2,9 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { postBrowserCommand, postBrowserCommandWithReason, patchBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { JOB_TYPE_FAMILIES, jobTypeListSpec, PAGE_SIZES, type JobTypeFamily, type JobTypeListQuery } from "@nzi/contracts";
-import type { JobTypePage, JobTypePickers, JobTypeRow } from "@nzi/isolated-backend";
+import { postBrowserCommand, postBrowserCommandWithReason, patchBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
+import { isTemplateQuantity, JOB_TYPE_FAMILIES, JOB_TYPE_ITEMS_MAX, jobTypeListSpec, PAGE_SIZES, type JobTypeFamily, type JobTypeListQuery } from "@nzi/contracts";
+import type { JobTypePage, JobTypePickers, JobTypeRow, JobTypeTemplate, TemplateCatalogueItem } from "@nzi/isolated-backend";
 import { jobFamilyMeta } from "@nzi/mock-data";
 import {
   AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, ProvenanceBadge, SelectField, StatusBadge, Switch, TextAreaField, TextField,
@@ -16,7 +16,13 @@ import { useListNavigation } from "../../lib/useListNavigation";
  * The Job types screen (admin Phase C1; docs/design/admin-prototype.html → Job types): DataList → drawer editor →
  * audit. The services the firm sells, each with one family, a default price ex VAT, estimated hours, a VAT rate and
  * the milestone template a new job of the type starts from. Deactivated and reinstated — never deleted.
+ *
+ * Admin E3 adds the type's **included items**: the catalogue items a new job of the type starts with, each with a
+ * quantity and a required flag, set whole and in order against the template's own version. A new job's lines are copied
+ * from them when the job is created (downstream; docs/JOB_TYPE_TEMPLATE_CONTRACT.md) — an edit here never reaches an
+ * existing job.
  */
+type TemplateDraftItem = { itemId: string; quantity: string; isRequired: boolean };
 type Editing = { allowed: true } | { allowed: false; reason: string };
 type Draft = {
   name: string; code: string; family: JobTypeFamily | ""; description: string; price: string; hours: string; vatRateId: string; templateId: string;
@@ -34,8 +40,8 @@ const familyLabel = (family: JobTypeFamily) => jobFamilyMeta[family].label;
 const vatLabel = (name: string, ratePct: number) => name.includes(`${pct.format(ratePct)}%`) ? name : `${name} (${pct.format(ratePct)}%)`;
 const dash = <span className="nz-a-muted">—</span>;
 
-export function JobTypesBoard({ page, pickers, query, editing }: {
-  page: JobTypePage; pickers: JobTypePickers; query: JobTypeListQuery; editing: Editing;
+export function JobTypesBoard({ page, pickers, templates, catalogue, query, editing }: {
+  page: JobTypePage; pickers: JobTypePickers; templates: Record<string, JobTypeTemplate>; catalogue: TemplateCatalogueItem[]; query: JobTypeListQuery; editing: Editing;
 }) {
   const router = useRouter();
   const nav = useListNavigation(jobTypeListSpec, query, "/admin/job-types");
@@ -54,6 +60,8 @@ export function JobTypesBoard({ page, pickers, query, editing }: {
     { key: "hours", header: "Est. hours", sortKey: "hours", numeric: true, cell: (row) => row.estimatedHours === null ? dash : <span className="nz-a-mono">{hours.format(row.estimatedHours)}</span> },
     { key: "vat", header: "VAT", numeric: true, cell: (row) => row.vatRatePct === null ? dash : <span className="nz-a-mono" title={row.vatRateName ?? undefined}>{pct.format(row.vatRatePct)}%</span> },
     { key: "template", header: "Milestone template", cell: (row) => row.milestoneTemplateName ?? dash },
+    { key: "items", header: "Items", numeric: true, cell: (row) => { const n = templates[row.jobTypeId]?.items.length ?? 0;
+      return <span className={`nz-a-mono${n === 0 ? " nz-a-muted" : ""}`} title="Catalogue items a new job of this type starts with">{count.format(n)}</span>; } },
     { key: "inUse", header: "Jobs", sortKey: "inUse", numeric: true, cell: (row) => <span className={`nz-a-mono${row.inUse === 0 ? " nz-a-muted" : ""}`}>{count.format(row.inUse)}</span> },
     { key: "source", header: "Source", cell: (row) => <ProvenanceBadge provenance={row.provenance} /> },
     { key: "status", header: "Status", sortKey: "status", cell: (row) => <StatusBadge active={row.active} /> },
@@ -114,6 +122,7 @@ export function JobTypesBoard({ page, pickers, query, editing }: {
     </div>
 
     {open ? <JobTypeDrawer key={open.row?.jobTypeId ?? "new"} row={open.row} pickers={pickers} editing={editing}
+      template={open.row ? templates[open.row.jobTypeId] ?? null : null} catalogue={catalogue}
       onClose={() => setOpen(null)}
       onSaved={(message) => { setOpen(null); setNotice(message); router.refresh(); }} /> : null}
   </>;
@@ -126,8 +135,9 @@ const amount = (value: string): number | null | "invalid" => {
   return Number.isFinite(parsed) && parsed >= 0 && Math.abs(Math.round(parsed * 100) - parsed * 100) < 1e-6 ? parsed : "invalid";
 };
 
-function JobTypeDrawer({ row, pickers, editing, onClose, onSaved }: {
-  row: JobTypeRow | null; pickers: JobTypePickers; editing: Editing; onClose: () => void; onSaved: (message: string) => void;
+function JobTypeDrawer({ row, pickers, editing, template, catalogue, onClose, onSaved }: {
+  row: JobTypeRow | null; pickers: JobTypePickers; editing: Editing; template: JobTypeTemplate | null; catalogue: TemplateCatalogueItem[];
+  onClose: () => void; onSaved: (message: string) => void;
 }) {
   const isNew = row === null;
   const [draft, setDraft] = useState<Draft>({
@@ -140,10 +150,23 @@ function JobTypeDrawer({ row, pickers, editing, onClose, onSaved }: {
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const held = template?.items ?? [];
+  const [items, setItems] = useState<TemplateDraftItem[]>(() => held.map((item) => ({ itemId: item.itemId, quantity: String(item.quantity), isRequired: item.isRequired })));
   const keys = useRef<Record<string, string>>({});
   const key = (step: string) => (keys.current[step] ??= crypto.randomUUID());
   const readOnly = !editing.allowed;
   const familyLocked = (row?.inUse ?? 0) > 0;
+  const itemsChanged = items.length !== held.length || items.some((item, index) => item.itemId !== held[index]?.itemId
+    || Number(item.quantity) !== held[index]?.quantity || item.isRequired !== held[index]?.isRequired);
+  const catalogueItem = (itemId: string) => catalogue.find((entry) => entry.itemId === itemId);
+  // Active items not already included; an inactive one shows only where the template already holds it (R3).
+  const addable = catalogue.filter((entry) => entry.active && !items.some((item) => item.itemId === entry.itemId));
+  const move = (index: number, by: number) => setItems((current) => {
+    const next = [...current];
+    const [moved] = next.splice(index, 1);
+    next.splice(index + by, 0, moved!);
+    return next;
+  });
 
   // Active choices, plus the one this type already holds if it has since been deactivated (it still resolves).
   const vatOptions = pickers.vatRates.filter((rate) => rate.active || rate.vatRateId === row?.vatRateId)
@@ -177,6 +200,7 @@ function JobTypeDrawer({ row, pickers, editing, onClose, onSaved }: {
     if (price === "invalid") local.defaultPriceExVat = "A price is an amount from 0, to two decimal places.";
     if (effort === "invalid") local.estimatedHours = "Hours are a number from 0, to two decimal places.";
     if (deactivating && !draft.reason.trim()) local.reason = "Say why this job type is being deactivated — it leaves every picker.";
+    items.forEach((item, index) => { if (!isTemplateQuantity(Number(item.quantity))) local[`items.${index}.quantity`] = "A quantity above 0, to two places."; });
     if (Object.keys(local).length) { setIssues(local); return; }
     const fields = {
       name: draft.name, code: blankToNull(draft.code), family: draft.family as JobTypeFamily, description: blankToNull(draft.description),
@@ -195,6 +219,14 @@ function JobTypeDrawer({ row, pickers, editing, onClose, onSaved }: {
         const result = await patchBrowserCommand<{ version: number }>(path, { ...fields, expectedVersion: version }, key("update"));
         if (result.state !== "success") return fail(result);
         version = result.data.version;
+      }
+      if (itemsChanged) {
+        const result = await putBrowserCommand(`${path}/items`, {
+          expectedItemsVersion: template?.itemsVersion ?? 1,
+          items: items.map((item) => ({ itemId: item.itemId, quantity: Number(item.quantity), isRequired: item.isRequired })),
+        }, key("items"));
+        if (result.state !== "success") return fail(result);
+        if (!deactivating && !reinstating) return onSaved(`Saved ${fieldsChanged ? "" : "the included items of "}“${draft.name.trim()}” — ${items.length} included item${items.length === 1 ? "" : "s"}.`);
       }
       if (deactivating) {
         const result = await postBrowserCommandWithReason<{ inUse: number }>(`${path}/deactivate`, { expectedVersion: version }, key("deactivate"), draft.reason);
@@ -254,6 +286,30 @@ function JobTypeDrawer({ row, pickers, editing, onClose, onSaved }: {
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required
       error={issues.reason} onChange={(reason) => setDraft({ ...draft, reason })} /> : null}
+
+    <h3>Included items</h3>
+    {isNew ? <p className="nz-a-hint">Add the catalogue items a new job of this type starts with once the type is saved.</p> : <>
+      <p className="nz-a-hint">A new job of this type starts with these lines, copied when the job is created — an edit here never reaches an existing job.</p>
+      {items.length === 0 ? <p className="nz-a-muted">None yet.</p> : <ol className="nz-a-template-items">
+        {items.map((item, index) => { const entry = catalogueItem(item.itemId);
+          return <li key={item.itemId}>
+            <div className="nz-a-template-item-name"><span className="nz-a-mono">{entry?.code ?? item.itemId}</span> {entry?.name}{entry?.unit ? <span className="nz-a-muted"> · {entry.unit}</span> : null}{entry && !entry.active ? <span className="nz-a-muted"> (inactive)</span> : null}</div>
+            <TextField label="Quantity" mono value={item.quantity} maxLength={10} readOnly={readOnly} error={issues[`items.${index}.quantity`]}
+              onChange={(quantity) => setItems(items.map((other, at) => at === index ? { ...other, quantity } : other))} />
+            <Switch label="Required" checked={item.isRequired} disabled={readOnly}
+              onChange={(isRequired) => setItems(items.map((other, at) => at === index ? { ...other, isRequired } : other))} />
+            {readOnly ? null : <div className="nz-a-template-item-actions">
+              <button type="button" className="nz-a-linkish" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move ${entry?.code ?? "item"} up`}>↑</button>
+              <button type="button" className="nz-a-linkish" disabled={index === items.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${entry?.code ?? "item"} down`}>↓</button>
+              <button type="button" className="nz-a-linkish" onClick={() => setItems(items.filter((_, at) => at !== index))} aria-label={`Remove ${entry?.code ?? "item"}`}>Remove</button>
+            </div>}
+          </li>; })}
+      </ol>}
+      {readOnly || items.length >= JOB_TYPE_ITEMS_MAX ? null : <SelectField label="Add an item" value="" placeholder={addable.length ? "Choose a catalogue item…" : "Every active item is included"}
+        options={addable.map((entry) => ({ value: entry.itemId, label: `${entry.code} — ${entry.name}` }))}
+        onChange={(itemId) => { if (itemId) setItems([...items, { itemId, quantity: "1", isRequired: true }]); }} />}
+      {issues.items ? <div className="nz-a-error" role="alert">{issues.items}</div> : null}
+    </>}
     {row && row.inUse > 0 ? <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div>Recorded on <b>{count.format(row.inUse)}</b> job{row.inUse === 1 ? "" : "s"}. Deactivating keeps it shown on those; it cannot be deleted.</div></div> : null}
   </DrawerEditor>;
 }
