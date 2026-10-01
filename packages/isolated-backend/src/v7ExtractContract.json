@@ -479,6 +479,28 @@
       "is_active"
     ]
   },
+  "job_items": {
+    "filter": "all",
+    "required": [
+      "item_id",
+      "item_code",
+      "item_name"
+    ],
+    "optional": [
+      "description",
+      "category",
+      "unit",
+      "estimated_hours",
+      "vat_rate_id",
+      "cost_amount",
+      "cost_currency",
+      "sell_amount",
+      "sell_currency",
+      "vat_rate",
+      "is_active",
+      "sort_order"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

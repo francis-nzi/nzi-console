@@ -518,6 +518,10 @@ jobs:
         run: npx tsx --test packages/isolated-backend/tests/commercialLookupsReal.test.ts
       - name: v7's two currency tables arrive as one clean ISO set, with no UAE alias
         run: npx tsx --test packages/isolated-backend/tests/v7CurrenciesLoadReal.test.ts
+      # E2 (0146): the service catalogue — a code set once, references checked (a held one standing), cost and sell only
+      # with finance.manage and never in the audit, and load:v7-job-items resolving references against the organisation.
+      - name: Catalogue items keep their code, and their cost and sell stay with finance
+        run: npx tsx --test packages/isolated-backend/tests/serviceCatalogueReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

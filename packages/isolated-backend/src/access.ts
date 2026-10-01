@@ -106,6 +106,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "currency.set_default": organisation,
   "currency.deactivate": organisation,
   "currency.reinstate": organisation,
+  // The service catalogue (admin Phase E2): the organisation's own items; amounts by finance.manage.
+  "job_item.create": organisation,
+  "job_item.update": organisation,
+  "job_item.deactivate": organisation,
+  "job_item.reinstate": organisation,
+  "job_item.price.set": organisation,
   // Team & access (admin Phase B): the firm's own roster, not a client's record.
   "staff.add": organisation,
   "staff.update": organisation,

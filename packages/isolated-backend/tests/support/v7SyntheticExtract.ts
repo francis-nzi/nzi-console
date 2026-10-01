@@ -251,6 +251,16 @@ export function syntheticRows(): Rows {
       { currency_code: "EUR", symbol: "€", name: "Euro", is_active: "t" },
       { currency_code: "CHF", symbol: "CHF", name: "Swiss Franc", is_active: "t" },
     ],
+    // v7's service catalogue (admin E2), invented: categories and units as v7's free text ("day" against the console's
+    // "days"), a VAT rate by id and one by bare percentage, an unpriced item, a category the lookups lack, one item
+    // whose cost and sell currencies differ, and an inactive one.
+    job_items: [
+      { item_id: "1", item_code: "ASSESS", item_name: "Carbon Assessment", description: "Initial footprint", category: "Assessment", unit: "day", estimated_hours: "7.5", vat_rate_id: "1", cost_amount: "350.00", cost_currency: "GBP", sell_amount: "750.00", sell_currency: "GBP", vat_rate: "20.00", is_active: "t", sort_order: "10" },
+      { item_id: "2", item_code: "report", item_name: "Carbon Report Generation", description: null, category: "Reporting", unit: "days", estimated_hours: "0", vat_rate_id: null, cost_amount: "250", cost_currency: "GBP", sell_amount: "500", sell_currency: "GBP", vat_rate: "5.00", is_active: "t", sort_order: "20" },
+      { item_id: "3", item_code: "WIDGET", item_name: "Odd Widget", description: null, category: "Gadgets", unit: "fortnight", estimated_hours: null, vat_rate_id: null, cost_amount: null, cost_currency: null, sell_amount: null, sell_currency: null, vat_rate: null, is_active: "t", sort_order: "30" },
+      { item_id: "4", item_code: "USDONLY", item_name: "Dollar Work", description: null, category: "Advisory", unit: "month", estimated_hours: "2", vat_rate_id: "1", cost_amount: "100", cost_currency: "USD", sell_amount: "200", sell_currency: "GBP", vat_rate: "20", is_active: "t", sort_order: "40" },
+      { item_id: "5", item_code: "MONTHLY", item_name: "Monthly Monitoring", description: null, category: "Ongoing", unit: "month", estimated_hours: "4", vat_rate_id: "1", cost_amount: "150", cost_currency: "GBP", sell_amount: "350", sell_currency: "GBP", vat_rate: "20", is_active: "f", sort_order: "60" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.
