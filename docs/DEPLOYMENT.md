@@ -335,8 +335,8 @@ npm run migrate -w @nzi/isolated-backend          # applies it, in order, with t
 ## Personal data in the isolated store — accepted decisions
 
 This service is **isolated non-production** (`NZI_DATABASE_BOUNDARY=isolated-non-production`,
-`NEXT_PUBLIC_APP_ENV=staging`). Real personal data has been brought into it deliberately, twice, each time as a
-conscious decision rather than by drift. The PII inventory records the same two decisions as
+`NEXT_PUBLIC_APP_ENV=staging`). Real personal data has been brought into it deliberately, three times, each time as a
+conscious decision rather than by drift. The PII inventory records the same decisions as
 `PII_HOSTING_DECISIONS` (`packages/isolated-backend/src/piiInventory.ts`), so the list that governs sealing,
 export and erasure also says why the data is here.
 
@@ -344,10 +344,11 @@ export and erasure also says why the data is here.
 |---|---|---|---|
 | **NZI staff** | 26 Sep 2026 | Real staff names and work addresses (the roster), their credentials and MFA | Sealed on write (NZC-119); passwords hashed, TOTP encrypted; row-level security; sign-in only through staff enrolment (0129). NZI's own team. |
 | **Clients** — contacts, report snapshots, historical emissions | 28 Sep 2026 | The v7 client and job import (`docs/CLIENT_JOB_IMPORT_DESIGN.md`): active clients' contacts and sites, full job history, historical emissions, published report snapshots | Personal data sealed on write; boundary-guarded; loaded only from the Render Shell; the extract never committed. |
+| **Suppliers** — their named contacts | 1 Oct 2026 | The v7 supplier import (admin E4, ruled E-Q6/E-Q7): the people at suppliers — name, email and phone | Sealed per person on load and on write (NZC-119), each contact its own subject, erased by key-shred; never in a `_handoff` extract or report; v7's supplier address and notes not imported. |
 
-**Standing commitment, for both.** When a true production environment exists, this data is **replicated there**,
+**Standing commitment, for each.** When a true production environment exists, this data is **replicated there**,
 and this section, the inventory entry and the design documents are updated to say so. Until then, anything that
-widens what personal data this service holds comes back as a decision of its own — it is not covered by these two.
+widens what personal data this service holds comes back as a decision of its own — it is not covered by these.
 
 ## Staff enrolment (0129)
 

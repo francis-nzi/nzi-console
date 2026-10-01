@@ -514,6 +514,37 @@
       "sort_order"
     ]
   },
+  "suppliers": {
+    "filter": "all",
+    "required": [
+      "supplier_id",
+      "supplier_name"
+    ],
+    "optional": [
+      "contact_name",
+      "contact_email",
+      "phone",
+      "website",
+      "is_active"
+    ]
+  },
+  "supplier_service_items": {
+    "filter": "all",
+    "required": [
+      "supplier_item_id",
+      "supplier_id",
+      "item_name"
+    ],
+    "optional": [
+      "cost_type",
+      "description",
+      "uom",
+      "agreed_rate",
+      "is_vatable",
+      "vat_rate_pct",
+      "is_active"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

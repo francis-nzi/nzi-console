@@ -22,7 +22,7 @@ describe("admin access is checked by every admin page", () => {
   const found = pages(adminDir);
 
   it("finds the admin pages", () => {
-    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "service-catalogue/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
+    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "service-catalogue/page.tsx", "suppliers/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
   });
 
   for (const path of pages(adminDir)) {
@@ -31,7 +31,7 @@ describe("admin access is checked by every admin page", () => {
       const source = readFileSync(path, "utf8");
       const check = source.indexOf(`if (access.state !== "allowed") return null;`);
       assert.ok(source.indexOf("await adminAccess()") >= 0 && check > source.indexOf("await adminAccess()"), "resolves access, then refuses");
-      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listJobTypeTemplates(", "listTemplateCatalogue(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
+      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listJobTypeTemplates(", "listTemplateCatalogue(", "listSuppliersPage(", "readSupplierParts(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
         const at = source.indexOf(read);
         if (at >= 0) assert.ok(at > check, `${read} comes after the access check`);
       }
@@ -52,7 +52,7 @@ describe("the admin rail follows the approved design", () => {
   });
 
   it("shows every unbuilt area with its roadmap phase (ruled P9), and links each to its own page", () => {
-    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue"];
+    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers"];
     const unbuilt = ADMIN_ITEMS.filter((item) => !LIVE.includes(item.id));
     assert.ok(unbuilt.every((item) => item.phase && item.href === `/admin/${item.id}`));
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "lookups")?.phase, undefined, "Lookups is live (A2)");
@@ -63,6 +63,7 @@ describe("the admin rail follows the approved design", () => {
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "organisation")?.phase, undefined, "Organisation is live (D1)");
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "tax-currency")?.phase, undefined, "Tax & currency is live (E1)");
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "service-catalogue")?.phase, undefined, "Service catalogue is live (E2)");
+    assert.equal(ADMIN_ITEMS.find((item) => item.id === "suppliers")?.phase, undefined, "Suppliers is live (E4)");
   });
 
   it("names the governing capability wherever a phase's writes have one", () => {

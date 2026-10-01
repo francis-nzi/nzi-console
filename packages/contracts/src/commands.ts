@@ -4,6 +4,7 @@ import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, ty
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
 import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
+import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
@@ -95,6 +96,19 @@ export type CommandKey =
   | "job_item.reinstate"
   | "job_item.price.set"
   | "job_type.items.set"
+  | "supplier.create"
+  | "supplier.update"
+  | "supplier.deactivate"
+  | "supplier.reinstate"
+  | "supplier.contact.add"
+  | "supplier.contact.update"
+  | "supplier.contact.deactivate"
+  | "supplier.contact.reinstate"
+  | "supplier_item.create"
+  | "supplier_item.update"
+  | "supplier_item.deactivate"
+  | "supplier_item.reinstate"
+  | "supplier_item.rate.set"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -627,6 +641,21 @@ export type CommandInputMap = {
   "job_item.price.set": { itemId: string; expectedVersion: number; defaultCostAmount: number | null; defaultSellAmount: number | null };
   // Job-type templates (admin Phase E3): the included items, set whole and in order, against the template's own version.
   "job_type.items.set": { jobTypeId: string; expectedItemsVersion: number; items: JobTypeTemplateEntry[] };
+  // Suppliers and their rate card (admin Phase E4; ruled phaseE plan E-Q6–E-Q9). admin.lookups, except the agreed rate
+  // (finance.manage). A contact's details are sealed and never in a result.
+  "supplier.create": SupplierEditableFields;
+  "supplier.update": SupplierEditableFields & { supplierId: string; expectedVersion: number };
+  "supplier.deactivate": { supplierId: string; expectedVersion: number };
+  "supplier.reinstate": { supplierId: string; expectedVersion: number };
+  "supplier.contact.add": SupplierContactFields & { supplierId: string };
+  "supplier.contact.update": SupplierContactFields & { contactId: string; expectedVersion: number };
+  "supplier.contact.deactivate": { contactId: string; expectedVersion: number };
+  "supplier.contact.reinstate": { contactId: string; expectedVersion: number };
+  "supplier_item.create": SupplierItemEditableFields & { supplierId: string };
+  "supplier_item.update": SupplierItemEditableFields & { serviceItemId: string; expectedVersion: number };
+  "supplier_item.deactivate": { serviceItemId: string; expectedVersion: number };
+  "supplier_item.reinstate": { serviceItemId: string; expectedVersion: number };
+  "supplier_item.rate.set": { serviceItemId: string; expectedVersion: number; agreedRate: number | null };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -877,6 +906,33 @@ const jobItemIssues = (issues: CommandIssue[], input: JobItemEditableFields) => 
 const jobItemIdIssues = (issues: CommandIssue[], input: { itemId: string; expectedVersion: number }) => {
   required(issues, "itemId", input.itemId);
   if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+/** Suppliers (admin E4): a company's fields, a contact's (personal data — the messages never repeat a value), a rate-card line's. */
+const optionalText = (issues: CommandIssue[], field: string, value: unknown, max: number, what: string) => {
+  if (value === undefined || value === null) return;
+  if (typeof value !== "string") issues.push({ field, code: "INVALID", message: `${what} is text.` });
+  else if (value.trim().length > max) issues.push({ field, code: "TOO_LONG", message: `${what} is at most ${max} characters.` });
+};
+const supplierIssues = (issues: CommandIssue[], input: SupplierEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A supplier's name is required." });
+  else if (input.name.trim().length > SUPPLIER_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${SUPPLIER_NAME_MAX} characters.` });
+  optionalText(issues, "website", input.website, SUPPLIER_WEBSITE_MAX, "A website");
+};
+const supplierContactIssues = (issues: CommandIssue[], input: SupplierContactFields) => {
+  if (!text(input.fullName)) issues.push({ field: "fullName", code: "REQUIRED", message: "A contact's name is required." });
+  else if (input.fullName.trim().length > SUPPLIER_CONTACT_NAME_MAX) issues.push({ field: "fullName", code: "TOO_LONG", message: `A name is at most ${SUPPLIER_CONTACT_NAME_MAX} characters.` });
+  if (text(input.email) && !isSupplierContactEmail(input.email)) issues.push({ field: "email", code: "INVALID", message: "Enter a valid email address, or leave it blank." });
+  optionalText(issues, "phone", input.phone, SUPPLIER_CONTACT_PHONE_MAX, "A phone number");
+};
+const supplierItemIssues = (issues: CommandIssue[], input: SupplierItemEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A service's name is required." });
+  else if (input.name.trim().length > SUPPLIER_ITEM_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${SUPPLIER_ITEM_NAME_MAX} characters.` });
+  optionalText(issues, "costType", input.costType, SUPPLIER_COST_TYPE_MAX, "A cost type");
+  optionalText(issues, "description", input.description, SUPPLIER_ITEM_DESCRIPTION_MAX, "A description");
+};
+const versioned = (issues: CommandIssue[], field: string, id: unknown, expectedVersion: unknown) => {
+  required(issues, field, id);
+  if (!positive(expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1475,6 +1531,79 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
       if (!isTemplateQuantity(item.quantity)) issues.push({ field: `items.${index}.quantity`, code: "INVALID", message: "A quantity is above 0, to two places." });
       if (typeof item.isRequired !== "boolean") issues.push({ field: `items.${index}.isRequired`, code: "INVALID", message: "Say whether the item is required." });
     });
+    return issues;
+  } },
+  // Suppliers and their rate card (admin Phase E4). admin.lookups, except the agreed rate (finance.manage, E-Q8). A
+  // contact's details are sealed (E-Q6), and no result — so no audit value — ever carries them or the rate.
+  "supplier.create": { key: "supplier.create", label: "Add a supplier", permission: "admin.lookups", reasonRequired: false, transaction: "supplier + audit + outbox + idempotency", auditAction: "supplier.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    supplierIssues(issues, input);
+    return issues;
+  } },
+  "supplier.update": { key: "supplier.update", label: "Edit a supplier", permission: "admin.lookups", reasonRequired: false, transaction: "versioned supplier + audit + outbox + idempotency", auditAction: "supplier.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    supplierIssues(issues, input);
+    versioned(issues, "supplierId", input.supplierId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier.deactivate": { key: "supplier.deactivate", label: "Deactivate a supplier", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "supplier.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    versioned(issues, "supplierId", input.supplierId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier.reinstate": { key: "supplier.reinstate", label: "Reinstate a supplier", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "supplier.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    versioned(issues, "supplierId", input.supplierId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier.contact.add": { key: "supplier.contact.add", label: "Add a supplier contact", permission: "admin.lookups", reasonRequired: false, transaction: "contact (sealed) + audit (which fields, never what) + outbox + idempotency", auditAction: "supplier.contact_added", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "supplierId", input.supplierId);
+    supplierContactIssues(issues, input);
+    return issues;
+  } },
+  "supplier.contact.update": { key: "supplier.contact.update", label: "Edit a supplier contact", permission: "admin.lookups", reasonRequired: false, transaction: "versioned contact (sealed) + audit (which fields, never what) + outbox + idempotency", auditAction: "supplier.contact_updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    supplierContactIssues(issues, input);
+    versioned(issues, "contactId", input.contactId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier.contact.deactivate": { key: "supplier.contact.deactivate", label: "Deactivate a supplier contact", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "supplier.contact_deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    versioned(issues, "contactId", input.contactId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier.contact.reinstate": { key: "supplier.contact.reinstate", label: "Reinstate a supplier contact", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "supplier.contact_reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    versioned(issues, "contactId", input.contactId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier_item.create": { key: "supplier_item.create", label: "Add a service to a supplier's rate card", permission: "admin.lookups", reasonRequired: false, transaction: "rate-card line + audit + outbox + idempotency", auditAction: "supplier_item.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "supplierId", input.supplierId);
+    supplierItemIssues(issues, input);
+    return issues;
+  } },
+  "supplier_item.update": { key: "supplier_item.update", label: "Edit a rate-card service", permission: "admin.lookups", reasonRequired: false, transaction: "versioned rate-card line + audit + outbox + idempotency", auditAction: "supplier_item.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    supplierItemIssues(issues, input);
+    versioned(issues, "serviceItemId", input.serviceItemId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier_item.deactivate": { key: "supplier_item.deactivate", label: "Deactivate a rate-card service", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "supplier_item.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    versioned(issues, "serviceItemId", input.serviceItemId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier_item.reinstate": { key: "supplier_item.reinstate", label: "Reinstate a rate-card service", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "supplier_item.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    versioned(issues, "serviceItemId", input.serviceItemId, input.expectedVersion);
+    return issues;
+  } },
+  "supplier_item.rate.set": { key: "supplier_item.rate.set", label: "Set a rate-card service's agreed rate", permission: "finance.manage", reasonRequired: false, transaction: "versioned rate + audit (that, never what) + outbox + idempotency", auditAction: "supplier_item.rate_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    versioned(issues, "serviceItemId", input.serviceItemId, input.expectedVersion);
+    if (input.agreedRate !== null && !isAgreedRate(input.agreedRate)) issues.push({ field: "agreedRate", code: "INVALID", message: "A rate is a number from 0, to two places — or blank, not yet agreed." });
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which

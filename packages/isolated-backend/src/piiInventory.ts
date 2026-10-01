@@ -69,8 +69,8 @@ export type PiiAttribution =
   /** No subject path exists. The reason is part of the record, and is shown to the person. */
   | { kind: "none"; because: string };
 
-/** The four tables `data_subject_links` may name. */
-export type SubjectTable = "trainees" | "client_contacts" | "portal_users" | "memberships";
+/** The tables `data_subject_links` may name (supplier contacts from 0148, admin E4). */
+export type SubjectTable = "trainees" | "client_contacts" | "portal_users" | "memberships" | "supplier_contacts";
 
 /* ── What erasure does ───────────────────────────────────────────────────────────────── */
 
@@ -205,6 +205,11 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     keyColumns: ["user_id"], attribution: personRow("memberships", "user_id"),
     linkage: { table: "memberships", idColumn: "user_id" },
   },
+  // A named person at a supplier (0148, admin E4; E-Q6): third-party, each their own subject apart from the company.
+  supplier_contacts: {
+    keyColumns: ["contact_id"], attribution: personRow("supplier_contacts", "contact_id"),
+    linkage: { table: "supplier_contacts", idColumn: "contact_id" },
+  },
   staff_credentials: {
     // A credential exists only for a membership — the foreign key says so — so the subject is that
     // membership and the login address is recorded against it under its own field.
@@ -318,6 +323,10 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "memberships", column: "email", label: "Work email address", stage: "sealed", erasure: "shred-key",
     storage: indexed("email_sealed", "email_bidx", "memberships.email", "email") },
   { table: "memberships", column: "display_name", label: "Name", stage: "sealed", erasure: "shred-key", storage: sealed("display_name_sealed") },
+  { table: "supplier_contacts", column: "email", label: "Email address at a supplier", stage: "sealed", erasure: "shred-key",
+    storage: indexed("email_sealed", "email_bidx", "supplier_contacts.email", "email") },
+  { table: "supplier_contacts", column: "full_name", label: "Name as a supplier contact", stage: "sealed", erasure: "shred-key", storage: sealed("full_name_sealed") },
+  { table: "supplier_contacts", column: "phone", label: "Phone number at a supplier", stage: "sealed", erasure: "shred-key", storage: sealed("phone_sealed") },
 
   // ── Sealed by the backfill; their only writers run in the authentication context ─────
   { table: "trainees", column: "personal_email", label: "Sign-in address", stage: "awaiting-auth-bridge", erasure: "shred-key",
@@ -510,6 +519,13 @@ export const PII_HOSTING_DECISIONS: ReadonlyArray<PiiHostingDecision> = [
     accepted: "2026-09-28",
     admits: "The v7 client and job import (docs/CLIENT_JOB_IMPORT_DESIGN.md): active clients' contacts and sites, full job history, historical emissions and published report snapshots.",
     terms: "Personal data sealed on write; boundary-guarded to isolated-non-production; loaded only from the Render Shell; the extract never committed.",
+    commitment: REPLICATE,
+  },
+  {
+    population: "Suppliers",
+    accepted: "2026-10-01",
+    admits: "The v7 supplier import (admin E4, ruled E-Q6/E-Q7): the named contacts at suppliers — name, email and phone.",
+    terms: "Sealed per person on load and on write (NZC-119), each contact its own subject, erased by key-shred; never in a _handoff extract or report; the address and notes v7 held are not imported.",
     commitment: REPLICATE,
   },
 ];

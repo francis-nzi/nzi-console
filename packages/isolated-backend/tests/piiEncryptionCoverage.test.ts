@@ -91,6 +91,11 @@ describe("personal data has ciphertext beside it (NZC-119)", { skip: DATABASE_UR
     await db.query(
       `INSERT INTO nzi_console.trainee_email_changes (organisation_id,change_id,trainee_id,current_email,new_email,token_hash,expires_at)
        VALUES ($1,'change-1','trainee-1','alan@acme.test','alan.turing@acme.test','token-hash', now() + interval '1 day')`, [ORG]);
+    // A named person at a supplier (0148): their own subject, apart from the company.
+    await db.query(`INSERT INTO nzi_console.suppliers (organisation_id,supplier_id,name,created_by,updated_by) VALUES ($1,'supplier-1','Verifiers Ltd',$2,$2)`, [ORG, ACTOR]);
+    await db.query(
+      `INSERT INTO nzi_console.supplier_contacts (organisation_id,contact_id,supplier_id,full_name,email,phone,created_by,updated_by)
+       VALUES ($1,'supplier-contact-1','supplier-1','Mary Somerville','mary@verifiers.test','+44 20 7000 0001',$2,$2)`, [ORG, ACTOR]);
 
     await backfillSealedPii(database.pool, { organisationId: ORG, actorId: ACTOR, keys, batchSize: 50 });
   });

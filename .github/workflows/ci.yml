@@ -526,6 +526,10 @@ jobs:
       # active to be added and a held one staying, and load:v7-job-type-items resolving types and items by v7 identity.
       - name: A job type's included items are set whole, never deleted, and imported by identity
         run: npx tsx --test packages/isolated-backend/tests/jobTypeTemplatesReal.test.ts
+      # E4 (0148): suppliers — the company plain, each contact sealed as their own subject and erasable by key-shred, the
+      # agreed rate only with finance.manage and never in the audit, and load:v7-suppliers sealing contacts on load.
+      - name: Supplier contacts are sealed per person, and the agreed rate stays with finance
+        run: npx tsx --test packages/isolated-backend/tests/suppliersReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

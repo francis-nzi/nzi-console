@@ -87,6 +87,26 @@ export function sealClientContactRow(
   }, keysFor(seal), seal.actorId);
 }
 
+/** A named person at a supplier (admin E4; E-Q6) — third-party, their own subject apart from the company. */
+export function sealSupplierContactRow(
+  seal: Seal,
+  row: { contactId: string; email?: string | null; fullName?: string | null; phone?: string | null },
+) {
+  const sealed: Record<string, string | null | undefined> = {};
+  if (row.fullName !== undefined) sealed.full_name_sealed = row.fullName;
+  if (row.phone !== undefined) sealed.phone_sealed = row.phone;
+  return sealRowPii(seal.db, {
+    organisationId: seal.organisationId,
+    subject: { sourceTable: "supplier_contacts", sourceId: row.contactId },
+    table: "supplier_contacts",
+    keyColumns: { organisation_id: seal.organisationId, contact_id: row.contactId },
+    sealed,
+    operational: row.email !== undefined
+      ? [{ column: "supplier_contacts.email", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email", value: row.email }]
+      : [],
+  }, keysFor(seal), seal.actorId);
+}
+
 /** A client-side portal account. */
 export function sealPortalUserRow(
   seal: Seal,
