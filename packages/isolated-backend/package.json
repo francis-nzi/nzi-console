@@ -29,6 +29,7 @@
     "load:v7-org-settings": "tsx scripts/load-v7-org-settings.ts",
     "load:v7-currencies": "tsx scripts/load-v7-currencies.ts",
     "load:v7-job-items": "tsx scripts/load-v7-job-items.ts",
+    "load:v7-job-type-items": "tsx scripts/load-v7-job-type-items.ts",
     "extract:v7-sql": "node scripts/v7-extract-sql.mjs",
     "extract:v7-manifest": "node scripts/v7-extract-manifest.mjs",
     "retire:demo-job-numbers": "tsx scripts/retire-demo-job-numbers.ts",

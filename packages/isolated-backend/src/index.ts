@@ -47,6 +47,7 @@ export * from "./milestoneTemplates";
 export * from "./jobFileTypes";
 export * from "./commercialLookups";
 export * from "./serviceCatalogue";
+export * from "./jobTypeTemplates";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";

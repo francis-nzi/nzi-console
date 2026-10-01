@@ -261,6 +261,17 @@ export function syntheticRows(): Rows {
       { item_id: "4", item_code: "USDONLY", item_name: "Dollar Work", description: null, category: "Advisory", unit: "month", estimated_hours: "2", vat_rate_id: "1", cost_amount: "100", cost_currency: "USD", sell_amount: "200", sell_currency: "GBP", vat_rate: "20", is_active: "t", sort_order: "40" },
       { item_id: "5", item_code: "MONTHLY", item_name: "Monthly Monitoring", description: null, category: "Ongoing", unit: "month", estimated_hours: "4", vat_rate_id: "1", cost_amount: "150", cost_currency: "GBP", sell_amount: "350", sell_currency: "GBP", vat_rate: "20", is_active: "f", sort_order: "60" },
     ],
+    // v7's job-type templates (admin E3): three that resolve, one naming an item E2 leaves out (USDONLY) and one an
+    // unknown job type, a repeated pair, and a zero quantity.
+    job_type_items: [
+      { job_type_item_id: "1", job_type_id: "1", item_id: "1", quantity: "1", is_required: "t", sort_order: "10" },
+      { job_type_item_id: "2", job_type_id: "1", item_id: "2", quantity: "2.5", is_required: "f", sort_order: "20" },
+      { job_type_item_id: "3", job_type_id: "2", item_id: "5", quantity: "3", is_required: "t", sort_order: "10" },
+      { job_type_item_id: "4", job_type_id: "1", item_id: "4", quantity: "1", is_required: "t", sort_order: "30" },
+      { job_type_item_id: "5", job_type_id: "99", item_id: "1", quantity: "1", is_required: "t", sort_order: "10" },
+      { job_type_item_id: "6", job_type_id: "1", item_id: "1", quantity: "4", is_required: "t", sort_order: "40" },
+      { job_type_item_id: "7", job_type_id: "3", item_id: "2", quantity: "0", is_required: "t", sort_order: "10" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.

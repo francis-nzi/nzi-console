@@ -76,6 +76,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       currency_lookup: 5, currencies_lookup: 4,
       // The service catalogue (admin E2): taken whole.
       job_items: 5,
+      // Job-type templates (admin E3): taken whole.
+      job_type_items: 7,
       // Staff (admin B2): taken whole — the portal login too, which the importer refuses. Only the ruled columns are read.
       users: 6,
       // Organisation settings (admin D2): the 16 allow-listed keys of 20 — the bank rows and anything else stay behind.

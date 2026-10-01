@@ -43,6 +43,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "vat.%", "currency.%", "currencies.imported",
   // The service catalogue (admin E2): the item commands (the price command records which amounts, never what), and its import.
   "job_item.%", "job_items.imported",
+  // Job-type templates (admin E3). job_type.% above already takes job_type.items_set.
+  "job_type_items.imported",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

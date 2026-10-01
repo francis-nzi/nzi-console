@@ -36,8 +36,8 @@ export type JobItemRow = {
   /** Null when the reader may not see them (finance.manage) — never 0 for "hidden". Within, null is "not yet priced". */
   amounts: { cost: number | null; sell: number | null } | null;
   sortOrder: number; active: boolean; version: number; provenance: JobItemProvenance; updatedAt: string;
-  /** Job-type templates naming this item — null until E3's templates exist (shown "none yet", not 0). */
-  inUse: number | null;
+  /** Job types whose template includes this item (E3). */
+  inUse: number;
 };
 export type JobItemPage = ListPage<JobItemRow, JobItemListFilterKey, Record<string, never>>;
 
@@ -46,7 +46,8 @@ const jobItemSql = defineListSql<JobItemListSortKey, JobItemListFilterKey>({
       ji.unit_value_id, uom.label AS unit, ji.default_hours AS hours, ji.vat_rate_id, vat.name || ' · ' || trim_scale(vat.rate_pct)::text || '%' AS vat_rate,
       ji.currency_code, ji.default_cost_amount, ji.default_sell_amount, ji.sort_order, ji.active, ji.version, ji.updated_at,
       CASE WHEN ji.active THEN 'active' ELSE 'inactive' END AS status,
-      CASE WHEN ji.source_system IS NOT NULL THEN 'v7' WHEN ji.created_by LIKE 'migration:%' THEN 'seeded' ELSE 'added' END AS provenance
+      CASE WHEN ji.source_system IS NOT NULL THEN 'v7' WHEN ji.created_by LIKE 'migration:%' THEN 'seeded' ELSE 'added' END AS provenance,
+      (SELECT count(*) FROM nzi_console.job_type_items ti WHERE (ti.organisation_id, ti.item_id) = (ji.organisation_id, ji.item_id) AND ti.included)::int AS in_use
     FROM nzi_console.job_items ji
     LEFT JOIN nzi_console.reference_values cat ON (cat.organisation_id, cat.value_id) = (ji.organisation_id, ji.category_value_id)
     LEFT JOIN nzi_console.reference_values uom ON (uom.organisation_id, uom.value_id) = (ji.organisation_id, ji.unit_value_id)
@@ -75,8 +76,7 @@ export async function listJobItemsPage(db: Queryable, query: JobItemListQuery, o
       amounts: options.showAmounts ? { cost: amount(row.default_cost_amount), sell: amount(row.default_sell_amount) } : null,
       sortOrder: Number(row.sort_order), active: row.active === true, version: Number(row.version), provenance: row.provenance as JobItemProvenance,
       updatedAt: iso(row.updated_at),
-      // E3 adds job-type templates; it adds the count here.
-      inUse: null,
+      inUse: Number(row.in_use),
     }),
     mapSummary: () => ({}),
   });

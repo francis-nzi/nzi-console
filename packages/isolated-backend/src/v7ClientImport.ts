@@ -353,6 +353,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     currency_lookup: "currency_id", currencies_lookup: "currency_code",
     // The service catalogue (admin E2) — read by load:v7-job-items.
     job_items: "item_id",
+    // Job-type templates (admin E3) — read by load:v7-job-type-items.
+    job_type_items: "job_type_item_id",
     // Staff (admin B2) — read by load:v7-staff, not the client import. v7's user id is the email address.
     users: "user_id",
     // Organisation settings (admin D2) — read by load:v7-org-settings; only the allow-listed profile and logo keys.

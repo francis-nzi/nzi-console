@@ -1,5 +1,5 @@
 import { jobTypeListSpec, parseListQuery } from "@nzi/contracts";
-import { listJobTypePickers, listJobTypesPage, withTenantRead, type JobTypePage, type JobTypePickers } from "@nzi/isolated-backend";
+import { listJobTypePickers, listJobTypesPage, withTenantRead, type JobTypePage, type JobTypePickers, listJobTypeTemplates, listTemplateCatalogue, type JobTypeTemplate, type TemplateCatalogueItem } from "@nzi/isolated-backend";
 import { serviceEnvironment } from "../../lib/environment";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { adminAccess, holds } from "../adminAccess";
@@ -16,10 +16,11 @@ export default async function JobTypesPage({ searchParams }: { searchParams: Pro
   if (access.state !== "allowed") return null; // The layout states why; nothing is read.
 
   const query = parseListQuery(await searchParams, jobTypeListSpec).query;
-  let data: { page: JobTypePage; pickers: JobTypePickers } | null = null;
+  let data: { page: JobTypePage; pickers: JobTypePickers; templates: Record<string, JobTypeTemplate>; catalogue: TemplateCatalogueItem[] } | null = null;
   try {
     data = await withTenantRead(isolatedPool(), access.organisationId, async (db) => ({
       page: await listJobTypesPage(db, query), pickers: await listJobTypePickers(db),
+      templates: await listJobTypeTemplates(db), catalogue: await listTemplateCatalogue(db),
     }));
   } catch {
     data = null;
@@ -32,5 +33,5 @@ export default async function JobTypesPage({ searchParams }: { searchParams: Pro
   const editing = !holds(access.capabilities, "admin.lookups") ? { allowed: false as const, reason: "Your role can see job types but not change them — that needs admin.lookups." }
     : serviceEnvironment().writes !== "enabled" ? { allowed: false as const, reason: "Writes are switched off in this environment, so job types are read-only here." }
     : { allowed: true as const };
-  return <JobTypesBoard page={data.page} pickers={data.pickers} query={query} editing={editing} />;
+  return <JobTypesBoard page={data.page} pickers={data.pickers} templates={data.templates} catalogue={data.catalogue} query={query} editing={editing} />;
 }

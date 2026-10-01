@@ -112,6 +112,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job_item.deactivate": organisation,
   "job_item.reinstate": organisation,
   "job_item.price.set": organisation,
+  // Job-type templates (admin Phase E3).
+  "job_type.items.set": organisation,
   // Team & access (admin Phase B): the firm's own roster, not a client's record.
   "staff.add": organisation,
   "staff.update": organisation,

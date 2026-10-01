@@ -501,6 +501,19 @@
       "sort_order"
     ]
   },
+  "job_type_items": {
+    "filter": "all",
+    "required": [
+      "job_type_item_id",
+      "job_type_id",
+      "item_id"
+    ],
+    "optional": [
+      "quantity",
+      "is_required",
+      "sort_order"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

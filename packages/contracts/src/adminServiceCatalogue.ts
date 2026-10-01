@@ -42,3 +42,16 @@ export type JobItemEditableFields = {
   vatRateId?: string | null;
   sortOrder?: number;
 };
+
+/**
+ * Job-type templates (admin Phase E3; ruled plan E-Q5/E-Q10): the catalogue items a new job of a type starts with —
+ * the **source** of the copy at job creation, never the copy (`docs/JOB_TYPE_TEMPLATE_CONTRACT.md`). Set whole, in
+ * order, by `job_type.items.set` against the template's own version; an item dropped is kept as not included, never
+ * deleted.
+ */
+export const JOB_TYPE_ITEMS_MAX = 50;
+export const JOB_TYPE_ITEM_QUANTITY_MAX = 1_000_000;
+export type JobTypeTemplateEntry = { itemId: string; quantity: number; isRequired: boolean };
+/** A quantity above 0, to two places. */
+export const isTemplateQuantity = (value: unknown): value is number =>
+  typeof value === "number" && value > 0 && isCatalogueAmount(value, JOB_TYPE_ITEM_QUANTITY_MAX);
