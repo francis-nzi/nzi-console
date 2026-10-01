@@ -71,6 +71,15 @@ describe("what a reminder says", () => {
     assert.ok(!/immediately|urgent|failure|must/i.test(sent.body), sent.body);
   });
 
+  it("names no organisation it cannot read — the worker has no grant on the profile (D3b)", () => {
+    for (const kind of ["approaching", "overdue"] as const) {
+      const { body } = message(kind, kind === "overdue" ? "2026-09-01" : "2026-09-20");
+      assert.match(body, /your consultant/);
+      assert.match(body, /your client portal/);
+      assert.ok(!/NZI/.test(body), "no hard-coded organisation name");
+    }
+  });
+
   it("greets the person, and copes when the name is one word", () => {
     assert.match(message("overdue", "2026-09-01").body, /^Hello Dana,/);
     const noName = reminderMessage({

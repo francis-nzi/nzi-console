@@ -3,6 +3,7 @@ import { requireCapability, type StaffPrincipal } from "./auth";
 import { assertCapabilityOnClient } from "./access";
 import { getPortalClientStrategies, type PortalStrategiesReadModel } from "./portalStrategies";
 import { getPortalClientReadiness, type PortalReadinessReadModel } from "./portalReadiness";
+import { readOrganisationBrand } from "./organisationSettings";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -75,7 +76,8 @@ export async function getPortalPreview(
     if (!found) throw new PortalPreviewError("That client is unavailable.");
 
     const strategies = await getPortalClientStrategies(db, { clientId: input.clientId, today: input.today });
-    const readiness = await getPortalClientReadiness(db, { clientId: input.clientId });
+    const { shortName: organisationShortName } = await readOrganisationBrand(db, principal.organisationId);
+    const readiness = await getPortalClientReadiness(db, { clientId: input.clientId, organisationShortName });
 
     // Audited on open, not per fetch: the event a reviewer wants is "who looked at this client's
     // portal, and when", and one row per surface would bury that in noise.

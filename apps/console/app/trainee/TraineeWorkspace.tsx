@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 
 /**
  * The trainee portal — one person's own view of their training.
@@ -27,6 +28,7 @@ type State =
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?";
 
 export function TraineeWorkspace() {
+  const org = useOrganisationName();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -45,7 +47,7 @@ export function TraineeWorkspace() {
 
   if (state.kind === "loading") {
     return <div className="nz-portal-state loading" role="status"><i>↻</i><div>
-      <b>Loading your training record</b><span>Reading everything you have trained on with NZI…</span>
+      <b>Loading your training record</b><span>Reading everything you have trained on with {org.short}…</span>
     </div></div>;
   }
   if (state.kind === "failed") {
@@ -116,6 +118,7 @@ export function TraineeWorkspace() {
 }
 
 function TrainingCard({ entry }: { entry: TraineeTrainingEntry }) {
+  const org = useOrganisationName();
   return <article className="nz-tr-card">
     <span className="nz-tr-card-icon"><NziIcon name="award" size={20} /></span>
     <div className="nz-tr-card-body">
@@ -130,7 +133,8 @@ function TrainingCard({ entry }: { entry: TraineeTrainingEntry }) {
         Arranged by <b>{entry.employerName ?? "an employer"}</b>
         {/* A previous employer is a fact about the training, not a caveat about the person. */}
         {entry.employerName !== null && !entry.employerIsCurrent ? <span className="muted"> (previous employer)</span> : null}
-        {" · delivered by NZI"}
+        {/* A certificate names the issuer frozen onto it; otherwise the organisation as it is named today. */}
+        {` · delivered by ${entry.certificate?.issuer ?? org.short}`}
       </div>
     </div>
     <div className="nz-tr-card-act">

@@ -8,6 +8,7 @@ import { jobDateIssues } from "./jobDates";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
+import type { ReportIssuer } from "./reportComposition";
 import { isAllowedTrainingRunStageTransition } from "./trainingWorkflow";
 import {
   estimateConfidences, estimateScopes, estimateSources, estimateUnits,
@@ -345,9 +346,10 @@ export type AnnualScopeComparison={year:number;sourceSnapshotId:string;sourceDat
 export type ReviewedCrpSnapshotReadModel={id:string;jobId:string;jobNumber:string;client:string;reportingYear:number;version:number;jobVersion:number;createdAt:string;createdBy:string;/** NZC-022 — the approver (never the preparer, createdBy); null until approved. */approvedBy?:string|null;approvedAt?:string|null;dataHash:string;target:EmissionsTargetReadModel|null;intensityTarget:IntensityTargetReadModel|null;annualComparison:AnnualScopeComparison[];sections:ReportSectionReadModel[];gapResolutions:Array<{gapKey:string;reason:string;resolvedBy:string;resolvedAt:string}>;/** NZC-066/070 — stamped at issue; absent on snapshots issued before stamping. */provenance?:SnapshotProvenanceStamp|null;measurements:Array<{rowId:string;rowVersion:number;scope:"1"|"2"|"3";scopeCode?:string;sourceLabel:string;/** Present only on snapshots issued before NZC-104 stopped writing it — never read, never written now. */assetIdentifier?:string|null;reportLabel?:string;columnText?:string|null;notes?:string|null;categoryPath?:string[];monthlyActivity?:MonthlyActivitySlot[];siteId?:string|null;siteLabel?:string|null;purchasedGoodsCategoryId?:string|null;purchasedGoodsCategoryLabel?:string|null;factorSource?:FactorSource;clientFactorId?:string|null;isCustomEntry?:boolean;applyPct?:number;dataConfidence?:DataConfidence|null;sourceQuantity?:number|null;sourceUnit?:string|null;tco2e:number;factorSet:string;qualityTier:ScopeQualityTier;reviewedBy:string}>};
 /** The signee chosen at validation (a report-signee contact), frozen onto the version. */
 export type ReportSignee={name:string;jobTitle:string|null};
-/** `clientLogoAssetId` — the client logo frozen onto the version at validation; null = the monogram. */
-export type PublishedCrpReportReadModel={reportVersionId:string;manifestVersion:number;publishedAt:string;dataHash:string;signee?:ReportSignee|null;clientLogoAssetId?:string|null;snapshot:ReviewedCrpSnapshotReadModel};
-export type CrpReportVersionReadModel={reportVersionId:string;status:"validated"|"published"|"superseded";manifestVersion:number;publishedAt:string|null;dataHash:string;signee?:ReportSignee|null;clientLogoAssetId?:string|null;snapshot:ReviewedCrpSnapshotReadModel};
+/** `clientLogoAssetId` — the client logo frozen onto the version at validation; null = the monogram. `issuer` — the issuing
+ * organisation frozen at validation (0143); pre-D3 versions carry the backfill. */
+export type PublishedCrpReportReadModel={reportVersionId:string;manifestVersion:number;publishedAt:string;dataHash:string;signee?:ReportSignee|null;clientLogoAssetId?:string|null;issuer?:ReportIssuer|null;snapshot:ReviewedCrpSnapshotReadModel};
+export type CrpReportVersionReadModel={reportVersionId:string;status:"validated"|"published"|"superseded";manifestVersion:number;publishedAt:string|null;dataHash:string;signee?:ReportSignee|null;clientLogoAssetId?:string|null;issuer?:ReportIssuer|null;snapshot:ReviewedCrpSnapshotReadModel};
 /** NZC-062 — the GHG-protocol category each of a factor's `scopes` entries resolves to (`crpScopeCategoryLabel`). */
 export type FactorOptionCategory = { scope: "1" | "2" | "3"; scopeCode: string; label: string };
 export type FactorOption = { datasetId: string|null; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; categories: FactorOptionCategory[]; selectionSource: "automatic" | "manual" | "client"; factorSource:FactorSource;clientFactorId:string|null;evidenceHash:string|null; synthetic: boolean; warnings: string[] };

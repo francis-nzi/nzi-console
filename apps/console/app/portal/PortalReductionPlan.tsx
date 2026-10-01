@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {useEffect,useState} from "react";
 import {Collapsible} from "@nzi/ui";
 import type {PortalPlanGroup,PortalPlanStrategy,PortalStrategiesReadModel,PortalStrategyHighlight} from "@nzi/isolated-backend";
@@ -38,6 +39,7 @@ const EXPAND_UP_TO=8;
  * while there is one renderer to be wrong in.
  */
 export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesReadModel}={}){
+  const org=useOrganisationName();
   const [model,setModel]=useState<PortalStrategiesReadModel|null>(provided??null),[error,setError]=useState("");
   useEffect(()=>{if(provided!==undefined){setModel(provided);return;}
     fetch("/api/portal/strategies",{cache:"no-store"}).then(async response=>{
@@ -58,7 +60,7 @@ export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesRea
     <span className="nz-eyebrow">Your reduction plan</span>
     <h2 style={{margin:"2px 0 8px",fontSize:16}}>Your reduction plan is being built with your consultant</h2>
     <p className="sub" style={{marginTop:0}}>
-      Once you and your NZI consultant have agreed the actions to take, they appear here — with the
+      Once you and {org.your("consultant")} have agreed the actions to take, they appear here — with the
       dates you set — and you can follow them as they progress.
     </p>
   </div></section>;
@@ -70,7 +72,7 @@ export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesRea
       <span className="nz-eyebrow">Your reduction plan</span>
       <h2 style={{margin:"2px 0 8px",fontSize:16}}>{headline(model)}</h2>
       <p className="sub" style={{marginTop:0}}>
-        Dates you set with your NZI consultant. Talk to them if any of these need to move — a date that
+        Dates you set with {org.your("consultant")}. Talk to them if any of these need to move — a date that
         has moved is better than a date that has passed.
       </p>
       <div>{model.highlights.map((highlight,index)=><Row key={`${highlight.title}-${index}`} highlight={highlight}/>)}</div>
@@ -80,7 +82,7 @@ export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesRea
       <span className="nz-eyebrow">Decarbonisation plan</span>
       <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.total} action{model.total===1?"":"s"} on your plan</h2>
       <p className="sub" style={{marginTop:0}}>
-        Agreed with your NZI consultant and kept up to date by them. Grouped by the theme each action
+        Agreed with {org.your("consultant")} and kept up to date by them. Grouped by the theme each action
         sits under.
       </p>
       <div className="nz-portal-plan">

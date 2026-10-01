@@ -1,4 +1,4 @@
-import { getTraineePortal, withTenantRead } from "@nzi/isolated-backend";
+import { getTraineePortal, readOrganisationBrand, withTenantRead } from "@nzi/isolated-backend";
 import { todayInLondon } from "@nzi/contracts";
 import { traineeAuthFailure } from "../../../lib/authResponse";
 import { isolatedPool } from "../../../lib/isolatedDatabase";
@@ -16,8 +16,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const trainee = await currentTrainee(request);
-    const model = await withTenantRead(isolatedPool(), trainee.organisationId, (db) =>
-      getTraineePortal(db, { traineeId: trainee.traineeId, asAt: todayInLondon() }),
+    const model = await withTenantRead(isolatedPool(), trainee.organisationId, async (db) =>
+      getTraineePortal(db, { traineeId: trainee.traineeId, asAt: todayInLondon(), organisationShortName: (await readOrganisationBrand(db, trainee.organisationId)).shortName }),
     );
     return Response.json(model, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return traineeAuthFailure(error); }

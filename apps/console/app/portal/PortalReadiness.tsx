@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {useEffect,useState} from "react";
 import {Collapsible} from "@nzi/ui";
 import {CRP_RESOLVER_VERSION,RENDERER_VERSION,SrsMaturityBullets,SrsPillarRadar,TOKENS_VERSION} from "@nzi/charts";
@@ -40,6 +41,7 @@ const EXPAND_UP_TO=6;
  * while there is one renderer to be wrong in.
  */
 export function PortalReadiness({model:provided}:{model?:PortalReadinessReadModel}={}){
+  const org=useOrganisationName();
   const [model,setModel]=useState<PortalReadinessReadModel|null>(provided??null),[error,setError]=useState("");
   useEffect(()=>{if(provided!==undefined){setModel(provided);return;}
     fetch("/api/portal/readiness",{cache:"no-store"}).then(async response=>{
@@ -73,7 +75,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
     <span className="nz-eyebrow">UK SRS readiness</span>
     <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.overallLabel} — {Math.round(model.overallPct)}% ready</h2>
     <p className="sub" style={{marginTop:0}}>
-      Assessed with your NZI consultant on {formatDate(model.assessedOn)} against {model.frameworkLabel} version {model.frameworkVersion}.
+      Assessed with {org.your("consultant")} on {formatDate(model.assessedOn)} against {model.frameworkLabel} version {model.frameworkVersion}.
       This is how ready your own reporting is — not a statement that anything has been filed or assured.
     </p>
 

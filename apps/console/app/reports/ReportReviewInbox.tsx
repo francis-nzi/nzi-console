@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {FormEvent,useEffect,useState} from "react";
 import type {StaffReportThread} from "@nzi/isolated-backend";
 import { formatDateTime } from "../lib/formatDate";
@@ -6,6 +7,7 @@ type Filter="action"|"reply"|"approval"|"all";
 function validThreads(value:unknown):value is StaffReportThread[]{return Array.isArray(value)&&value.every(thread=>thread&&typeof thread==="object"&&typeof thread.reportVersionId==="string"&&typeof thread.jobId==="string"&&typeof thread.needsReply==="boolean"&&typeof thread.awaitingApproval==="boolean"&&Array.isArray(thread.approvals)&&Array.isArray(thread.comments))}
 
 export function ReportReviewInbox(){
+  const org=useOrganisationName();
   const [threads,setThreads]=useState<StaffReportThread[]|null>(null),[error,setError]=useState(""),[notice,setNotice]=useState(""),[pending,setPending]=useState(""),[filter,setFilter]=useState<Filter>("action");
   async function load(){setError("");try{const response=await fetch("/api/isolated/reports/review-messages",{cache:"no-store"}),body=await response.json();if(!response.ok)throw new Error(body.message??"Review messages are unavailable.");if(!validThreads(body.threads))throw new Error("The review inbox returned an invalid response.");setThreads(body.threads)}catch(cause){setError(cause instanceof Error?cause.message:"Review messages are unavailable.");setThreads(null)}}
   useEffect(()=>{void load()},[]);
@@ -19,7 +21,7 @@ export function ReportReviewInbox(){
     {error?null:threads===null?<div className="nz-review-loading" role="status"><i aria-hidden="true"/><span>Loading version-bound review threads…</span></div>:visible.length===0?<div className="nz-review-empty"><b>No threads match this filter</b><span>{filter==="action"?"There are no client replies or approvals requiring action.":"Choose another filter to view the remaining version-specific records."}</span></div>:visible.map(thread=><section className="nz-review-thread" key={thread.reportVersionId}>
       <div className="nz-review-thread-head"><div><b>{thread.jobNumber} · {thread.client}</b><span className="sub">{thread.reportingYear??"Year not set"} · {thread.reportVersionId}</span></div>{thread.needsReply?<span className="nz-st nof">Client reply needed</span>:<span className={`nz-st ${thread.awaitingApproval?"est":"done"}`}>{thread.awaitingApproval?"Awaiting approval":"Client approved"}</span>}</div>
       {thread.approvals.map(approval=><div className="nz-approval-record" key={approval.approvalId}><i>✓</i><div><b>Approved by {approval.displayName}</b><span>{formatDateTime(approval.approvedAt)} · immutable approval {approval.approvalId}</span></div></div>)}
-      <div className="nz-review-conversation">{thread.comments.length===0?<div className="nz-thread-empty">No messages for this version.</div>:thread.comments.map(comment=><article key={comment.commentId} className={`nz-review-message ${comment.authorPrincipal}`}><header><b>{comment.authorDisplayName}</b><span>{comment.authorPrincipal==="portal"?"Client":"NZI"} · {formatDateTime(comment.createdAt)}</span></header><p>{comment.body}</p></article>)}</div>
+      <div className="nz-review-conversation">{thread.comments.length===0?<div className="nz-thread-empty">No messages for this version.</div>:thread.comments.map(comment=><article key={comment.commentId} className={`nz-review-message ${comment.authorPrincipal}`}><header><b>{comment.authorDisplayName}</b><span>{comment.authorPrincipal==="portal"?"Client":org.short} · {formatDateTime(comment.createdAt)}</span></header><p>{comment.body}</p></article>)}</div>
       <form className="nz-review-reply" onSubmit={event=>reply(event,thread)}><label className="nz-sr-only" htmlFor={`reply-${thread.reportVersionId}`}>Reply to {thread.client}</label><input id={`reply-${thread.reportVersionId}`} className="nz-inp" name="body" maxLength={4000} required disabled={pending!==""} placeholder={`Reply about ${thread.reportVersionId}…`}/><button className="nz-btn pri" disabled={pending!==""}>{pending===thread.reportVersionId?"Sending…":"Reply to client"}</button></form>
     </section>)}
   </div>;

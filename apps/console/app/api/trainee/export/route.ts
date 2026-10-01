@@ -1,4 +1,4 @@
-import { getTraineePortal, withTenantRead } from "@nzi/isolated-backend";
+import { getTraineePortal, readOrganisationBrand, withTenantRead } from "@nzi/isolated-backend";
 import { todayInLondon } from "@nzi/contracts";
 import { traineeAuthFailure } from "../../../lib/authResponse";
 import { isolatedPool } from "../../../lib/isolatedDatabase";
@@ -16,13 +16,16 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const trainee = await currentTrainee(request);
-    const model = await withTenantRead(isolatedPool(), trainee.organisationId, (db) =>
-      getTraineePortal(db, { traineeId: trainee.traineeId, asAt: todayInLondon() }),
-    );
+    const { brand, model } = await withTenantRead(isolatedPool(), trainee.organisationId, async (db) => {
+      const brand = await readOrganisationBrand(db, trainee.organisationId);
+      return { brand, model: await getTraineePortal(db, { traineeId: trainee.traineeId, asAt: todayInLondon(), organisationShortName: brand.shortName }) };
+    });
     const body = JSON.stringify({
       exportedAt: new Date().toISOString(),
-      about: "Everything held about you in NZI's training records: your details, your bookings and attendance, and your certificates.",
-      issuer: "Net Zero International",
+      about: `Everything held about you in ${brand.shortName}'s training records: your details, your bookings and attendance, and your certificates.`,
+      // A data export names the controller: the legal name, as the profile holds it now. Each certificate in the
+      // model carries the issuer frozen onto it when it was issued.
+      issuer: brand.legalName,
       ...model,
     }, null, 2);
     const filename = `nzi-training-record-${model.asAt}.json`;

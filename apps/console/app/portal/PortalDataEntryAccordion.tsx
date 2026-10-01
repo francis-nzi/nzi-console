@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 // UX1d — the client-portal scope→category data-entry accordion (NZC-046 /
 // DATA_ENTRY_UX.md §1, §5). A constrained mirror of the CRP accordion: only the
 // categories the client's bucket grants authorise, each collapsed, with the
@@ -10,16 +11,20 @@ import type { InputSpecCategory } from "@nzi/contracts";
 import { PortalCategoryEntry } from "./PortalCategoryEntry";
 import { PortalSpendEntry } from "./PortalSpendEntry";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
+import type { OrganisationCopy } from "../lib/organisationName";
 
 const scopeColour = (scope: string) => (scope === "1" ? "var(--s1)" : scope === "2" ? "var(--s2)" : "var(--s3)");
 const KIND_NOTE: Record<string, string> = {
-  spend: "Enter the net value, VAT and GL code, and choose your authorised category. NZI maps the factor.",
   vehicle: "Registration finder (DVLA) or manual — make, model, fuel.",
   travel: "Registration finder, air, rail and other travel types — or enter manually.",
   commuting: "Registration finder, mode, or working-from-home days.",
   fugitive: "Refrigerant top-ups. Enter a quantity and unit.",
   manual: "Enter a quantity and unit, with an optional monthly breakdown.",
 };
+/** The spend note names who maps the factor (D3b), so it is built per render rather than held in the table. */
+const kindNote = (kind: string, org: OrganisationCopy) => kind === "spend"
+  ? `Enter the net value, VAT and GL code, and choose your authorised category. ${org.Short} maps the factor.`
+  : KIND_NOTE[kind] ?? KIND_NOTE.manual;
 
 export function PortalDataEntryAccordion({
   specs,
@@ -33,6 +38,7 @@ export function PortalDataEntryAccordion({
   buckets: PortalBucket[];
   reportingMonths: string[];
 }) {
+  const org = useOrganisationName();
   const sections = buildPortalDataEntryAccordion(buckets);
   const [open, setOpen] = useState<Set<string>>(() => new Set(sections.length === 1 ? [sections[0]!.code] : []));
   const spendOn = dataEntryAdapterEnabled("portal-spend");
@@ -69,7 +75,7 @@ export function PortalDataEntryAccordion({
                   </button>
                   {isOpen ? (
                     <div className="nz-acc-body">
-                      <div className="nz-acc-kindnote">⌁ {KIND_NOTE[section.kind] ?? KIND_NOTE.manual}</div>
+                      <div className="nz-acc-kindnote">⌁ {kindNote(section.kind, org)}</div>
                       {spendOn && section.spendBuckets.length ? (
                         <PortalSpendEntry jobId={jobId} buckets={section.spendBuckets} reportingMonths={reportingMonths} />
                       ) : null}

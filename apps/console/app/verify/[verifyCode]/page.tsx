@@ -5,6 +5,8 @@ import {
 } from "@nzi/isolated-backend";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { formatDate } from "../../lib/formatDate";
+import { deploymentNames } from "../../lib/organisationBrand";
+import { organisationCopy } from "../../lib/organisationName";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +82,7 @@ export default async function VerifyCertificatePage({ params }: { params: Promis
           shown here rather than hidden, so that a copy still in circulation can be recognised for what it is.
         </p>
         : <p className="nz-verify-note">
-          This record is held by Net Zero International and confirms the training above. It shows only the
+          This record is held by {result.issuer} and confirms the training above. It shows only the
           training itself — no contact details, no employer, and nothing else this person has studied.
         </p>}
     </div>
@@ -92,7 +94,8 @@ export default async function VerifyCertificatePage({ params }: { params: Promis
  * simply checking a lot of certificates, and says nothing about the code they just tried —
  * a "slow down, that one was wrong" would hand back the very bit being rationed.
  */
-function LimitedCard() {
+async function LimitedCard() {
+  const org = organisationCopy(await deploymentNames());
   return <VerifyShell>
     <div className="nz-verify-card unavailable" role="alert">
       <h1>Too many checks from here</h1>
@@ -102,7 +105,7 @@ function LimitedCard() {
       </p>
       <p className="nz-verify-note">
         The limit resets within {VERIFY_WINDOW_MINUTES} minutes. If you need to verify many certificates at
-        once, contact the NZI training team and they will help.
+        once, contact the {org.short} training team and they will help.
       </p>
     </div>
   </VerifyShell>;

@@ -88,11 +88,13 @@ export function reminderMessage(input: {
     `Action: ${input.strategyTitle}${ownerLine}`,
     `Target date: ${when}`,
     "",
+    // D3b: no organisation name. The worker that writes this runs as nzi_console_worker, which cannot read the
+    // organisation profile; naming it needs that grant (a migration), so the copy says who without a name.
     input.kind === "overdue"
-      ? "If it is done, your NZI consultant can mark it complete. If the date needs to move, tell them — a date that has moved is more useful than a date that has passed."
-      : "If the date needs to move, or it is already done, let your NZI consultant know.",
+      ? "If it is done, your consultant can mark it complete. If the date needs to move, tell them — a date that has moved is more useful than a date that has passed."
+      : "If the date needs to move, or it is already done, let your consultant know.",
     "",
-    "You can see your full plan in the NZI client portal.",
+    "You can see your full plan in your client portal.",
     "",
     "— NZ Insights Pro",
   ].join("\n");

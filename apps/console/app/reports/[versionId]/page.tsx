@@ -115,7 +115,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
       <span className={`nz-st ${version.status==="published"?"done":"est"}`}>Manifest v{version.manifestVersion}</span>
       <PrintButton/>
     </div>
-    {r5?<ReportPagedView meta={{client:snapshot.client,jobNumber:snapshot.jobNumber,reportingYear:snapshot.reportingYear}}>{reportArticle}</ReportPagedView>:reportArticle}
+    {r5?<ReportPagedView meta={{client:snapshot.client,jobNumber:snapshot.jobNumber,reportingYear:snapshot.reportingYear,issuerFooter:version.issuer?.footer??null}}>{reportArticle}</ReportPagedView>:reportArticle}
   </main>;
 }
 

@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {type FormEvent,useCallback,useEffect,useMemo,useState} from "react";
 import type {PortalDataEntryRecord} from "@nzi/isolated-backend";
 import {formatDate} from "../lib/formatDate";
@@ -20,6 +21,7 @@ const monthLabel=(key:string)=>new Date(`${key}-01T00:00:00Z`).toLocaleDateStrin
 const blankDraft=(categories:Category[],line?:Partial<Draft>):Draft=>({key:crypto.randomUUID(),description:line?.description??"",netValue:line?.netValue??null,vatPercent:line?.vatPercent??null,glCode:line?.glCode??null,invoiceDate:line?.invoiceDate??null,categoryId:categories.find(category=>category.name===suggestCategory(line?.description??"",categories))?.id??"",factorId:"",months:{},split:false,state:"",detail:""});
 
 export function PortalSpendEntry({jobId,buckets,reportingMonths}:{jobId:string;buckets:SpendBucket[];reportingMonths:string[]}){
+  const org=useOrganisationName();
   const [selected,setSelected]=useState(buckets[0]?.bucketGrantId??"");
   const bucket=useMemo(()=>buckets.find(item=>item.bucketGrantId===selected)??buckets[0]!,[buckets,selected]);
   const [raw,setRaw]=useState("");
@@ -79,7 +81,7 @@ export function PortalSpendEntry({jobId,buckets,reportingMonths}:{jobId:string;b
       const body=await response.json();
       if(response.status===409){await load();throw new Error("This draft changed elsewhere. The latest version has been loaded.")}
       if(!response.ok)throw new Error(body.message??`The draft could not be ${action}ed.`);
-      setNotice(action==="submit"?"Spend entry submitted to NZI for review. It does not count as reviewed carbon emissions until an NZI reviewer accepts it.":"Draft deleted.");
+      setNotice(action==="submit"?`Spend entry submitted to ${org.short} for review. It does not count as reviewed carbon emissions until a reviewer at ${org.short} accepts it.`:"Draft deleted.");
       await load();
     }catch(cause){setError(cause instanceof Error?cause.message:"The entry outcome could not be verified.")}finally{setPending("")}
   }
@@ -90,7 +92,7 @@ export function PortalSpendEntry({jobId,buckets,reportingMonths}:{jobId:string;b
     <section className="nz-panel" id="portal-spend-entry" style={{padding:16,marginTop:16}}>
       <span className="nz-eyebrow">Data entry · purchased goods &amp; services spend</span>
       <h3 style={{margin:"6px 0"}}>Enter spend for {bucket.sourceLabel}</h3>
-      <p className="sub">Paste your purchase ledger or add lines one at a time. For each line, confirm a purchased-goods category and an emission factor from the sets your NZI adviser has authorised. NZI checks and calculates every line before it becomes part of your carbon emissions.</p>
+      <p className="sub">Paste your purchase ledger or add lines one at a time. For each line, confirm a purchased-goods category and an emission factor from the sets {org.your("adviser")} has authorised. {org.Short} checks and calculates every line before it becomes part of your carbon emissions.</p>
       {error?<div className="nz-banner warn" role="alert">{error}</div>:null}
       {notice?<div className="nz-banner ok" role="status">{notice}</div>:null}
 
@@ -102,7 +104,7 @@ export function PortalSpendEntry({jobId,buckets,reportingMonths}:{jobId:string;b
         </label>
       ):null}
 
-      {bucket.pgsCategories.length===0?<div className="nz-banner warn" role="alert">No purchased-goods categories have been authorised for this bucket yet. Ask your NZI adviser to add them before entering spend.</div>:(
+      {bucket.pgsCategories.length===0?<div className="nz-banner warn" role="alert">No purchased-goods categories have been authorised for this bucket yet. Ask {org.your("adviser")} to add them before entering spend.</div>:(
         <>
           <label className="nz-fl" style={{marginTop:12}}>Paste ledger lines <span className="muted">(description, net value, VAT %, GL code, date — dd/mm/yyyy)</span>
             <textarea className="nz-notes" rows={5} value={raw} placeholder={SAMPLE} onChange={event=>setRaw(event.target.value)}/>
@@ -178,11 +180,11 @@ export function PortalSpendEntry({jobId,buckets,reportingMonths}:{jobId:string;b
               <tr key={record.recordId}>
                 <td><b>{record.note||"Spend line"}</b>{record.detail?.pgsCategoryId?<div className="muted">Category set · {record.detail.monthlyActivity.length>0?"monthly split":"annual"}</div>:null}</td>
                 <td className="num">{record.detail?.netValue??record.quantity} {record.unit}</td>
-                <td><span className={`nz-st ${record.status==="submitted"?"est":"need"}`}>{record.status==="submitted"?"With NZI for review":"Draft"}</span></td>
+                <td><span className={`nz-st ${record.status==="submitted"?"est":"need"}`}>{record.status==="submitted"?`With ${org.short} for review`:"Draft"}</span></td>
                 <td style={{textAlign:"right"}}>{record.status==="draft"?<>
                   <button className="nz-btn" disabled={pending!==""} onClick={()=>void act(record,"delete")}>{pending===`delete:${record.recordId}`?"Deleting…":"Delete"}</button>{" "}
                   <button className="nz-btn pri" disabled={pending!==""} onClick={()=>void act(record,"submit")}>{pending===`submit:${record.recordId}`?"Submitting…":"Submit for review"}</button>
-                </>:<span className="muted">Awaiting NZI review</span>}</td>
+                </>:<span className="muted">Awaiting review by {org.short}</span>}</td>
               </tr>
             ))}
           </tbody>

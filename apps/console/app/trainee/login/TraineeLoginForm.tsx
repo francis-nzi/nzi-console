@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 
 import { type FormEvent, useState } from "react";
 
@@ -10,6 +11,7 @@ import { type FormEvent, useState } from "react";
  * "contact your administrator" here — there is no administrator over a person's own record.
  */
 export function TraineeLoginForm() {
+  const org = useOrganisationName();
   const [challenge, setChallenge] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -59,7 +61,7 @@ export function TraineeLoginForm() {
     <div className="nz-auth-support">
       <b>{challenge ? "Authenticator unavailable?" : "Changed your email address?"}</b>
       <span>{challenge
-        ? "Contact the NZI training team and they will help you back in."
+        ? `Contact the ${org.short} training team and they will help you back in.`
         : "Sign in with the address you last confirmed, then change it under My details — the new one becomes your sign-in once you verify it."}</span>
     </div>
   </form>;

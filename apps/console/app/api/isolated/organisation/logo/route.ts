@@ -1,4 +1,4 @@
-import { logoResponse, readOrganisationLogo, setOrganisationLogo, withTenantRead } from "@nzi/isolated-backend";
+import { logoResponse, readOrganisationLogo, readOrganisationLogoAsset, setOrganisationLogo, withTenantRead } from "@nzi/isolated-backend";
 import type { CommandInputMap } from "@nzi/contracts";
 import { authFailure } from "../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../lib/commandAuth";
@@ -8,11 +8,17 @@ import { currentStaff } from "../../../../lib/staffSession";
 
 export const dynamic = "force-dynamic";
 
-/** The organisation's logo, for any signed-in member of staff — served so it can never act as a document (nosniff, sandbox). */
+/**
+ * The organisation's logo, for any signed-in member of staff — served so it can never act as a document (nosniff, sandbox).
+ * `?asset=<id>` serves that asset instead of the current one: the logo a report version froze when it was validated.
+ */
 export async function GET(request: Request) {
   try {
     const principal = await currentStaff(request);
-    const asset = await withTenantRead(isolatedPool(), principal.organisationId, (db) => readOrganisationLogo(db, principal.organisationId));
+    const assetId = new URL(request.url).searchParams.get("asset");
+    const asset = await withTenantRead(isolatedPool(), principal.organisationId, (db) => assetId
+      ? readOrganisationLogoAsset(db, principal.organisationId, assetId)
+      : readOrganisationLogo(db, principal.organisationId));
     return logoResponse(asset, request.headers.get("if-none-match"));
   } catch (error) { return authFailure(error); }
 }

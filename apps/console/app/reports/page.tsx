@@ -5,6 +5,7 @@ import { NAV, USER } from "../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import {ReportReviewInbox} from "./ReportReviewInbox";
 import {LiveReportRegister} from "./LiveReportRegister";
+import {WithOrganisationName} from "../lib/organisationBrand";
 
 export default function ReportsPage() {
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" user={USER} />}>
@@ -15,7 +16,7 @@ export default function ReportsPage() {
       <div className="nz-section-intro"><div><span className="nz-eyebrow">Publication register</span><h2>Controlled report versions</h2><p>Live status across preparation, validation, release and client assurance.</p></div><Link className="nz-btn" href="/charts">Open chart library</Link></div>
       <LiveReportRegister/>
       <div className="nz-panel nz-template-card"><div className="nz-card-heading"><div><span className="nz-eyebrow">Governed content system</span><h2>Report manifest</h2></div><span className="nz-st done">Active</span></div><div className="nz-template-row"><div className="nz-template-mark">CRP</div><div><b>CRP professional</b><span>Manifest v{crpProfessionalManifest.version} · {crpProfessionalManifest.sections.length} controlled sections · {crpProfessionalManifest.charts.length} typed charts</span></div><span className="nz-st done">Code governed</span></div></div>
-      <ReportReviewInbox />
+      <WithOrganisationName><ReportReviewInbox /></WithOrganisationName>
     </div>
   </AppShell>;
 }

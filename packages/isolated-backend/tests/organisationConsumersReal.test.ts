@@ -4,10 +4,12 @@ import pg from "pg";
 import { commandGrantForRole, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { setClientIntensityMetric } from "../src/intensityMetrics";
-import { applyIntensityDefaultsToClient, readOrganisationBrand, readOrganisationProfile, setIntensityDefault, updateOrganisationProfile } from "../src/organisationSettings";
+import { applyIntensityDefaultsToClient, readOrganisationBrand, readOrganisationLogo, readOrganisationLogoAsset, readOrganisationProfile, setIntensityDefault, updateOrganisationProfile } from "../src/organisationSettings";
 import { publishCrpReport, validateCrpReport } from "../src/postgresCommands";
 import { withTenantRead, withTenantWrite } from "../src/postgres";
 import { getReportComposition } from "../src/reportCompositions";
+import { getCrpReportVersion, getCurrentPublishedCrpReport } from "../src/readModels";
+import { getTraineePortal } from "../src/traineePortal";
 
 /**
  * Organisation consumers (admin Phase D, D3a; ruled `phaseD3-plan.md`) against a real database. A pre-D3 world is seeded
@@ -155,6 +157,57 @@ describe("Organisation consumers (0143), against a real database", { skip: TEST_
       await withTenantWrite(database.pool, NZI, (db) => applyIntensityDefaultsToClient(db, NZI, "c-new", "ada", "corr"));
       const applied = await q(`SELECT metric_key, unit_kind FROM nzi_console.client_intensity_metrics WHERE client_id = 'c-new' ORDER BY metric_key`);
       assert.deepEqual(applied.map((row) => [row.metric_key, row.unit_kind]), [["employees", "text"], ["turnover", "currency"]]);
+    });
+  });
+
+  describe("D3b's reads: what an issued thing names is what it froze", () => {
+    it("both report read models carry the frozen issuer, not the profile as renamed since", async () => {
+      // The previous block renamed the profile ("Renamed Organisation" / "RNO") after job-new's report was issued.
+      const published = await withTenantRead(database.pool, NZI, (db) => getCurrentPublishedCrpReport(db, "job-new"));
+      assert.deepEqual(published?.issuer, { displayName: "Net Zero International", shortName: "NZI", footer: "Example Legal Limited | example.test", logoAssetId: null });
+      const version = await withTenantRead(database.pool, NZI, (db) => getCrpReportVersion(db, published!.reportVersionId));
+      assert.deepEqual(version?.issuer, published?.issuer, "the staff version read says the same");
+      const old = await withTenantRead(database.pool, NZI, (db) => getCrpReportVersion(db, "rv-old"));
+      assert.deepEqual(old?.issuer, { displayName: "Net Zero International", shortName: "NZI", footer: "Net Zero International", logoAssetId: null }, "pre-D3: the backfill");
+    });
+
+    it("a frozen logo stays readable by its asset id after the organisation changes its logo", async () => {
+      const png = (shade: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, shade)]);
+      for (const [id, shade] of [["logo-1", 1], ["logo-2", 2]] as const) {
+        await q(`INSERT INTO nzi_console.organisation_logo_assets (organisation_id, asset_id, file_name, content_type, byte_size, sha256, content, uploaded_by)
+          VALUES ($1, $2, 'logo.png', 'image/png', $3, $4, $5, 'ada')`, [NZI, id, png(shade).length, `${shade}`.repeat(64), png(shade)]);
+      }
+      await q(`UPDATE nzi_console.organisation_profiles SET logo_asset_id = 'logo-2' WHERE organisation_id = $1`, [NZI]);
+      const frozen = await withTenantRead(database.pool, NZI, (db) => readOrganisationLogoAsset(db, NZI, "logo-1"));
+      assert.equal(frozen?.assetId, "logo-1", "the superseded logo a version froze");
+      assert.equal((await withTenantRead(database.pool, NZI, (db) => readOrganisationLogo(db, NZI)))?.assetId, "logo-2", "the current one is unchanged");
+      assert.equal(await withTenantRead(database.pool, DEMO, (db) => readOrganisationLogoAsset(db, DEMO, "logo-1")), null, "another organisation's asset is not served");
+    });
+
+    it("the trainee's record names each certificate's frozen issuer, and its copy the organisation by short name", async () => {
+      // Read on the owner connection with the tenant set, not withTenantRead: nzi_console_app has no grant on
+      // trainee_email_changes (0072 granted it to nzi_console_auth only), which getTraineePortal reads — a gap that
+      // predates D3b and is reported with it. FORCE RLS still applies to the owner, so the tenant setting holds.
+      const traineeRead = async (shortName: string) => { const db = await database.admin(); try {
+        await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [NZI]);
+        return await getTraineePortal(db, { traineeId: "tr", asAt: "2026-10-01", organisationShortName: shortName });
+      } finally { await db.end(); } };
+      await q(`INSERT INTO nzi_console.trainees (organisation_id, trainee_id, full_name, personal_email, created_by) VALUES ($1, 'tr', 'Pat Example', 'pat@example.test', 'seed')`, [NZI]);
+      await q(`UPDATE nzi_console.training_bookings SET trainee_id = 'tr' WHERE booking_id = 'book'`);
+      await q(`UPDATE nzi_console.training_course_runs SET review_status = 'approved', reviewed_version = 1, reviewed_by = 'rev', reviewed_at = now() WHERE course_run_id = 'run'`);
+      await q(`INSERT INTO nzi_console.training_run_snapshots (organisation_id, snapshot_id, course_run_id, job_id, snapshot_version, run_version, data_hash, payload_json, created_by)
+        VALUES ($1, 'tsnap', 'run', 'job-train', 1, 1, 'hash', $2::jsonb, 'rev')`, [NZI, JSON.stringify({
+        courseRunId: "run", product: null, sessions: [],
+        register: [{ bookingId: "book", traineeId: "tr", personName: "Pat Example", employerClientId: null, attendancePct: 100, attendanceStatus: "attended", certificate: "eligible" }],
+        certificates: [{ bookingId: "book", certificateNumber: "NZI-0001", verifyCode: "VERIFY-OLD" }] })]);
+      await q(`UPDATE nzi_console.training_certificates SET issuer_name = 'Issuer At The Time Ltd' WHERE certificate_id = 'cert-old'`);
+      const model = await traineeRead("RNO");
+      assert.equal(model.completed[0]?.certificate?.issuer, "Issuer At The Time Ltd");
+      // A second booking, still in progress with every session delivered: the copy names the organisation it was given.
+      await q(`INSERT INTO nzi_console.training_course_runs (organisation_id, course_run_id, job_id, run_name, workflow_stage_key, created_by) VALUES ($1, 'run-2', 'job-train', 'Second course', 'in_delivery', 'seed')`, [NZI]);
+      await q(`INSERT INTO nzi_console.training_bookings (organisation_id, booking_id, course_run_id, person_name, trainee_id, created_by) VALUES ($1, 'book-2', 'run-2', 'Pat Example', 'tr', 'seed')`, [NZI]);
+      const later = await traineeRead("RNO");
+      assert.match(later.inProgress[0]?.remaining ?? "", /confirmed by the RNO team/);
     });
   });
 });

@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../lib/OrganisationNameProvider";
 // UX1d-2 — one client-portal accordion section's non-spend entry surface, built
 // on the shared `EmissionEntryForm` (audience `portal`). Constrained to one
 // authorised bucket grant at a time; factor + unit come from the bucket's
@@ -30,6 +31,7 @@ export function PortalCategoryEntry({
   buckets: PortalBucket[];
   reportingMonths: string[];
 }) {
+  const org = useOrganisationName();
   const [bucketId, setBucketId] = useState(buckets[0]?.bucketGrantId ?? "");
   const bucket = useMemo(() => buckets.find(item => item.bucketGrantId === bucketId) ?? buckets[0], [buckets, bucketId]);
   const [records, setRecords] = useState<PortalDataEntryRecord[] | null>(null);
@@ -102,7 +104,7 @@ export function PortalCategoryEntry({
         });
         if (!submit.ok) { await load(); throw new Error("Saved as a draft, but it could not be submitted. Submit it from the list below."); }
       }
-      setNotice(andSubmit ? "Submitted to NZI for review. It is not counted as emissions until a reviewer accepts it." : "Saved as a draft. Submit it below when you are ready.");
+      setNotice(andSubmit ? `Submitted to ${org.short} for review. It is not counted as emissions until a reviewer accepts it.` : "Saved as a draft. Submit it below when you are ready.");
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The draft outcome could not be verified.");
@@ -123,7 +125,7 @@ export function PortalCategoryEntry({
       if (response.status === 409) { await load(); throw new Error("This draft changed elsewhere. The latest version has been loaded."); }
       const body = await response.json();
       if (!response.ok) throw new Error(body.message ?? `The draft could not be ${action}ed.`);
-      setNotice(action === "submit" ? "Submitted to NZI for review." : "Draft deleted.");
+      setNotice(action === "submit" ? `Submitted to ${org.short} for review.` : "Draft deleted.");
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The entry outcome could not be verified.");
@@ -146,7 +148,7 @@ export function PortalCategoryEntry({
       {bucket.factors.length === 0 ? (
         // Every factor this source was granted has stopped being one its row may carry — usually because the
         // row was re-scoped after the grant (H1). Said plainly, rather than a factor prompt nobody can answer.
-        <div className="nz-banner warn" role="status">No factor is currently authorised for this source. NZI will update it — you can't add entries here until then.</div>
+        <div className="nz-banner warn" role="status">No factor is currently authorised for this source. {org.Short} will update it — you can't add entries here until then.</div>
       ) : null}
       {bucket.factors.length > 1 ? (
         <label className="nz-fl">Authorised factor
@@ -188,13 +190,13 @@ export function PortalCategoryEntry({
               <tr key={record.recordId}>
                 <td><b>{record.note || "Entry"}</b></td>
                 <td className="num">{record.detail?.netValue ?? record.quantity} {record.unit}</td>
-                <td><span className={`nz-st ${record.status === "submitted" ? "est" : "need"}`}>{record.status === "submitted" ? "With NZI" : "Draft"}</span></td>
+                <td><span className={`nz-st ${record.status === "submitted" ? "est" : "need"}`}>{record.status === "submitted" ? `With ${org.short}` : "Draft"}</span></td>
                 <td style={{ textAlign: "right" }}>{record.status === "draft" ? (
                   <>
                     <button className="nz-btn" disabled={pending !== ""} onClick={() => void act(record, "delete")}>Delete</button>{" "}
                     <button className="nz-btn pri" disabled={pending !== ""} onClick={() => void act(record, "submit")}>Submit for review</button>
                   </>
-                ) : <span className="muted">Awaiting NZI review</span>}</td>
+                ) : <span className="muted">Awaiting review by {org.short}</span>}</td>
               </tr>
             ))}
           </tbody>

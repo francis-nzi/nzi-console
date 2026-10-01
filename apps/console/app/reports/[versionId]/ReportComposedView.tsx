@@ -7,6 +7,7 @@ import {
   type ReportSrsRoadmap, type ReportSrsSection,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
+import { LogoMark } from "../../lib/LogoMark";
 
 /**
  * The composed report (`report_v1`).
@@ -221,8 +222,15 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
 }
 
 function Cover({ composition }: { composition: ReportComposition }) {
+  // The issuer frozen at validation (0143): a profile edited since does not change a document already issued.
+  const issuer = composition.issuer ?? null;
   return <section className="nzr-page nzr-cover">
-    <div className="nzr-brand"><span>N</span><div><b>NZ Insights Pro</b><small>Net Zero International</small></div></div>
+    <div className="nzr-brand">
+      {issuer
+        ? <LogoMark src={issuer.logoAssetId ? `/api/isolated/organisation/logo?asset=${encodeURIComponent(issuer.logoAssetId)}` : null} name={issuer.displayName} className="nzr-brand-mark" />
+        : <span className="nzr-brand-mark" aria-hidden="true">N</span>}
+      <div><b>NZ Insights Pro</b>{issuer ? <small>{issuer.displayName}</small> : null}</div>
+    </div>
     <h1>{reportCompositionSectionMeta.cover.title}</h1>
     <div className="nzr-cover-client">{composition.client}</div>
     <div className="nzr-cover-meta">

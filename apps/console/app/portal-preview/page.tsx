@@ -3,6 +3,7 @@ import { portalAccessSample, portalBucketsSample, publishedReportSample } from "
 import { loadFixtureScreen } from "@nzi/api-client";
 import { ScreenState } from "../lib/ScreenState";
 import {loadScreen} from "../lib/loadScreen";
+import {WithOrganisationName} from "../lib/organisationBrand";
 import type {InputSpecCategory,PublishedCrpReportReadModel} from "@nzi/contracts";
 
 export default async function PortalPreviewPage({searchParams}:{searchParams:Promise<{jobId?:string}>}) {
@@ -13,7 +14,7 @@ export default async function PortalPreviewPage({searchParams}:{searchParams:Pro
   const specs: Record<string,InputSpecCategory> = Object.fromEntries(
     (specResult.state==="success"||specResult.state==="degraded" ? specResult.data.spec : [])
       .map((category)=>[category.categoryCode,category]));
-  if(jobId){const result=await loadScreen<{report:PublishedCrpReportReadModel}>("portal",{},`jobs/${jobId}/published-report`);return <ScreenState result={result}>{data=><PortalWorkspace specs={specs} report={data.report}/>}</ScreenState>;}
+  if(jobId){const result=await loadScreen<{report:PublishedCrpReportReadModel}>("portal",{},`jobs/${jobId}/published-report`);return <WithOrganisationName><ScreenState result={result}>{data=><PortalWorkspace specs={specs} report={data.report}/>}</ScreenState></WithOrganisationName>;}
   const result = loadFixtureScreen("portal", { access: portalAccessSample, buckets: portalBucketsSample, report: publishedReportSample });
-  return <ScreenState result={result}>{() => <PortalWorkspace specs={specs} />}</ScreenState>;
+  return <WithOrganisationName><ScreenState result={result}>{() => <PortalWorkspace specs={specs} />}</ScreenState></WithOrganisationName>;
 }
