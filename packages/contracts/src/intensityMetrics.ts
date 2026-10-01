@@ -13,6 +13,8 @@
  * and never quietly borrowed from another year or another metric.
  */
 
+import { currencySymbol } from "./currencyDirectory";
+
 export const intensityDividers = [1, 10, 100, 1000, 10000, 100000, 1000000] as const;
 export type IntensityDivider = (typeof intensityDividers)[number];
 
@@ -80,19 +82,6 @@ export type ResolvedIntensity =
   }
   | { state: "unavailable"; metricKey: string; reason: string };
 
-/**
- * The symbol a currency is written with — the one function Phase E swaps its currency lookup into; the signature
- * stays. A code with no symbol here is written as the code itself ("AED"), which the unit then spaces ("AED m").
- *
- * `UAE` is read as `AED` (D3, Q5): one client's currency was stored as the country rather than the currency code.
- * The display reads it correctly here; the stored value is corrected through a governed `client.update`.
- */
-export function currencySymbol(code: string): string {
-  const normalised = code.trim().toUpperCase();
-  const iso = normalised === "UAE" ? "AED" : normalised;
-  return CURRENCY_SYMBOLS[iso] ?? iso;
-}
-const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = { GBP: "£", EUR: "€", USD: "$" };
 
 /** "£m", "€k", "$", "£100", "AED m" — the money the denominator is counted in, magnitude included. */
 function currencyAmount(currency: string, divider: number): string {

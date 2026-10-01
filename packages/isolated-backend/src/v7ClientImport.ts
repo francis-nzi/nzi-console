@@ -349,6 +349,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     // Jobs configuration (admin C4) — read by load:v7-jobs-config, not the client import.
     vat_rates_lookup: "vat_rate_id", milestone_templates: "template_id", milestone_template_items: "item_id",
     job_template_milestone_completions: "completion_id", job_file_types_lookup: "file_type_id",
+    // Currencies (admin E1) — read by load:v7-currencies; the legacy table is keyed by its code.
+    currency_lookup: "currency_id", currencies_lookup: "currency_code",
     // Staff (admin B2) — read by load:v7-staff, not the client import. v7's user id is the email address.
     users: "user_id",
     // Organisation settings (admin D2) — read by load:v7-org-settings; only the allow-listed profile and logo keys.

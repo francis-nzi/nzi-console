@@ -6,6 +6,7 @@ import { serviceEnvironment } from "../../lib/environment";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { adminAccess, holds } from "../adminAccess";
 import { OrganisationBoard } from "./OrganisationBoard";
+import { WithCurrencyDirectory } from "../../lib/currencyDirectory";
 
 export const dynamic = "force-dynamic";
 
@@ -43,5 +44,5 @@ export default async function OrganisationPage() {
   }
 
   const editing = serviceEnvironment().writes !== "enabled" ? { allowed: false as const, reason: "Writes are switched off in this environment, so the profile is read-only here." } : { allowed: true as const };
-  return <OrganisationBoard {...data} editing={editing} />;
+  return <WithCurrencyDirectory><OrganisationBoard {...data} editing={editing} /></WithCurrencyDirectory>;
 }

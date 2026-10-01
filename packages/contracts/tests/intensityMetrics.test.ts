@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  activeMetrics, currencySymbol, indexedSeries, intensityDenominatorText, intensityPer, intensityUnit, intensityUnitShort, resolveIntensity,
+  activeMetrics, indexedSeries, intensityDenominatorText, intensityPer, intensityUnit, intensityUnitShort, resolveIntensity,
   suggestIconKey, isIntensityIconKey, type IntensityMetricDefinition,
 } from "../src/intensityMetrics";
+import { currencySymbol, setCurrencyDirectory, withCurrencyDirectory } from "../src/currencyDirectory";
 
 /**
  * The one intensity computation. The client YoY, the intensity detail, the job capture,
@@ -70,13 +71,43 @@ test("a currency metric reads in the client's currency, with the magnitude once 
   assert.equal(intensityUnit(turnover(1000), { currency: "CHF" }), "tCO₂e per CHF k");
   assert.equal(intensityUnit(turnover(1), { currency: "AED" }), "tCO₂e per AED");
   assert.equal(intensityUnitShort(turnover(1000000), { currency: "AED" }), "tCO₂e/AED m");
-  // Q5: the one client stored as "UAE" (a country, not a currency) reads as dirhams.
-  assert.equal(intensityUnit(turnover(1000000), { currency: "UAE" }), "tCO₂e per AED m");
+  // E-Q2 (superseding D3c's display alias): no "UAE" alias — 0145 corrected the stored value to AED.
+  assert.equal(intensityUnit(turnover(1000000), { currency: "UAE" }), "tCO₂e per UAE m", "the country is not read as a currency");
   assert.equal(intensityUnit(turnover(1000000), { currency: " gbp " }), "tCO₂e per £m", "trimmed and case-blind");
 });
 
-test("currencySymbol is the one place a currency becomes a symbol (D3c)", () => {
-  assert.deepEqual(["GBP", "EUR", "USD", "AED", "UAE", "eur", "JPY"].map(currencySymbol), ["£", "€", "$", "AED", "AED", "€", "JPY"]);
+test("currencySymbol is the one place a currency becomes a symbol (D3c), and before a directory is read it holds D3c's three", () => {
+  assert.deepEqual(["GBP", "EUR", "USD", "AED", "UAE", "eur", "JPY"].map(currencySymbol), ["£", "€", "$", "AED", "UAE", "€", "JPY"]);
+});
+
+test("currencySymbol reads the organisation's currencies once they are read (E1)", () => {
+  const directory = [
+    { code: "GBP", name: "Pound sterling", symbol: "£" },
+    { code: "AED", name: "UAE dirham", symbol: "Dh" },
+    { code: "CHF", name: "Swiss franc", symbol: "Fr." },
+  ];
+  setCurrencyDirectory(directory);
+  try {
+    assert.deepEqual(["GBP", "AED", "chf", "EUR", "UAE"].map(currencySymbol), ["£", "Dh", "Fr.", "EUR", "UAE"],
+      "the organisation's own symbols; a code it does not hold is written as itself — D3c's built-in three no longer stand in");
+    assert.equal(intensityUnit(metric({ unitKind: "currency", unitWording: "£m", divider: 1000000 }), { currency: "AED" }), "tCO₂e per Dhm");
+  } finally {
+    setCurrencyDirectory(null);
+  }
+  assert.equal(currencySymbol("AED"), "AED", "cleared: back to the before-read three");
+});
+
+test("withCurrencyDirectory scopes a directory to synchronous work and puts back what was there (E1)", () => {
+  setCurrencyDirectory([{ code: "GBP", name: "Pound sterling", symbol: "£" }]);
+  try {
+    const inside = withCurrencyDirectory([{ code: "GBP", name: "Pound sterling", symbol: "GBP£" }], () => currencySymbol("GBP"));
+    assert.equal(inside, "GBP£");
+    assert.equal(currencySymbol("GBP"), "£", "restored");
+    assert.throws(() => withCurrencyDirectory([], () => Promise.resolve(1)), /synchronous work only/);
+    assert.equal(currencySymbol("GBP"), "£", "restored after a refusal too");
+  } finally {
+    setCurrencyDirectory(null);
+  }
 });
 
 test("the per-phrase and the denominator follow the same rules (D3c)", () => {
@@ -87,7 +118,7 @@ test("the per-phrase and the denominator follow the same rules (D3c)", () => {
   assert.equal(intensityPer(metric({ divider: 1000 }), GBP), "1,000 employees");
   // A currency value is whole units (0143): money, never "12,500,000 £m".
   assert.equal(intensityDenominatorText(turnover, 12_500_000, GBP), "£12,500,000");
-  assert.equal(intensityDenominatorText(turnover, 3_000_000, { currency: "UAE" }), "AED 3,000,000");
+  assert.equal(intensityDenominatorText(turnover, 3_000_000, { currency: "AED" }), "AED 3,000,000");
   assert.equal(intensityDenominatorText(metric(), 240, GBP), "240 employee");
 });
 

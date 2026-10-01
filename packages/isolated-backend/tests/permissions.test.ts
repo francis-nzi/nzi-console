@@ -51,6 +51,8 @@ function clientPool(calls: Call[], before: Record<string, unknown>, access: { ow
   const client = {
     async query(sql: string, values?: readonly unknown[]) {
       calls.push({ sql, values });
+      // E1: client.update checks a changed currency against the organisation's active currencies.
+      if (sql.includes("FROM nzi_console.currencies")) return { rows: [{ active: true }] };
       if (sql.includes("financial_year_end_month, baseline_period_start")) return { rows: [{ version: 3, financial_year_end_month: 3, baseline_period_start: null, baseline_period_end: null, baseline_scope1_tco2e: null, baseline_scope2_tco2e: null, baseline_scope3_tco2e: null, baseline_total_tco2e: null, ...before }] };
       if (sql.includes("UPDATE nzi_console.clients")) return { rows: [{ version: 4 }] };
       return { rows: [] };

@@ -34,8 +34,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     group: "Commercial",
     items: [
-      { id: "tax-currency", label: "Tax & currency", icon: "coin", href: "/admin/tax-currency", phase: "E", capability: "admin.lookups",
-        description: "VAT rates (typed %, one default), currencies (code, symbol, rate) and payment terms — the typed lookups behind quotes and invoices." },
+      { id: "tax-currency", label: "Tax & currency", icon: "coin", href: "/admin/tax-currency", capability: "admin.lookups",
+        description: "VAT rates (a percentage, exactly one default) and currencies (ISO code, name and symbol, exactly one default) — the typed lookups behind quotes and invoices, and the symbols intensity reads in. Payment terms are a Lookups list." },
       { id: "service-catalogue", label: "Service catalogue", icon: "cart", href: "/admin/service-catalogue", phase: "E", capability: "admin.lookups",
         description: "The catalogue of billable items — code, unit, default hours, cost and sell price, VAT — reused by quotes, invoices and job lines." },
       { id: "suppliers", label: "Suppliers", icon: "truck", href: "/admin/suppliers", phase: "E", capability: "admin.lookups",

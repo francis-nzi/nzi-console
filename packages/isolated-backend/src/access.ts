@@ -95,6 +95,17 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job_file_type.update": organisation,
   "job_file_type.deactivate": organisation,
   "job_file_type.reinstate": organisation,
+  // Commercial lookups (admin Phase E1): the organisation's own VAT rates and currencies.
+  "vat.create": organisation,
+  "vat.update": organisation,
+  "vat.set_default": organisation,
+  "vat.deactivate": organisation,
+  "vat.reinstate": organisation,
+  "currency.create": organisation,
+  "currency.update": organisation,
+  "currency.set_default": organisation,
+  "currency.deactivate": organisation,
+  "currency.reinstate": organisation,
   // Team & access (admin Phase B): the firm's own roster, not a client's record.
   "staff.add": organisation,
   "staff.update": organisation,
