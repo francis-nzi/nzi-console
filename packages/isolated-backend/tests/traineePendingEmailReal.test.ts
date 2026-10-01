@@ -50,7 +50,7 @@ describe("A trainee's pending sign-in change, read by the app role (0144)", { sk
   after(async () => { await admin?.end(); await database?.end(); });
 
   it("lets the trainee's record read the pending change as nzi_console_app — refused before 0144", async () => {
-    const model = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01" }));
+    const model = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01", organisationShortName: "Acme" }));
     assert.equal(model.details.pendingEmail, "new-tr-1@example.test");
   });
 
@@ -59,11 +59,11 @@ describe("A trainee's pending sign-in change, read by the app role (0144)", { sk
     // A newer request, cancelled an hour later: unexpired, unconfirmed — and not pending.
     await admin.query(`INSERT INTO nzi_console.trainee_email_changes (organisation_id, change_id, trainee_id, current_email, new_email, token_hash, expires_at, requested_at, cancelled_at)
       VALUES ($1, 'cancelled', 'tr-1', 'alan@example.test', 'withdrawn@example.test', 'hash-cancelled', now() + interval '1 day', now() + interval '1 minute', now() + interval '1 hour')`, [ORG]);
-    const model = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01" }));
+    const model = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01", organisationShortName: "Acme" }));
     assert.equal(model.details.pendingEmail, "new-tr-1@example.test", "the live request, not the newer cancelled one");
     // Cancel the live one too: nothing is pending.
     await admin.query(`UPDATE nzi_console.trainee_email_changes SET cancelled_at = now() WHERE change_id = $1`, [`${ORG}-live`]);
-    const none = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01" }));
+    const none = await withTenantRead(database.pool, ORG, (db) => getTraineePortal(db, { traineeId: "tr-1", asAt: "2026-10-01", organisationShortName: "Acme" }));
     assert.equal(none.details.pendingEmail, null, "a cancelled change is not pending");
     // Put the fixture back for the tests that follow.
     await admin.query(`UPDATE nzi_console.trainee_email_changes SET cancelled_at = NULL WHERE change_id = $1`, [`${ORG}-live`]);
