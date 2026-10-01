@@ -29,7 +29,8 @@ export type TraineeTrainingEntry = {
   attendancePct: number;
   cpdHours: number | null;
   completedOn: string | null;
-  certificate: { certificateNumber: string; verifyCode: string; issuedOn: string } | null;
+  /** `issuer` — the organisation frozen onto the certificate when it was issued (0143). */
+  certificate: { certificateNumber: string; verifyCode: string; issuedOn: string; issuer: string | null } | null;
   /** `confirmed` is from a reviewed snapshot; `in-progress` is live and still moving. */
   standing: "confirmed" | "in-progress";
   /** For an in-progress run, what still stands between them and a certificate. */
@@ -84,9 +85,9 @@ type SnapshotPayload = {
 
 export async function getTraineePortal(
   db: Queryable,
-  input: { traineeId: string; asAt: string },
+  input: { traineeId: string; asAt: string; /** D3b: the organisation's short name, for the copy. */ organisationShortName: string },
 ): Promise<TraineePortalReadModel> {
-  const [traineeRows, bookingRows, snapshotRows, sessionRows, attendanceRows, pendingRows] = await Promise.all([
+  const [traineeRows, bookingRows, snapshotRows, sessionRows, attendanceRows, pendingRows, issuerRows] = await Promise.all([
     db.query<{ full_name: string; personal_email: string; phone: string; marketing_consent: string; current_employer_client_id: string | null; employer_name: string | null; current_employer_name: string }>(
       // The employer they say they work for now. Where it is a client we know, that name
       // wins; otherwise their own words stand — a person who moves to a company NZI has
@@ -128,7 +129,12 @@ export async function getTraineePortal(
       `SELECT new_email FROM nzi_console.trainee_email_changes
        WHERE trainee_id=$1 AND confirmed_at IS NULL AND expires_at > now()
        ORDER BY requested_at DESC LIMIT 1`, [input.traineeId]),
+    db.query<{ booking_id: string; issuer_name: string }>(
+      `SELECT booking_id, issuer_name FROM nzi_console.training_certificates
+       WHERE booking_id IN (SELECT booking_id FROM nzi_console.training_bookings WHERE trainee_id=$1)`,
+      [input.traineeId]),
   ]);
+  const issuerByBooking = new Map(issuerRows.rows.map((row) => [row.booking_id, row.issuer_name]));
 
   const trainee = traineeRows.rows[0];
   const details: TraineeDetails = {
@@ -177,7 +183,7 @@ export async function getTraineePortal(
       completed.push({
         ...shared,
         certificate: certificate
-          ? { certificateNumber: certificate.certificateNumber, verifyCode: certificate.verifyCode, issuedOn: shared.completedOn ?? "" }
+          ? { certificateNumber: certificate.certificateNumber, verifyCode: certificate.verifyCode, issuedOn: shared.completedOn ?? "", issuer: issuerByBooking.get(booking.booking_id) ?? null }
           : null,
         remaining: certificate
           ? null
@@ -194,7 +200,7 @@ export async function getTraineePortal(
         // Only ever what is actually left, never a predicted outcome.
         remaining: outstanding > 0
           ? `${outstanding} session${outstanding === 1 ? "" : "s"} remaining · certificate on completion (≥${booking.min_attendance_pct}% attendance)`
-          : "All sessions delivered — your record is being confirmed by the NZI team.",
+          : `All sessions delivered — your record is being confirmed by the ${input.organisationShortName} team.`,
       });
     }
   }

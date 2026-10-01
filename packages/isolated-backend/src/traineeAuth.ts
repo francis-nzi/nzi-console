@@ -239,7 +239,7 @@ export async function startTraineeInvitationSetup(pool: PoolLike, input: { organ
        FOR UPDATE OF i`,
       [input.organisationId, tokenHash(input.token)]);
     const invitation = found.rows[0];
-    if (!invitation || invitation.consumed_at || invitation.expires_at <= now) throw new TraineeInvitationError("This invitation is no longer valid. Ask NZI for a new one.");
+    if (!invitation || invitation.consumed_at || invitation.expires_at <= now) throw new TraineeInvitationError("This invitation is no longer valid. Ask the team that invited you for a new one.");
 
     const { salt, hash } = await hashPassword(input.password);
     const totpSecret = generateTotpSecret();
@@ -269,7 +269,7 @@ export async function completeTraineeInvitationSetup(pool: PoolLike, input: { or
        FOR UPDATE OF i`,
       [input.organisationId, tokenHash(input.token)]);
     const invitation = found.rows[0];
-    if (!invitation || invitation.consumed_at || invitation.expires_at <= now) throw new TraineeInvitationError("This invitation is no longer valid. Ask NZI for a new one.");
+    if (!invitation || invitation.consumed_at || invitation.expires_at <= now) throw new TraineeInvitationError("This invitation is no longer valid. Ask the team that invited you for a new one.");
     if (!invitation.totp_ciphertext || !invitation.totp_iv || !invitation.totp_tag) throw new TraineeInvitationError("Set a password before confirming your authenticator.");
 
     const secret = decryptTotpSecret({ ciphertext: invitation.totp_ciphertext, iv: invitation.totp_iv, tag: invitation.totp_tag }, encryptionKey);

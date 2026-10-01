@@ -393,9 +393,9 @@ export async function getReportComposition(db: Queryable, reportVersionId: strin
   return issuer ? { ...row.payload_json, issuer } : row.payload_json;
 }
 
-type IssuerColumns = { issuer_display_name: string | null; issuer_short_name: string | null; issuer_footer: string | null; issuer_logo_asset_id: string | null };
+export type IssuerColumns = { issuer_display_name: string | null; issuer_short_name: string | null; issuer_footer: string | null; issuer_logo_asset_id: string | null };
 const ISSUER_COLUMNS = "r.issuer_display_name, r.issuer_short_name, r.issuer_footer, r.issuer_logo_asset_id";
-const issuerOf = (row: Partial<IssuerColumns>): ReportIssuer | null => !row.issuer_display_name ? null : {
+export const issuerOf = (row: Partial<IssuerColumns>): ReportIssuer | null => !row.issuer_display_name ? null : {
   displayName: row.issuer_display_name, shortName: row.issuer_short_name ?? row.issuer_display_name,
   footer: row.issuer_footer ?? row.issuer_display_name, logoAssetId: row.issuer_logo_asset_id ?? null,
 };

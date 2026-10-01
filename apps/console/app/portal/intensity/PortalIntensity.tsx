@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 
 /**
  * Client portal · emissions intensity — READ-ONLY.
@@ -105,6 +106,7 @@ export function PortalIntensity() {
 }
 
 function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
+  const org = useOrganisationName();
   const metrics = useMemo(() => activeMetrics(model.metrics), [model.metrics]);
   const years = model.years;
   const [metricKey, setMetricKey] = useState<string>("");
@@ -114,7 +116,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
     return <div className="nz-portal-state" role="status"><i>✓</i><div>
       <b>Your first assured year will appear here</b>
       <span>
-        Intensity is measured against your assured emissions, so it appears once your NZI team publishes a
+        Intensity is measured against your assured emissions, so it appears once {org.your("team")} publishes a
         verified report for your business. Nothing is shown from work in progress.
       </span>
     </div></div>;
@@ -125,7 +127,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
       <b>No measures are set up for your business yet</b>
       <span>
         Intensity compares your emissions against a measure of your activity — people, turnover, floor area,
-        or anything else that matters to you. Your NZI consultant sets these up with you; once they are in
+        or anything else that matters to you. {org.Your("consultant")} sets these up with you; once they are in
         place, your figures appear here for every assured year.
       </span>
     </div></div>;
@@ -159,7 +161,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
       {chosen ? <MetricChart definition={chosen} points={seriesFor(years, chosen)} /> : null}
       <p className="nz-pi-foot">
         Intensity = your assured emissions divided by the measure shown. Measures and their icons are set with
-        your NZI consultant; the values are recorded each reporting year. <b>Lower is better.</b>
+        {org.your("consultant")}; the values are recorded each reporting year. <b>Lower is better.</b>
       </p>
     </section>
 

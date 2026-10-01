@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { PortalTraining } from "./PortalTraining";
+import { deploymentNames } from "../../lib/organisationBrand";
+import { organisationCopy } from "../../lib/organisationName";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,8 @@ export const dynamic = "force-dynamic";
  * session, resolved server-side in `/api/portal/training`; there is no client in the URL
  * to change.
  */
-export default function PortalTrainingPage() {
+export default async function PortalTrainingPage() {
+  const org = organisationCopy(await deploymentNames());
   return (
     <main className="nz-portal-shell" id="portal-main-content" tabIndex={-1}>
       <div className="nz-portal-section-head">
@@ -20,7 +23,7 @@ export default function PortalTrainingPage() {
           <span className="nz-eyebrow">Your team</span>
           <h1>Training</h1>
           <p>
-            Everything your people have trained on with NZI, and the training places you hold. Places do not
+            Everything your people have trained on with {org.short}, and the training places you hold. Places do not
             last forever, so this page shows what is still available and when it expires.
           </p>
         </div>

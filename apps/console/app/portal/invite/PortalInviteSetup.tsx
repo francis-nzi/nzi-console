@@ -1,10 +1,12 @@
 "use client";
+import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 
 import { FormEvent, useState } from "react";
 
 type Setup = { email: string; displayName: string; totpSecret: string };
 
 export function PortalInviteSetup({ token }: { token: string }) {
+  const org = useOrganisationName();
   const [setup, setSetup] = useState<Setup | null>(null);
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +33,7 @@ export function PortalInviteSetup({ token }: { token: string }) {
   return <form onSubmit={submit} className="nz-invite-card" aria-busy={pending}>
     <div className="nz-invite-card-head"><span className="nz-eyebrow">{setup ? "Step 2 of 2" : "Step 1 of 2"}</span><span>{setup ? "Authenticator" : "Password"}</span></div>
     <h2>{setup ? "Protect your account" : "Create your account"}</h2>
-    {!token ? <div className="nz-banner warn" role="alert">This setup link is incomplete. Request a new invitation from your NZI representative.</div> : setup ? <><p>Add this key to your authenticator app for <b>{setup.email}</b>, then enter the six-digit code.</p><div className="nz-setup-key"><span>Manual setup key</span><strong className="num">{setup.totpSecret}</strong><button type="button" onClick={copySecret}>{copied?"Copied":"Copy key"}</button></div><label className="nz-fl">Authenticator code<input className="nz-inp num" name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required disabled={pending} autoFocus /></label></> : <><p>Choose a unique password for the client portal. You will connect your authenticator next.</p><label className="nz-fl">New password<input className="nz-inp" name="password" type="password" minLength={12} autoComplete="new-password" required disabled={pending} onChange={event=>setPasswordLength(event.target.value.length)} aria-describedby="invite-password-rule" autoFocus /></label><div className={`nz-password-rule ${passwordLength>=12?"ready":""}`} id="invite-password-rule"><i>{passwordLength>=12?"✓":"·"}</i> {passwordLength>=12?"Minimum length met — use a unique password.":`${passwordLength} of 12 characters minimum`}</div></>}
+    {!token ? <div className="nz-banner warn" role="alert">This setup link is incomplete. Request a new invitation from {org.your("representative")}.</div> : setup ? <><p>Add this key to your authenticator app for <b>{setup.email}</b>, then enter the six-digit code.</p><div className="nz-setup-key"><span>Manual setup key</span><strong className="num">{setup.totpSecret}</strong><button type="button" onClick={copySecret}>{copied?"Copied":"Copy key"}</button></div><label className="nz-fl">Authenticator code<input className="nz-inp num" name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required disabled={pending} autoFocus /></label></> : <><p>Choose a unique password for the client portal. You will connect your authenticator next.</p><label className="nz-fl">New password<input className="nz-inp" name="password" type="password" minLength={12} autoComplete="new-password" required disabled={pending} onChange={event=>setPasswordLength(event.target.value.length)} aria-describedby="invite-password-rule" autoFocus /></label><div className={`nz-password-rule ${passwordLength>=12?"ready":""}`} id="invite-password-rule"><i>{passwordLength>=12?"✓":"·"}</i> {passwordLength>=12?"Minimum length met — use a unique password.":`${passwordLength} of 12 characters minimum`}</div></>}
     {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     <button className="nz-btn pri nz-auth-submit" disabled={pending || !token}>{pending ? "Saving…" : setup ? "Verify and activate" : "Continue to MFA"}</button>
     <small className="nz-invite-privacy">Invitation tokens are single-use and expire automatically.</small>

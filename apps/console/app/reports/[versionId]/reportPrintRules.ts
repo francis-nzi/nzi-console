@@ -14,7 +14,8 @@ export function escapeCssContent(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-export type ReportPagedMeta = { client: string; jobNumber: string; reportingYear: number; documentTitle?: string };
+/** `issuerFooter` — the footer frozen onto the version at validation (0143); absent, the footer slot is left empty. */
+export type ReportPagedMeta = { client: string; jobNumber: string; reportingYear: number; documentTitle?: string; issuerFooter?: string | null };
 
 /**
  * R5b — the Paged.js stylesheet: A4 size/margin, a running header/footer via
@@ -27,8 +28,9 @@ export function buildReportPagedCss(meta: ReportPagedMeta): string {
   const client = escapeCssContent(meta.client);
   const jobNumber = escapeCssContent(meta.jobNumber);
   const header = escapeCssContent(meta.documentTitle ?? `Carbon Reduction Plan · ${meta.reportingYear}`);
+  const issuerFooter = meta.issuerFooter ? `"${escapeCssContent(meta.issuerFooter)}"` : "none";
   return `@page{size:A4;margin:14mm 12mm}
-@page{@top-center{content:"${client} · ${header}";font-size:9.5px;color:#51605A}@bottom-left{content:"Net Zero International";font-size:9.5px;color:#51605A}@bottom-right{content:"${jobNumber} · Page " counter(page) " of " counter(pages);font-size:9.5px;color:#51605A}}
+@page{@top-center{content:"${client} · ${header}";font-size:9.5px;color:#51605A}@bottom-left{content:${issuerFooter};font-size:9.5px;color:#51605A}@bottom-right{content:"${jobNumber} · Page " counter(page) " of " counter(pages);font-size:9.5px;color:#51605A}}
 @page :first{@top-center{content:none}@bottom-left{content:none}@bottom-right{content:none}}
 ${REPORT_PAGED_MEDIA_RULES}
 .pagedjs_pages{padding:22px 0;display:flex;flex-direction:column;align-items:center}

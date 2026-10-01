@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 
 /**
  * Client portal · training — READ-ONLY.
@@ -63,6 +64,7 @@ export function PortalTraining() {
 }
 
 function PortalTrainingView({ model }: { model: PortalTrainingReadModel }) {
+  const org = useOrganisationName();
   const { places, records, skills } = model;
   // The headline is the sum of the rows below it, so the two can never disagree.
   const totals = places.reduce((sum, group) => ({
@@ -76,7 +78,7 @@ function PortalTrainingView({ model }: { model: PortalTrainingReadModel }) {
     return <div className="nz-portal-state" role="status"><i>◈</i><div>
       <b>Your training records will appear here</b>
       <span>
-        Once your team has trained with NZI — or your job includes training places — this page shows
+        Once your team has trained with {org.short} — or your job includes training places — this page shows
         what you hold, what has been completed and who holds which certificate. Nothing is shown from work
         still in progress.
       </span>
@@ -132,13 +134,13 @@ function PortalTrainingView({ model }: { model: PortalTrainingReadModel }) {
           <span className="hint"><i className="nz-dot lapsed" /> Expired unused</span>
         </div>
       </div>
-      <p className="hint nz-pt-note">Places are booked with your NZI consultant — talk to them and they will put your people on the next run.</p>
+      <p className="hint nz-pt-note">Places are booked with {org.your("consultant")} — talk to them and they will put your people on the next run.</p>
     </> : null}
 
     <h2 className="nz-pt-section"><NziIcon name="award" size={15} /> Training your team has taken</h2>
     {records.length === 0
       ? <div className="nz-panel"><div className="nz-card-b"><p className="sub">
-        Nothing has been confirmed yet. A course appears here once your NZI team has confirmed its
+        Nothing has been confirmed yet. A course appears here once {org.your("team")} has confirmed its
         attendance register — never while it is still being finalised.
       </p></div></div>
       : <div className="nz-panel">

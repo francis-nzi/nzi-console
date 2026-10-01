@@ -68,7 +68,7 @@ export type PortalReadinessReadModel =
 
 export async function getPortalClientReadiness(
   db: Queryable,
-  input: { clientId: string },
+  input: { clientId: string; /** D3b: the organisation's short name, for the copy — `organisationShortName()`. */ organisationShortName: string },
 ): Promise<PortalReadinessReadModel> {
   const [framework, assessments, plan] = await Promise.all([
     getSrsFramework(db),
@@ -84,8 +84,8 @@ export async function getPortalClientReadiness(
     return {
       state: "none",
       reason: assessments.length > 0
-        ? "Your readiness assessment is in progress. It appears here once your NZI consultant has completed it."
-        : "Your readiness assessment has not started yet. Your NZI consultant will work through it with you.",
+        ? `Your readiness assessment is in progress. It appears here once your ${input.organisationShortName} consultant has completed it.`
+        : `Your readiness assessment has not started yet. Your ${input.organisationShortName} consultant will work through it with you.`,
     };
   }
 

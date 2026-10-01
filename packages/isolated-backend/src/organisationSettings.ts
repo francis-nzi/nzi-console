@@ -122,6 +122,14 @@ export async function readOrganisationLogo(db: Queryable, organisationId: string
   return row ? { assetId: row.asset_id, contentType: row.content_type, sha256: row.sha256, content: row.content } : null;
 }
 
+/** One logo asset by id — the logo frozen onto a report version (0143), which may no longer be the current one. */
+export async function readOrganisationLogoAsset(db: Queryable, organisationId: string, assetId: string): Promise<ClientLogoAsset | null> {
+  const { rows: [row] } = await db.query<{ asset_id: string; content_type: ClientLogoAsset["contentType"]; sha256: string; content: Buffer }>(
+    `SELECT asset_id, content_type, sha256, content FROM nzi_console.organisation_logo_assets WHERE organisation_id = $1 AND asset_id = $2`,
+    [organisationId, assetId]);
+  return row ? { assetId: row.asset_id, contentType: row.content_type, sha256: row.sha256, content: row.content } : null;
+}
+
 export type IntensityDefault = {
   metricKey: string; version: number; label: string; unitWording: string; divider: number; iconKey: string;
   isStandard: boolean; valueSource: "entered" | "site-floor-area"; active: boolean; ordering: number;

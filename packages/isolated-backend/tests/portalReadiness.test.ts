@@ -76,7 +76,7 @@ const dbFor = (state: World) => ({
   },
 });
 
-const read = (state: World) => getPortalClientReadiness(dbFor(state) as never, { clientId: "client-a" });
+const read = (state: World) => getPortalClientReadiness(dbFor(state) as never, { clientId: "client-a", organisationShortName: "Acme Carbon" });
 
 describe("the portal readiness statement", () => {
   it("shows the current completed assessment", async () => {
@@ -112,6 +112,7 @@ describe("the portal readiness statement", () => {
     assert.equal(model.state, "none");
     if (model.state !== "none") return;
     assert.match(model.reason, /in progress/);
+    assert.match(model.reason, /your Acme Carbon consultant/, "the reason names the organisation from its profile (D3b)");
   });
 
   it("says there is no assessment rather than showing nothing as zero", async () => {

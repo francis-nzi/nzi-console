@@ -1,4 +1,4 @@
-import { getPortalClientReadiness, withTenantRead } from "@nzi/isolated-backend";
+import { getPortalClientReadiness, readOrganisationBrand, withTenantRead } from "@nzi/isolated-backend";
 import { portalAuthFailure } from "../../../lib/authResponse";
 import { isolatedPool } from "../../../lib/isolatedDatabase";
 import { currentPortalUserForData } from "../../../lib/portalSession";
@@ -20,8 +20,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const user = await currentPortalUserForData(request);
-    const readiness = await withTenantRead(isolatedPool(), user.organisationId, (db) =>
-      getPortalClientReadiness(db, { clientId: user.clientId }),
+    const readiness = await withTenantRead(isolatedPool(), user.organisationId, async (db) =>
+      getPortalClientReadiness(db, { clientId: user.clientId, organisationShortName: (await readOrganisationBrand(db, user.organisationId)).shortName }),
     );
     return Response.json(readiness, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return portalAuthFailure(error); }

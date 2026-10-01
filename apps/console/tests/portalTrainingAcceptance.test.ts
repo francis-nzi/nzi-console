@@ -42,7 +42,7 @@ describe("client portal · training", () => {
       assert.doesNotMatch(route, new RegExp(`export async function ${method}\\b`), method);
     }
     assert.doesNotMatch(view, /postBrowserCommand|putBrowserCommand|patchBrowserCommand/);
-    assert.match(view, /booked with your NZI consultant/);
+    assert.ok(view.includes("booked with {org.your(\"consultant\")}"), "places are booked with the organisation named from its profile");
   });
 
   it("speaks the client's words over the same arithmetic as the staff register", () => {

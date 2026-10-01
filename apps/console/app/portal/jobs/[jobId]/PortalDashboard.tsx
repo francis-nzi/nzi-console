@@ -1,4 +1,5 @@
 "use client";
+import { useOrganisationName } from "../../../lib/OrganisationNameProvider";
 
 // Client portal Phase 2 · A1 — the client's headline emissions view. Every
 // figure is sourced from the content-addressed PUBLISHED report snapshot (§0):
@@ -26,6 +27,7 @@ type State =
   | { kind: "ready"; dashboard: Extract<PortalAssuredDashboard, { published: true }>; charts: AnyChartData[]; snapshotId: string };
 
 export function PortalDashboard({ jobId }: { jobId: string }) {
+  const org = useOrganisationName();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   const load = useCallback(async () => {
@@ -76,7 +78,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
       <i>✓</i>
       <div>
         <b>Your first assured report will appear here</b>
-        <span>Once your NZI team publishes a verified report for this job, your emissions totals, scope split and trend will show on this page — always from the assured figures, never a work-in-progress draft.</span>
+        <span>Once {org.your("team")} publishes a verified report for this job, your emissions totals, scope split and trend will show on this page — always from the assured figures, never a work-in-progress draft.</span>
       </div>
     </div>
   );
