@@ -7,7 +7,9 @@ import { organisationCopy } from "../app/lib/organisationName";
 /**
  * D3b (ruled) — the organisation is named from its profile, never typed into client-facing copy. This fails if
  * "Net Zero International" or a bare "NZI" reappears outside the allow-list:
- *  - the portal terms (legal text, ruled unchanged) and the `portal-preview` mock (Q3), which are not scanned;
+ *  - the portal terms (legal text, ruled unchanged), which are not scanned;
+ *  - in `portal-preview/PortalWorkspace.tsx` — scanned by name, because the client job page renders it (Q3, ruled in) —
+ *    only the hard-coded sample conversation, `function Messages()`;
  *  - identifiers: the `NZI-` verify-code prefix and `NZI_` environment names;
  *  - comments, and the product name "NZ Insights Pro" (which the pattern never matches).
  */
@@ -18,12 +20,16 @@ const app = join(__dirname, "..", "app");
 const CLIENT_FACING_ROOTS = ["portal", "trainee", "verify", "api/portal", "api/trainee", "reports"].map((root) => join(app, root));
 /** Copy built outside the console that reaches a client: readiness, the trainee record, invitations, reminder emails. */
 const CLIENT_FACING_FILES = [
+  // The client job page (`portal/jobs/[jobId]`) renders this component, so it is client-facing wherever it lives.
+  "apps/console/app/portal-preview/PortalWorkspace.tsx",
   "packages/isolated-backend/src/portalReadiness.ts",
   "packages/isolated-backend/src/traineePortal.ts",
   "packages/isolated-backend/src/traineeAuth.ts",
   "packages/contracts/src/strategyReminders.ts",
 ].map((file) => join(repo, file));
 const ALLOW_LISTED = new Set([join(app, "portal", "portalTermsContent.ts")]);
+/** Lines allowed by file: the sample conversation in the preview's `Messages()`, ruled left as it is. */
+const ALLOWED_LINES: Record<string, RegExp> = { [join(app, "portal-preview", "PortalWorkspace.tsx")]: /^function Messages\(\)\{/ };
 
 function sourcesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -52,6 +58,7 @@ describe("client-facing copy names the organisation from its profile (D3b)", () 
       "apps/console/app/portal/PortalHome.tsx",
       "apps/console/app/portal/PortalSpendEntry.tsx",
       "apps/console/app/trainee/TraineeWorkspace.tsx",
+      "apps/console/app/portal-preview/PortalWorkspace.tsx",
       "apps/console/app/verify/[verifyCode]/page.tsx",
       "apps/console/app/api/trainee/export/route.ts",
       "apps/console/app/reports/[versionId]/ReportComposedView.tsx",
@@ -65,7 +72,7 @@ describe("client-facing copy names the organisation from its profile (D3b)", () 
     it(`never hard-codes ${name}`, () => {
       const offenders = files.flatMap((file) => withoutComments(readFileSync(file, "utf8")).split("\n")
         .map((line, index) => ({ line, index }))
-        .filter(({ line }) => pattern.test(line))
+        .filter(({ line }) => pattern.test(line) && !ALLOWED_LINES[file]?.test(line))
         .map(({ line, index }) => `${relative(repo, file)}:${index + 1}: ${line.trim().slice(0, 120)}`));
       assert.deepEqual(offenders, [], `name the organisation through organisationCopy() / the frozen issuer instead:\n${offenders.join("\n")}`);
     });
