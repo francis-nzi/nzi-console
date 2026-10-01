@@ -105,12 +105,11 @@ export async function loadV7JobTypeItems(pool: PoolLike, organisationId: string,
 }
 
 async function reconcile(db: Queryable, org: string, plan: JobTypeItemsPlan, runId: string, outcome: JobTypeItemsOutcome) {
-  const [types, items, rows] = await Promise.all([
-    db.query<{ job_type_id: string; legacy_db_id: string }>(`SELECT job_type_id, legacy_db_id FROM nzi_console.job_types WHERE organisation_id = $1 AND source_system = $2 FOR UPDATE`, [org, SOURCE_SYSTEM]),
-    db.query<{ item_id: string; legacy_db_id: string; item_code: string }>(`SELECT item_id, legacy_db_id, item_code FROM nzi_console.job_items WHERE organisation_id = $1 AND source_system = $2`, [org, SOURCE_SYSTEM]),
-    db.query<{ job_type_id: string; item_id: string; included: boolean; source_system: string | null; legacy_db_id: string | null; legacy_values: unknown; updated_by: string }>(
-      `SELECT job_type_id, item_id, included, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.job_type_items WHERE organisation_id = $1 FOR UPDATE`, [org]),
-  ]);
+  // One after another: the one transaction client runs one query at a time.
+  const types = await db.query<{ job_type_id: string; legacy_db_id: string }>(`SELECT job_type_id, legacy_db_id FROM nzi_console.job_types WHERE organisation_id = $1 AND source_system = $2 FOR UPDATE`, [org, SOURCE_SYSTEM]);
+  const items = await db.query<{ item_id: string; legacy_db_id: string; item_code: string }>(`SELECT item_id, legacy_db_id, item_code FROM nzi_console.job_items WHERE organisation_id = $1 AND source_system = $2`, [org, SOURCE_SYSTEM]);
+  const rows = await db.query<{ job_type_id: string; item_id: string; included: boolean; source_system: string | null; legacy_db_id: string | null; legacy_values: unknown; updated_by: string }>(
+    `SELECT job_type_id, item_id, included, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.job_type_items WHERE organisation_id = $1 FOR UPDATE`, [org]);
   const typeOf = new Map(types.rows.map((row) => [row.legacy_db_id, row.job_type_id]));
   const itemOf = new Map(items.rows.map((row) => [row.legacy_db_id, row.item_id]));
   const touched = new Set<string>();

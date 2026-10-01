@@ -11,6 +11,24 @@ export function createIsolatedPool(config: DatabaseBoundaryConfig, overrides: Om
   return new Pool({ connectionString: url.toString(), max: 5, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000, ...overrides });
 }
 
+/**
+ * One transaction client, one query at a time.
+ *
+ * A pg client runs one query at a time and has always queued the rest — but asking it to (calling `query` while
+ * another is in flight) is deprecated, and pg@9 refuses it. Readers here gather with `Promise.all` on the one client
+ * they are given, so the queue is made explicit: each query starts when the one before it has settled, in the order
+ * asked, exactly as pg ordered them. A failure is still the caller's to see; it does not stop the queue.
+ */
+export function serialisedQueryable(client: Queryable): Queryable {
+  let tail: Promise<unknown> = Promise.resolve();
+  const query = <T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }> => {
+    const run = tail.then(() => client.query<T>(text, values));
+    tail = run.catch(() => undefined);
+    return run;
+  };
+  return { query };
+}
+
 export async function withTenantTransaction<T>(
   pool: PoolLike,
   organisationId: string,
@@ -24,7 +42,7 @@ export async function withTenantTransaction<T>(
     await client.query(mode === "read" ? "BEGIN READ ONLY" : "BEGIN");
     await client.query(`SET LOCAL ROLE ${role}`);
     await client.query("SELECT set_config('app.organisation_id', $1, true)", [organisationId]);
-    const result = await work(client);
+    const result = await work(serialisedQueryable(client));
     await client.query("COMMIT");
     return result;
   } catch (error) {

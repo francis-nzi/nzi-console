@@ -331,8 +331,10 @@ export async function updateClient(
     if (!before) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
     if (before.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, before.version);
     // E-Q3 (admin E1): the currency written is the organisation's — checked against its active set, the held value
-    // always standing. Written as clientProfileValues writes it: an omitted currency is GBP.
-    await assertClientCurrency(db, context.organisationId, input.currency ?? "GBP", before.currency);
+    // always standing. An omitted currency keeps the one the client holds; it never resets to GBP (that default is
+    // create's alone).
+    const currency = input.currency ?? before.currency;
+    await assertClientCurrency(db, context.organisationId, currency, before.currency);
     const governed = clientGovernedChanges(before, input);
     // NZC-068 / PERMISSION_MATRIX ⚑ — a baseline change is a re-baseline: its own
     // capability (own clients for a Consultant), always a reason, always a governed event.
@@ -345,7 +347,7 @@ export async function updateClient(
         [context.organisationId, randomUUID(), input.clientId, context.reason.trim(), JSON.stringify(governed.baseline.before), JSON.stringify(governed.baseline.after), context.actorId, context.correlationId],
       );
     }
-    const profile = clientProfileValues(input);
+    const profile = clientProfileValues({ ...input, currency });
     const assignments = CLIENT_PROFILE_COLUMNS.map((column, index) => `${column}=$${index + 9}`).join(",");
     const updated = await db.query<{ version: number }>(
       `UPDATE nzi_console.clients

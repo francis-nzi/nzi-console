@@ -152,14 +152,13 @@ export async function loadV7JobItems(pool: PoolLike, organisationId: string, pla
 }
 
 async function reconcile(db: Queryable, org: string, plan: JobItemsPlan, runId: string, outcome: JobItemsOutcome) {
-  const [items, values, vat, currency] = await Promise.all([
-    db.query<Held>(`SELECT item_id, item_code, source_system, legacy_db_id, legacy_values, created_by, updated_by FROM nzi_console.job_items WHERE organisation_id = $1 ORDER BY item_id FOR UPDATE`, [org]),
-    db.query<{ category_key: string; value_id: string; label: string }>(
-      `SELECT category_key, value_id, label FROM nzi_console.reference_values WHERE organisation_id = $1 AND category_key IN ('job_item_categories', 'units_of_measure')`, [org]),
-    db.query<{ vat_rate_id: string; rate_pct: string; source_system: string | null; legacy_db_id: string | null }>(
-      `SELECT vat_rate_id, rate_pct::text, source_system, legacy_db_id FROM nzi_console.vat_rates WHERE organisation_id = $1`, [org]),
-    db.query<{ code: string }>(`SELECT code FROM nzi_console.currencies WHERE organisation_id = $1 AND is_default`, [org]),
-  ]);
+  // One after another: the one transaction client runs one query at a time.
+  const items = await db.query<Held>(`SELECT item_id, item_code, source_system, legacy_db_id, legacy_values, created_by, updated_by FROM nzi_console.job_items WHERE organisation_id = $1 ORDER BY item_id FOR UPDATE`, [org]);
+  const values = await db.query<{ category_key: string; value_id: string; label: string }>(
+    `SELECT category_key, value_id, label FROM nzi_console.reference_values WHERE organisation_id = $1 AND category_key IN ('job_item_categories', 'units_of_measure')`, [org]);
+  const vat = await db.query<{ vat_rate_id: string; rate_pct: string; source_system: string | null; legacy_db_id: string | null }>(
+    `SELECT vat_rate_id, rate_pct::text, source_system, legacy_db_id FROM nzi_console.vat_rates WHERE organisation_id = $1`, [org]);
+  const currency = await db.query<{ code: string }>(`SELECT code FROM nzi_console.currencies WHERE organisation_id = $1 AND is_default`, [org]);
   const selling = currency.rows[0]?.code ?? null;
   const categoryOf = (label: string | null) => {
     if (label === null) return null;

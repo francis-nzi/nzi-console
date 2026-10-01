@@ -196,9 +196,10 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
   });
 
   describe("client.update validates the currency (E-Q3)", () => {
-    const update = async (clientId: string, currency: string, actorRole: StaffRole = "admin") => {
+    const update = async (clientId: string, currency: string | undefined, actorRole: StaffRole = "admin") => {
       const [row] = await q(`SELECT version, name FROM nzi_console.clients WHERE client_id = $1`, [clientId]);
-      return updateClient(database.pool, { clientId, expectedVersion: row.version, name: row.name, status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin", currency }, context("ada", actorRole));
+      return updateClient(database.pool, { clientId, expectedVersion: row.version, name: row.name, status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin",
+        ...(currency === undefined ? {} : { currency }) }, context("ada", actorRole));
     };
 
     it("lets a held currency stand, and a change to an active one through", async () => {
@@ -218,6 +219,13 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
     it("still lets a client already holding a deactivated currency be edited (R3)", async () => {
       await q(`UPDATE nzi_console.clients SET currency = 'EUR' WHERE client_id = 'c-eur'`);
       await update("c-eur", "EUR");
+    });
+
+    it("keeps the client's currency when an edit omits it — never resetting it to GBP", async () => {
+      await update("c-uae", undefined);
+      assert.equal((await q(`SELECT currency FROM nzi_console.clients WHERE client_id = 'c-uae'`))[0].currency, "AED", "an active held currency stands");
+      await update("c-eur", undefined);
+      assert.equal((await q(`SELECT currency FROM nzi_console.clients WHERE client_id = 'c-eur'`))[0].currency, "EUR", "and so does one deactivated since (R3)");
     });
   });
 
