@@ -225,6 +225,9 @@ export async function createClient(
     context,
     async (db) => {
       const clientId = randomUUID();
+      // E-Q3 (admin E1): a new client's currency is one of the organisation's active currencies — nothing is held yet,
+      // so the check always runs. Written as clientProfileValues writes it: an omitted currency is GBP.
+      await assertClientCurrency(db, context.organisationId, input.currency ?? "GBP", null);
       const profile = clientProfileValues(input);
       // NZC-022 "own clients" — the creating staff user owns the client.
       await db.query(

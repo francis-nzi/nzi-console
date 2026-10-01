@@ -7,7 +7,7 @@ import {
   createCurrency, createVatRate, deactivateCurrency, deactivateVatRate, listCurrenciesPage, listVatRatesPage, readCurrencyDirectory,
   reinstateVatRate, setDefaultCurrency, setDefaultVatRate, updateCurrency, updateVatRate,
 } from "../src/commercialLookups";
-import { updateClient } from "../src/postgresCommands";
+import { createClient, updateClient } from "../src/postgresCommands";
 import { withTenantRead } from "../src/postgres";
 
 /**
@@ -218,6 +218,29 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
     it("still lets a client already holding a deactivated currency be edited (R3)", async () => {
       await q(`UPDATE nzi_console.clients SET currency = 'EUR' WHERE client_id = 'c-eur'`);
       await update("c-eur", "EUR");
+    });
+  });
+
+  describe("client.create validates the currency (E-Q3, ruled in after E1's review)", () => {
+    const create = (name: string, currency?: string) => createClient(database.pool,
+      { name, status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin", ...(currency === undefined ? {} : { currency }) }, context("ada", "admin"));
+    const refusedWith = (code: string) => (error: Error & { issues?: Array<{ field: string; code: string }> }) =>
+      error.issues?.some((issue) => issue.field === "currency" && issue.code === code) === true;
+
+    it("creates a client in an active currency, and in GBP when none is given", async () => {
+      const usd = await create("New Dollar Client", "USD");
+      const gbp = await create("New Sterling Client");
+      const rows = await q(`SELECT client_id, currency FROM nzi_console.clients WHERE client_id = ANY($1) ORDER BY currency`, [[usd.data.clientId, gbp.data.clientId]]);
+      assert.deepEqual(rows.map((row) => row.currency), ["GBP", "USD"]);
+    });
+
+    it("refuses a currency the organisation does not hold, \"UAE\", and one it has deactivated — writing nothing", async () => {
+      const before = (await q(`SELECT count(*)::int AS n FROM nzi_console.clients WHERE organisation_id = $1`, [NZI]))[0].n;
+      await assert.rejects(create("Yen Client", "JPY"), refusedWith("CURRENCY_UNKNOWN"));
+      await assert.rejects(create("Country Client", "UAE"), refusedWith("CURRENCY_UNKNOWN"));
+      // EUR was deactivated above; a new client cannot choose it (an existing one keeps it).
+      await assert.rejects(create("Euro Client Two", "EUR"), refusedWith("CURRENCY_INACTIVE"));
+      assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.clients WHERE organisation_id = $1`, [NZI]))[0].n, before);
     });
   });
 });
