@@ -1847,6 +1847,13 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-sub-record-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
 .nz-a-sub-record-form{margin-top:10px;padding-top:10px;border-top:1px solid var(--a-line)}
 .nz-a-sub-record-new{border:1px dashed var(--a-line);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+/* Admin F1: a message template's tokens and its sample-value preview. */
+.nz-a-token-list{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:6px}
+.nz-a-token-list li{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:4px 12px;align-items:baseline;font-size:12.5px}
+.nz-a-token-list li .nz-a-sub{grid-column:2}
+.nz-a-message-preview{border:1px solid var(--a-line);border-radius:8px;background:var(--a-surface);margin-bottom:10px}
+.nz-a-message-preview-subject{padding:10px 12px;border-bottom:1px solid var(--a-line);font-weight:600;font-size:13px}
+.nz-a-message-preview-body{padding:10px 12px;white-space:pre-wrap;font-size:13px;line-height:1.5}
 .nz-a-notice{margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-ok-bg);color:var(--a-ok);font-size:12.5px;font-weight:500}
 /* Team & access (admin B1): the drawer sections (rates, history) and the rate sub-form. */
 .nz-a-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--a-line)}.nz-a-section h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;font-weight:600;color:var(--a-ink)}.nz-a-section p{margin:0 0 8px;font-size:12.5px;color:var(--a-ink-2)}

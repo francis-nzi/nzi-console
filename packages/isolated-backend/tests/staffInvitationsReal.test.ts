@@ -156,11 +156,27 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
     assert.ok(!("link" in result) && !JSON.stringify(result).includes("#token="), "the admin was handed the link");
     assert.equal(sent.length, 1);
     assert.equal(sent[0]!.to, "uma@example.org");
+    assert.equal(sent[0]!.subject, "Set up your NZ Insights Pro sign-in", "no template of its own: the built-in wording (admin F1)");
     const link = /https:\/\/\S+/.exec(sent[0]!.body)![0];
     const issued = (await events("staff.enrolment.issue")).find((event) => event.entity_id === result.invitationId)!;
     assert.equal(issued.after_json.delivery, "email");
     const secret = await enrol(tokenFrom(link));
     assert.equal((await signIn("uma@example.org", secret)).userId, "uma");
+  });
+
+  it("words the invitation in the organisation's own template when it has an active one (admin F1)", async () => {
+    await member("una");
+    await db.query(`INSERT INTO nzi_console.message_templates (organisation_id, template_key, subject, body, created_by, updated_by)
+      VALUES ($1, 'staff.invitation', 'Join us', 'Start here: {{link}} (until {{expiresAt}})', 'tester', 'tester')`, [ORG]);
+    try {
+      const sent: MailMessage[] = [];
+      const result = await inviteStaffMember(database.pool, admin, { userId: "una" },
+        { consoleOrigin: ORIGIN, mail: { mode: "send" }, mailer: { send: async (message) => { sent.push(message); } } });
+      assert.equal(sent[0]!.subject, "Join us");
+      assert.match(sent[0]!.body, new RegExp(`^Start here: ${ORIGIN.replace(/\./g, "\\.")}/enrol#token=[A-Za-z0-9_-]{43} \\(until ${result.expiresAt.replace(/\./g, "\\.")}\\)$`));
+    } finally {
+      await db.query(`UPDATE nzi_console.message_templates SET active = false WHERE organisation_id = $1 AND template_key = 'staff.invitation'`, [ORG]);
+    }
   });
 
   it("if the email cannot be sent, the link is withdrawn rather than left live", async () => {

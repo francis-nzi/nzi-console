@@ -267,4 +267,23 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     await assert.rejects(() => insert("log-2"), /duplicate key|unique/i,
       "one reminder per strategy, per kind, per date, per recipient");
   });
+
+  it("words a reminder in the organisation's own template when one is active, and in the built-in wording otherwise (admin F1)", async () => {
+    const env = { appEnv: "production", boundaryToken: "live", mailMode: "send" };
+    await client.query(
+      `INSERT INTO nzi_console.message_templates (organisation_id, template_key, subject, body, created_by, updated_by)
+       VALUES ($1, 'strategy.reminder.overdue', 'Overdue: {{strategyTitle}}', 'Dear {{firstName}}, {{clientName}} passed {{targetDate}}.{{ownerLine}}', 'tester', 'tester')`, [ORG]);
+    await resetQueues();
+    await addStrategy("s-worded", "2026-09-01");
+    const own = recordingMailer();
+    await runReminderTick(client as never, { organisationId: ORG, today: TODAY, mailer: own, env });
+    assert.deepEqual([own.sent[0]!.subject, own.sent[0]!.body], ["Overdue: Strategy s-worded", "Dear Dana, Northwind Ltd passed 01/09/2026."]);
+
+    await client.query(`UPDATE nzi_console.message_templates SET active = false WHERE organisation_id = $1`, [ORG]);
+    await resetQueues();
+    await addStrategy("s-built-in", "2026-09-01");
+    const builtIn = recordingMailer();
+    await runReminderTick(client as never, { organisationId: ORG, today: TODAY, mailer: builtIn, env });
+    assert.equal(builtIn.sent[0]!.subject, "Strategy s-built-in — target date passed (01/09/2026)", "an inactive template is the built-in wording");
+  });
 });

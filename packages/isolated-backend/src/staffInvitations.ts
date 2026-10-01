@@ -4,6 +4,8 @@ import { mailDelivery, smtpSettingsFrom, type MailDelivery, type Mailer } from "
 import { smtpMailer } from "./smtpMailer";
 import type { PoolLike } from "./postgres";
 import { withTenantRead, withTenantWrite } from "./postgres";
+import { messageContentFor, messageTemplateDefinition, renderMessage, type MessageContent } from "@nzi/contracts";
+import { readActiveMessageTemplate } from "./messageTemplates";
 import { issueStaffEnrolmentInvitation, revokeStaffEnrolmentInvitation, StaffEnrolmentError } from "./staffEnrolment";
 
 /**
@@ -53,8 +55,12 @@ export async function inviteStaffMember(
   try { origin = new URL(deps.consoleOrigin); } catch { throw new StaffEnrolmentError("The console's own address is not configured."); }
   if (deps.mail.mode === "send" && !deps.mailer) throw new StaffEnrolmentError("Mail is enabled but no mailer is configured.");
 
-  const email = deps.mail.mode === "send" ? await withTenantRead(pool, principal.organisationId, async (db) =>
-    (await db.query<{ email: string | null }>(`SELECT email FROM nzi_console.memberships WHERE user_id=$1`, [userId])).rows[0]?.email?.trim() ?? null) : null;
+  // The address, and the organisation's own wording for the invitation (admin F1) — both read before a link is issued,
+  // so a read that fails never leaves a live link behind.
+  const { email, wording } = deps.mail.mode === "send" ? await withTenantRead(pool, principal.organisationId, async (db) => ({
+    email: (await db.query<{ email: string | null }>(`SELECT email FROM nzi_console.memberships WHERE user_id=$1`, [userId])).rows[0]?.email?.trim() ?? null,
+    wording: await readActiveMessageTemplate(db, "staff.invitation"),
+  })) : { email: null, wording: null as MessageContent | null };
 
   const issued = await issueStaffEnrolmentInvitation(pool, {
     organisationId: principal.organisationId, userId, actorId: principal.userId, principalType: "staff",
@@ -66,19 +72,9 @@ export async function inviteStaffMember(
 
   try {
     if (!email) throw new Error("no address");
-    await deps.mailer!.send({
-      to: email,
-      subject: "Set up your NZ Insights Pro sign-in",
-      body: [
-        "You have been invited to the NZ Insights Pro staff console.",
-        "",
-        "Set your own password and connect your authenticator here:",
-        link,
-        "",
-        `This link works once and expires at ${issued.expiresAt}. Nobody at NZI sees your password or your authenticator.`,
-        "If you were not expecting this, ignore it — nothing happens unless the link is used.",
-      ].join("\n"),
-    });
+    // The organisation's wording when it has an active template, else the built-in — word for word what this sent before F1.
+    const message = renderMessage(messageContentFor(messageTemplateDefinition("staff.invitation")!, wording), { link, expiresAt: issued.expiresAt });
+    await deps.mailer!.send({ to: email, ...message });
   } catch {
     // A link that was issued but never reached anyone is withdrawn, not left live.
     await revokeStaffEnrolmentInvitation(pool, { organisationId: principal.organisationId, userId, actorId: principal.userId }, now);

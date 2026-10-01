@@ -45,8 +45,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     group: "Engagement",
     items: [
-      { id: "message-templates", label: "Message templates", icon: "mail", href: "/admin/message-templates", phase: "F", capability: "admin.templates",
-        description: "Email and notification templates with subject and body, previewed before they are used for invites, quotes and reminders." },
+      { id: "message-templates", label: "Message templates", icon: "mail", href: "/admin/message-templates", capability: "admin.templates",
+        description: "The wording of the messages the console sends — subject and body over each message's declared tokens, previewed against sample values. The set of messages is fixed in code." },
       { id: "report-templates", label: "Report templates", icon: "doc", href: "/admin/report-templates", phase: "H", capability: "admin.templates",
         description: "Report templates, their variables and versions, assignable per client." },
       { id: "crm-pipeline", label: "CRM & pipeline", icon: "funnel", href: "/admin/crm-pipeline", phase: "F", capability: "admin.lookups",
