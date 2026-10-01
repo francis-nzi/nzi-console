@@ -503,6 +503,10 @@ jobs:
       # the one carried-across turnover value scaled and audited; validate freezes the issuer and publish carries it.
       - name: What was issued keeps the issuer it was issued under, and the profile is the one source for the rest
         run: npx tsx --test packages/isolated-backend/tests/organisationConsumersReal.test.ts
+      # 0144: the trainee's record reads a pending sign-in change as the app role, through a column-level grant — the
+      # token hash, current address and sealed columns stay the auth role's, and nothing is writable.
+      - name: A trainee sees their pending sign-in change, and the app role reads no more of the row than that
+        run: npx tsx --test packages/isolated-backend/tests/traineePendingEmailReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
