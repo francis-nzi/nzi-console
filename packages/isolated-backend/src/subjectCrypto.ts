@@ -147,6 +147,7 @@ export const INDEXED_COLUMNS = {
   "trainees.personal_email": (value: string) => value.trim().toLowerCase(),
   "client_contacts.email": (value: string) => value.trim().toLowerCase(),
   "memberships.email": (value: string) => value.trim().toLowerCase(),
+  "supplier_contacts.email": (value: string) => value.trim().toLowerCase(),
   "trainee_email_changes.current_email": (value: string) => value.trim().toLowerCase(),
   "trainee_email_changes.new_email": (value: string) => value.trim().toLowerCase(),
 } as const;

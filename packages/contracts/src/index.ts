@@ -117,6 +117,7 @@ export * from "./adminMilestoneTemplates";
 export * from "./adminFileTypes";
 export * from "./adminCommercialLookups";
 export * from "./adminServiceCatalogue";
+export * from "./adminSuppliers";
 export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";

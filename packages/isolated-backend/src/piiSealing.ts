@@ -40,8 +40,8 @@ export type SealingKeys = { masterKey: string; indexKey: string; linkageKey: str
 
 /** The person whose key seals this row, as the registry names them. */
 export type SubjectRef = {
-  /** One of the four person-tables the registry links. */
-  sourceTable: "trainees" | "client_contacts" | "portal_users" | "memberships";
+  /** One of the person-tables the registry links. */
+  sourceTable: "trainees" | "client_contacts" | "portal_users" | "memberships" | "supplier_contacts";
   sourceId: string;
 };
 

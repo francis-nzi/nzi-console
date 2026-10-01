@@ -272,6 +272,23 @@ export function syntheticRows(): Rows {
       { job_type_item_id: "6", job_type_id: "1", item_id: "1", quantity: "4", is_required: "t", sort_order: "40" },
       { job_type_item_id: "7", job_type_id: "3", item_id: "2", quantity: "0", is_required: "t", sort_order: "10" },
     ],
+    // v7's suppliers (admin E4). Invented companies and people: one with a contact, one with no contact at all, one
+    // inactive, and a name repeated in another case (v7's unique index is case-insensitive, so this is an extract fault).
+    suppliers: [
+      { supplier_id: "1", supplier_name: "Verifiers Ltd", contact_name: "Mary Example", contact_email: "Mary@Verifiers.test", phone: "+44 20 7000 0001", website: "https://verifiers.test", is_active: "t" },
+      { supplier_id: "2", supplier_name: "Data Gatherers", contact_name: null, contact_email: null, phone: null, website: null, is_active: "t" },
+      { supplier_id: "3", supplier_name: "Old Partners", contact_name: "Olive Example", contact_email: null, phone: null, website: null, is_active: "f" },
+      { supplier_id: "4", supplier_name: "verifiers ltd", contact_name: null, contact_email: null, phone: null, website: null, is_active: "t" },
+    ],
+    // Their rate card: a unit as v7's free text ("day" against the console's "days"), VAT as v7's flag and percentage,
+    // an unrated line, a non-vatable one, a line for an unknown supplier and one with a negative rate.
+    supplier_service_items: [
+      { supplier_item_id: "1", supplier_id: "1", cost_type: "Verification", item_name: "Limited assurance", description: "ISO 14064-3", uom: "day", agreed_rate: "650.00", is_vatable: "t", vat_rate_pct: "20", is_active: "t" },
+      { supplier_item_id: "2", supplier_id: "1", cost_type: "Verification", item_name: "Site visit", description: null, uom: "fortnight", agreed_rate: null, is_vatable: "t", vat_rate_pct: "20", is_active: "t" },
+      { supplier_item_id: "3", supplier_id: "2", cost_type: "Data", item_name: "Meter reads", description: null, uom: null, agreed_rate: "40", is_vatable: "f", vat_rate_pct: null, is_active: "f" },
+      { supplier_item_id: "4", supplier_id: "99", cost_type: null, item_name: "Orphan", description: null, uom: null, agreed_rate: "1", is_vatable: "f", vat_rate_pct: null, is_active: "t" },
+      { supplier_item_id: "5", supplier_id: "2", cost_type: null, item_name: "Refund", description: null, uom: null, agreed_rate: "-5", is_vatable: "f", vat_rate_pct: null, is_active: "t" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.

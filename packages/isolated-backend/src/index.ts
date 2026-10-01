@@ -48,6 +48,7 @@ export * from "./jobFileTypes";
 export * from "./commercialLookups";
 export * from "./serviceCatalogue";
 export * from "./jobTypeTemplates";
+export * from "./suppliers";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";

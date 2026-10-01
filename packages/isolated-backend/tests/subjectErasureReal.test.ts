@@ -192,17 +192,22 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
     // The plan says a column is pending because no runtime role may update its table. If that were
     // merely asserted in TypeScript it could drift, and the drift would read as "erased" for a column
     // erasure never touched — the worst direction for this particular mistake.
-    const { rows } = await db.query<{ table_name: string; grantee: string }>(
-      `SELECT table_name, grantee FROM information_schema.table_privileges
+    // Per column, which a table-level grant also lists: a table granted UPDATE only on named columns (0148's
+    // supplier_contacts) is updatable exactly where erasure needs it, and the check has to see that.
+    const { rows } = await db.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.column_privileges
         WHERE table_schema='nzi_console' AND privilege_type='UPDATE'
           AND grantee IN ('nzi_console_app','nzi_console_worker','nzi_console_auth')`);
     const updatable = new Set(rows.map((row) => row.table_name));
+    const updatableColumns = new Set(rows.map((row) => `${row.table_name}.${row.column_name}`));
 
     for (const [table, definition] of Object.entries(PII_TABLES)) {
       if (definition.appendOnly) {
         assert.ok(!updatable.has(table), `${table} is declared append-only but a runtime role may UPDATE it`);
-      } else if (PII_COLUMNS.some((column) => column.table === table)) {
-        assert.ok(updatable.has(table), `${table} is not declared append-only but no runtime role may UPDATE it`);
+      } else {
+        for (const column of PII_COLUMNS.filter((entry) => entry.table === table)) {
+          assert.ok(updatableColumns.has(`${table}.${column.column}`), `${table} is not declared append-only but no runtime role may UPDATE ${column.column}`);
+        }
       }
     }
   });

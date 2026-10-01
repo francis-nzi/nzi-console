@@ -45,6 +45,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "job_item.%", "job_items.imported",
   // Job-type templates (admin E3). job_type.% above already takes job_type.items_set.
   "job_type_items.imported",
+  // Suppliers and their rate card (admin E4).
+  "supplier.%", "supplier_item.%", "suppliers.imported",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

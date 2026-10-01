@@ -11,7 +11,7 @@
  */
 
 /** The four tables that describe a person. Named, because they share no key — hence this file. */
-export const SUBJECT_SOURCES = ["trainees", "client_contacts", "portal_users", "memberships"] as const;
+export const SUBJECT_SOURCES = ["trainees", "client_contacts", "portal_users", "memberships", "supplier_contacts"] as const;
 export type SubjectSource = (typeof SUBJECT_SOURCES)[number];
 
 /** A pointer to one person-row. The unit this entire subsystem deals in. */

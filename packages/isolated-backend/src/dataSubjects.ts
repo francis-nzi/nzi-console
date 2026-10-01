@@ -27,6 +27,7 @@ const SOURCE_COLUMNS: Record<SubjectSource, { id: string; email: string; name: s
   client_contacts: { id: "contact_id", email: "email", name: "full_name" },
   portal_users: { id: "portal_user_id", email: "email_normalized", name: "display_name" },
   memberships: { id: "user_id", email: "email", name: "display_name" },
+  supplier_contacts: { id: "contact_id", email: "email", name: "full_name" },
 };
 
 /** Every person-row in one organisation, as pointers plus the two comparable fields. */

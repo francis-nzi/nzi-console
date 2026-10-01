@@ -1839,6 +1839,14 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-template-items li{border:1px solid var(--a-line);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:120px 1fr auto;gap:8px 14px;align-items:center}
 .nz-a-template-item-name{grid-column:1/-1;font-size:13px}
 .nz-a-template-item-actions{display:flex;gap:10px;justify-content:flex-end}
+/* Admin E4: a supplier's contacts and rate card, one card per record, each editable in place. */
+.nz-a-sub-records{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:10px}
+.nz-a-sub-records li{border:1px solid var(--a-line);border-radius:8px;padding:10px 12px}
+.nz-a-sub-record-head{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.nz-a-sub-record-name{font-size:13px;font-weight:600}
+.nz-a-sub-record-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.nz-a-sub-record-form{margin-top:10px;padding-top:10px;border-top:1px solid var(--a-line)}
+.nz-a-sub-record-new{border:1px dashed var(--a-line);border-radius:8px;padding:10px 12px;margin-bottom:12px}
 .nz-a-notice{margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-ok-bg);color:var(--a-ok);font-size:12.5px;font-weight:500}
 /* Team & access (admin B1): the drawer sections (rates, history) and the rate sub-form. */
 .nz-a-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--a-line)}.nz-a-section h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;font-weight:600;color:var(--a-ink)}.nz-a-section p{margin:0 0 8px;font-size:12.5px;color:var(--a-ink-2)}

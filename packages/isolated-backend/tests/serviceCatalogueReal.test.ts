@@ -146,7 +146,8 @@ describe("the service catalogue, against a real database", { skip: TEST_DATABASE
       const records = await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND command_key = 'job_item.price.set'`, [ORG]);
       assert.equal(records.length, 2, "both price commands are recorded");
       for (const figure of ["750", "799"]) assert.ok(!JSON.stringify(records).includes(figure), `the idempotency record never carries ${figure}`);
-      const outbox = await q(`SELECT * FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [ORG]);
+      // The payload only: ids and timestamps can contain any digits by chance.
+      const outbox = await q(`SELECT topic, payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [ORG]);
       assert.ok(outbox.length > 0);
       for (const figure of ["750", "799"]) assert.ok(!JSON.stringify(outbox).includes(figure), `the outbox never carries ${figure}`);
     });
