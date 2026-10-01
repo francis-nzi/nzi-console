@@ -12,13 +12,13 @@ import { resolveFloorAreaDenominator, type ClientSiteReadModel, type IntensityMe
 /** The current version of each metric this client has defined, active or not. */
 export async function listClientIntensityMetrics(db: Queryable, clientId: string): Promise<IntensityMetricDefinition[]> {
   const { rows } = await db.query<{
-    metric_key: string; version: number; label: string; unit_wording: string; divider: number;
+    metric_key: string; version: number; label: string; unit_wording: string; divider: number; unit_kind: "text" | "currency";
     icon_key: string; is_standard: boolean; value_source: "entered" | "site-floor-area"; active: boolean; ordering: number;
-  }>(`SELECT DISTINCT ON (metric_key) metric_key,version,label,unit_wording,divider,icon_key,is_standard,value_source,active,ordering
+  }>(`SELECT DISTINCT ON (metric_key) metric_key,version,label,unit_wording,unit_kind,divider,icon_key,is_standard,value_source,active,ordering
       FROM nzi_console.client_intensity_metrics WHERE client_id=$1
       ORDER BY metric_key, version DESC`, [clientId]);
   return rows.map((row) => ({
-    key: row.metric_key, version: row.version, label: row.label, unitWording: row.unit_wording,
+    key: row.metric_key, version: row.version, label: row.label, unitWording: row.unit_wording, unitKind: row.unit_kind,
     divider: row.divider as IntensityMetricDefinition["divider"], iconKey: row.icon_key,
     isStandard: row.is_standard, valueSource: row.value_source, active: row.active, ordering: row.ordering,
   })).sort((a, b) => Number(b.isStandard) - Number(a.isStandard) || a.ordering - b.ordering);
@@ -74,6 +74,8 @@ export async function listJobIntensityValues(db: Queryable, jobId: string, repor
 export type JobAnnualMetricsReadModel = {
   jobId: string;
   clientId: string;
+  /** The client's currency — a currency metric's unit reads in it ("tCO₂e per £m"), D3c. */
+  currency: string;
   reportingYear: number;
   /** Null until this year has a reviewed snapshot — intensity is unavailable until then. */
   assuredTotalTco2e: number | null;
@@ -84,9 +86,11 @@ export type JobAnnualMetricsReadModel = {
 };
 
 export async function getJobAnnualMetrics(db: Queryable, jobId: string, reportingYear: number): Promise<JobAnnualMetricsReadModel | null> {
-  const job = await db.query<{ client_id: string; reporting_from: Date | string | null; reporting_to: Date | string | null }>(
-    `SELECT j.client_id, c.reporting_from, c.reporting_to
-     FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id)
+  const job = await db.query<{ client_id: string; currency: string; reporting_from: Date | string | null; reporting_to: Date | string | null }>(
+    `SELECT j.client_id, cl.currency, c.reporting_from, c.reporting_to
+     FROM nzi_console.jobs j
+     JOIN nzi_console.clients cl ON (cl.organisation_id,cl.client_id)=(j.organisation_id,j.client_id)
+     LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id)
      WHERE j.job_id=$1`, [jobId]);
   const row = job.rows[0];
   if (!row) return null;
@@ -113,7 +117,7 @@ export async function getJobAnnualMetrics(db: Queryable, jobId: string, reportin
     resolved[definition.key] = reason === undefined ? { value } : { value, reason };
   }
 
-  return { jobId, clientId: row.client_id, reportingYear, assuredTotalTco2e, metrics, values, resolved };
+  return { jobId, clientId: row.client_id, currency: row.currency, reportingYear, assuredTotalTco2e, metrics, values, resolved };
 }
 
 /**

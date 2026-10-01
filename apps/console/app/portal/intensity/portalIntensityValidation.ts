@@ -17,6 +17,7 @@ const isDefinition = (value: unknown): value is IntensityMetricDefinition => {
   const metric = value as Record<string, unknown>;
   return nonEmpty(metric.key) && Number.isInteger(metric.version) && nonEmpty(metric.label)
     && typeof metric.unitWording === "string"
+    && (metric.unitKind === "text" || metric.unitKind === "currency")
     && (intensityDividers as readonly number[]).includes(metric.divider as number)
     && nonEmpty(metric.iconKey) && typeof metric.isStandard === "boolean"
     && (metric.valueSource === "entered" || metric.valueSource === "site-floor-area")
@@ -44,6 +45,7 @@ export function isPortalIntensity(value: unknown): value is PortalIntensityReadM
   if (!value || typeof value !== "object") return false;
   const model = value as Record<string, unknown>;
   return (model.clientName === null || nonEmpty(model.clientName))
+    && nonEmpty(model.currency)
     && (model.reportingYear === null || Number.isInteger(model.reportingYear))
     && (model.publishedAt === null || validDate(model.publishedAt))
     && (model.dataHash === null || nonEmpty(model.dataHash))

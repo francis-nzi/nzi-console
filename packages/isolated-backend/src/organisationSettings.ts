@@ -132,18 +132,20 @@ export async function readOrganisationLogoAsset(db: Queryable, organisationId: s
 
 export type IntensityDefault = {
   metricKey: string; version: number; label: string; unitWording: string; divider: number; iconKey: string;
+  /** `currency`: counts the client's currency; the defaults list reads it in GBP until Phase E (D3, Q4). */
+  unitKind: "text" | "currency";
   isStandard: boolean; valueSource: "entered" | "site-floor-area"; active: boolean; ordering: number;
 };
 type DefaultRow = { metric_key: string; version: number; label: string; unit_wording: string; divider: number; icon_key: string; is_standard: boolean; value_source: "entered" | "site-floor-area"; active: boolean; ordering: number; unit_kind?: "text" | "currency" };
 const toDefault = (row: DefaultRow): IntensityDefault => ({
   metricKey: row.metric_key, version: row.version, label: row.label, unitWording: row.unit_wording, divider: row.divider, iconKey: row.icon_key,
-  isStandard: row.is_standard, valueSource: row.value_source, active: row.active, ordering: row.ordering,
+  unitKind: row.unit_kind ?? "text", isStandard: row.is_standard, valueSource: row.value_source, active: row.active, ordering: row.ordering,
 });
 
 /** Each default metric at its latest version, in order — active and inactive. */
 export async function listIntensityDefaults(db: Queryable, organisationId: string): Promise<IntensityDefault[]> {
   const { rows } = await db.query<DefaultRow>(
-    `SELECT DISTINCT ON (metric_key) metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering
+    `SELECT DISTINCT ON (metric_key) metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, unit_kind
        FROM nzi_console.organisation_intensity_metric_defaults WHERE organisation_id = $1 ORDER BY metric_key, version DESC`, [organisationId]);
   return rows.map(toDefault).sort((a, b) => a.ordering - b.ordering || a.metricKey.localeCompare(b.metricKey));
 }
@@ -276,11 +278,11 @@ export function setIntensityDefault(pool: PoolLike, input: CommandInputMap["orga
          (organisation_id, metric_key, version, label, unit_wording, divider, icon_key, is_standard, value_source, active, ordering, set_by, correlation_id, unit_kind)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12, $13)`,
       [org, input.metricKey, version, input.label.trim(), input.unitWording.trim(), input.divider, input.iconKey, previous?.is_standard ?? false,
-        previous?.value_source ?? "entered", input.ordering ?? previous?.ordering ?? 99, context.actorId, context.correlationId, previous?.unit_kind ?? "text"]);
+        previous?.value_source ?? "entered", input.ordering ?? previous?.ordering ?? 99, context.actorId, context.correlationId, input.unitKind ?? previous?.unit_kind ?? "text"]);
     return {
-      data: { organisationId: org, version, changed: previous ? ["label", "unitWording", "divider", "iconKey", "ordering"].filter((field) => {
-        const was = { label: previous.label, unitWording: previous.unit_wording, divider: previous.divider, iconKey: previous.icon_key, ordering: previous.ordering } as Record<string, unknown>;
-        const now = { label: input.label.trim(), unitWording: input.unitWording.trim(), divider: input.divider, iconKey: input.iconKey, ordering: input.ordering ?? previous.ordering } as Record<string, unknown>;
+      data: { organisationId: org, version, changed: previous ? ["label", "unitWording", "divider", "iconKey", "ordering", "unitKind"].filter((field) => {
+        const was = { label: previous.label, unitWording: previous.unit_wording, divider: previous.divider, iconKey: previous.icon_key, ordering: previous.ordering, unitKind: previous.unit_kind ?? "text" } as Record<string, unknown>;
+        const now = { label: input.label.trim(), unitWording: input.unitWording.trim(), divider: input.divider, iconKey: input.iconKey, ordering: input.ordering ?? previous.ordering, unitKind: input.unitKind ?? previous.unit_kind ?? "text" } as Record<string, unknown>;
         return was[field] !== now[field];
       }).concat(previous.active ? [] : ["active"]) : ["created"], metricKey: input.metricKey },
       entityType: "organisation", entityId: org, topic: "organisation.intensity_default.set", before: previous ? { version: previous.version, active: previous.active } : undefined,

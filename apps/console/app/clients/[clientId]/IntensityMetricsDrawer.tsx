@@ -5,7 +5,7 @@ import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   activeMetrics, intensityDividers, intensityIconKeys, intensityUnit, suggestIconKey,
-  type IntensityDivider, type IntensityMetricDefinition,
+  type IntensityDivider, type IntensityMetricDefinition, type IntensityUnitKind,
 } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { IntensityMetricIcon } from "./IntensityMetricIcon";
@@ -17,16 +17,23 @@ import { IntensityMetricIcon } from "./IntensityMetricIcon";
  * they cannot be removed, only deactivated. Additionals are whatever the client actually
  * measures itself by. The divider is part of the definition, because "42.7 tCO₂e" means
  * nothing until you know it is per £1m.
+ *
+ * A metric counts either a thing (its wording names it) or money (D3c): a currency metric stores no symbol and reads
+ * in the client's currency — "tCO₂e per £m" here, "tCO₂e per €m" for a client that reports in euros.
  */
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 
 const dividerLabel = (divider: number) => `Per ${divider.toLocaleString("en-GB")}`;
+/** A currency metric's wording is informational only (0143) and never displayed; the column still needs one (0071). */
+const CURRENCY_WORDING = "currency";
 const keyFrom = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
-export function IntensityMetricsDrawer({ clientId, metrics, access, onClose, onSaved }: {
+export function IntensityMetricsDrawer({ clientId, currency, metrics, access, onClose, onSaved }: {
   clientId: string;
+  /** The client's currency — what a currency metric reads in. */
+  currency: string;
   metrics: IntensityMetricDefinition[];
   access: EditAccess;
   onClose: () => void;
@@ -72,15 +79,15 @@ export function IntensityMetricsDrawer({ clientId, metrics, access, onClose, onS
       <p className="nz-hint" style={{ marginTop: 0 }}>Define what this client&apos;s emissions are measured against. <b>Employees</b> and <b>Turnover</b> are standard; add any additionals the client needs. Each metric&apos;s icon and its <b>per-N</b> divider carry through to the year-on-year chart, the client portal and the report. The <b>annual values</b> are recorded on each job.</p>
 
       <div className="nz-sect">Standard</div>
-      {standard.map((metric) => <MetricRow key={metric.key} metric={metric} access={access} pending={pending === metric.key}
+      {standard.map((metric) => <MetricRow key={metric.key} metric={metric} currency={currency} access={access} pending={pending === metric.key}
         onSave={(changes) => void save(metric, changes)} onDeactivate={null} />)}
 
       <div className="nz-sect">Additional</div>
       {additional.length === 0 ? <p className="nz-hint">None yet. Add anything this client measures itself by — vehicles, water, units produced.</p> : null}
-      {additional.map((metric) => <MetricRow key={metric.key} metric={metric} access={access} pending={pending === metric.key}
+      {additional.map((metric) => <MetricRow key={metric.key} metric={metric} currency={currency} access={access} pending={pending === metric.key}
         onSave={(changes) => void save(metric, changes)} onDeactivate={metric.active ? () => void deactivate(metric) : null} />)}
 
-      <NewMetric clientId={clientId} access={access} existing={metrics} onSaved={onSaved} onError={setError} />
+      <NewMetric clientId={clientId} currency={currency} access={access} existing={metrics} onSaved={onSaved} onError={setError} />
 
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
       <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Metrics are <b>versioned</b>; the divider and icon are part of the definition. Removing a metric <b>deactivates</b> it — historical reports keep the wording they were issued with — and nothing is hard-deleted. Annual values are captured per reporting year on the job.</span></div>
@@ -89,8 +96,9 @@ export function IntensityMetricsDrawer({ clientId, metrics, access, onClose, onS
   </>;
 }
 
-function MetricRow({ metric, access, pending, onSave, onDeactivate }: {
+function MetricRow({ metric, currency, access, pending, onSave, onDeactivate }: {
   metric: IntensityMetricDefinition;
+  currency: string;
   access: EditAccess;
   pending: boolean;
   onSave: (changes: Partial<IntensityMetricDefinition>) => void;
@@ -116,11 +124,13 @@ function MetricRow({ metric, access, pending, onSave, onDeactivate }: {
         {metric.active ? null : <span className="nz-tag">Inactive</span>}
       </div>
       <div className="nz-metric-controls">
-        <input className="nz-inp sm" value={unitWording} onChange={(event) => setUnitWording(event.target.value)} aria-label={`${metric.label} unit wording`} style={{ maxWidth: 120 }} />
+        {metric.unitKind === "currency"
+          ? <span className="hint">Counts money in {currency}</span>
+          : <input className="nz-inp sm" value={unitWording} onChange={(event) => setUnitWording(event.target.value)} aria-label={`${metric.label} unit wording`} style={{ maxWidth: 120 }} />}
         <select className="nz-sel sm" value={divider} onChange={(event) => setDivider(Number(event.target.value) as IntensityDivider)} aria-label={`${metric.label} divider`}>
           {intensityDividers.map((option) => <option key={option} value={option}>{dividerLabel(option)}</option>)}
         </select>
-        <span className="hint">{intensityUnit({ unitWording, divider })}</span>
+        <span className="hint">{intensityUnit({ unitWording, divider, unitKind: metric.unitKind }, { currency })}</span>
       </div>
       {picking ? <IconPicker selected={iconKey} onPick={(next) => { setIconKey(next); setPicking(false); }} /> : null}
     </div>
@@ -144,22 +154,24 @@ function IconPicker({ selected, onPick }: { selected: string; onPick: (key: stri
   </div>;
 }
 
-function NewMetric({ clientId, access, existing, onSaved, onError }: {
-  clientId: string; access: EditAccess; existing: IntensityMetricDefinition[];
+function NewMetric({ clientId, currency, access, existing, onSaved, onError }: {
+  clientId: string; currency: string; access: EditAccess; existing: IntensityMetricDefinition[];
   onSaved: (text: string) => void; onError: (text: string | null) => void;
 }) {
   const [label, setLabel] = useState("");
   const [unitWording, setUnitWording] = useState("");
+  const [unitKind, setUnitKind] = useState<IntensityUnitKind>("text");
   const [divider, setDivider] = useState<IntensityDivider>(1);
   const [iconKey, setIconKey] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const money = unitKind === "currency";
   const key = useRef<string | null>(null);
   // Suggested from the name, and overridable — the suggestion updates until it is overridden.
   const suggested = suggestIconKey(label, unitWording);
   const chosen = iconKey ?? suggested;
   const metricKey = keyFrom(label);
   const clash = existing.some((metric) => metric.key === metricKey);
-  const problem = !label.trim() ? "A name is needed." : !unitWording.trim() ? "A unit is needed." : clash ? "This client already has a metric with that name." : null;
+  const problem = !label.trim() ? "A name is needed." : !money && !unitWording.trim() ? "A unit is needed." : clash ? "This client already has a metric with that name." : null;
 
   async function add() {
     setPending(true);
@@ -167,11 +179,11 @@ function NewMetric({ clientId, access, existing, onSaved, onError }: {
     key.current = crypto.randomUUID();
     const result = await putBrowserCommand<{ version: number }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/intensity-metrics`,
-      { metricKey, label: label.trim(), unitWording: unitWording.trim(), divider, iconKey: chosen, ordering: existing.length + 1, expectedVersion: 0 },
+      { metricKey, label: label.trim(), unitWording: money ? CURRENCY_WORDING : unitWording.trim(), unitKind, divider, iconKey: chosen, ordering: existing.length + 1, expectedVersion: 0 },
       key.current);
     setPending(false);
     if (result.state !== "success") { onError(errorText(result)); return; }
-    setLabel(""); setUnitWording(""); setDivider(1); setIconKey(null);
+    setLabel(""); setUnitWording(""); setUnitKind("text"); setDivider(1); setIconKey(null);
     onSaved(`${label.trim()} added.`);
   }
 
@@ -180,10 +192,23 @@ function NewMetric({ clientId, access, existing, onSaved, onError }: {
     <label className="nz-fl"><span>Metric name</span>
       <input className="nz-inp" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. Fleet vehicles · Water use · Units produced" />
     </label>
+    <label className="nz-fl"><span>Counts</span>
+      <select className="nz-sel" value={unitKind} onChange={(event) => {
+        const next = event.target.value as IntensityUnitKind;
+        setUnitKind(next);
+        // Money is almost always read per million; a thing, per one. Either can be changed.
+        setDivider(next === "currency" ? 1000000 : 1);
+      }}>
+        <option value="text">A thing — vehicles, m³, units</option>
+        <option value="currency">Money, in the client&apos;s currency ({currency})</option>
+      </select>
+    </label>
     <div className="nz-two">
-      <label className="nz-fl"><span>Unit wording</span>
-        <input className="nz-inp" value={unitWording} onChange={(event) => setUnitWording(event.target.value)} placeholder="e.g. vehicle · m³ · unit" />
-      </label>
+      {money
+        ? <div className="nz-fl"><span>Unit</span><span className="nz-hint" style={{ margin: 0 }}>The client&apos;s currency — values are entered as whole amounts.</span></div>
+        : <label className="nz-fl"><span>Unit wording</span>
+          <input className="nz-inp" value={unitWording} onChange={(event) => setUnitWording(event.target.value)} placeholder="e.g. vehicle · m³ · unit" />
+        </label>}
       <label className="nz-fl"><span>Divider</span>
         <select className="nz-sel" value={divider} onChange={(event) => setDivider(Number(event.target.value) as IntensityDivider)}>
           {intensityDividers.map((option) => <option key={option} value={option}>{dividerLabel(option)}</option>)}
@@ -194,7 +219,7 @@ function NewMetric({ clientId, access, existing, onSaved, onError }: {
       <span>Icon <span style={{ fontWeight: 400 }}>— suggested from the name; tap to override</span></span>
       <IconPicker selected={chosen} onPick={setIconKey} />
     </div>
-    {label.trim() ? <span className="nz-hint">Reads as <b>{intensityUnit({ unitWording: unitWording || "unit", divider })}</b>.</span> : null}
+    {label.trim() ? <span className="nz-hint">Reads as <b>{intensityUnit({ unitWording: unitWording || "unit", divider, unitKind }, { currency })}</b>.</span> : null}
     <GatedButton className="nz-btn" blocked={pending || problem !== null || access.state !== "allowed"}
       blockedReason={pending ? "Adding…" : problem ?? (access.state === "allowed" ? undefined : access.reason)}
       reasonClassName="hint nz-gated-reason" onClick={() => void add()}>＋ Add metric</GatedButton>

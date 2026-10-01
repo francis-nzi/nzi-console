@@ -250,6 +250,8 @@ function BankCard({ bank, editing, status, report, saved }: CardProps & { bank: 
   </div>;
 }
 
+/** Q4: the organisation has no currency of its own until Phase E, so a currency default reads in GBP here. */
+const DEFAULTS_CURRENCY = "GBP";
 type DefaultDraft = { metricKey: string; label: string; unitWording: string; divider: string; iconKey: string; expectedVersion: number; isNew: boolean };
 const dividerLabel = (divider: number) => divider === 1 ? "per 1" : `per ${count.format(divider)}`;
 
@@ -294,7 +296,8 @@ function DefaultsCard({ defaults, clientsWithout, editing, status, report, saved
     <h3>Intensity-metric defaults</h3>
     <p>What a new client’s emissions are normalised against from the start. Each client can then change its own; a change here reaches new clients only.</p>
     <ul className="nz-a-history">{defaults.map((entry) => <li key={entry.metricKey} className={entry.active ? undefined : "nz-a-muted"}>
-      <b>{entry.label}</b> · {intensityUnit({ unitWording: entry.unitWording, divider: entry.divider as IntensityDivider })} · <span className="nz-a-mono">{entry.iconKey}</span>{entry.isStandard ? " · standard" : ""}{entry.active ? "" : " · inactive"}
+      <b>{entry.label}</b> · {/* A currency default reads in GBP until Phase E adds an organisation currency (D3, Q4). */}
+      {intensityUnit({ unitWording: entry.unitWording, divider: entry.divider as IntensityDivider, unitKind: entry.unitKind }, { currency: DEFAULTS_CURRENCY })} · <span className="nz-a-mono">{entry.iconKey}</span>{entry.isStandard ? " · standard" : ""}{entry.active ? "" : " · inactive"}
       {editing.allowed && !draft ? <> <button type="button" className="nz-a-linkish" disabled={busy} onClick={() => { report("defaults", null); setDraft({ metricKey: entry.metricKey, label: entry.label, unitWording: entry.unitWording, divider: String(entry.divider), iconKey: entry.iconKey, expectedVersion: entry.version, isNew: false }); }}>{entry.active ? "Edit…" : "Reactivate…"}</button>
         {entry.active ? <> · <button type="button" className="nz-a-linkish" disabled={busy} onClick={() => void deactivate(entry)}>Deactivate</button></> : null}</> : null}
     </li>)}</ul>

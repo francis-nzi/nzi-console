@@ -18,6 +18,7 @@ const site = (id: string, floorAreaM2: number | null, over: Partial<ClientSiteRe
 const metric = (key: string, over: Partial<IntensityMetricDefinition> = {}): IntensityMetricDefinition => ({
   key, version: 1, label: key === "employees" ? "Employees" : key === "turnover" ? "Turnover" : "Floor area",
   unitWording: key === "turnover" ? "£m" : key === "floor-area" ? "m²" : "employee",
+  unitKind: key === "turnover" ? "currency" : "text",
   divider: 1, iconKey: "metric", isStandard: key !== "floor-area",
   valueSource: key === "floor-area" ? "site-floor-area" : "entered", active: true, ordering: 1, ...over,
 });
@@ -94,15 +95,15 @@ describe("intensity denominators", () => {
 
   it("computes the intensity with the metric's own divider, and refuses to divide by nothing", () => {
     const perThousand = metric("employees", { divider: 1000 });
-    const resolved = resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 240 });
+    const resolved = resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 240, currency: "GBP" });
     assert.equal(resolved.state, "resolved");
     if (resolved.state === "resolved") {
       assert.ok(Math.abs(resolved.value - 6666.67) < 0.01, "1,600 tCO₂e per 1,000 of 240 employees");
       assert.equal(resolved.unit, "tCO₂e per 1,000 employees");
     }
     // A year with no assured total, and a zero denominator, are both unavailable — never 0.
-    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: null, value: 240 }).state, "unavailable");
-    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 0 }).state, "unavailable");
-    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: null }).state, "unavailable");
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: null, value: 240, currency: "GBP" }).state, "unavailable");
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: 0, currency: "GBP" }).state, "unavailable");
+    assert.equal(resolveIntensity({ definition: perThousand, emissionsTco2e: 1600, value: null, currency: "GBP" }).state, "unavailable");
   });
 });

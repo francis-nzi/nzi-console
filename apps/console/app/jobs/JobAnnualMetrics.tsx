@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { GatedButton } from "@nzi/ui";
 import { putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  activeMetrics, intensityUnit, intensityUnitShort, resolveIntensity,
+  activeMetrics, currencySymbol, intensityDenominatorText, intensityUnit, intensityUnitShort, resolveIntensity,
   type IntensityMetricDefinition, type IntensityMetricValue,
 } from "@nzi/contracts";
 import { useEditAccess } from "../lib/useEditAccess";
@@ -27,6 +27,8 @@ const figure = (value: number) => value >= 100 ? Math.round(value).toLocaleStrin
 
 type AnnualMetricsPayload = {
   reportingYear: number;
+  /** The job's client's currency — a currency metric reads in it (D3c). */
+  currency: string;
   assuredTotalTco2e: number | null;
   metrics: IntensityMetricDefinition[];
   values: IntensityMetricValue[];
@@ -83,7 +85,7 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled }: {
       : <table className="nz-tbl nz-metric-table">
         <thead><tr><th>Metric</th><th>Source</th><th>Value this year</th><th>Divider</th><th className="num">Intensity</th></tr></thead>
         <tbody>
-          {active.map((metric) => <MetricValueRow key={metric.key} jobId={jobId} reportingYear={reportingYear} metric={metric}
+          {active.map((metric) => <MetricValueRow key={metric.key} jobId={jobId} reportingYear={reportingYear} metric={metric} currency={payload?.currency ?? "GBP"}
             assuredTotalTco2e={assuredTotalTco2e}
             recorded={values.find((value) => value.metricKey === metric.key && value.periodKey === "year") ?? null}
             resolved={resolvedValues[metric.key] ?? { value: null }}
@@ -109,8 +111,9 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled }: {
   </section>;
 }
 
-function MetricValueRow({ jobId, reportingYear, metric, assuredTotalTco2e, recorded, resolved, access, onSaved, onError }: {
+function MetricValueRow({ jobId, reportingYear, metric, currency, assuredTotalTco2e, recorded, resolved, access, onSaved, onError }: {
   jobId: string;
+  currency: string;
   reportingYear: number;
   metric: IntensityMetricDefinition;
   assuredTotalTco2e: number | null;
@@ -127,7 +130,7 @@ function MetricValueRow({ jobId, reportingYear, metric, assuredTotalTco2e, recor
 
   const typed = draft.trim() === "" ? null : Number(draft);
   const effective = siteDerived && !overriding ? resolved.value : typed;
-  const intensity = resolveIntensity({ definition: metric, emissionsTco2e: assuredTotalTco2e, value: effective ?? null });
+  const intensity = resolveIntensity({ definition: metric, emissionsTco2e: assuredTotalTco2e, value: effective ?? null, currency });
   const dirty = (recorded?.value ?? null) !== (siteDerived && !overriding ? null : typed);
 
   async function save() {
@@ -156,12 +159,14 @@ function MetricValueRow({ jobId, reportingYear, metric, assuredTotalTco2e, recor
     <td>{siteDerived && !overriding
       ? <span className="nz-auto-val">{resolved.value === null
         ? <span className="muted" title={resolved.reason}>Unavailable</span>
-        : `${resolved.value.toLocaleString("en-GB")} ${metric.unitWording}`}</span>
+        : intensityDenominatorText(metric, resolved.value, { currency })}</span>
       : <input className="nz-inp num" inputMode="decimal" value={draft} onChange={(event) => setDraft(event.target.value)}
-        aria-label={`${metric.label} value for ${reportingYear}`} placeholder="Not recorded" />}</td>
-    <td className="muted">{intensityUnit(metric)}</td>
+        aria-label={`${metric.label} value for ${reportingYear}`}
+        // A currency value is whole units: "12.5" meaning £12.5m is the error 0143 had to correct (D3, Q6).
+        placeholder={metric.unitKind === "currency" ? `Whole ${currencySymbol(currency)}, not ${currencySymbol(currency)}m` : "Not recorded"} />}</td>
+    <td className="muted">{intensityUnit(metric, { currency })}</td>
     <td className="num">{intensity.state === "resolved"
-      ? <><b>{figure(intensity.value)}</b> <small className="muted">{intensityUnitShort(metric)}</small></>
+      ? <><b>{figure(intensity.value)}</b> <small className="muted">{intensityUnitShort(metric, { currency })}</small></>
       : <span className="muted" title={intensity.reason}>Unavailable</span>}
       {dirty ? <GatedButton className="nz-editlink" blocked={pending || access.state !== "allowed"}
         blockedReason={pending ? "Saving…" : access.state === "allowed" ? undefined : access.reason}

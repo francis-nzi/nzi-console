@@ -507,6 +507,10 @@ jobs:
       # token hash, current address and sealed columns stay the auth role's, and nothing is writable.
       - name: A trainee sees their pending sign-in change, and the app role reads no more of the row than that
         run: npx tsx --test packages/isolated-backend/tests/traineePendingEmailReal.test.ts
+      # D3c: a currency intensity metric keeps its kind on every version, the job and portal read models carry the
+      # client's currency, and an issued report freezes the unit in it ("tCO₂e per €m"), never the bare wording.
+      - name: Turnover intensity reads in the client's currency, and an issued report keeps what it said
+        run: npx tsx --test packages/isolated-backend/tests/currencyIntensityReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

@@ -38,6 +38,8 @@ export type PortalIntensityYear = {
 
 export type PortalIntensityReadModel = {
   clientName: string | null;
+  /** The client's currency — a currency metric reads in it ("tCO₂e per £m"), D3c. */
+  currency: string;
   /** The latest published reporting year, or null when nothing is published to this user. */
   reportingYear: number | null;
   /** Evidence identity of the latest published report the figures rest on. */
@@ -49,7 +51,7 @@ export type PortalIntensityReadModel = {
   years: PortalIntensityYear[];
 };
 
-type ClientRow = { name: string; financial_year_end_month: number | null };
+type ClientRow = { name: string; financial_year_end_month: number | null; currency: string };
 type PeriodRow = { reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null };
 
 
@@ -59,7 +61,7 @@ export async function getPortalClientIntensity(
   input: { portalUserId: string; clientId: string },
 ): Promise<PortalIntensityReadModel> {
   const [clientRows, metrics, values, sites, grantedJobs, periodRows] = await Promise.all([
-    db.query<ClientRow>(`SELECT name,financial_year_end_month FROM nzi_console.clients WHERE client_id=$1`, [input.clientId]),
+    db.query<ClientRow>(`SELECT name,financial_year_end_month,currency FROM nzi_console.clients WHERE client_id=$1`, [input.clientId]),
     listClientIntensityMetrics(db, input.clientId),
     listClientIntensityValues(db, input.clientId),
     listClientSites(db, input.clientId),
@@ -79,7 +81,7 @@ export async function getPortalClientIntensity(
 
   const client = clientRows.rows[0] ?? null;
   const base: PortalIntensityReadModel = {
-    clientName: client?.name ?? null, reportingYear: null, publishedAt: null, dataHash: null, metrics, years: [],
+    clientName: client?.name ?? null, currency: client?.currency ?? "GBP", reportingYear: null, publishedAt: null, dataHash: null, metrics, years: [],
   };
 
   const published = grantedJobs.filter((job) => job.hasPublishedReport);
@@ -146,6 +148,7 @@ export async function getPortalClientIntensity(
 
   return {
     clientName: client?.name ?? null,
+    currency: client?.currency ?? "GBP",
     reportingYear: latest.reportingYear,
     publishedAt: latest.publishedAt,
     dataHash: latest.dataHash,

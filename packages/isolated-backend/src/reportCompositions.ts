@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
   composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
-  overallReadiness, pillarReadiness, reportAssurance, resolveIntensity,
+  overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
@@ -125,10 +125,13 @@ async function composeTargets(db: Queryable, input: {
 async function composeIntensity(db: Queryable, input: {
   clientId: string; jobId: string; snapshot: SnapshotForComposition; emissionsTco2e: number | null;
 }): Promise<ReportIntensitySection | ReportSectionGap> {
-  const [definitions, values] = await Promise.all([
+  const [definitions, values, clientRows] = await Promise.all([
     listClientIntensityMetrics(db, input.clientId),
     listJobIntensityValues(db, input.jobId, input.snapshot.reportingYear),
+    db.query<{ currency: string }>(`SELECT currency FROM nzi_console.clients WHERE client_id = $1`, [input.clientId]),
   ]);
+  // The client's currency, so a currency metric is frozen reading "tCO₂e per £m" (or €m, AED m) — D3c.
+  const currency = clientRows.rows[0]?.currency ?? "GBP";
   const live = activeMetrics(definitions);
   if (live.length === 0) {
     return { state: "unavailable", reason: "No intensity measures were set up for this client when the report was issued." };
@@ -140,9 +143,13 @@ async function composeIntensity(db: Queryable, input: {
         definition,
         emissionsTco2e: input.emissionsTco2e,
         value: recorded?.value ?? null,
+        currency,
       });
       return {
-        key: definition.key, label: definition.label, iconKey: definition.iconKey, unit: definition.unitWording,
+        key: definition.key, label: definition.label, iconKey: definition.iconKey,
+        // The whole unit as the report reads it ("tCO₂e per £m", "tCO₂e per 1,000 employees"), frozen — not the bare
+        // wording, which printed "12.3 £m" beside a figure that is tCO₂e per £m. Compositions frozen before D3c keep theirs.
+        unit: intensityUnit(definition, { currency }),
         value: resolved.state === "resolved" ? resolved.value : null,
         unavailableReason: resolved.state === "resolved"
           ? null

@@ -16,7 +16,7 @@ import {
 } from "./strategyProjection";
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
-import { intensityDividers, isIntensityIconKey, type IntensityDivider } from "./intensityMetrics";
+import { intensityDividers, intensityUnitKinds, isIntensityIconKey, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
@@ -556,6 +556,8 @@ export type CommandInputMap = {
   "client.intensityMetric.set": {
     clientId: string; metricKey: string; label: string; unitWording: string; divider: number;
     iconKey: string; ordering?: number; expectedVersion: number;
+    /** `currency` counts the client's currency (D3c); absent, the metric keeps its kind — a new one is `text`. */
+    unitKind?: IntensityUnitKind;
   };
   "client.intensityMetric.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
   /** Record one metric's annual value on a job, for one reporting year. */
@@ -600,7 +602,7 @@ export type CommandInputMap = {
   "organisation.logo.set": { fileName: string; contentType: ClientLogoContentType; dataBase64: string };
   "organisation.logo.remove": Record<string, never>;
   "organisation.bank.set": OrganisationBankFields & { expectedVersion: number };
-  "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number };
+  "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number; unitKind?: IntensityUnitKind };
   "organisation.intensityDefault.deactivate": { metricKey: string; expectedVersion: number };
   /** Q5: the defaults onto every client that has no intensity metric — the count the admin confirmed, or refused. */
   "organisation.intensityDefaults.apply": { expectedClients: number };
@@ -1138,6 +1140,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(input.metricKey ?? "")) issues.push({ field: "metricKey", code: "INVALID", message: "A metric key is lower-case letters, digits, dashes or underscores." });
     if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
     if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
+    if (input.unitKind !== undefined && !intensityUnitKinds.includes(input.unitKind)) issues.push({ field: "unitKind", code: "INVALID", message: "A metric counts either a thing (text) or the client's currency." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
@@ -1387,6 +1390,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(input.metricKey ?? "")) issues.push({ field: "metricKey", code: "INVALID", message: "A metric key is lower-case letters, digits, dashes or underscores." });
     if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
     if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
+    if (input.unitKind !== undefined && !intensityUnitKinds.includes(input.unitKind)) issues.push({ field: "unitKind", code: "INVALID", message: "A metric counts either a thing (text) or the client's currency." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
