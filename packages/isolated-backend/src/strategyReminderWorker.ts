@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
-  reminderMessage, reminderRecipients, remindersDue, strategyDeadline, reminderKindFor,
-  type ClientContactLike, type ReminderKind,
+  reminderMessage, reminderRecipients, remindersDue, reminderTemplateKey, strategyDeadline, reminderKindFor,
+  type ClientContactLike, type MessageContent, type ReminderKind,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
 import { mailDelivery, type MailDelivery, type Mailer } from "./mailer";
+import { readActiveMessageTemplate } from "./messageTemplates";
 import type { Queryable } from "./postgres";
 
 /**
@@ -87,6 +88,12 @@ export async function scanClientReminders(db: Queryable, input: {
 
   const clientName = await clientNameFor(db, input.clientId);
   const byId = new Map(plan.map((strategy) => [strategy.id, strategy]));
+  // The organisation's own wording for each kind (admin F1), read once per scan; none active → the built-in wording.
+  const wording = new Map<ReminderKind, MessageContent | null>();
+  const wordingFor = async (kind: ReminderKind) => {
+    if (!wording.has(kind)) wording.set(kind, await readActiveMessageTemplate(db, reminderTemplateKey(kind)));
+    return wording.get(kind)!;
+  };
   let claimed = 0;
 
   for (const claim of due) {
@@ -97,7 +104,7 @@ export async function scanClientReminders(db: Queryable, input: {
       const message = reminderMessage({
         clientName, strategyTitle: strategy.title, owner: strategy.owner,
         targetDate: claim.targetDate, kind: claim.kind, deadline, recipient,
-      });
+      }, await wordingFor(claim.kind));
       const automationLogId = randomUUID();
       const won = await db.query<{ automation_log_id: string }>(
         `INSERT INTO nzi_console.strategy_automation_log

@@ -530,6 +530,10 @@ jobs:
       # agreed rate only with finance.manage and never in the audit, and load:v7-suppliers sealing contacts on load.
       - name: Supplier contacts are sealed per person, and the agreed rate stays with finance
         run: npx tsx --test packages/isolated-backend/tests/suppliersReal.test.ts
+      # F1 (0149): message templates — keys from the code registry only and set once, declared tokens only, the built-in
+      # wording when none is active, the send-sites reading it, and load:v7-message-templates reporting unknown keys.
+      - name: Message templates are worded per organisation over a fixed set of keys, and the send-sites use them
+        run: npx tsx --test packages/isolated-backend/tests/messageTemplatesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

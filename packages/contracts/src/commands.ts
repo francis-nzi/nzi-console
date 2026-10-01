@@ -4,6 +4,7 @@ import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, ty
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
 import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
+import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -109,6 +110,10 @@ export type CommandKey =
   | "supplier_item.deactivate"
   | "supplier_item.reinstate"
   | "supplier_item.rate.set"
+  | "message_template.create"
+  | "message_template.update"
+  | "message_template.deactivate"
+  | "message_template.reinstate"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -656,6 +661,11 @@ export type CommandInputMap = {
   "supplier_item.deactivate": { serviceItemId: string; expectedVersion: number };
   "supplier_item.reinstate": { serviceItemId: string; expectedVersion: number };
   "supplier_item.rate.set": { serviceItemId: string; expectedVersion: number; agreedRate: number | null };
+  // Message templates (admin Phase F1; ruled phaseF plan F-Q2/F-Q3). admin.templates; a key from the code registry only.
+  "message_template.create": { templateKey: string; subject: string; body: string };
+  "message_template.update": { templateKey: string; expectedVersion: number; subject: string; body: string };
+  "message_template.deactivate": { templateKey: string; expectedVersion: number };
+  "message_template.reinstate": { templateKey: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -933,6 +943,19 @@ const supplierItemIssues = (issues: CommandIssue[], input: SupplierItemEditableF
 const versioned = (issues: CommandIssue[], field: string, id: unknown, expectedVersion: unknown) => {
   required(issues, field, id);
   if (!positive(expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+/** A message template (admin F1): a key the registry knows (F-Q3), and a subject and body that use only its declared tokens (F-Q2). */
+const messageTemplateKeyIssues = (issues: CommandIssue[], templateKey: unknown) => {
+  if (typeof templateKey !== "string" || !messageTemplateDefinition(templateKey)) issues.push({ field: "templateKey", code: "UNKNOWN_KEY", message: "That is not a message the console sends — the set of messages is fixed in code." });
+};
+const messageTemplateContentIssues = (issues: CommandIssue[], input: { templateKey: string; subject: string; body: string }) => {
+  const definition = typeof input.templateKey === "string" ? messageTemplateDefinition(input.templateKey) : undefined;
+  for (const [field, value, max, what] of [["subject", input.subject, MESSAGE_TEMPLATE_SUBJECT_MAX, "A subject"], ["body", input.body, MESSAGE_TEMPLATE_BODY_MAX, "A body"]] as const) {
+    if (!text(value)) { issues.push({ field, code: "REQUIRED", message: `${what} is required.` }); continue; }
+    if (value.length > max) issues.push({ field, code: "TOO_LONG", message: `${what} is at most ${max} characters.` });
+    if (definition) for (const message of messageTemplateTokenIssues(value, definition)) issues.push({ field, code: "UNKNOWN_TOKEN", message });
+  }
+  if (definition && text(input.body)) for (const message of messageTemplateRequiredIssues(input.body, definition)) issues.push({ field: "body", code: "MISSING_TOKEN", message });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1604,6 +1627,32 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     versioned(issues, "serviceItemId", input.serviceItemId, input.expectedVersion);
     if (input.agreedRate !== null && !isAgreedRate(input.agreedRate)) issues.push({ field: "agreedRate", code: "INVALID", message: "A rate is a number from 0, to two places — or blank, not yet agreed." });
+    return issues;
+  } },
+  // Message templates (admin Phase F1). admin.templates; the key from the registry, set once; content versioned and audited.
+  "message_template.create": { key: "message_template.create", label: "Word a message in the organisation's own terms", permission: "admin.templates", reasonRequired: false, transaction: "template + audit + outbox + idempotency", auditAction: "message_template.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    messageTemplateKeyIssues(issues, input.templateKey);
+    messageTemplateContentIssues(issues, input);
+    return issues;
+  } },
+  "message_template.update": { key: "message_template.update", label: "Edit a message template", permission: "admin.templates", reasonRequired: false, transaction: "versioned template + audit + outbox + idempotency", auditAction: "message_template.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    messageTemplateKeyIssues(issues, input.templateKey);
+    messageTemplateContentIssues(issues, input);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "message_template.deactivate": { key: "message_template.deactivate", label: "Go back to a message's built-in wording", permission: "admin.templates", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "message_template.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    messageTemplateKeyIssues(issues, input.templateKey);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "message_template.reinstate": { key: "message_template.reinstate", label: "Use a message template again", permission: "admin.templates", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "message_template.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    messageTemplateKeyIssues(issues, input.templateKey);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which

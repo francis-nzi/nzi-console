@@ -1,3 +1,4 @@
+import { messageContentFor, messageTemplateDefinition, renderMessage, type MessageContent } from "./messageTemplates";
 import { strategyDeadline, type ClientStrategy, type StrategyDeadline } from "./reductionStrategies";
 
 /**
@@ -68,39 +69,22 @@ export function reminderMessage(input: {
   kind: ReminderKind;
   deadline: StrategyDeadline;
   recipient: ReminderRecipient;
-}): ReminderMessage {
-  const when = formatUkDate(input.targetDate);
-  const subject = input.kind === "overdue"
-    ? `${input.strategyTitle} — target date passed (${when})`
-    : `${input.strategyTitle} — target date approaching (${when})`;
-
-  const opening = input.kind === "overdue"
-    ? `The target date for this action in ${input.clientName}'s reduction plan was ${when}, and it is not yet marked complete.`
-    : `The target date for this action in ${input.clientName}'s reduction plan is ${when}.`;
-
-  const ownerLine = input.owner.trim() === "" ? "" : `\nOwner: ${input.owner.trim()}`;
-
-  const body = [
-    `Hello ${firstName(input.recipient.name)},`,
-    "",
-    opening,
-    "",
-    `Action: ${input.strategyTitle}${ownerLine}`,
-    `Target date: ${when}`,
-    "",
-    // D3b: no organisation name. The worker that writes this runs as nzi_console_worker, which cannot read the
-    // organisation profile; naming it needs that grant (a migration), so the copy says who without a name.
-    input.kind === "overdue"
-      ? "If it is done, your consultant can mark it complete. If the date needs to move, tell them — a date that has moved is more useful than a date that has passed."
-      : "If the date needs to move, or it is already done, let your consultant know.",
-    "",
-    "You can see your full plan in your client portal.",
-    "",
-    "— NZ Insights Pro",
-  ].join("\n");
-
-  return { subject, body };
+}, template: MessageContent | null = null): ReminderMessage {
+  // The wording is a message template (admin F1): the organisation's own when it has an active one, else the built-in
+  // wording, which is what this function composed before F1, word for word. D3b still holds for the built-in: no
+  // organisation name — the worker runs as nzi_console_worker, which cannot read the organisation profile.
+  const definition = messageTemplateDefinition(reminderTemplateKey(input.kind))!;
+  return renderMessage(messageContentFor(definition, template), {
+    firstName: firstName(input.recipient.name),
+    clientName: input.clientName,
+    strategyTitle: input.strategyTitle,
+    ownerLine: input.owner.trim() === "" ? "" : `\nOwner: ${input.owner.trim()}`,
+    targetDate: formatUkDate(input.targetDate),
+  });
 }
+
+/** The message template a reminder of this kind is worded by. */
+export const reminderTemplateKey = (kind: ReminderKind): string => kind === "overdue" ? "strategy.reminder.overdue" : "strategy.reminder.approaching";
 
 /** dd/mm/yyyy (NZC-040). An ISO date in a client-facing email is a platform talking to itself. */
 function formatUkDate(value: string): string {

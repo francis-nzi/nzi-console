@@ -80,6 +80,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       job_type_items: 7,
       // Suppliers and their rate card (admin E4): taken whole; only the contract's columns — never v7's address or notes.
       suppliers: 4, supplier_service_items: 5,
+      // Message templates (admin F1): taken whole; the importer decides which keys the console sends.
+      message_templates: 4,
       // Staff (admin B2): taken whole — the portal login too, which the importer refuses. Only the ruled columns are read.
       users: 6,
       // Organisation settings (admin D2): the 16 allow-listed keys of 20 — the bank rows and anything else stay behind.

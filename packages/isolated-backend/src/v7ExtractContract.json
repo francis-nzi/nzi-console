@@ -545,6 +545,21 @@
       "is_active"
     ]
   },
+  "message_templates": {
+    "filter": "all",
+    "required": [
+      "template_id",
+      "template_key"
+    ],
+    "optional": [
+      "template_name",
+      "channel",
+      "message_type",
+      "subject_template",
+      "body_template",
+      "is_active"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

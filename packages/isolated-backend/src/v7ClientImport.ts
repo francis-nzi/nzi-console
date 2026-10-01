@@ -357,6 +357,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     job_type_items: "job_type_item_id",
     // Suppliers and their rate card (admin E4) — read by load:v7-suppliers. Contacts sealed on load.
     suppliers: "supplier_id", supplier_service_items: "supplier_item_id",
+    // Message templates (admin F1) — read by load:v7-message-templates; content onto the console's known keys only.
+    message_templates: "template_id",
     // Staff (admin B2) — read by load:v7-staff, not the client import. v7's user id is the email address.
     users: "user_id",
     // Organisation settings (admin D2) — read by load:v7-org-settings; only the allow-listed profile and logo keys.

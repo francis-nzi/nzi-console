@@ -289,6 +289,18 @@ export function syntheticRows(): Rows {
       { supplier_item_id: "4", supplier_id: "99", cost_type: null, item_name: "Orphan", description: null, uom: null, agreed_rate: "1", is_vatable: "f", vat_rate_pct: null, is_active: "t" },
       { supplier_item_id: "5", supplier_id: "2", cost_type: null, item_name: "Refund", description: null, uom: null, agreed_rate: "-5", is_vatable: "f", vat_rate_pct: null, is_active: "t" },
     ],
+    // v7's message templates (admin F1), invented wording: v7's staff invite (a temporary password, which the console
+    // never issues), two keys with no console send-site, and an inactive one.
+    message_templates: [
+      { template_id: "1", template_key: "team_member_invite", template_name: "Team member invite", channel: "email", message_type: "team_member_invite",
+        subject_template: "Your account", body_template: "<p>Hello {{full_name}},</p><p>Your temporary password is {{temporary_password}}. It expires {{invite_expires_at}}.</p>", is_active: "t" },
+      { template_id: "2", template_key: "quote_send", template_name: "Quote", channel: "email", message_type: "quote_send",
+        subject_template: "Quote {{quote_number}}", body_template: "<p>Please find quote {{quote_number}} attached.</p>", is_active: "t" },
+      { template_id: "3", template_key: "portal_welcome", template_name: "Portal welcome", channel: "email", message_type: "portal_welcome",
+        subject_template: "Welcome", body_template: "<p>Welcome to the portal.</p>", is_active: "t" },
+      { template_id: "4", template_key: "introduction", template_name: "Introduction", channel: "email", message_type: "general",
+        subject_template: "Hello", body_template: "<p>An introduction.</p>", is_active: "f" },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.
