@@ -41,6 +41,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "job_type.%", "milestone_template.%", "job_file_type.%", "jobs_config.imported",
   // Commercial lookups (admin E1): the VAT-rate and currency commands, and the currency import.
   "vat.%", "currency.%", "currencies.imported",
+  // The service catalogue (admin E2): the item commands (the price command records which amounts, never what), and its import.
+  "job_item.%", "job_items.imported",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

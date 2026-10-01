@@ -2,6 +2,7 @@ import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLook
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
+import { isCatalogueAmount, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, type JobItemEditableFields } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -88,6 +89,11 @@ export type CommandKey =
   | "currency.set_default"
   | "currency.deactivate"
   | "currency.reinstate"
+  | "job_item.create"
+  | "job_item.update"
+  | "job_item.deactivate"
+  | "job_item.reinstate"
+  | "job_item.price.set"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -611,6 +617,13 @@ export type CommandInputMap = {
   "currency.set_default": { code: string; expectedVersion: number };
   "currency.deactivate": { code: string; expectedVersion: number };
   "currency.reinstate": { code: string; expectedVersion: number };
+  // The service catalogue (admin Phase E2; ruled phaseE plan E-Q4/E-Q8/E-Q9). admin.lookups for the definition;
+  // finance.manage for the amounts, by their own command.
+  "job_item.create": JobItemEditableFields & { itemCode: string };
+  "job_item.update": JobItemEditableFields & { itemId: string; expectedVersion: number };
+  "job_item.deactivate": { itemId: string; expectedVersion: number };
+  "job_item.reinstate": { itemId: string; expectedVersion: number };
+  "job_item.price.set": { itemId: string; expectedVersion: number; defaultCostAmount: number | null; defaultSellAmount: number | null };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -848,6 +861,18 @@ const vatIdIssues = (issues: CommandIssue[], input: { vatRateId: string; expecte
 };
 const currencyIdIssues = (issues: CommandIssue[], input: { code: string; expectedVersion: number }) => {
   currencyCodeIssue(issues, input.code);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+/** A catalogue item's definition: a name and optional description within bounds, hours within bounds, a whole order (admin E2). */
+const jobItemIssues = (issues: CommandIssue[], input: JobItemEditableFields) => {
+  if (!text(input.name)) issues.push({ field: "name", code: "REQUIRED", message: "A name is required." });
+  else if (input.name.trim().length > JOB_ITEM_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${JOB_ITEM_NAME_MAX} characters.` });
+  if (input.description !== undefined && input.description !== null && input.description.trim().length > JOB_ITEM_DESCRIPTION_MAX) issues.push({ field: "description", code: "TOO_LONG", message: `A description is at most ${JOB_ITEM_DESCRIPTION_MAX} characters.` });
+  if (input.defaultHours !== undefined && input.defaultHours !== null && !isCatalogueAmount(input.defaultHours, JOB_ITEM_HOURS_MAX)) issues.push({ field: "defaultHours", code: "INVALID", message: "Hours are a number from 0, to two places." });
+  if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000)) issues.push({ field: "sortOrder", code: "INVALID", message: "Sort order is a whole number from 0." });
+};
+const jobItemIdIssues = (issues: CommandIssue[], input: { itemId: string; expectedVersion: number }) => {
+  required(issues, "itemId", input.itemId);
   if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
@@ -1397,6 +1422,39 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "currency.reinstate": { key: "currency.reinstate", label: "Reinstate a currency", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "currency.reinstated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     currencyIdIssues(issues, input);
+    return issues;
+  } },
+  // The service catalogue (admin Phase E2). The definition under admin.lookups; the amounts under finance.manage, and
+  // never in the audit's values (E-Q8, NZC-120).
+  "job_item.create": { key: "job_item.create", label: "Add a catalogue item", permission: "admin.lookups", reasonRequired: false, transaction: "catalogue item + audit + outbox + idempotency", auditAction: "job_item.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (typeof input.itemCode !== "string" || !JOB_ITEM_CODE_PATTERN.test(input.itemCode)) issues.push({ field: "itemCode", code: "INVALID", message: "A code is upper-case letters, digits, - and _ (up to 30), e.g. ASSESS. It can never be changed." });
+    jobItemIssues(issues, input);
+    return issues;
+  } },
+  "job_item.update": { key: "job_item.update", label: "Edit a catalogue item", permission: "admin.lookups", reasonRequired: false, transaction: "versioned catalogue item + audit + outbox + idempotency", auditAction: "job_item.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    jobItemIssues(issues, input);
+    jobItemIdIssues(issues, input);
+    return issues;
+  } },
+  "job_item.deactivate": { key: "job_item.deactivate", label: "Deactivate a catalogue item", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "job_item.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    jobItemIdIssues(issues, input);
+    return issues;
+  } },
+  "job_item.reinstate": { key: "job_item.reinstate", label: "Reinstate a catalogue item", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "job_item.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    jobItemIdIssues(issues, input);
+    return issues;
+  } },
+  "job_item.price.set": { key: "job_item.price.set", label: "Set a catalogue item's cost and sell price", permission: "finance.manage", reasonRequired: false, transaction: "versioned amounts + audit (which, never what) + outbox + idempotency", auditAction: "job_item.price_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    jobItemIdIssues(issues, input);
+    for (const field of ["defaultCostAmount", "defaultSellAmount"] as const) {
+      const value = input[field];
+      if (value !== null && !isCatalogueAmount(value, JOB_ITEM_AMOUNT_MAX)) issues.push({ field, code: "INVALID", message: "An amount is a number from 0, to two places — or blank, not yet priced." });
+    }
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which
