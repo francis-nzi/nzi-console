@@ -218,10 +218,9 @@ export async function loadV7Suppliers(pool: PoolLike, organisationId: string, pl
 
 /** The suppliers and their contacts. Returns v7 supplier id → console supplier id, for the rate card. */
 async function reconcileSuppliers(db: Queryable, org: string, plan: SuppliersPlan, runId: string, keys: SealingKeys, outcome: SuppliersOutcome): Promise<Map<string, string>> {
-  const [suppliers, contacts] = await Promise.all([
-    db.query<HeldSupplier>(`SELECT supplier_id, name, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.suppliers WHERE organisation_id = $1 ORDER BY supplier_id FOR UPDATE`, [org]),
-    db.query<HeldContact>(`SELECT contact_id, supplier_id, email_bidx, email, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.supplier_contacts WHERE organisation_id = $1 ORDER BY contact_id FOR UPDATE`, [org]),
-  ]);
+  // One after another: the one transaction client runs one query at a time.
+  const suppliers = await db.query<HeldSupplier>(`SELECT supplier_id, name, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.suppliers WHERE organisation_id = $1 ORDER BY supplier_id FOR UPDATE`, [org]);
+  const contacts = await db.query<HeldContact>(`SELECT contact_id, supplier_id, email_bidx, email, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.supplier_contacts WHERE organisation_id = $1 ORDER BY contact_id FOR UPDATE`, [org]);
   const ids = new Map<string, string>();
   const claimed = new Set<string>();
   const seal = { db, organisationId: org, actorId: IMPORT_ACTOR, keys };
@@ -313,12 +312,11 @@ async function reconcileContact(db: Queryable, org: string, runId: string, suppl
 }
 
 async function reconcileItems(db: Queryable, org: string, plan: SuppliersPlan, runId: string, supplierIds: Map<string, string>, outcome: SuppliersOutcome) {
-  const [items, units, vat, currency] = await Promise.all([
-    db.query<HeldItem>(`SELECT service_item_id, supplier_id, name, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.supplier_service_items WHERE organisation_id = $1 ORDER BY service_item_id FOR UPDATE`, [org]),
-    db.query<{ value_id: string; label: string }>(`SELECT value_id, label FROM nzi_console.reference_values WHERE organisation_id = $1 AND category_key = 'units_of_measure'`, [org]),
-    db.query<{ vat_rate_id: string; rate_pct: string }>(`SELECT vat_rate_id, rate_pct::text FROM nzi_console.vat_rates WHERE organisation_id = $1`, [org]),
-    db.query<{ code: string }>(`SELECT code FROM nzi_console.currencies WHERE organisation_id = $1 AND is_default`, [org]),
-  ]);
+  // One after another: the one transaction client runs one query at a time.
+  const items = await db.query<HeldItem>(`SELECT service_item_id, supplier_id, name, source_system, legacy_db_id, legacy_values, updated_by FROM nzi_console.supplier_service_items WHERE organisation_id = $1 ORDER BY service_item_id FOR UPDATE`, [org]);
+  const units = await db.query<{ value_id: string; label: string }>(`SELECT value_id, label FROM nzi_console.reference_values WHERE organisation_id = $1 AND category_key = 'units_of_measure'`, [org]);
+  const vat = await db.query<{ vat_rate_id: string; rate_pct: string }>(`SELECT vat_rate_id, rate_pct::text FROM nzi_console.vat_rates WHERE organisation_id = $1`, [org]);
+  const currency = await db.query<{ code: string }>(`SELECT code FROM nzi_console.currencies WHERE organisation_id = $1 AND is_default`, [org]);
   const selling = currency.rows[0]?.code ?? null;
   const unitOf = (label: string | null) => {
     if (label === null) return null;
