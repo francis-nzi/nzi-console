@@ -22,7 +22,7 @@ describe("admin access is checked by every admin page", () => {
   const found = pages(adminDir);
 
   it("finds the admin pages", () => {
-    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "crm-pipeline/page.tsx", "custom-fields/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "message-templates/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "service-catalogue/page.tsx", "suppliers/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
+    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "crm-pipeline/page.tsx", "custom-fields/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "message-templates/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "portal-broadcasts/page.tsx", "service-catalogue/page.tsx", "suppliers/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
   });
 
   for (const path of pages(adminDir)) {
@@ -31,7 +31,7 @@ describe("admin access is checked by every admin page", () => {
       const source = readFileSync(path, "utf8");
       const check = source.indexOf(`if (access.state !== "allowed") return null;`);
       assert.ok(source.indexOf("await adminAccess()") >= 0 && check > source.indexOf("await adminAccess()"), "resolves access, then refuses");
-      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listJobTypeTemplates(", "listTemplateCatalogue(", "listSuppliersPage(", "readSupplierParts(", "listMessageTemplates(", "listBdStagesPage(", "listCustomFieldsPage(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
+      for (const read of ["withTenantRead(", "getAdminOverview(", "isolatedPool()", "listReferenceValuesPage(", "listLookupCategories(", "listJobTypesPage(", "listJobTypePickers(", "listMilestoneTemplates(", "listFileTypesPage(", "listVatRatesPage(", "listCurrenciesPage(", "listJobItemsPage(", "listJobItemPickers(", "listJobTypeTemplates(", "listTemplateCatalogue(", "listSuppliersPage(", "readSupplierParts(", "listMessageTemplates(", "listBdStagesPage(", "listCustomFieldsPage(", "listPortalBroadcastsPage(", "listBroadcastTargets(", "listStaffPage(", "listStaffPickers(", "readOrganisationProfile(", "readOrganisationBank(", "listIntensityDefaults(", "countClientsWithoutMetrics("]) {
         const at = source.indexOf(read);
         if (at >= 0) assert.ok(at > check, `${read} comes after the access check`);
       }
@@ -52,7 +52,7 @@ describe("the admin rail follows the approved design", () => {
   });
 
   it("shows every unbuilt area with its roadmap phase (ruled P9), and links each to its own page", () => {
-    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "crm-pipeline", "custom-fields"];
+    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "crm-pipeline", "custom-fields", "portal-broadcasts"];
     const unbuilt = ADMIN_ITEMS.filter((item) => !LIVE.includes(item.id));
     assert.ok(unbuilt.every((item) => item.phase && item.href === `/admin/${item.id}`));
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "lookups")?.phase, undefined, "Lookups is live (A2)");
@@ -67,6 +67,7 @@ describe("the admin rail follows the approved design", () => {
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "message-templates")?.phase, undefined, "Message templates is live (F1)");
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "crm-pipeline")?.phase, undefined, "CRM & pipeline is live (F2)");
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "custom-fields")?.capability, "admin.settings", "Custom fields is live (F3), under admin.settings (F-Q5)");
+    assert.equal(ADMIN_ITEMS.find((item) => item.id === "portal-broadcasts")?.capability, "admin.settings", "Portal broadcasts is live (F4), under admin.settings (R7)");
   });
 
   it("names the governing capability wherever a phase's writes have one", () => {

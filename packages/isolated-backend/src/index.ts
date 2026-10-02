@@ -52,6 +52,7 @@ export * from "./suppliers";
 export * from "./messageTemplates";
 export * from "./bdFunnelStages";
 export * from "./customFields";
+export * from "./portalBroadcasts";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";

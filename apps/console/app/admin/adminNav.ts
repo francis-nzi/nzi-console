@@ -53,6 +53,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         description: "Report templates, their variables and versions, assignable per client." },
       { id: "crm-pipeline", label: "CRM & pipeline", icon: "funnel", href: "/admin/crm-pipeline", capability: "admin.lookups",
         description: "The business-development funnel — ordered stages, each with a probability — beside the CRM tags and BD service lines kept in Lookups. Automation rules belong to the CRM workstream." },
+      { id: "portal-broadcasts", label: "Portal broadcasts", icon: "flag", href: "/admin/portal-broadcasts", capability: "admin.settings",
+        description: "Notices for the client portal — to every client or one — with a style, an optional link and a window. The portal shows what is live; nothing is ever deleted." },
     ],
   },
   {
