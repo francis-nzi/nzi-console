@@ -23,6 +23,30 @@ type Rows = ReturnType<typeof syntheticRows>;
 const extract = (mutate?: (rows: Rows) => void): Partial<Record<V7Table, V7Row[]>> => { const rows = syntheticRows(); mutate?.(rows); return syntheticExtract(rows); };
 const page = { search: "", filters: {}, sort: { key: "sortOrder" as const, dir: "asc" as const }, page: 1, pageSize: 50 };
 
+/**
+ * Where an amount sits in a payload, if anywhere: a key named for an amount, or a value equal to one of the figures the
+ * price test sets (350, 750.25, 799) — compared whole, never as a substring, since ids carry digits by chance.
+ */
+const FIGURES = new Set(["350", "750.25", "799"]);
+function amountsIn(value: unknown, path = "$"): string[] {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "number" || typeof value === "string") return FIGURES.has(String(value).trim()) ? [`${path} = ${value}`] : [];
+  if (Array.isArray(value)) return value.flatMap((entry, index) => amountsIn(entry, `${path}[${index}]`));
+  if (typeof value === "object") return Object.entries(value).flatMap(([key, entry]) =>
+    [...(/amount|cost|sell|price/i.test(key) ? [`${path}.${key}`] : []), ...amountsIn(entry, `${path}.${key}`)]);
+  return [];
+}
+
+describe("the amount guard itself (no database)", () => {
+  it("finds an amount by key or by whole value, and ignores the same digits inside an id", () => {
+    assert.deepEqual(amountsIn({ itemId: "job-item:7503507a-0799-4350-a750-799350750aaa", version: 3, changed: ["defaultCostAmount", "defaultSellAmount"] }), []);
+    assert.deepEqual(amountsIn({ defaultSellAmount: null }), ["$.defaultSellAmount"]);
+    assert.deepEqual(amountsIn({ figures: { sell: 750.25 } }), ["$.figures.sell", "$.figures.sell = 750.25"]);
+    assert.deepEqual(amountsIn({ note: "799" }), ["$.note = 799"]);
+    assert.deepEqual(amountsIn([{ x: 350 }]), ["$[0].x = 350"]);
+  });
+});
+
 describe("planning the catalogue import (no database)", () => {
   const plan = planV7JobItems(extract());
 
@@ -141,15 +165,23 @@ describe("the service catalogue, against a real database", { skip: TEST_DATABASE
       const again = await setJobItemPrice(database.pool, { itemId: row.item_id, expectedVersion: priced.data.version, defaultCostAmount: 350, defaultSellAmount: 799 }, context("ada", "admin"));
       assert.deepEqual(again.data.changed, ["defaultSellAmount"]);
       await assert.rejects(setJobItemPrice(database.pool, { itemId: row.item_id, expectedVersion: again.data.version, defaultCostAmount: 350, defaultSellAmount: 799 }, context("ada", "admin")), /Command validation failed/, "unchanged is refused");
-      const trail = JSON.stringify(await q(`SELECT after_json, before_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND entity_id = $2`, [ORG, row.item_id]));
-      for (const figure of ["350", "750", "799"]) assert.ok(!trail.includes(figure), `the audit never carries ${figure}`);
+      // Structural, not a substring sweep: the payloads carry the item's UUID, whose hex digits can contain "350", "750" or
+      // "799" by chance. So: the price events hold exactly the expected keys, and no payload anywhere holds an amount-named
+      // key or a value equal to one of the figures.
+      const audit = await q(`SELECT action, after_json, before_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND entity_id = $2`, [ORG, row.item_id]);
+      const priceEvents = audit.filter((event) => event.after_json && "changed" in event.after_json);
+      assert.equal(priceEvents.length, 2, "both price commands are audited");
+      for (const event of priceEvents) {
+        assert.deepEqual(Object.keys(event.after_json).sort(), ["changed", "currency", "itemId", "version"], "the price audit says which amounts, not what they are");
+        assert.equal(event.before_json, null);
+      }
+      for (const event of audit) assert.deepEqual([...amountsIn(event.after_json), ...amountsIn(event.before_json)], [], `the audit never carries an amount (${event.action})`);
       const records = await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND command_key = 'job_item.price.set'`, [ORG]);
       assert.equal(records.length, 2, "both price commands are recorded");
-      for (const figure of ["750", "799"]) assert.ok(!JSON.stringify(records).includes(figure), `the idempotency record never carries ${figure}`);
-      // The payload only: ids and timestamps can contain any digits by chance.
+      for (const record of records) assert.deepEqual(amountsIn(record.outcome_json), [], "the idempotency record never carries an amount");
       const outbox = await q(`SELECT topic, payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [ORG]);
-      assert.ok(outbox.length > 0);
-      for (const figure of ["750", "799"]) assert.ok(!JSON.stringify(outbox).includes(figure), `the outbox never carries ${figure}`);
+      assert.ok(outbox.some((event) => event.topic === "job_item.price_set"));
+      for (const event of outbox) assert.deepEqual(amountsIn(event.payload_json), [], `the outbox never carries an amount (${event.topic})`);
     });
 
     it("shows the amounts only to a reader holding finance.manage — never 0 for hidden", async () => {
