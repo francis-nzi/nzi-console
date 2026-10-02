@@ -13,7 +13,7 @@ export { InfoTip } from "./InfoTip";
 export { RiskBadge, RiskLegend, type RiskValue } from "./Risk";
 export { GatedNavLink } from "./GatedNavLink";
 export { DrawerEditor } from "./admin/DrawerEditor";
-export { FieldRow, NumberField, SelectField, Switch, TextAreaField, TextField, type SelectOption } from "./admin/Fields";
+export { DateTimeField, FieldRow, NumberField, SelectField, Switch, TextAreaField, TextField, type SelectOption } from "./admin/Fields";
 export { AuditLine, CapabilityChip, EnvBadge, ProvenanceBadge, StatusBadge, type Provenance } from "./admin/Governance";
 export { DataList, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
 

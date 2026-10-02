@@ -47,6 +47,21 @@ export function NumberField({ label, hint, error, value, onChange, min, max, ste
   </FieldFrame>;
 }
 
+/**
+ * A date and time on the platform's clock (`YYYY-MM-DDTHH:mm`). The form converts it to and from an instant with
+ * `platformDateTimeLocal` / `instantFromPlatformDateTimeLocal` — the field itself knows nothing of zones.
+ */
+export function DateTimeField({ label, hint, error, value, onChange, required, disabled }: Omit<FieldChrome, "mono"> & {
+  value: string; onChange?: (value: string) => void; required?: boolean; disabled?: boolean;
+}) {
+  const id = useId();
+  return <FieldFrame id={id} label={label} hint={hint} error={error} mono>
+    <input id={id} type="datetime-local" value={value} required={required} disabled={disabled}
+      aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, hint, error)}
+      onChange={(event) => onChange?.(event.target.value)} />
+  </FieldFrame>;
+}
+
 export function TextAreaField({ label, hint, error, value, onChange, rows = 3, required, disabled }: Omit<FieldChrome, "mono"> & {
   value: string; onChange?: (value: string) => void; rows?: number; required?: boolean; disabled?: boolean;
 }) {

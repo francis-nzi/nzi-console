@@ -546,6 +546,10 @@ jobs:
       # type, definitions only (values downstream), and load:v7-custom-fields carrying v7's global definitions.
       - name: Custom field definitions keep their identity and type, and never lose an option
         run: npx tsx --test packages/isolated-backend/tests/customFieldsReal.test.ts
+      # F4 (0152): portal broadcasts — title and body, a style, an allow-listed link both or neither, a window (live =
+      # active and starts_at <= now < ends_at), an optional target client, never deleted; the portal read live-only, capped.
+      - name: Portal broadcasts are governed, and the portal reads only what is live for it
+        run: npx tsx --test packages/isolated-backend/tests/portalBroadcastsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

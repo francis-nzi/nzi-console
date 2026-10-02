@@ -139,6 +139,10 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "custom_field.update": organisation,
   "custom_field.deactivate": organisation,
   "custom_field.reinstate": organisation,
+  "portal_broadcast.create": organisation,
+  "portal_broadcast.update": organisation,
+  "portal_broadcast.deactivate": organisation,
+  "portal_broadcast.reinstate": organisation,
   // Team & access (admin Phase B): the firm's own roster, not a client's record.
   "staff.add": organisation,
   "staff.update": organisation,

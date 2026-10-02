@@ -53,6 +53,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "bd_stage.%", "bd_funnel_stages.imported", "crm_tags.imported", "bd_service_lines.imported",
   // Custom field definitions (admin F3).
   "custom_field.%", "custom_fields.imported",
+  // Portal broadcasts (admin F4). No import (R1).
+  "portal_broadcast.%",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

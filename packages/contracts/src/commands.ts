@@ -7,6 +7,7 @@ import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./a
 import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
+import { isAllowedBroadcastLink, isBroadcastInstant, isPortalBroadcastStyle, PORTAL_BROADCAST_BODY_MAX, PORTAL_BROADCAST_LINK_LABEL_MAX, PORTAL_BROADCAST_TITLE_MAX, type PortalBroadcastEditableFields } from "./adminPortalBroadcasts";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -124,6 +125,10 @@ export type CommandKey =
   | "custom_field.update"
   | "custom_field.deactivate"
   | "custom_field.reinstate"
+  | "portal_broadcast.create"
+  | "portal_broadcast.update"
+  | "portal_broadcast.deactivate"
+  | "portal_broadcast.reinstate"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -686,6 +691,11 @@ export type CommandInputMap = {
   "custom_field.update": CustomFieldEditableFields & { definitionId: string; expectedVersion: number };
   "custom_field.deactivate": { definitionId: string; expectedVersion: number };
   "custom_field.reinstate": { definitionId: string; expectedVersion: number };
+  // Portal broadcasts (admin Phase F4; ruled F4-RULINGS R1–R7). admin.settings; every part editable, never deleted.
+  "portal_broadcast.create": PortalBroadcastEditableFields;
+  "portal_broadcast.update": PortalBroadcastEditableFields & { broadcastId: string; expectedVersion: number };
+  "portal_broadcast.deactivate": { broadcastId: string; expectedVersion: number };
+  "portal_broadcast.reinstate": { broadcastId: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -1010,6 +1020,28 @@ const customFieldIssues = (issues: CommandIssue[], input: CustomFieldEditableFie
 };
 const customFieldIdIssues = (issues: CommandIssue[], input: { definitionId: string; expectedVersion: number }) => {
   required(issues, "definitionId", input.definitionId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+/** A portal broadcast (admin F4): title and body (R6), a style (R2), a link both-or-neither on the allow-list (R3), a window (R4). */
+const portalBroadcastIssues = (issues: CommandIssue[], input: PortalBroadcastEditableFields) => {
+  if (!text(input.title)) issues.push({ field: "title", code: "REQUIRED", message: "A title is required." });
+  else if (input.title.trim().length > PORTAL_BROADCAST_TITLE_MAX) issues.push({ field: "title", code: "TOO_LONG", message: `A title is at most ${PORTAL_BROADCAST_TITLE_MAX} characters.` });
+  if (!text(input.body)) issues.push({ field: "body", code: "REQUIRED", message: "A message is required." });
+  else if (input.body.trim().length > PORTAL_BROADCAST_BODY_MAX) issues.push({ field: "body", code: "TOO_LONG", message: `A message is at most ${PORTAL_BROADCAST_BODY_MAX} characters.` });
+  if (!isPortalBroadcastStyle(input.style)) issues.push({ field: "style", code: "INVALID", message: "Choose a style: information, warning, good news or promotion." });
+  const url = text(input.linkUrl) ? input.linkUrl!.trim() : null;
+  const label = text(input.linkLabel) ? input.linkLabel!.trim() : null;
+  if (url !== null && !isAllowedBroadcastLink(url)) issues.push({ field: "linkUrl", code: "INVALID", message: "A link is an https:// address or one of the console's own pages (starting with /) — no other kind." });
+  if (url !== null && label === null) issues.push({ field: "linkLabel", code: "REQUIRED", message: "A link needs a label." });
+  if (url === null && label !== null) issues.push({ field: "linkUrl", code: "REQUIRED", message: "A label needs a link — or clear both." });
+  if (label !== null && label.length > PORTAL_BROADCAST_LINK_LABEL_MAX) issues.push({ field: "linkLabel", code: "TOO_LONG", message: `A label is at most ${PORTAL_BROADCAST_LINK_LABEL_MAX} characters.` });
+  if (!isBroadcastInstant(input.startsAt)) issues.push({ field: "startsAt", code: "REQUIRED", message: "A start is required." });
+  if (input.endsAt !== null && !isBroadcastInstant(input.endsAt)) issues.push({ field: "endsAt", code: "INVALID", message: "An end is a date and time, or none — until deactivated." });
+  else if (input.endsAt !== null && isBroadcastInstant(input.startsAt) && Date.parse(input.endsAt) <= Date.parse(input.startsAt)) issues.push({ field: "endsAt", code: "BEFORE_START", message: "The end must be after the start." });
+  if (input.targetClientId !== null && !text(input.targetClientId)) issues.push({ field: "targetClientId", code: "INVALID", message: "Choose a client, or every portal client." });
+};
+const portalBroadcastIdIssues = (issues: CommandIssue[], input: { broadcastId: string; expectedVersion: number }) => {
+  required(issues, "broadcastId", input.broadcastId);
   if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
@@ -1757,6 +1789,28 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "custom_field.reinstate": { key: "custom_field.reinstate", label: "Reinstate a custom field", permission: "admin.settings", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "custom_field.reinstated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     customFieldIdIssues(issues, input);
+    return issues;
+  } },
+  // Portal broadcasts (admin Phase F4). admin.settings (R7); deactivating says why; never deleted.
+  "portal_broadcast.create": { key: "portal_broadcast.create", label: "Write a portal broadcast", permission: "admin.settings", reasonRequired: false, transaction: "broadcast + audit + outbox + idempotency", auditAction: "portal_broadcast.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    portalBroadcastIssues(issues, input);
+    return issues;
+  } },
+  "portal_broadcast.update": { key: "portal_broadcast.update", label: "Edit a portal broadcast", permission: "admin.settings", reasonRequired: false, transaction: "versioned broadcast + audit + outbox + idempotency", auditAction: "portal_broadcast.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    portalBroadcastIssues(issues, input);
+    portalBroadcastIdIssues(issues, input);
+    return issues;
+  } },
+  "portal_broadcast.deactivate": { key: "portal_broadcast.deactivate", label: "Take a portal broadcast down", permission: "admin.settings", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "portal_broadcast.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    portalBroadcastIdIssues(issues, input);
+    return issues;
+  } },
+  "portal_broadcast.reinstate": { key: "portal_broadcast.reinstate", label: "Put a portal broadcast back up", permission: "admin.settings", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "portal_broadcast.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    portalBroadcastIdIssues(issues, input);
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which
