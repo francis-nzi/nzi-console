@@ -84,6 +84,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       message_templates: 4,
       // CRM and BD lookups (admin F2): each taken whole.
       crm_tags: 5, bd_service_lines: 4, bd_funnel_stages: 6,
+      // Custom field definitions (admin F3): taken whole — the importer decides which it can carry.
+      custom_field_definitions: 8,
       // Staff (admin B2): taken whole — the portal login too, which the importer refuses. Only the ruled columns are read.
       users: 6,
       // Organisation settings (admin D2): the 16 allow-listed keys of 20 — the bank rows and anything else stay behind.

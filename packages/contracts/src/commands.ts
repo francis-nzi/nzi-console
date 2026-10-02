@@ -6,6 +6,7 @@ import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CO
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
 import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
+import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -119,6 +120,10 @@ export type CommandKey =
   | "bd_stage.update"
   | "bd_stage.deactivate"
   | "bd_stage.reinstate"
+  | "custom_field.create"
+  | "custom_field.update"
+  | "custom_field.deactivate"
+  | "custom_field.reinstate"
   | "staff.add"
   | "staff.update"
   | "staff.role.assign"
@@ -676,6 +681,11 @@ export type CommandInputMap = {
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
   "bd_stage.deactivate": { stageId: string; expectedVersion: number };
   "bd_stage.reinstate": { stageId: string; expectedVersion: number };
+  // Custom field definitions (admin Phase F3; ruled phaseF plan F-Q5). admin.settings; entity, key and type set once.
+  "custom_field.create": CustomFieldEditableFields & { entityType: CustomFieldEntityType; fieldKey: string; fieldType: CustomFieldType };
+  "custom_field.update": CustomFieldEditableFields & { definitionId: string; expectedVersion: number };
+  "custom_field.deactivate": { definitionId: string; expectedVersion: number };
+  "custom_field.reinstate": { definitionId: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
   "staff.add": { displayName: string; email: string; positionValueId?: string | null };
   "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
@@ -976,6 +986,30 @@ const bdStageIssues = (issues: CommandIssue[], input: BdStageEditableFields) => 
 };
 const bdStageIdIssues = (issues: CommandIssue[], input: { stageId: string; expectedVersion: number }) => {
   required(issues, "stageId", input.stageId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+};
+/**
+ * A custom field definition's editable part (admin F3): a label, a whole order, options that suit the type, a default
+ * valid for it. The type is the create's or, on update, the held one — passed in, since update cannot change it.
+ */
+const customFieldIssues = (issues: CommandIssue[], input: CustomFieldEditableFields, type: CustomFieldType | null) => {
+  if (!text(input.label)) issues.push({ field: "label", code: "REQUIRED", message: "A label is required." });
+  else if (input.label.trim().length > CUSTOM_FIELD_LABEL_MAX) issues.push({ field: "label", code: "TOO_LONG", message: `A label is at most ${CUSTOM_FIELD_LABEL_MAX} characters.` });
+  if (typeof input.required !== "boolean") issues.push({ field: "required", code: "INVALID", message: "Say whether the field is required." });
+  if (!Number.isInteger(input.sortOrder) || input.sortOrder < 0 || input.sortOrder > 1_000_000) issues.push({ field: "sortOrder", code: "INVALID", message: "The order is a whole number from 0." });
+  if (input.options !== null && !Array.isArray(input.options)) { issues.push({ field: "options", code: "INVALID", message: "Options are a list, or none." }); return; }
+  if (type === null) return;
+  for (const message of customFieldOptionIssues(type, input.options)) issues.push({ field: "options", code: "INVALID", message });
+  if (input.defaultValue !== null && input.defaultValue !== undefined) {
+    if (typeof input.defaultValue !== "string" || input.defaultValue.length > CUSTOM_FIELD_DEFAULT_MAX) issues.push({ field: "defaultValue", code: "INVALID", message: `A default is text of up to ${CUSTOM_FIELD_DEFAULT_MAX} characters, or none.` });
+    else {
+      const problem = customFieldValueIssue(type, input.defaultValue, input.options);
+      if (problem) issues.push({ field: "defaultValue", code: "INVALID", message: `The default: ${problem}` });
+    }
+  }
+};
+const customFieldIdIssues = (issues: CommandIssue[], input: { definitionId: string; expectedVersion: number }) => {
+  required(issues, "definitionId", input.definitionId);
   if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
 /** A milestone command's own fields: a job, one of the three kinds, a plain date where one is given (PR 3). */
@@ -1697,6 +1731,32 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "bd_stage.reinstate": { key: "bd_stage.reinstate", label: "Reinstate a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "bd_stage.reinstated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     bdStageIdIssues(issues, input);
+    return issues;
+  } },
+  // Custom field definitions (admin Phase F3). admin.settings (F-Q5); the values are each entity's workstream's.
+  "custom_field.create": { key: "custom_field.create", label: "Add a custom field", permission: "admin.settings", reasonRequired: false, transaction: "definition + audit + outbox + idempotency", auditAction: "custom_field.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (!isCustomFieldEntityType(input.entityType)) issues.push({ field: "entityType", code: "INVALID", message: "Choose what the field belongs to: a client, job, contact, quote or supplier." });
+    if (typeof input.fieldKey !== "string" || !CUSTOM_FIELD_KEY_PATTERN.test(input.fieldKey)) issues.push({ field: "fieldKey", code: "INVALID", message: "A key is lower-case letters, digits, _ and -, starting with a letter (up to 64). It can never be changed." });
+    if (!isCustomFieldType(input.fieldType)) issues.push({ field: "fieldType", code: "INVALID", message: "Choose a field type." });
+    customFieldIssues(issues, input, isCustomFieldType(input.fieldType) ? input.fieldType : null);
+    return issues;
+  } },
+  "custom_field.update": { key: "custom_field.update", label: "Edit a custom field", permission: "admin.settings", reasonRequired: false, transaction: "versioned definition (options never removed) + audit + outbox + idempotency", auditAction: "custom_field.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    // The type is the held one, checked against the options and default by the command once it has read it.
+    customFieldIssues(issues, input, null);
+    customFieldIdIssues(issues, input);
+    return issues;
+  } },
+  "custom_field.deactivate": { key: "custom_field.deactivate", label: "Deactivate a custom field", permission: "admin.settings", reasonRequired: true, transaction: "deactivation (never deletion; values kept) + audit + outbox + idempotency", auditAction: "custom_field.deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    customFieldIdIssues(issues, input);
+    return issues;
+  } },
+  "custom_field.reinstate": { key: "custom_field.reinstate", label: "Reinstate a custom field", permission: "admin.settings", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "custom_field.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    customFieldIdIssues(issues, input);
     return issues;
   } },
   // Team & access (admin Phase B, B1; ruled phaseB-team-access-plan.md). admin.users throughout, except rates, which

@@ -542,6 +542,10 @@ jobs:
       # set once, ordered with no default flag, the last active stage kept — and the three v7 loaders.
       - name: CRM and BD lookups are governed, and the funnel always has a way in
         run: npx tsx --test packages/isolated-backend/tests/crmBdLookupsReal.test.ts
+      # F3 (0151): custom field definitions — entity, key and type set once, options never removed, a default valid for its
+      # type, definitions only (values downstream), and load:v7-custom-fields carrying v7's global definitions.
+      - name: Custom field definitions keep their identity and type, and never lose an option
+        run: npx tsx --test packages/isolated-backend/tests/customFieldsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

@@ -325,6 +325,19 @@ export function syntheticRows(): Rows {
       { stage_id: "5", stage_key: "On Hold!", stage_name: "On hold", stage_order: "5", probability_pct: "0", is_active: "f" },
       { stage_id: "6", stage_key: "lead-2", stage_name: "lead", stage_order: "6", probability_pct: "5", is_active: "t" },
     ],
+    // v7's custom field definitions (admin F3), modelled on its seeds: a select with options, a radio-button "option"
+    // field, a date and a checkbox; a dropdown with no options (as v7's parent-client); a repeated key (v7 keeps none
+    // unique); a default not valid for its type; a key that cannot be a console key; and an entity the console lacks.
+    custom_field_definitions: [
+      { field_id: "1", field_name: "referral", field_type: "dropdown", field_label: "Referral", entity_type: "client", is_required: "f", options: "[{\"value\": \"partner\", \"label\": \"Partner\"}, {\"value\": \"website\", \"label\": \"Website\"}]", display_order: "1", is_active: "t", default_value: null },
+      { field_id: "2", field_name: "training_delivery_mode", field_type: "option", field_label: "Delivery mode", entity_type: "job", is_required: "t", options: "[{\"value\": \"in_person\", \"label\": \"In person\"}, {\"value\": \"online\", \"label\": \"Online\"}]", display_order: "2", is_active: "t", default_value: "online" },
+      { field_id: "3", field_name: "multi-year-contract-end-date", field_type: "date", field_label: "Contract end", entity_type: "job", is_required: "f", options: null, display_order: "3", is_active: "t", default_value: "31/12/2026" },
+      { field_id: "4", field_name: "nzn-direct-debit", field_type: "checkbox", field_label: "Direct debit", entity_type: "job", is_required: "f", options: null, display_order: "4", is_active: "f", default_value: "false" },
+      { field_id: "5", field_name: "parent-client", field_type: "dropdown", field_label: "Parent client", entity_type: "job", is_required: "f", options: "[]", display_order: "5", is_active: "t", default_value: null },
+      { field_id: "6", field_name: "Referral", field_type: "text", field_label: "Referral (old)", entity_type: "client", is_required: "f", options: null, display_order: "9", is_active: "f", default_value: null },
+      { field_id: "7", field_name: "9lives", field_type: "text", field_label: "Bad key", entity_type: "job", is_required: "f", options: null, display_order: "9", is_active: "t", default_value: null },
+      { field_id: "8", field_name: "po_number", field_type: "text", field_label: "PO number", entity_type: "invoice", is_required: "f", options: null, display_order: "9", is_active: "t", default_value: null },
+    ],
     // v7's staff (admin B2). Invented people. v7's user id is the address itself; every role is Admin or SuperAdmin;
     // the position is free text. One matches by address in another case, one's position matches no lookup value, one is
     // Disabled, one archived, and one is a portal login held in the staff table.
