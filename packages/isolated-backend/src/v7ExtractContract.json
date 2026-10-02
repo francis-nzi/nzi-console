@@ -560,6 +560,41 @@
       "is_active"
     ]
   },
+  "crm_tags": {
+    "filter": "all",
+    "required": [
+      "tag_id",
+      "tag_name"
+    ],
+    "optional": [
+      "color_hex",
+      "is_active"
+    ]
+  },
+  "bd_service_lines": {
+    "filter": "all",
+    "required": [
+      "service_key",
+      "service_name"
+    ],
+    "optional": [
+      "sort_order",
+      "is_active"
+    ]
+  },
+  "bd_funnel_stages": {
+    "filter": "all",
+    "required": [
+      "stage_id",
+      "stage_key",
+      "stage_name",
+      "stage_order"
+    ],
+    "optional": [
+      "probability_pct",
+      "is_active"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [
