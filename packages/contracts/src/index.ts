@@ -120,6 +120,7 @@ export * from "./adminServiceCatalogue";
 export * from "./adminSuppliers";
 export * from "./messageTemplates";
 export * from "./adminCrmBd";
+export * from "./adminCustomFields";
 export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";

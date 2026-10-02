@@ -595,6 +595,23 @@
       "is_active"
     ]
   },
+  "custom_field_definitions": {
+    "filter": "all",
+    "required": [
+      "field_id",
+      "field_name",
+      "field_type",
+      "field_label",
+      "entity_type"
+    ],
+    "optional": [
+      "is_required",
+      "options",
+      "display_order",
+      "is_active",
+      "default_value"
+    ]
+  },
   "milestone_templates": {
     "filter": "all",
     "required": [

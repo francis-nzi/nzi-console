@@ -361,6 +361,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     message_templates: "template_id",
     // CRM and BD lookups (admin F2) — load:v7-crm-tags, load:v7-bd-service-lines (keyed by its text key), load:v7-bd-funnel-stages.
     crm_tags: "tag_id", bd_service_lines: "service_key", bd_funnel_stages: "stage_id",
+    // Custom field definitions (admin F3) — read by load:v7-custom-fields; definitions only, never values.
+    custom_field_definitions: "field_id",
     // Staff (admin B2) — read by load:v7-staff, not the client import. v7's user id is the email address.
     users: "user_id",
     // Organisation settings (admin D2) — read by load:v7-org-settings; only the allow-listed profile and logo keys.

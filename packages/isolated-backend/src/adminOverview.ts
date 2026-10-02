@@ -51,6 +51,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "message_template.%", "message_templates.imported",
   // CRM and BD lookups (admin F2): the funnel commands, and the three imports (the lookup values' own commands are reference.value.%).
   "bd_stage.%", "bd_funnel_stages.imported", "crm_tags.imported", "bd_service_lines.imported",
+  // Custom field definitions (admin F3).
+  "custom_field.%", "custom_fields.imported",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {

@@ -18,6 +18,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         description: "Staff records, role assignment against the versioned capability matrix, and deactivation — replacing today’s command-line-only path." },
       { id: "organisation", label: "Organisation", icon: "building", href: "/admin/organisation", capability: "admin.settings",
         description: "The company profile behind quotes, invoices, certificates and report footers. Bank details are restricted to Admin and Finance, and never exposed on a public endpoint." },
+      { id: "custom-fields", label: "Custom fields", icon: "sliders", href: "/admin/custom-fields", capability: "admin.settings",
+        description: "The extra fields an organisation adds to its clients, jobs, contacts, quotes and suppliers — a key and type set once, options never removed. The values are kept by each record's own screens." },
     ],
   },
   {
