@@ -39,7 +39,9 @@ describe("client profile contract (NZC-064)", () => {
     assert.deepEqual(fields({ dataReportingFrequency: "fortnightly" as never }), ["dataReportingFrequency"]);
     assert.deepEqual(fields({ currency: "pounds" }), ["currency"]);
     assert.deepEqual(fields({ financialYearEndMonth: 13 }), ["financialYearEndMonth"]);
-    assert.deepEqual(fields({ website: "www.example.com" }), ["website"]);
+    // CLIENT-07: a bare domain is normalised to https://, not refused; only what is not an address is.
+    assert.deepEqual(fields({ website: "www.example.com" }), []);
+    assert.deepEqual(fields({ website: "ftp://www.example.com" }), ["website"]);
     assert.deepEqual(fields({ contactEmail: "not-an-email" }), ["contactEmail"]);
     assert.deepEqual(fields({ currency: "GBP", financialYearEndMonth: 12, website: "https://www.8doorsdistillery.com/", contactEmail: "team@example.com" }), []);
   });

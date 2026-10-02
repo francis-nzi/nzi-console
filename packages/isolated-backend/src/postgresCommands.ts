@@ -6,6 +6,7 @@ import { assertClientCurrency } from "./commercialLookups";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   commandDefinitions,
+  normaliseWebsite,
   crpReportSectionTemplate,
   type ReportSectionTemplate,
   crpScopeCategoryPath,
@@ -292,7 +293,7 @@ const trimmed = (value: string | null | undefined) => value?.trim() || null;
 function clientProfileValues(input: ClientProfileFields): unknown[] {
   const values: unknown[] = [
     trimmed(input.contactName) ?? "", trimmed(input.contactRole) ?? "", trimmed(input.contactEmail) ?? "",
-    trimmed(input.portfolio), trimmed(input.clientManager), trimmed(input.website), trimmed(input.industrySic),
+    trimmed(input.portfolio), trimmed(input.clientManager), normaliseWebsite(input.website), trimmed(input.industrySic),
     trimmed(input.companyRegistration), trimmed(input.headquarters),
     input.financialYearEndMonth ?? null, input.dataReportingFrequency ?? "annual", input.currency ?? "GBP",
     trimmed(input.logoUrl), trimmed(input.companyDescription), trimmed(input.referral),
