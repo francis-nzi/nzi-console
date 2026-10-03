@@ -1,5 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
+import { JobClientMark } from "./JobClientMark";
 import type { ReactNode } from "react";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
@@ -553,11 +554,11 @@ export function CrpScopeWorkspace({
       />
       <div className="nz-head">
         <div className="nz-job-titleline">
-          <div>
+          <div className="nz-job-client"><JobClientMark header={job.header} /><div>
             <div className="nz-eyebrow">Carbon Reduction Plan · {reportingYear}</div>
             <h1>{job.header.number} — {job.header.title}</h1>
             <div className="sub">{job.header.client} · Lead consultant: {job.header.owner}</div>
-          </div>
+          </div></div>
           <div className="nz-head-actions">
             <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
             <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>

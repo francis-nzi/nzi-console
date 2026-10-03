@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { JobClientMark } from "../JobClientMark";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AppShell, GatedButton, NziIcon, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -50,12 +51,12 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled, milestones }
   return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
     <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Training run" }))} />
     <div className="nz-head nz-family-head"><div className="nz-job-heading">
-      <div>
+      <div className="nz-job-client"><JobClientMark header={header} /><div>
         <div className="nz-family-titleline"><span className="nz-eyebrow">{meta.label}</span><span className="nz-st est">{meta.code}</span></div>
         <h1>{header.number} — {record?.run.runName ?? header.title}</h1>
         <div className="sub">{header.client} · lead {header.owner}
           {record?.run.startDate ? <> · run window {formatDate(record.run.startDate)}{record.run.endDate ? ` – ${formatDate(record.run.endDate)}` : ""}</> : null}</div>
-      </div>
+      </div></div>
       <span className="nz-status"><span className="d" />{record ? trainingRunStageLabels[record.run.workflowStageKey as TrainingRunStage] ?? record.run.workflowStageKey : header.workflowStage}</span>
     </div></div>
     {milestones}

@@ -1,4 +1,4 @@
-// The client logo (client.edit). PNG or SVG, held in the isolated non-production
+// The client logo (client.edit). PNG, SVG, JPEG or WebP (0153), held in the isolated non-production
 // database — staging storage only, never the repo. Shown on the client record, the
 // portal and published reports; each falls back to the monogram when there is none.
 import { createHash, randomUUID } from "node:crypto";
@@ -7,6 +7,9 @@ import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// JPEG opens with a start-of-image marker and a second marker byte; WebP is a RIFF container whose form type is WEBP.
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+const isWebp = (bytes: Buffer) => bytes.length >= 12 && bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP";
 // An SVG is a document, not just an image: refuse anything that could run script or
 // pull in another resource if the file were ever opened directly.
 const UNSAFE_SVG = /<script\b|<foreignObject\b|<iframe\b|<embed\b|<object\b|\bon[a-z]+\s*=|javascript:|data:text\/html|<!ENTITY|(?:xlink:)?href\s*=\s*["'](?!#)/i;
@@ -18,6 +21,8 @@ export function inspectClientLogo(contentType: ClientLogoContentType, dataBase64
   if (bytes.length === 0) issues.push("The logo file is empty.");
   if (bytes.length > CLIENT_LOGO_MAX_BYTES) issues.push(`The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.`);
   if (contentType === "image/png" && !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) issues.push("The file is not a PNG image.");
+  if (contentType === "image/jpeg" && !bytes.subarray(0, 3).equals(JPEG_SIGNATURE)) issues.push("The file is not a JPEG image.");
+  if (contentType === "image/webp" && !isWebp(bytes)) issues.push("The file is not a WebP image.");
   if (contentType === "image/svg+xml") {
     const text = bytes.toString("utf8");
     if (!/<svg[\s>]/i.test(text)) issues.push("The file is not an SVG image.");
