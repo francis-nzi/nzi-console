@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, putBrowserCommandWithReason } from "@nzi/api-client";
 import {
-  CLIENT_LOGO_MAX_BYTES, clientLogoContentTypes, intensityDividers, intensityIconKeys, intensityUnit, normaliseProfile, organisationFooter, ORGANISATION_PROFILE_FIELDS,
-  type ClientLogoContentType, type IntensityDivider, type OrganisationProfileFields,
+  CLIENT_LOGO_MAX_BYTES, organisationLogoContentTypes, intensityDividers, intensityIconKeys, intensityUnit, normaliseProfile, organisationFooter, ORGANISATION_PROFILE_FIELDS,
+  type OrganisationLogoContentType, type IntensityDivider, type OrganisationProfileFields,
 } from "@nzi/contracts";
 import type { IntensityDefault, OrganisationBankView, OrganisationHistoryEntry, OrganisationProfileView } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, FieldRow, SelectField, TextAreaField, TextField } from "@nzi/ui";
@@ -151,8 +151,8 @@ function LogoCard({ profile, editing, status, report, saved }: CardProps & { pro
   const busy = status?.kind === "saving";
   const upload = (selected: File | undefined) => run(async () => {
     if (!selected) return;
-    const contentType = selected.type as ClientLogoContentType;
-    if (!(clientLogoContentTypes as readonly string[]).includes(contentType)) { report("logo", { kind: "error", text: "The logo must be a PNG or SVG." }); return; }
+    const contentType = selected.type as OrganisationLogoContentType;
+    if (!(organisationLogoContentTypes as readonly string[]).includes(contentType)) { report("logo", { kind: "error", text: "The logo must be a PNG or SVG." }); return; }
     if (selected.size > CLIENT_LOGO_MAX_BYTES) { report("logo", { kind: "error", text: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return; }
     report("logo", { kind: "saving", text: "Uploading…" });
     const dataBase64 = await new Promise<string>((resolve, reject) => {
@@ -182,7 +182,7 @@ function LogoCard({ profile, editing, status, report, saved }: CardProps & { pro
       <div className="nz-a-hint">{profile.logo ? `${profile.logo.fileName} · ${profile.logo.byteSize < 1024 ? "under 1" : count.format(Math.round(profile.logo.byteSize / 1024))} KB · ${profile.logo.contentType === "image/png" ? "PNG" : "SVG"}` : "No logo yet — reports and the portal show the monogram."}<br />PNG or SVG, up to {CLIENT_LOGO_MAX_BYTES / 1024} KB; an SVG may not contain scripts or external references.</div>
     </div>
     {editing.allowed ? <div className="nz-a-actions">
-      <input ref={file} type="file" accept={clientLogoContentTypes.join(",")} hidden onChange={(event) => void upload(event.target.files?.[0])} />
+      <input ref={file} type="file" accept={organisationLogoContentTypes.join(",")} hidden onChange={(event) => void upload(event.target.files?.[0])} />
       <ActionButton busy={busy} busyLabel="Working…" label={profile.logo ? "Replace logo…" : "Upload logo…"} onClick={() => file.current?.click()} />
       {profile.logo ? <ActionButton className="nz-a-btn danger" busy={false} disabled={busy} label="Remove" onClick={() => void remove()} /> : null}
       <StatusLine status={status} />

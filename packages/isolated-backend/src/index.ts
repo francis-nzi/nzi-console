@@ -111,6 +111,7 @@ export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMet
 export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, resolveNziFacts, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";
+export * from "./clientLogoFetch";
 export * from "./clientTargets";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";

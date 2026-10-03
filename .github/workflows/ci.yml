@@ -554,6 +554,10 @@ jobs:
       # organisation's; read under audit.view (none refused, own_clients only for the owner, all for any).
       - name: A client's history holds its own audit events, read under audit.view
         run: npx tsx --test packages/isolated-backend/tests/clientHistoryReal.test.ts
+      # CLIENT-02 (0153): the client logo store takes JPEG and WebP too — stored through client.logo.set and served back,
+      # any other type still refused by the CHECK, the organisation's own store unchanged; a job carries its client's logo.
+      - name: The client logo store takes PNG, SVG, JPEG and WebP, and nothing else
+        run: npx tsx --test packages/isolated-backend/tests/clientLogoReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

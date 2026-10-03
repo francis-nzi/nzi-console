@@ -507,9 +507,15 @@ export const forwardTargetLabels: Record<(typeof forwardTargetFields)[number], s
   nearTerm: "Near-term target", netZero: "Net-zero target", scope1: "Scope 1 target", scope2: "Scope 2 target", scope3: "Scope 3 target",
 };
 
-/** PNG or SVG, as the identity drawer says. Staging storage only — never committed to the repo. */
-export const clientLogoContentTypes = ["image/png", "image/svg+xml"] as const;
+/**
+ * A client's logo: PNG, SVG, JPEG or WebP (CLIENT-02, 0153). Staging storage only — never committed to the repo. Each is
+ * checked by its own signature before it is stored (`inspectClientLogo`).
+ */
+export const clientLogoContentTypes = ["image/png", "image/svg+xml", "image/jpeg", "image/webp"] as const;
 export type ClientLogoContentType = (typeof clientLogoContentTypes)[number];
+/** The organisation's own logo stays PNG or SVG (0142): the ruling widened the client logo only. */
+export const organisationLogoContentTypes = ["image/png", "image/svg+xml"] as const satisfies readonly ClientLogoContentType[];
+export type OrganisationLogoContentType = (typeof organisationLogoContentTypes)[number];
 export const CLIENT_LOGO_MAX_BYTES = 256 * 1024;
 /**
  * `sector` and `owner` still carry the text shown on the record; the `*Id` fields carry the
@@ -707,7 +713,7 @@ export type CommandInputMap = {
   "staff.rate.set": { userId: string; effectiveFrom: string; costPerHour?: number | null; sellPerHour?: number | null; currency?: string; supersedesRateId?: string | null };
   // Organisation settings (admin Phase D, D1). The profile is saved whole, under its version; the bank details apart.
   "organisation.profile.update": OrganisationProfileFields & { expectedVersion: number };
-  "organisation.logo.set": { fileName: string; contentType: ClientLogoContentType; dataBase64: string };
+  "organisation.logo.set": { fileName: string; contentType: OrganisationLogoContentType; dataBase64: string };
   "organisation.logo.remove": Record<string, never>;
   "organisation.bank.set": OrganisationBankFields & { expectedVersion: number };
   "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number; unitKind?: IntensityUnitKind };
@@ -1885,7 +1891,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "organisation.logo.set": { key: "organisation.logo.set", label: "Upload the organisation logo", permission: "admin.settings", reasonRequired: false, transaction: "logo asset + profile pointer + audit + outbox + idempotency", auditAction: "organisation.logo.set", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "fileName", input.fileName);
-    if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." });
+    if (!oneOf(input.contentType, organisationLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." });
     if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." });
     else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` });
     return issues;
@@ -2123,7 +2129,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
-  "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG or SVG." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
+  "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG, SVG, JPEG or WebP." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
   "client.logo.remove": { key: "client.logo.remove", label: "Remove client logo", permission: "client.edit", reasonRequired: false, transaction: "client pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "client_logo_removed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },
   "report.section.edit": { key:"report.section.edit",label:"Edit report section",permission:"report.edit",reasonRequired:false,transaction:"versioned report section + section history + audit + outbox",auditAction:"report_section_edited",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sectionKey",input.sectionKey);if(text(input.sectionKey)&&!isCrpReportSectionKey(input.sectionKey))issues.push({field:"sectionKey",code:"INVALID",message:"Unknown report section."});issues.push(...reportSectionBodyIssues(input.bodyHtml));if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});if(input.contentSource!=null&&!oneOf(input.contentSource,["ai","client-edited"] as const))issues.push({field:"contentSource",code:"INVALID",message:"Content source must be ai or client-edited."});return issues;} },
   "report.section.reset": { key:"report.section.reset",label:"Reset report section to template",permission:"report.edit",reasonRequired:false,transaction:"versioned report section + section history + audit + outbox",auditAction:"report_section_reset",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sectionKey",input.sectionKey);if(text(input.sectionKey)&&!isCrpReportSectionKey(input.sectionKey))issues.push({field:"sectionKey",code:"INVALID",message:"Unknown report section."});if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});return issues;} },

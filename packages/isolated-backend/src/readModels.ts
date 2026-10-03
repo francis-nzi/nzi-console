@@ -55,6 +55,8 @@ export type JobDetail =
 export type JobScreenReadModel = {
   header: {
     id: string; version: number; sequence: number; number: string; family: JobFamily; clientId: string; client: string;
+    /** The client's current logo (CLIENT-02), for the job header; null shows the monogram. */
+    clientLogoAssetId?: string | null;
     title: string; reportingYear?: number; status: "draft" | "open" | "on-hold" | "complete" | "cancelled";
     workflowStage: string; owner: string; startDate: string; dueDate: string; quoteId?: string; progressPct: number;
     /**
@@ -124,7 +126,7 @@ const clientProfile = (row: ClientRow): ClientProfileFields => ({
   primaryScope3Categories: row.primary_scope3_categories ?? [],
 });
 type JobRow = {
-  job_id: string; version: number; client_id: string; client_name: string; sequence: number; job_number: string; job_family: JobFamily;
+  job_id: string; version: number; client_id: string; client_name: string; client_logo_asset_id: string | null; sequence: number; job_number: string; job_family: JobFamily;
   title: string; reporting_year: number | null; status: JobScreenReadModel["header"]["status"]; workflow_stage: string;
   owner_name: string; start_date: Date | string; due_date: Date | string; quote_id: string | null;
   reporting_period_start: Date | string | null; reporting_period_end: Date | string | null;
@@ -514,7 +516,7 @@ export async function listReportVersionRegister(db:Queryable):Promise<ReportVers
 
 /** Every job, unpaged — see `listAllClients`. The Jobs list page reads `listJobs` (listReads.ts). */
 export async function listAllJobs(db: Queryable): Promise<JobScreenReadModel[]> {
-  const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.version, j.client_id, c.name AS client_name, j.sequence, j.job_number,
+  const { rows } = await db.query<JobRow>(`SELECT j.job_id, j.version, j.client_id, c.name AS client_name, c.logo_asset_id AS client_logo_asset_id, j.sequence, j.job_number,
       j.job_family, j.title, j.reporting_year, j.status, j.workflow_stage, j.owner_name, j.start_date, j.due_date,
       j.reporting_period_start, j.reporting_period_end,
       j.quote_id, j.progress_percent, j.detail_json,
@@ -526,7 +528,7 @@ export async function listAllJobs(db: Queryable): Promise<JobScreenReadModel[]> 
     JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
     ORDER BY j.sequence DESC`);
   return rows.map((row) => ({ header: { id: row.job_id, version: row.version, sequence: row.sequence, number: row.job_number,
-    family: row.job_family, clientId: row.client_id, client: row.client_name, title: row.title,
+    family: row.job_family, clientId: row.client_id, client: row.client_name, clientLogoAssetId: row.client_logo_asset_id ?? null, title: row.title,
     ...(row.reporting_year === null ? {} : { reportingYear: row.reporting_year }), status: row.status,
     workflowStage: row.workflow_stage, owner: row.owner_name, startDate: dateOnly(row.start_date), dueDate: dateOnly(row.due_date),
     reportingPeriod: row.reporting_period_start === null || row.reporting_period_end === null ? null

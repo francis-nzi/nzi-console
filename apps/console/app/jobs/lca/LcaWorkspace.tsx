@@ -14,6 +14,7 @@
 // Gap-filling, the calc engine, scenarios, charts and the report manifest are
 // later slices.
 import { Fragment, useMemo, useState } from "react";
+import { JobClientMark } from "../JobClientMark";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, GatedButton, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -72,11 +73,11 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
     <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Assessments" }))} />
     <div className="nz-head nz-family-head">
       <div className="nz-job-heading">
-        <div>
+        <div className="nz-job-client"><JobClientMark header={header} /><div>
           <div className="nz-family-titleline"><span className="nz-eyebrow">{meta.label}</span><span className="nz-st est">{meta.code}</span></div>
           <h1>{header.number} — {header.title}</h1>
           <div className="sub">{header.client} · owner: {header.owner} · due {formatDate(header.dueDate)}</div>
-        </div>
+        </div></div>
         <span className="nz-status"><span className="d" />{header.workflowStage}</span>
       </div>
     </div>

@@ -77,6 +77,7 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
   const [pending, setPending] = useState<"save" | "logo" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logoNotice, setLogoNotice] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState("");
   const keys = useRef<Record<string, string>>({});
   const file = useRef<HTMLInputElement>(null);
 
@@ -114,7 +115,7 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
     setError(null);
     setLogoNotice(null);
     const contentType = selected.type as ClientLogoContentType;
-    if (!(clientLogoContentTypes as readonly string[]).includes(contentType)) { setError("The logo must be a PNG or SVG."); return; }
+    if (!(clientLogoContentTypes as readonly string[]).includes(contentType)) { setError("The logo must be a PNG, SVG, JPEG or WebP."); return; }
     if (selected.size > CLIENT_LOGO_MAX_BYTES) { setError(`The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.`); return; }
     setPending("logo");
     const dataBase64 = await new Promise<string>((resolve, reject) => {
@@ -129,6 +130,21 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
     if (file.current) file.current.value = "";
     if (result.state !== "success") { setError(errorText(result)); return; }
     setLogoNotice("Logo uploaded. It now shows on the client record and the portal, and on reports validated from now on.");
+    router.refresh();
+  }
+
+  /** CLIENT-02 — the server fetches the address once (https only, public hosts only, 5 s, 256 KB) and stores the copy. */
+  async function fetchLogo() {
+    setError(null);
+    setLogoNotice(null);
+    const url = logoUrl.trim();
+    if (!/^https:\/\//i.test(url)) { setError("Enter the logo's full web address, starting https://."); return; }
+    setPending("logo");
+    const result = await postBrowserCommand<{ assetId: string }>(`/api/isolated/clients/${encodeURIComponent(client.id)}/logo/from-url`, { url }, crypto.randomUUID());
+    setPending(null);
+    if (result.state !== "success") { setError(errorText(result)); return; }
+    setLogoUrl("");
+    setLogoNotice("Logo fetched and stored — a copy is kept here, so nothing depends on that address again. It now shows on the client record, its jobs and the portal, and on reports validated from now on.");
     router.refresh();
   }
 
@@ -154,7 +170,11 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
             <input ref={file} type="file" accept={clientLogoContentTypes.join(",")} hidden onChange={(event) => void upload(event.target.files?.[0])} />
             <GatedButton className="nz-btn" blocked={pending !== null || denied !== null} blockedReason={pending ? "Working…" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => file.current?.click()}>⭱ Upload logo</GatedButton>{" "}
             {client.logoAssetId ? <GatedButton className="nz-btn danger" blocked={pending !== null || denied !== null} blockedReason={pending ? "Working…" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void removeLogo()}>Remove</GatedButton> : null}
-            <span className="nz-hint">PNG or SVG. Appears on the client record, the portal and published reports. Falls back to the monogram if none.</span>
+            <span className="nz-hint">PNG, SVG, JPEG or WebP, up to {CLIENT_LOGO_MAX_BYTES / 1024} KB. Appears on the client record, its jobs, the portal and published reports. Falls back to the monogram if none.</span>
+            <div className="nz-logo-url">
+              <input className="nz-inp" type="url" inputMode="url" placeholder="…or the logo's address, https://" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} aria-label="Logo web address" />
+              <GatedButton className="nz-btn" blocked={pending !== null || denied !== null || !logoUrl.trim()} blockedReason={pending ? "Working…" : !logoUrl.trim() ? "Enter an address first." : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void fetchLogo()}>Fetch logo</GatedButton>
+            </div>
           </div>
         </div>
         {logoNotice ? <span className="nz-hint" role="status">{logoNotice}</span> : null}
