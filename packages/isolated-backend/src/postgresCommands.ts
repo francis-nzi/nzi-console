@@ -324,8 +324,8 @@ export async function updateClient(
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
   return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
-    const prior = await db.query<ClientGovernedRow & { currency: string }>(
-      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
+    const prior = await db.query<ClientGovernedRow & { currency: string } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
+      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency, ${CLIENT_LINK_COLUMNS.map(([, column]) => column).join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientId],
     );
     const before = prior.rows[0];
@@ -348,7 +348,10 @@ export async function updateClient(
         [context.organisationId, randomUUID(), input.clientId, context.reason.trim(), JSON.stringify(governed.baseline.before), JSON.stringify(governed.baseline.after), context.actorId, context.correlationId],
       );
     }
-    const profile = clientProfileValues({ ...input, currency });
+    // A lookup link omitted from the input keeps the one the client holds; an explicit null clears it; an id sets it.
+    // Every editor sends the whole record, and a link it does not carry must not be cleared by the save.
+    const links = Object.fromEntries(CLIENT_LINK_COLUMNS.map(([field, column]) => [field, input[field] === undefined ? before[column] : input[field]]));
+    const profile = clientProfileValues({ ...input, currency, ...links });
     const assignments = CLIENT_PROFILE_COLUMNS.map((column, index) => `${column}=$${index + 9}`).join(",");
     const updated = await db.query<{ version: number }>(
       `UPDATE nzi_console.clients
@@ -381,6 +384,8 @@ export async function updateClient(
   });
 }
 
+/** NZC-090's lookup links on the client, each beside its text: what client.update keeps when the input omits one. */
+const CLIENT_LINK_COLUMNS = [["sectorValueId", "sector_value_id"], ["referralValueId", "referral_value_id"], ["clientManagerUserId", "client_manager_user_id"]] as const;
 const CLIENT_BASELINE_COLUMNS = ["baseline_period_start", "baseline_period_end", "baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e"] as const;
 type ClientGovernedRow = { version: number; financial_year_end_month: number | null } & Record<(typeof CLIENT_BASELINE_COLUMNS)[number], Date | string | number | null>;
 const baselineFieldColumns = [
