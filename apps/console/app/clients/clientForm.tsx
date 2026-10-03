@@ -6,7 +6,7 @@ import {InfoTip, SmartSearch } from "@nzi/ui";
 import type { OptionList } from "./useReferenceOptions";
 import {
   clientCertifications, clientGroupStructures, clientReportingFrameworks, clientReportingFrequencies,
-  emissionCategoryTaxonomy,
+  emissionCategoryTaxonomy, normaliseWebsite,
   type ClientIdentityFields, type ClientProfileFields,
 } from "@nzi/contracts";
 
@@ -23,6 +23,8 @@ export function emptyClientForm(): ClientFormState {
   return {
     name: "", status: "onboarding", sector: "", location: "", owner: "",
     dataReportingFrequency: "annual", currency: "GBP", billingSameAsRegistered: true,
+    // CLIENT-07: the website starts at https:// (a bare domain gets it on blur); CLIENT-05: a new client is standalone.
+    website: "https://", groupStructure: "standalone",
     reportingFrameworks: [], certifications: [], primaryScope3Categories: [],
   };
 }
@@ -68,13 +70,14 @@ function Field({ label, name, errors, control, hint, about, span, required }: {
   );
 }
 
-function Text({ form, onChange, errors, name, label, hint, span, type = "text", placeholder, required }: GroupProps & { name: keyof ClientFormState; label: string; hint?: string; span?: number; type?: string; placeholder?: string; required?: boolean }) {
+function Text({ form, onChange, errors, name, label, hint, span, type = "text", placeholder, required, normalise }: GroupProps & { name: keyof ClientFormState; label: string; hint?: string; span?: number; type?: string; placeholder?: string; required?: boolean; normalise?: (value: string) => string }) {
   return (
     <Field label={label} name={String(name)} errors={errors} hint={hint} span={span} required={required}
       control={(a11y, invalid) => (
         <input {...a11y} className={invalid ? "nz-inp bad" : "nz-inp"} type={type} placeholder={placeholder}
           value={(form[name] as string | null) ?? ""}
-          onChange={(event) => onChange({ [name]: event.target.value } as Partial<ClientFormState>)} />
+          onChange={(event) => onChange({ [name]: event.target.value } as Partial<ClientFormState>)}
+          onBlur={normalise ? (event) => { const next = normalise(event.target.value); if (next !== event.target.value) onChange({ [name]: next } as Partial<ClientFormState>); } : undefined} />
       )} />
   );
 }
@@ -179,7 +182,7 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
               <option value="at-risk">At risk</option><option value="prospect">Prospect</option>
             </select>
           )} />
-        <Text {...props} name="website" label="Website" placeholder="https://example.com" />
+        <Text {...props} name="website" label="Website" placeholder="https://acme.com" normalise={(value) => normaliseWebsite(value) ?? (value.trim() === "" ? "" : value)} />
         <Lookup {...props} name="sector" idField="sectorValueId" label="Industry" list={lookups.industries} required />
         <Text {...props} name="industrySic" label="Industry code (SIC)" />
         <Lookup {...props} name="referral" idField="referralValueId" label="Referral" list={lookups.referrals} />

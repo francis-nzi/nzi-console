@@ -42,7 +42,7 @@ function siteLine(site: ClientSiteReadModel, today: string, periods: readonly Cl
     if (floor !== null || site.floorAreas.length) parts.push(area(site.floorAreas[site.floorAreas.length - 1]!.floorAreaM2));
     parts.push(`vacated ${formatDate(status.vacatedOn)}`);
   } else {
-    parts.push(status.kind === "planned" ? `Starts ${formatDate(status.startsOn)}` : site.inServiceFrom ? `In service from ${formatDate(site.inServiceFrom)}` : "In service from before records");
+    parts.push(status.kind === "planned" ? `Starts ${formatDate(status.startsOn)}` : site.inServiceFrom ? `In service from ${formatDate(site.inServiceFrom)}` : "In service from: date unknown");
     parts.push(floor === null ? "no floor area" : area(floor));
     if (status.kind === "in-service" && status.vacatesOn) parts.push(`vacates ${formatDate(status.vacatesOn)}`);
   }
@@ -106,7 +106,7 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
 
   const problem = (() => {
     if (!name.trim()) return "Give the site a name.";
-    if (!beforeRecords && !inServiceFrom) return "Give the in-service date, or tick “in service from before records”.";
+    if (!beforeRecords && !inServiceFrom) return "Give the in-service date, or tick “Date unknown”.";
     if (lifecycle === "vacated" && registered) return site?.isRegisteredOffice ? "This site is the registered office. Mark another site as the registered office before vacating it." : "A vacated site cannot be the registered office.";
     if (lifecycle === "vacated" && !vacatedEffective) return "Vacating needs its effective date — the first day out of service.";
     if (draftStart && draftVacated && draftVacated <= draftStart) return "The vacated effective date must be after the in-service date.";
@@ -165,11 +165,11 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
       <div className="nz-two" style={{ marginTop: 14 }}>
         <div className="nz-fl"><span>In service from<span className="nz-req">*</span></span>
           <input className="nz-inp" type="date" value={inServiceFrom} disabled={beforeRecords} onChange={(event) => setInServiceFrom(event.target.value)} aria-label="In service from" />
-          <label className="nz-check"><input type="checkbox" checked={beforeRecords} onChange={(event) => setBeforeRecords(event.target.checked)} /> From before records</label>
+          <label className="nz-check"><input type="checkbox" checked={beforeRecords} onChange={(event) => setBeforeRecords(event.target.checked)} /> Date unknown</label>
         </div>
         {site ? <div className="nz-fl"><span>Status</span>
           <div className="nz-seg" role="radiogroup" aria-label="Site status">
-            {(["in-service", "vacated"] as const).map((value) => <label key={value} className={lifecycle === value ? "on" : undefined}><input type="radio" name="site-status" value={value} checked={lifecycle === value} onChange={() => setLifecycle(value)} />{value === "in-service" ? "In service" : "Vacated"}</label>)}
+            {(["in-service", "vacated"] as const).map((value) => <label key={value} className={lifecycle === value ? "on" : undefined} title={value === "vacated" ? "Vacating closes the site from a date; earlier reporting years keep it." : undefined}><input type="radio" name="site-status" value={value} checked={lifecycle === value} onChange={() => setLifecycle(value)} />{value === "in-service" ? "In service" : "Vacated"}</label>)}
           </div>
         </div> : null}
       </div>
@@ -183,11 +183,10 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
           <input className="nz-inp num" inputMode="decimal" value={floorArea} placeholder={site?.floorAreas.length ? "New floor area" : "Floor area"} aria-label="Floor area (m²)" onChange={(event) => setFloorArea(event.target.value)} />
           {site ? <input className="nz-inp" type="date" value={floorFrom} aria-label="Floor area effective from" title="Effective from (blank = from the site's start)" onChange={(event) => setFloorFrom(event.target.value)} /> : null}
         </div>
-        <span className="nz-hint">Effective-dated — summed across the client&apos;s in-service sites to form the per-m² intensity denominator for each reporting year. Leave blank if unknown (per-m² then reads &ldquo;unavailable&rdquo; for years it can&apos;t be resolved).</span>
+        <span className="nz-hint">Leave blank if unknown.</span>
       </div>
 
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-      <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Sites are <b>effective-dated</b>, never hard-deleted. Vacating closes the site from a date; historical reporting years keep it, later years drop it.</span></div>
     </div>
     <div className="nz-df">
       <button type="button" className="nz-btn" onClick={onClose}>Cancel</button><span className="sp" />

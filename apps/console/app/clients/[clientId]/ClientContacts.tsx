@@ -215,14 +215,14 @@ function ContactConsent({ contact, latest, access, onRecorded }: {
   }
 
   if (!contact.email) {
-    return <div className="nz-fl"><span>Email consent</span>
+    return <div className="nz-fl"><span>Consent for automatic email reminders</span>
       <span className="nz-hint">This contact has no email address, so nothing can be sent to them and there is nothing to consent to.</span>
     </div>;
   }
 
   const blocked = access.state !== "allowed";
   return <div className="nz-consent">
-    <span className="l">Email consent</span>
+    <span className="l">Consent for automatic email reminders</span>
     <div className="nz-consent-now">
       <span className={`nz-st ${view.kind === "sendable" ? "done" : view.kind === "unevidenced" ? "need" : "est"}`}>{view.label}</span>
       <span className="sub">{view.detail}</span>

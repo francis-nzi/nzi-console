@@ -8,6 +8,7 @@ import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplat
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isAllowedBroadcastLink, isBroadcastInstant, isPortalBroadcastStyle, PORTAL_BROADCAST_BODY_MAX, PORTAL_BROADCAST_LINK_LABEL_MAX, PORTAL_BROADCAST_TITLE_MAX, type PortalBroadcastEditableFields } from "./adminPortalBroadcasts";
+import { isValidWebsite, normaliseWebsite } from "./clientWebsite";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
@@ -1180,7 +1181,8 @@ const clientProfileIssues = (input: ClientProfileFields) => {
   if (input.dataReportingFrequency != null && !oneOf(input.dataReportingFrequency, clientReportingFrequencies)) issues.push({ field: "dataReportingFrequency", code: "INVALID", message: "Reporting frequency must be annual, quarterly or monthly." });
   if (input.currency != null && !/^[A-Z]{3}$/.test(input.currency)) issues.push({ field: "currency", code: "INVALID", message: "Currency must be a three-letter ISO 4217 code." });
   if (input.financialYearEndMonth != null && (!Number.isInteger(input.financialYearEndMonth) || input.financialYearEndMonth < 1 || input.financialYearEndMonth > 12)) issues.push({ field: "financialYearEndMonth", code: "INVALID", message: "Financial year end must be a calendar month." });
-  if (text(input.website) && !/^https?:\/\/\S+$/i.test(input.website!.trim())) issues.push({ field: "website", code: "INVALID", message: "Website must start with http:// or https://." });
+  // CLIENT-07: a bare domain is normalised (https:// prepended), never refused; only what is not an address is.
+  { const website = normaliseWebsite(input.website); if (website !== null && !isValidWebsite(website)) issues.push({ field: "website", code: "INVALID", message: "Enter a website address, e.g. acme.com — an http or https address." }); }
   if (text(input.logoUrl) && !/^https?:\/\/\S+$/i.test(input.logoUrl!.trim())) issues.push({ field: "logoUrl", code: "INVALID", message: "Logo URL must start with http:// or https://." });
   if (text(input.contactEmail) && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(input.contactEmail!.trim())) issues.push({ field: "contactEmail", code: "INVALID", message: "Enter a valid contact email address." });
 

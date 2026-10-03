@@ -122,6 +122,7 @@ export * from "./messageTemplates";
 export * from "./adminCrmBd";
 export * from "./adminCustomFields";
 export * from "./adminPortalBroadcasts";
+export * from "./clientWebsite";
 export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";

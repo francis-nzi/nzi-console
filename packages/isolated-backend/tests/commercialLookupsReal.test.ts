@@ -250,5 +250,16 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       await assert.rejects(create("Euro Client Two", "EUR"), refusedWith("CURRENCY_INACTIVE"));
       assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.clients WHERE organisation_id = $1`, [NZI]))[0].n, before);
     });
+
+    it("stores a bare-domain website as its https:// address, and the form's bare https:// as no website (CLIENT-07)", async () => {
+      const withSite = (name: string, website: string) => createClient(database.pool,
+        { name, status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin", website }, context("ada", "admin"));
+      const bare = await withSite("Bare Domain Client", "acme.com");
+      const prefill = await withSite("Prefill Only Client", "https://");
+      const rows = await q(`SELECT client_id, website FROM nzi_console.clients WHERE client_id = ANY($1)`, [[bare.data.clientId, prefill.data.clientId]]);
+      const website = (id: string) => rows.find((row) => row.client_id === id)?.website;
+      assert.equal(website(bare.data.clientId), "https://acme.com");
+      assert.equal(website(prefill.data.clientId), null);
+    });
   });
 });
