@@ -4,9 +4,10 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
+import { isoCountryName, SITE_ADDRESS_MAX_LINES, siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
 import type { ClientReportingPeriod } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
+import { CountrySelect } from "../../lib/CountrySelect";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -51,8 +52,31 @@ function siteLine(site: ClientSiteReadModel, today: string, periods: readonly Cl
   return parts.join(" · ");
 }
 
+/** The site's address on one line: its lines, postcode and country name. */
+const addressLine = (site: ClientSiteReadModel) => [...(site.addressLines ?? []), site.postcode, isoCountryName(site.country)].filter(Boolean).join(", ");
+
+/**
+ * CLIENT-04 — where the site is, said quietly: located; or not, and why — geocoding switched off, no postcode and country
+ * to locate it from, or the lookup came back empty (with a retry). Never an error: the site is saved either way.
+ */
+function SiteLocation({ site, geocodingEnabled, access }: { site: ClientSiteReadModel; geocodingEnabled: boolean; access: EditAccess }) {
+  const router = useRouter();
+  const [state, setState] = useState<"idle" | "working" | "missed">("idle");
+  if (site.located) return <span className="nz-site-loc ok">Located</span>;
+  if (!geocodingEnabled) return <span className="nz-site-loc">Not located — geocoding is not enabled</span>;
+  if (!site.postcode || !site.country) return <span className="nz-site-loc">Not located — add a postcode and country to locate it</span>;
+  async function retry() {
+    setState("working");
+    const result = await postBrowserCommand<{ location?: string }>(`/api/isolated/sites/${encodeURIComponent(site.id)}/locate`, {}, crypto.randomUUID());
+    if (result.state === "success" && (result.data.location === "located" || result.data.location === "already")) { router.refresh(); return; }
+    setState("missed");
+  }
+  return <span className="nz-site-loc">{state === "missed" ? "Still couldn’t locate it from its postcode" : "Couldn’t locate it from its postcode"}
+    {access.state === "allowed" ? <> · <button type="button" className="nz-editlink" disabled={state === "working"} onClick={() => void retry()}>{state === "working" ? "Locating…" : "Retry"}</button></> : null}</span>;
+}
+
 /** The card. The site drawer lives in the workspace's drawer host. */
-export function ClientSites({ sites, reportingPeriods, today, access, onEdit }: { sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess; onEdit: (site: ClientSiteReadModel | null) => void }) {
+export function ClientSites({ sites, reportingPeriods, today, access, onEdit, geocodingEnabled = false }: { sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess; onEdit: (site: ClientSiteReadModel | null) => void; geocodingEnabled?: boolean }) {
   const periods = [...reportingPeriods].reverse();
   const blocked = access.state !== "allowed";
 
@@ -71,6 +95,8 @@ export function ClientSites({ sites, reportingPeriods, today, access, onEdit }: 
             <div className="main">
               <div className="nm">{site.name}{site.isRegisteredOffice ? <span className="nz-tag reg">Registered</span> : null}{status.kind === "vacated" ? <span className="nz-tag vac">Vacated</span> : null}{status.kind === "planned" ? <span className="nz-tag plan">Planned</span> : null}</div>
               <div className="sub">{siteLine(site, today, periods)}</div>
+              {addressLine(site) ? <div className="sub">{addressLine(site)}</div> : null}
+              <div className="sub"><SiteLocation site={site} geocodingEnabled={geocodingEnabled} access={access} /></div>
             </div>
             <button type="button" className="nz-editlink" onClick={() => onEdit(site)} aria-label={`Edit site ${site.name}`}>Edit</button>
           </div>;
@@ -95,6 +121,11 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
   const [vacatedEffective, setVacatedEffective] = useState(site?.vacatedEffective ?? "");
   const [floorArea, setFloorArea] = useState("");
   const [floorFrom, setFloorFrom] = useState("");
+  // CLIENT-11 — the structured address: lines, a postcode or zip, and the country (an ISO code, chosen by name).
+  const heldLines = site?.addressLines ?? [];
+  const [lines, setLines] = useState<string[]>(() => [...heldLines, ...Array<string>(Math.max(0, 3 - heldLines.length)).fill("")].slice(0, SITE_ADDRESS_MAX_LINES));
+  const [postcode, setPostcode] = useState(site?.postcode ?? "");
+  const [country, setCountry] = useState<string | null>(site?.country ?? null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keys = useRef<Record<string, string>>({});
@@ -116,11 +147,14 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
   })();
   const boundary = !(lifecycle === "vacated" && !draftVacated) ? boundaryStatement({ inServiceFrom: draftStart, vacatedEffective: draftVacated }, periods) : null;
 
+  const address = { addressLines: lines.map((line) => line.trim()).filter(Boolean), postcode: postcode.trim() || null, country };
+  const addressChanged = !site || JSON.stringify(address.addressLines) !== JSON.stringify(site.addressLines ?? []) || address.postcode !== (site.postcode ?? null) || country !== (site.country ?? null);
+
   function steps(): Step[] {
-    if (!site) return [{ name: "create", path: `/api/isolated/clients/${encodeURIComponent(clientId)}/sites`, input: { name: name.trim(), inServiceFrom: draftStart, isRegisteredOffice: registered, floorAreaM2: floor } }];
+    if (!site) return [{ name: "create", path: `/api/isolated/clients/${encodeURIComponent(clientId)}/sites`, input: { name: name.trim(), inServiceFrom: draftStart, isRegisteredOffice: registered, floorAreaM2: floor, ...address } }];
     const base = `/api/isolated/sites/${encodeURIComponent(site.id)}`;
     const out: Step[] = [];
-    if (name.trim() !== site.name || draftStart !== site.inServiceFrom) out.push({ name: "edit", path: `${base}/edit`, input: { name: name.trim(), inServiceFrom: draftStart } });
+    if (name.trim() !== site.name || draftStart !== site.inServiceFrom || addressChanged) out.push({ name: "edit", path: `${base}/edit`, input: { name: name.trim(), inServiceFrom: draftStart, ...address } });
     if (lifecycle === "in-service" && site.vacatedEffective !== null) out.push({ name: "reinstate", path: `${base}/reinstate`, input: {} });
     if (registered !== site.isRegisteredOffice) out.push({ name: "registered-office", path: `${base}/registered-office`, input: { isRegisteredOffice: registered } });
     if (lifecycle === "vacated" && draftVacated !== site.vacatedEffective) out.push({ name: "vacate", path: `${base}/vacate`, input: { effectiveDate: draftVacated } });
@@ -135,10 +169,11 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
     setError(null);
     let version = site?.version ?? 0;
     let applied = 0;
+    let location: string | undefined;
     for (const step of plan) {
       const input = site ? { ...step.input, expectedVersion: version } : step.input;
       const key = keys.current[step.name] ??= crypto.randomUUID();
-      const result = await postBrowserCommand<{ version?: number }>(step.path, input, key);
+      const result = await postBrowserCommand<{ version?: number; location?: string }>(step.path, input, key);
       if (result.state !== "success") {
         setPending(false);
         setError(result.state === "conflict" ? "This site changed since it was opened. It has been refreshed — review and save again." : errorText(result));
@@ -148,10 +183,13 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
       }
       applied += 1;
       if (typeof result.data.version === "number") version = result.data.version;
+      if (typeof result.data.location === "string") location = result.data.location;
     }
     keys.current = {};
     setPending(false);
-    onSaved(site ? `${name.trim()} saved.` : `${name.trim()} added.`);
+    // CLIENT-04: the save stands whatever the lookup did; say quietly if it could not locate the site.
+    const located = location === "located" ? " Located from its postcode." : location === "not-found" || location === "failed" || location === "stale" ? " It couldn’t be located from its postcode — retry from the list." : "";
+    onSaved(site ? `${name.trim()} saved.${located}` : `${name.trim()} added.${located}`);
   }
 
   const blockedReason = access.state !== "allowed" ? access.reason : problem;
@@ -185,6 +223,16 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
         </div>
         <span className="nz-hint">Leave blank if unknown.</span>
       </div>
+
+      <div className="nz-fl"><span>Address</span>
+        {lines.map((line, index) => <input key={index} className="nz-inp" style={{ marginTop: index ? 6 : 5 }} value={line} aria-label={`Address line ${index + 1}`}
+          onChange={(event) => setLines((current) => current.map((value, at) => at === index ? event.target.value : value))} />)}
+      </div>
+      <div className="nz-two">
+        <label className="nz-fl"><span>Postcode / zip</span><input className="nz-inp" value={postcode} autoComplete="off" onChange={(event) => setPostcode(event.target.value)} /></label>
+        <CountrySelect label="Country" value={country} onChange={setCountry} />
+      </div>
+      <span className="nz-hint">The postcode and country locate the site on the map; only those two are sent to the geocoder.</span>
 
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     </div>

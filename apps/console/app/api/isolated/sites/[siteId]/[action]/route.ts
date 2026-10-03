@@ -4,6 +4,7 @@ import type { PoolLike } from "@nzi/isolated-backend";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
+import { afterSaveLocate } from "../../../../../lib/geolocate";
 
 export const dynamic = "force-dynamic";
 
@@ -20,13 +21,24 @@ const actions = {
 
 export async function POST(request: Request, { params }: { params: Promise<{ siteId: string; action: string }> }) {
   const { siteId, action } = await params;
+  // CLIENT-04: the retry — locate the site again from its postcode and country (site.manage), best effort.
+  if (action === "locate") {
+    try {
+      const principal = await requireCommandPrincipal(request, "site.location.set");
+      return Response.json({ data: { siteId, location: await afterSaveLocate("site", isolatedPool(), siteId, commandContext(request, principal)) } }, { headers: { "Cache-Control": "private, no-store" } });
+    } catch (error) { return commandFailure(error); }
+  }
   const command = actions[action as keyof typeof actions] as SiteCommand<CommandKey> | undefined;
   if (!command) return Response.json({ type: "about:blank", title: "Unknown site action", status: 404 }, { status: 404 });
   try {
     const principal = await requireCommandPrincipal(request, command.key);
     const body = await request.json() as Record<string, unknown>;
-    const outcome = await command.run(isolatedPool(), { ...body, siteId } as never, commandContext(request, principal));
-    return commandSuccess(outcome as Parameters<typeof commandSuccess>[0]);
+    const context = commandContext(request, principal);
+    const outcome = await command.run(isolatedPool(), { ...body, siteId } as never, context) as Parameters<typeof commandSuccess>[0];
+    // CLIENT-04: an edit that moved the site (a new postcode or country) cleared its coordinates; locate it afresh,
+    // best effort — the save stands either way.
+    if (action === "edit" && outcome.data.coordinatesCleared === true) return commandSuccess({ ...outcome, data: { ...outcome.data, location: await afterSaveLocate("site", isolatedPool(), siteId, context) } });
+    return commandSuccess(outcome);
   } catch (error) {
     return commandFailure(error);
   }

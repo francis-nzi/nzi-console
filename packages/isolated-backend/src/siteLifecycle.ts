@@ -10,12 +10,13 @@ import { dateOnly } from "./dates";
  * hard-deleted; every change is one atomic, idempotent, audited command.
  */
 
-type SiteRow = { client_id: string; name: string; version: number; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null };
+type SiteRow = { client_id: string; name: string; version: number; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null;
+  address_lines_json: string[]; postcode: string | null; country: string | null };
 const ddmmyyyy = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const invalid = (field: string, code: string, message: string) => new CommandValidationError([{ field, code, message }]);
 
 async function requireSite(db: Queryable, organisationId: string, siteId: string, expectedVersion: number) {
-  const { rows } = await db.query<SiteRow>(`SELECT client_id,name,version,is_registered_office,in_service_from,vacated_effective FROM nzi_console.client_sites WHERE organisation_id=$1 AND site_id=$2 AND archived=false FOR UPDATE`, [organisationId, siteId]);
+  const { rows } = await db.query<SiteRow>(`SELECT client_id,name,version,is_registered_office,in_service_from,vacated_effective,address_lines_json,postcode,country FROM nzi_console.client_sites WHERE organisation_id=$1 AND site_id=$2 AND archived=false FOR UPDATE`, [organisationId, siteId]);
   const site = rows[0];
   if (!site) throw invalid("siteId", "NOT_FOUND", "Client site was not found.");
   if (site.version !== expectedVersion) throw new VersionConflictError();
@@ -42,6 +43,13 @@ async function bumpVersion(db: Queryable, organisationId: string, siteId: string
   if (!rows[0]) throw new VersionConflictError();
   return rows[0].version;
 }
+
+// CLIENT-11 — a site's structured address. Blank lines are dropped; a postcode is trimmed, single-spaced and upper-cased;
+// the country is an ISO code (checked by the command's validation). Kept out of the audit and the outbox: the address
+// is personal data in the inventory (sealing deferred), so the commands record only that it changed.
+const addressLines = (lines: readonly string[] | undefined) => (lines ?? []).map((line) => line.trim()).filter(Boolean);
+const postcodeOf = (value: string | null | undefined) => value?.trim().replace(/\s+/g, " ").toUpperCase() || null;
+const countryOf = (value: string | null | undefined) => value?.trim() || null;
 
 /** A unique-index race the pre-checks lost maps to the same validation error, never a raw 500. */
 function uniqueViolation(error: unknown): CommandValidationError | null {
@@ -79,7 +87,7 @@ export async function createClientSite(pool: PoolLike, input: CommandInputMap["s
     if (input.isRegisteredOffice) await assertRegisteredOfficeFree(db, context.organisationId, clientId);
     const siteId = randomUUID();
     try {
-      await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by,in_service_from,is_registered_office) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [context.organisationId, siteId, clientId, name, context.actorId, inServiceFrom, input.isRegisteredOffice ?? false]);
+      await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by,in_service_from,is_registered_office,address_lines_json,postcode,country) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`, [context.organisationId, siteId, clientId, name, context.actorId, inServiceFrom, input.isRegisteredOffice ?? false, JSON.stringify(addressLines(input.addressLines)), postcodeOf(input.postcode), countryOf(input.country)]);
     } catch (error) {
       throw uniqueViolation(error) ?? error;
     }
@@ -99,13 +107,37 @@ export async function editSite(pool: PoolLike, input: CommandInputMap["site.edit
     }
     const name = input.name.trim();
     await assertNameFree(db, context.organisationId, site.client_id, name, input.siteId);
+    // An omitted address part keeps the one the site holds. A changed postcode or country clears the coordinates —
+    // they belonged to the old address — and the site is located afresh (CLIENT-04); an unchanged one keeps them,
+    // including those the v7 import brought.
+    const lines = input.addressLines === undefined ? site.address_lines_json : addressLines(input.addressLines);
+    const postcode = input.postcode === undefined ? site.postcode : postcodeOf(input.postcode);
+    const country = input.country === undefined ? site.country : countryOf(input.country);
+    const moved = postcode !== site.postcode || country !== site.country;
+    const addressChanged = moved || JSON.stringify(lines) !== JSON.stringify(site.address_lines_json);
     let version: number;
     try {
-      version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion, "name=$4,in_service_from=$5", [name, input.inServiceFrom]);
+      version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion,
+        `name=$4,in_service_from=$5,address_lines_json=$6::jsonb,postcode=$7,country=$8${moved ? ",latitude=NULL,longitude=NULL,geocode_source=NULL,geocode_precision=NULL" : ""}`,
+        [name, input.inServiceFrom, JSON.stringify(lines), postcode, country]);
     } catch (error) {
       throw uniqueViolation(error) ?? error;
     }
-    return { data: { siteId: input.siteId, version, name, inServiceFrom: input.inServiceFrom }, entityType: "client_site", entityId: input.siteId, topic: "client.site.updated" };
+    return { data: { siteId: input.siteId, version, name, inServiceFrom: input.inServiceFrom, addressChanged, coordinatesCleared: moved }, entityType: "client_site", entityId: input.siteId, topic: "client.site.updated" };
+  });
+}
+
+/**
+ * CLIENT-04 — a site's coordinates, as the geocoder found them from its postcode and country. Against the version the
+ * lookup was made for: a site edited in the meantime (perhaps to another postcode) refuses them as a conflict. The
+ * coordinates themselves are kept out of the audit with the address they come from.
+ */
+export async function setSiteLocation(pool: PoolLike, input: CommandInputMap["site.location.set"], context: CommandContext) {
+  return runPostgresCommand(pool, "site.location.set", input, context, async (db) => {
+    await requireSite(db, context.organisationId, input.siteId, input.expectedVersion);
+    const version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion, "latitude=$4,longitude=$5,geocode_source=$6,geocode_precision=$7",
+      [input.latitude, input.longitude, input.source, input.precision]);
+    return { data: { siteId: input.siteId, version, located: true, source: input.source, precision: input.precision }, entityType: "client_site", entityId: input.siteId, topic: "client.site.located" };
   });
 }
 
