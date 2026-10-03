@@ -11,15 +11,15 @@ import type { ClientAreaGroup } from "@nzi/ui";
 export type ClientAreaId =
   | "overview" | "analytics" | "reporting" | "strategies" | "srs"
   | "tasks" | "notes" | "files" | "comms"
-  | "profile" | "financials" | "ai";
+  | "profile" | "financials" | "ai" | "history";
 
-export const CLIENT_AREA_IDS: ClientAreaId[] = ["overview", "analytics", "reporting", "strategies", "srs", "tasks", "notes", "files", "comms", "profile", "financials", "ai"];
+export const CLIENT_AREA_IDS: ClientAreaId[] = ["overview", "analytics", "reporting", "strategies", "srs", "tasks", "notes", "files", "comms", "profile", "financials", "ai", "history"];
 export const isClientAreaId = (value: string | null | undefined): value is ClientAreaId => CLIENT_AREA_IDS.includes(value as ClientAreaId);
 
 export const CLIENT_AREA_LABELS: Record<ClientAreaId, string> = {
   overview: "Overview", analytics: "Carbon Analytics", reporting: "Reporting", strategies: "Reduction Strategies", srs: "SRS Readiness",
   tasks: "Tasks", notes: "Notes", files: "Files", comms: "Communications",
-  profile: "Company Profile", financials: "Financials", ai: "AI Profile",
+  profile: "Company Profile", financials: "Financials", ai: "AI Profile", history: "History",
 };
 
 /**
@@ -28,20 +28,21 @@ export const CLIENT_AREA_LABELS: Record<ClientAreaId, string> = {
  * redesign, and Financials is held by NZC-069 — each says so in its own words.
  */
 export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>([
-  "overview", "analytics", "reporting", "strategies", "srs", "profile", "comms", "files", "ai",
+  "overview", "analytics", "reporting", "strategies", "srs", "profile", "comms", "files", "ai", "history",
 ]);
 
 const ICONS: Record<ClientAreaId, string> = {
   overview: "▦", analytics: "▤", reporting: "▥", strategies: "⚡", srs: "◎",
   tasks: "☑", notes: "✎", files: "🗂", comms: "✉",
-  profile: "🏢", financials: "£", ai: "✦",
+  profile: "🏢", financials: "£", ai: "✦", history: "↺",
 };
 
-export function clientAreaGroups(counts: Partial<Record<ClientAreaId, number | string | null>> = {}): ClientAreaGroup[] {
+/** `showHistory` — History is offered only to a holder of audit.view who may read this client's (CLIENT-12). */
+export function clientAreaGroups(counts: Partial<Record<ClientAreaId, number | string | null>> = {}, showHistory = false): ClientAreaGroup[] {
   const item = (id: ClientAreaId) => ({ id, label: CLIENT_AREA_LABELS[id], icon: ICONS[id], count: counts[id] ?? null, unavailable: !BUILT_AREAS.has(id) });
   return [
     { id: "client", label: "Client", items: (["overview", "analytics", "reporting", "strategies", "srs"] as const).map(item) },
     { id: "manage", label: "Manage", items: (["tasks", "notes", "files", "comms"] as const).map(item) },
-    { id: "record", label: "Record", items: (["profile", "financials", "ai"] as const).map(item) },
+    { id: "record", label: "Record", items: ([...["profile", "financials", "ai"] as const, ...(showHistory ? ["history"] as const : [])]).map(item) },
   ];
 }

@@ -86,6 +86,23 @@ describe("client workspace phase 2 areas", () => {
     }
   });
 
+  it("offers History only under audit.view, resolved with the page, a refusal shown as one (CLIENT-12)", () => {
+    const view = area("ClientWorkspaceView.tsx");
+    assert.match(view, /useHasCapability\("audit\.view", client\.ownerUserId\)/, "offered by the caller's audit.view for this client");
+    assert.match(view, /clientAreaGroups\(\{[\s\S]*?\}, canReadHistory\)/, "the area is in the nav only when it may be read");
+    assert.match(area("page.tsx"), /loadScreen<[^>]*>\("clientHistory"[\s\S]*?clients\/\$\{encodeURIComponent\(clientId\)\}\/history/, "resolved server-side with the rest of the page");
+    const history = area("HistoryArea.tsx");
+    assert.doesNotMatch(history, /fetch\(|loadScreen/, "the area does not fetch its own truth");
+    assert.match(history, /HTTP_403/, "a 403 is a refusal, not a failure or an empty history");
+    assert.match(history, /No changes are recorded for this client yet/, "an honest empty state");
+    assert.match(history, /The latest \{limit\} changes are shown/, "says when it shows only the latest");
+    for (const field of ["Who", "When", "Action", "Reason", "Before", "After"]) assert.ok(history.includes(field), field);
+    const route = read("apps/console/app/api/isolated/clients/[clientId]/history/route.ts");
+    assert.match(route, /currentStaff\(request\)/);
+    assert.match(route, /clientHistoryFor\(db, principal, clientId\)/, "read through the audit.view-scoped reader");
+    assert.match(route, /private, no-store/);
+    assert.match(route, /status: 404/, "no such client is a 404, not an empty history");
+  });
   it("sends the client's lookup links back unchanged, and unlinks the industry only when it is retyped", () => {
     // The drawers send the whole record (`...client.profile`), which now carries the links; client.update keeps an omitted one.
     assert.match(read("packages/isolated-backend/src/readModels.ts"), /sectorValueId: row\.sector_value_id \?\? null, referralValueId: row\.referral_value_id \?\? null, clientManagerUserId: row\.client_manager_user_id \?\? null/);

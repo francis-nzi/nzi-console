@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "portalPreview" | "jobMilestones" | "jobSetupOptions";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "clientHistory" | "portalPreview" | "jobMilestones" | "jobSetupOptions";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -67,6 +67,8 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.
   clientWorkspace: { key: "clientWorkspace", validate: (value) => record(value) && rows(value, "sites") && rows(value, "reportingPeriods") && (value.client === null || (record(value.client) && record(value.evidence))), isEmpty: (value) => record(value) && value.client === null },
+  // CLIENT-12: one client's audit history, under audit.view. No recorded change is a real, empty history.
+  clientHistory: { key: "clientHistory", validate: (value) => rows(value, "history") && record(value) && typeof value.limit === "number", isEmpty: (value) => record(value) && (value.history as unknown[]).length === 0 },
   platform: { key: "platform", validate: (value) => rows(value, "services") && rows(value, "events") && rows(value, "roles"), isEmpty: (value) => record(value) && (value.services as unknown[]).length === 0 },
 };
 

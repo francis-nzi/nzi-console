@@ -550,6 +550,10 @@ jobs:
       # active and starts_at <= now < ends_at), an optional target client, never deleted; the portal read live-only, capped.
       - name: Portal broadcasts are governed, and the portal reads only what is live for it
         run: npx tsx --test packages/isolated-backend/tests/portalBroadcastsReal.test.ts
+      # CLIENT-12: one client's audit history — its record and its sites, newest first, never another client's or
+      # organisation's; read under audit.view (none refused, own_clients only for the owner, all for any).
+      - name: A client's history holds its own audit events, read under audit.view
+        run: npx tsx --test packages/isolated-backend/tests/clientHistoryReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
