@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { capabilities, commandDefinitions, commandGrantForRole, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
 import {
-  approveScopeRow, AuthorizationError, capabilitiesFromRows, CommandValidationError, listAuditEvents, listPortalAccess, resolveStaffPrincipal,
+  approveScopeRow, auditEventsFor, AuthorizationError, capabilitiesFromRows, CommandValidationError, listAuditEvents, listPortalAccess, resolveStaffPrincipal,
   setPortalJobAccess, updateClient, upsertEmissionsTarget, type StaffPrincipal,
 } from "../src/index";
 import { withAccess } from "./support/access";
@@ -262,5 +262,18 @@ describe("non-command checks use the same rule", () => {
     const auditValues: Array<readonly unknown[] | undefined> = [];
     await listAuditEvents({ query: async (_sql: string, values?: readonly unknown[]) => { auditValues.push(values); return { rows: [] }; } } as never, 50, { ownerUserId: "finance-a" });
     assert.deepEqual(auditValues[0], [50, "finance-a"]);
+  });
+
+  it("reads the audit trail by audit.view for every role: none reads nothing, own_clients filters to the holder, all reads all", async () => {
+    for (const role of staffRoles) {
+      const queried: Array<readonly unknown[] | undefined> = [];
+      const db = { query: async (_sql: string, values?: readonly unknown[]) => { queried.push(values); return { rows: [] }; } } as never;
+      const events = await auditEventsFor(db, principal(role, `${role}-a`));
+      const scope = roleCapabilityGrants(role).find((grant) => grant.capability === "audit.view")?.scope;
+      assert.deepEqual(events, [], role);
+      if (!scope) assert.equal(queried.length, 0, `${role} holds no audit.view, so nothing is read`);
+      else assert.deepEqual(queried[0], [100, scope === "own_clients" ? `${role}-a` : null], role);
+    }
+    assert.ok(staffRoles.some((role) => !roleCapabilityGrants(role).some((grant) => grant.capability === "audit.view")), "some role lacks audit.view");
   });
 });
