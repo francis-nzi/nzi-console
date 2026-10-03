@@ -48,9 +48,11 @@ import { FigureEvidenceBody, formatFigure, fyLabel } from "./FigureEvidence";
 type EvidenceKey = "latest" | "yoy" | "scopes" | "intensity";
 const EVIDENCE_TITLE: Record<EvidenceKey, string> = { latest: "Latest emissions", yoy: "Year on year", scopes: "Scope split", intensity: "Intensity detail" };
 
-export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled, initialArea, auditHistory }: {
+export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled, initialArea, auditHistory, geocodingEnabled = false }: {
   workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean; initialArea?: string;
   auditHistory: ScreenResult<{ history: ClientHistoryEntry[]; limit: number }>;
+  /** CLIENT-04: whether site and client geocoding is switched on (NZI_SITE_GEOCODING_ENABLED). */
+  geocodingEnabled?: boolean;
 }) {
   const router = useRouter();
   const { client, sites, evidence, contacts, targets, history } = workspace;
@@ -176,14 +178,14 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
             <OverviewArea workspace={workspace} jobs={jobs} today={today} access={access} onEvidence={() => setEvidenceKey("latest")} onDrawer={openDrawer} />
           </div>
           <aside className="nz-client-aside">
-            <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
+            <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
           </aside>
         </div>
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
         : area === "strategies" ? <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
         : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} />
-        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} />
+        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
         : area === "comms" ? <CommsArea workspace={workspace} />
         : area === "files" ? <FilesArea workspace={workspace} />
         : area === "ai" ? <AiProfileArea workspace={workspace} />

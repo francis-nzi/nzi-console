@@ -167,6 +167,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "srs.assessment.complete": srsAssessment,
   "client.logo.set": client,
   "client.logo.remove": client,
+  "client.location.set": client,
   "report.section.edit": job,
   "report.section.reset": job,
   "report.section.regenerate": job,
@@ -178,6 +179,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "site.vacate": site,
   "site.reinstate": site,
   "site.floorArea.record": site,
+  "site.location.set": site,
   "emissions.intensity.upsert": job,
   "purchased.goods.category.create": job,
   // The question spans organisations, so it is not scoped to a client. The capability is Admin

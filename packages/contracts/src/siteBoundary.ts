@@ -22,6 +22,12 @@ export type ClientSiteReadModel = {
   vacatedEffective: string | null;
   version: number;
   floorAreas: SiteFloorAreaRecord[];
+  /** CLIENT-11: the structured address — lines, postcode or zip, ISO 3166-1 alpha-2 country. */
+  addressLines?: string[];
+  postcode?: string | null;
+  country?: string | null;
+  /** CLIENT-04: whether the site has coordinates (from the geocoder, or brought by the v7 import). */
+  located?: boolean;
 };
 
 type BoundaryDates = Pick<ClientSiteReadModel, "inServiceFrom" | "vacatedEffective">;

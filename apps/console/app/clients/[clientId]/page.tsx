@@ -30,6 +30,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     today={today}
     writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}
     factorsEnabled={dataEntryAdapterEnabled("client-factors")}
+    geocodingEnabled={process.env.NZI_SITE_GEOCODING_ENABLED === "true"}
     initialArea={typeof area === "string" ? area : undefined}
     auditHistory={historyResult}
   />;
