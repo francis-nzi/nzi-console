@@ -9,6 +9,7 @@ import {
 } from "../src/commercialLookups";
 import { createClient, updateClient } from "../src/postgresCommands";
 import { withTenantRead } from "../src/postgres";
+import { listAllClients } from "../src/readModels";
 
 /**
  * Commercial lookups (admin Phase E1; ruled `phaseE-commercial-catalogue-plan.md`, E-Q1–E-Q3) against a real database.
@@ -260,6 +261,59 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       const website = (id: string) => rows.find((row) => row.client_id === id)?.website;
       assert.equal(website(bare.data.clientId), "https://acme.com");
       assert.equal(website(prefill.data.clientId), null);
+    });
+  });
+
+  describe("client.update keeps the client's lookup links (omitted keeps, null clears, an id sets)", () => {
+    const LINKS = "sector_value_id, referral_value_id, client_manager_user_id";
+    let clientId = "";
+    const links = async () => (await q(`SELECT ${LINKS} FROM nzi_console.clients WHERE client_id = $1`, [clientId]))[0];
+    const held = async () => (await withTenantRead(database.pool, NZI, (db) => listAllClients(db, clientId)))[0]!;
+    /** Exactly what every client drawer sends: the whole record as read, with its own change on top. */
+    const drawerSave = async (changes: Record<string, unknown>) => {
+      const client = await held();
+      return updateClient(database.pool, { clientId, expectedVersion: client.version, name: client.name, status: client.status, sector: client.sector,
+        location: client.location, owner: client.owner, ...client.profile, ...changes } as never, context("ada", "admin"));
+    };
+    /** An API caller's update that names no link at all. */
+    const bareSave = async (changes: Record<string, unknown>) => {
+      const [row] = await q(`SELECT version, name, status, sector, location, owner_name FROM nzi_console.clients WHERE client_id = $1`, [clientId]);
+      return updateClient(database.pool, { clientId, expectedVersion: row.version, name: row.name, status: row.status, sector: row.sector, location: row.location,
+        owner: row.owner_name, ...changes } as never, context("ada", "admin"));
+    };
+
+    before(async () => {
+      await q(`INSERT INTO nzi_console.reference_values (organisation_id, category_key, value_id, label, created_by, updated_by) VALUES
+        ($1, 'industries', 'links:ind-a', 'Manufacturing', 'test', 'test'), ($1, 'industries', 'links:ind-b', 'Retail', 'test', 'test'),
+        ($1, 'referrals', 'links:ref-a', 'Word of mouth', 'test', 'test')`, [NZI]);
+      clientId = (await createClient(database.pool, { name: "Linked Client", status: "active", sector: "Manufacturing", sectorValueId: "links:ind-a",
+        referral: "Word of mouth", referralValueId: "links:ref-a", clientManager: "Cal Consultant", clientManagerUserId: "cal", location: "Leeds, UK", owner: "Ada Admin" } as never,
+        context("ada", "admin"))).data.clientId;
+    });
+
+    it("carries the links in the profile it reads, so a drawer sends them back", async () => {
+      const profile = (await held()).profile;
+      assert.deepEqual([profile.sectorValueId, profile.referralValueId, profile.clientManagerUserId], ["links:ind-a", "links:ref-a", "cal"]);
+    });
+
+    it("keeps every link through a drawer save that edits something else (the registered address)", async () => {
+      await drawerSave({ registeredCity: "York" });
+      assert.deepEqual(await links(), { sector_value_id: "links:ind-a", referral_value_id: "links:ref-a", client_manager_user_id: "cal" });
+      assert.equal((await q(`SELECT registered_city FROM nzi_console.clients WHERE client_id = $1`, [clientId]))[0].registered_city, "York");
+    });
+
+    it("keeps every link when the input omits them", async () => {
+      await bareSave({ registeredCity: "Hull" });
+      assert.deepEqual(await links(), { sector_value_id: "links:ind-a", referral_value_id: "links:ref-a", client_manager_user_id: "cal" });
+    });
+
+    it("sets a link given an id, and clears one given null — each on its own", async () => {
+      await bareSave({ sector: "Retail", sectorValueId: "links:ind-b" });
+      assert.deepEqual(await links(), { sector_value_id: "links:ind-b", referral_value_id: "links:ref-a", client_manager_user_id: "cal" });
+      await bareSave({ referralValueId: null });
+      assert.deepEqual(await links(), { sector_value_id: "links:ind-b", referral_value_id: null, client_manager_user_id: "cal" });
+      await bareSave({ clientManagerUserId: null });
+      assert.deepEqual(await links(), { sector_value_id: "links:ind-b", referral_value_id: null, client_manager_user_id: null });
     });
   });
 });

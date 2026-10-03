@@ -92,6 +92,9 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
     const input = {
       expectedVersion: client.version, name: name.trim(), status, sector: sector.trim(), location: client.location, owner: client.owner,
       ...profile, industrySic: sic.trim() || null, dataReportingFrequency: frequency, currency: currency.trim(), financialYearEndMonth: fye,
+      // Industry is typed here, not chosen from the lookup: a changed industry unlinks the lookup value (the typed text
+      // stands), or the kept link would go on showing the old one. Unchanged, the link is sent back as held.
+      ...(sector.trim() !== client.sector ? { sectorValueId: null } : {}),
     };
     const key = keys.current.save ??= crypto.randomUUID();
     const result = await patchBrowserCommand<{ version: number }>(`/api/isolated/commands/clients/${encodeURIComponent(client.id)}`, input, key);

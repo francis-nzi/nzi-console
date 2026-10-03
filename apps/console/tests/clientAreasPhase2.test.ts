@@ -86,6 +86,12 @@ describe("client workspace phase 2 areas", () => {
     }
   });
 
+  it("sends the client's lookup links back unchanged, and unlinks the industry only when it is retyped", () => {
+    // The drawers send the whole record (`...client.profile`), which now carries the links; client.update keeps an omitted one.
+    assert.match(read("packages/isolated-backend/src/readModels.ts"), /sectorValueId: row\.sector_value_id \?\? null, referralValueId: row\.referral_value_id \?\? null, clientManagerUserId: row\.client_manager_user_id \?\? null/);
+    assert.match(area("ClientIdentity.tsx"), /\.\.\.\(sector\.trim\(\) !== client\.sector \? \{ sectorValueId: null \} : \{\}\)/, "a retyped industry unlinks the lookup value");
+  });
+
   it("projects the new areas from the client's own records in the backend", () => {
     const records = read("packages/isolated-backend/src/clientAreaRecords.ts");
     assert.match(records, /FROM nzi_console\.report_versions[\s\S]*?WHERE j\.client_id=\$1/, "reports are scoped to the client");
