@@ -14,6 +14,9 @@ describe("the client logo surfaces", () => {
     const authorise = route.indexOf('requireCommandPrincipal(request, "client.logo.set")');
     const fetchAt = route.indexOf("fetchLogoFromUrl(");
     assert.ok(authorise > 0 && fetchAt > authorise, "client.logo.set is checked before anything is fetched");
+    const owned = route.indexOf("assertClientAccess(db, principal.organisationId, principal.userId, clientId)");
+    const refused = route.indexOf('capabilityScope(principal, capability) === "own_clients" && !access.ownedByActor');
+    assert.ok(owned > authorise && refused > owned && fetchAt > refused, "an own-clients holder is refused on another's client before anything is fetched");
     assert.match(route, /setClientLogo\(isolatedPool\(\), \{ clientId, fileName: fetched\.fileName, contentType: fetched\.contentType, dataBase64: fetched\.dataBase64 \}/);
     assert.doesNotMatch(route, /fetch\(/, "no direct fetch — only the hardened fetcher");
   });
