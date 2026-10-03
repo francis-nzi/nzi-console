@@ -39,6 +39,7 @@ export * from "./piiWriteThrough";
 export * from "./entryExtractionStub";
 export * from "./dates";
 export * from "./readModels";
+export * from "./clientHistory";
 export * from "./listReads";
 export * from "./adminOverview";
 export * from "./referenceEngine";

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
+import type { ClientHistoryEntry, ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { loadScreen } from "../../lib/loadScreen";
 import { ScreenState } from "../../lib/ScreenState";
 import { dataEntryAdapterEnabled } from "../../lib/featureFlags";
@@ -15,9 +15,12 @@ const londonToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/L
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ clientId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { clientId } = await params;
   const area = (await searchParams).area;
-  const [workspaceResult, jobResult] = await Promise.all([
+  // CLIENT-12: the audit history is resolved here with the rest, under the caller's audit.view — a 403 reaches the
+  // History area as a refusal, never as an empty history.
+  const [workspaceResult, jobResult, historyResult] = await Promise.all([
     loadScreen<ClientWorkspaceReadModel>("clientWorkspace", NO_CLIENT, `clients/${encodeURIComponent(clientId)}/workspace`),
     loadScreen<{ jobs: JobScreenReadModel[] }>("jobs", { jobs: [] }),
+    loadScreen<{ history: ClientHistoryEntry[]; limit: number }>("clientHistory", { history: [], limit: 100 }, `clients/${encodeURIComponent(clientId)}/history`),
   ]);
   if (workspaceResult.state === "failed" && workspaceResult.error.code === "HTTP_404") notFound();
   const today = londonToday();
@@ -28,6 +31,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}
     factorsEnabled={dataEntryAdapterEnabled("client-factors")}
     initialArea={typeof area === "string" ? area : undefined}
+    auditHistory={historyResult}
   />;
   // No jobs anywhere is a real, empty jobs list — not a reason to blank the client.
   // E1: intensity units read in the organisation's own currency symbols.

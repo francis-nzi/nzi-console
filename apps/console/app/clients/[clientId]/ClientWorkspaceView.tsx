@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { AppShell, ClientWorkspaceNav, Drawer, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
 import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
-import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
+import type { ClientHistoryEntry, ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
+import type { ScreenResult } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { useEditAccess, useHasCapability } from "../../lib/useEditAccess";
 import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
@@ -24,6 +25,7 @@ import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
 import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
+import { HistoryArea } from "./HistoryArea";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
 import { AddressForm, ComplianceForm, FactorsDrawerBody, PortalDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
@@ -46,8 +48,9 @@ import { FigureEvidenceBody, formatFigure, fyLabel } from "./FigureEvidence";
 type EvidenceKey = "latest" | "yoy" | "scopes" | "intensity";
 const EVIDENCE_TITLE: Record<EvidenceKey, string> = { latest: "Latest emissions", yoy: "Year on year", scopes: "Scope split", intensity: "Intensity detail" };
 
-export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled, initialArea }: {
+export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, factorsEnabled, initialArea, auditHistory }: {
   workspace: ClientWorkspaceReadModel; jobs: JobScreenReadModel[]; today: string; writeEnabled: boolean; factorsEnabled: boolean; initialArea?: string;
+  auditHistory: ScreenResult<{ history: ClientHistoryEntry[]; limit: number }>;
 }) {
   const router = useRouter();
   const { client, sites, evidence, contacts, targets, history } = workspace;
@@ -71,6 +74,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   };
 
   const canPreviewPortal = useHasCapability("support.portal_impersonate", client.ownerUserId);
+  // CLIENT-12 — the History area is offered only to whoever may read this client's audit history.
+  const canReadHistory = useHasCapability("audit.view", client.ownerUserId);
 
   const meta = clientStatusMeta[client.status];
   const source = evidence.latest.source;
@@ -132,7 +137,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     areas={<ClientWorkspaceNav groups={clientAreaGroups({
       analytics: history.length || null, reporting: workspace.reports.length || null,
       comms: workspace.messages.length || null, files: workspace.files.length || null,
-    })} activeId={area} onSelect={selectArea} />}
+    }, canReadHistory)} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
     {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
     <TopBar crumbs={crumbTrail(clientCrumbs(client))} />
@@ -183,6 +188,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         : area === "files" ? <FilesArea workspace={workspace} />
         : area === "ai" ? <AiProfileArea workspace={workspace} />
         : area === "financials" ? <FinancialsHeldArea />
+        : area === "history" ? <HistoryArea result={auditHistory} />
         : <UnavailableArea area={area} clientId={client.id} />}
     </div>
 
