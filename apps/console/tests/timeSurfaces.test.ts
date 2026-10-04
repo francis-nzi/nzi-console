@@ -38,6 +38,9 @@ describe("the Time surfaces", () => {
     assert.match(board, /this is not "no time logged"/);
     assert.match(board, /Oversight arrives with the next Time release/);
     assert.match(board, /Billed · locked/);
+    // Ruled on review: no day still to come — the date pickers stop at the server's London today.
+    assert.match(board, /type="date" value=\{draft\.workDate\} max=\{today\} required/);
+    assert.match(board, /aria-label="Date" value=\{draft\.workDate\} max=\{today\}/);
     for (const surface of ["apps/console/app/time/TimeBoard.tsx", "apps/console/app/jobs/JobTimePanel.tsx"]) {
       // No money field is read or rendered: the reads don't carry one, and nothing here asks for one.
       assert.doesNotMatch(read(surface), /costRate|chargeRate|cost_rate|charge_rate|fee_amount|feeAmount|sellPerHour|costPerHour|£/, `${surface} shows hours, never money`);

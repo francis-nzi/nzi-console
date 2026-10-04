@@ -105,7 +105,9 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 - **Time (matrix v9, 0156; TIME rulings T-Q3, T-Q6, T-Q7).** `time.log` is held by every role, Viewer
   included, because everyone's time is recorded — but it is **one's own time only**: nobody, Admin
   included, logs, edits or voids another person's entry. A Consultant logs on their own clients' jobs;
-  every other role on any job. `time.view` reads other people's hours on a job (Job → Time); without
+  every other role on any job. Editing or voiding is **own-entry-only**: the entry's client's current
+  owner is no gate, so a Consultant can still correct their own time on a client since reassigned;
+  moving an entry to another job needs `time.log` on that job. No work date after today (London). `time.view` reads other people's hours on a job (Job → Time); without
   it a reader sees only their own. **Rates and the job fee are money** — `finance.view` to read,
   never in a time payload (NZC-120). Marking time billed (the bill command, and unbilling) is
   `finance.manage`; a billed entry is locked until finance unbills it.

@@ -9,6 +9,7 @@ import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStagePro
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isIsoCountryCode } from "./iso3166";
 import { isTimeEntryMinutes, TIME_ACTIVITY_CATEGORY, TIME_ENTRY_NOTE_MAX } from "./time";
+import { todayInLondon } from "./dayValues";
 import { isAllowedBroadcastLink, isBroadcastInstant, isPortalBroadcastStyle, PORTAL_BROADCAST_BODY_MAX, PORTAL_BROADCAST_LINK_LABEL_MAX, PORTAL_BROADCAST_TITLE_MAX, type PortalBroadcastEditableFields } from "./adminPortalBroadcasts";
 import { isValidWebsite, normaliseWebsite } from "./clientWebsite";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
@@ -883,6 +884,8 @@ const positiveArea = (value: unknown) => typeof value === "number" && Number.isF
 /** A time entry's own fields (TIME ⚑1, ⚑9): a real day, whole minutes 1–1440, an activity, a short note. */
 const timeEntryIssues = (issues: CommandIssue[], input: { workDate: string; minutes: number; activityValueId: string; note?: string | null }) => {
   if (!isoDate(input.workDate)) issues.push({ field: "workDate", code: "INVALID", message: "Enter the day the work was done." });
+  // Ruled: time is logged for a day that has happened — today at the latest, as the London day.
+  else if (input.workDate > todayInLondon()) issues.push({ field: "workDate", code: "FUTURE", message: "Time is logged for today or an earlier day, not a day still to come." });
   if (!isTimeEntryMinutes(input.minutes)) issues.push({ field: "minutes", code: "INVALID", message: "Enter the time worked: more than none, and no more than 24 hours in one entry." });
   required(issues, "activityValueId", input.activityValueId);
   if (input.note != null && (typeof input.note !== "string" || input.note.length > TIME_ENTRY_NOTE_MAX)) issues.push({ field: "note", code: "INVALID", message: `A note is ${TIME_ENTRY_NOTE_MAX} characters or fewer.` });

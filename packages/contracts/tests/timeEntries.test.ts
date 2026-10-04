@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { commandDefinitions, commandGrantForRole, hoursFromMinutes, isTimeEntryMinutes, minutesFromHours, validateCommand, type CommandContext } from "../src/index";
+import { commandDefinitions, commandGrantForRole, hoursFromMinutes, isTimeEntryMinutes, minutesFromHours, todayInLondon, utcDay, validateCommand, type CommandContext } from "../src/index";
 
 const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1", grant: commandGrantForRole("viewer", "org-nzi", "user-1") };
 const fields = (issues: Array<{ field: string }>) => issues.map((issue) => issue.field).sort();
@@ -20,6 +20,15 @@ describe("time contracts", () => {
     assert.deepEqual(fields(validateCommand("time.entry.log", { ...entry, workDate: "2026-02-30", minutes: 0, activityValueId: "", note: "x".repeat(2001) }, context)),
       ["activityValueId", "minutes", "note", "workDate"]);
     assert.deepEqual(fields(validateCommand("time.entry.edit", { ...entry, entryId: "e1", expectedVersion: 0, billable: "yes" as unknown as boolean }, context)), ["billable", "expectedVersion"]);
+  });
+
+  it("caps the work date at today, as the London day (ruled on review)", () => {
+    const today = todayInLondon();
+    const tomorrow = new Date(`${today}T00:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    assert.deepEqual(validateCommand("time.entry.log", { ...entry, workDate: today }, context), []);
+    const future = validateCommand("time.entry.log", { ...entry, workDate: utcDay(tomorrow) }, context);
+    assert.deepEqual(future.map((issue) => [issue.field, issue.code]), [["workDate", "FUTURE"]]);
+    assert.deepEqual(validateCommand("time.entry.edit", { ...entry, entryId: "e1", expectedVersion: 1, billable: true, workDate: utcDay(tomorrow) }, context).map((issue) => issue.code), ["FUTURE"]);
   });
 
   it("logs, edits and voids under time.log — billing (and unbilling) under finance.manage, with an invoice reference or none", () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { commandGrantForRole, type CommandContext, type StaffRole } from "@nzi/contracts";
+import { commandGrantForRole, todayInLondon, utcDay, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { figuresIn } from "./support/payloadScan";
 import { createJob, CommandValidationError } from "../src/postgresCommands";
@@ -264,4 +264,37 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       assert.deepEqual([summary.budgetedMinutes, summary.totals.minutes], [720, 0]);
     });
   });
+
+  describe("the review rulings", () => {
+    it("#5: edit and void are own-entry-only — a consultant corrects their own time on a client since handed to someone else", async () => {
+      const logged = await logTimeEntry(database.pool, { jobId: "j-cal", workDate: "2026-05-04", minutes: 60, activityValueId: activity("analysis") }, context("cal", "consultant"));
+      await q(`UPDATE nzi_console.clients SET owner_user_id = 'dee' WHERE organisation_id = $1 AND client_id = 'c-cal'`, [ORG]);
+      try {
+        // A new entry on the job is still refused: logging needs the job (T-Q7) …
+        await assert.rejects(logTimeEntry(database.pool, { jobId: "j-cal", workDate: "2026-05-05", minutes: 30, activityValueId: activity("analysis") }, context("cal", "consultant")), /own clients/);
+        // … but the entry already logged is cal's own, and stays correctable.
+        const edited = await editTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: 1, jobId: "j-cal", workDate: "2026-05-04", minutes: 75, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant"));
+        assert.equal((await entry(logged.data.entryId)).minutes, 75);
+        // Moving it still needs time.log on the new job: j-dee is not cal's.
+        await assert.rejects(editTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version, jobId: "j-dee", workDate: "2026-05-04", minutes: 75, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant")), /own clients/);
+        // Someone else's entry stays out of reach — the new owner included.
+        await assert.rejects(voidTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version }, context("dee", "consultant")), /only your own time/);
+        await voidTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version }, context("cal", "consultant"));
+        assert.equal((await entry(logged.data.entryId)).active, false);
+        // And another organisation's entry id is still refused at the tenant check.
+        await assert.rejects(voidTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: 3 }, context("oz", "admin", OTHER)), /not in your organisation/);
+      } finally {
+        await q(`UPDATE nzi_console.clients SET owner_user_id = 'cal' WHERE organisation_id = $1 AND client_id = 'c-cal'`, [ORG]);
+      }
+    });
+
+    it("#6: refuses a work date after today (London), on log and on edit", async () => {
+      const tomorrow = addDays(todayInLondon(), 1);
+      await assert.rejects(logTimeEntry(database.pool, { jobId: "j-cal", workDate: tomorrow, minutes: 60, activityValueId: activity("analysis") }, context("cal", "consultant")), issue("workDate", "FUTURE"));
+      const today = await logTimeEntry(database.pool, { jobId: "j-cal", workDate: todayInLondon(), minutes: 60, activityValueId: activity("analysis") }, context("cal", "consultant"));
+      await assert.rejects(editTimeEntry(database.pool, { entryId: today.data.entryId, expectedVersion: 1, jobId: "j-cal", workDate: tomorrow, minutes: 60, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant")), issue("workDate", "FUTURE"));
+    });
+  });
 });
+
+const addDays = (day: string, days: number) => { const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return utcDay(date); };

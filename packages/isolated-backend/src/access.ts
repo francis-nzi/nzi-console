@@ -16,7 +16,11 @@ export type ClientAccess = { clientId: string; ownerUserId: string | null; owned
 
 type Subject =
   | { kind: "organisation" }
-  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment" | "trainingRun" | "trainingSession" | "trainingEntitlement" | "clientStrategy" | "timeEntry"; id: string };
+  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment" | "trainingRun" | "trainingSession" | "trainingEntitlement" | "clientStrategy" | "timeEntry"; id: string }
+  // A record that is the caller's own (ruled for time entries): resolved inside the tenant like any other, but the
+  // owning client's owner is no gate — the handler's own-record check is. So a consultant can still correct their own
+  // time on a client since handed to someone else.
+  | { kind: "ownTimeEntry"; id: string };
 
 const organisation = (): Subject => ({ kind: "organisation" });
 const client = (input: { clientId: string }): Subject => ({ kind: "client", id: input.clientId });
@@ -27,6 +31,7 @@ const clientStrategy = (input: { clientStrategyId: string }): Subject => ({ kind
 const trainingRun = (input: { courseRunId: string }): Subject => ({ kind: "trainingRun", id: input.courseRunId });
 const trainingSession = (input: { sessionId: string }): Subject => ({ kind: "trainingSession", id: input.sessionId });
 const timeEntry = (input: { entryId: string }): Subject => ({ kind: "timeEntry", id: input.entryId });
+const ownTimeEntry = (input: { entryId: string }): Subject => ({ kind: "ownTimeEntry", id: input.entryId });
 // A grant's places all belong to one client, so the first resolves the own-clients scope.
 // The handler re-checks that every id really is from the same grant, so a caller cannot
 // smuggle another client's place in behind an id it does own.
@@ -224,11 +229,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "lca.scenario.delete": job,
   "lca.scenario.multiplier.set": job,
   "lca.scenario.multiplier.delete": job,
-  // Time (TIME module): logged against a job (T-Q7); an entry resolves through its job. The handler adds own-time-only
-  // (T-Q3) and, when an edit moves the time, checks the new job too.
+  // Time (TIME module): logged against a job (T-Q7). Edit and void are own-entry-only (ruled): the handler's
+  // own-entry and unbilled checks are the gate, not the entry's client's current owner; an edit that moves the time
+  // checks time.log on the new job. Bill is finance's, scoped through the entry's job.
   "time.entry.log": job,
-  "time.entry.edit": timeEntry,
-  "time.entry.void": timeEntry,
+  "time.entry.edit": ownTimeEntry,
+  "time.entry.void": ownTimeEntry,
   "time.entry.bill": timeEntry,
 };
 
@@ -248,6 +254,7 @@ const accessSql: Record<Exclude<Subject["kind"], "organisation">, string> = {
   srsAssessment: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.srs_assessments a JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) WHERE a.organisation_id=$1 AND a.assessment_id=$2`,
   clientStrategy: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_strategies a JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) WHERE a.organisation_id=$1 AND a.client_strategy_id=$2`,
   timeEntry: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.time_entries t JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(t.organisation_id,t.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE t.organisation_id=$1 AND t.entry_id=$2`,
+  ownTimeEntry: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.time_entries t JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(t.organisation_id,t.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE t.organisation_id=$1 AND t.entry_id=$2`,
   reportVersion: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE r.organisation_id=$1 AND r.report_version_id=$2`,
 };
 
@@ -289,7 +296,7 @@ export async function authorizeCommandInTransaction<K extends CommandKey>(db: Qu
     return null;
   }
   const access = await resolveAccess(db, context.organisationId, context.actorId, subject.kind, subject.id);
-  if (held.scope === "own_clients" && !access.ownedByActor) throw new AuthorizationError(capability, "This capability is limited to your own clients.");
+  if (held.scope === "own_clients" && !access.ownedByActor && subject.kind !== "ownTimeEntry") throw new AuthorizationError(capability, "This capability is limited to your own clients.");
   return access;
 }
 

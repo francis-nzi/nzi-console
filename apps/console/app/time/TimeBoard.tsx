@@ -118,7 +118,7 @@ export function TimeBoard({ today, initialJobId, writeEnabled }: { today: string
           : entries.state === "failed" ? <div className="nz-banner warn" role="alert"><div>Your entries could not be read, so none are shown — this is not "no time logged". {entries.message}</div></div>
           : inPeriod.length === 0 ? <p className="nz-time-state">No time logged in {periodLabel(period)}.</p>
           : <EntryTable entries={inPeriod} jobs={jobs.state === "ready" ? jobs.data : []} activities={activities.state === "ready" ? activities.data : []}
-            writeEnabled={writeEnabled} onChanged={(message) => { setNotice(message); reload(); }} />}
+            today={today} writeEnabled={writeEnabled} onChanged={(message) => { setNotice(message); reload(); }} />}
       </section>
     </> : null}
   </div>;
@@ -180,7 +180,7 @@ function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled
     {preset ? <div className="nz-banner warn" role="status"><div>That job isn't one you can log time against, so choose another.</div></div> : null}
     <form ref={formRef} className="nz-time-form" onSubmit={save}>
       <label className="nz-time-field"><span>Date</span>
-        <input className="nz-inp" type="date" value={draft.workDate} required onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></label>
+        <input className="nz-inp" type="date" value={draft.workDate} max={today} required onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></label>
       <div className="nz-time-field wide">
         <label htmlFor="time-job">Job</label>
         <SmartSearch id="time-job" label="Job" options={options} value={draft.jobId} required
@@ -205,8 +205,8 @@ function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled
   </section>;
 }
 
-function EntryTable({ entries, jobs, activities, writeEnabled, onChanged }: {
-  entries: TimeEntryReadModel[]; jobs: LoggableJob[]; activities: TimeActivityOption[]; writeEnabled: boolean; onChanged: (message: string) => void;
+function EntryTable({ entries, jobs, activities, today, writeEnabled, onChanged }: {
+  entries: TimeEntryReadModel[]; today: string; jobs: LoggableJob[]; activities: TimeActivityOption[]; writeEnabled: boolean; onChanged: (message: string) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [voiding, setVoiding] = useState<string | null>(null);
@@ -227,7 +227,7 @@ function EntryTable({ entries, jobs, activities, writeEnabled, onChanged }: {
     <div className="nz-time-tablewrap"><table className="nz-tbl">
       <thead><tr><th>Date</th><th>Job</th><th className="num">Hours</th><th>Activity</th><th>Billable</th><th>Note</th><th aria-label="Actions" /></tr></thead>
       <tbody>{entries.map((entry) => editing === entry.entryId
-        ? <EditRow key={entry.entryId} entry={entry} jobs={jobs} activities={activities} idempotencyKey={key(`edit:${entry.entryId}:${entry.version}`)}
+        ? <EditRow key={entry.entryId} entry={entry} jobs={jobs} activities={activities} today={today} idempotencyKey={key(`edit:${entry.entryId}:${entry.version}`)}
           onCancel={() => setEditing(null)} onSaved={(message) => { setEditing(null); onChanged(message); }} />
         : <tr key={entry.entryId}>
           <td>{shortDay(entry.workDate)}</td>
@@ -245,8 +245,8 @@ function EntryTable({ entries, jobs, activities, writeEnabled, onChanged }: {
   </>;
 }
 
-function EditRow({ entry, jobs, activities, idempotencyKey, onCancel, onSaved }: {
-  entry: TimeEntryReadModel; jobs: LoggableJob[]; activities: TimeActivityOption[]; idempotencyKey: string; onCancel: () => void; onSaved: (message: string) => void;
+function EditRow({ entry, jobs, activities, today, idempotencyKey, onCancel, onSaved }: {
+  entry: TimeEntryReadModel; today: string; jobs: LoggableJob[]; activities: TimeActivityOption[]; idempotencyKey: string; onCancel: () => void; onSaved: (message: string) => void;
 }) {
   const [draft, setDraft] = useState({ workDate: entry.workDate, jobId: entry.jobId, hours: hoursLabel(entry.minutes), activityValueId: entry.activityValueId, billable: entry.billable, note: entry.note ?? "" });
   const [problem, setProblem] = useState<string | null>(null);
@@ -270,7 +270,7 @@ function EditRow({ entry, jobs, activities, idempotencyKey, onCancel, onSaved }:
   }
 
   return <tr className="nz-time-editing">
-    <td><input className="nz-inp sm" type="date" aria-label="Date" value={draft.workDate} onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></td>
+    <td><input className="nz-inp sm" type="date" aria-label="Date" value={draft.workDate} max={today} onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></td>
     <td><select className="nz-sel sm" aria-label="Job" value={draft.jobId} onChange={(event) => setDraft({ ...draft, jobId: event.target.value })}>
       {jobChoices.map((job) => <option key={job.jobId} value={job.jobId}>{job.clientName} · {job.jobNumber}</option>)}</select></td>
     <td className="num"><input className="nz-inp sm nz-time-hours" type="number" aria-label="Hours" min={TIME_HOURS_STEP} max={24} step={TIME_HOURS_STEP} value={draft.hours} onChange={(event) => setDraft({ ...draft, hours: event.target.value })} /></td>
