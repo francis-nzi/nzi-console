@@ -109,6 +109,17 @@ describe("client workspace phase 2 areas", () => {
     assert.match(area("ClientIdentity.tsx"), /\.\.\.\(sector\.trim\(\) !== client\.sector \? \{ sectorValueId: null \} : \{\}\)/, "a retyped industry unlinks the lookup value");
   });
 
+  it("blocks the identity drawer only on a field being edited; a held gap is a warning (F1 remedy (1), mirrored)", () => {
+    const identity = area("ClientIdentity.tsx");
+    assert.match(identity, /nameChanged && !name\.trim\(\) \? "Give the client's name\."/);
+    assert.match(identity, /sectorChanged && !sector\.trim\(\) \? "Give the client's industry\."/);
+    assert.match(identity, /fyeChanged && fye === null \?/);
+    assert.match(identity, /it can still be saved; fill these in when you can/, "held gaps are said, not enforced");
+    const contracts = read("packages/contracts/src/commands.ts");
+    assert.match(contracts, /const issues = \[\.\.\.baseIssues\(context, false\)\]; required\(issues, "clientId", input\.clientId\);/, "client.update's validate no longer runs the field rules");
+    assert.match(read("packages/isolated-backend/src/postgresCommands.ts"), /const fieldIssues = clientUpdateIssues\(input, heldClientFields\(before\)\);/, "the handler runs them, against the held row");
+  });
+
   it("projects the new areas from the client's own records in the backend", () => {
     const records = read("packages/isolated-backend/src/clientAreaRecords.ts");
     assert.match(records, /FROM nzi_console\.report_versions[\s\S]*?WHERE j\.client_id=\$1/, "reports are scoped to the client");

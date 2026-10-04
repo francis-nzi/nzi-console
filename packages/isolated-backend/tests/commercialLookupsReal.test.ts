@@ -316,4 +316,47 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       assert.deepEqual(await links(), { sector_value_id: "links:ind-b", referral_value_id: null, client_manager_user_id: null });
     });
   });
+
+  describe("client.update validates only what the save changes (F1 remedy (1))", () => {
+    let held = "";
+    let clean = "";
+    const read = async (clientId: string) => (await withTenantRead(database.pool, NZI, (db) => listAllClients(db, clientId)))[0]!;
+    /** What every drawer sends: the whole record as read, with its own change on top. */
+    const drawerSave = async (clientId: string, changes: Record<string, unknown>) => {
+      const client = await read(clientId);
+      return updateClient(database.pool, { clientId, expectedVersion: client.version, name: client.name, status: client.status, sector: client.sector,
+        location: client.location, owner: client.owner, ...client.profile, ...changes } as never, context("ada", "admin"));
+    };
+    const refusedOn = (field: string) => (error: Error & { issues?: Array<{ field: string }> }) => error.issues?.some((issue) => issue.field === field) === true;
+
+    before(async () => {
+      // The 433 case, as the v7 import left them: no location, and a net-zero target year with no reduction %.
+      held = (await createClient(database.pool, { name: "Held Values Ltd", status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin" } as never, context("ada", "admin"))).data.clientId;
+      await q(`UPDATE nzi_console.clients SET location = NULL, net_zero_target_year = 2045, net_zero_target_reduction_pct = NULL WHERE client_id = $1`, [held]);
+      clean = (await createClient(database.pool, { name: "Clean Values Ltd", status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin" } as never, context("ada", "admin"))).data.clientId;
+    });
+
+    it("saves an unrelated field on a client whose held location and target fail today's rules — and leaves them as held", async () => {
+      const saved = await drawerSave(held, { registeredCity: "York" });
+      const [row] = await q(`SELECT location, net_zero_target_year, net_zero_target_reduction_pct, registered_city FROM nzi_console.clients WHERE client_id = $1`, [held]);
+      assert.deepEqual(row, { location: null, net_zero_target_year: 2045, net_zero_target_reduction_pct: null, registered_city: "York" }, "the held values are written back exactly, null included");
+      const [audit] = await q(`SELECT action, after_json FROM nzi_console.audit_events WHERE audit_event_id = $1`, [saved.auditEventId]);
+      assert.deepEqual([audit.action, Object.keys(audit.after_json).sort()], ["client_updated", ["clientId", "name", "version"]], "an ordinary edit, audited as one");
+    });
+
+    it("still refuses a held field once it is edited into an invalid state — location emptied, a target year changed without its %", async () => {
+      await assert.rejects(drawerSave(clean, { location: "  " }), refusedOn("location"), "emptying a location is refused");
+      await assert.rejects(drawerSave(held, { netZeroTargetYear: 2040 }), refusedOn("netZeroTargetReductionPct"), "changing the year runs the pair's rule");
+      await assert.rejects(drawerSave(held, { contactEmail: "not-an-email" }), refusedOn("contactEmail"), "a changed field must be valid");
+      const [row] = await q(`SELECT net_zero_target_year, contact_email FROM nzi_console.clients WHERE client_id = $1`, [held]);
+      assert.deepEqual(row, { net_zero_target_year: 2045, contact_email: "" }, "nothing refused was written (contact text is stored as '' when blank)");
+    });
+
+    it("lets the held pair be put right: the year with its %, or the year cleared", async () => {
+      await drawerSave(held, { netZeroTargetReductionPct: 90 });
+      assert.equal(Number((await q(`SELECT net_zero_target_reduction_pct FROM nzi_console.clients WHERE client_id = $1`, [held]))[0].net_zero_target_reduction_pct), 90);
+      await drawerSave(held, { location: "Leeds, UK" });
+      assert.equal((await q(`SELECT location FROM nzi_console.clients WHERE client_id = $1`, [held]))[0].location, "Leeds, UK");
+    });
+  });
 });

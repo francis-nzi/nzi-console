@@ -5,8 +5,10 @@ import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organis
 import { assertClientCurrency } from "./commercialLookups";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
+  clientUpdateIssues,
   commandDefinitions,
   normaliseWebsite,
+  type ClientHeldFields,
   crpReportSectionTemplate,
   type ReportSectionTemplate,
   crpScopeCategoryPath,
@@ -324,13 +326,18 @@ export async function updateClient(
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
   return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
-    const prior = await db.query<ClientGovernedRow & { currency: string; registered_postcode: string | null; registered_country: string | null } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
-      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency, registered_postcode, registered_country, ${CLIENT_LINK_COLUMNS.map(([, column]) => column).join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
+    // The whole held row, under the lock: the field rules run against it (F1 remedy (1)).
+    const prior = await db.query<ClientGovernedRow & HeldClientRow & { currency: string; registered_postcode: string | null; registered_country: string | null } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
+      `SELECT version, name, status, sector, location, owner_name, ${CLIENT_PROFILE_COLUMNS.join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientId],
     );
     const before = prior.rows[0];
     if (!before) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
     if (before.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, before.version);
+    // F1 remedy (1): only what this save changes is validated, against the stored row. An untouched held value stands
+    // (433 imported clients have no location and an unpaired target); a field that is edited must be valid.
+    const fieldIssues = clientUpdateIssues(input, heldClientFields(before));
+    if (fieldIssues.length) throw new CommandValidationError(fieldIssues);
     // E-Q3 (admin E1): the currency written is the organisation's — checked against its active set, the held value
     // always standing. An omitted currency keeps the one the client holds; it never resets to GBP (that default is
     // create's alone).
@@ -365,7 +372,7 @@ export async function updateClient(
        RETURNING version`,
       [
         context.organisationId, input.clientId, input.expectedVersion,
-        input.name.trim(), input.status, input.sector.trim(), input.location.trim(), input.owner.trim(),
+        heldOrTrimmed(input.name, before.name), input.status, heldOrTrimmed(input.sector, before.sector), heldOrTrimmed(input.location, before.location), heldOrTrimmed(input.owner, before.owner_name),
         ...profile,
       ],
     );
@@ -390,6 +397,44 @@ export async function updateClient(
 
 /** NZC-090's lookup links on the client, each beside its text: what client.update keeps when the input omits one. */
 const CLIENT_LINK_COLUMNS = [["sectorValueId", "sector_value_id"], ["referralValueId", "referral_value_id"], ["clientManagerUserId", "client_manager_user_id"]] as const;
+/** Every column client.update compares with the input (F1 remedy (1)). */
+type HeldClientRow = { name: string; status: string; sector: string | null; location: string | null; owner_name: string | null }
+  & Record<(typeof CLIENT_PROFILE_COLUMNS)[number], unknown>;
+const heldNumber = (value: unknown) => value === null || value === undefined ? null : Number(value);
+const heldDate = (value: unknown) => value === null || value === undefined ? null : value instanceof Date ? dateOnly(value) : String(value);
+const heldText = (value: unknown) => value === null || value === undefined ? null : String(value);
+/** The stored row in the input's shape, so the changed set is computed field by field against what is held. */
+function heldClientFields(row: HeldClientRow): ClientHeldFields {
+  return {
+    name: row.name, status: row.status as ClientHeldFields["status"], sector: row.sector ?? "", location: row.location ?? "", owner: row.owner_name ?? "",
+    portfolio: heldText(row.portfolio), clientManager: heldText(row.client_manager), website: heldText(row.website), industrySic: heldText(row.industry_sic),
+    companyRegistration: heldText(row.company_registration), headquarters: heldText(row.headquarters),
+    financialYearEndMonth: heldNumber(row.financial_year_end_month), dataReportingFrequency: row.data_reporting_frequency as ClientHeldFields["dataReportingFrequency"],
+    currency: heldText(row.currency) ?? undefined, logoUrl: heldText(row.logo_url), companyDescription: heldText(row.company_description), referral: heldText(row.referral),
+    contactName: heldText(row.contact_name), contactRole: heldText(row.contact_role), contactEmail: heldText(row.contact_email),
+    netZeroTargetYear: heldNumber(row.net_zero_target_year), netZeroTargetReductionPct: heldNumber(row.net_zero_target_reduction_pct),
+    baselinePeriodStart: heldDate(row.baseline_period_start), baselinePeriodEnd: heldDate(row.baseline_period_end),
+    baselineScope1Tco2e: heldNumber(row.baseline_scope1_tco2e), baselineScope2Tco2e: heldNumber(row.baseline_scope2_tco2e),
+    baselineScope3Tco2e: heldNumber(row.baseline_scope3_tco2e), baselineTotalTco2e: heldNumber(row.baseline_total_tco2e),
+    scope1InterimYear: heldNumber(row.scope1_interim_year), scope1InterimReductionPct: heldNumber(row.scope1_interim_reduction_pct),
+    scope2InterimYear: heldNumber(row.scope2_interim_year), scope2InterimReductionPct: heldNumber(row.scope2_interim_reduction_pct),
+    scope3InterimYear: heldNumber(row.scope3_interim_year), scope3InterimReductionPct: heldNumber(row.scope3_interim_reduction_pct),
+    registeredAddressLine1: heldText(row.registered_address_line1), registeredAddressLine2: heldText(row.registered_address_line2),
+    registeredCity: heldText(row.registered_city), registeredRegion: heldText(row.registered_region),
+    registeredPostcode: heldText(row.registered_postcode), registeredCountry: heldText(row.registered_country),
+    billingSameAsRegistered: row.billing_same_as_registered === null ? true : Boolean(row.billing_same_as_registered), billingCompany: heldText(row.billing_company),
+    billingAddressLine1: heldText(row.billing_address_line1), billingAddressLine2: heldText(row.billing_address_line2),
+    billingCity: heldText(row.billing_city), billingRegion: heldText(row.billing_region),
+    billingPostcode: heldText(row.billing_postcode), billingCountry: heldText(row.billing_country),
+    parentCompany: heldText(row.parent_company), groupStructure: (heldText(row.group_structure) ?? null) as ClientHeldFields["groupStructure"],
+    reportingFrameworks: (row.reporting_frameworks as string[] | null) ?? [], certifications: (row.certifications as string[] | null) ?? [],
+    primaryScope3Categories: (row.primary_scope3_categories as string[] | null) ?? [],
+  };
+}
+/** An identity value as written: unchanged, exactly as held (null included); changed, trimmed. */
+const heldOrTrimmed = (incoming: string | null | undefined, held: string | null) =>
+  (incoming ?? "").trim() === (held ?? "").trim() ? held : (incoming ?? "").trim();
+
 const CLIENT_BASELINE_COLUMNS = ["baseline_period_start", "baseline_period_end", "baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e"] as const;
 type ClientGovernedRow = { version: number; financial_year_end_month: number | null } & Record<(typeof CLIENT_BASELINE_COLUMNS)[number], Date | string | number | null>;
 const baselineFieldColumns = [
