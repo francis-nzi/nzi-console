@@ -76,7 +76,7 @@ describe("what a reminder says", () => {
       const { body } = message(kind, kind === "overdue" ? "2026-09-01" : "2026-09-20");
       assert.match(body, /your consultant/);
       assert.match(body, /your client portal/);
-      assert.ok(!/NZI/.test(body), "no hard-coded organisation name");
+      assert.ok(!/\bNZI\b/.test(body), "no hard-coded organisation name");
     }
   });
 

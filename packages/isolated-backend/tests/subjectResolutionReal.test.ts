@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { plaintextIn } from "./support/payloadScan";
 import { resolveSubjectData } from "../src/subjectResolution";
 import { sealRowPii, type SealingKeys } from "../src/piiSealing";
 import { isAttributable, PII_COLUMNS } from "../src/piiInventory";
@@ -257,11 +258,9 @@ describe("resolving everything that belongs to one person (NZC-128)", { skip: DA
     const { rows } = await db.query<{ after_json: Record<string, unknown> }>(
       `SELECT after_json FROM nzi_console.audit_events WHERE action='subject.resolve' AND correlation_id=$1`, [ref]);
     assert.equal(rows.length, 1);
-    const serialised = JSON.stringify(rows[0]!.after_json);
     assert.ok(Number(rows[0]!.after_json.rows) > 0, "it counts what it reached");
-    for (const value of ["Ada Lovelace", "ada@example.test", "900123"]) {
-      assert.ok(!serialised.includes(value), `the audit of a subject access must not restate ${value}`);
-    }
+    // Structural: "900123" is all hex-digits, so it can occur inside an id or a microsecond timestamp by chance.
+    assert.deepEqual(plaintextIn(rows[0]!.after_json, ["Ada Lovelace", "ada@example.test", "900123"]), [], "the audit of a subject access must not restate a value");
   });
 
   it("says nothing about other organisations, because it cannot", async () => {

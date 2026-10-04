@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { commandGrantForRole, type CommandContext, type CommandInputMap, type OrganisationProfileFields, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { plaintextIn } from "./support/payloadScan";
 import { CommandValidationError, createClient } from "../src/postgresCommands";
 import { withTenantRead, withTenantWrite } from "../src/postgres";
 import {
@@ -130,9 +131,10 @@ describe("Organisation settings, against a real database", { skip: TEST_DATABASE
       assert.deepEqual([shown.sortCode, shown.accountNumber], ["12-34-56", "87654321"]);
       const audit = await auditOf(done.auditEventId);
       assert.deepEqual([audit.action, audit.reason, audit.after_json.changed], ["organisation.bank.set", "Opened the business account", ["accountName", "sortCode", "accountNumber"]]);
-      const stored = JSON.stringify([audit, await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE outcome_json->>'auditEventId' = $1`, [done.auditEventId]),
-        await q(`SELECT payload_json FROM nzi_console.transactional_outbox WHERE correlation_id = $1`, [done.correlationId])]);
-      assert.ok(!/87654321|123456|4321|Example Organisation Ltd/.test(stored), "a bank value reached a payload");
+      const stored = [audit, await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE outcome_json->>'auditEventId' = $1`, [done.auditEventId]),
+        await q(`SELECT payload_json FROM nzi_console.transactional_outbox WHERE correlation_id = $1`, [done.correlationId])];
+      // Structural: the rows carry UUIDs and microsecond timestamps, whose digits can hold "4321" or "123456" by chance.
+      assert.deepEqual(plaintextIn(stored, ["87654321", "123456", "4321", "Example Organisation Ltd"]), [], "a bank value reached a payload");
     });
 
     it("are admin.settings only — Finance and Consultant are refused the read and the write", async () => {

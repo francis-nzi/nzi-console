@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { commandGrantForRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { plaintextIn } from "./support/payloadScan";
 import { syntheticRows } from "./support/v7SyntheticExtract";
 import { sealMembershipRow } from "../src/piiWriteThrough";
 import { resolveSealingKeys } from "../src/piiSealingKeys";
@@ -72,7 +73,8 @@ describe("load:v7-staff, against a real database", { skip: TEST_DATABASE_URL ? f
 
   it("the report and every audit payload hold no name and no address", async () => {
     const outcome = await run(users(), { commit: false });
-    assert.ok(!PERSONAL.test(JSON.stringify(reportOf(outcome))), JSON.stringify(reportOf(outcome)));
+    // Structural: the report carries 10-hex refs, which can hold "ada" by chance; ids are skipped, every other value is searched.
+    assert.deepEqual(plaintextIn(reportOf(outcome), [PERSONAL]), [], "the report holds no name and no address");
     assert.equal(outcome.namesForOperator.length, 3, "the names are kept apart, for the operator's terminal");
     const events = await q(`SELECT action, before_json, after_json FROM nzi_console.audit_events WHERE action IN ('staff.imported', 'staff.roster.imported')`);
     assert.ok(events.length >= 3);
