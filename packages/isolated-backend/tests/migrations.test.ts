@@ -20,6 +20,7 @@ const clientLogoFormats = readFileSync(resolve(here, "../migrations/0153_client_
 const clientGeolocation = readFileSync(resolve(here, "../migrations/0154_client_geolocation.sql"), "utf8");
 const timeEntries = readFileSync(resolve(here, "../migrations/0155_time_entries.sql"), "utf8");
 const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
+const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
@@ -176,6 +177,13 @@ describe("isolated Postgres migrations", () => {
   it("versions the matrix to 9 with time.log for every role and time.view for admin, consultant and reviewer (0156)", () => {
     for (const row of ["(9, 'admin', 'time.log', 'all')", "(9, 'consultant', 'time.log', 'own_clients')", "(9, 'viewer', 'time.log', 'all')", "(9, 'consultant', 'time.view', 'own_clients')"]) assert.ok(matrixV9.includes(row), row);
     assert.ok(!matrixV9.includes("(9, 'viewer', 'time.view'") && !matrixV9.includes("(9, 'finance', 'time.view'"));
+  });
+  it("versions the matrix to 10, adding time.view for Finance and changing nothing else (0157)", () => {
+    const rows = (sql: string, version: number) => new Set([...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`));
+    const v9 = rows(matrixV9, 9), v10 = rows(matrixV10, 10);
+    assert.deepEqual([...v10].filter((row) => !v9.has(row)), ["finance time.view all"], "the one added grant");
+    assert.deepEqual([...v9].filter((row) => !v10.has(row)), [], "nothing removed or narrowed");
+    assert.doesNotMatch(matrixV10, /GRANT|ALTER TABLE|UPDATE nzi_console/, "no grants or schema change — the 0155 columns are already updatable by the app role");
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

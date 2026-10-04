@@ -7,8 +7,8 @@ import { TimeBoard } from "./TimeBoard";
 export const dynamic = "force-dynamic";
 
 /**
- * Time (TIME module, PR A; the approved mockup is the visual spec). Log time and My time are here; Oversight, Payroll
- * and Utilisation arrive with PR B and say so. `?job=` pre-fills the job — the per-job "+ Log time" button lands here.
+ * Time (TIME module; the approved mockup is the visual spec). Log time and My time (PR A); Oversight, Payroll and
+ * Utilisation (PR B), each a read for the chosen period. `?job=` pre-fills the job — the per-job "+ Log time" lands here.
  * "Today" is the London day, resolved on the server, so every period is judged against one date.
  */
 export default async function TimePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

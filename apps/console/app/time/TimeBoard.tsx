@@ -5,20 +5,21 @@ import { patchBrowserCommand, postBrowserCommand, type BrowserCommandResult } fr
 import { minutesFromHours, TIME_ENTRY_MAX_MINUTES, TIME_HOURS_STEP, type LoggableJob, type TimeActivityOption, type TimeEntryReadModel } from "@nzi/contracts";
 import { SmartSearch, type SmartSearchOption } from "@nzi/ui";
 import { hoursLabel, monthOf, periodFor, periodLabel, shortDay, weekOf, type Period, type PeriodKey } from "./timePeriods";
+import { OversightTab, PayrollTab, UtilisationTab } from "./TimeReports";
 
 /**
  * The Time screen (TIME PR A, to the approved mockup): the period filter and "+ Log time" up top; tabs for Log time,
- * Oversight and Payroll. Log time is the Add entry form (date, job, hours, activity, billable, note) over My time —
+ * Oversight, Payroll and Utilisation. Log time is the Add entry form (date, job, hours, activity, billable, note) over My time —
  * one's own entries, newest first, with inline edit and void, and the week / month totals and billable ratio.
- * Oversight and Payroll (and Utilisation) are PR B: their tabs say so rather than showing invented figures.
+ * Oversight, Payroll and Utilisation (PR B) are reads over the same entries for the chosen period (TimeReports).
  *
  * Hours only, never rates: a person logging time sees hours, and money stays finance-gated (T-Q3).
  */
-type Tab = "log" | "oversight" | "payroll";
+type Tab = "log" | "oversight" | "payroll" | "utilisation";
 type Load<T> = { state: "loading" } | { state: "failed"; message: string } | { state: "ready"; data: T };
 type Draft = { workDate: string; jobId: string; hours: string; activityValueId: string; billable: boolean; billableTouched: boolean; note: string };
 
-const PERIODS: Array<[PeriodKey, string]> = [["week", "This week"], ["month", "This month"], ["last-month", "Last month"], ["custom", "Custom"]];
+const PERIODS: Array<[PeriodKey, string]> = [["week", "This week"], ["month", "This month"], ["last-month", "Last month"], ["quarter", "This quarter"], ["custom", "Custom"]];
 
 async function readJson<T>(url: string, pick: (body: Record<string, unknown>) => T): Promise<Load<T>> {
   try {
@@ -90,14 +91,13 @@ export function TimeBoard({ today, initialJobId, writeEnabled }: { today: string
     </div>
 
     <div className="nz-tabs" role="tablist" aria-label="Time">
-      {([["log", "Log time"], ["oversight", "Oversight"], ["payroll", "Payroll"]] as Array<[Tab, string]>).map(([key, label]) =>
+      {([["log", "Log time"], ["oversight", "Oversight"], ["payroll", "Payroll"], ["utilisation", "Utilisation"]] as Array<[Tab, string]>).map(([key, label]) =>
         <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "on" : undefined} onClick={() => setTab(key)}>{label}</button>)}
     </div>
 
-    {tab === "oversight" ? <Arriving title="Oversight arrives with the next Time release"
-      detail="Jobs over their budgeted hours, and jobs whose cost runs over the fee, read from these entries. Nothing is shown here until those reads exist — no illustrative figures." /> : null}
-    {tab === "payroll" ? <Arriving title="Payroll arrives with the next Time release"
-      detail="Each person's hours (and, for finance, cost) over a chosen period, read from these entries. Until then, your own hours are under Log time." /> : null}
+    {tab === "oversight" ? <OversightTab period={period} /> : null}
+    {tab === "payroll" ? <PayrollTab period={period} /> : null}
+    {tab === "utilisation" ? <UtilisationTab period={period} writeEnabled={writeEnabled} /> : null}
 
     {tab === "log" ? <>
       {notice ? <div className="nz-banner ok" role="status"><div>{notice}</div></div> : null}
@@ -126,10 +126,6 @@ export function TimeBoard({ today, initialJobId, writeEnabled }: { today: string
 
 function Metric({ label, value, foot }: { label: string; value: string; foot?: string }) {
   return <div className="nz-metric"><div className="l">{label}</div><div className="v">{value}</div>{foot ? <div className="nz-time-foot">{foot}</div> : null}</div>;
-}
-
-function Arriving({ title, detail }: { title: string; detail: string }) {
-  return <section className="nz-panel nz-time-arriving" role="tabpanel"><h2>{title}</h2><p>{detail}</p></section>;
 }
 
 function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled, onSaved }: {

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { commandDefinitions, commandGrantForRole, hoursFromMinutes, isTimeEntryMinutes, minutesFromHours, todayInLondon, utcDay, validateCommand, type CommandContext } from "../src/index";
+import {
+  budgetStatus, budgetUsedPct, capacityMinutes, commandDefinitions, commandGrantForRole, hoursFromMinutes, isTimeEntryMinutes, isTimeQuantity, minutesFromHours,
+  todayInLondon, utcDay, utilisationPct, validateCommand, weekdaysBetween, type CommandContext,
+} from "../src/index";
 
 const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1", grant: commandGrantForRole("viewer", "org-nzi", "user-1") };
 const fields = (issues: Array<{ field: string }>) => issues.map((issue) => issue.field).sort();
@@ -43,5 +46,28 @@ describe("time contracts", () => {
     assert.deepEqual(validateCommand("reference.value.create", { categoryKey: "activity_types", label: "Training", billableDefault: false }, context), []);
     assert.deepEqual(fields(validateCommand("reference.value.create", { categoryKey: "industries", label: "Mining", billableDefault: true }, context)), ["billableDefault"]);
     assert.deepEqual(validateCommand("reference.value.update", { categoryKey: "activity_types", valueId: "v", label: "Travel", sortOrder: 50, expectedVersion: 1 }, context), []);
+  });
+
+  // ── Time PR B ──────────────────────────────────────────────────────────────────────────────────────────────────
+  it("reads budget used against budgeted hours — null, never 0 or ∞, with no budget — and its RAG status", () => {
+    assert.deepEqual([budgetUsedPct(570, 600), budgetUsedPct(180, 120), budgetUsedPct(30, null), budgetUsedPct(30, 0)], [95, 150, null, null]);
+    assert.deepEqual([101, 100, 90, 89, null].map((pct) => budgetStatus(pct)), ["over", "approaching", "approaching", "on-track", "no-budget"]);
+  });
+
+  it("reads utilisation against capacity over the period's weekdays (⚑8: capacity only)", () => {
+    assert.deepEqual([weekdaysBetween("2026-09-01", "2026-09-30"), weekdaysBetween("2026-10-03", "2026-10-04"), weekdaysBetween("2026-10-05", "2026-10-04")], [22, 0, 0]);
+    assert.equal(capacityMinutes(37.5, 22), 9900);
+    assert.deepEqual([utilisationPct(360, 9900), utilisationPct(60, 0)], [4, null]);
+  });
+
+  it("validates capacity, budget and fee to the columns' bounds, two decimal places, null clearing a budget or fee", () => {
+    assert.deepEqual([isTimeQuantity(37.5, 168), isTimeQuantity(0.01, 168), isTimeQuantity(37.555, 168), isTimeQuantity(-1, 168), isTimeQuantity(169, 168)], [true, true, false, false, false]);
+    assert.deepEqual(validateCommand("staff.capacity.set", { userId: "u", expectedVersion: 1, weeklyCapacityHours: 30 }, context), []);
+    assert.deepEqual(fields(validateCommand("staff.capacity.set", { userId: "u", expectedVersion: 1, weeklyCapacityHours: 0 }, context)), ["weeklyCapacityHours"]);
+    assert.deepEqual(validateCommand("job.budget.set", { jobId: "j", expectedVersion: 1, budgetedHours: null }, context), []);
+    assert.deepEqual(fields(validateCommand("job.budget.set", { jobId: "j", expectedVersion: 1, budgetedHours: -2 }, context)), ["budgetedHours"]);
+    assert.deepEqual(validateCommand("job.fee.set", { jobId: "j", expectedVersion: 1, feeAmount: 1234.56 }, context), []);
+    assert.deepEqual(fields(validateCommand("job.fee.set", { jobId: "j", expectedVersion: 1, feeAmount: 1.005 }, context)), ["feeAmount"]);
+    assert.deepEqual(["staff.capacity.set", "job.budget.set", "job.fee.set"].map((key) => commandDefinitions[key as keyof typeof commandDefinitions].permission), ["admin.users", "job.manage", "finance.manage"]);
   });
 });

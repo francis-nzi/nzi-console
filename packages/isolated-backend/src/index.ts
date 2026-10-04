@@ -44,6 +44,7 @@ export * from "./listReads";
 export * from "./adminOverview";
 export * from "./referenceEngine";
 export * from "./timeEntries";
+export * from "./timeReads";
 export * from "./jobTypes";
 export * from "./milestoneTemplates";
 export * from "./jobFileTypes";

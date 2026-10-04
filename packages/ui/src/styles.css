@@ -1991,3 +1991,41 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-job-time-pct{font-size:12px;color:var(--t2);font-variant-numeric:tabular-nums}
 .nz-job-time-pct.crit{color:#B23A2B;font-weight:600}
 @media (max-width:760px){.nz-time-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-time .nz-metrics{grid-template-columns:repeat(2,1fr)}}
+/* ── Time PR B: Oversight, Payroll, Utilisation, and money on Job → Time ─────────────────────────────────────── */
+.nz-time-note-strip{font-size:12.5px;color:var(--t2);margin:0 0 12px}
+.nz-time-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.nz-time-toolbar .nz-inp{flex:1;min-width:200px}
+.nz-time-toolbar .nz-sel{width:auto;min-width:150px}
+.nz-time-rowtools{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.nz-time-h2{font-size:14.5px;font-weight:600;margin:0;padding:13px 16px;border-bottom:1px solid var(--line2)}
+.nz-time-hours-cell{min-width:200px}
+.nz-time-hrs{font-size:12px;margin-bottom:5px}
+.nz-time-rowlog{margin-top:6px}
+.nz-time-inline{margin-left:8px}
+.nz-time-status{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;margin:0 4px 2px 0}
+.nz-time-status.crit{background:var(--danger-bg);color:#B23A2B}
+.nz-time-status.warn{background:#FFF4DC;color:#8A6410}
+.nz-time-status.good{background:var(--mint);color:var(--pine)}
+.nz-time-status.none{background:var(--paper);color:var(--t2)}
+.nz-time-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.nz-time-dot.crit{background:var(--danger)}
+.nz-time-dot.warn{background:#C98A0B}
+.nz-time-dot.good{background:var(--pine)}
+.nz-time-neg{color:#B23A2B;font-weight:600;font-size:12px}
+.nz-time-pos{color:var(--pine);font-size:12px}
+.nz-time-bar{display:flex;height:8px;border-radius:999px;background:#E6EAE6;overflow:hidden;min-width:100px}
+.nz-time-bar>i{display:block;height:100%;background:var(--pine)}
+.nz-time-bar>i.b2{opacity:.35}
+.nz-time-legend{display:flex;gap:16px;font-size:12px;color:var(--t2);padding:10px 16px}
+.nz-time-legend span{display:inline-flex;align-items:center;gap:6px}
+.nz-time-sw{display:inline-block;width:18px;height:8px;border-radius:999px;background:var(--pine)}
+.nz-time-sw.b2{opacity:.35}
+.nz-tbl tfoot td{font-weight:700;background:var(--paper)}
+.nz-time-capacity-edit{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nz-job-time-money{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px;padding:12px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--paper)}
+.nz-job-time-money>div{display:grid;gap:3px;font-size:13px;align-content:start}
+.nz-job-time-money .nz-time-inline{justify-self:start;margin:4px 0 0}
+.nz-job-time-money>p,.nz-job-time-money-edit{grid-column:1/-1;margin:0}
+.nz-job-time-meter.good>i{background:var(--pine)}
+.nz-job-time-pct.warn{color:#8A6410}
+@media (max-width:760px){.nz-job-time-money{grid-template-columns:repeat(2,minmax(0,1fr))}}

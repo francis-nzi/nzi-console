@@ -99,7 +99,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 9;
+export const PERMISSION_MATRIX_VERSION = 10;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -127,7 +127,8 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
     "time.view": "own_clients",
   },
   reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view"),
-  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log"), "audit.view": "own_clients" },
+  // v10 (Time PR B): Finance reads everyone's hours — payroll and job cost need the whole team's time.
+  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log", "time.view"), "audit.view": "own_clients" },
   viewer: all("client.view", "report.view", "knowledge.capture", "time.log"),
 };
 

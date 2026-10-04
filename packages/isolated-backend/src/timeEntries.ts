@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  TIME_ACTIVITY_CATEGORY, type CommandContext, type CommandInputMap, type JobTimeSummary, type LoggableJob,
+  grantsAllow, TIME_ACTIVITY_CATEGORY, type CommandContext, type CommandInputMap, type JobTimeSummary, type LoggableJob,
   type TimeActivityOption, type TimeEntryReadModel,
 } from "@nzi/contracts";
 import { assertCapabilityOnClient, capabilityScope, type CapabilityHolder } from "./access";
@@ -8,6 +8,9 @@ import { AuthorizationError } from "./auth";
 import { VersionConflictError } from "./errors";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import type { PoolLike, Queryable } from "./postgres";
+import { moneyFrom } from "./timeReads";
+
+type MoneyRow = Parameters<typeof moneyFrom>[0];
 
 /**
  * Time (TIME module, PR A; rulings T-Q1…T-Q7, ⚑1…⚑9 + Addendum). Each person logs **their own** time (T-Q3) against a
@@ -245,8 +248,23 @@ export async function readJobTimeSummary(db: Queryable, holder: Holder, jobId: s
     catch (error) { if (!(error instanceof AuthorizationError) || error.permission === "tenant") throw error; }
   }
   if (!othersVisible) await assertCapabilityOnClient(db, holder, "time.log", { jobId });
-  const { rows: [job] } = await db.query<{ budgeted_hours: string | null }>(
-    `SELECT budgeted_hours FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [holder.organisationId, jobId]);
+  const { rows: [job] } = await db.query<MoneyRow & { budgeted_hours: string | null; fee_amount: string | null; version: number; client_owner: string | null }>(
+    `SELECT j.budgeted_hours::text AS budgeted_hours, j.fee_amount::text AS fee_amount, j.version, c.owner_user_id AS client_owner,
+            ${jobMoneySql}
+       FROM nzi_console.jobs j
+       JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
+       LEFT JOIN nzi_console.time_entries t ON (t.organisation_id, t.job_id) = (j.organisation_id, j.job_id) AND t.active
+      WHERE j.organisation_id = $1 AND j.job_id = $2
+      GROUP BY j.budgeted_hours, j.fee_amount, j.version, c.owner_user_id`, [holder.organisationId, jobId]);
+  const owned = job?.client_owner === holder.userId;
+  // Time PR B: the job's money, for finance.view on it — and only when everyone's time is visible, so the cost is the
+  // job's labour cost and not the reader's share of it. Never in a payload; a read under finance.view alone.
+  let money: JobTimeSummary["money"] = null;
+  if (job && othersVisible && grantsAllow(holder.capabilities, "finance.view", owned)) {
+    const base = moneyFrom(job);
+    const fee = job.fee_amount === null ? null : Number(job.fee_amount);
+    money = { ...base, fee, margin: fee !== null && base.cost !== null ? Math.round((fee - base.cost) * 100) / 100 : null };
+  }
   const { rows } = await db.query<{ user_id: string; name: string; minutes: string; billable_minutes: string; entries: string }>(
     `SELECT t.user_id, coalesce(nullif(btrim(m.display_name), ''), t.user_id) AS name, sum(t.minutes)::text AS minutes,
             coalesce(sum(t.minutes) FILTER (WHERE t.billable), 0)::text AS billable_minutes, count(*)::text AS entries
@@ -257,9 +275,82 @@ export async function readJobTimeSummary(db: Queryable, holder: Holder, jobId: s
   const people = rows.map((row) => ({ userId: row.user_id, name: row.name, minutes: Number(row.minutes), billableMinutes: Number(row.billable_minutes), entries: Number(row.entries) }));
   return {
     jobId,
+    jobVersion: job?.version ?? 0,
     budgetedMinutes: job?.budgeted_hours === null || job?.budgeted_hours === undefined ? null : Math.round(Number(job.budgeted_hours) * 60),
     totals: { minutes: people.reduce((sum, p) => sum + p.minutes, 0), billableMinutes: people.reduce((sum, p) => sum + p.billableMinutes, 0) },
     people,
     othersVisible,
+    money,
+    editable: { budget: grantsAllow(holder.capabilities, "job.manage", owned), fee: grantsAllow(holder.capabilities, "finance.manage", owned) },
   };
+}
+
+const jobMoneySql = `
+  count(DISTINCT t.rate_currency) FILTER (WHERE t.rate_id IS NOT NULL)::text AS currencies,
+  min(t.rate_currency) FILTER (WHERE t.rate_id IS NOT NULL) AS currency,
+  round(coalesce(sum(t.minutes * t.cost_rate), 0) / 60.0, 2)::text AS cost,
+  round(coalesce(sum(t.minutes * t.charge_rate), 0) / 60.0, 2)::text AS charge,
+  coalesce(sum(t.minutes) FILTER (WHERE t.entry_id IS NOT NULL AND t.rate_id IS NULL), 0)::text AS unrated`;
+
+// ── Time PR B: the figures the reads compare against ───────────────────────────────────────────────────────────
+
+/** T-Q4: a person's weekly capacity, which utilisation is read against. admin.users; capacity is hours, not money. */
+export function setStaffCapacity(pool: PoolLike, input: CommandInputMap["staff.capacity.set"], context: CommandContext): Promise<StoredOutcome<{ userId: string; version: number; weeklyCapacityHours: number }>> {
+  return runPostgresCommand(pool, "staff.capacity.set", input, context, async (db) => {
+    const { rows: [held] } = await db.query<{ version: number; weekly_capacity_hours: string }>(
+      `SELECT version, weekly_capacity_hours::text AS weekly_capacity_hours FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2 FOR UPDATE`,
+      [context.organisationId, input.userId]);
+    if (!held) throw new CommandValidationError([{ field: "userId", code: "NOT_FOUND", message: "That person is not in this organisation." }]);
+    if (held.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, held.version);
+    const { rows: [saved] } = await db.query<{ version: number }>(
+      `UPDATE nzi_console.memberships SET weekly_capacity_hours = $3, version = version + 1, updated_at = now(), updated_by = $4
+        WHERE organisation_id = $1 AND user_id = $2 RETURNING version`, [context.organisationId, input.userId, input.weeklyCapacityHours, context.actorId]);
+    return {
+      data: { userId: input.userId, version: saved!.version, weeklyCapacityHours: input.weeklyCapacityHours },
+      entityType: "membership", entityId: input.userId, topic: "staff.capacity.set",
+      before: { weeklyCapacityHours: Number(held.weekly_capacity_hours) },
+    };
+  });
+}
+
+async function lockJob(db: Queryable, context: CommandContext, jobId: string, expectedVersion: number) {
+  const { rows: [job] } = await db.query<{ version: number; budgeted_hours: string | null; fee_amount: string | null }>(
+    `SELECT version, budgeted_hours::text AS budgeted_hours, fee_amount::text AS fee_amount FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 FOR UPDATE`,
+    [context.organisationId, jobId]);
+  if (!job) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "That job is not in this organisation." }]);
+  if (job.version !== expectedVersion) throw new VersionConflictError(expectedVersion, job.version);
+  return job;
+}
+
+/** ⚑5: the job's budgeted hours (job.manage). Hours, not money, so the figure is in the payload. */
+export function setJobBudget(pool: PoolLike, input: CommandInputMap["job.budget.set"], context: CommandContext): Promise<StoredOutcome<{ jobId: string; version: number; budgetedHours: number | null }>> {
+  return runPostgresCommand(pool, "job.budget.set", input, context, async (db) => {
+    const held = await lockJob(db, context, input.jobId, input.expectedVersion);
+    const { rows: [saved] } = await db.query<{ version: number }>(
+      `UPDATE nzi_console.jobs SET budgeted_hours = $3, version = version + 1, updated_at = now() WHERE organisation_id = $1 AND job_id = $2 RETURNING version`,
+      [context.organisationId, input.jobId, input.budgetedHours]);
+    return {
+      data: { jobId: input.jobId, version: saved!.version, budgetedHours: input.budgetedHours },
+      entityType: "job", entityId: input.jobId, topic: "job.budget.set",
+      before: { budgetedHours: held.budgeted_hours === null ? null : Number(held.budgeted_hours) },
+    };
+  });
+}
+
+/**
+ * ⚑5/⚑6: the job's fee, ex VAT (finance.manage). **Money — never in a payload (NZC-120)**: the audit, idempotency
+ * record and outbox say only whether a fee is recorded, before and after; the figure lives in the column alone.
+ */
+export function setJobFee(pool: PoolLike, input: CommandInputMap["job.fee.set"], context: CommandContext): Promise<StoredOutcome<{ jobId: string; version: number; feeRecorded: boolean }>> {
+  return runPostgresCommand(pool, "job.fee.set", input, context, async (db) => {
+    const held = await lockJob(db, context, input.jobId, input.expectedVersion);
+    const { rows: [saved] } = await db.query<{ version: number }>(
+      `UPDATE nzi_console.jobs SET fee_amount = $3, version = version + 1, updated_at = now() WHERE organisation_id = $1 AND job_id = $2 RETURNING version`,
+      [context.organisationId, input.jobId, input.feeAmount]);
+    return {
+      data: { jobId: input.jobId, version: saved!.version, feeRecorded: input.feeAmount !== null },
+      entityType: "job", entityId: input.jobId, topic: "job.fee.set",
+      before: { feeRecorded: held.fee_amount !== null },
+    };
+  });
 }
