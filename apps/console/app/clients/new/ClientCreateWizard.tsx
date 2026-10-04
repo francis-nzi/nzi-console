@@ -53,6 +53,20 @@ export function ClientCreateWizard() {
         ? { ...current, owner: mine.label, ownerUserId: mine.id }
         : current);
   }, [lookups.team, me, form.owner, form.ownerUserId]);
+
+  /**
+   * CLIENT-01 — the portfolio defaults to the organisation's value labelled "NZI", when it has one (ruled (b): added by
+   * hand in Admin → Lookups for NZI's organisation only, never seeded elsewhere). Absent, the field stays empty.
+   * Like the owner, it only ever fills a blank.
+   */
+  useEffect(() => {
+    if (lookups.portfolios.state !== "ready") return;
+    if ((form.portfolio ?? "").trim() !== "" || form.portfolioValueId) return;
+    const nzi = lookups.portfolios.options.find((option) => option.label.trim().toUpperCase() === "NZI");
+    if (!nzi) return;
+    setForm((current) =>
+      (current.portfolio ?? "").trim() === "" && !current.portfolioValueId ? { ...current, portfolio: nzi.label, portfolioValueId: nzi.id } : current);
+  }, [lookups.portfolios, form.portfolio, form.portfolioValueId]);
   function change(patch: Partial<ClientFormState>) {
     setForm((current) => ({ ...current, ...patch }));
     setErrors((current) => {

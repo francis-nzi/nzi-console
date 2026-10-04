@@ -987,6 +987,11 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 /* CLIENT-04 — a site's location, said quietly under its address. */
 .nz-site-loc{color:var(--t3)}
 .nz-site-loc.ok{color:var(--pine)}
+/* CLIENT-06 — adding a missing lookup value in place, under the field. */
+.nz-lookup-add{margin-top:6px;font-size:12px}
+.nz-lookup-add-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.nz-lookup-add-row .nz-inp{flex:1;min-width:160px}
+.nz-lookup-add-row .nz-hint{flex-basis:100%}
 .nz-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#095C35;background:#E6F4EC;border:1px solid #BCE3CE;border-radius:5px;padding:1px 6px}
 .nz-tag.reg{color:#1F6FEB;background:#EAF1FE;border-color:#C7DBFB}
 .nz-tag.vac{color:var(--t2);background:var(--paper);border-color:var(--line)}

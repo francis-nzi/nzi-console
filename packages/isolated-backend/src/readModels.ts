@@ -78,6 +78,7 @@ type ClientRow = {
   completeness_percent: number; next_report_due_label: string; contact_name: string; contact_role: string;
   contact_email: string; open_jobs: string; owner_user_id?: string | null; logo_asset_id?: string | null; located?: boolean;
   sector_value_id?: string | null; referral_value_id?: string | null; client_manager_user_id?: string | null;
+  portfolio_value_id?: string | null; portfolio_label?: string | null;
   primary_contact?: { name: string; role: string; email: string } | null; jobs: Array<{ number: string; year: number; status: string }> | null;
   sites: ClientScreenReadModel["sites"] | null;
   portfolio: string | null; client_manager: string | null; website: string | null; industry_sic: string | null;
@@ -101,9 +102,11 @@ type ClientRow = {
 };
 const numeric = (value: string | null) => value === null ? null : Number(value);
 const clientProfile = (row: ClientRow): ClientProfileFields => ({
-  portfolio: row.portfolio, clientManager: clientReferences(row).clientManager.label, website: row.website, industrySic: row.industry_sic,
+  // CLIENT-01 — the portfolio's curated label when it is linked, else the text it was imported with.
+  portfolio: row.portfolio_label ?? row.portfolio, clientManager: clientReferences(row).clientManager.label, website: row.website, industrySic: row.industry_sic,
   // The lookup links themselves (NZC-090), so an editor that sends the whole record sends them back unchanged.
   sectorValueId: row.sector_value_id ?? null, referralValueId: row.referral_value_id ?? null, clientManagerUserId: row.client_manager_user_id ?? null,
+  portfolioValueId: row.portfolio_value_id ?? null,
   companyRegistration: row.company_registration, headquarters: row.headquarters,
   financialYearEndMonth: row.financial_year_end_month, dataReportingFrequency: row.data_reporting_frequency,
   currency: row.currency, logoUrl: row.logo_url, companyDescription: row.company_description, referral: clientReferences(row).referral.label,
@@ -161,7 +164,9 @@ export async function listAllClients(db: Queryable, clientId?: string): Promise<
       c.billing_city, c.billing_region, c.billing_postcode, c.billing_country,
       c.parent_company, c.group_structure, c.reporting_frameworks, c.certifications, c.primary_scope3_categories,
       c.owner_user_id, c.logo_asset_id, (c.latitude IS NOT NULL) AS located,
-      c.sector_value_id, c.referral_value_id, c.client_manager_user_id,
+      c.sector_value_id, c.referral_value_id, c.client_manager_user_id, c.portfolio_value_id,
+      (SELECT rv.label FROM nzi_console.reference_values rv
+        WHERE (rv.organisation_id, rv.value_id) = (c.organisation_id, c.portfolio_value_id)) AS portfolio_label,
       /* NZC-090 — the curated label for each reference, or null when the client's value predates
          the lookups, was archived out of them, or never matched. The fallback to the stored text
          happens where these are mapped, so every reader gets it. */

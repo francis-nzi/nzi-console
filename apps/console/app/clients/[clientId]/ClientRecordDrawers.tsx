@@ -6,11 +6,12 @@ import Link from "next/link";
 import { GatedButton } from "@nzi/ui";
 import { patchBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  clientBaselineFields, clientCertifications, clientGroupStructures, clientReportingFrameworks, scope3CategoryCodes,
+  clientBaselineFields, clientCertifications, isIsoCountryCode, clientGroupStructures, clientReportingFrameworks, scope3CategoryCodes,
   type ClientGroupStructure, type ClientProfileFields,
 } from "@nzi/contracts";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import { ClientFactorsManager } from "../ClientFactorsManager";
+import { CountrySelect } from "../../lib/CountrySelect";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -60,6 +61,18 @@ function DrawerFrame({ kicker, title, onClose, children, footer }: { kicker: str
   </>;
 }
 
+/**
+ * A country, chosen as you type and stored as its ISO 3166-1 code (CLIENT-03). A value held from before (v7 kept free
+ * text) is said plainly and kept as it is until a country is chosen.
+ */
+function CountryField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const legacy = value && !isIsoCountryCode(value) ? value : null;
+  return <>
+    <CountrySelect label={label} value={legacy ? null : value || null} onChange={(code) => onChange(code ?? "")} />
+    {legacy ? <span className="nz-hint">Held as “{legacy}” — choose the country from the list to replace it.</span> : null}
+  </>;
+}
+
 const Text = ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) =>
   <label className="nz-fl"><span>{label}</span><input className="nz-inp" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 
@@ -71,6 +84,7 @@ export function AddressForm({ client, access, onClose }: { client: ClientScreenR
     registeredPostcode: profile.registeredPostcode ?? "", registeredCountry: profile.registeredCountry ?? "",
     billingSameAsRegistered: profile.billingSameAsRegistered ?? true, billingCompany: profile.billingCompany ?? "",
     billingAddressLine1: profile.billingAddressLine1 ?? "", billingCity: profile.billingCity ?? "", billingPostcode: profile.billingPostcode ?? "",
+    billingCountry: profile.billingCountry ?? "",
   });
   const { pending, error, save } = useClientUpdate(client, onClose);
   const set = (patch: Partial<typeof draft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -85,7 +99,7 @@ export function AddressForm({ client, access, onClose }: { client: ClientScreenR
     </div>
     <div className="nz-two">
       <Text label="Region" value={draft.registeredRegion} onChange={(value) => set({ registeredRegion: value })} />
-      <Text label="Country" value={draft.registeredCountry} onChange={(value) => set({ registeredCountry: value })} />
+      <CountryField label="Country" value={draft.registeredCountry} onChange={(value) => set({ registeredCountry: value })} />
     </div>
     <label className="nz-check"><input type="checkbox" checked={draft.billingSameAsRegistered} onChange={(event) => set({ billingSameAsRegistered: event.target.checked })} /> Billing address same as registered</label>
     {draft.billingSameAsRegistered ? null : <>
@@ -95,6 +109,7 @@ export function AddressForm({ client, access, onClose }: { client: ClientScreenR
         <Text label="Billing city" value={draft.billingCity} onChange={(value) => set({ billingCity: value })} />
         <Text label="Billing postcode" value={draft.billingPostcode} onChange={(value) => set({ billingPostcode: value })} />
       </div>
+      <CountryField label="Billing country" value={draft.billingCountry} onChange={(value) => set({ billingCountry: value })} />
     </>}
     {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
   </DrawerFrame>;

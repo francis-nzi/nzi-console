@@ -2,12 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GatedButton } from "@nzi/ui";
+import { GatedButton, SmartSearch } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { CLIENT_LOGO_MAX_BYTES, clientLogoContentTypes, clientReportingFrequencies, reportingPeriodForYear, type ClientLogoContentType, type ClientReportingFrequency } from "@nzi/contracts";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
+import { useReferenceOptions } from "../useReferenceOptions";
+import { LookupAdd } from "../LookupAdd";
 
 /**
  * The client's identity & profile (client workspace v9): the logo (with monogram
@@ -70,6 +72,12 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
   const [name, setName] = useState(client.name);
   const [status, setStatus] = useState(client.status);
   const [sector, setSector] = useState(client.sector);
+  // CLIENT-06 — the industry is chosen from the lookup (or added in place), so the link and its label always agree.
+  const [sectorValueId, setSectorValueId] = useState<string | null>(profile.sectorValueId ?? null);
+  const { industries, append } = useReferenceOptions();
+  const chosenIndustry = industries.options.find((option) => option.id === sectorValueId) ?? (sectorValueId ? undefined : industries.options.find((option) => option.label === sector));
+  // A held industry the list does not have (v7 text, or a value since archived) is said, and kept until one is chosen.
+  const heldIndustry = !chosenIndustry && industries.state === "ready" && sector.trim() ? sector : null;
   const [sic, setSic] = useState(profile.industrySic ?? "");
   const [frequency, setFrequency] = useState<ClientReportingFrequency>(profile.dataReportingFrequency ?? "annual");
   const [currency, setCurrency] = useState(profile.currency ?? "GBP");
@@ -84,7 +92,10 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
   // F1 remedy (1), mirrored from client.update: a field being edited must be valid; a held value left alone is a
   // warning, never a reason to refuse saving something else.
   const nameChanged = name.trim() !== (client.name ?? "").trim();
-  const sectorChanged = sector.trim() !== (client.sector ?? "").trim();
+  // The industry is a lookup (CLIENT-06), so "changed" is the selection, not text: it moves only when a value is
+  // chosen, cleared or added. Left alone, a held industry — linked, held as text the list lacks, or empty — is
+  // unchanged, and is shown as held (heldIndustry) or noted as a gap (heldGaps) rather than refused.
+  const sectorChanged = sectorValueId !== (profile.sectorValueId ?? null);
   const currencyChanged = currency.trim() !== (profile.currency ?? "GBP");
   const fyeChanged = fye !== (profile.financialYearEndMonth ?? null);
   const problem = nameChanged && !name.trim() ? "Give the client's name." : sectorChanged && !sector.trim() ? "Give the client's industry."
@@ -100,9 +111,8 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
     const input = {
       expectedVersion: client.version, name: name.trim(), status, sector: sector.trim(), location: client.location, owner: client.owner,
       ...profile, industrySic: sic.trim() || null, dataReportingFrequency: frequency, currency: currency.trim(), financialYearEndMonth: fye,
-      // Industry is typed here, not chosen from the lookup: a changed industry unlinks the lookup value (the typed text
-      // stands), or the kept link would go on showing the old one. Unchanged, the link is sent back as held.
-      ...(sector.trim() !== client.sector ? { sectorValueId: null } : {}),
+      // The industry's label and its lookup link, together, exactly as chosen (or as held, when nothing was chosen).
+      sectorValueId: chosenIndustry ? chosenIndustry.id : sectorValueId,
     };
     const key = keys.current.save ??= crypto.randomUUID();
     const result = await patchBrowserCommand<{ version: number }>(`/api/isolated/commands/clients/${encodeURIComponent(client.id)}`, input, key);
@@ -191,7 +201,12 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
         <label className="nz-fl"><span>Status</span><select className="nz-sel" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>{STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
       <div className="nz-two">
-        <label className="nz-fl"><span>Industry<span className="nz-req">*</span></span><input className="nz-inp" value={sector} onChange={(event) => setSector(event.target.value)} /></label>
+        <div className="nz-fl"><label htmlFor="identity-industry">Industry<span className="nz-req">*</span></label>
+          <SmartSearch id="identity-industry" label="Industry" options={industries.options} value={chosenIndustry?.id ?? ""} required emptyHint={industries.emptyHint}
+            placeholder={industries.state === "loading" ? "Loading…" : "Search…"} onChange={(id, option) => { setSector(option?.label ?? ""); setSectorValueId(id || null); }} />
+          {heldIndustry ? <span className="nz-hint">Held as “{heldIndustry}” — choose from the list to link it.</span> : null}
+          <LookupAdd categoryKey="industries" noun="industry" onAdded={(option) => { append("industries", option); setSector(option.label); setSectorValueId(option.id); }} />
+        </div>
         <label className="nz-fl"><span>SIC</span><input className="nz-inp" value={sic} onChange={(event) => setSic(event.target.value)} /></label>
       </div>
       <div className="nz-three">

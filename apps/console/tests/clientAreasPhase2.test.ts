@@ -103,16 +103,42 @@ describe("client workspace phase 2 areas", () => {
     assert.match(route, /private, no-store/);
     assert.match(route, /status: 404/, "no such client is a 404, not an empty history");
   });
-  it("sends the client's lookup links back unchanged, and unlinks the industry only when it is retyped", () => {
+  it("sends the client's lookup links back unchanged, and the industry's link and label together as chosen", () => {
     // The drawers send the whole record (`...client.profile`), which now carries the links; client.update keeps an omitted one.
     assert.match(read("packages/isolated-backend/src/readModels.ts"), /sectorValueId: row\.sector_value_id \?\? null, referralValueId: row\.referral_value_id \?\? null, clientManagerUserId: row\.client_manager_user_id \?\? null/);
-    assert.match(area("ClientIdentity.tsx"), /\.\.\.\(sector\.trim\(\) !== client\.sector \? \{ sectorValueId: null \} : \{\}\)/, "a retyped industry unlinks the lookup value");
+    // PR 2 (CLIENT-06): the industry is chosen from the lookup, no longer typed — the label and its link travel together.
+    const identity = area("ClientIdentity.tsx");
+    assert.match(identity, /<SmartSearch id="identity-industry"/, "the industry is a lookup choice");
+    assert.match(identity, /sectorValueId: chosenIndustry \? chosenIndustry\.id : sectorValueId/, "the chosen value's id, or the held one");
+    assert.match(identity, /onChange=\{\(id, option\) => \{ setSector\(option\?\.label \?\? ""\); setSectorValueId\(id \|\| null\); \}\}/);
+    assert.doesNotMatch(identity, /<input className="nz-inp" value=\{sector\}/, "no free-text industry any more");
+  });
+
+  it("offers portfolio, industry and referral as lookups with an in-place add, and countries as a typeahead (PR 2)", () => {
+    const form = read("apps/console/app/clients/clientForm.tsx");
+    assert.match(form, /<Lookup \{\.\.\.props\} name="portfolio" idField="portfolioValueId" label="Portfolio" list=\{lookups\.portfolios\} add=\{\{ category: "portfolios"/);
+    for (const category of ["industries", "referrals"]) assert.match(form, new RegExp(`add=\\{\\{ category: "${category}"`), category);
+    assert.match(form, /<Country \{\.\.\.props\} name="registeredCountry"/);
+    assert.match(form, /<Country \{\.\.\.props\} name="billingCountry"/);
+    assert.match(form, /Held as “\{legacy\}” — choose the country from the list to replace it\./, "a free-text country from v7 is said, and kept until chosen");
+    const add = read("apps/console/app/clients/LookupAdd.tsx");
+    assert.match(add, /useHasCapability\("admin\.lookups"\)/, "only admin.lookups holders add in place");
+    assert.match(add, /postBrowserCommand<\{ valueId: string \}>\("\/api\/isolated\/reference-values", \{ categoryKey, label: value \}/, "through reference.value.create");
+    assert.match(add, /managed in Admin → Lookups/, "everyone else is told where values are managed");
+    const wizard = read("apps/console/app/clients/new/ClientCreateWizard.tsx");
+    assert.match(wizard, /option\.label\.trim\(\)\.toUpperCase\(\) === "NZI"/, "the portfolio defaults to the value labelled NZI when present");
+    const drawers = read("apps/console/app/clients/[clientId]/ClientRecordDrawers.tsx");
+    assert.match(drawers, /<CountryField label="Country"/);
+    assert.match(drawers, /<CountryField label="Billing country"/);
   });
 
   it("blocks the identity drawer only on a field being edited; a held gap is a warning (F1 remedy (1), mirrored)", () => {
     const identity = area("ClientIdentity.tsx");
     assert.match(identity, /nameChanged && !name\.trim\(\) \? "Give the client's name\."/);
     assert.match(identity, /sectorChanged && !sector\.trim\(\) \? "Give the client's industry\."/);
+    // The industry is a lookup (PR 2): "changed" is the selection, not the text — a held industry left alone is unchanged.
+    assert.match(identity, /const sectorChanged = sectorValueId !== \(profile\.sectorValueId \?\? null\);/);
+    assert.match(identity, /Held as “\{heldIndustry\}” — choose from the list to link it\./, "a held industry the list lacks is shown as held");
     assert.match(identity, /fyeChanged && fye === null \?/);
     assert.match(identity, /it can still be saved; fill these in when you can/, "held gaps are said, not enforced");
     const contracts = read("packages/contracts/src/commands.ts");
