@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { clientListSpec, commandGrantForRole, defaultListQuery, staffListSpec, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { figuresIn, plaintextIn } from "./support/payloadScan";
 import { resolveStaffPrincipal } from "../src/auth";
 import { listClients } from "../src/listReads";
 import { CommandValidationError } from "../src/postgresCommands";
@@ -96,8 +97,8 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
       assert.ok(row.display_name_sealed && row.email_sealed && row.email_bidx, "sealed on write (NZC-119)");
       const audit = await auditOf(added.auditEventId);
       assert.equal(audit.action, "staff.added");
-      const payload = JSON.stringify([audit.before_json, audit.after_json]);
-      assert.ok(!/dee|newcomer|example\.test/i.test(payload), `no name or email in the audit: ${payload}`);
+      // Structural: the audit carries the new person's random UUID, whose hex can hold "dee" by chance.
+      assert.deepEqual(plaintextIn([audit.before_json, audit.after_json], ["dee", "newcomer", "example.test"]), [], "no name or email in the audit");
     });
 
     it("refuses a duplicate address (any case), an inactive position, a value from another lookup, and a bad address", async () => {
@@ -116,7 +117,7 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
       assert.notDeepEqual(row.display_name_sealed, sealedBefore, "resealed");
       const audit = await auditOf(done.auditEventId);
       assert.deepEqual(audit.after_json.changed, ["displayName", "positionValueId"]);
-      assert.ok(!/victoria|vic viewer/i.test(JSON.stringify([audit.before_json, audit.after_json])));
+      assert.deepEqual(plaintextIn([audit.before_json, audit.after_json], ["victoria", "vic viewer"]), [], "no name in the audit");
       await assert.rejects(updateStaff(database.pool, { userId: "vic", expectedVersion: v + 1, displayName: "Victoria Viewer", positionValueId: "pos-lead" }, context()), issue("userId", "NO_CHANGE"));
       await assert.rejects(updateStaff(database.pool, { userId: "vic", expectedVersion: v, displayName: "Other" }, context()), /version|changed/i);
     });
@@ -252,9 +253,10 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
       const idempotency = await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND outcome_json->>'auditEventId' = $2`, [ORG, set.auditEventId]);
       const outbox = await q(`SELECT payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1 AND correlation_id = $2`, [ORG, audit.correlation_id]);
       assert.deepEqual([idempotency.length, outbox.length], [1, 1], "the idempotency record and the outbox event were both found");
-      const amount = /(40|95)(.0+)?/;
+      // Whole values: the payloads carry staff-rate:<uuid>, whose hex holds "40" or "95" by chance. (The regex this replaces held
+      // backspace bytes where word boundaries were meant, so it could never match — it guarded nothing.)
       for (const [where, value] of [["audit", audit.after_json], ["idempotency", idempotency[0].outcome_json.data], ["outbox", outbox[0].payload_json]] as const) {
-        assert.ok(!amount.test(JSON.stringify(value)), `an amount reached the ${where}: ${JSON.stringify(value)}`);
+        assert.deepEqual(figuresIn(value, [40, 95]), [], `an amount reached the ${where}`);
       }
       const rates = await withTenantRead(database.pool, ORG, (db) => readStaffRates(db, holder("admin"), "vic", "2026-09-30"));
       assert.deepEqual([rates.current?.costPerHour, rates.current?.sellPerHour, rates.current?.currency], [40, 95, "GBP"]);
