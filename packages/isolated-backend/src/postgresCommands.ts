@@ -538,6 +538,17 @@ export async function createJob(
     const milestones = template
       ? await generateMilestones(db, context.organisationId, context.actorId, { jobId, startDate: input.startDate, periodStart: input.reportingPeriodStart ?? null }, template)
       : [];
+    // TIME ⚑5 (0155): the job's budget hours and fee default from its type's template, as the backfill did — Σ
+    // included items' default hours / sell × quantity; null where the template carries none. The fee is money and
+    // stays out of `data` (NZC-120).
+    if (input.jobTypeId) await db.query(
+      `UPDATE nzi_console.jobs j SET budgeted_hours = t.hours, fee_amount = t.fee
+         FROM (SELECT sum(i.default_hours * ti.quantity) AS hours, sum(i.default_sell_amount * ti.quantity) AS fee
+                 FROM nzi_console.job_type_items ti
+                 JOIN nzi_console.job_items i ON (i.organisation_id, i.item_id) = (ti.organisation_id, ti.item_id)
+                WHERE ti.organisation_id = $1 AND ti.job_type_id = $3 AND ti.included) t
+        WHERE j.organisation_id = $1 AND j.job_id = $2`,
+      [context.organisationId, jobId, input.jobTypeId]);
     if (familyHasReportingPeriod(input.family)) {
       // NZC-070 asked that a reporting window be the client's financial year rather than
       // 1 Jan–31 Dec, and this reconstructed one from the labelled year plus the client's

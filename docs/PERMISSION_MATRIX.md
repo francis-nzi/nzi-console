@@ -71,6 +71,8 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `knowledge.capture` (offer a question + answer to the library as a draft) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `knowledge.approve` (draft → internal: live for staff, grounds the help AI) | ✓ | ✓ | — | — | — |
 | `knowledge.publish` (internal → public: client-facing, website-bound) | ✓ | — | — | — | — |
+| `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
+| `time.view` (read other people's time on a job — hours, never rates) ⚑ | ✓ | ⚑ own | R | — | — |
 
 ### Conditional notes (⚑)
 
@@ -100,6 +102,13 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   client — which is what gives the two tiers their meaning.
 - `support.portal_impersonate` — every entry is audited and time-boxed; it grants a
   read/preview context, never portal-user credential access.
+- **Time (matrix v9, 0156; TIME rulings T-Q3, T-Q6, T-Q7).** `time.log` is held by every role, Viewer
+  included, because everyone's time is recorded — but it is **one's own time only**: nobody, Admin
+  included, logs, edits or voids another person's entry. A Consultant logs on their own clients' jobs;
+  every other role on any job. `time.view` reads other people's hours on a job (Job → Time); without
+  it a reader sees only their own. **Rates and the job fee are money** — `finance.view` to read,
+  never in a time payload (NZC-120). Marking time billed (the bill command, and unbilling) is
+  `finance.manage`; a billed entry is locked until finance unbills it.
 
 ## Naming convention
 

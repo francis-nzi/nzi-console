@@ -96,12 +96,23 @@ let scanned = 0;
  */
 const RETIRED_NAMES = /\bNZI Pro\b|\bNZI Console\b/;
 
+/**
+ * Utilisation (TIME ⚑8, ruled): "utilisation" means **capacity** only — a person's logged hours against their weekly
+ * capacity. v7 used the word for a job's logged hours against its budget; in the console that measure is **"budget
+ * used"**. So copy that puts "utilisation" beside "budget" is the v7 meaning creeping back, and is refused. One term,
+ * one meaning: a line about a budget says "budget used". Comments are not copy.
+ */
+const UTILISATION = /utili[sz]ation/i;
+const BUDGET = /budget/i;
+const utilisationOffences = [];
+
 for (const root of ROOTS) {
   for (const file of walk(root)) {
     scanned += 1;
     const lines = readFileSync(file, "utf8").split("\n");
     lines.forEach((line, index) => {
       if (RETIRED_NAMES.test(line) && !isComment(line)) nameOffences.push(`${relative(process.cwd(), file)}:${index + 1}  ${line.trim().slice(0, 110)}`);
+      if (UTILISATION.test(line) && BUDGET.test(line) && !isComment(line)) utilisationOffences.push(`${relative(process.cwd(), file)}:${index + 1}  ${line.trim().slice(0, 110)}`);
       if (!/footprint/i.test(line)) return;
       if (isComment(line)) return;
       if (SANCTIONED.some((exception) => line.includes(exception.match))) return;
@@ -130,4 +141,10 @@ if (nameOffences.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), and the product is "NZ Insights Pro"`);
+if (utilisationOffences.length > 0) {
+  console.error(`✖ TIME ⚑8: "utilisation" means capacity only — logged hours against a job's budget is "budget used":`);
+  for (const offence of utilisationOffences) console.error(`    ${offence}`);
+  process.exit(1);
+}
+
+console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), the product is "NZ Insights Pro", and "utilisation" is capacity, never budget (TIME ⚑8)`);

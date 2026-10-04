@@ -1939,3 +1939,50 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
   .nz-a-crumb{display:none}
 }
 @media (prefers-reduced-motion:reduce){.nz-admin *{transition:none!important;animation:none!important}}
+/* ── Time (TIME PR A; the approved mockup) ─────────────────────────────────────────────────────────────── */
+.nz-time{padding-top:18px}
+.nz-time-head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.nz-time-head>div:first-child{margin-right:auto}
+.nz-time-head h1{font-size:21px;font-weight:600;margin:0 0 4px;letter-spacing:-.2px}
+.nz-time-head .sub{font-size:12.5px;color:var(--t2)}
+.nz-time-periods{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nz-time-periods .nz-seg{margin-left:0}
+.nz-time-range{font-size:12px;color:var(--t2)}
+.nz-time-custom{display:inline-flex;align-items:center;gap:6px}
+.nz-time .nz-metrics{margin-top:4px}
+.nz-time-foot{font-size:11.5px;color:var(--t3);margin-top:5px}
+.nz-time-add,.nz-time-entries,.nz-time-arriving{margin-bottom:16px}
+.nz-time-add h2,.nz-time-entries h2,.nz-time-arriving h2{font-size:14.5px;font-weight:600;margin:0;padding:13px 16px;border-bottom:1px solid var(--line2)}
+.nz-time-arriving p{margin:0;padding:14px 16px;color:var(--t2);font-size:13px}
+.nz-time-count{font-size:12px;color:var(--t2);font-weight:500}
+.nz-time-form{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding:14px 16px;align-items:end}
+.nz-time-field{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--t2)}
+.nz-time-field.wide{grid-column:span 2}
+.nz-time-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--t1);height:36px;cursor:pointer}
+.nz-time-toggle input{width:16px;height:16px;accent-color:var(--pine)}
+.nz-time-problem,.nz-time-add>.nz-banner{margin:12px 16px}
+.nz-time-state{margin:0;padding:16px;color:var(--t2);font-size:13px}
+.nz-time-tablewrap{overflow-x:auto}
+.nz-time-job{font-weight:600}
+.nz-time-sub{font-size:11.5px;color:var(--t3)}
+.nz-time-note{max-width:260px;overflow-wrap:anywhere}
+.nz-time-chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.nz-time-chip.y{background:var(--mint);color:var(--pine)}
+.nz-time-chip.n{background:var(--paper);color:var(--t2)}
+.nz-time-actions{white-space:nowrap;text-align:right}
+.nz-time-actions .nz-btn+.nz-btn{margin-left:6px}
+.nz-time .nz-btn.sm,.nz-job-time .nz-btn.sm{height:28px;padding:0 10px;font-size:12px}
+.nz-time-hours{width:80px}
+.nz-time-inline-problem{font-size:11.5px;color:var(--danger);margin-top:4px}
+.nz-time-editing td{background:#F3F8F5;vertical-align:top}
+.nz-job-time{padding:18px 20px}
+.nz-job-time .nz-tbl{margin-top:12px}
+.nz-job-time-budget{display:grid;gap:6px;margin-top:12px;font-size:13px}
+.nz-job-time-meter-line{display:flex;align-items:center;gap:10px}
+.nz-job-time-meter{position:relative;height:9px;border-radius:999px;background:#E6EAE6;overflow:hidden;flex:1;max-width:320px}
+.nz-job-time-meter>i{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--pine)}
+.nz-job-time-meter.warn>i{background:#C98A0B}
+.nz-job-time-meter.crit>i{background:var(--danger)}
+.nz-job-time-pct{font-size:12px;color:var(--t2);font-variant-numeric:tabular-nums}
+.nz-job-time-pct.crit{color:#B23A2B;font-weight:600}
+@media (max-width:760px){.nz-time-form{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-time .nz-metrics{grid-template-columns:repeat(2,1fr)}}

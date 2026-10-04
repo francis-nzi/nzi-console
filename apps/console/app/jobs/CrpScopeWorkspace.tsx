@@ -1,6 +1,7 @@
 "use client";
 import { useEffect,useState } from "react";
 import { JobClientMark } from "./JobClientMark";
+import { LogTimeButton } from "./JobTimePanel";
 import type { ReactNode } from "react";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
@@ -560,6 +561,7 @@ export function CrpScopeWorkspace({
             <div className="sub">{job.header.client} · Lead consultant: {job.header.owner}</div>
           </div></div>
           <div className="nz-head-actions">
+            <LogTimeButton jobId={job.header.id} />
             <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
             <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
           </div>

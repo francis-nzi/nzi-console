@@ -8,6 +8,7 @@ import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplat
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isIsoCountryCode } from "./iso3166";
+import { isTimeEntryMinutes, TIME_ACTIVITY_CATEGORY, TIME_ENTRY_NOTE_MAX } from "./time";
 import { isAllowedBroadcastLink, isBroadcastInstant, isPortalBroadcastStyle, PORTAL_BROADCAST_BODY_MAX, PORTAL_BROADCAST_LINK_LABEL_MAX, PORTAL_BROADCAST_TITLE_MAX, type PortalBroadcastEditableFields } from "./adminPortalBroadcasts";
 import { isValidWebsite, normaliseWebsite } from "./clientWebsite";
 import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLIER_CONTACT_PHONE_MAX, SUPPLIER_COST_TYPE_MAX, SUPPLIER_ITEM_DESCRIPTION_MAX, SUPPLIER_ITEM_NAME_MAX, SUPPLIER_NAME_MAX, SUPPLIER_WEBSITE_MAX, type SupplierContactFields, type SupplierEditableFields, type SupplierItemEditableFields } from "./adminSuppliers";
@@ -168,6 +169,10 @@ export type CommandKey =
   | "site.create"
   | "site.edit"
   | "site.location.set"
+  | "time.entry.log"
+  | "time.entry.edit"
+  | "time.entry.void"
+  | "time.entry.bill"
   | "client.location.set"
   | "site.registeredOffice"
   | "site.vacate"
@@ -631,8 +636,18 @@ export type CommandInputMap = {
   "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
   "strategy.library.deactivate": { strategyId: string; expectedVersion: number; reason: string };
   /** The reference-value engine (admin A2): a lookup value is added, edited, deactivated or reinstated — never deleted. */
-  "reference.value.create": { categoryKey: string; label: string; code?: string | null; sortOrder?: number };
-  "reference.value.update": { categoryKey: string; valueId: string; label: string; code?: string | null; sortOrder: number; expectedVersion: number };
+  /** `billableDefault` — for an activity type (TIME Addendum): required on create, so no activity is ever defaultless. */
+  "reference.value.create": { categoryKey: string; label: string; code?: string | null; sortOrder?: number; billableDefault?: boolean };
+  /** `billableDefault` — for an activity type: omitted keeps the held default. */
+  "reference.value.update": { categoryKey: string; valueId: string; label: string; code?: string | null; sortOrder: number; expectedVersion: number; billableDefault?: boolean };
+  /** Log one's OWN time (T-Q3) against a job one can access (T-Q7). `billable` omitted takes the activity's default. */
+  "time.entry.log": { jobId: string; workDate: string; minutes: number; activityValueId: string; billable?: boolean; note?: string | null };
+  /** Edit one's own entry, until it is billed (T-Q6). A changed work date re-snapshots the rate as of the new date (T-Q1). */
+  "time.entry.edit": { entryId: string; expectedVersion: number; jobId: string; workDate: string; minutes: number; activityValueId: string; billable: boolean; note?: string | null };
+  /** Void one's own entry, until it is billed. Voided, never deleted. */
+  "time.entry.void": { entryId: string; expectedVersion: number };
+  /** Finance stamps (or clears, with null) the invoice an entry was billed on (T-Q5). A billed entry is locked. */
+  "time.entry.bill": { entryId: string; expectedVersion: number; billedRef: string | null };
   "reference.value.deactivate": { categoryKey: string; valueId: string; expectedVersion: number };
   "reference.value.reinstate": { categoryKey: string; valueId: string; expectedVersion: number };
   /** Job types (admin C1): the services the firm sells — added, edited, deactivated or reinstated, never deleted. */
@@ -865,6 +880,13 @@ const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): value i
  */
 const isoDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const positiveArea = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
+/** A time entry's own fields (TIME ⚑1, ⚑9): a real day, whole minutes 1–1440, an activity, a short note. */
+const timeEntryIssues = (issues: CommandIssue[], input: { workDate: string; minutes: number; activityValueId: string; note?: string | null }) => {
+  if (!isoDate(input.workDate)) issues.push({ field: "workDate", code: "INVALID", message: "Enter the day the work was done." });
+  if (!isTimeEntryMinutes(input.minutes)) issues.push({ field: "minutes", code: "INVALID", message: "Enter the time worked: more than none, and no more than 24 hours in one entry." });
+  required(issues, "activityValueId", input.activityValueId);
+  if (input.note != null && (typeof input.note !== "string" || input.note.length > TIME_ENTRY_NOTE_MAX)) issues.push({ field: "note", code: "INVALID", message: `A note is ${TIME_ENTRY_NOTE_MAX} characters or fewer.` });
+};
 /** CLIENT-11: a site's structured address — up to four lines, a postcode or zip, and an ISO 3166-1 alpha-2 country. */
 export type SiteAddressFields = { addressLines?: string[]; postcode?: string | null; country?: string | null };
 export const SITE_ADDRESS_MAX_LINES = 4;
@@ -1469,6 +1491,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "reference.value.create": { key: "reference.value.create", label: "Add a lookup value", permission: "admin.lookups", reasonRequired: false, transaction: "reference value + audit + outbox + idempotency", auditAction: "reference.value.created", validate: (input, context) => {
     const issues = baseIssues(context, false);
     lookupIssues(issues, input);
+    // TIME Addendum: an activity is created with its billable default — never defaultless.
+    if (input.categoryKey === TIME_ACTIVITY_CATEGORY && typeof input.billableDefault !== "boolean") issues.push({ field: "billableDefault", code: "REQUIRED", message: "Say whether time logged as this activity is billable by default." });
+    if (input.categoryKey !== TIME_ACTIVITY_CATEGORY && input.billableDefault !== undefined) issues.push({ field: "billableDefault", code: "NOT_APPLICABLE", message: "Only an activity type carries a billable default." });
     return issues;
   } },
   "reference.value.update": { key: "reference.value.update", label: "Edit a lookup value", permission: "admin.lookups", reasonRequired: false, transaction: "versioned reference value + audit + outbox + idempotency", auditAction: "reference.value.updated", validate: (input, context) => {
@@ -1476,6 +1501,36 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     lookupIssues(issues, input);
     required(issues, "valueId", input.valueId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.billableDefault !== undefined && (input.categoryKey !== TIME_ACTIVITY_CATEGORY || typeof input.billableDefault !== "boolean")) issues.push({ field: "billableDefault", code: "NOT_APPLICABLE", message: "Only an activity type carries a billable default, as true or false." });
+    return issues;
+  } },
+  // ── Time (TIME module; T-Q3, T-Q5–T-Q7) ─────────────────────────────────────────────────────────────────────
+  "time.entry.log": { key: "time.entry.log", label: "Log time", permission: "time.log", reasonRequired: false, transaction: "time entry + audit + outbox + idempotency", auditAction: "time.entry.logged", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    timeEntryIssues(issues, input);
+    if (input.billable !== undefined && typeof input.billable !== "boolean") issues.push({ field: "billable", code: "INVALID", message: "Billable is yes or no." });
+    return issues;
+  } },
+  "time.entry.edit": { key: "time.entry.edit", label: "Edit a time entry", permission: "time.log", reasonRequired: false, transaction: "versioned time entry + audit + outbox + idempotency", auditAction: "time.entry.edited", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "entryId", input.entryId); required(issues, "jobId", input.jobId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    timeEntryIssues(issues, input);
+    if (typeof input.billable !== "boolean") issues.push({ field: "billable", code: "INVALID", message: "Billable is yes or no." });
+    return issues;
+  } },
+  "time.entry.void": { key: "time.entry.void", label: "Void a time entry", permission: "time.log", reasonRequired: false, transaction: "time entry voided (never deleted) + audit + outbox + idempotency", auditAction: "time.entry.voided", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "entryId", input.entryId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "time.entry.bill": { key: "time.entry.bill", label: "Mark time billed", permission: "finance.manage", reasonRequired: false, transaction: "time entry billed ref + audit + outbox + idempotency", auditAction: "time.entry.billed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "entryId", input.entryId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.billedRef !== null && (typeof input.billedRef !== "string" || !input.billedRef.trim() || input.billedRef.trim().length > 120)) issues.push({ field: "billedRef", code: "INVALID", message: "The invoice reference, up to 120 characters — or none, to unbill." });
     return issues;
   } },
   "reference.value.deactivate": { key: "reference.value.deactivate", label: "Deactivate a lookup value", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "reference.value.deactivated", validate: (input, context) => {

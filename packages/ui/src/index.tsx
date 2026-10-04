@@ -19,7 +19,7 @@ export { DataList, type DataListColumn, type DataListFilter, type DataListOption
 
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"
-  | "trend" | "settings" | "search" | "bell";
+  | "trend" | "settings" | "search" | "bell" | "clock";
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <><path d="M3 12l9-8 9 8" /><path d="M5 10v10h14V10" /></>,
@@ -33,6 +33,7 @@ const PATHS: Record<IconName, ReactNode> = {
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>,
+  clock: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>,
 };
 
 export function Icon({ name }: { name: IconName }) {

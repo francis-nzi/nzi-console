@@ -11,6 +11,8 @@ import { defineListSpec, type ListQuery } from "./listQuery";
  */
 export const LOOKUP_CATEGORIES = [
   "industries", "referrals", "portfolios", "payment_terms", "positions", "processes",
+  // TIME (0155): what time is logged as; each value carries a billable default.
+  "activity_types",
   "client_teams", "action_categories", "governance_subjects", "bd_bin_reasons", "units_of_measure", "job_item_categories",
   "crm_tags", "bd_service_lines",
 ] as const;

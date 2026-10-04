@@ -562,6 +562,10 @@ jobs:
       # postcode or country changes, located by postcode and country only, behind a switch that is off by default.
       - name: Clients and sites are located from a postcode and country only, and only when switched on
         run: npx tsx --test packages/isolated-backend/tests/clientGeolocationReal.test.ts
+      # TIME PR A (0155, matrix v9): the activity seed and billable defaults; own time only, on reachable jobs; the rate
+      # snapshot as of the work date and never in a payload; the billed lock; the default through Lookups; the job budget.
+      - name: Time is logged as one's own, rated as of the day worked, locked once billed, and never carries money in a payload
+        run: npx tsx --test packages/isolated-backend/tests/timeEntriesReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

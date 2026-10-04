@@ -64,9 +64,10 @@ describe("the admin overview, read from the database", { skip: TEST_DATABASE_URL
     const { lookups } = await overviewOf(ORG_A);
     const industries = lookups.perCategory.find((category) => category.key === "industries")!;
     assert.deepEqual([industries.active, industries.inactive], [1, 1]);
-    assert.deepEqual([lookups.values, lookups.active, lookups.added], [3, 2, 1]);
+    // 3 seeded here, plus the 6 activity types 0155 provisions for every organisation (seeded, active, not "added").
+    assert.deepEqual([lookups.values, lookups.active, lookups.added], [9, 8, 1]);
     assert.ok(lookups.categories >= 2, "every active category is listed, values or none");
-    assert.equal((await overviewOf(ORG_B)).lookups.values, 5, "and B's are B's alone");
+    assert.equal((await overviewOf(ORG_B)).lookups.values, 5 + 6, "and B's are B's alone (its 5, and its own 6 activity types)");
   });
 
   it("tells linked from named-but-not-linked from nothing-to-link, for each link", async () => {

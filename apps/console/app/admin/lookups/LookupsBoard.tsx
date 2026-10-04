@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { postBrowserCommand, postBrowserCommandWithReason, patchBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { PAGE_SIZES, referenceValueListSpec, type LookupCategory, type ReferenceValueListQuery } from "@nzi/contracts";
+import { PAGE_SIZES, referenceValueListSpec, TIME_ACTIVITY_CATEGORY, type LookupCategory, type ReferenceValueListQuery } from "@nzi/contracts";
 import type { LookupCategorySummary, ReferenceValuePage, ReferenceValueRow } from "@nzi/isolated-backend";
 import {
   AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, ProvenanceBadge, StatusBadge, Switch, TextAreaField, TextField,
@@ -17,7 +17,7 @@ import { useListNavigation } from "../../lib/useListNavigation";
  * never deleted — and a deactivated value still resolves on the records that use it.
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
-type Draft = { label: string; code: string; sortOrder: string; active: boolean; reason: string };
+type Draft = { label: string; code: string; sortOrder: string; active: boolean; reason: string; billableDefault: boolean };
 const PROVENANCE: Record<ReferenceValueRow["provenance"], Provenance> = { v7: "v7", added: "added", seeded: "seeded" };
 const count = new Intl.NumberFormat("en-GB");
 
@@ -35,6 +35,9 @@ export function LookupsBoard({ categories, page, query, category, editing }: {
     { key: "label", header: "Value", sortKey: "label", cell: (row) => <button type="button" className="nz-a-linkish" onClick={() => setOpen({ row })}>{row.label}</button> },
     ...(current.carriesCode ? [{ key: "code", header: current.codeLabel ?? "Code", cell: (row: ReferenceValueRow) => row.code ? <span className="nz-a-mono">{row.code}</span> : <span className="nz-a-muted">—</span> }] : []),
     { key: "sortOrder", header: "Sort", sortKey: "sortOrder", numeric: true, cell: (row) => <span className="nz-a-mono">{row.sortOrder}</span> },
+    // TIME Addendum: each activity carries its billable default, shown beside it.
+    ...(current.key === TIME_ACTIVITY_CATEGORY ? [{ key: "billable", header: "Billable by default", cell: (row: ReferenceValueRow) => row.billableDefault === null
+      ? <span className="nz-a-muted">—</span> : <span className={row.billableDefault ? undefined : "nz-a-muted"}>{row.billableDefault ? "Billable" : "Non-billable"}</span> }] : []),
     { key: "inUse", header: "In use", sortKey: "inUse", numeric: true, cell: (row) => row.inUse === null
       ? <span className="nz-a-muted" title="Nothing in the console references this lookup yet">—</span>
       : <span className={`nz-a-mono${row.inUse === 0 ? " nz-a-muted" : ""}`}>{count.format(row.inUse)}</span> },
@@ -109,7 +112,8 @@ function ValueDrawer({ row, category, editing, onClose, onSaved }: {
   row: ReferenceValueRow | null; category: LookupCategorySummary; editing: Editing; onClose: () => void; onSaved: (message: string) => void;
 }) {
   const isNew = row === null;
-  const [draft, setDraft] = useState<Draft>({ label: row?.label ?? "", code: row?.code ?? "", sortOrder: row ? String(row.sortOrder) : "", active: row?.active ?? true, reason: "" });
+  const activity = category.key === TIME_ACTIVITY_CATEGORY;
+  const [draft, setDraft] = useState<Draft>({ label: row?.label ?? "", code: row?.code ?? "", sortOrder: row ? String(row.sortOrder) : "", active: row?.active ?? true, reason: "", billableDefault: row?.billableDefault ?? true });
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -119,12 +123,13 @@ function ValueDrawer({ row, category, editing, onClose, onSaved }: {
 
   const deactivating = row?.active === true && !draft.active;
   const reinstating = row?.active === false && draft.active;
-  const fieldsChanged = row !== null && (draft.label.trim() !== row.label || (draft.code.trim() || null) !== row.code || draft.sortOrder.trim() !== String(row.sortOrder));
+  const fieldsChanged = row !== null && (draft.label.trim() !== row.label || (draft.code.trim() || null) !== row.code || draft.sortOrder.trim() !== String(row.sortOrder)
+    || (activity && draft.billableDefault !== row.billableDefault));
 
   const fail = (result: Exclude<BrowserCommandResult<unknown>, { state: "success" }>) => {
     if (result.state === "validation_failed") {
       setIssues(Object.fromEntries(result.issues.map((issue) => [issue.field === "reason" ? "reason" : issue.field, issue.message])));
-      setProblem(result.issues.find((issue) => !["label", "code", "sortOrder", "reason"].includes(issue.field))?.message ?? null);
+      setProblem(result.issues.find((issue) => !["label", "code", "sortOrder", "reason", "billableDefault"].includes(issue.field))?.message ?? null);
     } else setProblem(result.state === "conflict" ? "This value changed since you opened it. Close the panel and open it again to see the latest." : result.message);
   };
 
@@ -137,14 +142,16 @@ function ValueDrawer({ row, category, editing, onClose, onSaved }: {
     setSaving(true);
     try {
       if (isNew) {
-        const result = await postBrowserCommand("/api/isolated/reference-values", { categoryKey: category.key, label: draft.label, code: draft.code || null, sortOrder }, key("create"));
+        const result = await postBrowserCommand("/api/isolated/reference-values", { categoryKey: category.key, label: draft.label, code: draft.code || null, sortOrder,
+          ...(activity ? { billableDefault: draft.billableDefault } : {}) }, key("create"));
         if (result.state !== "success") return fail(result);
         return onSaved(`Added “${draft.label.trim()}” to ${category.label}.`);
       }
       const path = `/api/isolated/reference-values/${encodeURIComponent(row.valueId)}`;
       let version = row.version;
       if (fieldsChanged) {
-        const result = await patchBrowserCommand<{ version: number }>(path, { categoryKey: category.key, label: draft.label, code: draft.code || null, sortOrder: sortOrder ?? row.sortOrder, expectedVersion: version }, key("update"));
+        const result = await patchBrowserCommand<{ version: number }>(path, { categoryKey: category.key, label: draft.label, code: draft.code || null, sortOrder: sortOrder ?? row.sortOrder, expectedVersion: version,
+          ...(activity ? { billableDefault: draft.billableDefault } : {}) }, key("update"));
         if (result.state !== "success") return fail(result);
         version = result.data.version;
       }
@@ -185,6 +192,9 @@ function ValueDrawer({ row, category, editing, onClose, onSaved }: {
         error={issues.sortOrder} disabled={readOnly} onChange={(sortOrder) => setDraft({ ...draft, sortOrder })} />
       <TextField label="Source" value={isNew ? "Added here" : row.provenance === "v7" ? "Imported · v7" : row.provenance === "added" ? "Added here" : "Seeded"} readOnly />
     </FieldRow>
+    {activity ? <Switch label="Billable by default" description="Time logged as this activity starts billable or not; each entry can still say otherwise." checked={draft.billableDefault}
+      disabled={readOnly} onChange={(billableDefault) => setDraft({ ...draft, billableDefault })} /> : null}
+    {issues.billableDefault ? <div className="nz-a-error" role="alert">{issues.billableDefault}</div> : null}
     {row?.ownerClient ? <TextField label="Portfolio owner" hint="The client that owns this portfolio, from v7." value={row.ownerClient} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="Inactive values leave the pickers but still show on existing records." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}

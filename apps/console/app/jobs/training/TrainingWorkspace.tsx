@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { JobClientMark } from "../JobClientMark";
+import { LogTimeButton } from "../JobTimePanel";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AppShell, GatedButton, NziIcon, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -57,7 +58,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled, milestones }
         <div className="sub">{header.client} · lead {header.owner}
           {record?.run.startDate ? <> · run window {formatDate(record.run.startDate)}{record.run.endDate ? ` – ${formatDate(record.run.endDate)}` : ""}</> : null}</div>
       </div></div>
-      <span className="nz-status"><span className="d" />{record ? trainingRunStageLabels[record.run.workflowStageKey as TrainingRunStage] ?? record.run.workflowStageKey : header.workflowStage}</span>
+      <span className="nz-head-actions"><LogTimeButton jobId={header.id} /><span className="nz-status"><span className="d" />{record ? trainingRunStageLabels[record.run.workflowStageKey as TrainingRunStage] ?? record.run.workflowStageKey : header.workflowStage}</span></span>
     </div></div>
     {milestones}
 

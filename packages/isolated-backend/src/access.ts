@@ -16,7 +16,7 @@ export type ClientAccess = { clientId: string; ownerUserId: string | null; owned
 
 type Subject =
   | { kind: "organisation" }
-  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment" | "trainingRun" | "trainingSession" | "trainingEntitlement" | "clientStrategy"; id: string };
+  | { kind: "client" | "job" | "site" | "clientFactor" | "contact" | "snapshot" | "reportVersion" | "srsAssessment" | "trainingRun" | "trainingSession" | "trainingEntitlement" | "clientStrategy" | "timeEntry"; id: string };
 
 const organisation = (): Subject => ({ kind: "organisation" });
 const client = (input: { clientId: string }): Subject => ({ kind: "client", id: input.clientId });
@@ -26,6 +26,7 @@ const srsAssessment = (input: { assessmentId: string }): Subject => ({ kind: "sr
 const clientStrategy = (input: { clientStrategyId: string }): Subject => ({ kind: "clientStrategy", id: input.clientStrategyId });
 const trainingRun = (input: { courseRunId: string }): Subject => ({ kind: "trainingRun", id: input.courseRunId });
 const trainingSession = (input: { sessionId: string }): Subject => ({ kind: "trainingSession", id: input.sessionId });
+const timeEntry = (input: { entryId: string }): Subject => ({ kind: "timeEntry", id: input.entryId });
 // A grant's places all belong to one client, so the first resolves the own-clients scope.
 // The handler re-checks that every id really is from the same grant, so a caller cannot
 // smuggle another client's place in behind an id it does own.
@@ -223,6 +224,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "lca.scenario.delete": job,
   "lca.scenario.multiplier.set": job,
   "lca.scenario.multiplier.delete": job,
+  // Time (TIME module): logged against a job (T-Q7); an entry resolves through its job. The handler adds own-time-only
+  // (T-Q3) and, when an edit moves the time, checks the new job too.
+  "time.entry.log": job,
+  "time.entry.edit": timeEntry,
+  "time.entry.void": timeEntry,
+  "time.entry.bill": timeEntry,
 };
 
 // Each resolves the owning client strictly inside the caller's organisation. Under RLS
@@ -240,6 +247,7 @@ const accessSql: Record<Exclude<Subject["kind"], "organisation">, string> = {
   trainingEntitlement: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.training_entitlements e JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(e.organisation_id,e.source_client_id) WHERE e.organisation_id=$1 AND e.entitlement_id=$2`,
   srsAssessment: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.srs_assessments a JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) WHERE a.organisation_id=$1 AND a.assessment_id=$2`,
   clientStrategy: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_strategies a JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) WHERE a.organisation_id=$1 AND a.client_strategy_id=$2`,
+  timeEntry: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.time_entries t JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(t.organisation_id,t.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE t.organisation_id=$1 AND t.entry_id=$2`,
   reportVersion: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE r.organisation_id=$1 AND r.report_version_id=$2`,
 };
 

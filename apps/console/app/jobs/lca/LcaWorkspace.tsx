@@ -15,6 +15,7 @@
 // later slices.
 import { Fragment, useMemo, useState } from "react";
 import { JobClientMark } from "../JobClientMark";
+import { LogTimeButton } from "../JobTimePanel";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, GatedButton, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -78,7 +79,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
           <h1>{header.number} — {header.title}</h1>
           <div className="sub">{header.client} · owner: {header.owner} · due {formatDate(header.dueDate)}</div>
         </div></div>
-        <span className="nz-status"><span className="d" />{header.workflowStage}</span>
+        <span className="nz-head-actions"><LogTimeButton jobId={header.id} /><span className="nz-status"><span className="d" />{header.workflowStage}</span></span>
       </div>
     </div>
     <WorkflowStageControl job={job} />

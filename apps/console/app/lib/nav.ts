@@ -7,6 +7,8 @@ export const NAV: NavSection[] = [
       { id: "control", label: "Control Room", icon: "home", href: "/" },
       { id: "clients", label: "Clients", icon: "users", href: "/clients" },
       { id: "jobs", label: "Jobs", icon: "jobs", href: "/jobs" },
+      // TIME PR A: everyone logs their own time (time.log is held by every role), so the link is never gated.
+      { id: "time", label: "Time", icon: "clock", href: "/time" },
       { id: "emissions", label: "Emissions", icon: "chart", href: "/charts" },
       { id: "datasets", label: "Datasets & factors", icon: "database", href: "/datasets" },
       { id: "reports", label: "Reports", icon: "file", href: "/reports" },
