@@ -27,7 +27,8 @@ describe("training module", () => {
     assert.match(jobPage, /family === "training" && jobModuleEnabled\("job-module-training"\)/);
     // The generic workspace is still the fallthrough — the flag off must not mean a blank page.
     // (PR 3 passes every workspace the Milestones panel; the fallthrough is otherwise unchanged.)
-    assert.match(jobPage, /return <FamilyWorkspace job=\{job\} milestones=\{milestones\} \/>;/);
+    // The milestones slot carries Job → Time too (TIME PR A), so it is passed as `panels`.
+    assert.match(jobPage, /return <FamilyWorkspace job=\{job\} milestones=\{panels\} \/>;/);
   });
 
   it("gates every mutation on the capability the matrix declares", () => {

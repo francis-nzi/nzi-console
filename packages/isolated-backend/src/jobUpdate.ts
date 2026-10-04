@@ -72,6 +72,7 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   training_course_runs: { periodBound: false, why: "training has no reporting period" },
   training_entitlements: { periodBound: false, why: "training has no reporting period" },
   training_run_snapshots: { periodBound: false, why: "training has no reporting period" },
+  time_entries: { periodBound: false, why: "time worked on the job, dated by when it was done — not by the period it reports on" },
 };
 
 /** Every table with a foreign key to `jobs`, with the columns that hold the job's organisation and id. */

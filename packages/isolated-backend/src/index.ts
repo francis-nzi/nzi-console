@@ -43,6 +43,7 @@ export * from "./clientHistory";
 export * from "./listReads";
 export * from "./adminOverview";
 export * from "./referenceEngine";
+export * from "./timeEntries";
 export * from "./jobTypes";
 export * from "./milestoneTemplates";
 export * from "./jobFileTypes";

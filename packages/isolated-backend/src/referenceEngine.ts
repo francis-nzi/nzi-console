@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  LOOKUP_CATEGORIES, referenceValueListSpec, type CommandContext, type CommandInputMap, type ListPage, type LookupCategory,
+  LOOKUP_CATEGORIES, referenceValueListSpec, TIME_ACTIVITY_CATEGORY, type CommandContext, type CommandInputMap, type ListPage, type LookupCategory,
   type ReferenceValueListFilterKey, type ReferenceValueListQuery, type ReferenceValueListSortKey,
 } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
@@ -28,6 +28,8 @@ export const LOOKUP_CONSUMERS: Partial<Record<LookupCategory, { table: string; c
   industries: { table: "clients", column: "sector_value_id", label: "clients" },
   referrals: { table: "clients", column: "referral_value_id", label: "clients" },
   portfolios: { table: "clients", column: "portfolio_value_id", label: "clients" },
+  // TIME (0155): an activity counts the time entries logged as it, voided ones included — they still resolve it.
+  activity_types: { table: "time_entries", column: "activity_value_id", label: "time entries" },
 };
 
 const inUseSql = (value: string) => `CASE ${value}.category_key ${Object.entries(LOOKUP_CONSUMERS).map(([category, consumer]) =>
@@ -67,6 +69,8 @@ export type ReferenceValueRow = {
   inUse: number | null;
   /** For a portfolio: the client that owns it (0138), when one is recorded. */
   ownerClient: string | null;
+  /** For an activity type (TIME Addendum): whether time logged as it is billable by default; null elsewhere. */
+  billableDefault: boolean | null;
   updatedAt: string;
 };
 export type ReferenceValuePage = ListPage<ReferenceValueRow, ReferenceValueListFilterKey, Record<string, never>>;
@@ -86,7 +90,9 @@ const valueSql = defineListSql<ReferenceValueListSortKey, ReferenceValueListFilt
   sort: { sortOrder: { column: "sort_order" }, label: { column: "label", text: true }, inUse: { column: "in_use" }, status: { column: "status", text: true } },
   tiebreak: "value_id",
   pageColumns: `(SELECT c.name FROM nzi_console.portfolio_owners po JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (po.organisation_id, po.owner_client_id)
-      WHERE (po.organisation_id, po.portfolio_value_id) = (base.organisation_id, base.value_id)) AS owner_client`,
+      WHERE (po.organisation_id, po.portfolio_value_id) = (base.organisation_id, base.value_id)) AS owner_client,
+    (SELECT d.billable_default FROM nzi_console.time_activity_defaults d
+      WHERE (d.organisation_id, d.value_id) = (base.organisation_id, base.value_id)) AS billable_default`,
 });
 
 /**
@@ -102,6 +108,7 @@ export async function listReferenceValuesPage(db: Queryable, query: ReferenceVal
       sortOrder: Number(row.sort_order), active: row.active === true, version: Number(row.version), provenance: row.provenance as ReferenceProvenance,
       inUse: row.in_use === null || row.in_use === undefined ? null : Number(row.in_use),
       ownerClient: row.owner_client === null || row.owner_client === undefined ? null : String(row.owner_client),
+      billableDefault: typeof row.billable_default === "boolean" ? row.billable_default : null,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
     }),
     mapSummary: () => ({}),
@@ -139,7 +146,24 @@ async function lockValue(db: Queryable, context: CommandContext, categoryKey: st
 
 const snapshot = (value: StoredValue) => ({ label: value.label, code: value.code, sortOrder: value.sort_order, active: value.active });
 
-export type ReferenceValueResult = { valueId: string; categoryKey: string; version: number; active: boolean };
+/** An activity value's billable default (TIME Addendum), or null when the value is not an activity / has none yet. */
+async function heldBillableDefault(db: Queryable, context: CommandContext, valueId: string): Promise<boolean | null> {
+  const { rows: [row] } = await db.query<{ billable_default: boolean }>(
+    `SELECT billable_default FROM nzi_console.time_activity_defaults WHERE organisation_id = $1 AND value_id = $2 FOR UPDATE`,
+    [context.organisationId, valueId]);
+  return row ? row.billable_default : null;
+}
+
+/** Writes an activity's billable default in the value's own command transaction, so the two never part. */
+async function writeBillableDefault(db: Queryable, context: CommandContext, valueId: string, billableDefault: boolean) {
+  await db.query(
+    `INSERT INTO nzi_console.time_activity_defaults (organisation_id, value_id, billable_default, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $4)
+     ON CONFLICT (organisation_id, value_id) DO UPDATE SET billable_default = EXCLUDED.billable_default, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+    [context.organisationId, valueId, billableDefault, context.actorId]);
+}
+
+export type ReferenceValueResult = { valueId: string; categoryKey: string; version: number; active: boolean; billableDefault?: boolean | null };
 
 export function createReferenceValue(pool: PoolLike, input: CommandInputMap["reference.value.create"], context: CommandContext): Promise<StoredOutcome<ReferenceValueResult & { inUse?: number }>> {
   return runPostgresCommand(pool, "reference.value.create", input, context, async (db) => {
@@ -156,10 +180,14 @@ export function createReferenceValue(pool: PoolLike, input: CommandInputMap["ref
       `INSERT INTO nzi_console.reference_values (organisation_id, category_key, value_id, label, code, sort_order, source, created_by, updated_by)
        VALUES ($1, $2, $3, $4, $5, $6, 'admin', $7, $7)`,
       [context.organisationId, input.categoryKey, valueId, label, code, sortOrder, context.actorId]);
+    // An activity is created with its billable default — validate() made it required — so none is ever defaultless.
+    const activity = input.categoryKey === TIME_ACTIVITY_CATEGORY;
+    if (activity) await writeBillableDefault(db, context, valueId, input.billableDefault === true);
     return {
-      data: { valueId, categoryKey: input.categoryKey, version: 1, active: true },
+      // The audit's after_json is `data`: an activity's default is recorded there, so the Lookups trail carries it.
+      data: { valueId, categoryKey: input.categoryKey, version: 1, active: true, ...(activity ? { billableDefault: input.billableDefault === true } : {}) },
       entityType: "reference_value", entityId: valueId, topic: "reference.value.created",
-      after: { label, code, sortOrder, active: true },
+      after: { label, code, sortOrder, active: true, ...(activity ? { billableDefault: input.billableDefault === true } : {}) },
     };
   });
 }
@@ -172,14 +200,21 @@ export function updateReferenceValue(pool: PoolLike, input: CommandInputMap["ref
     if (code && !category.carries_code) throw new CommandValidationError([{ field: "code", code: "INVALID", message: "This lookup does not carry a code." }]);
     const label = input.label.trim();
     if (current.active) await assertLabelFree(db, context, input.categoryKey, label, input.valueId);
+    // An activity's billable default: omitted keeps the held one; given, it is written with the value and audited beside it.
+    const activity = input.categoryKey === TIME_ACTIVITY_CATEGORY;
+    const heldDefault = activity ? await heldBillableDefault(db, context, input.valueId) : null;
+    const nextDefault = activity ? (input.billableDefault ?? heldDefault) : null;
+    if (activity && nextDefault === null) throw new CommandValidationError([{ field: "billableDefault", code: "REQUIRED", message: "Say whether time logged as this activity is billable by default." }]);
+    if (activity && nextDefault !== heldDefault) await writeBillableDefault(db, context, input.valueId, nextDefault!);
     const { rows: [saved] } = await db.query<{ version: number }>(
       `UPDATE nzi_console.reference_values SET label = $4, code = $5, sort_order = $6, version = version + 1, updated_at = now(), updated_by = $7
         WHERE organisation_id = $1 AND category_key = $2 AND value_id = $3 RETURNING version`,
       [context.organisationId, input.categoryKey, input.valueId, label, code, input.sortOrder, context.actorId]);
     return {
-      data: { valueId: input.valueId, categoryKey: input.categoryKey, version: saved!.version, active: current.active },
+      data: { valueId: input.valueId, categoryKey: input.categoryKey, version: saved!.version, active: current.active, ...(activity ? { billableDefault: nextDefault } : {}) },
       entityType: "reference_value", entityId: input.valueId, topic: "reference.value.updated",
-      before: snapshot(current), after: { label, code, sortOrder: input.sortOrder, active: current.active },
+      before: { ...snapshot(current), ...(activity ? { billableDefault: heldDefault } : {}) },
+      after: { label, code, sortOrder: input.sortOrder, active: current.active, ...(activity ? { billableDefault: nextDefault } : {}) },
     };
   });
 }

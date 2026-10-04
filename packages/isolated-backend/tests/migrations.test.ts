@@ -18,6 +18,8 @@ const clientContactsMigration = readFileSync(resolve(here, "../migrations/0067_c
 const clientLogoMigration = readFileSync(resolve(here, "../migrations/0068_client_logo.sql"), "utf8");
 const clientLogoFormats = readFileSync(resolve(here, "../migrations/0153_client_logo_formats.sql"), "utf8");
 const clientGeolocation = readFileSync(resolve(here, "../migrations/0154_client_geolocation.sql"), "utf8");
+const timeEntries = readFileSync(resolve(here, "../migrations/0155_time_entries.sql"), "utf8");
+const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
@@ -159,6 +161,21 @@ describe("isolated Postgres migrations", () => {
     ]) assert.ok(clientGeolocation.includes(clause), clause);
     assert.ok(!clientGeolocation.includes("UPDATE nzi_console") && !clientGeolocation.includes("GRANT"), "no rows rewritten, no grants changed");
     assert.ok(!/ALTER TABLE nzi_console\.client_sites[^;]*(latitude|geocode)/.test(clientGeolocation), "site coordinates (0035, and the v7 import's) are left as they are");
+  });
+  it("adds time entries in whole minutes, the activity defaults beside their values, capacity, and the job budget — forced RLS, no DELETE (0155)", () => {
+    for (const clause of [
+      "minutes integer NOT NULL CHECK (minutes > 0 AND minutes <= 1440)", "billable_default boolean NOT NULL",
+      "ALTER TABLE nzi_console.time_entries FORCE ROW LEVEL SECURITY", "ALTER TABLE nzi_console.time_activity_defaults FORCE ROW LEVEL SECURITY",
+      "GRANT SELECT, INSERT, UPDATE ON nzi_console.time_entries TO nzi_console_app", "GRANT SELECT, INSERT, UPDATE ON nzi_console.time_activity_defaults TO nzi_console_app",
+      "weekly_capacity_hours numeric(5, 2) NOT NULL DEFAULT 37.5", "ADD COLUMN budgeted_hours numeric(9, 2)", "ADD COLUMN fee_amount numeric(12, 2)",
+      "CREATE TRIGGER provision_activity_types_on_insert AFTER INSERT ON nzi_console.organisations", "lower(v.label) NOT IN ('travel', 'admin')", "WHERE t.included",
+    ]) assert.ok(timeEntries.includes(clause), clause);
+    assert.doesNotMatch(timeEntries, /GRANT[^;]*DELETE/, "nothing is ever deleted");
+    assert.match(timeEntries, /AND j\.budgeted_hours IS NULL AND j\.fee_amount IS NULL/, "the backfill never overwrites a recorded budget or fee");
+  });
+  it("versions the matrix to 9 with time.log for every role and time.view for admin, consultant and reviewer (0156)", () => {
+    for (const row of ["(9, 'admin', 'time.log', 'all')", "(9, 'consultant', 'time.log', 'own_clients')", "(9, 'viewer', 'time.log', 'all')", "(9, 'consultant', 'time.view', 'own_clients')"]) assert.ok(matrixV9.includes(row), row);
+    assert.ok(!matrixV9.includes("(9, 'viewer', 'time.view'") && !matrixV9.includes("(9, 'finance', 'time.view'"));
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

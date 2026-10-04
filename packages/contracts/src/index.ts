@@ -126,6 +126,7 @@ export * from "./adminCustomFields";
 export * from "./adminPortalBroadcasts";
 export * from "./clientWebsite";
 export * from "./iso3166";
+export * from "./time";
 export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";

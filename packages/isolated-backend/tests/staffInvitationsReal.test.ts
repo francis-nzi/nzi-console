@@ -60,11 +60,14 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
 
   // ── The matrix ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it("matrix v8 grants staff.invite to Admin and to no other role", async () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 8);
-    const holders = await db.query<{ role_id: string; scope: string }>(
-      `SELECT role_id, scope FROM nzi_console.staff_role_capabilities WHERE matrix_version = 8 AND capability = 'staff.invite'`);
-    assert.deepEqual(holders.rows, [{ role_id: "admin", scope: "all" }]);
+  it("matrix v8 grants staff.invite to Admin and to no other role — and every later version keeps it so", async () => {
+    // v8 introduced it; later versions (v9 added time.log / time.view) must carry it unchanged.
+    assert.ok(PERMISSION_MATRIX_VERSION >= 8);
+    for (const version of [8, PERMISSION_MATRIX_VERSION]) {
+      const holders = await db.query<{ role_id: string; scope: string }>(
+        `SELECT role_id, scope FROM nzi_console.staff_role_capabilities WHERE matrix_version = $1 AND capability = 'staff.invite'`, [version]);
+      assert.deepEqual(holders.rows, [{ role_id: "admin", scope: "all" }], `matrix v${version}`);
+    }
     for (const role of staffRoles) {
       assert.equal(roleCapabilityGrants(role).some((grant) => grant.capability === "staff.invite"), role === "admin", role);
     }
@@ -95,7 +98,7 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
 
     admin = await resolveStaffPrincipal(database.pool, await signIn("lead@example.org", secret));
     assert.equal(admin.role, "admin");
-    assert.equal(admin.matrixVersion, 8, "the session did not resolve against the current matrix");
+    assert.equal(admin.matrixVersion, PERMISSION_MATRIX_VERSION, "the session did not resolve against the current matrix");
     assert.ok(admin.capabilities.some((grant) => grant.capability === "staff.invite"), "the first admin cannot invite");
   });
 

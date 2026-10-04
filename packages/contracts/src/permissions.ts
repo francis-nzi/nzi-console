@@ -79,6 +79,12 @@ export const capabilities = [
   "knowledge.capture",
   "knowledge.approve",
   "knowledge.publish",
+  // ── Time (TIME-module rulings T-Q3, T-Q7; matrix v9) ──
+  // `time.log`: log, edit and void one's OWN time, against a job one can access — every role, so utilisation sees the
+  // whole team. `time.view`: see other people's time. Money on time (rates, cost, margin) stays behind finance.view /
+  // finance.manage, in the command and the read alike.
+  "time.log",
+  "time.view",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -93,7 +99,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 8;
+export const PERMISSION_MATRIX_VERSION = 9;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -116,10 +122,13 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
     // than within one.
     "category.visibility": "own_clients",
     "audit.view": "own_clients",
+    // T-Q7: a consultant logs time on — and sees time for — their own clients' jobs.
+    "time.log": "own_clients",
+    "time.view": "own_clients",
   },
-  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture"),
-  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture"), "audit.view": "own_clients" },
-  viewer: all("client.view", "report.view", "knowledge.capture"),
+  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view"),
+  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log"), "audit.view": "own_clients" },
+  viewer: all("client.view", "report.view", "knowledge.capture", "time.log"),
 };
 
 export const roleLabels: Record<StaffRole, string> = {
