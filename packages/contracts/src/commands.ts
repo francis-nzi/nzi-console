@@ -1194,6 +1194,59 @@ const scopeRowIssues = (input: ScopeRowWriteFields) => { const issues: CommandIs
 /** The Compliance tab's "Primary Scope 3 categories" are the canonical taxonomy codes, not a parallel list. */
 export const scope3CategoryCodes: readonly string[] = emissionCategoryTaxonomy.filter((entry) => entry.scope === "3").map((entry) => entry.code);
 
+/**
+ * F1 remedy (1) — client.update validates only what the save changes.
+ *
+ * Every client editor sends the whole record, so a held value that fails today's rules (433 imported clients have no
+ * location and an unpaired net-zero target) refused every save of an unrelated field. The rule now:
+ * - the handler compares each incoming field with the **stored row** (loaded under its lock — never the caller's word
+ *   for what changed), normalised the way it would be stored;
+ * - only changed fields are validated, so an untouched held value stands, however it reads today;
+ * - a **pair**'s rule runs when either member changed, so a half-edit cannot leave a new invalid pair;
+ * - a held field that **is** edited must become valid — it tightens on write, it does not grandfather forever.
+ * client.create is unchanged: everything is validated.
+ */
+export type ClientHeldFields = ClientIdentityFields & ClientProfileFields;
+const CLIENT_COMPARED_FIELDS = [
+  "name", "status", "sector", "location", "owner",
+  "portfolio", "clientManager", "website", "industrySic", "companyRegistration", "headquarters", "financialYearEndMonth",
+  "dataReportingFrequency", "currency", "logoUrl", "companyDescription", "referral", "contactName", "contactRole", "contactEmail",
+  "netZeroTargetYear", "netZeroTargetReductionPct", "baselinePeriodStart", "baselinePeriodEnd",
+  "baselineScope1Tco2e", "baselineScope2Tco2e", "baselineScope3Tco2e", "baselineTotalTco2e",
+  "scope1InterimYear", "scope1InterimReductionPct", "scope2InterimYear", "scope2InterimReductionPct", "scope3InterimYear", "scope3InterimReductionPct",
+  "registeredAddressLine1", "registeredAddressLine2", "registeredCity", "registeredRegion", "registeredPostcode", "registeredCountry",
+  "billingSameAsRegistered", "billingCompany", "billingAddressLine1", "billingAddressLine2", "billingCity", "billingRegion", "billingPostcode", "billingCountry",
+  "parentCompany", "groupStructure", "reportingFrameworks", "certifications", "primaryScope3Categories",
+] as const satisfies ReadonlyArray<keyof ClientHeldFields>;
+/** Fields whose rule spans both members: it runs when either changed. */
+const CLIENT_PAIRED_FIELDS: ReadonlyArray<readonly [keyof ClientHeldFields, keyof ClientHeldFields]> = [
+  ["netZeroTargetYear", "netZeroTargetReductionPct"], ["baselinePeriodStart", "baselinePeriodEnd"],
+];
+/** A field as it would be stored: blank text is null, numbers are numbers, lists keep their order, the website normalised. */
+const storedForm = (field: keyof ClientHeldFields, value: unknown): unknown => {
+  if (value === undefined || value === null) return field === "billingSameAsRegistered" ? true : null;
+  if (field === "website") return normaliseWebsite(value as string);
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === "string") { const text = value.trim(); return text === "" ? null : text; }
+  if (typeof value === "number") return value;
+  return value;
+};
+/** The fields an update changes, against the stored row; a pair counts as changed when either member did. */
+export function changedClientFields(input: Partial<ClientHeldFields>, held: Partial<ClientHeldFields>): Set<string> {
+  const changed = new Set<string>(CLIENT_COMPARED_FIELDS.filter((field) => {
+    // An omitted currency keeps the held one (E-Q3), so omitting it is no change.
+    if (field === "currency" && input.currency === undefined) return false;
+    return storedForm(field, input[field]) !== storedForm(field, held[field]);
+  }));
+  for (const pair of CLIENT_PAIRED_FIELDS) if (pair.some((field) => changed.has(field))) pair.forEach((field) => changed.add(field));
+  return changed;
+}
+/** client.update's field rules, kept to the fields the save changes (F1 remedy (1)). */
+export function clientUpdateIssues(input: ClientHeldFields, held: Partial<ClientHeldFields>): CommandIssue[] {
+  const changed = changedClientFields(input, held);
+  return [...clientIdentityIssues(input), ...clientProfileIssues(input)].filter((issue) => changed.has(issue.field));
+}
+
 const clientIdentityIssues = (input: ClientIdentityFields) => {
   const issues: CommandIssue[] = [];
   required(issues, "name", input.name); required(issues, "sector", input.sector);
@@ -1277,7 +1330,7 @@ const clientContactIssues = (input: ClientContactWriteFields) => {
 
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.create": { key: "client.create", label: "Create client", permission: "client.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)] },
-  "client.update": { key: "client.update", label: "Update client", permission: "client.edit", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "client.update": { key: "client.update", label: "Update client", permission: "client.edit", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { /* F1 remedy (1): the field rules run in the handler, against the stored row — only on what the save changes (clientUpdateIssues). */ const issues = [...baseIssues(context, false)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "job.create": { key: "job.create", label: "Create job", permission: "job.manage", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); issues.push(...jobDateIssues(input, { family: oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const) ? input.family : undefined })); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "job.manage", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   // PR 3 — the milestone command. Delivery work on a job, so job.manage and the job's client scope, as a stage change.

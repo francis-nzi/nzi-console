@@ -81,11 +81,18 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
   const keys = useRef<Record<string, string>>({});
   const file = useRef<HTMLInputElement>(null);
 
-  const problem = !name.trim() ? "Give the client's name." : !sector.trim() ? "Give the client's industry."
-    : !/^[A-Z]{3}$/.test(currency.trim()) ? "Currency must be a three-letter ISO code, e.g. GBP."
-    : fye === null ? "Choose the financial year end — it sets each reporting year's period." : null;
-  const example = fye !== null ? reportingPeriodForYear(new Date().getUTCFullYear(), fye) : null;
+  // F1 remedy (1), mirrored from client.update: a field being edited must be valid; a held value left alone is a
+  // warning, never a reason to refuse saving something else.
+  const nameChanged = name.trim() !== (client.name ?? "").trim();
+  const sectorChanged = sector.trim() !== (client.sector ?? "").trim();
+  const currencyChanged = currency.trim() !== (profile.currency ?? "GBP");
   const fyeChanged = fye !== (profile.financialYearEndMonth ?? null);
+  const problem = nameChanged && !name.trim() ? "Give the client's name." : sectorChanged && !sector.trim() ? "Give the client's industry."
+    : currencyChanged && !/^[A-Z]{3}$/.test(currency.trim()) ? "Currency must be a three-letter ISO code, e.g. GBP."
+    : fyeChanged && fye === null ? "Choose the financial year end — it sets each reporting year's period." : null;
+  const heldGaps = [!nameChanged && !name.trim() ? "no name" : null, !sectorChanged && !sector.trim() ? "no industry" : null,
+    !fyeChanged && fye === null ? "no financial year end" : null].filter((gap): gap is string => gap !== null);
+  const example = fye !== null ? reportingPeriodForYear(new Date().getUTCFullYear(), fye) : null;
 
   async function save() {
     setPending("save");
@@ -199,6 +206,7 @@ export function IdentityForm({ client, access, onClose }: { client: ClientScreen
       </div>
       <span className="nz-hint">The financial year end sets each reporting year&apos;s period and drives reporting-year eligibility (the 300–400 day rule) — so it must be correct before a job is issued.</span>
       {example ? <span className="nz-hint" role="status">With this year end, FY{String(new Date().getUTCFullYear()).slice(-2)} runs {formatDate(example.from)}–{formatDate(example.to)}.{fyeChanged ? " Jobs already issued keep the period they were issued with; the change is recorded in the audit log." : ""}</span> : null}
+      {heldGaps.length ? <span className="nz-hint" role="status" style={{ marginTop: 12 }}>This record is held with {heldGaps.join(", ")} — it can still be saved; fill these in when you can.</span> : null}
       {error ? <div className="nz-banner warn" role="alert" style={{ marginTop: 12 }}>{error}</div> : null}
     </div>
     <div className="nz-df">
