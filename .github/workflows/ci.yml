@@ -558,6 +558,10 @@ jobs:
       # any other type still refused by the CHECK, the organisation's own store unchanged; a job carries its client's logo.
       - name: The client logo store takes PNG, SVG, JPEG and WebP, and nothing else
         run: npx tsx --test packages/isolated-backend/tests/clientLogoReal.test.ts
+      # CLIENT-04 / CLIENT-11 (0154): a site's structured address (kept out of the audit), coordinates cleared only when the
+      # postcode or country changes, located by postcode and country only, behind a switch that is off by default.
+      - name: Clients and sites are located from a postcode and country only, and only when switched on
+        run: npx tsx --test packages/isolated-backend/tests/clientGeolocationReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

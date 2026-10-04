@@ -2,13 +2,14 @@ import { resolveFloorAreaDenominator, resolveSiteBoundary, type ClientSiteReadMo
 import type { Queryable } from "./postgres";
 import { dateOnly, isoTimestamp } from "./dates";
 
-type SiteRow = { site_id: string; name: string; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null; version: number };
+type SiteRow = { site_id: string; name: string; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null; version: number;
+  address_lines_json?: string[] | null; postcode?: string | null; country?: string | null; located?: boolean };
 type FloorAreaRow = { site_id: string; effective_from: Date | string | null; floor_area_m2: string; recorded_by: string; recorded_at: Date | string };
 
 /** A client's sites with their floor-area history — the one site read (NZC-070/071). */
 export async function listClientSites(db: Queryable, clientId: string): Promise<ClientSiteReadModel[]> {
   const [sites, areas] = await Promise.all([
-    db.query<SiteRow>(`SELECT site_id,name,is_registered_office,in_service_from,vacated_effective,version FROM nzi_console.client_sites WHERE client_id=$1 AND archived=false ORDER BY lower(name),site_id`, [clientId]),
+    db.query<SiteRow>(`SELECT site_id,name,is_registered_office,in_service_from,vacated_effective,version,address_lines_json,postcode,country,(latitude IS NOT NULL) AS located FROM nzi_console.client_sites WHERE client_id=$1 AND archived=false ORDER BY lower(name),site_id`, [clientId]),
     db.query<FloorAreaRow>(`SELECT a.site_id,a.effective_from,a.floor_area_m2::text AS floor_area_m2,a.recorded_by,a.recorded_at FROM nzi_console.client_site_floor_areas a JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(a.organisation_id,a.site_id) WHERE s.client_id=$1 ORDER BY a.effective_from NULLS FIRST,a.recorded_at`, [clientId]),
   ]);
   return sites.rows.map((row) => ({
@@ -18,6 +19,7 @@ export async function listClientSites(db: Queryable, clientId: string): Promise<
     inServiceFrom: row.in_service_from === null ? null : dateOnly(row.in_service_from),
     vacatedEffective: row.vacated_effective === null ? null : dateOnly(row.vacated_effective),
     version: row.version,
+    addressLines: row.address_lines_json ?? [], postcode: row.postcode ?? null, country: row.country ?? null, located: row.located ?? false,
     floorAreas: areas.rows.filter((area) => area.site_id === row.site_id).map((area) => ({
       effectiveFrom: area.effective_from === null ? null : dateOnly(area.effective_from),
       floorAreaM2: Number(area.floor_area_m2),

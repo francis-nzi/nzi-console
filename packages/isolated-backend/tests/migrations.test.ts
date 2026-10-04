@@ -17,6 +17,7 @@ const permissionMatrixMigration = readFileSync(resolve(here, "../migrations/0066
 const clientContactsMigration = readFileSync(resolve(here, "../migrations/0067_client_contacts.sql"), "utf8");
 const clientLogoMigration = readFileSync(resolve(here, "../migrations/0068_client_logo.sql"), "utf8");
 const clientLogoFormats = readFileSync(resolve(here, "../migrations/0153_client_logo_formats.sql"), "utf8");
+const clientGeolocation = readFileSync(resolve(here, "../migrations/0154_client_geolocation.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
@@ -149,6 +150,15 @@ describe("isolated Postgres migrations", () => {
     assert.ok(clientLogoFormats.includes("ADD CONSTRAINT client_logo_assets_content_type_check\n  CHECK (content_type IN ('image/png', 'image/svg+xml', 'image/jpeg', 'image/webp'))"));
     assert.doesNotMatch(clientLogoFormats, /ALTER TABLE nzi_console\.organisation_logo_assets/, "the organisation's own logo stays PNG or SVG");
     assert.doesNotMatch(clientLogoFormats, /GRANT|UPDATE nzi_console|DELETE/, "no grants change and no rows are rewritten");
+  });
+  it("adds client coordinates, paired, in range and sourced, and an ISO site country — and rewrites nothing (0154)", () => {
+    for (const clause of [
+      "ADD COLUMN latitude numeric CHECK (latitude BETWEEN -90 AND 90)", "ADD COLUMN longitude numeric CHECK (longitude BETWEEN -180 AND 180)",
+      "ADD COLUMN geocode_source text CHECK (geocode_source IN ('nominatim'))", "ADD COLUMN geocode_precision text CHECK (geocode_precision IN ('postcode'))",
+      "ADD CONSTRAINT clients_coordinates_paired", "ADD CONSTRAINT clients_coordinates_sourced", "ADD COLUMN country text CHECK (country ~ '^[A-Z]{2}$')",
+    ]) assert.ok(clientGeolocation.includes(clause), clause);
+    assert.ok(!clientGeolocation.includes("UPDATE nzi_console") && !clientGeolocation.includes("GRANT"), "no rows rewritten, no grants changed");
+    assert.ok(!/ALTER TABLE nzi_console\.client_sites[^;]*(latitude|geocode)/.test(clientGeolocation), "site coordinates (0035, and the v7 import's) are left as they are");
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

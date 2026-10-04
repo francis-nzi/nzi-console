@@ -38,6 +38,8 @@ export type ClientScreenReadModel = {
   references: ClientReferences;
   /** The uploaded logo; null = show the monogram. */
   logoAssetId: string | null;
+  /** CLIENT-04: whether the client has coordinates, from its registered postcode and country. */
+  located?: boolean;
   jobs: Array<{ number: string; year: number; status: string }>;
   sites: Array<{ id: string; name: string; isRegisteredOffice: boolean; inServiceFrom: string | null; vacatedEffective: string | null; version: number }>;
   profile: ClientProfileFields;
@@ -74,7 +76,7 @@ type ClientRow = {
   client_id: string; version: number; name: string; status: ClientStatus; sector: string; location: string; owner_name: string;
   member_since: number; latest_footprint_tco2e: string | null; yoy_percent: string | null;
   completeness_percent: number; next_report_due_label: string; contact_name: string; contact_role: string;
-  contact_email: string; open_jobs: string; owner_user_id?: string | null; logo_asset_id?: string | null;
+  contact_email: string; open_jobs: string; owner_user_id?: string | null; logo_asset_id?: string | null; located?: boolean;
   sector_value_id?: string | null; referral_value_id?: string | null; client_manager_user_id?: string | null;
   primary_contact?: { name: string; role: string; email: string } | null; jobs: Array<{ number: string; year: number; status: string }> | null;
   sites: ClientScreenReadModel["sites"] | null;
@@ -158,7 +160,7 @@ export async function listAllClients(db: Queryable, clientId?: string): Promise<
       c.billing_same_as_registered, c.billing_company, c.billing_address_line1, c.billing_address_line2,
       c.billing_city, c.billing_region, c.billing_postcode, c.billing_country,
       c.parent_company, c.group_structure, c.reporting_frameworks, c.certifications, c.primary_scope3_categories,
-      c.owner_user_id, c.logo_asset_id,
+      c.owner_user_id, c.logo_asset_id, (c.latitude IS NOT NULL) AS located,
       c.sector_value_id, c.referral_value_id, c.client_manager_user_id,
       /* NZC-090 — the curated label for each reference, or null when the client's value predates
          the lookups, was archived out of them, or never matched. The fallback to the stored text
@@ -189,7 +191,7 @@ export async function listAllClients(db: Queryable, clientId?: string): Promise<
     completeness: row.completeness_percent, openJobs: Number(row.open_jobs), nextReportDue: row.next_report_due_label,
     // The primary contact from the contacts list; the legacy single-contact columns only when the list is not read.
     contact: row.primary_contact === undefined ? { name: row.contact_name, role: row.contact_role, email: row.contact_email } : row.primary_contact ?? { name: "", role: "", email: "" },
-    ownerUserId: row.owner_user_id ?? null, logoAssetId: row.logo_asset_id ?? null, jobs: row.jobs ?? [], sites: row.sites ?? [],
+    ownerUserId: row.owner_user_id ?? null, logoAssetId: row.logo_asset_id ?? null, located: row.located ?? false, jobs: row.jobs ?? [], sites: row.sites ?? [],
     profile: clientProfile(row) }));
 }
 

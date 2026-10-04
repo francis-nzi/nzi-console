@@ -324,8 +324,8 @@ export async function updateClient(
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
   return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
-    const prior = await db.query<ClientGovernedRow & { currency: string } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
-      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency, ${CLIENT_LINK_COLUMNS.map(([, column]) => column).join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
+    const prior = await db.query<ClientGovernedRow & { currency: string; registered_postcode: string | null; registered_country: string | null } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
+      `SELECT version, financial_year_end_month, ${CLIENT_BASELINE_COLUMNS.join(", ")}, currency, registered_postcode, registered_country, ${CLIENT_LINK_COLUMNS.map(([, column]) => column).join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientId],
     );
     const before = prior.rows[0];
@@ -353,9 +353,13 @@ export async function updateClient(
     const links = Object.fromEntries(CLIENT_LINK_COLUMNS.map(([field, column]) => [field, input[field] === undefined ? before[column] : input[field]]));
     const profile = clientProfileValues({ ...input, currency, ...links });
     const assignments = CLIENT_PROFILE_COLUMNS.map((column, index) => `${column}=$${index + 9}`).join(",");
+    // CLIENT-04: the client's coordinates come from its registered postcode and country; a change to either clears them
+    // (they belonged to the old address) and the client is located afresh.
+    const moved = trimmed(input.registeredPostcode) !== before.registered_postcode || trimmed(input.registeredCountry) !== before.registered_country;
+    const relocate = moved ? ", latitude=NULL, longitude=NULL, geocode_source=NULL, geocode_precision=NULL" : "";
     const updated = await db.query<{ version: number }>(
       `UPDATE nzi_console.clients
-         SET name=$4, status=$5, sector=$6, location=$7, owner_name=$8, ${assignments},
+         SET name=$4, status=$5, sector=$6, location=$7, owner_name=$8, ${assignments}${relocate},
              version=version+1, updated_at=now()
        WHERE organisation_id=$1 AND client_id=$2 AND version=$3
        RETURNING version`,

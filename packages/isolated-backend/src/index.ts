@@ -112,6 +112,7 @@ export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssess
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";
 export * from "./clientLogoFetch";
+export * from "./geolocation";
 export * from "./clientTargets";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";

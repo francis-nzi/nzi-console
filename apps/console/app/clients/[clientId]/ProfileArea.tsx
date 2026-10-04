@@ -4,6 +4,7 @@ import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { GatedButton } from "@nzi/ui";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead } from "./OverviewArea";
+import { ClientLocation } from "./ClientLocation";
 import type { DrawerRequest } from "./clientDrawers";
 
 /**
@@ -16,7 +17,8 @@ import type { DrawerRequest } from "./clientDrawers";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthName = (month: number | null | undefined) => month && month >= 1 && month <= 12 ? MONTHS[month - 1]! : null;
 
-export function ProfileArea({ workspace, access, onDrawer, factorsEnabled }: {
+export function ProfileArea({ workspace, access, onDrawer, factorsEnabled, geocodingEnabled = false }: {
+  geocodingEnabled?: boolean;
   workspace: ClientWorkspaceReadModel;
   access: { client: EditAccess; contact: EditAccess };
   onDrawer: (request: DrawerRequest) => void;
@@ -82,6 +84,7 @@ export function ProfileArea({ workspace, access, onDrawer, factorsEnabled }: {
               ? "Same as registered"
               : billing && billing.length ? billing.join(", ") : <span className="muted">Not set</span>}</span></div>
             {profile.headquarters ? <Row label="Headquarters" value={profile.headquarters} /> : null}
+            <div className="nz-kv"><span className="k">Located</span><span className="v"><ClientLocation client={workspace.client} geocodingEnabled={geocodingEnabled} access={access.client} /></span></div>
           </div>
         </section>
 
