@@ -359,4 +359,43 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       assert.equal((await q(`SELECT location FROM nzi_console.clients WHERE client_id = $1`, [held]))[0].location, "Leeds, UK");
     });
   });
+
+  describe("the portfolio is a lookup link too (CLIENT-01): created, read with its label, kept, cleared, set", () => {
+    let clientId = "";
+    const portfolio = async () => (await q(`SELECT portfolio, portfolio_value_id FROM nzi_console.clients WHERE client_id = $1`, [clientId]))[0];
+    const held = async () => (await withTenantRead(database.pool, NZI, (db) => listAllClients(db, clientId)))[0]!;
+    const save = async (changes: Record<string, unknown>, whole = false) => {
+      const client = await held();
+      return updateClient(database.pool, { clientId, expectedVersion: client.version, name: client.name, status: client.status, sector: client.sector,
+        location: client.location, owner: client.owner, ...(whole ? client.profile : {}), ...changes } as never, context("ada", "admin"));
+    };
+
+    before(async () => {
+      await q(`INSERT INTO nzi_console.reference_values (organisation_id, category_key, value_id, label, created_by, updated_by) VALUES
+        ($1, 'portfolios', 'links:pf-nzi', 'NZI', 'test', 'test'), ($1, 'portfolios', 'links:pf-other', 'Partner portfolio', 'test', 'test')`, [NZI]);
+      clientId = (await createClient(database.pool, { name: "Portfolio Client", status: "active", sector: "Manufacturing", location: "Leeds, UK", owner: "Ada Admin",
+        portfolio: "NZI", portfolioValueId: "links:pf-nzi" } as never, context("ada", "admin"))).data.clientId;
+    });
+
+    it("stores the link on create, and the profile reads it with the value's curated label", async () => {
+      assert.deepEqual(await portfolio(), { portfolio: "NZI", portfolio_value_id: "links:pf-nzi" });
+      await q(`UPDATE nzi_console.reference_values SET label = 'NZI Group' WHERE value_id = 'links:pf-nzi'`);
+      const profile = (await held()).profile;
+      assert.deepEqual([profile.portfolio, profile.portfolioValueId], ["NZI Group", "links:pf-nzi"], "a rename in the lookup reaches the client");
+    });
+
+    it("keeps it through a drawer save of something else, and when an update omits it", async () => {
+      await save({ registeredCity: "York" }, true);
+      assert.equal((await portfolio()).portfolio_value_id, "links:pf-nzi");
+      await save({ registeredCity: "Hull" });
+      assert.equal((await portfolio()).portfolio_value_id, "links:pf-nzi");
+    });
+
+    it("sets it given an id, and clears it given null", async () => {
+      await save({ portfolio: "Partner portfolio", portfolioValueId: "links:pf-other" });
+      assert.deepEqual(await portfolio(), { portfolio: "Partner portfolio", portfolio_value_id: "links:pf-other" });
+      await save({ portfolioValueId: null });
+      assert.equal((await portfolio()).portfolio_value_id, null);
+    });
+  });
 });

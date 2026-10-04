@@ -66,10 +66,15 @@ export function useTeamOptions(): OptionList {
   return team;
 }
 
-export function useReferenceOptions(): { team: OptionList; industries: OptionList; referrals: OptionList } {
+/** The lookup categories a client form searches; each can take a value added in place (CLIENT-06). */
+export type ClientLookupCategory = "industries" | "referrals" | "portfolios";
+
+export function useReferenceOptions(): { team: OptionList; industries: OptionList; referrals: OptionList; portfolios: OptionList; append: (category: ClientLookupCategory, option: SmartSearchOption) => void } {
   const team = useTeamOptions();
   const [industries, setIndustries] = useState<OptionList>(LOADING);
   const [referrals, setReferrals] = useState<OptionList>(LOADING);
+  // CLIENT-01 — the portfolio is a lookup too (0138's `portfolios`).
+  const [portfolios, setPortfolios] = useState<OptionList>(LOADING);
 
   useEffect(() => {
     let live = true;
@@ -86,9 +91,16 @@ export function useReferenceOptions(): { team: OptionList; industries: OptionLis
 
     void fetchOptions("/api/isolated/lookups/industries", values).then(settle(setIndustries));
     void fetchOptions("/api/isolated/lookups/referrals", values).then(settle(setReferrals));
+    void fetchOptions("/api/isolated/lookups/portfolios", values).then(settle(setPortfolios));
 
     return () => { live = false; };
   }, []);
 
-  return { team, industries, referrals };
+  // A value just added in place joins its list at once, without refetching — the server has it too.
+  const append = (category: ClientLookupCategory, option: SmartSearchOption) => {
+    const add = (list: OptionList): OptionList => ({ ...list, state: "ready", options: [...list.options.filter((entry) => entry.id !== option.id), option].sort((a, b) => a.label.localeCompare(b.label)) });
+    ({ industries: setIndustries, referrals: setReferrals, portfolios: setPortfolios })[category](add);
+  };
+
+  return { team, industries, referrals, portfolios, append };
 }

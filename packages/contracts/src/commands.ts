@@ -453,6 +453,8 @@ export type ClientDetailsFields = {
   portfolio?: string | null; clientManager?: string | null; website?: string | null;
   /** NZC-090 — the references behind `clientManager` and `referral`, alongside their text. */
   clientManagerUserId?: string | null; referralValueId?: string | null; sectorValueId?: string | null;
+  /** CLIENT-01 — the portfolio lookup value (0138's `portfolios`), beside the `portfolio` text, as sector and referral. */
+  portfolioValueId?: string | null;
   industrySic?: string | null; companyRegistration?: string | null; headquarters?: string | null;
   financialYearEndMonth?: number | null; dataReportingFrequency?: ClientReportingFrequency;
   currency?: string; logoUrl?: string | null; companyDescription?: string | null; referral?: string | null;

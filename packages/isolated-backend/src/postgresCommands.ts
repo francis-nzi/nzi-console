@@ -288,6 +288,8 @@ const CLIENT_PROFILE_COLUMNS = [
   // text rather than replacing it: the id is what makes a lookup rename reach every client that
   // chose the value, and the text is what a client keeps when its value never was in the list.
   "sector_value_id", "referral_value_id", "client_manager_user_id",
+  // CLIENT-01 — the portfolio's lookup value (0138), beside its text, the same way.
+  "portfolio_value_id",
 ] as const;
 
 const trimmed = (value: string | null | undefined) => value?.trim() || null;
@@ -314,6 +316,7 @@ function clientProfileValues(input: ClientProfileFields): unknown[] {
     trimmed(input.parentCompany), input.groupStructure ?? null,
     input.reportingFrameworks ?? [], input.certifications ?? [], input.primaryScope3Categories ?? [],
     trimmed(input.sectorValueId), trimmed(input.referralValueId), trimmed(input.clientManagerUserId),
+    trimmed(input.portfolioValueId),
   ];
   if (values.length !== CLIENT_PROFILE_COLUMNS.length) throw new Error("Client profile column/value mismatch.");
   return values;
@@ -396,7 +399,7 @@ export async function updateClient(
 }
 
 /** NZC-090's lookup links on the client, each beside its text: what client.update keeps when the input omits one. */
-const CLIENT_LINK_COLUMNS = [["sectorValueId", "sector_value_id"], ["referralValueId", "referral_value_id"], ["clientManagerUserId", "client_manager_user_id"]] as const;
+const CLIENT_LINK_COLUMNS = [["sectorValueId", "sector_value_id"], ["referralValueId", "referral_value_id"], ["clientManagerUserId", "client_manager_user_id"], ["portfolioValueId", "portfolio_value_id"]] as const;
 /** Every column client.update compares with the input (F1 remedy (1)). */
 type HeldClientRow = { name: string; status: string; sector: string | null; location: string | null; owner_name: string | null }
   & Record<(typeof CLIENT_PROFILE_COLUMNS)[number], unknown>;
@@ -429,6 +432,9 @@ function heldClientFields(row: HeldClientRow): ClientHeldFields {
     parentCompany: heldText(row.parent_company), groupStructure: (heldText(row.group_structure) ?? null) as ClientHeldFields["groupStructure"],
     reportingFrameworks: (row.reporting_frameworks as string[] | null) ?? [], certifications: (row.certifications as string[] | null) ?? [],
     primaryScope3Categories: (row.primary_scope3_categories as string[] | null) ?? [],
+    // NZC-090 / CLIENT-01: the lookup links, held beside their text. Not compared (no rule keys on an id; the text is).
+    sectorValueId: heldText(row.sector_value_id), referralValueId: heldText(row.referral_value_id),
+    clientManagerUserId: heldText(row.client_manager_user_id), portfolioValueId: heldText(row.portfolio_value_id),
   };
 }
 /** An identity value as written: unchanged, exactly as held (null included); changed, trimmed. */

@@ -3,10 +3,13 @@
 // The client record's field groups, shared by the create wizard (/clients/new)
 // and the edit tabs (/clients/[id]/edit) so the two surfaces cannot drift.
 import {InfoTip, SmartSearch } from "@nzi/ui";
-import type { OptionList } from "./useReferenceOptions";
+import type { ClientLookupCategory, OptionList } from "./useReferenceOptions";
+import type { SmartSearchOption } from "@nzi/ui";
+import { LookupAdd } from "./LookupAdd";
+import { CountrySelect } from "../lib/CountrySelect";
 import {
   clientCertifications, clientGroupStructures, clientReportingFrameworks, clientReportingFrequencies,
-  emissionCategoryTaxonomy, normaliseWebsite,
+  emissionCategoryTaxonomy, isIsoCountryCode, normaliseWebsite,
   type ClientIdentityFields, type ClientProfileFields,
 } from "@nzi/contracts";
 
@@ -39,14 +42,16 @@ export function normaliseClientForm(form: ClientFormState): ClientFormState {
 
 type GroupProps = { form: ClientFormState; onChange: (patch: Partial<ClientFormState>) => void; errors: FieldErrors };
 
-export type ClientLookups = { team: OptionList; industries: OptionList; referrals: OptionList };
+export type ClientLookups = { team: OptionList; industries: OptionList; referrals: OptionList; portfolios: OptionList; append?: (category: ClientLookupCategory, option: SmartSearchOption) => void };
 
 /**
  * Hint and error text are wired through aria-describedby rather than nested in the
  * <label>, so an input's accessible name stays the field name alone.
  */
-function Field({ label, name, errors, control, hint, about, span, required }: {
+function Field({ label, name, errors, control, hint, about, span, required, after }: {
   label: string; name: string; errors: FieldErrors; hint?: string; span?: number; required?: boolean;
+  /** Rendered under the control and its messages — the inline "Add…" of a lookup-backed field (CLIENT-06). */
+  after?: React.ReactNode;
   /** A longer explanation, shown on demand via ⓘ. Short guidance belongs in `hint`. */
   about?: React.ReactNode;
   /** `invalid` is passed alongside the spreadable a11y props so the control can add
@@ -66,6 +71,7 @@ function Field({ label, name, errors, control, hint, about, span, required }: {
       {control({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined, required }, Boolean(error))}
       {error ? <small className="nz-hint nz-field-error" id={`${id}-error`} role="alert">{error}</small> : null}
       {hint ? <small className="nz-hint" id={`${id}-hint`}>{hint}</small> : null}
+      {after}
     </div>
   );
 }
@@ -131,8 +137,10 @@ function Legend({ title, about }: { title: string; about: React.ReactNode }) {
  * the value is chosen from the curated list rather than typed, which is the change that removes the
  * typos and the near-duplicates.
  */
-function Lookup({ form, onChange, errors, name, idField, label, list, required }: GroupProps & {
+function Lookup({ form, onChange, errors, name, idField, label, list, required, add }: GroupProps & {
   name: keyof ClientFormState; idField: keyof ClientFormState; label: string; list: OptionList; required?: boolean;
+  /** A lookup-backed field (CLIENT-06): its category, what a value is called, and how a value added in place joins the list. */
+  add?: { category: ClientLookupCategory; noun: string; append?: (category: ClientLookupCategory, option: SmartSearchOption) => void };
 }) {
   const stored = (form[name] as string | null) ?? "";
   const storedId = (form[idField] as string | null) ?? "";
@@ -162,7 +170,11 @@ function Lookup({ form, onChange, errors, name, idField, label, list, required }
             [idField]: id || null,
           } as Partial<ClientFormState>)}
         />
-      )} />
+      )} after={add ? <LookupAdd categoryKey={add.category} noun={add.noun} onAdded={(option) => {
+        // CLIENT-06 — added in place: it joins the list and is chosen at once.
+        add.append?.(add.category, option);
+        onChange({ [name]: option.label, [idField]: option.id } as Partial<ClientFormState>);
+      }} /> : undefined} />
   );
 }
 
@@ -172,7 +184,7 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
     <>
       <div className="nz-client-create-grid">
         <Text {...props} name="name" label="Client name" required />
-        <Text {...props} name="portfolio" label="Portfolio" />
+        <Lookup {...props} name="portfolio" idField="portfolioValueId" label="Portfolio" list={lookups.portfolios} add={{ category: "portfolios", noun: "portfolio", append: lookups.append }} />
         <Lookup {...props} name="owner" idField="ownerUserId" label="Client owner" list={lookups.team} required />
         <Lookup {...props} name="clientManager" idField="clientManagerUserId" label="Client manager" list={lookups.team} />
         <Field label="Relationship stage" name="status" errors={errors} hint="Controls portfolio health and job eligibility."
@@ -183,9 +195,9 @@ export function DetailsGroup(props: GroupProps & { editing?: boolean; clientId?:
             </select>
           )} />
         <Text {...props} name="website" label="Website" placeholder="https://acme.com" normalise={(value) => normaliseWebsite(value) ?? (value.trim() === "" ? "" : value)} />
-        <Lookup {...props} name="sector" idField="sectorValueId" label="Industry" list={lookups.industries} required />
+        <Lookup {...props} name="sector" idField="sectorValueId" label="Industry" list={lookups.industries} required add={{ category: "industries", noun: "industry", append: lookups.append }} />
         <Text {...props} name="industrySic" label="Industry code (SIC)" />
-        <Lookup {...props} name="referral" idField="referralValueId" label="Referral" list={lookups.referrals} />
+        <Lookup {...props} name="referral" idField="referralValueId" label="Referral" list={lookups.referrals} add={{ category: "referrals", noun: "referral", append: lookups.append }} />
         <Text {...props} name="companyRegistration" label="Company registration" />
         <Text {...props} name="location" label="Location" placeholder="City, country" required />
         <Field label="Financial year end" name="financialYearEndMonth" errors={errors}
@@ -256,6 +268,19 @@ export function TargetsGroup(props: GroupProps & { clientId?: string }) {
   );
 }
 
+/**
+ * A country, chosen as you type and stored as its ISO 3166-1 code (CLIENT-03). A value held from before — v7 kept the
+ * country as free text — is said plainly and kept as it is until a country is chosen from the list.
+ */
+function Country({ form, onChange, name, label }: GroupProps & { name: "registeredCountry" | "billingCountry"; label: string }) {
+  const held = form[name] ?? null;
+  const legacy = held && !isIsoCountryCode(held) ? held : null;
+  return <div style={{ margin: 0 }}>
+    <CountrySelect label={label} value={legacy ? null : held} onChange={(code) => onChange({ [name]: code } as Partial<ClientFormState>)} />
+    {legacy ? <small className="nz-hint">Held as “{legacy}” — choose the country from the list to replace it.</small> : null}
+  </div>;
+}
+
 export function AddressGroup(props: GroupProps) {
   const { form, onChange, errors } = props;
   return (
@@ -268,7 +293,7 @@ export function AddressGroup(props: GroupProps) {
           <Text {...props} name="registeredCity" label="City" />
           <Text {...props} name="registeredRegion" label="Region / county" />
           <Text {...props} name="registeredPostcode" label="Postcode" />
-          <Text {...props} name="registeredCountry" label="Country" />
+          <Country {...props} name="registeredCountry" label="Country" />
         </div>
       </fieldset>
       <fieldset className="nz-fieldset">
@@ -287,7 +312,7 @@ export function AddressGroup(props: GroupProps) {
               <Text {...props} name="billingCity" label="City" />
               <Text {...props} name="billingRegion" label="Region / county" />
               <Text {...props} name="billingPostcode" label="Postcode" />
-              <Text {...props} name="billingCountry" label="Country" />
+              <Country {...props} name="billingCountry" label="Country" />
             </>
           ) : null}
         </div>
