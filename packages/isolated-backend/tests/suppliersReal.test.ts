@@ -92,6 +92,20 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
     await q(`SELECT outcome_json FROM nzi_console.command_idempotency WHERE organisation_id = $1`, [org]),
     await q(`SELECT topic, payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [org]),
   ]);
+  /**
+   * Where a rate sits in what a command left behind, if anywhere: a key named for one, or a value equal to one of the
+   * given figures — compared whole, never as a substring, since every supplier, contact and item id is a random UUID
+   * whose hex can contain "648" or "700" by chance (the flake #390 fixed in serviceCatalogueReal).
+   */
+  const ratesIn = (value: unknown, figures: readonly number[], path = "$"): string[] => {
+    if (value === null || value === undefined) return [];
+    if (typeof value === "string" && /^[\[{]/.test(value.trim())) { try { return ratesIn(JSON.parse(value), figures, path); } catch { /* not JSON: a plain string */ } }
+    if (typeof value === "number" || typeof value === "string") return figures.some((figure) => Number(value) === figure && String(value).trim() !== "") ? [`${path} = ${value}`] : [];
+    if (Array.isArray(value)) return value.flatMap((entry, index) => ratesIn(entry, figures, `${path}[${index}]`));
+    if (typeof value === "object") return Object.entries(value).flatMap(([key, entry]) =>
+      [...(/^(agreed_?rate|rate|amount|price)$/i.test(key) && entry !== null && typeof entry !== "boolean" && !/^(set|cleared|unchanged)$/.test(String(entry)) ? [`${path}.${key}`] : []), ...ratesIn(entry, figures, `${path}.${key}`)]);
+    return [];
+  };
   const opened = async (contactId: string, column: "full_name_sealed" | "email_sealed" | "phone_sealed") => {
     const [row] = await q(
       `SELECT c.${column} AS sealed, k.wrapped_key FROM nzi_console.supplier_contacts c
@@ -198,8 +212,7 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
       assert.deepEqual([rated.data.rate, rated.data.currency], ["set", "GBP"]);
       await assert.rejects(setSupplierItemRate(database.pool, { serviceItemId: line.service_item_id, expectedVersion: rated.data.version, agreedRate: 648.75 }, context("ada", "admin")), refused("agreedRate", "UNCHANGED"));
       await assert.rejects(setSupplierItemRate(database.pool, { serviceItemId: line.service_item_id, expectedVersion: rated.data.version, agreedRate: -1 }, context("ada", "admin")), /Command validation failed/);
-      const trail = await trailOf(ORG);
-      assert.ok(!trail.includes("648"), "the trail never carries the rate");
+      assert.deepEqual(ratesIn(await trailOf(ORG), [648.75]), [], "the trail never carries the rate");
       const supplierId = (await q(`SELECT supplier_id FROM nzi_console.supplier_service_items WHERE service_item_id = $1`, [line.service_item_id]))[0].supplier_id;
       const shown = await withTenantRead(database.pool, ORG, (db) => readSupplier(db, ORG, supplierId, { showRates: true }));
       const hidden = await withTenantRead(database.pool, ORG, (db) => readSupplier(db, ORG, supplierId, { showRates: false }));
@@ -259,7 +272,9 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
       assert.ok(!JSON.stringify(mary.legacy_values).includes("Mary"), "legacy values carry no name");
 
       const printed = JSON.stringify(outcome) + await trailOf(LOAD);
-      for (const value of ["Mary", "Olive", "mary@", "7000", "650", "Verifiers", "Old Partners"]) assert.ok(!printed.includes(value), `the outcome or trail carries ${value}`);
+      // Names cannot occur by chance in ids or timestamps, so a substring check is sound for them; rates are checked whole.
+      for (const value of ["Mary", "Olive", "mary@", "Verifiers", "Old Partners"]) assert.ok(!printed.includes(value), `the outcome or trail carries ${value}`);
+      assert.deepEqual(ratesIn([outcome, await trailOf(LOAD)], [7000, 650]), [], "the outcome and trail never carry a rate");
     });
 
     it("re-run unchanged writes nothing; v7 changed and still as imported → v7 wins; edited here since → refused (R4)", async () => {
@@ -277,7 +292,8 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
       const [mary] = await q(`SELECT contact_id, full_name FROM nzi_console.supplier_contacts WHERE organisation_id = $1 AND legacy_db_id = '1'`, [LOAD]);
       assert.equal(mary.full_name, "Mary Changed");
       assert.equal(await opened(mary.contact_id, "full_name_sealed"), "Mary Changed", "re-sealed with v7's new value");
-      assert.ok(!JSON.stringify(outcome).includes("700") && !JSON.stringify(outcome).includes("Mary"), "the outcome never carries a rate or a name");
+      assert.ok(!JSON.stringify(outcome).includes("Mary"), "the outcome never carries a name");
+      assert.deepEqual(ratesIn(outcome, [700]), [], "the outcome never carries a rate");
     });
   });
 });
