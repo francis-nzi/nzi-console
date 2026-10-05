@@ -555,7 +555,7 @@ type ScopeRow = {
   alias_label:string|null;client_factor_label:string|null;identity_report_label:string|null;
   report_label:string;level_1:string;level_2:string;level_3:string|null;level_4:string|null;
   monthly_activity_json:ScopeRowReadModel["monthlyActivity"];
-  notes:string|null;asset_identifier:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;data_confidence:"H"|"M"|"L"|null;source_quantity:string|null;source_unit:string|null;column_text:string|null;client_factor_version_moved:boolean;category_code:string|null;td_add_prompt:boolean;
+  notes:string|null;asset_identifier:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;data_confidence:"H"|"M"|"L"|null;source_quantity:string|null;source_unit:string|null;column_text:string|null;client_factor_version_moved:boolean;category_code:string|null;td_add_prompt:boolean;origin?:"live"|"migrated";
 };
 
 export async function listScopeRows(db: Queryable, jobId: string): Promise<ScopeRowReadModel[]> {
@@ -568,7 +568,8 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
       -- one carries a prompt to consider adding them. A completeness nudge, ungated: it does not depend on companions or
       -- on anything else in the job, and it blocks nothing. (Derived T&D beside a manual 3.3 entry is the activation
       -- stop's to handle, NZC-164 — not this prompt's.)
-      (r.scope='3.3' OR r.category_code='3.3') AS td_add_prompt
+      (r.scope='3.3' OR r.category_code='3.3') AS td_add_prompt,
+      r.origin
     FROM nzi_console.job_scope_rows r
     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id)
     LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
@@ -583,6 +584,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
     factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
     calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e), clientFactorVersionMoved: row.client_factor_version_moved === true, tdAddPrompt: row.td_add_prompt === true,
+    origin: row.origin === "migrated" ? "migrated" : "live",
     overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
     reviewStatus: row.review_status,reviewedRowVersion:row.reviewed_row_version??null,reviewedBy:row.reviewed_by??null,reviewedAt:row.reviewed_at==null?null:row.reviewed_at instanceof Date?row.reviewed_at.toISOString():String(row.reviewed_at),reviewerNote:row.reviewer_note??null, version: row.version, enabled: row.enabled,
     provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
@@ -971,12 +973,15 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
 //  crm    → the completeness view: every taxonomy category for an included scope
 //           (all 15 Scope 3 when Scope 3 is included), empties flagged `noData`.
 //  portal → only the categories the client's bucket grants authorise.
-// Included scopes = the top-level scopes present in the job's active
-// selected-dataset factors, unioned with any scope that already has a row.
+// Included scopes: for the CRM, always Scopes 1–3 — a CRP reports all three, and a scope with nothing in it is shown
+// empty ("No data yet"), never left out (JW-10: a job with no rows or datasets otherwise had no sections at all, and
+// one with no Scope 1 rows had no Scope 1). For the portal, the top-level scopes present in the job's active
+// selected-dataset factors, unioned with any scope that already has a row — narrowed again to its grants below.
 export async function listJobApplicableCategories(db:Queryable,jobId:string,audience:"crm"|"portal"):Promise<import("@nzi/contracts").JobApplicableCategories>{
   const {emissionCategoryTaxonomy}=await import("@nzi/contracts");
-  const scopeRows=await db.query<{scope:string}>(`SELECT DISTINCT scope FROM (SELECT split_part(unnest(f.scopes),'.',1) AS scope FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.job_id=$1 AND f.active=true UNION ALL SELECT split_part(r.scope,'.',1) FROM nzi_console.job_scope_rows r WHERE r.job_id=$1) x WHERE scope<>''`,[jobId]);
-  const includedScopes=(["1","2","3"] as const).filter(scope=>scopeRows.rows.some(row=>row.scope===scope));
+  const ALL_SCOPES=["1","2","3"] as const;
+  const scopeRows=audience==="crm"?null:await db.query<{scope:string}>(`SELECT DISTINCT scope FROM (SELECT split_part(unnest(f.scopes),'.',1) AS scope FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.job_id=$1 AND f.active=true UNION ALL SELECT split_part(r.scope,'.',1) FROM nzi_console.job_scope_rows r WHERE r.job_id=$1) x WHERE scope<>''`,[jobId]);
+  const includedScopes=scopeRows===null?[...ALL_SCOPES]:ALL_SCOPES.filter(scope=>scopeRows.rows.some(row=>row.scope===scope));
   const metrics=await db.query<{code:string;entry_count:string;tco2e:string;complete_count:string}>(`SELECT coalesce(nullif(category_code,''),scope) AS code,count(*) FILTER (WHERE enabled)::text AS entry_count,coalesce(sum(coalesce(override_tco2e,calculated_tco2e,0)) FILTER (WHERE enabled),0)::text AS tco2e,count(*) FILTER (WHERE enabled AND review_status='approved' AND (calculated_tco2e IS NOT NULL OR override_tco2e IS NOT NULL) AND quality_tier IS NOT NULL)::text AS complete_count FROM nzi_console.job_scope_rows WHERE job_id=$1 GROUP BY 1`,[jobId]);
   const byCode=new Map(metrics.rows.map(row=>[row.code,row]));
   let authorisedCodes:Set<string>|null=null;

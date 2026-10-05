@@ -13,6 +13,7 @@ import {
   accordionAttentionRows,
   accordionTotals,
   buildDataEntryAccordion,
+  scopeHasNoData,
 } from "./dataEntryAccordion";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import type { InputSpecCategory } from "@nzi/contracts";
@@ -176,7 +177,9 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
       <TabPanel id="category" idBase="crp-data-entry" active={lens === "category"} className="nz-acc">
           {groups.map(group => (
             <div key={group.scope}>
-              <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}</div>
+              <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
+                {/* JW-10 — a scope with nothing in it is shown, and says so; it is never left out. */}
+                {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span> : null}</div>
               {group.categories.map(entry => {
                 const code = entry.category.code;
                 const isOpen = open.has(code);
@@ -236,6 +239,38 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                   </div>
                 );
               })}
+              {group.imported.length ? (
+                <div className="nz-acc-cat" style={{ "--cc": "var(--t3)" } as React.CSSProperties}>
+                  <button type="button" className="nz-acc-h" aria-expanded={open.has(`imported-${group.scope}`)} onClick={() => toggle(`imported-${group.scope}`)}>
+                    <span className="nz-acc-badge">v7</span>
+                    <span className="nz-acc-tt"><b>Imported from v7<span className="nz-chip-mini">{group.imported.length}</span></b>
+                      <span className="sum">This period&rsquo;s figures as recorded in NZ Insights Pro v7 — fixed history, shown under v7&rsquo;s own labels.</span></span>
+                    <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
+                  </button>
+                  {open.has(`imported-${group.scope}`) ? (
+                    <div className="nz-acc-body">
+                      <div className="nz-table-wrap">
+                        <table className="nz-tbl">
+                          <thead><tr><th>Source</th><th>v7 category</th><th>Site</th><th className="num">tCO₂e</th><th>Review</th></tr></thead>
+                          <tbody>
+                            {group.imported.map(row => (
+                              <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
+                                onClick={() => onOpenRow(row.id)}
+                                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
+                                <td>{row.sourceLabel}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
+                                <td>{row.categoryPath.slice(0, 2).join(" › ") || "—"}</td>
+                                <td>{row.siteLabel ?? "Unallocated"}</td>
+                                <td className="num">{row.overrideTco2e ?? row.calculatedTco2e ?? "—"}</td>
+                                <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {group.unsorted.length ? (
                 <div className="nz-acc-cat" style={{ "--cc": "var(--t3)" } as React.CSSProperties}>
                   <button type="button" className="nz-acc-h" aria-expanded={open.has(`unsorted-${group.scope}`)} onClick={() => toggle(`unsorted-${group.scope}`)}>
@@ -274,7 +309,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             <div className="nz-acc-empty">No scopes are included for this job yet. Select reporting datasets to populate the category view.</div>
           ) : null}
       </TabPanel>
-      <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.unsorted ? ` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).</p>
+      <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.imported ? ` · ${totals.imported} row${totals.imported === 1 ? "" : "s"} imported from v7` : ""}{totals.unsorted ?` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).</p>
 
       <Drawer open={importFor !== null} onClose={() => setImportFor(null)} ariaLabel={importFor?.title ?? "Import & templates"} className="nz-import-modal" dismissOnOutsideClick>
         <div className="nz-import-modal-card">

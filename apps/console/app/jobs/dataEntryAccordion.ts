@@ -37,6 +37,12 @@ export type AccordionScopeGroup = {
   scope: "1" | "2" | "3";
   label: string;
   categories: AccordionCategory[];
+  /**
+   * v7's history, as imported (0133): its rows carry the bare scope and no category, so they are shown as what they
+   * are — imported, under v7's own labels — not as rows the console failed to sort (JW-10).
+   */
+  imported: ScopeRowReadModel[];
+  /** Console-captured rows whose code maps to no category — a category is stamped when the row is next saved. */
   unsorted: ScopeRowReadModel[];
 };
 
@@ -46,6 +52,7 @@ export function buildDataEntryAccordion(
 ): AccordionScopeGroup[] {
   const byCode = new Map<string, ScopeRowReadModel[]>();
   const unsortedByScope = new Map<string, ScopeRowReadModel[]>();
+  const importedByScope = new Map<string, ScopeRowReadModel[]>();
   const push = (map: Map<string, ScopeRowReadModel[]>, key: string, row: ScopeRowReadModel) => {
     const bucket = map.get(key);
     if (bucket) bucket.push(row);
@@ -54,7 +61,7 @@ export function buildDataEntryAccordion(
   for (const row of rows) {
     const code = rowCategoryCode(row);
     if (code) push(byCode, code, row);
-    else push(unsortedByScope, row.scope.split(".")[0] ?? "", row);
+    else push(row.origin === "migrated" ? importedByScope : unsortedByScope, row.scope.split(".")[0] ?? "", row);
   }
 
   return applicable.includedScopes.map(scope => {
@@ -76,9 +83,15 @@ export function buildDataEntryAccordion(
       scope,
       label: scopeMeta[scope].label,
       categories,
+      imported: importedByScope.get(scope) ?? [],
       unsorted: unsortedByScope.get(scope) ?? [],
     };
   });
+}
+
+/** A scope with no rows of any kind — shown with "No data yet", never left out (JW-10). */
+export function scopeHasNoData(group: AccordionScopeGroup): boolean {
+  return group.categories.every(category => category.noData && category.rows.length === 0) && group.imported.length === 0 && group.unsorted.length === 0;
 }
 
 /** The flat "Needs attention" lens over the same rows (the CRP's exception-first strength, §1). */
@@ -93,7 +106,8 @@ export function accordionTotals(groups: AccordionScopeGroup[]) {
     withData: categories.filter(category => !category.noData).length,
     needsAttention:
       categories.reduce((sum, category) => sum + category.needsAttention, 0) +
-      groups.reduce((sum, group) => sum + accordionAttentionRows(group.unsorted).length, 0),
+      groups.reduce((sum, group) => sum + accordionAttentionRows([...group.imported, ...group.unsorted]).length, 0),
+    imported: groups.reduce((sum, group) => sum + group.imported.length, 0),
     unsorted: groups.reduce((sum, group) => sum + group.unsorted.length, 0),
   };
 }

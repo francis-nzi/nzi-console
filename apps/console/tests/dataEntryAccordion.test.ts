@@ -6,6 +6,7 @@ import {
   accordionTotals,
   buildDataEntryAccordion,
   rowCategoryCode,
+  scopeHasNoData,
 } from "../app/jobs/dataEntryAccordion";
 
 const row = (overrides: Partial<ScopeRowReadModel> = {}): ScopeRowReadModel => ({
@@ -68,6 +69,43 @@ describe("buildDataEntryAccordion", () => {
     );
     assert.deepEqual(groups[0]!.unsorted.map(r => r.id), ["u1"]);
     assert.deepEqual(groups[0]!.categories[0]!.rows.map(r => r.id), ["g1"]);
+  });
+
+  it("shows v7's history as imported, not unsorted — a console row it cannot place stays unsorted (JW-10)", () => {
+    const groups = buildDataEntryAccordion(
+      [
+        row({ id: "m1", scope: "3", categoryCode: null, origin: "migrated", categoryPath: ["Business travel- air", "Flights"] }),
+        row({ id: "m2", scope: "3", categoryCode: null, origin: "migrated" }),
+        row({ id: "l1", scope: "3", categoryCode: null, origin: "live" }),
+        row({ id: "x1", scope: "3", categoryCode: null }),
+      ],
+      applicable([cat({ scope: "3", code: "3.6", name: "Business Travel", kind: "travel" })], ["3"]),
+    );
+    assert.deepEqual(groups[0]!.imported.map(r => r.id), ["m1", "m2"]);
+    assert.deepEqual(groups[0]!.unsorted.map(r => r.id), ["l1", "x1"], "a row with no origin is the console's own");
+    const totals = accordionTotals(groups);
+    assert.equal(totals.imported, 2);
+    assert.equal(totals.unsorted, 2);
+  });
+
+  it("an empty scope is shown and says it has no data; a scope with imported rows does not (JW-10)", () => {
+    const groups = buildDataEntryAccordion(
+      [row({ id: "m1", scope: "3", categoryCode: null, origin: "migrated" })],
+      applicable([
+        cat({ scope: "1", code: "1.natural-gas", name: "Natural Gas" }),
+        cat({ scope: "2", code: "2.purchased-electricity", name: "Purchased Electricity" }),
+        cat({ scope: "3", code: "3.1", name: "Purchased Goods and Services", kind: "spend" }),
+      ], ["1", "2", "3"]),
+    );
+    assert.deepEqual(groups.map(group => [group.scope, scopeHasNoData(group)]), [["1", true], ["2", true], ["3", false]]);
+  });
+
+  it("imported rows needing attention still count towards attention (JW-10 changes the label, not the count)", () => {
+    const groups = buildDataEntryAccordion(
+      [row({ id: "m1", scope: "1", categoryCode: null, origin: "migrated", reviewStatus: "pending" })],
+      applicable([cat({ scope: "1", code: "1.natural-gas", name: "Natural Gas" })], ["1"]),
+    );
+    assert.equal(accordionTotals(groups).needsAttention, 1);
   });
 
   it("only renders scopes the read model says are included", () => {
