@@ -196,7 +196,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
 
     <Drawer open={drawer !== null} onClose={closeDrawer} ariaLabel={drawer ? drawerLabel(drawer) : "Client drawer"} className="nz-site-drawer" dismissOnOutsideClick>
       {drawer?.kind === "identity" ? <IdentityForm key={`identity-${client.version}`} client={client} access={access.client} onClose={closeDrawer} /> : null}
-      {drawer?.kind === "targets" ? <TargetsForm clientId={client.id} targets={targets} access={access.target} onClose={closeDrawer} onSaved={saved} /> : null}
+      {drawer?.kind === "targets" ? <TargetsForm clientId={client.id} targets={targets} access={access.target} onClose={closeDrawer} onSaved={saved}
+        heldNetZero={{ year: client.profile.netZeroTargetYear ?? null, pct: client.profile.netZeroTargetReductionPct ?? null }} /> : null}
       {drawer?.kind === "rebaseline" ? <RebaselineForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "address" ? <AddressForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "compliance" ? <ComplianceForm client={client} access={access.client} onClose={closeDrawer} /> : null}

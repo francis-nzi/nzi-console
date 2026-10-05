@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
 import { putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import { forwardTargetFields, type ForwardTargetModel, type TargetBenchmark, type TargetMilestone, type TargetScope } from "@nzi/contracts";
+import { forwardTargetFields, netZeroPctLabel, type ForwardTargetModel, type TargetBenchmark, type TargetMilestone, type TargetScope } from "@nzi/contracts";
+import { netZeroDraft } from "../netZeroDefault";
 import type { ClientTargetsReadModel } from "@nzi/isolated-backend";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -77,10 +78,16 @@ export function ClientTargets({ targets, access, onEdit, hideHead = false }: { t
   </section>;
 }
 
-export function TargetsForm({ clientId, targets, access, onClose, onSaved }: {
+export function TargetsForm({ clientId, targets, access, onClose, onSaved, heldNetZero = null }: {
   clientId: string; targets: ClientTargetsReadModel; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+  /** The net-zero pair on the client record (`net_zero_target_year` / `…_reduction_pct`), which a blank net-zero row starts from. */
+  heldNetZero?: { year: number | null; pct: number | null } | null;
 }) {
-  const [draft, setDraft] = useState<Draft>(draftFrom(targets.model));
+  const [netZeroPrefilled] = useState(() => netZeroDraft(targets.model, heldNetZero).prefilled);
+  const [draft, setDraft] = useState<Draft>(() => {
+    const { prefilled: _prefilled, ...netZero } = netZeroDraft(targets.model, heldNetZero);
+    return { ...draftFrom(targets.model), netZero };
+  });
   const [reason, setReason] = useState("");
   const [restate, setRestate] = useState(false);
   const [pending, setPending] = useState(false);
@@ -130,9 +137,9 @@ export function TargetsForm({ clientId, targets, access, onClose, onSaved }: {
   }
 
   const blockedReason = access.state !== "allowed" ? access.reason : problem;
-  const pair = (field: keyof Draft, label: string, yearLabel = "Target year", required = false) => <div className="nz-two" key={field}>
+  const pair = (field: keyof Draft, label: string, yearLabel = "Target year", required = false, pctLabel = "Reduction vs benchmark") => <div className="nz-two" key={field}>
     <label className="nz-fl"><span>{label} year{required ? <span className="nz-req">*</span> : null}</span><input className="nz-inp num" inputMode="numeric" value={draft[field].year} placeholder={yearLabel} onChange={(event) => set(field, "year", event.target.value)} /></label>
-    <label className="nz-fl"><span>Reduction vs benchmark{required ? <span className="nz-req">*</span> : null}</span><input className="nz-inp num" inputMode="decimal" value={draft[field].pct} placeholder="%" onChange={(event) => set(field, "pct", event.target.value)} /></label>
+    <label className="nz-fl"><span>{pctLabel}{required ? <span className="nz-req">*</span> : null}</span><input className="nz-inp num" inputMode="decimal" value={draft[field].pct} placeholder="%" onChange={(event) => set(field, "pct", event.target.value)} /></label>
   </div>;
 
   return <>
@@ -146,7 +153,9 @@ export function TargetsForm({ clientId, targets, access, onClose, onSaved }: {
       <div className="nz-sect">Near-term target</div>
       {pair("nearTerm", "Target")}
       <div className="nz-sect">Net-zero target</div>
-      {pair("netZero", "Net-zero")}
+      {/* Decision 2a(ii): the % names the client's net-zero year, and tracks it as the year is edited. */}
+      {pair("netZero", "Net-zero", "Target year", false, netZeroPctLabel(draft.netZero.year))}
+      {netZeroPrefilled ? <span className="nz-hint">Prefilled with {netZeroPrefilled === "profile" ? "the net-zero commitment on the client record" : "NZI's methodology minimum, 90% by 2050"} — change either if the client commits to more.</span> : null}
       <span className="nz-hint">A 90% reduction leaves a 10% residual to address through removals — the pathway ends where the commitment does, not at zero.</span>
       <div className="nz-sect">Per-scope targets</div>
       {(["1", "2", "3"] as const).map((scope) => pair(`scope${scope}` as keyof Draft, SCOPE_LABEL[scope]))}

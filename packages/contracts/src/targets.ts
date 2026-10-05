@@ -12,6 +12,21 @@
 export type TargetScope = "1" | "2" | "3";
 export type TargetMilestone = { year: number; pct: number };
 
+/**
+ * Decision 2 (Francis): a client's net-zero target **defaults to a 90% reduction by 2050** — NZI's methodology minimum —
+ * both editable, so a new client is never left with the target blank or unpaired. A client committing to more (an
+ * earlier year, a higher %) overrides it. It only ever fills a blank: never a value someone set, never an existing
+ * client's held target.
+ */
+export const NET_ZERO_DEFAULT: TargetMilestone = { year: 2050, pct: 90 };
+
+/** Decision 2a(ii): the reduction-% field names the client's net-zero year — "Net Zero target % 2050", or "… % 2040". */
+export function netZeroPctLabel(year: number | string | null | undefined): string {
+  const parsed = typeof year === "string" ? Number(year.trim()) : year;
+  const shown = typeof parsed === "number" && Number.isInteger(parsed) && parsed >= 2000 && parsed <= 2100 ? parsed : NET_ZERO_DEFAULT.year;
+  return `Net Zero target % ${shown}`;
+}
+
 /** The forward commitment. Any part may be unset — a client with nothing set has no targets, not zeros. */
 export type ForwardTargetModel = {
   nearTerm: TargetMilestone | null;
