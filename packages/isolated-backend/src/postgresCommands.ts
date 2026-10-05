@@ -330,7 +330,19 @@ export async function updateClient(
   input: CommandInputMap["client.update"],
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateClientResult>> {
-  return runPostgresCommand(pool, "client.update", input, context, async (db, access) => {
+  return runPostgresCommand(pool, "client.update", input, context, updateClientHandler(input, context));
+}
+
+/**
+ * client.update inside the caller's tenant transaction — the same command, guards, audit and outbox, for a caller that
+ * runs many in one transaction (the job-derived baseline load, whose dry run is that transaction rolled back).
+ */
+export function updateClientInTransaction(db: Queryable, input: CommandInputMap["client.update"], context: CommandContext): Promise<StoredOutcome<UpdateClientResult>> {
+  return runPostgresCommandInTransaction(db, "client.update", input, context, updateClientHandler(input, context));
+}
+
+function updateClientHandler(input: CommandInputMap["client.update"], context: CommandContext) {
+  return async (db: Queryable, access: ClientAccess | null) => {
     // The whole held row, under the lock: the field rules run against it (F1 remedy (1)).
     const prior = await db.query<ClientGovernedRow & HeldClientRow & { currency: string; registered_postcode: string | null; registered_country: string | null } & Record<(typeof CLIENT_LINK_COLUMNS)[number][1], string | null>>(
       `SELECT version, name, status, sector, location, owner_name, ${CLIENT_PROFILE_COLUMNS.join(", ")} FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2 FOR UPDATE`,
@@ -397,7 +409,7 @@ export async function updateClient(
       topic: "client.updated",
       ...(governed.baseline ? { governedEvents: [{ action: "client_rebaselined", entityType: "client", entityId: input.clientId, before: governed.baseline.before, after: governed.baseline.after }] } : {}),
     };
-  });
+  };
 }
 
 /** NZC-090's lookup links on the client, each beside its text: what client.update keeps when the input omits one. */
