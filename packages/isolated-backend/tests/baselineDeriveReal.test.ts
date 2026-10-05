@@ -48,6 +48,8 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     await job("tie", "j-ti-b", "2022-01-01", "2022-12-31", [["1", 4], ["2", 2]]);
     await client("held", "Held Stated Ltd", ["2019-01-01", "2019-12-31"]);
     await job("held", "j-held", "2021-01-01", "2021-12-31", [["1", 3]]);
+    await client("dayshort", "A Day Short Ltd", ["2024-04-01", "2025-03-31"]);
+    await job("dayshort", "j-dayshort", "2024-04-01", "2025-03-30", [["1", 3]]);
     await client("zero", "All Zero Ltd");
     await job("zero", "j-zero", "2021-01-01", "2021-12-31", [["1", 0]]);
     await client("inforce", "Already Baselined Ltd", ["2020-01-01", "2020-12-31"], true);
@@ -65,6 +67,8 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     assert.deepEqual(chooseJob([a, b], null), { job: a, step: "earliest complete period" });
     assert.deepEqual(chooseJob([a, d, b], null), { job: d, step: "most complete" }, "an earliest-period tie goes to the more complete");
     assert.deepEqual(chooseJob([a, b], "2019-01-01"), { held: true }, "a stated period no candidate matches is held");
+    assert.deepEqual(chooseJob([a, b], "2022-01-01", "2022-12-30"), { held: true }, "exact: the same start with another end is not the stated period");
+    assert.deepEqual(chooseJob([a, b], "2022-01-01", "2022-12-31"), { job: b, step: "stated benchmark period" });
     assert.equal(consoleFyLabel("2021-04-01"), "FY21");
   });
 
@@ -73,7 +77,8 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     assert.deepEqual(outcome.plan.derive.map((p) => [p.clientId, p.job.jobId, p.ruleStep]).sort(), [
       ["earliest", "j-ea-b", "earliest complete period"], ["only", "j-only", "only candidate"], ["stated", "j-st-b", "stated benchmark period"], ["tie", "j-ti-b", "most complete"],
     ]);
-    assert.deepEqual(outcome.plan.held.map((h) => [h.clientId, h.clientName]), [["held", "Held Stated Ltd"]]);
+    assert.deepEqual(outcome.plan.held.map((h) => [h.clientId, h.clientName]).sort(), [["dayshort", "A Day Short Ltd"], ["held", "Held Stated Ltd"]],
+      "held: a stated period no job matches exactly, a day short included");
     assert.deepEqual(outcome.plan.noUsableTotal.map((n) => n.clientId), ["zero"]);
     assert.ok(!outcome.plan.derive.some((p) => ["inforce", "cancelled"].includes(p.clientId)), "a baseline in force, or only a cancelled job, is not a candidate");
     assert.deepEqual(outcome.results.map((r) => r.result), ["written", "written", "written", "written"], "every planned client would save");
@@ -106,6 +111,6 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
 
   it("a re-run derives nothing — the derived clients now have a baseline in force", async () => {
     const again = await loadBaselineDerive(database.pool, ORG, { commit: false });
-    assert.deepEqual([again.plan.derive.length, again.plan.held.length, again.plan.noUsableTotal.length], [0, 1, 1]);
+    assert.deepEqual([again.plan.derive.length, again.plan.held.length, again.plan.noUsableTotal.length], [0, 2, 1]);
   });
 });

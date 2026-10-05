@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         + ` | ${r.result === "written" ? `${r.governed ? "re-baseline" : "initial"} v${r.version}` : `REFUSED ${r.refusal}`}`);
     }
     log(`\nHeld for Francis's manual pass — stated benchmark period, matched by no candidate (${plan.held.length}):`);
-    for (const h of plan.held) log(`  ${h.clientId} | ${h.clientName} | stated period start ${h.statedStart} | ${h.candidates} candidate job(s)`);
+    for (const h of plan.held) log(`  ${h.clientId} | ${h.clientName} | stated period ${h.statedStart} – ${h.statedEnd ?? "(no end stated)"} | ${h.candidates} candidate job(s)`);
     log(`\nLeft out — no usable total (${plan.noUsableTotal.length}):`);
     for (const n of plan.noUsableTotal) log(`  ${n.clientId} | ${n.clientName}`);
     if (refused.length) process.exitCode = 1;

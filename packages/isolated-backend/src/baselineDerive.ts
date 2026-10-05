@@ -11,8 +11,8 @@ import { listAllClients } from "./readModels";
  * audited re-baseline path, as the Re-baseline drawer writes it: the whole record as read, with the baseline on top.
  *
  * **Candidate job:** imported from v7, not cancelled (not archived in v7), with ≥ 1 enabled scope row and a total > 0.
- * **Selection (ruled):** (1) the job whose period start is the client's stated benchmark period start, where the record
- * states one; else (2) the earliest complete period (start and end); else (3) the most complete (most non-zero scopes);
+ * **Selection (ruled):** (1) the job whose period is exactly the client's stated benchmark period (its start, and its
+ * end where the record states one), where the record states one; else (2) the earliest complete period (start and end); else (3) the most complete (most non-zero scopes);
  * a remaining tie takes the lowest job number. `is_benchmark` is not in the extract and is not an input — a cross-check.
  * **Held, never derived:** a client whose stated benchmark period no candidate matches — the record names a period we
  * hold no figures for, so substituting another would contradict it. Listed for Francis's manual pass.
@@ -41,7 +41,7 @@ export type PlannedBaseline = {
 export type BaselinePlan = {
   derive: PlannedBaseline[];
   /** Stated benchmark period, matched by no candidate — for Francis's manual pass. */
-  held: Array<{ clientId: string; clientName: string; statedStart: string; candidates: number }>;
+  held: Array<{ clientId: string; clientName: string; statedStart: string; statedEnd: string | null; candidates: number }>;
   /** Candidates with rows but no usable total, so nothing to derive. */
   noUsableTotal: Array<{ clientId: string; clientName: string }>;
   population: { noBaselineInForce: number; withCandidate: number };
@@ -52,9 +52,10 @@ const complete = (job: Candidate) => job.periodStart !== null && job.periodEnd !
 const byJobNumber = (a: Candidate, b: Candidate) => a.jobNumber.localeCompare(b.jobNumber);
 
 /** The ruled precedence over one client's usable candidates (pure). */
-export function chooseJob(candidates: readonly Candidate[], statedStart: string | null): { job: Candidate; step: RuleStep } | { held: true } {
+export function chooseJob(candidates: readonly Candidate[], statedStart: string | null, statedEnd: string | null = null): { job: Candidate; step: RuleStep } | { held: true } {
   if (statedStart !== null) {
-    const stated = candidates.filter((job) => job.periodStart === statedStart);
+    // Exact: the start, and the end where the record states one — a period a day short is not the stated period.
+    const stated = candidates.filter((job) => job.periodStart === statedStart && (statedEnd === null || job.periodEnd === statedEnd));
     if (stated.length === 0) return { held: true };
     if (stated.length === 1) return { job: stated[0]!, step: "stated benchmark period" };
     // Two jobs on the stated period: the more complete; then the lower number.
@@ -79,17 +80,17 @@ export const consoleFyLabel = (periodStart: string) => `FY${periodStart.slice(2,
 
 export async function planBaselineDerive(db: Queryable, organisationId: string): Promise<BaselinePlan> {
   const { rows } = await db.query<{
-    client_id: string; name: string; stated: string | null; nz_year: number; job_id: string | null; job_number: string | null;
+    client_id: string; name: string; stated: string | null; stated_end: string | null; nz_year: number; job_id: string | null; job_number: string | null;
     pstart: string | null; pend: string | null; s1: string | null; s2: string | null; s3: string | null; total: string | null;
   }>(
     `WITH pop AS (
-       SELECT c.client_id, c.name, c.baseline_period_start::text AS stated, COALESCE(c.net_zero_target_year, 2050) AS nz_year
+       SELECT c.client_id, c.name, c.baseline_period_start::text AS stated, c.baseline_period_end::text AS stated_end, COALESCE(c.net_zero_target_year, 2050) AS nz_year
          FROM nzi_console.clients c
         WHERE c.organisation_id = $1
           AND NOT (c.baseline_period_start IS NOT NULL AND (c.baseline_total_tco2e IS NOT NULL OR c.baseline_scope1_tco2e IS NOT NULL
                    OR c.baseline_scope2_tco2e IS NOT NULL OR c.baseline_scope3_tco2e IS NOT NULL))
      )
-     SELECT p.client_id, p.name, p.stated, p.nz_year, j.job_id, j.job_number,
+     SELECT p.client_id, p.name, p.stated, p.stated_end, p.nz_year, j.job_id, j.job_number,
             j.reporting_period_start::text AS pstart, j.reporting_period_end::text AS pend,
             (sum(COALESCE(r.override_tco2e, r.calculated_tco2e, 0)) FILTER (WHERE split_part(r.scope, '.', 1) = '1'))::text AS s1,
             (sum(COALESCE(r.override_tco2e, r.calculated_tco2e, 0)) FILTER (WHERE split_part(r.scope, '.', 1) = '2'))::text AS s2,
@@ -99,11 +100,11 @@ export async function planBaselineDerive(db: Queryable, organisationId: string):
        LEFT JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = ($1, p.client_id) AND j.source_system = 'nzi-pro-v7' AND j.status::text <> 'cancelled'
             AND EXISTS (SELECT 1 FROM nzi_console.job_scope_rows x WHERE (x.organisation_id, x.job_id) = (j.organisation_id, j.job_id) AND x.enabled)
        LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id, r.job_id) = (j.organisation_id, j.job_id) AND r.enabled
-      GROUP BY p.client_id, p.name, p.stated, p.nz_year, j.job_id, j.job_number, j.reporting_period_start, j.reporting_period_end
+      GROUP BY p.client_id, p.name, p.stated, p.stated_end, p.nz_year, j.job_id, j.job_number, j.reporting_period_start, j.reporting_period_end
       ORDER BY p.client_id, j.job_number`, [organisationId]);
-  const byClient = new Map<string, { name: string; stated: string | null; nzYear: number; jobs: Candidate[]; anyJob: boolean }>();
+  const byClient = new Map<string, { name: string; stated: string | null; statedEnd: string | null; nzYear: number; jobs: Candidate[]; anyJob: boolean }>();
   for (const row of rows) {
-    const entry = byClient.get(row.client_id) ?? { name: row.name, stated: row.stated, nzYear: row.nz_year, jobs: [], anyJob: false };
+    const entry = byClient.get(row.client_id) ?? { name: row.name, stated: row.stated, statedEnd: row.stated_end, nzYear: row.nz_year, jobs: [], anyJob: false };
     byClient.set(row.client_id, entry);
     if (row.job_id === null) continue;
     entry.anyJob = true;
@@ -117,8 +118,8 @@ export async function planBaselineDerive(db: Queryable, organisationId: string):
     if (entry.anyJob && entry.jobs.length === 0) { plan.noUsableTotal.push({ clientId, clientName: entry.name }); continue; }
     if (entry.jobs.length === 0) continue;
     plan.population.withCandidate += 1;
-    const choice = chooseJob(entry.jobs, entry.stated);
-    if ("held" in choice) { plan.held.push({ clientId, clientName: entry.name, statedStart: entry.stated!, candidates: entry.jobs.length }); continue; }
+    const choice = chooseJob(entry.jobs, entry.stated, entry.statedEnd);
+    if ("held" in choice) { plan.held.push({ clientId, clientName: entry.name, statedStart: entry.stated!, statedEnd: entry.statedEnd, candidates: entry.jobs.length }); continue; }
     plan.derive.push({ clientId, clientName: entry.name, ruleStep: choice.step, job: choice.job, candidates: entry.jobs.length, statedStart: entry.stated, netZeroYear: entry.nzYear });
   }
   return plan;
