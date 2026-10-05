@@ -9,7 +9,7 @@ import { LookupAdd } from "./LookupAdd";
 import { CountrySelect } from "../lib/CountrySelect";
 import {
   clientCertifications, clientGroupStructures, clientReportingFrameworks, clientReportingFrequencies,
-  emissionCategoryTaxonomy, isIsoCountryCode, normaliseWebsite,
+  emissionCategoryTaxonomy, isIsoCountryCode, netZeroPctLabel, normaliseWebsite,
   type ClientIdentityFields, type ClientProfileFields,
 } from "@nzi/contracts";
 
@@ -243,9 +243,17 @@ export function TargetsGroup(props: GroupProps & { clientId?: string }) {
   const { form, onChange, errors } = props;
   return (
     <>
-      <p className="nz-hint" style={{ margin: "0 0 12px" }}>Reduction <b>targets</b> — near-term, net-zero and per-scope — live on the client record&apos;s
-        <b> Baseline &amp; targets</b> card{props.clientId ? <> (<a href={`/clients/${encodeURIComponent(props.clientId)}`}>open the client</a>)</> : null}. They are
-        measured against the baseline below, which is why the baseline is set here and the targets are not.</p>
+      <p className="nz-hint" style={{ margin: "0 0 12px" }}>The <b>net-zero commitment</b> is captured here; the full set of reduction <b>targets</b> —
+        near-term, net-zero and per-scope — lives on the client record&apos;s <b>Baseline &amp; targets</b> card{props.clientId ? <> (<a href={`/clients/${encodeURIComponent(props.clientId)}`}>open the client</a>)</> : null},
+        measured against the baseline below.</p>
+      <fieldset className="nz-fieldset">
+        <Legend title="Net-zero target" about="NZI's methodology minimum is a 90% reduction by 2050, so both are filled in. Change either if the client commits to more — an earlier year or a higher reduction." />
+        <div className="nz-client-create-grid">
+          <Num {...props} name="netZeroTargetYear" label="Net Zero target year" step="1" min={2025} max={2100} placeholder="2050" />
+          {/* Decision 2a(ii): the % names the client's year — "Net Zero target % 2050", "… % 2040" when they commit earlier. */}
+          <Num {...props} name="netZeroTargetReductionPct" label={netZeroPctLabel(form.netZeroTargetYear)} step="any" min={0} max={100} placeholder="90" />
+        </div>
+      </fieldset>
       <fieldset className="nz-fieldset accent">
         <Legend title="Baseline period (financial year)" about="The benchmark reporting period. Subsequent annual jobs follow this structure." />
         <div className="nz-client-create-grid">

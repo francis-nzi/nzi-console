@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
 import { postBrowserCommand } from "@nzi/api-client";
+import { NET_ZERO_DEFAULT } from "@nzi/contracts";
 import { NAV, USER } from "../../lib/nav";
 import { crumbTrail, workspaceCrumbs } from "../../lib/crumbTrail";
 import { AddressGroup, ComplianceGroup, DetailsGroup, TargetsGroup, emptyClientForm, normaliseClientForm, type ClientFormState, type FieldErrors } from "../clientForm";
@@ -24,7 +25,15 @@ export function ClientCreateWizard() {
   // than per field, so the four smart-searches cannot disagree about who is on the team.
   const lookups = useReferenceOptions();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<ClientFormState>(emptyClientForm());
+  /**
+   * Decision 2 — the net-zero target starts at NZI's methodology minimum, a 90% reduction by 2050, both editable (an
+   * earlier year or a higher % overrides it). Like the owner and portfolio defaults, it only fills a blank — and a new
+   * client's form is blank, so this is its starting value; an existing client is never touched, since editing one
+   * never comes through the wizard.
+   */
+  const [form, setForm] = useState<ClientFormState>(() => ({
+    ...emptyClientForm(), netZeroTargetYear: NET_ZERO_DEFAULT.year, netZeroTargetReductionPct: NET_ZERO_DEFAULT.pct,
+  }));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
