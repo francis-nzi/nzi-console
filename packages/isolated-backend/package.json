@@ -26,6 +26,7 @@
     "load:v7-jobs-config": "tsx scripts/load-v7-jobs-config.ts",
     "load:v7-job-links": "tsx scripts/load-v7-job-links.ts",
     "load:v7-staff": "tsx scripts/load-v7-staff.ts",
+    "load:v7-time": "tsx scripts/load-v7-time.ts",
     "load:v7-org-settings": "tsx scripts/load-v7-org-settings.ts",
     "load:v7-currencies": "tsx scripts/load-v7-currencies.ts",
     "load:v7-job-items": "tsx scripts/load-v7-job-items.ts",

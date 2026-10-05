@@ -570,6 +570,10 @@ jobs:
       # only for finance.view, null otherwise; the team-wide reads refused to own-clients; the capacity/budget/fee editors.
       - name: Time reads show hours to time.view and money only to finance, and the fee never reaches a payload
         run: npx tsx --test packages/isolated-backend/tests/timeReadsReal.test.ts
+      # The v7 time import (⚑7): v7's subjects as billable activities; entries by address digest, job identity and subject
+      # label; minutes 1:1; the rate in force on the day or none; over 24 h skipped, not clamped; idempotent re-runs.
+      - name: v7 time imports as the person's own, rated as of the day worked, and names nobody in its report
+        run: npx tsx --test packages/isolated-backend/tests/v7TimeLoadReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

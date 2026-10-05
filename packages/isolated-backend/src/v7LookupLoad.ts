@@ -70,7 +70,13 @@ const flag = (value: string | null | undefined): boolean | null => {
 /** v7's lookup rows → planned values. Pure: no database. */
 export function planV7Lookups(extract: Partial<Record<V7Table, readonly V7Row[]>>): LookupPlan {
   const plan: LookupPlan = { categories: [], skipped: [] };
-  for (const { table, category, id } of V7_LOOKUP_TABLES) {
+  for (const entry of V7_LOOKUP_TABLES) planLookupTable(extract, entry, plan);
+  return plan;
+}
+
+/** One v7 lookup table → its planned values, appended to `plan` (also how the time import plans v7's `time_subjects`). */
+export function planLookupTable(extract: Partial<Record<V7Table, readonly V7Row[]>>, { table, category, id }: { table: V7Table; category: LookupCategory; id: string }, plan: LookupPlan): void {
+  {
     const values: PlannedLookupValue[] = [];
     const activeLabels = new Map<string, string>();
     const rows = [...(extract[table] ?? [])].sort((a, b) => Number(a[id]) - Number(b[id]));
@@ -96,7 +102,6 @@ export function planV7Lookups(extract: Partial<Record<V7Table, readonly V7Row[]>
     }
     plan.categories.push({ category, table, values });
   }
-  return plan;
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -149,7 +154,12 @@ export async function loadV7Lookups(pool: PoolLike, organisationId: string, plan
   return outcome;
 }
 
-async function loadCategory(db: Queryable, org: string, category: LookupCategory, values: readonly PlannedLookupValue[], runId: string, result: LookupCategoryOutcome) {
+/**
+ * One category's reconcile, inside the caller's transaction. `runId` must start {@link LOOKUP_RUN_PREFIX} (R4 reads it).
+ * Returns v7 id → console value id for every value it placed. Exported for the time import, which reconciles v7's
+ * `time_subjects` into `activity_types` in its own transaction, with the entries that use them.
+ */
+export async function loadCategory(db: Queryable, org: string, category: LookupCategory, values: readonly PlannedLookupValue[], runId: string, result: LookupCategoryOutcome): Promise<Map<string, string>> {
   const { rows: existing } = await db.query<Existing>(
     `SELECT value_id, label, sort_order, active, version, source, source_system, legacy_db_id, legacy_values, updated_by
        FROM nzi_console.reference_values WHERE organisation_id = $1 AND category_key = $2 ORDER BY value_id FOR UPDATE`, [org, category]);
@@ -226,7 +236,14 @@ async function loadCategory(db: Queryable, org: string, category: LookupCategory
         JSON.stringify({ run: runId, sourceSystem: SOURCE_SYSTEM, category, inserted: result.inserted, stamped: result.stamped, reinstated: result.reinstated, deactivated: result.deactivated,
           updated: result.updated, unchanged: result.unchanged, conflicts: result.conflicts.length, seededOnly: result.seededOnly.length, owners: result.owners ?? null })]);
   }
+  return valueIdOf;
 }
+
+/** A fresh category outcome — for a caller of {@link loadCategory} outside {@link loadV7Lookups}. */
+export const emptyCategoryOutcome = (category: LookupCategory, values: readonly PlannedLookupValue[]): LookupCategoryOutcome => ({
+  category, inserted: 0, stamped: 0, reinstated: 0, deactivated: 0, updated: 0, unchanged: 0, conflicts: [], seededOnly: [],
+  parity: { v7Active: values.filter((v) => v.active).length, v7Inactive: values.filter((v) => !v.active).length, consoleActive: 0, consoleInactive: 0 },
+});
 
 async function linkOwners(db: Queryable, org: string, values: readonly PlannedLookupValue[], valueIdOf: Map<string, string>, runId: string) {
   const owners = { linked: 0, unchanged: 0, updated: 0, ownerNotImported: [] as string[], conflicts: [] as string[] };

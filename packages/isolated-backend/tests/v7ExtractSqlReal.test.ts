@@ -90,6 +90,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       users: 6,
       // Organisation settings (admin D2): the 16 allow-listed keys of 20 — the bank rows and anything else stay behind.
       system_settings: 16,
+      // Time (⚑7): every subject; the time on imported jobs only — the entry on job 999 (no such job) stays behind.
+      time_subjects: 4, time_logs: 11,
     }, "the prospect and the archived client, their site, the client-less job and the prospect's job stay behind");
     const clients = (await db.query(queries.get("clients")!)).rows.map((row) => row.db_id);
     assert.deepEqual(clients, ["1", "2"]);

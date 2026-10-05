@@ -373,6 +373,28 @@ export function syntheticRows(): Rows {
       { setting_key: "bank_account_number", setting_value: "87654321", setting_type: "text", updated_at: "2026-08-14 10:00:00" },
       { setting_key: "archive_retention_days", setting_value: "365", setting_type: "text", updated_at: "2026-03-17 10:00:00" },
     ],
+    // Time (⚑7), invented: v7's three default subjects, an inactive repeat of one, and one whose label matches a seeded
+    // activity (so it is stamped, not added). Entries cover every class the time import reports.
+    time_subjects: [
+      { subject_id: "1", name: "Client Calls", is_active: "t", org_id: null },
+      { subject_id: "2", name: "Client  Data Collection", is_active: "t", org_id: null },
+      { subject_id: "3", name: "Client Reporting", is_active: "t", org_id: null },
+      { subject_id: "4", name: "Fieldwork", is_active: "t", org_id: null },
+    ],
+    time_logs: [
+      { time_id: "9001", job_id: "100", user_id: "ada@example.test", subject: "Client Calls", work_date: "2024-01-08", minutes: "90", notes: "Kick-off call", created_at: "2024-01-08 17:00:00" },
+      { time_id: "9002", job_id: "100", user_id: "ada@example.test", subject: "client reporting", work_date: "2024-01-08", minutes: "45", notes: null, created_at: "2024-01-08 17:05:00" },
+      { time_id: "9003", job_id: "101", user_id: "BEN@Example.test", subject: "Fieldwork", work_date: "2024-02-01", minutes: "480", notes: "", created_at: "2024-02-01 18:00:00" },
+      { time_id: "9004", job_id: "100", user_id: "nobody@example.test", subject: "Client Calls", work_date: "2024-01-09", minutes: "30", notes: null },
+      { time_id: "9005", job_id: "999", user_id: "ada@example.test", subject: "Client Calls", work_date: "2024-01-09", minutes: "30", notes: null },
+      { time_id: "9006", job_id: "100", user_id: "ada@example.test", subject: "Site Survey", work_date: "2024-01-10", minutes: "60", notes: null },
+      { time_id: "9007", job_id: "100", user_id: "ada@example.test", subject: "Client Calls", work_date: "2024-01-11", minutes: "1500", notes: null },
+      { time_id: "9008", job_id: "100", user_id: "ada@example.test", subject: "Client Calls", work_date: "2099-01-01", minutes: "60", notes: null },
+      { time_id: "9009", job_id: "100", user_id: "ada@example.test", subject: null, work_date: "2024-01-12", minutes: "60", notes: null },
+      { time_id: "9010", job_id: "100", user_id: "ada@example.test", subject: "Client Calls", work_date: "2024-01-12", minutes: "0", notes: null },
+      { time_id: "9011", job_id: "100", user_id: "12", subject: "Client Calls", work_date: "2024-01-12", minutes: "15", notes: null },
+      { time_id: "9012", job_id: "101", user_id: "cara@example.test", subject: "Client Data Collection", work_date: "2025-06-02", minutes: "120", notes: null },
+    ],
   };
 }
 
