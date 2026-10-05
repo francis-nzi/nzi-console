@@ -30,6 +30,8 @@ const matrixMigrationV8 = readFileSync(resolve(here, "../migrations/0131_permiss
 // v9 — time.log and time.view (TIME module, PR A): everyone logs their own time (T-Q3) on the jobs they reach (T-Q7);
 // time.view reads others' time on a job (0156).
 const matrixMigrationV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
+// v10 — Finance gains time.view (Time PR B): payroll and job cost read the whole team's hours (0157).
+const matrixMigrationV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -39,7 +41,7 @@ const matrixMigrationV9 = readFileSync(resolve(here, "../migrations/0156_permiss
 // Every matrix migration, concatenated. `rowPattern` then selects only the rows for the
 // version in force, so adding a version means adding its file here and nothing else —
 // earlier versions stay readable, which is the point of versioning the matrix at all.
-const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}\n${matrixMigrationV7}\n${matrixMigrationV8}\n${matrixMigrationV9}`;
+const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}\n${matrixMigrationV7}\n${matrixMigrationV8}\n${matrixMigrationV9}\n${matrixMigrationV10}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 

@@ -72,7 +72,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `knowledge.approve` (draft → internal: live for staff, grounds the help AI) | ✓ | ✓ | — | — | — |
 | `knowledge.publish` (internal → public: client-facing, website-bound) | ✓ | — | — | — | — |
 | `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
-| `time.view` (read other people's time on a job — hours, never rates) ⚑ | ✓ | ⚑ own | R | — | — |
+| `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
 
 ### Conditional notes (⚑)
 
@@ -111,6 +111,14 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   it a reader sees only their own. **Rates and the job fee are money** — `finance.view` to read,
   never in a time payload (NZC-120). Marking time billed (the bill command, and unbilling) is
   `finance.manage`; a billed entry is locked until finance unbills it.
+- **Time reads (matrix v10, 0157; Time PR B).** Finance gains `time.view` (all), so payroll and job cost
+  read the whole team's hours. **Oversight** (jobs over budget hours, jobs over cost vs fee) is
+  `time.view` — a Consultant sees their own clients' jobs. **Payroll** and **Utilisation** span the whole
+  team, so they need `time.view` at **all** (Admin, Reviewer, Finance); an own-clients holder is refused,
+  never shown a partial team. Every money figure — cost, charge, fee, margin — additionally needs
+  `finance.view`; without it a reader sees hours alone. Editing a person's **weekly capacity** is
+  `admin.users`; a job's **budgeted hours** is `job.manage`; its **fee** is `finance.manage`, and the fee
+  never enters a payload (NZC-120).
 
 ## Naming convention
 

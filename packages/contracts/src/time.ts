@@ -39,12 +39,106 @@ export type TimeActivityOption = { valueId: string; label: string; billableDefau
 /** A job a person can log time against. */
 export type LoggableJob = { jobId: string; jobNumber: string; title: string; clientName: string; family: string };
 
-/** A job's time, by person (Job → Time). Hours only; "budget used" compares logged with the job's budgeted hours. */
+/** A job's time, by person (Job → Time). "Budget used" compares logged with the job's budgeted hours. */
 export type JobTimeSummary = {
   jobId: string;
+  /** The job's version, for the budget and fee editors' `expectedVersion`. */
+  jobVersion: number;
   budgetedMinutes: number | null;
   totals: { minutes: number; billableMinutes: number };
   people: Array<{ userId: string; name: string; minutes: number; billableMinutes: number; entries: number }>;
   /** False when the reader holds no time.view for this job: only their own time is shown. */
   othersVisible: boolean;
+  /**
+   * The job's labour cost, charge-out value, fee and margin (Time PR B) — present only for a finance.view holder on this
+   * job, and only when everyone's time is visible (a cost of one's own hours alone would be a misleading job cost).
+   */
+  money: TimeMoney | null;
+  /** What the reader may change here: the budget (job.manage), the fee (finance.manage). */
+  editable: { budget: boolean; fee: boolean };
 };
+
+// ── Time PR B: the reads over the entries ──────────────────────────────────────────────────────────────────────
+
+/** A person's weekly capacity is more than 0 and at most a week of hours (0155's CHECK). */
+export const TIME_CAPACITY_MAX_HOURS = 168;
+/** 0155's column bounds: `budgeted_hours numeric(9,2)`, `fee_amount numeric(12,2)`. */
+export const JOB_BUDGET_MAX_HOURS = 9_999_999.99;
+export const JOB_FEE_MAX = 9_999_999_999.99;
+/** "Approaching" its budget from this share used; over 100 is over (the mockup's RAG). */
+export const BUDGET_APPROACHING_PCT = 90;
+
+/** A finite, non-negative quantity to two decimal places, within `max` — hours or money as the columns store them. */
+export const isTimeQuantity = (value: unknown, max: number): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max && Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
+
+/** Logged against budgeted: the share of the budget used, or null when no budget is recorded (never 0 or ∞). */
+export function budgetUsedPct(loggedMinutes: number, budgetedMinutes: number | null): number | null {
+  if (budgetedMinutes === null || budgetedMinutes <= 0) return null;
+  return Math.round((loggedMinutes / budgetedMinutes) * 100);
+}
+export type BudgetStatus = "over" | "approaching" | "on-track" | "no-budget";
+export function budgetStatus(pct: number | null): BudgetStatus {
+  return pct === null ? "no-budget" : pct > 100 ? "over" : pct >= BUDGET_APPROACHING_PCT ? "approaching" : "on-track";
+}
+
+/** Monday–Friday days in a period of London days, inclusive. Bank holidays are not removed (no calendar is held). */
+export function weekdaysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  let days = 0;
+  for (let at = start; at <= end; at += 86_400_000) { const day = new Date(at).getUTCDay(); if (day !== 0 && day !== 6) days++; }
+  return days;
+}
+/** A person's capacity over a period: their weekly hours, spread over five weekdays, times the weekdays in it. */
+export const capacityMinutes = (weeklyCapacityHours: number, weekdays: number) => Math.round((weeklyCapacityHours / 5) * weekdays * 60);
+/** Utilisation (⚑8: capacity only) — logged against capacity; null when there is no capacity in the period. */
+export const utilisationPct = (loggedMinutes: number, capacity: number) => capacity > 0 ? Math.round((loggedMinutes / capacity) * 100) : null;
+
+/**
+ * Money over a set of entries (finance.view only): hours × each entry's snapshotted rate. An entry with no rate recorded
+ * adds nothing and is counted in `unratedMinutes`, so a cost is never quietly short. Entries in more than one currency are
+ * not summed: `currency` is null and the figures are null (`mixedCurrency`).
+ */
+export type TimeMoney = {
+  currency: string | null; mixedCurrency: boolean;
+  cost: number | null; charge: number | null;
+  /** The job's fee (ex VAT) — on a job's read only. */
+  fee?: number | null;
+  /** fee − cost, when both are known. */
+  margin?: number | null;
+  unratedMinutes: number;
+};
+
+export type TimePeriod = { from: string; to: string };
+
+/** Oversight: one job. Logged hours and cost are the job's to date, as at the period's end; `periodMinutes` is the period's. */
+export type OversightJob = {
+  jobId: string; jobNumber: string; title: string; clientName: string; family: string; ownerName: string | null;
+  loggedMinutes: number; periodMinutes: number; billableMinutes: number;
+  budgetedMinutes: number | null; budgetUsedPct: number | null; budgetStatus: BudgetStatus;
+  /** finance.view on this job only. `overCost` is cost > fee, when both are known. */
+  money: (TimeMoney & { overCost: boolean | null }) | null;
+};
+export type TimeOversight = {
+  period: TimePeriod; jobs: OversightJob[];
+  totals: { periodMinutes: number; billableMinutes: number; overBudget: number; approaching: number; overCost: number | null };
+  /** False for an own-clients time.view holder: the jobs are their own clients' only. */
+  allClients: boolean;
+};
+
+/** Payroll: one person's hours over the period (and cost, for finance.view at all). */
+export type PayrollPerson = {
+  userId: string; name: string; billableMinutes: number; nonBillableMinutes: number; totalMinutes: number; entries: number;
+  money: TimeMoney | null;
+};
+export type TimePayroll = { period: TimePeriod; people: PayrollPerson[]; moneyVisible: boolean };
+
+/** Utilisation (⚑8): logged hours against capacity over the period. */
+export type UtilisationPerson = {
+  userId: string; name: string; weeklyCapacityHours: number; capacityMinutes: number;
+  loggedMinutes: number; billableMinutes: number; utilisationPct: number | null;
+  /** The membership version, for the capacity editor. */
+  version: number;
+};
+export type TimeUtilisation = { period: TimePeriod; weekdays: number; people: UtilisationPerson[]; capacityEditable: boolean };

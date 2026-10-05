@@ -8,7 +8,7 @@ import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplat
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isIsoCountryCode } from "./iso3166";
-import { isTimeEntryMinutes, TIME_ACTIVITY_CATEGORY, TIME_ENTRY_NOTE_MAX } from "./time";
+import { isTimeEntryMinutes, isTimeQuantity, JOB_BUDGET_MAX_HOURS, JOB_FEE_MAX, TIME_ACTIVITY_CATEGORY, TIME_CAPACITY_MAX_HOURS, TIME_ENTRY_NOTE_MAX } from "./time";
 import { todayInLondon } from "./dayValues";
 import { isAllowedBroadcastLink, isBroadcastInstant, isPortalBroadcastStyle, PORTAL_BROADCAST_BODY_MAX, PORTAL_BROADCAST_LINK_LABEL_MAX, PORTAL_BROADCAST_TITLE_MAX, type PortalBroadcastEditableFields } from "./adminPortalBroadcasts";
 import { isValidWebsite, normaliseWebsite } from "./clientWebsite";
@@ -174,6 +174,9 @@ export type CommandKey =
   | "time.entry.edit"
   | "time.entry.void"
   | "time.entry.bill"
+  | "staff.capacity.set"
+  | "job.budget.set"
+  | "job.fee.set"
   | "client.location.set"
   | "site.registeredOffice"
   | "site.vacate"
@@ -651,6 +654,12 @@ export type CommandInputMap = {
   "time.entry.void": { entryId: string; expectedVersion: number };
   /** Finance stamps (or clears, with null) the invoice an entry was billed on (T-Q5). A billed entry is locked. */
   "time.entry.bill": { entryId: string; expectedVersion: number; billedRef: string | null };
+  /** Time PR B (T-Q4): a person's weekly capacity, which utilisation is read against. Admin (admin.users). */
+  "staff.capacity.set": { userId: string; expectedVersion: number; weeklyCapacityHours: number };
+  /** Time PR B (⚑5): the job's budgeted hours — "budget used" is read against it. null clears it (no budget recorded). */
+  "job.budget.set": { jobId: string; expectedVersion: number; budgetedHours: number | null };
+  /** Time PR B (⚑5/⚑6): the job's fee, ex VAT — money: finance.manage, and never in a payload (NZC-120). null clears it. */
+  "job.fee.set": { jobId: string; expectedVersion: number; feeAmount: number | null };
   "reference.value.deactivate": { categoryKey: string; valueId: string; expectedVersion: number };
   "reference.value.reinstate": { categoryKey: string; valueId: string; expectedVersion: number };
   /** Job types (admin C1): the services the firm sells — added, edited, deactivated or reinstated, never deleted. */
@@ -1589,6 +1598,28 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "entryId", input.entryId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     if (input.billedRef !== null && (typeof input.billedRef !== "string" || !input.billedRef.trim() || input.billedRef.trim().length > 120)) issues.push({ field: "billedRef", code: "INVALID", message: "The invoice reference, up to 120 characters — or none, to unbill." });
+    return issues;
+  } },
+  // ── Time PR B: the figures the reads compare against ─────────────────────────────────────────────────────────
+  "staff.capacity.set": { key: "staff.capacity.set", label: "Set weekly capacity", permission: "admin.users", reasonRequired: false, transaction: "versioned membership capacity + audit + outbox + idempotency", auditAction: "staff.capacity.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "userId", input.userId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (!isTimeQuantity(input.weeklyCapacityHours, TIME_CAPACITY_MAX_HOURS) || input.weeklyCapacityHours <= 0) issues.push({ field: "weeklyCapacityHours", code: "INVALID", message: `Weekly capacity is more than 0 and at most ${TIME_CAPACITY_MAX_HOURS} hours, to two decimal places.` });
+    return issues;
+  } },
+  "job.budget.set": { key: "job.budget.set", label: "Set a job's budgeted hours", permission: "job.manage", reasonRequired: false, transaction: "versioned job budget + audit + outbox + idempotency", auditAction: "job.budget.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.budgetedHours !== null && !isTimeQuantity(input.budgetedHours, JOB_BUDGET_MAX_HOURS)) issues.push({ field: "budgetedHours", code: "INVALID", message: "Budgeted hours are 0 or more, to two decimal places — or none, to clear the budget." });
+    return issues;
+  } },
+  "job.fee.set": { key: "job.fee.set", label: "Set a job's fee", permission: "finance.manage", reasonRequired: false, transaction: "versioned job fee (amount never in the payload) + audit + outbox + idempotency", auditAction: "job.fee.set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.feeAmount !== null && !isTimeQuantity(input.feeAmount, JOB_FEE_MAX)) issues.push({ field: "feeAmount", code: "INVALID", message: "The fee is 0 or more, to the penny — or none, to clear it." });
     return issues;
   } },
   "reference.value.deactivate": { key: "reference.value.deactivate", label: "Deactivate a lookup value", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "reference.value.deactivated", validate: (input, context) => {

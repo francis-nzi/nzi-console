@@ -236,6 +236,10 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "time.entry.edit": ownTimeEntry,
   "time.entry.void": ownTimeEntry,
   "time.entry.bill": timeEntry,
+  // Time PR B: capacity is the roster's (admin.users); a job's budget and fee are the job's (job.manage / finance.manage).
+  "staff.capacity.set": organisation,
+  "job.budget.set": job,
+  "job.fee.set": job,
 };
 
 // Each resolves the owning client strictly inside the caller's organisation. Under RLS

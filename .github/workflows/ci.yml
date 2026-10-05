@@ -566,6 +566,10 @@ jobs:
       # snapshot as of the work date and never in a payload; the billed lock; the default through Lookups; the job budget.
       - name: Time is logged as one's own, rated as of the day worked, locked once billed, and never carries money in a payload
         run: npx tsx --test packages/isolated-backend/tests/timeEntriesReal.test.ts
+      # TIME PR B (0157, matrix v10): Oversight (budget used, cost vs fee), Payroll and Utilisation over a period; money
+      # only for finance.view, null otherwise; the team-wide reads refused to own-clients; the capacity/budget/fee editors.
+      - name: Time reads show hours to time.view and money only to finance, and the fee never reaches a payload
+        run: npx tsx --test packages/isolated-backend/tests/timeReadsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

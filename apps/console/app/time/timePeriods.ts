@@ -4,7 +4,7 @@ import { utcDay } from "@nzi/contracts";
  * The Time screen's periods, as London days (`YYYY-MM-DD`), computed from "today" as the server resolved it — so the
  * screen never judges a period by the viewer's clock. Pure string-and-UTC arithmetic: no time zone enters.
  */
-export type PeriodKey = "week" | "month" | "last-month" | "custom";
+export type PeriodKey = "week" | "month" | "last-month" | "quarter" | "custom";
 export type Period = { from: string; to: string };
 
 const parse = (day: string) => new Date(`${day}T00:00:00Z`);
@@ -30,10 +30,18 @@ export function monthOf(day: string): Period {
 /** The calendar month before the one containing the day. */
 export const lastMonthOf = (day: string): Period => monthOf(addDays(monthOf(day).from, -1));
 
+/** The calendar quarter (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec) containing the day. */
+export function quarterOf(day: string): Period {
+  const date = parse(day);
+  const first = Math.floor(date.getUTCMonth() / 3) * 3;
+  return { from: format(new Date(Date.UTC(date.getUTCFullYear(), first, 1))), to: format(new Date(Date.UTC(date.getUTCFullYear(), first + 3, 0))) };
+}
+
 export function periodFor(key: PeriodKey, today: string, custom: Period): Period {
   if (key === "week") return weekOf(today);
   if (key === "month") return monthOf(today);
   if (key === "last-month") return lastMonthOf(today);
+  if (key === "quarter") return quarterOf(today);
   return custom;
 }
 
