@@ -50,7 +50,7 @@ import type { JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
-import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
+import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
@@ -312,6 +312,9 @@ export function CrpScopeWorkspace({
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
+    // JW-9 — a row needs a real factor; the quantity can wait. This form files no category, so the write's own gate
+    // (category entries) does not see it: the form holds the line itself.
+    if (!entryHasFactor(draft)) { setNotice({ kind: "warn", text: ENTRY_FACTOR_REQUIRED }); return; }
     setPending(true);
     const r = await postBrowserCommand<{ rowId: string }>(
       `/api/isolated/jobs/${job.header.id}/scope-rows`,

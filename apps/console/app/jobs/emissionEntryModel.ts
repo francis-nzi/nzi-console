@@ -270,6 +270,48 @@ export function matchFactorByActivity(
   return factors.find((option) => option.label.trim().toLowerCase() === needle) ?? null;
 }
 
+/** JW-9 — the line an entry is held to, in the form and at the write: a real factor; the quantity can wait. */
+export const ENTRY_FACTOR_REQUIRED = "Pick this category's factor — an entry needs a real factor; the quantity can wait.";
+
+/** Whether a row being created carries a factor at all (the write checks it is a real, in-scope one). */
+export function entryHasFactor(fields: Pick<ScopeRowWriteFields, "factorSource" | "factorId" | "clientFactorId">): boolean {
+  return (fields.factorSource ?? "dataset") === "client" ? Boolean(fields.clientFactorId?.trim()) : Boolean(fields.factorId?.trim());
+}
+
+/**
+ * The activity search's results (JW-9): the category's options whose label contains what was typed, case-insensitive.
+ * A suggestion list, never an acceptance — only a pick sets the activity and its factor.
+ */
+export function searchActivityOptions<T extends { label: string }>(options: readonly T[], text: string, limit = 8): T[] {
+  const needle = text.trim().toLowerCase();
+  return (needle ? options.filter((option) => option.label.toLowerCase().includes(needle)) : [...options]).slice(0, limit);
+}
+
+/**
+ * Why a CRM quick-add can't be saved yet, or null (JW-9, as ruled: a row requires a valid matched factor; the quantity
+ * may be blank — a genuine draft).
+ *
+ *   - the factor must be one of the category's options (picked, matched or declared) — the "gas" repro had none;
+ *   - typed activity text must be one of the category's activities, never free text standing in for one — except for
+ *     spend, where the search box holds a supplier or ledger line and the factor is picked on its own.
+ *
+ * The portal keeps its own capture rules; nothing here applies to it.
+ */
+export function quickAddSaveIssue(
+  draft: Pick<EmissionEntryDraft, "activity" | "factorId">,
+  options: readonly { id: string; label: string }[],
+  category: EmissionCategory,
+  audience: EntryAudience,
+): string | null {
+  if (audience !== "crm") return null;
+  if (!options.some((option) => option.id === draft.factorId)) return ENTRY_FACTOR_REQUIRED;
+  const text = draft.activity.trim();
+  if (text && !isSpendKind(category) && !options.some((option) => option.label.trim().toLowerCase() === text.toLowerCase())) {
+    return `“${text}” isn't one of ${category.name}'s activities — pick one from the list.`;
+  }
+  return null;
+}
+
 export function parseEntryNumber(value: string | undefined): number | null {
   const trimmed = (value ?? "").replace(/[,\s]/g, "").trim();
   if (trimmed === "") return null;

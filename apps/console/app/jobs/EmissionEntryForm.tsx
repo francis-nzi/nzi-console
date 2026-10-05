@@ -13,6 +13,8 @@ import {
   isRegistrationKind,
   isSpendKind,
   matchFactorByActivity,
+  quickAddSaveIssue,
+  searchActivityOptions,
   needsOverrideReason,
   seedWithDeclared,
   type DeclaredOption,
@@ -130,6 +132,15 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const scopedTo = `Scope ${category.scope} · ${category.name}`;
 
   const patch = (next: Partial<EmissionEntryDraft>) => setDraft(current => ({ ...current, ...next }));
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const searchResults = searchActivityOptions(factors, draft.activity);
+  // A pick is the only way an activity is accepted: it sets the activity, its factor and that factor's unit.
+  const pickActivity = (option: (typeof factors)[number]) => {
+    patch({ activity: option.label, factorId: option.id, unit: option.unit ?? draft.unit,
+      factorOverrideReason: declared && option.id === declared.optionId ? "" : draft.factorOverrideReason });
+    setSearchOpen(false);
+  };
   const setMonth = (key: string, value: string) => patch({ monthly: { ...draft.monthly, [key]: value } });
 
   const runLookup = async () => {
@@ -162,6 +173,9 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
       setLocalError("Say why this factor was chosen instead of the one declared for this category.");
       return;
     }
+    // JW-9 — a CRM entry needs a real factor (the quantity may wait) and typed text is never saved as an activity.
+    const issue = key === "save" || key === "saveDraft" ? quickAddSaveIssue(draft, factors, category, audience) : null;
+    if (issue) { setLocalError(issue); return; }
     setLocalError("");
     if (key === "submit") return void props.onSubmit(draft);
     if (key === "save") return void props.onSubmit(draft);
@@ -229,25 +243,56 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             );
 
           case "smart-search":
+            // JW-9 — a combobox, not a datalist: the list is a suggestion, only a pick sets the activity and its
+            // factor, and Enter picks the highlighted option or does nothing — it never submits the form (the
+            // keyboard handling is TemplateSearchBar's). Saving is then held to quickAddSaveIssue.
             return (
-              <label key={field.key} className="nz-fl">{field.label} <span className="muted">· smart search</span>
-                <input className="nz-inp" list={listId} value={draft.activity}
-                  placeholder={spend ? "Search suppliers / ledger…" : "Search this category’s activities…"}
-                  onChange={event => {
-                    const activity = event.target.value;
-                    // DA4 — lean capture auto-matches the factor from an exact
-                    // activity pick instead of a separate required select. The
-                    // matched factor also fixes the unit (its dataset activity
-                    // unit) — the user never picks it.
-                    if (lean) {
-                      const matched = matchFactorByActivity(activity, factors);
-                      // An activity that names no factor keeps the declared one rather than clearing it (Stop 2b).
-                      patch({ activity, factorId: matched?.id ?? declared?.optionId ?? "", unit: matched?.unit ?? declared?.unit ?? draft.unit });
-                    } else patch({ activity });
-                  }} />
-                <datalist id={listId}>{factors.map(option => <option key={option.id} value={option.label} />)}</datalist>
+              <div key={field.key} className="nz-fl nz-fast-add-search">
+                <label className="nz-fl" style={{ margin: 0 }}>{field.label} <span className="muted">· smart search</span>
+                  <input className="nz-inp" role="combobox" aria-expanded={searchOpen} aria-controls={listId} aria-autocomplete="list"
+                    value={draft.activity}
+                    placeholder={spend ? "Search suppliers / ledger…" : "Search this category’s activities…"}
+                    onFocus={() => setSearchOpen(true)}
+                    // Not closed on blur: the list sits in the form's flow, so closing it as focus leaves would move
+                    // the buttons below it out from under the pointer mid-click. A pick or Escape closes it; a
+                    // "no match" note left open is the feedback that the typed text is not an activity.
+                    onKeyDown={event => {
+                      if (event.key === "ArrowDown") { event.preventDefault(); setSearchOpen(true); setHighlighted(i => Math.min(i + 1, searchResults.length - 1)); }
+                      else if (event.key === "ArrowUp") { event.preventDefault(); setHighlighted(i => Math.max(i - 1, 0)); }
+                      else if (event.key === "Enter") { event.preventDefault(); const picked = searchOpen ? searchResults[highlighted] : undefined; if (picked) pickActivity(picked); }
+                      else if (event.key === "Escape") setSearchOpen(false);
+                    }}
+                    onChange={event => {
+                      const activity = event.target.value;
+                      setSearchOpen(true); setHighlighted(0);
+                      // DA4 — lean capture auto-matches the factor from an exact
+                      // activity pick instead of a separate required select. The
+                      // matched factor also fixes the unit (its dataset activity
+                      // unit) — the user never picks it.
+                      if (lean) {
+                        const matched = matchFactorByActivity(activity, factors);
+                        // An activity that names no factor keeps the declared one rather than clearing it (Stop 2b).
+                        patch({ activity, factorId: matched?.id ?? declared?.optionId ?? "", unit: matched?.unit ?? declared?.unit ?? draft.unit });
+                      } else patch({ activity });
+                    }} />
+                </label>
+                {searchOpen && draft.activity.trim() ? (
+                  <ul className="nz-template-results" id={listId} role="listbox">
+                    {searchResults.length === 0 ? <li className="nz-template-empty">No {category.name} activity matches “{draft.activity.trim()}”.</li> : null}
+                    {searchResults.map((option, index) => (
+                      <li key={option.id}>
+                        <button type="button" role="option" aria-selected={index === highlighted} className={index === highlighted ? "on" : ""}
+                          onMouseEnter={() => setHighlighted(index)}
+                          // Picked on mouse-down, before the input's blur closes the list.
+                          onMouseDown={event => { event.preventDefault(); pickActivity(option); }}>
+                          <b>{option.label}</b>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <span className="nz-hint">{field.hint}</span>
-              </label>
+              </div>
             );
 
           case "number":

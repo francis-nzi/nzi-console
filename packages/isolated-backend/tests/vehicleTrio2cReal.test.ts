@@ -148,8 +148,10 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     const entry = (category: never) => save(category, draft({ unit: "km", assertedVehicleAttributes: attributes }), []);
     try {
       await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = true WHERE category_code IN ('3.6','3.7')`);
-      const beforeChange = await entry(TRAVEL);
-      assert.equal(beforeChange.factor_id, null, "business travel resolved before the flow could price a distance");
+      // Before the flow can price a distance, nothing resolves — and an entry with no factor is refused (JW-9), where
+      // it used to be stored empty.
+      await assert.rejects(() => entry(TRAVEL), (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"),
+        "business travel resolved before the flow could price a distance");
 
       await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'van-km-test' WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
       const travel = await entry(TRAVEL);

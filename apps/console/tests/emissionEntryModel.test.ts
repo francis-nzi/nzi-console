@@ -12,7 +12,11 @@ import {
   emissionEntryActions,
   emissionEntryDraftToPortalRecord,
   emissionEntryDraftToScopeRow,
+  ENTRY_FACTOR_REQUIRED,
+  entryHasFactor,
   isRegistrationKind,
+  quickAddSaveIssue,
+  searchActivityOptions,
   isSpendKind,
   matchFactorByActivity,
   parseEntryNumber,
@@ -32,6 +36,45 @@ const cat = (name: string): EmissionCategory => {
   if (!found) throw new Error(`no taxonomy category ${name}`);
   return found;
 };
+
+describe("JW-9 — the quick-add's activity search and its save gate", () => {
+  const electricity = [{ id: "dataset:d|grid", label: "UK electricity · kWh" }, { id: "dataset:d|ev", label: "UK electricity for EVs · kWh" }];
+
+  it("refuses Francis's repro: typed \"gas\" with no factor picked, in Purchased Electricity", () => {
+    assert.equal(quickAddSaveIssue(draft({ activity: "gas" }), electricity, cat("Purchased Electricity"), "crm"), ENTRY_FACTOR_REQUIRED);
+  });
+  it("refuses typed text that isn't one of the category's activities, even with a factor set (declared or picked earlier)", () => {
+    assert.match(quickAddSaveIssue(draft({ activity: "gas", factorId: "dataset:d|grid" }), electricity, cat("Purchased Electricity"), "crm") ?? "",
+      /“gas” isn't one of Purchased Electricity's activities/);
+  });
+  it("saves a picked activity with a blank quantity — a genuine draft, as ruled", () => {
+    assert.equal(quickAddSaveIssue(draft({ activity: "UK electricity · kWh", factorId: "dataset:d|grid", quantity: "" }), electricity, cat("Purchased Electricity"), "crm"), null);
+    assert.equal(quickAddSaveIssue(draft({ activity: "uk electricity · KWH ", factorId: "dataset:d|grid" }), electricity, cat("Purchased Electricity"), "crm"), null, "matched case-insensitively");
+    assert.equal(quickAddSaveIssue(draft({ activity: "", factorId: "dataset:d|grid" }), electricity, cat("Purchased Electricity"), "crm"), null, "a factor with no activity text is fine");
+  });
+  it("refuses a factor that isn't one of the category's options — the old option-key bug, or a client-factor placeholder", () => {
+    assert.equal(quickAddSaveIssue(draft({ factorId: "__client_factor__" }), electricity, cat("Purchased Electricity"), "crm"), ENTRY_FACTOR_REQUIRED);
+  });
+  it("lets spend keep its supplier text, but still needs the factor", () => {
+    const spendOptions = [{ id: "dataset:d|pgs", label: "Office supplies · GBP" }];
+    assert.equal(quickAddSaveIssue(draft({ activity: "Acme Stationers Ltd", factorId: "dataset:d|pgs" }), spendOptions, cat("Purchased Goods and Services"), "crm"), null);
+    assert.equal(quickAddSaveIssue(draft({ activity: "Acme Stationers Ltd" }), spendOptions, cat("Purchased Goods and Services"), "crm"), ENTRY_FACTOR_REQUIRED);
+  });
+  it("leaves the portal to its own capture rules", () => {
+    assert.equal(quickAddSaveIssue(draft({ activity: "gas" }), electricity, cat("Purchased Electricity"), "portal"), null);
+  });
+  it("searches the category's own options by label, case-insensitive, as suggestions only", () => {
+    assert.deepEqual(searchActivityOptions(electricity, "EV").map(option => option.id), ["dataset:d|ev"]);
+    assert.deepEqual(searchActivityOptions(electricity, "gas"), [], "nothing outside the list is offered");
+    assert.equal(searchActivityOptions(electricity, "").length, 2);
+  });
+  it("entryHasFactor: a dataset factor id, or a client factor id when the source is client", () => {
+    assert.equal(entryHasFactor({ factorSource: "dataset", factorId: " ", clientFactorId: null }), false);
+    assert.equal(entryHasFactor({ factorSource: "dataset", factorId: "f1", clientFactorId: null }), true);
+    assert.equal(entryHasFactor({ factorSource: "client", factorId: null, clientFactorId: "cf1" }), true);
+    assert.equal(entryHasFactor({ factorSource: "client", factorId: "f1", clientFactorId: null }), false);
+  });
+});
 
 describe("emissionEntryActions", () => {
   it("portal always offers Save draft + Submit for review", () => {

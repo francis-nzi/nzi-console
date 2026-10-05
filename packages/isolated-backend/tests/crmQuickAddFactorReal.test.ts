@@ -103,10 +103,35 @@ describe("a CRM quick-add entry stores the factor's own id, and calculates", { s
       (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_VALID_FOR_ROW", "the option key was not refused with electricity on");
   });
 
-  it("still refuses to calculate the option key stored as a factor — which is what every quick-add used to be", async () => {
-    const created = await createScopeRow(database.pool, { ...quickAdd(options()[0]!.id), factorId: options()[0]!.id, jobId: JOB }, context());
-    const row = (await db.query<{ version: number }>(`SELECT version FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
-    await assert.rejects(() => calculateScopeRow(database.pool, { jobId: JOB, rowId: created.data.rowId, expectedVersion: row.version }, context()),
-      (error: any) => error.issues?.some((issue: any) => issue.code === "NOT_SELECTED"));
+  // JW-9 — the write's own line, whatever the form did: an entry needs a real factor of its own scope; a blank
+  // quantity is a genuine draft and is kept.
+  const entry = (over: Record<string, unknown>) => ({ ...quickAdd(options()[0]!.id), jobId: JOB, ...over });
+  const rowsNow = async () => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n;
+
+  it("refuses an entry with no factor — typed text that matched nothing — and stores nothing (JW-9)", async () => {
+    const before = await rowsNow();
+    await assert.rejects(() => createScopeRow(database.pool, entry({ sourceLabel: "gas", reportLabel: "gas", datasetId: null, factorId: null, factorVersion: null, factorLabel: null }) as never, context()),
+      (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"));
+    assert.equal(await rowsNow(), before);
+  });
+
+  it("refuses a factor from another scope on the entry (JW-9)", async () => {
+    await assert.rejects(() => createScopeRow(database.pool, entry({ datasetId: "synthetic-gb-2026", factorId: "uk-ghg-13_402_4000_5_1", factorLabel: "T&D" }) as never, context()),
+      (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_NOT_IN_CATEGORY"));
+  });
+
+  it("keeps a draft: a real factor with the quantity left blank is stored (JW-9, as ruled)", async () => {
+    const created = await createScopeRow(database.pool, entry({ quantity: null }) as never, context());
+    const row = (await db.query<{ factor_id: string; quantity: string | null }>(`SELECT factor_id, quantity FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
+    assert.deepEqual([row.factor_id, row.quantity], ["gas-demo", null]);
+  });
+
+  it("refuses the option key as a factor at the write — which is what every quick-add used to be (now refused before it is stored, JW-9)", async () => {
+    // Before JW-9 the key was stored and only calculation refused it (NOT_SELECTED). An entry's factor is now checked
+    // at create, so the key never reaches the table.
+    const before = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n;
+    await assert.rejects(() => createScopeRow(database.pool, { ...quickAdd(options()[0]!.id), factorId: options()[0]!.id, jobId: JOB }, context()),
+      (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_NOT_SELECTED"));
+    assert.equal((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n, before, "nothing stored");
   });
 });
