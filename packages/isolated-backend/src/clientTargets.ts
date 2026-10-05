@@ -7,8 +7,8 @@ import {
 } from "@nzi/contracts";
 import { benchmarkFromRow, getBenchmarkInForce, modelFromRow, TARGET_COLUMNS, type TargetRow } from "./clientTargetRecords";
 import { VersionConflictError } from "./errors";
-import type { PoolLike } from "./postgres";
-import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
+import type { PoolLike, Queryable } from "./postgres";
+import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 export * from "./clientTargetRecords";
 
 export type SetClientTargetsResult = { clientId: string; version: number; benchmarkYear: number; restatedBenchmark: boolean };
@@ -23,7 +23,16 @@ const write = (value: { year: number | null; pct: number | null } | undefined) =
  * `restateAgainstBenchmark` and a reason — an explicit, recorded choice (NZC-068).
  */
 export function setClientTargets(pool: PoolLike, input: CommandInputMap["client.targets.set"], context: CommandContext): Promise<StoredOutcome<SetClientTargetsResult>> {
-  return runPostgresCommand(pool, "client.targets.set", input, context, async (db) => {
+  return runPostgresCommand(pool, "client.targets.set", input, context, setClientTargetsHandler(input, context));
+}
+
+/** The same command inside a caller's transaction — a policy backfill's dry run is the whole run, rolled back. */
+export function setClientTargetsInTransaction(db: Queryable, input: CommandInputMap["client.targets.set"], context: CommandContext): Promise<StoredOutcome<SetClientTargetsResult>> {
+  return runPostgresCommandInTransaction(db, "client.targets.set", input, context, setClientTargetsHandler(input, context));
+}
+
+function setClientTargetsHandler(input: CommandInputMap["client.targets.set"], context: CommandContext) {
+  return async (db: Queryable) => {
     const benchmark = await getBenchmarkInForce(db, input.clientId);
     if (!benchmark) {
       throw new CommandValidationError([{ field: "clientId", code: "BASELINE_REQUIRED", message: "Set the client's baseline first — a target is a reduction against it." }]);
@@ -71,7 +80,7 @@ export function setClientTargets(pool: PoolLike, input: CommandInputMap["client.
       // Moving the pathway and the gap onto a different benchmark is its own governed act.
       ...(restating ? { governedEvents: [{ action: "client_targets_restated", entityType: "client_targets", entityId: input.clientId, before: { benchmarkYear: previous!.benchmark_year, benchmarkTotalTco2e: Number(previous!.benchmark_total_tco2e) }, after: { benchmarkYear: benchmark.year, benchmarkTotalTco2e: benchmark.totalTco2e } }] } : {}),
     };
-  });
+  };
 }
 
 const milestoneOf = (value: { year: number | null; pct: number | null } | undefined): TargetMilestone | null =>
