@@ -8,6 +8,7 @@ import {
   clientUpdateIssues,
   commandDefinitions,
   normaliseWebsite,
+  withNetZeroDefault,
   type ClientHeldFields,
   crpReportSectionTemplate,
   type ReportSectionTemplate,
@@ -231,7 +232,8 @@ export async function createClient(
       // E-Q3 (admin E1): a new client's currency is one of the organisation's active currencies — nothing is held yet,
       // so the check always runs. Written as clientProfileValues writes it: an omitted currency is GBP.
       await assertClientCurrency(db, context.organisationId, input.currency ?? "GBP", null);
-      const profile = clientProfileValues(input);
+      // Decision 2: a client created with neither net-zero field takes 90% by 2050, as the wizard's starting value does.
+      const profile = clientProfileValues(withNetZeroDefault(input));
       // NZC-022 "own clients" — the creating staff user owns the client.
       await db.query(
         `INSERT INTO nzi_console.clients

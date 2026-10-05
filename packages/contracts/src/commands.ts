@@ -1324,6 +1324,8 @@ const clientProfileIssues = (input: ClientProfileFields) => {
   if (isoDate(input.baselinePeriodStart) && isoDate(input.baselinePeriodEnd) && input.baselinePeriodEnd! <= input.baselinePeriodStart!) issues.push({ field: "baselinePeriodEnd", code: "INVALID_RANGE", message: "Baseline period end must fall after its start." });
   // A net-zero target the trajectory cannot anchor is worse than no target at all.
   if (input.netZeroTargetYear != null && input.netZeroTargetReductionPct == null) issues.push({ field: "netZeroTargetReductionPct", code: "PAIRED", message: "A net-zero target year needs its reduction percentage." });
+  // And the reverse (NET-ZERO follow-ups, Part A): a % with no year is half a target too.
+  if (input.netZeroTargetReductionPct != null && input.netZeroTargetYear == null) issues.push({ field: "netZeroTargetYear", code: "PAIRED", message: "A net-zero reduction percentage needs its target year." });
 
   if (input.groupStructure != null && !oneOf(input.groupStructure, clientGroupStructures)) issues.push({ field: "groupStructure", code: "INVALID", message: "Group structure is invalid." });
   optionalMembers(issues, "reportingFrameworks", input.reportingFrameworks, clientReportingFrameworks);

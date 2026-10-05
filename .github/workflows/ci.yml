@@ -574,6 +574,10 @@ jobs:
       # label; minutes 1:1; the rate in force on the day or none; over 24 h skipped, not clamped; idempotent re-runs.
       - name: v7 time imports as the person's own, rated as of the day worked, and names nobody in its report
         run: npx tsx --test packages/isolated-backend/tests/v7TimeLoadReal.test.ts
+      # Decision 2, server side: client.create defaults the net-zero pair to 2050 / 90 only when both are omitted; a sent
+      # target is kept; half a pair is refused either way round.
+      - name: An API-created client gets the wizard's net-zero target unless it sends its own
+        run: npx tsx --test packages/isolated-backend/tests/clientCreateNetZeroReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
