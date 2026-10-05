@@ -200,7 +200,9 @@ export function CrpScopeWorkspace({
     // clicked or an entry is added. Seeding this with "the first row needing attention" is what opened a
     // drawer describing a row the user had never chosen.
     [selectedId, setSelectedId] = useState(""),
-    [creating, setCreating] = useState(rows.length === 0),
+    // An empty job no longer opens the old flat "Add emissions source" form under the accordion — that form was the
+    // "previous format" (JW-10). With the accordion on, a new entry starts from its category's Add entry.
+    [creating, setCreating] = useState(() => rows.length === 0 && !dataEntryAdapterEnabled("data-entry-accordion")),
     [draft, setDraft] = useState(blank()),
     [pending, setPending] = useState(false),
     [registerFilter,setRegisterFilter]=useState<ScopeRegisterFilter>("attention"),

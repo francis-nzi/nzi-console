@@ -39,17 +39,19 @@ describe("isolated Postgres adapter", () => {
     assert.ok(sql.includes("'v'||cf.version::text <> coalesce(r.factor_version,'')"));
   });
 
-  it("lists the CRM applicable-category completeness view — all 15 Scope 3 when Scope 3 is included (NZC-046/UX1a)", async () => {
+  it("lists the CRM applicable-category completeness view — Scopes 1–3 always, every category, empties flagged (NZC-046/UX1a, JW-10)", async () => {
+    let scopeQueried = false;
     const db = { query: async (statement: string) => {if(statement.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
-      if (statement.includes("SELECT DISTINCT scope FROM")) return { rows: [{ scope: "1" }, { scope: "3" }] };
+      if (statement.includes("SELECT DISTINCT scope FROM")) { scopeQueried = true; return { rows: [{ scope: "1" }, { scope: "3" }] }; }
       if (statement.includes("coalesce(nullif(category_code")) return { rows: [{ code: "3.1", entry_count: "2", tco2e: "686.3", complete_count: "1" }, { code: "1.natural-gas", entry_count: "1", tco2e: "17.6", complete_count: "1" }] };
       return { rows: [] };
     } } as Queryable;
     const result = await listJobApplicableCategories(db, "job-a", "crm");
-    assert.deepEqual(result.includedScopes, ["1", "3"]);
+    assert.deepEqual(result.includedScopes, ["1", "2", "3"], "a scope with no rows or datasets is shown empty, never left out");
+    assert.equal(scopeQueried, false, "the CRM view does not derive its scopes");
     assert.equal(result.categories.filter((c) => c.scope === "3").length, 15);
     assert.equal(result.categories.filter((c) => c.scope === "1").length, 3);
-    assert.equal(result.categories.filter((c) => c.scope === "2").length, 0, "Scope 2 not included");
+    assert.deepEqual(result.categories.filter((c) => c.scope === "2").map((c) => [c.code, c.noData]), [["2.purchased-electricity", true], ["2.renewable-electricity", true]], "Scope 2 shown, empty");
     const pgs = result.categories.find((c) => c.code === "3.1")!;
     assert.equal(pgs.name, "Purchased Goods and Services");
     assert.equal(pgs.kind, "spend");
@@ -71,6 +73,7 @@ describe("isolated Postgres adapter", () => {
       return { rows: [] };
     } } as Queryable;
     const result = await listJobApplicableCategories(db, "job-a", "portal");
+    assert.deepEqual(result.includedScopes, ["3"], "the portal keeps its derived scopes (JW-10 changes the CRM view only)");
     assert.deepEqual(result.categories.map((c) => c.code), ["3.1", "3.6"]);
     assert.ok(result.categories.every((c) => c.authorised === true));
     assert.ok(grantSql.includes("b.revoked_at IS NULL AND g.revoked_at IS NULL"));

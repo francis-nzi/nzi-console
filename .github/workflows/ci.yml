@@ -586,6 +586,9 @@ jobs:
       # replaced; other targets carried forward; left-out classes reported; a refusal isolated.
       - name: A client with a baseline and no net-zero target gets the ruled one, through the governed command
         run: npx tsx --test packages/isolated-backend/tests/netZeroTargetFillReal.test.ts
+      # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
+      - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
+        run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
