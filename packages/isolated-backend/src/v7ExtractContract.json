@@ -704,5 +704,32 @@
       "setting_type",
       "updated_at"
     ]
+  },
+  "time_subjects": {
+    "filter": "all",
+    "required": [
+      "subject_id",
+      "name"
+    ],
+    "optional": [
+      "is_active",
+      "org_id"
+    ]
+  },
+  "time_logs": {
+    "filter": "job",
+    "required": [
+      "time_id",
+      "job_id",
+      "user_id",
+      "work_date",
+      "minutes"
+    ],
+    "optional": [
+      "subject",
+      "notes",
+      "created_at",
+      "org_id"
+    ]
   }
 }

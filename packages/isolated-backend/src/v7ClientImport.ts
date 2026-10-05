@@ -367,6 +367,8 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
     users: "user_id",
     // Organisation settings (admin D2) — read by load:v7-org-settings; only the allow-listed profile and logo keys.
     system_settings: "setting_key",
+    // Time (⚑7) — read by load:v7-time, not the client import: v7's activity subjects and the time logged on imported jobs.
+    time_subjects: "subject_id", time_logs: "time_id",
   };
   const index = (table: V7Table): Map<string, V7Row> => {
     const map = new Map<string, V7Row>();
