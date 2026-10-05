@@ -582,6 +582,10 @@ jobs:
       # held; enabled rows, override over calculated; through client.update with the rule step and job as the reason.
       - name: A client with no baseline takes its benchmark from its own v7 job, by the ruled precedence, audited
         run: npx tsx --test packages/isolated-backend/tests/baselineDeriveReal.test.ts
+      # NET-ZERO Part B: the one-time fill — client.targets.set, the record year else 2050, 90%; a held target never
+      # replaced; other targets carried forward; left-out classes reported; a refusal isolated.
+      - name: A client with a baseline and no net-zero target gets the ruled one, through the governed command
+        run: npx tsx --test packages/isolated-backend/tests/netZeroTargetFillReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
