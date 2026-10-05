@@ -30,7 +30,7 @@ const RESULTS = "apps/console/test-results/gate-results.json";
  * It is a floor rather than an equality so that adding a test does not fail the build before the number is
  * updated — but it is checked, so deleting one does.
  */
-const EXPECTED = 6;
+const EXPECTED = 7; // +1: JW-9 — Enter on unmatched text saves nothing
 
 const fail = (message) => { console.error(`✗ capture gate: ${message}`); process.exit(1); };
 

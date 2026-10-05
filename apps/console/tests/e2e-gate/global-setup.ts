@@ -91,6 +91,16 @@ export default async function globalSetup(): Promise<void> {
       throw new Error(`${session.userId} has no active membership in ${session.organisationId} — `
         + "the seeds did not run, or no longer create one. Every API route would answer 401.");
     }
+
+    // The demonstration dataset, selected for the capture job — the Setup step a consultant takes before entering
+    // data. Since JW-9 an entry needs a real factor, and a job's factors are its selected datasets' (an entry with
+    // none is refused, in the form and at the write). The seeds select nothing for job 712 and are shared with
+    // suites where that job does not exist, so the gate states it here. `ON CONFLICT` for a surviving database.
+    await pool.query(
+      `INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, selected_by)
+       VALUES ($1, '712', 'synthetic-gb-2026', 'manual', 'Capture gate fixture: the demonstration dataset.', $2)
+       ON CONFLICT (organisation_id, job_id, dataset_id) DO NOTHING`,
+      [session.organisationId, session.userId]);
   } finally {
     await pool.end();
   }
