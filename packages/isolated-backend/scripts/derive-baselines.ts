@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     log(`  to derive: ${plan.derive.length} (${[...steps].map(([step, n]) => `${step} ${n}`).join(" · ")})`);
     log(`  held for the manual pass (a stated period no candidate matches): ${plan.held.length}`);
     log(`  left out (candidate rows, but no usable total): ${plan.noUsableTotal.length}`);
+    log(`  left out (a total, but only on jobs with no reporting period): ${plan.noPeriod.length}`);
     log(`\n${commit ? "Written" : "Would write"}: ${written.length} · refused: ${refused.length} · governed re-baselines (a stated period was held): ${written.filter((r) => r.governed).length}`
       + ` · initial baselines: ${written.filter((r) => !r.governed).length}`);
     log(`  AFTER_BENCHMARK collisions (period start year ≥ net-zero year): ${results.filter((r) => r.afterBenchmarkCollision).length}`);
@@ -61,6 +62,8 @@ async function main(): Promise<void> {
     for (const h of plan.held) log(`  ${h.clientId} | ${h.clientName} | stated period ${h.statedStart} – ${h.statedEnd ?? "(no end stated)"} | ${h.candidates} candidate job(s)`);
     log(`\nLeft out — no usable total (${plan.noUsableTotal.length}):`);
     for (const n of plan.noUsableTotal) log(`  ${n.clientId} | ${n.clientName}`);
+    log(`\nLeft out — a total only on jobs with no reporting period (${plan.noPeriod.length}):`);
+    for (const n of plan.noPeriod) log(`  ${n.clientId} | ${n.clientName}`);
     if (refused.length) process.exitCode = 1;
     if (!commit) log("\nDry run complete. Re-run with --commit to write.");
   } finally {

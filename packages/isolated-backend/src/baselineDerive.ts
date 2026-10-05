@@ -10,7 +10,8 @@ import { listAllClients } from "./readModels";
  * Scope 1/2/3 and the total summed from that job's migrated rows — and written through **client.update**, the existing
  * audited re-baseline path, as the Re-baseline drawer writes it: the whole record as read, with the baseline on top.
  *
- * **Candidate job:** imported from v7, not cancelled (not archived in v7), with ≥ 1 enabled scope row and a total > 0.
+ * **Candidate job:** imported from v7, not cancelled (not archived in v7), with ≥ 1 enabled scope row, a total > 0 and a
+ * period start — without one the baseline would not be in force, and every run would write it again.
  * **Selection (ruled):** (1) the job whose period is exactly the client's stated benchmark period (its start, and its
  * end where the record states one), where the record states one; else (2) the earliest complete period (start and end); else (3) the most complete (most non-zero scopes);
  * a remaining tie takes the lowest job number. `is_benchmark` is not in the extract and is not an input — a cross-check.
@@ -44,6 +45,8 @@ export type BaselinePlan = {
   held: Array<{ clientId: string; clientName: string; statedStart: string; statedEnd: string | null; candidates: number }>;
   /** Candidates with rows but no usable total, so nothing to derive. */
   noUsableTotal: Array<{ clientId: string; clientName: string }>;
+  /** A total, but only on jobs with no reporting period — no baseline in force can come of it. */
+  noPeriod: Array<{ clientId: string; clientName: string }>;
   population: { noBaselineInForce: number; withCandidate: number };
 };
 
@@ -102,20 +105,25 @@ export async function planBaselineDerive(db: Queryable, organisationId: string):
        LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id, r.job_id) = (j.organisation_id, j.job_id) AND r.enabled
       GROUP BY p.client_id, p.name, p.stated, p.stated_end, p.nz_year, j.job_id, j.job_number, j.reporting_period_start, j.reporting_period_end
       ORDER BY p.client_id, j.job_number`, [organisationId]);
-  const byClient = new Map<string, { name: string; stated: string | null; statedEnd: string | null; nzYear: number; jobs: Candidate[]; anyJob: boolean }>();
+  const byClient = new Map<string, { name: string; stated: string | null; statedEnd: string | null; nzYear: number; jobs: Candidate[]; anyJob: boolean; periodless: boolean }>();
   for (const row of rows) {
-    const entry = byClient.get(row.client_id) ?? { name: row.name, stated: row.stated, statedEnd: row.stated_end, nzYear: row.nz_year, jobs: [], anyJob: false };
+    const entry = byClient.get(row.client_id) ?? { name: row.name, stated: row.stated, statedEnd: row.stated_end, nzYear: row.nz_year, jobs: [], anyJob: false, periodless: false };
     byClient.set(row.client_id, entry);
     if (row.job_id === null) continue;
     entry.anyJob = true;
     const total = Number(row.total ?? 0);
     if (!(total > 0)) continue;
+    // A baseline is in force only with its period start (benchmarkFromClientRecord): a job without one cannot give one.
+    if (row.pstart === null) { entry.periodless = true; continue; }
     const figure = (value: string | null) => value === null ? null : Number(value);
     entry.jobs.push({ jobId: row.job_id, jobNumber: row.job_number!, periodStart: row.pstart, periodEnd: row.pend, scope1: figure(row.s1), scope2: figure(row.s2), scope3: figure(row.s3), total });
   }
-  const plan: BaselinePlan = { derive: [], held: [], noUsableTotal: [], population: { noBaselineInForce: byClient.size, withCandidate: 0 } };
+  const plan: BaselinePlan = { derive: [], held: [], noUsableTotal: [], noPeriod: [], population: { noBaselineInForce: byClient.size, withCandidate: 0 } };
   for (const [clientId, entry] of byClient) {
-    if (entry.anyJob && entry.jobs.length === 0) { plan.noUsableTotal.push({ clientId, clientName: entry.name }); continue; }
+    if (entry.anyJob && entry.jobs.length === 0) {
+      (entry.periodless ? plan.noPeriod : plan.noUsableTotal).push({ clientId, clientName: entry.name });
+      continue;
+    }
     if (entry.jobs.length === 0) continue;
     plan.population.withCandidate += 1;
     const choice = chooseJob(entry.jobs, entry.stated, entry.statedEnd);

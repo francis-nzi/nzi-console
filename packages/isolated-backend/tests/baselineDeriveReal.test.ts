@@ -48,6 +48,11 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     await job("tie", "j-ti-b", "2022-01-01", "2022-12-31", [["1", 4], ["2", 2]]);
     await client("held", "Held Stated Ltd", ["2019-01-01", "2019-12-31"]);
     await job("held", "j-held", "2021-01-01", "2021-12-31", [["1", 3]]);
+    await client("noperiod", "No Period Ltd");
+    await job("noperiod", "j-noperiod", null, null, [["1", 12]]);
+    await client("mixed", "Mixed Periods Ltd");
+    await job("mixed", "j-mx-a", null, null, [["1", 30], ["2", 1], ["3.1", 1]]);
+    await job("mixed", "j-mx-b", "2023-01-01", "2023-12-31", [["1", 2]]);
     await client("dayshort", "A Day Short Ltd", ["2024-04-01", "2025-03-31"]);
     await job("dayshort", "j-dayshort", "2024-04-01", "2025-03-30", [["1", 3]]);
     await client("zero", "All Zero Ltd");
@@ -75,13 +80,14 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
   it("a dry run plans every class and writes nothing", async () => {
     const outcome = await loadBaselineDerive(database.pool, ORG, { commit: false });
     assert.deepEqual(outcome.plan.derive.map((p) => [p.clientId, p.job.jobId, p.ruleStep]).sort(), [
-      ["earliest", "j-ea-b", "earliest complete period"], ["only", "j-only", "only candidate"], ["stated", "j-st-b", "stated benchmark period"], ["tie", "j-ti-b", "most complete"],
-    ]);
+      ["earliest", "j-ea-b", "earliest complete period"], ["mixed", "j-mx-b", "only candidate"], ["only", "j-only", "only candidate"], ["stated", "j-st-b", "stated benchmark period"], ["tie", "j-ti-b", "most complete"],
+    ], "a job with no period is never a candidate — the dated job is chosen");
+    assert.deepEqual(outcome.plan.noPeriod.map((n) => n.clientId), ["noperiod"], "a total only on an undated job gives no baseline in force, so it is left out");
     assert.deepEqual(outcome.plan.held.map((h) => [h.clientId, h.clientName]).sort(), [["dayshort", "A Day Short Ltd"], ["held", "Held Stated Ltd"]],
       "held: a stated period no job matches exactly, a day short included");
     assert.deepEqual(outcome.plan.noUsableTotal.map((n) => n.clientId), ["zero"]);
     assert.ok(!outcome.plan.derive.some((p) => ["inforce", "cancelled"].includes(p.clientId)), "a baseline in force, or only a cancelled job, is not a candidate");
-    assert.deepEqual(outcome.results.map((r) => r.result), ["written", "written", "written", "written"], "every planned client would save");
+    assert.deepEqual(outcome.results.map((r) => r.result), ["written", "written", "written", "written", "written"], "every planned client would save");
     assert.deepEqual(await baselineOf("only"), { ps: null, pe: null, s1: null, s2: null, s3: null, total: null }, "nothing written");
     assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE actor_id = 'policy:job-derived-baseline'`))[0].n, 0);
   });
@@ -89,7 +95,7 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
   it("commits each baseline through client.update — initial or governed — with the rule step and job as the reason, and nothing else changed", async () => {
     const outcome = await loadBaselineDerive(database.pool, ORG, { commit: true });
     assert.deepEqual(outcome.results.map((r) => [r.clientId, r.result, r.governed, r.otherChanges]).sort(), [
-      ["earliest", "written", false, []], ["only", "written", false, []], ["stated", "written", true, []], ["tie", "written", false, []],
+      ["earliest", "written", false, []], ["mixed", "written", false, []], ["only", "written", false, []], ["stated", "written", true, []], ["tie", "written", false, []],
     ], "nothing besides the baseline changes");
     assert.deepEqual(outcome.results[0]!.emptyNormalised, ["contact_email", "contact_name", "contact_role"],
       "client.update's NULL → \"\" on the legacy contact columns is reported apart, not hidden");
@@ -100,7 +106,7 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     assert.deepEqual((await baselineOf("tie")).total, 6);
     const audits = await q(`SELECT entity_id, action, reason, principal_type FROM nzi_console.audit_events WHERE actor_id = 'policy:job-derived-baseline' ORDER BY entity_id, action`);
     assert.deepEqual(audits.map((a) => [a.entity_id, a.action, a.principal_type]), [
-      ["earliest", "client_updated", "system"], ["only", "client_updated", "system"], ["stated", "client_rebaselined", "system"], ["stated", "client_updated", "system"], ["tie", "client_updated", "system"],
+      ["earliest", "client_updated", "system"], ["mixed", "client_updated", "system"], ["only", "client_updated", "system"], ["stated", "client_rebaselined", "system"], ["stated", "client_updated", "system"], ["tie", "client_updated", "system"],
     ], "the governed re-baseline adds its own event where a baseline field was held");
     assert.equal(audits.find((a) => a.entity_id === "stated")!.reason, "policy: job-derived baseline, stated benchmark period (job J009303, id j-st-b)",
       "the reason carries the provenance: rule step, job number and job id");
@@ -111,6 +117,7 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
 
   it("a re-run derives nothing — the derived clients now have a baseline in force", async () => {
     const again = await loadBaselineDerive(database.pool, ORG, { commit: false });
-    assert.deepEqual([again.plan.derive.length, again.plan.held.length, again.plan.noUsableTotal.length], [0, 2, 1]);
+    assert.deepEqual([again.plan.derive.length, again.plan.held.length, again.plan.noUsableTotal.length, again.plan.noPeriod.length], [0, 2, 1, 1]);
+    assert.equal((await baselineOf("mixed")).ps, "2023-01-01", "every derived baseline is in force — it has its period start");
   });
 });
