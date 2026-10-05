@@ -578,6 +578,10 @@ jobs:
       # target is kept; half a pair is refused either way round.
       - name: An API-created client gets the wizard's net-zero target unless it sends its own
         run: npx tsx --test packages/isolated-backend/tests/clientCreateNetZeroReal.test.ts
+      # BASELINE-derive: stated period → earliest complete period → most complete; a stated period no job matches is
+      # held; enabled rows, override over calculated; through client.update with the rule step and job as the reason.
+      - name: A client with no baseline takes its benchmark from its own v7 job, by the ruled precedence, audited
+        run: npx tsx --test packages/isolated-backend/tests/baselineDeriveReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
