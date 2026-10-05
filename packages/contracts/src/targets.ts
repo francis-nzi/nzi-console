@@ -20,6 +20,17 @@ export type TargetMilestone = { year: number; pct: number };
  */
 export const NET_ZERO_DEFAULT: TargetMilestone = { year: 2050, pct: 90 };
 
+/**
+ * Decision 2, server side (#403 flag #1, ruled): a client created with **neither** net-zero field takes the default pair,
+ * so an API-created client matches the wizard's. **Omitted-only** — `undefined`, not `null`: a caller that sends either
+ * field, or sends both as `null` (a target deliberately cleared), is respected as sent, and the pair rule still refuses
+ * a year without its % (and the reverse). Create only; nothing calls this on update.
+ */
+export function withNetZeroDefault<T extends { netZeroTargetYear?: number | null; netZeroTargetReductionPct?: number | null }>(input: T): T {
+  if (input.netZeroTargetYear !== undefined || input.netZeroTargetReductionPct !== undefined) return input;
+  return { ...input, netZeroTargetYear: NET_ZERO_DEFAULT.year, netZeroTargetReductionPct: NET_ZERO_DEFAULT.pct };
+}
+
 /** Decision 2a(ii): the reduction-% field names the client's net-zero year — "Net Zero target % 2050", or "… % 2040". */
 export function netZeroPctLabel(year: number | string | null | undefined): string {
   const parsed = typeof year === "string" ? Number(year.trim()) : year;
