@@ -45,6 +45,9 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
   const submissionKey = useRef<string | null>(null);
   const team = useTeamOptions();
   const eligibleClients = clients.filter((client) => client.status !== "prospect");
+  // The New Job client picker's options (JW-1): the name to search, with where they are (or their sector) as the hint
+  // that tells two similar names apart.
+  const clientOptions = eligibleClients.map((client) => ({ id: client.id, label: client.name, hint: client.location || client.sector || undefined }));
   // Creating from a client's own jobs list starts on that client.
   const firstClient = (scopedClient && eligibleClients.some((client) => client.id === scopedClient.id) ? scopedClient.id : eligibleClients[0]?.id) ?? "";
   const [draft, setDraft] = useState<Draft>({ clientId: firstClient, family: "crp", title: "", workflowStage: initialStage.crp, owner: "", clientManagerUserId: null, ...EMPTY_DATES });
@@ -177,7 +180,12 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
         <fieldset className="nz-job-block">
           <legend>About the job</legend>
           <div className="nz-job-create-grid">
-            <label className="nz-fl" style={{ margin: 0 }}>Client<select className="nz-sel" required value={draft.clientId} onChange={(e) => selectClient(e.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+            {/* JW-1: a type-ahead over the eligible clients (the SmartSearch the client forms use), not a long dropdown. */}
+            <div className="nz-fl" style={{ margin: 0 }}>
+              <label htmlFor="job-client">Client</label>
+              <SmartSearch id="job-client" label="Client" options={clientOptions} required placeholder="Type a client…"
+                value={draft.clientId} onChange={(id) => selectClient(id)} />
+            </div>
             <label className="nz-fl" style={{ margin: 0 }}>Job type <span className="nz-optional">optional</span><select className="nz-sel" value={draft.jobTypeId ?? ""} onChange={(e) => {
               const type = setup.jobTypes.find((candidate) => candidate.jobTypeId === e.target.value) ?? null;
               if (!type) { setDraft({ ...draft, jobTypeId: null }); return; }
