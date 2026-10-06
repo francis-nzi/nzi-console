@@ -33,6 +33,7 @@ import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { JobAnnualMetrics } from "./JobAnnualMetrics";
+import { RowStateControl } from "./RowStateControl";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
@@ -426,6 +427,7 @@ export function CrpScopeWorkspace({
         reportingFrom={datasets[0]?.reportingFrom??`${reportingYear}-01-01`}
         reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
         notice={setNotice}
+        onDiscarded={() => { setSelectedId(""); router.refresh(); }}
       />
     </EvidenceDrawer>
   ))(drawerState.row)) : undefined;
@@ -899,6 +901,7 @@ function Editor({
   reportingFrom,
   reportingTo,
   notice,
+  onDiscarded,
 }: {
   jobId: string;
   row: ScopeRowReadModel;
@@ -908,10 +911,13 @@ function Editor({
   reportingFrom:string;
   reportingTo:string;
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
+  /** JW-14 — the row was discarded; the drawer showing it must close. */
+  onDiscarded: () => void;
 }) {
   const router = useRouter(),
     [value, setValue] = useState(inputOf(row)),
-    [enabled, setEnabled] = useState(row.enabled),
+    // A save keeps the row's enabled state; changing it is RowStateControl's (JW-14).
+    enabled = row.enabled,
     [pending, setPending] = useState(false),
     [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? ""),
     [showEvidence, setShowEvidence] = useState(false),
@@ -1009,6 +1015,7 @@ function Editor({
   const category = row.categoryPath[row.categoryPath.length - 1] ?? crpScopeCategoryPath(value.scope).at(-1) ?? "—";
   return (
     <div className="nz-rd">
+      <RowStateControl jobId={jobId} row={row} notice={notice} onDiscarded={onDiscarded} onChanged={() => router.refresh()} />
       <div className={`nz-banner ${displayTco2e === null ? "warn" : "ok"}`}>
         {displayTco2e === null ? "Not calculated yet — edit the fields, then Save & calculate." : "Calculated evidence is available."}
       </div>
@@ -1084,7 +1091,7 @@ function Editor({
 
       <Collapsible title="Evidence & provenance" open={showEvidence} onOpenChange={setShowEvidence}>
         <label className="nz-fl">Evidence notes<textarea className="nz-notes" value={value.notes ?? ""} onChange={(e) => setValue({ ...value, notes: e.target.value || null })} placeholder="Method, source context, assumptions or follow-up notes" /></label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, margin: "8px 0" }}><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Row is enabled (included in the report)</label>
+        {/* Deactivating is RowStateControl's, at the top of this drawer (JW-14): reasoned, and it keeps the calculation. */}
 
         {row.factorSource === "client" && row.clientFactorVersionMoved ? (
           <div className="nz-banner warn" role="note"><div><b>Client factor version moved</b><div>This row is pinned to <b>{row.factorVersion}</b>; the client factor has since been updated. Re-calculate to move it, and re-review — the pinned value still stands until you do (NZC-030).</div></div></div>

@@ -813,7 +813,7 @@ async function refuseMigratedRow(db: Queryable, organisationId: string, jobId: s
       message: `This row is migrated from NZ Insights Pro v7 and is kept exactly as v7 recorded it, so it cannot be ${act} here. Its figure and review status are v7's (decisions 4 and 7).` }]);
 }
 
-async function requireCrpJob(
+export async function requireCrpJob(
   db: Queryable,
   organisationId: string,
   jobId: string,
