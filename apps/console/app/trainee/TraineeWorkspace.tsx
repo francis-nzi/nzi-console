@@ -16,7 +16,7 @@ import { useOrganisationName } from "../lib/OrganisationNameProvider";
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { NziIcon } from "@nzi/ui";
+import { NziIcon, NziMark } from "@nzi/ui";
 import type { TraineePortalReadModel, TraineeTrainingEntry, TraineeUpcomingSession } from "@nzi/isolated-backend";
 import { formatDate } from "../lib/formatDate";
 
@@ -62,7 +62,7 @@ export function TraineeWorkspace() {
 
   return <>
     <header className="nz-portal-header"><div className="nz-portal-header-inner">
-      <a className="nz-portal-brand" href="/trainee"><span>N</span><div><b>NZ Insights Pro</b><small>Trainee portal</small></div></a>
+      <a className="nz-portal-brand" href="/trainee"><NziMark /><div><b>NZ Insights Pro</b><small>Trainee portal</small></div></a>
       <div className="nz-portal-user">
         <div><b>{details.fullName}</b><small>{details.email}</small></div>
         <button onClick={async () => { await fetch("/api/trainee/auth/logout", { method: "POST" }); window.location.assign("/trainee/login"); }}>Sign out</button>
