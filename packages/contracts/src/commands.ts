@@ -71,6 +71,8 @@ export type CommandKey =
   | "training.run.review"
   | "client.intensityMetric.set"
   | "client.intensityMetric.deactivate"
+  | "client.intensityTarget.set"
+  | "client.intensityTarget.deactivate"
   | "job.intensityValue.set"
   | "strategy.library.upsert"
   | "strategy.library.deactivate"
@@ -643,6 +645,14 @@ export type CommandInputMap = {
     unitKind?: IntensityUnitKind;
   };
   "client.intensityMetric.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
+  /**
+   * Phase 1b (0158) — a client's target for one intensity metric: the baseline intensity it is measured from, and an
+   * interim and a final reduction, each a year with a percentage. The whole target, as the next version; expectedVersion 0
+   * for the first. A reason (x-command-reason) is required when it moves a held baseline.
+   */
+  "client.intensityTarget.set": { clientId: string; metricKey: string; expectedVersion: number; baselineYear: number; baselineIntensity: number;
+    interimYear: number | null; interimReductionPct: number | null; targetYear: number | null; targetReductionPct: number | null };
+  "client.intensityTarget.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
   /** Record one metric's annual value on a job, for one reporting year. */
   "job.intensityValue.set": {
     jobId: string; reportingYear: number; metricKey: string; value: number | null;
@@ -1555,6 +1565,34 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   "client.intensityMetric.deactivate": { key: "client.intensityMetric.deactivate", label: "Deactivate an intensity metric", permission: "client.edit", reasonRequired: false, transaction: "versioned metric definition (inactive) + audit + outbox + idempotency", auditAction: "client_intensity_metric_deactivated", validate: (input, context) => {
     const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "metricKey", input.metricKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
+  "client.intensityTarget.set": { key: "client.intensityTarget.set", label: "Set an intensity target", permission: "target.edit", reasonRequired: false, transaction: "versioned intensity target + audit + outbox + idempotency", auditAction: "client_intensity_target_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "metricKey", input.metricKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    const year = (value: unknown) => Number.isInteger(value) && (value as number) >= 2000 && (value as number) <= 2100;
+    const pct = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+    if (!year(input.baselineYear)) issues.push({ field: "baselineYear", code: "INVALID", message: "The baseline year is a year between 2000 and 2100." });
+    if (!(typeof input.baselineIntensity === "number" && Number.isFinite(input.baselineIntensity) && input.baselineIntensity >= 0)) issues.push({ field: "baselineIntensity", code: "INVALID", message: "The baseline intensity is a number, zero or more." });
+    for (const [label, yearField, pctField] of [["interim", "interimYear", "interimReductionPct"], ["target", "targetYear", "targetReductionPct"]] as const) {
+      const y = input[yearField], p = input[pctField];
+      if ((y === null) !== (p === null)) issues.push({ field: yearField, code: "PAIR", message: `The ${label} needs both a year and a reduction, or neither.` });
+      else if (y !== null && (!year(y) || !pct(p))) issues.push({ field: yearField, code: "INVALID", message: `The ${label} year is between 2000 and 2100 and its reduction between 0 and 100%.` });
+      else if (y !== null && year(input.baselineYear) && (y as number) <= input.baselineYear) issues.push({ field: yearField, code: "AFTER_BASELINE", message: `The ${label} year must come after the ${input.baselineYear} baseline.` });
+    }
+    if (input.interimYear !== null && input.targetYear !== null && (input.interimYear >= input.targetYear || (input.interimReductionPct ?? 0) > (input.targetReductionPct ?? 0))) {
+      issues.push({ field: "interimYear", code: "ORDER", message: "The interim comes before the target, and asks no more than it." });
+    }
+    if (input.interimYear === null && input.targetYear === null) issues.push({ field: "targetYear", code: "REQUIRED", message: "Set an interim or a final target — a baseline alone is not a target." });
+    return issues;
+  } },
+  "client.intensityTarget.deactivate": { key: "client.intensityTarget.deactivate", label: "Withdraw an intensity target", permission: "target.edit", reasonRequired: true, transaction: "versioned intensity target (inactive) + audit + outbox + idempotency", auditAction: "client_intensity_target_deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
     required(issues, "clientId", input.clientId);
     required(issues, "metricKey", input.metricKey);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });

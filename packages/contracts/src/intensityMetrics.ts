@@ -257,3 +257,22 @@ export function suggestIconKey(label: string, unitWording = ""): IntensityIconKe
   for (const [pattern, key] of ICON_HINTS) if (pattern.test(text)) return key;
   return "metric";
 }
+
+/**
+ * Phase 1b (0158) — a client's target for one intensity metric, as the Client shows it beside net zero: the latest
+ * version, with the metric's own label and unit. Reductions are percentages of the baseline intensity (tCO₂e per unit).
+ */
+export type ClientIntensityTarget = {
+  metricKey: string;
+  metricLabel: string;
+  unitWording: string;
+  version: number;
+  baselineYear: number;
+  baselineIntensity: number;
+  interimYear: number | null;
+  interimReductionPct: number | null;
+  targetYear: number | null;
+  targetReductionPct: number | null;
+  setBy: string;
+  setAt: string;
+};

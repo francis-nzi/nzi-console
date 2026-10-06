@@ -77,6 +77,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.targets.set": client,
   "client.intensityMetric.set": client,
   "client.intensityMetric.deactivate": client,
+  "client.intensityTarget.set": client,
+  "client.intensityTarget.deactivate": client,
   "job.intensityValue.set": job,
   "training.booking.create": trainingRun,
   "training.attendance.set": trainingSession,

@@ -22,6 +22,7 @@ const timeEntries = readFileSync(resolve(here, "../migrations/0155_time_entries.
 const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
 const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
+const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -140,6 +141,22 @@ describe("isolated Postgres migrations", () => {
     // The benchmark is read from the baseline, so a client without one is left for the editor to ask about.
     assert.match(clientTargetsMigration, /WHERE c\.baseline_period_start IS NOT NULL/);
     assert.ok(!/UPDATE nzi_console\.clients/.test(clientTargetsMigration), "the legacy columns are left as history, not rewritten");
+  });
+  it("holds a client's intensity targets per metric, versioned and append-only, beside net zero (0158, Phase 1b)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_intensity_targets",
+      "PRIMARY KEY (organisation_id, client_id, metric_key, version)",
+      "baseline_year integer NOT NULL", "baseline_intensity numeric(20,6) NOT NULL",
+      "GRANT SELECT, INSERT ON nzi_console.client_intensity_targets TO nzi_console_app",
+      "REVOKE UPDATE, DELETE ON nzi_console.client_intensity_targets",
+      "ALTER TABLE nzi_console.client_intensity_targets FORCE ROW LEVEL SECURITY",
+      "CONSTRAINT client_intensity_targets_interim_pair CHECK ((interim_year IS NULL) = (interim_reduction_pct IS NULL))",
+      "CONSTRAINT client_intensity_targets_target_pair CHECK ((target_year IS NULL) = (target_reduction_pct IS NULL))",
+      "CONSTRAINT client_intensity_targets_after_baseline",
+      "CONSTRAINT client_intensity_targets_interim_before_target",
+      "CONSTRAINT client_intensity_targets_deactivation_reason CHECK (active OR reason IS NOT NULL)",
+    ]) assert.ok(clientIntensityTargetsMigration.includes(clause), clause);
+    assert.ok(!/job_intensity_targets/.test(clientIntensityTargetsMigration.replace(/--.*$/gm, "")), "the job's table is left as history, not touched");
   });
   it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
     for (const clause of [

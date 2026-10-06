@@ -6,10 +6,11 @@ import { listLevers, listLibraryStrategies, listClientStrategies } from "./reduc
 import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
+import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { issuerOf, type IssuerColumns } from "./reportCompositions";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { resolveReportLabel } from "@nzi/contracts";
@@ -345,6 +346,8 @@ export type ClientWorkspaceReadModel = {
   strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[] };
   /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
   intensityMetrics: IntensityMetricDefinition[];
+  /** Phase 1b (0158) — the client's intensity targets in force, one per metric, shown beside net zero. */
+  intensityTargets: ClientIntensityTarget[];
   /**
    * Adjunct parts that could not be read this time. Empty in the normal case.
    *
@@ -398,6 +401,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
   const archivedSites = await db.query<{ site_id: string; name: string; version: number }>(
     `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
     .then((result) => result.rows.map((row) => ({ id: row.site_id, name: row.name, version: row.version })), () => [] as Array<{ id: string; name: string; version: number }>);
+  const intensityTargets = await adjunct("intensity", [] as ClientIntensityTarget[], listClientIntensityTargets(db, clientId));
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
   // Every year that has an assured snapshot, oldest first — what the pathway plots as actual
@@ -457,6 +461,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     srs: { framework: srsFramework, assessments: srsAssessments },
     strategies: { levers, library: libraryStrategies, plan: clientStrategies },
     intensityMetrics,
+    intensityTargets,
   };
 }
 
