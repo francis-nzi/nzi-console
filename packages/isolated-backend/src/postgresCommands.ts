@@ -1659,174 +1659,176 @@ export type CalculateScopeRowResult = {
   version: number;
   calculatedTco2e: number;
 };
+/**
+ * The one row calculation (NZC-030): quantity × the selected factor, the figure, its provenance and lineage, review back to
+ * pending. `scope.row.calculate` runs it for one row; `job.datasets.update` runs it for every row it moves to a newer
+ * edition (DATASET-CURRENCY §3), so a moved row is calculated exactly as a calculated row is — never a second formula.
+ */
+export async function recalculateScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.calculate"], context: CommandContext, extraLineage: Array<{ title: string; detail: string }> = []): Promise<CommandResult<CalculateScopeRowResult>> {
+  await requireCrpJob(db, context.organisationId, input.jobId);
+  await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "recalculated");
+  const found = await db.query<{
+    version: number;
+    quantity: string | null;
+    unit: string | null;
+    scope: string;
+    dataset_id: string | null;
+    factor_id: string | null;
+    factor_source:"dataset"|"client";
+    client_factor_id:string|null;
+    override_tco2e: string | null;
+    override_reason: string | null;
+    monthly_activity_json:Array<{month:string;quantity:number|null}>;
+    provenance_json?: Record<string, unknown> | null;
+  }>(
+    `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+    [context.organisationId, input.jobId, input.rowId],
+  );
+  const row = found.rows[0];
+  if (!row)
+    throw new CommandValidationError([
+      {
+        field: "rowId",
+        code: "NOT_FOUND",
+        message: "Scope row was not found.",
+      },
+    ]);
+  if (row.version !== input.expectedVersion)
+    throw new VersionConflictError();
+  if (
+    row.quantity === null ||
+    !row.unit ||
+    !row.factor_id ||
+    (row.factor_source==="dataset"&&!row.dataset_id) ||
+    (row.factor_source==="client"&&!row.client_factor_id)
+  )
+    throw new CommandValidationError([
+      {
+        field: "rowId",
+        code: "INCOMPLETE",
+        message:
+          "Quantity, unit and a selected factor are required before calculation.",
+      },
+    ]);
+  const factor = row.factor_source==="client"?await db.query<{
+    label: string;
+    activity_unit: string;
+    kgco2e_per_unit: string;
+    version: string;
+    synthetic: boolean;
+    evidence_hash:string|null;
+  }>(`SELECT cf.report_label AS label,cf.unit AS activity_unit,cf.kgco2e_per_unit::text,cf.version::text,false AS synthetic,cf.evidence_hash FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND cf.scope=$4 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,row.client_factor_id,row.scope]):await db.query<{
+    label: string;
+    activity_unit: string;
+    kgco2e_per_unit: string;
+    version: string;
+    synthetic: boolean;
+    evidence_hash:string|null;
+  }>(
+    `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic,NULL::text AS evidence_hash FROM nzi_console.emission_factors_display f
+  JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
+  JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
+  WHERE f.organisation_id=$1 AND f.dataset_id=$3 AND f.factor_id=$4 AND f.active=true AND (split_part($5,'.',1)=ANY(f.scopes))`,
+    [
+      context.organisationId,
+      input.jobId,
+      row.dataset_id,
+      row.factor_id,
+      row.scope,
+    ],
+  );
+  const matched = factor.rows[0];
+  if (!matched)
+    throw new CommandValidationError([
+      {
+        field: "factorId",
+        code: "NOT_SELECTED",
+        message:
+          "The factor is not active, selected for this job, or valid for this scope.",
+      },
+    ]);
+  if (
+    row.unit.trim().toLowerCase() !==
+    matched.activity_unit.trim().toLowerCase()
+  )
+    throw new CommandValidationError([
+      {
+        field: "unit",
+        code: "UNIT_MISMATCH",
+        message: `Activity unit must be ${matched.activity_unit} for the selected factor.`,
+      },
+    ]);
+  const lineage = [
+    {
+      title: "Activity data captured",
+      detail: `${row.quantity} ${row.unit}`,
+    },
+    {
+      title: row.factor_source==="client"?"Client factor resolved":"Factor resolved",
+      detail: `${matched.label} · ${matched.version}`,
+    },
+    {
+      title: "Emissions calculated",
+      detail: "quantity × kgCO₂e per unit ÷ 1,000",
+    },
+    ...((row.monthly_activity_json?.length??0)>0?[{title:"Monthly activity retained",detail:`${row.monthly_activity_json.filter(slot=>slot.quantity!==null).length}/${row.monthly_activity_json.length} months populated`}]:[]),
+    ...(row.override_tco2e === null
+      ? []
+      : [{ title: "Calculated result overridden", detail: `${row.override_tco2e} tCO₂e · ${row.override_reason}` }]),
+    ...extraLineage,
+  ];
+  const provenance = {
+    // Separation of duties needs both preparers: who captured the row survives its calculation.
+    capturedBy: row.provenance_json?.capturedBy ?? null,
+    calculatedBy: context.actorId,
+    calculatedAt: new Date().toISOString(),
+    datasetId: row.dataset_id,
+    factorId: row.factor_id,
+    factorSource:row.factor_source,
+    clientFactorId:row.client_factor_id,
+    evidenceHash:matched.evidence_hash,
+    factorVersion: matched.version,
+    kgCo2ePerUnit: matched.kgco2e_per_unit,
+    synthetic: matched.synthetic,
+    monthlyActivity:row.monthly_activity_json??[],
+  };
+  const updated = await db.query<{
+    version: number;
+    calculated_tco2e: string;
+  }>(
+    `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
+    [
+      context.organisationId,
+      input.jobId,
+      input.rowId,
+      matched.version,
+      matched.label,
+      matched.kgco2e_per_unit,
+      JSON.stringify(provenance),
+      JSON.stringify(lineage),
+      input.expectedVersion,
+    ],
+  );
+  if (!updated.rows[0]) throw new VersionConflictError();
+  return {
+    data: {
+      rowId: input.rowId,
+      jobId: input.jobId,
+      version: updated.rows[0].version,
+      calculatedTco2e: Number(updated.rows[0].calculated_tco2e),
+    },
+    entityType: "scope_row",
+    entityId: input.rowId,
+    topic: "scope.row.calculated",
+  };
+}
+
 export async function calculateScopeRow(
   pool: PoolLike,
   input: CommandInputMap["scope.row.calculate"],
   context: CommandContext,
 ): Promise<StoredOutcome<CalculateScopeRowResult>> {
-  return runPostgresCommand(
-    pool,
-    "scope.row.calculate",
-    input,
-    context,
-    async (db) => {
-      await requireCrpJob(db, context.organisationId, input.jobId);
-      await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "recalculated");
-      const found = await db.query<{
-        version: number;
-        quantity: string | null;
-        unit: string | null;
-        scope: string;
-        dataset_id: string | null;
-        factor_id: string | null;
-        factor_source:"dataset"|"client";
-        client_factor_id:string|null;
-        override_tco2e: string | null;
-        override_reason: string | null;
-        monthly_activity_json:Array<{month:string;quantity:number|null}>;
-        provenance_json?: Record<string, unknown> | null;
-      }>(
-        `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
-        [context.organisationId, input.jobId, input.rowId],
-      );
-      const row = found.rows[0];
-      if (!row)
-        throw new CommandValidationError([
-          {
-            field: "rowId",
-            code: "NOT_FOUND",
-            message: "Scope row was not found.",
-          },
-        ]);
-      if (row.version !== input.expectedVersion)
-        throw new VersionConflictError();
-      if (
-        row.quantity === null ||
-        !row.unit ||
-        !row.factor_id ||
-        (row.factor_source==="dataset"&&!row.dataset_id) ||
-        (row.factor_source==="client"&&!row.client_factor_id)
-      )
-        throw new CommandValidationError([
-          {
-            field: "rowId",
-            code: "INCOMPLETE",
-            message:
-              "Quantity, unit and a selected factor are required before calculation.",
-          },
-        ]);
-      const factor = row.factor_source==="client"?await db.query<{
-        label: string;
-        activity_unit: string;
-        kgco2e_per_unit: string;
-        version: string;
-        synthetic: boolean;
-        evidence_hash:string|null;
-      }>(`SELECT cf.report_label AS label,cf.unit AS activity_unit,cf.kgco2e_per_unit::text,cf.version::text,false AS synthetic,cf.evidence_hash FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND cf.scope=$4 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,row.client_factor_id,row.scope]):await db.query<{
-        label: string;
-        activity_unit: string;
-        kgco2e_per_unit: string;
-        version: string;
-        synthetic: boolean;
-        evidence_hash:string|null;
-      }>(
-        `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic,NULL::text AS evidence_hash FROM nzi_console.emission_factors_display f
-      JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
-      JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
-      WHERE f.organisation_id=$1 AND f.dataset_id=$3 AND f.factor_id=$4 AND f.active=true AND (split_part($5,'.',1)=ANY(f.scopes))`,
-        [
-          context.organisationId,
-          input.jobId,
-          row.dataset_id,
-          row.factor_id,
-          row.scope,
-        ],
-      );
-      const matched = factor.rows[0];
-      if (!matched)
-        throw new CommandValidationError([
-          {
-            field: "factorId",
-            code: "NOT_SELECTED",
-            message:
-              "The factor is not active, selected for this job, or valid for this scope.",
-          },
-        ]);
-      if (
-        row.unit.trim().toLowerCase() !==
-        matched.activity_unit.trim().toLowerCase()
-      )
-        throw new CommandValidationError([
-          {
-            field: "unit",
-            code: "UNIT_MISMATCH",
-            message: `Activity unit must be ${matched.activity_unit} for the selected factor.`,
-          },
-        ]);
-      const lineage = [
-        {
-          title: "Activity data captured",
-          detail: `${row.quantity} ${row.unit}`,
-        },
-        {
-          title: row.factor_source==="client"?"Client factor resolved":"Factor resolved",
-          detail: `${matched.label} · ${matched.version}`,
-        },
-        {
-          title: "Emissions calculated",
-          detail: "quantity × kgCO₂e per unit ÷ 1,000",
-        },
-        ...((row.monthly_activity_json?.length??0)>0?[{title:"Monthly activity retained",detail:`${row.monthly_activity_json.filter(slot=>slot.quantity!==null).length}/${row.monthly_activity_json.length} months populated`}]:[]),
-        ...(row.override_tco2e === null
-          ? []
-          : [{ title: "Calculated result overridden", detail: `${row.override_tco2e} tCO₂e · ${row.override_reason}` }]),
-      ];
-      const provenance = {
-        // Separation of duties needs both preparers: who captured the row survives its calculation.
-        capturedBy: row.provenance_json?.capturedBy ?? null,
-        calculatedBy: context.actorId,
-        calculatedAt: new Date().toISOString(),
-        datasetId: row.dataset_id,
-        factorId: row.factor_id,
-        factorSource:row.factor_source,
-        clientFactorId:row.client_factor_id,
-        evidenceHash:matched.evidence_hash,
-        factorVersion: matched.version,
-        kgCo2ePerUnit: matched.kgco2e_per_unit,
-        synthetic: matched.synthetic,
-        monthlyActivity:row.monthly_activity_json??[],
-      };
-      const updated = await db.query<{
-        version: number;
-        calculated_tco2e: string;
-      }>(
-        `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
-        [
-          context.organisationId,
-          input.jobId,
-          input.rowId,
-          matched.version,
-          matched.label,
-          matched.kgco2e_per_unit,
-          JSON.stringify(provenance),
-          JSON.stringify(lineage),
-          input.expectedVersion,
-        ],
-      );
-      if (!updated.rows[0]) throw new VersionConflictError();
-      return {
-        data: {
-          rowId: input.rowId,
-          jobId: input.jobId,
-          version: updated.rows[0].version,
-          calculatedTco2e: Number(updated.rows[0].calculated_tco2e),
-        },
-        entityType: "scope_row",
-        entityId: input.rowId,
-        topic: "scope.row.calculated",
-      };
-    },
-  );
+  return runPostgresCommand(pool, "scope.row.calculate", input, context, (db) => recalculateScopeRowInTransaction(db, input, context));
 }
 
 export type AddManualDatasetResult = {

@@ -201,6 +201,14 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-banner.warn{background:#FFF4DC;color:#7A5808;border:1px solid #F1D89B}
 .nz-banner.warn svg{stroke:#B8860B}
 .nz-banner.ok{background:var(--mint);color:var(--pine);border:1px solid #BEE7D3}
+/* DATASET-CURRENCY §3 — a newer dataset edition is available: information with an action, never an alarm. */
+.nz-dataset-update{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--mint);border:1px solid #B9E3CC;color:var(--pine);font-size:13px}
+.nz-dataset-update .sub{color:var(--t2)}
+.nz-update-series{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.nz-update-series ul{margin:6px 0 0 18px;padding:0}
+.nz-check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.nz-update-blocked{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.nz-update-row{padding:6px 0}
 .nz-banner.ok svg{stroke:var(--pine)}
 /* `.nz-fl` is the field wrapper AND, across most of the app, the <label>
    itself — the label text sits as a direct child. So it carries the label

@@ -59,6 +59,7 @@ export * from "./portalBroadcasts";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";
+export * from "./jobDatasetUpdate";
 export * from "./staffAdmin";
 export * from "./organisationSettings";
 export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";

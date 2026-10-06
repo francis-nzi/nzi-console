@@ -599,6 +599,10 @@ jobs:
       # never a draft); DESNZ preferred and first for the UK; a fallback edition does not warn as a coverage gap.
       - name: Automatic datasets fall back to each series' latest published edition, DESNZ preferred
         run: npx tsx --test packages/isolated-backend/tests/datasetFallbackReal.test.ts
+      # DATASET-CURRENCY §3: the banner's read; the preview (the write rolled back); a series moved whole only once resolved;
+      # swap not add; rows recalculated by the one calculation; overrides kept; one audit event; a reason when issued.
+      - name: A job moves to its reporting year's edition — previewed, resolved, swapped and recalculated
+        run: npx tsx --test packages/isolated-backend/tests/jobDatasetUpdateReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
