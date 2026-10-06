@@ -25,7 +25,8 @@ export const JW13_RUN_PREFIX = "jw13-dataset-backfill-";
 export const JW13_ACTOR = "policy:jw13-dataset-backfill";
 
 export type ManualFixKind = "NO_WINDOW" | "WINDOW_MISMATCH" | "NO_EDITION" | "IMPLAUSIBLE_WINDOW";
-export type Edition = { name: string; version: string; validFrom: string; validTo: string; country: string };
+/** An edition as the dry run shows it: its id and source tell apart datasets whose imported `name` is a file name. */
+export type Edition = { datasetId: string; source: string; name: string; version: string; validFrom: string; validTo: string; country: string };
 export type BackfillCandidate = { jobId: string; jobNumber: string; window: ReportingWindow | null };
 export type BackfillLine = BackfillCandidate & {
   result: "filled" | "manual" | "error";
@@ -82,11 +83,11 @@ class DryRunRollback extends Error {}
 const selectionNames = async (db: Queryable, organisationId: string, jobId: string) => (await db.query<{ name: string }>(
   `SELECT d.name FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
     WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.name`, [organisationId, jobId])).rows.map((row) => row.name);
-const selectedEditions = async (db: Queryable, organisationId: string, jobId: string): Promise<Edition[]> => (await db.query<{ name: string; version: string; valid_from: string; valid_to: string; country_code: string }>(
-  `SELECT d.name, d.version, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.country_code FROM nzi_console.job_dataset_selections s
+const selectedEditions = async (db: Queryable, organisationId: string, jobId: string): Promise<Edition[]> => (await db.query<{ dataset_id: string; source_name: string; name: string; version: string; valid_from: string; valid_to: string; country_code: string }>(
+  `SELECT d.dataset_id, d.source_name, d.name, d.version, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.country_code FROM nzi_console.job_dataset_selections s
      JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
-    WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.country_code, d.name`, [organisationId, jobId])).rows
-  .map((row) => ({ name: row.name, version: row.version, validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code }));
+    WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.country_code, d.dataset_id`, [organisationId, jobId])).rows
+  .map((row) => ({ datasetId: row.dataset_id, source: row.source_name, name: row.name, version: row.version, validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code }));
 
 export async function runJobDatasetBackfill(pool: PoolLike, organisationId: string, options: { commit: boolean; reason: string; runId?: string; today?: string }): Promise<BackfillOutcome> {
   const reason = options.reason.trim();

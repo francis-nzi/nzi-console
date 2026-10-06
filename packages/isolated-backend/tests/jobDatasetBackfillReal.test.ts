@@ -163,8 +163,8 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
       assert.deepEqual([line(fill.jobId).result, line(fill.jobId).datasets], ["filled", ["Edition ds-2025", "Edition ds-g2025"]]);
       assert.deepEqual(line(fill.jobId).current, [], "the line shows what the job held before: none");
       assert.deepEqual(line(fill.jobId).window, { from: "2024-04-01", to: "2025-03-31" }, "the window used is the job's reporting period");
-      assert.deepEqual(line(fill.jobId).editions.map((e) => [e.name, e.version, e.country, e.validFrom, e.validTo]),
-        [["Edition ds-2025", "1", "GB", "2025-01-01", "2025-12-31"], ["Edition ds-g2025", "1", "GLOBAL", "2025-01-01", "2025-12-31"]], "the editions chosen, read back");
+      assert.deepEqual(line(fill.jobId).editions.map((e) => [e.datasetId, e.source, e.name, e.version, e.country, e.validFrom, e.validTo]),
+        [["ds-2025", "test", "Edition ds-2025", "1", "GB", "2025-01-01", "2025-12-31"], ["ds-g2025", "test", "Edition ds-g2025", "1", "GLOBAL", "2025-01-01", "2025-12-31"]], "the editions chosen, read back");
       assert.deepEqual([line(calendar.jobId).result, line(calendar.jobId).datasets], ["filled", ["Edition ds-2024"]]);
       assert.deepEqual([line(noWindow.jobId).manualKind, line(noEdition.jobId).manualKind, line(typo.jobId).manualKind], ["NO_WINDOW", "NO_EDITION", "IMPLAUSIBLE_WINDOW"]);
       assert.equal(dry.lines.some((item) => item.jobId === consoleJob.jobId), false);

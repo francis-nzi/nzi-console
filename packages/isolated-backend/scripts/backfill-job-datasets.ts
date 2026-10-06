@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   for (const line of outcome.lines) {
     const result = line.result === "filled" ? (commit ? "filled" : "would fill")
       : line.result === "manual" ? `MANUAL FIX — ${line.manualKind}` : `ERROR — ${line.detail}`;
-    const editions = line.editions.length ? line.editions.map((e) => `${e.name} v${e.version} [${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)}]`).join("; ") : "—";
+    const editions = line.editions.length ? line.editions.map((e) => `${e.datasetId} (${e.source}; ${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)})`).join("; ") : "—";
     log(`  ${line.jobNumber} · current: ${line.current.length ? line.current.join(", ") : "none"} · window ${windowOf(line)} · editions: ${editions} · ${result}`);
   }
 
