@@ -80,6 +80,14 @@ describe("the create-job form asks about the job, then its dates, then its miles
     assert.ok(!code.includes(`max="2200"`));
   });
 
+  it("picks the client by type-ahead over the eligible clients, not a long dropdown (JW-1)", () => {
+    const code = jobsCode();
+    assert.match(code, /<SmartSearch[^>]*label="Client"[^>]*options=\{clientOptions\}/, "the client is a SmartSearch over clientOptions");
+    assert.ok(code.includes("const clientOptions = eligibleClients.map("), "built from the eligible clients — prospects stay out");
+    assert.ok(code.includes("onChange={(id) => selectClient(id)}"), "choosing still runs the manager default");
+    assert.ok(!/<select[^>]*value=\{draft\.clientId\}/.test(code), "no plain client dropdown remains");
+  });
+
   it("picks the client manager from the roster, not from free text", () => {
     const code = jobsCode();
     // The component and its name, not the order its props happen to be written in — adding an
