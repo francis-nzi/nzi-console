@@ -59,6 +59,8 @@ export type EmissionEntryFormProps = {
   onApprove?: () => void | Promise<void>;
   /** Two-step DVLA lookup: resolve a registration to a vehicle spec (+ a suggested factor for CRM). */
   onLookupRegistration?: (registration: string) => Promise<RegistrationLookupOutcome>;
+  /** JW-13 — open the job's datasets (the Setup stage may be collapsed, so a plain link would land nowhere). */
+  onOpenDatasets?: () => void;
   /**
    * The category's declared factor for this entry, when its category resolves declaratively (Stop 2b). A new entry
    * starts on it, with its unit shown before a quantity is typed; choosing a different factor asks why.
@@ -134,7 +136,10 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const patch = (next: Partial<EmissionEntryDraft>) => setDraft(current => ({ ...current, ...next }));
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
+  // Suggestions show as soon as the box has focus (JW-13) — the first few of the category's options, narrowed as you type.
   const searchResults = searchActivityOptions(factors, draft.activity);
+  // CRM only: the portal's options are its bucket's, and an empty bucket is the consultant's to fix, not the client's.
+  const noFactors = audience === "crm" && factors.length === 0;
   // A pick is the only way an activity is accepted: it sets the activity, its factor and that factor's unit.
   const pickActivity = (option: (typeof factors)[number]) => {
     patch({ activity: option.label, factorId: option.id, unit: option.unit ?? draft.unit,
@@ -276,7 +281,16 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                       } else patch({ activity });
                     }} />
                 </label>
-                {searchOpen && draft.activity.trim() ? (
+                {/* JW-13: no factors at all is not a search that found nothing — it is a job with no datasets selected for
+                    this category. Say so, and where to fix it, rather than showing an empty list. */}
+                {noFactors ? (
+                  <div className="nz-banner warn" role="status">
+                    <div>No {category.name} factors are available for this job — select its reporting datasets in Setup.{" "}
+                      {props.onOpenDatasets
+                        ? <button type="button" className="nz-btn" style={{ marginTop: 6 }} onClick={props.onOpenDatasets}>Open the job&rsquo;s datasets</button>
+                        : <a href="#job-datasets">Open the job&rsquo;s datasets</a>}</div>
+                  </div>
+                ) : searchOpen ? (
                   <ul className="nz-template-results" id={listId} role="listbox">
                     {searchResults.length === 0 ? <li className="nz-template-empty">No {category.name} activity matches “{draft.activity.trim()}”.</li> : null}
                     {searchResults.map((option, index) => (
