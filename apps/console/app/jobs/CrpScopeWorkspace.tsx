@@ -408,6 +408,7 @@ export function CrpScopeWorkspace({
         onSubmit={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
         onSaveDraft={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
         onLookupRegistration={lookupRegistration}
+        onOpenDatasets={() => { setAddingCategory(null); setOpenStages(current => new Set(current).add("Setup")); requestAnimationFrame(() => document.getElementById("job-datasets")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}
         leanCapture={dataEntryAdapterEnabled("entry-lean-capture")}
       />
     </EvidenceDrawer>
@@ -691,7 +692,7 @@ function DatasetPanel({
     } else notice({ kind: "warn", text: errorText(r) });
   }
   return (
-    <section className="nz-panel nz-config-panel">
+    <section className="nz-panel nz-config-panel" id="job-datasets">
       <div className="nz-config-head">
         <div>
           <b>Reporting datasets</b>
