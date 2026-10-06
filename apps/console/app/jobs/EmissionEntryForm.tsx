@@ -14,6 +14,7 @@ import {
   isSpendKind,
   matchFactorByActivity,
   quickAddSaveIssue,
+  factorOptionText,
   searchActivityOptions,
   needsOverrideReason,
   seedWithDeclared,
@@ -400,7 +401,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     factorOverrideReason: declared && id === declared.optionId ? "" : draft.factorOverrideReason });
                 }}>
                   <option value="">Select a factor</option>
-                  {factors.map(option => <option key={option.id} value={option.id}>{option.label}{option.unit ? ` · ${option.unit}` : ""}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
+                  {factors.map(option => <option key={option.id} value={option.id}>{factorOptionText(option)}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
                   <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option>
                 </select>
                 <span className="nz-hint">{declared ? `Declared for this category: ${declared.label}` : field.hint}</span>
