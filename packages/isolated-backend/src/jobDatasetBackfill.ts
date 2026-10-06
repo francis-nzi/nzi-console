@@ -24,10 +24,15 @@ import { SOURCE_SYSTEM } from "./v7ClientImport";
 export const JW13_RUN_PREFIX = "jw13-dataset-backfill-";
 export const JW13_ACTOR = "policy:jw13-dataset-backfill";
 
-export type ManualFixKind = "NO_WINDOW" | "NO_EDITION" | "IMPLAUSIBLE_WINDOW";
+export type ManualFixKind = "NO_WINDOW" | "WINDOW_MISMATCH" | "NO_EDITION" | "IMPLAUSIBLE_WINDOW";
+export type Edition = { name: string; version: string; validFrom: string; validTo: string; country: string };
 export type BackfillCandidate = { jobId: string; jobNumber: string; window: ReportingWindow | null };
 export type BackfillLine = BackfillCandidate & {
   result: "filled" | "manual" | "error";
+  /** The job's selections before the run, by name — a candidate has none, and the line says so rather than assuming it. */
+  current: string[];
+  /** The editions the fill selected (or would, in a dry run), read back from the job. */
+  editions: Edition[];
   /** Dataset names selected (or that would be, in a dry run — the same insert, rolled back). */
   datasets: string[];
   manualKind: ManualFixKind | null;
@@ -46,15 +51,18 @@ export type BackfillOutcome = {
   rerunWouldFill: number;
 };
 
-const MANUAL_CODES = new Set<string>(["NO_WINDOW", "NO_EDITION"]);
+const MANUAL_CODES = new Set<string>(["NO_WINDOW", "WINDOW_MISMATCH", "NO_EDITION"]);
 
-/** Imported CRP jobs, and whether each holds a selection. Job numbers, ids and windows only — nothing about the client. */
+/**
+ * Imported CRP jobs, and whether each holds a selection. The window is the job's reporting period — the source job.create
+ * and job.update feed the rule from — so "no window" here is the same set the command refuses. Job numbers, ids and
+ * windows only — nothing about the client.
+ */
 export async function readBackfillCandidates(db: Queryable, organisationId: string): Promise<{ candidates: BackfillCandidate[]; alreadySelected: number }> {
   const { rows } = await db.query<{ job_id: string; job_number: string; reporting_from: string | null; reporting_to: string | null; selected: boolean }>(
-    `SELECT j.job_id, j.job_number, c.reporting_from::text AS reporting_from, c.reporting_to::text AS reporting_to,
+    `SELECT j.job_id, j.job_number, j.reporting_period_start::text AS reporting_from, j.reporting_period_end::text AS reporting_to,
             EXISTS (SELECT 1 FROM nzi_console.job_dataset_selections s WHERE s.organisation_id = j.organisation_id AND s.job_id = j.job_id) AS selected
        FROM nzi_console.jobs j
-       LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id, c.job_id) = (j.organisation_id, j.job_id)
       WHERE j.organisation_id = $1 AND j.job_family = 'crp' AND j.source_system = $2
       ORDER BY j.job_number, j.job_id`, [organisationId, SOURCE_SYSTEM]);
   return {
@@ -71,6 +79,15 @@ export function implausibleWindow(window: ReportingWindow, today: string): boole
 
 class DryRunRollback extends Error {}
 
+const selectionNames = async (db: Queryable, organisationId: string, jobId: string) => (await db.query<{ name: string }>(
+  `SELECT d.name FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
+    WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.name`, [organisationId, jobId])).rows.map((row) => row.name);
+const selectedEditions = async (db: Queryable, organisationId: string, jobId: string): Promise<Edition[]> => (await db.query<{ name: string; version: string; valid_from: string; valid_to: string; country_code: string }>(
+  `SELECT d.name, d.version, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.country_code FROM nzi_console.job_dataset_selections s
+     JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
+    WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.country_code, d.name`, [organisationId, jobId])).rows
+  .map((row) => ({ name: row.name, version: row.version, validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code }));
+
 export async function runJobDatasetBackfill(pool: PoolLike, organisationId: string, options: { commit: boolean; reason: string; runId?: string; today?: string }): Promise<BackfillOutcome> {
   const reason = options.reason.trim();
   if (!reason) throw new Error("A reason is required.");
@@ -83,7 +100,7 @@ export async function runJobDatasetBackfill(pool: PoolLike, organisationId: stri
       const { candidates, alreadySelected } = await readBackfillCandidates(db, organisationId);
       const lines: BackfillLine[] = [];
       for (const candidate of candidates) {
-        const line: BackfillLine = { ...candidate, result: "error", datasets: [], manualKind: null, detail: null };
+        const line: BackfillLine = { ...candidate, result: "error", current: await selectionNames(db, organisationId, candidate.jobId), editions: [], datasets: [], manualKind: null, detail: null };
         lines.push(line);
         if (candidate.window && implausibleWindow(candidate.window, today)) {
           line.result = "manual"; line.manualKind = "IMPLAUSIBLE_WINDOW"; line.detail = `window ends in ${candidate.window.to.slice(0, 4)}`;
@@ -97,6 +114,7 @@ export async function runJobDatasetBackfill(pool: PoolLike, organisationId: stri
           };
           const saved = await autoSelectJobDatasetsInTransaction(db, { jobId: candidate.jobId }, context);
           line.datasets = saved.data.datasets.map((dataset) => dataset.name);
+          line.editions = await selectedEditions(db, organisationId, candidate.jobId);
           // The post-condition the verify counts, checked here: the job now holds a selection.
           const { rows: [held] } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2`, [organisationId, candidate.jobId]);
           if ((held?.n ?? 0) >= 1) line.result = "filled";

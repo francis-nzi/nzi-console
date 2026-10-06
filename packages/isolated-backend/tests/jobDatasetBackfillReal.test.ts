@@ -42,7 +42,11 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
     legacy += 1;
     await q(`UPDATE nzi_console.jobs SET source_system = 'nzi-pro-v7', legacy_db_id = $2 WHERE job_id = $1`, [created.jobId, `jw13-${legacy}`]);
     await q(`DELETE FROM nzi_console.job_dataset_selections WHERE job_id = $1`, [created.jobId]);
-    if (!period) await q(`DELETE FROM nzi_console.job_emissions_config WHERE job_id = $1`, [created.jobId]);
+    // No window: neither the job's reporting period nor its emissions config — as the 4 imported jobs v7 left without dates.
+    if (!period) {
+      await q(`DELETE FROM nzi_console.job_emissions_config WHERE job_id = $1`, [created.jobId]);
+      await q(`UPDATE nzi_console.jobs SET reporting_period_start = NULL, reporting_period_end = NULL WHERE job_id = $1`, [created.jobId]);
+    }
     return created;
   };
 
@@ -98,6 +102,16 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
       assert.deepEqual([...(await selections(noWindow.jobId)), ...(await selections(noEdition.jobId))], []);
     });
 
+    it("reads the job's reporting period — the source job.create / job.update use — and refuses a config window that disagrees (WINDOW_MISMATCH)", async () => {
+      const drifted = await importedJob(ORG, { from: "2024-04-01", to: "2025-03-31" });
+      await q(`UPDATE nzi_console.job_emissions_config SET reporting_to = '2024-12-31' WHERE job_id = $1`, [drifted.jobId]);
+      await assert.rejects(autoSelectJobDatasets(database.pool, { jobId: drifted.jobId }, context()), refused("WINDOW_MISMATCH"));
+      const configless = await importedJob(ORG, { from: "2024-04-01", to: "2025-03-31" });
+      await q(`DELETE FROM nzi_console.job_emissions_config WHERE job_id = $1`, [configless.jobId]);
+      await assert.rejects(autoSelectJobDatasets(database.pool, { jobId: configless.jobId }, context()), refused("WINDOW_MISMATCH"));
+      assert.deepEqual([...(await selections(drifted.jobId)), ...(await selections(configless.jobId))], []);
+    });
+
     it("needs a reason; replays on its idempotency key; a second run with a new key is refused, changing nothing", async () => {
       const job = await importedJob(ORG, { from: "2025-01-01", to: "2025-12-31" });
       await assert.rejects(autoSelectJobDatasets(database.pool, { jobId: job.jobId }, context(ORG, "")), refused("REQUIRED"));
@@ -132,6 +146,7 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
       const typo = await importedJob(RUN, { from: "2024-01-01", to: "2024-12-31" });
       // v7's `2203-12-31` — and an edition that would match it, so only the plausibility gate stands between it and a fill.
       await q(`UPDATE nzi_console.job_emissions_config SET reporting_to = '2203-12-31' WHERE job_id = $1`, [typo.jobId]);
+      await q(`UPDATE nzi_console.jobs SET reporting_period_end = '2203-12-31' WHERE job_id = $1`, [typo.jobId]);
       await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id, dataset_id, name, version, valid_from, valid_to, country_code, status, source_name, licence) VALUES ($1, 'ds-forever', 'Forever', '1', '2200-01-01', '2299-12-31', 'GB', 'active', 'test', 'test')`, [RUN]);
       // A console job with no selection is not imported — not this backfill's.
       const consoleJob = (await createJob(database.pool, { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "Ada", startDate: "2026-01-01", dueDate: "2027-06-30",
@@ -146,6 +161,10 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
       assert.equal(dry.candidates, 5, "imported CRP jobs with no selection — the held job and the console job are not candidates");
       assert.equal(dry.alreadySelected, 1);
       assert.deepEqual([line(fill.jobId).result, line(fill.jobId).datasets], ["filled", ["Edition ds-2025", "Edition ds-g2025"]]);
+      assert.deepEqual(line(fill.jobId).current, [], "the line shows what the job held before: none");
+      assert.deepEqual(line(fill.jobId).window, { from: "2024-04-01", to: "2025-03-31" }, "the window used is the job's reporting period");
+      assert.deepEqual(line(fill.jobId).editions.map((e) => [e.name, e.version, e.country, e.validFrom, e.validTo]),
+        [["Edition ds-2025", "1", "GB", "2025-01-01", "2025-12-31"], ["Edition ds-g2025", "1", "GLOBAL", "2025-01-01", "2025-12-31"]], "the editions chosen, read back");
       assert.deepEqual([line(calendar.jobId).result, line(calendar.jobId).datasets], ["filled", ["Edition ds-2024"]]);
       assert.deepEqual([line(noWindow.jobId).manualKind, line(noEdition.jobId).manualKind, line(typo.jobId).manualKind], ["NO_WINDOW", "NO_EDITION", "IMPLAUSIBLE_WINDOW"]);
       assert.equal(dry.lines.some((item) => item.jobId === consoleJob.jobId), false);

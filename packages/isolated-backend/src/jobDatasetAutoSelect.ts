@@ -12,7 +12,10 @@ import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransac
  *   — a person's choice, or job.create's, is never second-guessed here. job.update is the path that re-derives.
  * - **The rule is the rule's:** `automaticDatasetsFor` / `selectAutomaticDatasets` (#413: the GB and GLOBAL editions valid
  *   on the window's last day), with job.create's selection reason — never a second copy of its SQL.
- * - Refused, and left for a person: no window (`NO_WINDOW`); no active edition valid on its last day (`NO_EDITION`).
+ * - **The window is the job's reporting period** — what job.create / job.update feed the rule — and must agree with its
+ *   `job_emissions_config` row, so a backfilled job equals a re-derivation.
+ * - Refused, and left for a person: no reporting period (`NO_WINDOW`); a config window that disagrees (`WINDOW_MISMATCH`);
+ *   no active edition valid on its last day (`NO_EDITION`).
  * - The audit and outbox carry the job, the datasets chosen and the count — no money, rates or names (NZC-120).
  */
 
@@ -27,10 +30,18 @@ function autoSelectHandler(input: CommandInputMap["job.datasets.autoSelect"], co
     if (job.job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Only a carbon-reporting job selects emission-factor datasets." }]);
     const { rows: [held] } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2`, [org, input.jobId]);
     if ((held?.n ?? 0) > 0) throw new CommandValidationError([{ field: "jobId", code: "ALREADY_SELECTED", message: `This job already has ${held!.n} dataset selection${held!.n === 1 ? "" : "s"}; they are kept as they are.` }]);
-    const { rows: [config] } = await db.query<{ reporting_from: string; reporting_to: string }>(
-      `SELECT reporting_from::text AS reporting_from, reporting_to::text AS reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`, [org, input.jobId]);
-    if (!config) throw new CommandValidationError([{ field: "jobId", code: "NO_WINDOW", message: "This job has no reporting window to choose datasets against." }]);
-    const window: ReportingWindow = { from: config.reporting_from, to: config.reporting_to };
+    // The window is the job's own reporting period — the source job.create and job.update feed the rule from (they mirror
+    // it into job_emissions_config as they write). A config row that disagrees is a data fault to fix by hand, never filled.
+    const { rows: [period] } = await db.query<{ period_start: string | null; period_end: string | null; config_from: string | null; config_to: string | null; has_config: boolean }>(
+      `SELECT j.reporting_period_start::text AS period_start, j.reporting_period_end::text AS period_end,
+              c.reporting_from::text AS config_from, c.reporting_to::text AS config_to, c.job_id IS NOT NULL AS has_config
+         FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id, c.job_id) = (j.organisation_id, j.job_id)
+        WHERE j.organisation_id = $1 AND j.job_id = $2`, [org, input.jobId]);
+    if (!period?.period_start || !period.period_end) throw new CommandValidationError([{ field: "jobId", code: "NO_WINDOW", message: "This job has no reporting period to choose datasets against." }]);
+    if (!period.has_config || period.config_from !== period.period_start || period.config_to !== period.period_end) {
+      throw new CommandValidationError([{ field: "jobId", code: "WINDOW_MISMATCH", message: "The job's reporting period and its emissions window disagree — fix the job's period first." }]);
+    }
+    const window: ReportingWindow = { from: period.period_start, to: period.period_end };
     if ((await automaticDatasetsFor(db, org, window)).length === 0) {
       throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active GB or GLOBAL dataset is valid on the window's last day (${window.to}).` }]);
     }

@@ -44,11 +44,12 @@ async function main(): Promise<void> {
   for (const line of outcome.lines) {
     const result = line.result === "filled" ? (commit ? "filled" : "would fill")
       : line.result === "manual" ? `MANUAL FIX — ${line.manualKind}` : `ERROR — ${line.detail}`;
-    log(`  ${line.jobNumber} · ${windowOf(line)} · ${line.datasets.length ? line.datasets.join(", ") : "—"} · ${result}`);
+    const editions = line.editions.length ? line.editions.map((e) => `${e.name} v${e.version} [${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)}]`).join("; ") : "—";
+    log(`  ${line.jobNumber} · current: ${line.current.length ? line.current.join(", ") : "none"} · window ${windowOf(line)} · editions: ${editions} · ${result}`);
   }
 
   const manual = outcome.lines.filter((line) => line.result === "manual");
-  const kinds: ManualFixKind[] = ["NO_WINDOW", "NO_EDITION", "IMPLAUSIBLE_WINDOW"];
+  const kinds: ManualFixKind[] = ["NO_WINDOW", "WINDOW_MISMATCH", "NO_EDITION", "IMPLAUSIBLE_WINDOW"];
   log(`\nMANUAL FIXES (${manual.length})`);
   if (manual.length === 0) log("  none");
   for (const kind of kinds) {
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
   const filled = outcome.lines.filter((line) => line.result === "filled");
   const errors = outcome.lines.filter((line) => line.result === "error");
   log("\nTotals");
-  log(`  candidates (imported CRP, no selection): ${outcome.candidates}`);
+  log(`  candidates (imported CRP, no selection): ${outcome.candidates} · with a current selection among them: ${outcome.lines.filter((line) => line.current.length).length}`);
   log(`  ${commit ? "filled" : "would fill"}: ${filled.length}`);
   log(`  datasets selected: ${filled.reduce((sum, line) => sum + line.datasets.length, 0)}`);
   log(`  manual fixes: ${kinds.map((kind) => `${kind} ${manual.filter((line) => line.manualKind === kind).length}`).join(" · ")}`);
