@@ -269,7 +269,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
     </TabPanel>
 
     <TabPanel id="intensity" idBase="assurance" active={tab === "intensity"} className="nz-assurance-scroll">
-      <p className="sub">Normalised metric across the trend — the same totals against the job&rsquo;s reporting denominator.</p>
+      <p className="sub">Normalised metric across the trend — the same totals divided by the job&rsquo;s intensity Value.</p>
       <table className="nz-tbl">
         <thead><tr><th>Metric</th>{trend.years.map((year) => <th key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.year}</th>)}</tr></thead>
         <tbody>
@@ -277,7 +277,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
             <td>{current?.intensityUnit ?? "Emissions intensity"}</td>
             {trend.years.map((year) => <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{year.intensity == null ? "—" : year.intensity.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</td>)}
           </tr>
-          {trend.years.every((year) => year.intensity == null) && <tr><td colSpan={trend.years.length + 1} className="nz-table-empty">No intensity target / reporting denominator set for this job.</td></tr>}
+          {trend.years.every((year) => year.intensity == null) && <tr><td colSpan={trend.years.length + 1} className="nz-table-empty">No intensity metric or Value set for this job.</td></tr>}
         </tbody>
       </table>
     </TabPanel>
