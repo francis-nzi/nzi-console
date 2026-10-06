@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GatedButton } from "@nzi/ui";
-import { postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
+import { postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import { isoCountryName, SITE_ADDRESS_MAX_LINES, siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
 import type { ClientReportingPeriod } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -76,7 +76,7 @@ function SiteLocation({ site, geocodingEnabled, access }: { site: ClientSiteRead
 }
 
 /** The card. The site drawer lives in the workspace's drawer host. */
-export function ClientSites({ sites, reportingPeriods, today, access, onEdit, geocodingEnabled = false }: { sites: ClientSiteReadModel[]; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess; onEdit: (site: ClientSiteReadModel | null) => void; geocodingEnabled?: boolean }) {
+export function ClientSites({ sites, archived = [], reportingPeriods, today, access, onEdit, geocodingEnabled = false }: { sites: ClientSiteReadModel[]; archived?: Array<{ id: string; name: string; version: number }>; reportingPeriods: ClientReportingPeriod[]; today: string; access: EditAccess; onEdit: (site: ClientSiteReadModel | null) => void; geocodingEnabled?: boolean }) {
   const periods = [...reportingPeriods].reverse();
   const blocked = access.state !== "allowed";
 
@@ -101,8 +101,34 @@ export function ClientSites({ sites, reportingPeriods, today, access, onEdit, ge
             <button type="button" className="nz-editlink" onClick={() => onEdit(site)} aria-label={`Edit site ${site.name}`}>Edit</button>
           </div>;
         })}
+      {archived.length ? <ArchivedSites archived={archived} access={access} /> : null}
     </div>
   </section>;
+}
+
+/**
+ * Phase 1a — the client's archived sites: kept (every row that cites one keeps it), not offered for new entries, and
+ * unarchived from here.
+ */
+function ArchivedSites({ archived, access }: { archived: Array<{ id: string; name: string; version: number }>; access: EditAccess }) {
+  const router = useRouter();
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function unarchive(site: { id: string; name: string; version: number }) {
+    setPending(site.id); setError(null);
+    const result = await postBrowserCommand<{ version: number }>(`/api/isolated/sites/${encodeURIComponent(site.id)}/unarchive`, { expectedVersion: site.version }, crypto.randomUUID());
+    setPending(null);
+    if (result.state === "success") router.refresh(); else setError(errorText(result));
+  }
+  return <details className="nz-archived-sites" style={{ marginTop: 10 }}>
+    <summary className="sub">{archived.length} archived site{archived.length === 1 ? "" : "s"}</summary>
+    {archived.map((site) => <div key={site.id} className="nz-lrow off">
+      <div className="ic" aria-hidden="true">⌂</div>
+      <div className="main"><div className="nm">{site.name}<span className="nz-tag vac">Archived</span></div></div>
+      {access.state === "allowed" ? <button type="button" className="nz-editlink" disabled={pending === site.id} onClick={() => void unarchive(site)}>{pending === site.id ? "Unarchiving…" : "Unarchive"}</button> : null}
+    </div>)}
+    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+  </details>;
 }
 
 type Step = { name: string; path: string; input: Record<string, unknown> };
@@ -129,6 +155,18 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keys = useRef<Record<string, string>>({});
+  // Phase 1a — archive: a reason, required; the registered office is guarded.
+  const [archiving, setArchiving] = useState(false);
+  const [archiveReason, setArchiveReason] = useState("");
+
+  async function archive() {
+    if (!site || pending) return;
+    setPending(true); setError(null);
+    const result = await postBrowserCommandWithReason<{ version: number }>(`/api/isolated/sites/${encodeURIComponent(site.id)}/archive`, { expectedVersion: site.version }, crypto.randomUUID(), archiveReason.trim());
+    setPending(false);
+    if (result.state === "success") onSaved(`${site.name} archived — kept, and no longer offered for new entries.`);
+    else { setError(result.state === "conflict" ? "This site changed since it was opened. It has been refreshed — review and try again." : errorText(result)); if (result.state === "conflict") onPartial(); }
+  }
 
   const draftStart = beforeRecords ? null : inServiceFrom || null;
   const draftVacated = lifecycle === "vacated" ? vacatedEffective || null : null;
@@ -233,6 +271,22 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
         <CountrySelect label="Country" value={country} onChange={setCountry} />
       </div>
       <span className="nz-hint">The postcode and country locate the site on the map; only those two are sent to the geocoder.</span>
+
+      {site && access.state === "allowed" ? <div className="nz-fl" style={{ marginTop: 14 }}><span>Archive</span>
+        {site.isRegisteredOffice
+          ? <span className="nz-hint">The registered office can&apos;t be archived — mark another site as the registered office first.</span>
+          : archiving
+            ? <div role="group" aria-label="Archive this site">
+                <label className="nz-fl"><span>Why archive it? <span className="muted">· kept in the audit trail</span></span>
+                  <input className="nz-inp" value={archiveReason} maxLength={500} autoFocus onChange={(event) => setArchiveReason(event.target.value)} placeholder="e.g. entered twice; duplicate of Head Office" /></label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="nz-btn" disabled={pending || !archiveReason.trim()} onClick={() => void archive()}>Archive site</button>
+                  <button type="button" className="nz-btn" disabled={pending} onClick={() => { setArchiving(false); setArchiveReason(""); }}>Cancel</button>
+                </div>
+                <span className="nz-hint">Archiving keeps the site and every row that cites it; it stops being offered for new entries, and can be unarchived from the Sites card. A site the client left is <b>vacated</b> instead.</span>
+              </div>
+            : <button type="button" className="nz-editlink" onClick={() => setArchiving(true)}>Archive site…</button>}
+      </div> : null}
 
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     </div>

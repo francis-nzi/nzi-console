@@ -118,7 +118,7 @@ export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabl
   const consentUnavailable = degraded?.find((entry) => entry.part === "contactConsent")?.reason ?? null;
   return <>
     <ClientContacts contacts={contacts ?? []} consent={contactConsent ?? []} consentUnavailable={consentUnavailable} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
-    <ClientSites sites={sites} reportingPeriods={reportingPeriods} today={today} access={access.site} onEdit={(site) => onDrawer({ kind: "site", site })} geocodingEnabled={geocodingEnabled} />
+    <ClientSites sites={sites} archived={workspace.archivedSites ?? []} reportingPeriods={reportingPeriods} today={today} access={access.site} onEdit={(site) => onDrawer({ kind: "site", site })} geocodingEnabled={geocodingEnabled} />
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Commercial</span><h2>Financial status</h2></>} count="Held">
       <FinancialStatusCard />
     </Collapsible>

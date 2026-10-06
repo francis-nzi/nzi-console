@@ -304,6 +304,8 @@ const degradedReasons: Record<ClientWorkspacePart, string> = {
 export type ClientWorkspaceReadModel = {
   client: ClientScreenReadModel;
   sites: ClientSiteReadModel[];
+  /** Phase 1a — the client's archived sites, so the Sites card can list and unarchive them. Never offered for new entries. */
+  archivedSites: Array<{ id: string; name: string; version: number }>;
   evidence: ClientEmissionsEvidence;
   /** The client's recent CRP reporting periods, newest first — the boundary column reads these. */
   reportingPeriods: ClientReportingPeriod[];
@@ -392,6 +394,10 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     adjunct("strategies", [], listClientStrategies(db, clientId)),
     adjunct("strategies", [], listLevers(db)),
   ]);
+  // Soft: the Sites card lists them for unarchive; a read that fails shows none rather than taking the workspace down.
+  const archivedSites = await db.query<{ site_id: string; name: string; version: number }>(
+    `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
+    .then((result) => result.rows.map((row) => ({ id: row.site_id, name: row.name, version: row.version })), () => [] as Array<{ id: string; name: string; version: number }>);
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
   // Every year that has an assured snapshot, oldest first — what the pathway plots as actual
@@ -433,6 +439,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
   return {
     client,
     sites,
+    archivedSites,
     evidence: resolveClientEmissionsEvidence({ current: current ?? null, prior: prior ?? null }),
     reportingPeriods: periods.rows.map((row) => {
       const from = dateOnly(row.reporting_from ?? row.start_date), to = dateOnly(row.reporting_to ?? row.due_date);
@@ -590,7 +597,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
 }
 
-export async function listJobSites(db:Queryable,jobId:string):Promise<SiteOption[]>{const {rows}=await db.query<{site_id:string;name:string}>(`SELECT s.site_id,s.name FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.job_id=$1 ORDER BY lower(s.name),s.site_id`,[jobId]);return rows.map(row=>({id:row.site_id,name:row.name}));}
+export async function listJobSites(db:Queryable,jobId:string):Promise<SiteOption[]>{const {rows}=await db.query<{site_id:string;name:string}>(`SELECT s.site_id,s.name FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.job_id=$1 AND s.archived=false ORDER BY lower(s.name),s.site_id`,[jobId]);return rows.map(row=>({id:row.site_id,name:row.name}));}
 export async function listJobPurchasedGoodsCategories(db:Queryable,jobId:string):Promise<PurchasedGoodsCategoryOption[]>{const {rows}=await db.query<{category_id:string;name:string}>(`SELECT c.category_id,c.name FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE j.job_id=$1 ORDER BY lower(c.name),c.category_id`,[jobId]);return rows.map(row=>({id:row.category_id,name:row.name}));}
 export async function listJobReportingMonths(db:Queryable,jobId:string):Promise<string[]>{const {rows}=await db.query<{reporting_from:Date|string;reporting_to:Date|string}>(`SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE job_id=$1`,[jobId]),row=rows[0];if(!row)return[];return monthsBetween(dateOnly(row.reporting_from),dateOnly(row.reporting_to));}
 
