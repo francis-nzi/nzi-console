@@ -4,8 +4,8 @@
  *
  *   npm run backfill:job-datasets -w @nzi/isolated-backend -- --reason "<why>" [--organisation <id>] [--commit]
  *
- * Fill-blank-only: a job holding any selection is left alone (counted). The rule is #413's — the GB and GLOBAL editions
- * valid on the window's last day. Jobs with no window, no matching edition, or a window ending implausibly late are
+ * Fill-blank-only: a job holding any selection is left alone (counted). The rule is #413's — the job country's (its config
+ * row's) and GLOBAL editions valid on the window's last day. Jobs with no window, no matching edition, or a window ending implausibly late are
  * listed as MANUAL FIXES and never guessed at. A dry run is the whole run, rolled back; a savepoint per job, so one
  * refusal never stops the run. The actor is the system principal `policy:jw13-dataset-backfill` with the admin grant
  * (the staffAdmin break-glass precedent); the reason travels on every audit event. Output is job numbers, dates and
