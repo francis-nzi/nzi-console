@@ -48,6 +48,7 @@ export type CommandKey =
   | "job.milestone.reschedule"
   | "job.update"
   | "job.datasets.autoSelect"
+  | "job.datasets.update"
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
@@ -590,6 +591,14 @@ export type CommandInputMap = {
   /** JW-13 step 3 — apply the automatic dataset rule (the edition valid on the window's last day) to a CRP job with no
    *  selection at all: fill-blank-only, for the jobs the v7 import wrote without one. A reason is required. */
   "job.datasets.autoSelect": { jobId: string };
+  /**
+   * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
+   * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
+   * resolved, at the version it showed — the write refuses if the job changed since. `resolutions`: rows that cannot move
+   * as they are, each given a factor in the new edition or deactivated.
+   */
+  "job.datasets.update": { jobId: string; series: string[]; expected: Array<{ rowId: string; version: number }>;
+    resolutions: Array<{ rowId: string; action: "factor" | "deactivate"; factorId?: string | null }> };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
@@ -1506,6 +1515,17 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // job.update under job.manage — dataset.manage is a person's manual choice (dataset.override.add). The guards that
   // need the job (already selected, no window, no edition) are the command's, where the job is locked.
   "job.datasets.autoSelect": { key: "job.datasets.autoSelect", label: "Select a job's automatic datasets", permission: "job.manage", reasonRequired: true, transaction: "fill-blank-only automatic dataset selection + audit + outbox + idempotency", auditAction: "job_datasets_auto_selected", validate: (input, context) => { const issues = baseIssues(context, true); required(issues, "jobId", input.jobId); return issues; } },
+  // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
+  // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued
+  // snapshot or a published report (ruling 6), never otherwise.
+  "job.datasets.update": { key: "job.datasets.update", label: "Move a job to its reporting year's dataset editions", permission: "scoperow.edit", reasonRequired: false, transaction: "selection swap per series + re-point and recalculate its rows + audit + outbox + idempotency", auditAction: "job_datasets_updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (!Array.isArray(input.series) || input.series.length === 0 || input.series.some((id) => typeof id !== "string" || !id.trim())) issues.push({ field: "series", code: "REQUIRED", message: "Choose at least one dataset to move." });
+    if (!Array.isArray(input.expected) || input.expected.some((row) => !row || typeof row.rowId !== "string" || !Number.isInteger(row.version) || row.version < 1)) issues.push({ field: "expected", code: "INVALID", message: "The rows to move are each a row id and its version." });
+    if (!Array.isArray(input.resolutions) || input.resolutions.some((r) => !r || typeof r.rowId !== "string" || !oneOf(r.action, ["factor", "deactivate"] as const) || (r.action === "factor" && !text(r.factorId)))) issues.push({ field: "resolutions", code: "INVALID", message: "Each unresolved row is given a factor in the new edition, or deactivated." });
+    return issues;
+  } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.update": { key: "scope.row.update", label: "Update scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + audit + outbox + idempotency", auditAction: "scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.discard": { key: "scope.row.discard", label: "Discard a draft scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "draft-only hard delete (no saved data) + audit + outbox + idempotency", auditAction: "scope_row_discarded", validate: (input, context) => scopeRowStateIssues(input, context, false) },

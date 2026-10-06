@@ -34,6 +34,7 @@ import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { JobAnnualMetrics } from "./JobAnnualMetrics";
 import { RowStateControl } from "./RowStateControl";
+import { DatasetUpdateBanner } from "./DatasetUpdateBanner";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
 import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
@@ -47,7 +48,7 @@ import {VehicleBulkPanel} from "./VehicleBulkPanel";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
 import {SpendImportPanel} from "./SpendImportPanel";
-import type { JobEmissions } from "@nzi/isolated-backend";
+import type { DatasetUpdate, JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
@@ -158,6 +159,7 @@ export function CrpScopeWorkspace({
   emissions,
   writeEnabled,
   milestones,
+  datasetUpdates = [],
 }: {
   /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
   specs: Record<string, InputSpecCategory>;
@@ -181,6 +183,8 @@ export function CrpScopeWorkspace({
   writeEnabled:boolean;
   /** The job's Milestones panel (PR 3), rendered under the stage control — the same on every family's page. */
   milestones?: ReactNode;
+  /** DATASET-CURRENCY §3: the newer editions this job could move to (a soft read — none when it fails). */
+  datasetUpdates?: DatasetUpdate[];
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
     ? {
@@ -443,7 +447,7 @@ export function CrpScopeWorkspace({
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
-  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} notice={setNotice}/>;
+  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice}/>;
   const dataEntrySurface = accordionOn ? (
     <CrpDataEntryAccordion
       specs={specs}
@@ -517,9 +521,10 @@ export function CrpScopeWorkspace({
       {visibleRows.length===0?<div className="nz-table-empty">No rows match this filter. The full evidence register still contains {rows.length} row{rows.length===1?"":"s"}.</div>:null}
     </div>
   );
-  const noticeBanner = notice ? (
-    <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div>
-  ) : null;
+  const noticeBanner = <>
+    {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "warn" ? "alert" : "status"}>{notice.text}</div> : null}
+    <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
+  </>;
   const stageBody = (
     <div className="nz-body">
       <StageFocusStrip
@@ -654,10 +659,12 @@ function PurchasedGoodsPanel({jobId,categories,notice}:{jobId:string;categories:
 function DatasetPanel({
   jobId,
   datasets,
+  updates = [],
   notice,
 }: {
   jobId: string;
   datasets: DatasetOption[];
+  updates?: DatasetUpdate[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
 }) {
   const router = useRouter(),
@@ -717,6 +724,8 @@ function DatasetPanel({
               <b>{d.label}</b>{" "}
               <span className="muted">· {d.selectionSource === "manual" ? "added by exception" : "automatic"}</span>
               {d.warnings.length ? <span className="nz-st est" style={{ marginLeft: 6 }}>{d.warnings.length} warning{d.warnings.length === 1 ? "" : "s"}</span> : null}
+              {/* DATASET-CURRENCY §3: a fallback edition whose reporting year's own is now published says so — the banner above moves it. */}
+              {(() => { const update = updates.find((u) => u.fromDatasetId === d.datasetId); return update ? <span className="nz-st need" style={{ marginLeft: 6 }}>{update.toLabel} available</span> : null; })()}
             </li>
           ))}
         </ul>
