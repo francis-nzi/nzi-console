@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { commandGrantForRole, todayInLondon, type CommandContext } from "@nzi/contracts";
+import { commandGrantForRole, datasetSeriesKey, todayInLondon, type CommandContext } from "@nzi/contracts";
+import { fallbackReason, ON_DAY_REASON } from "./datasetSelection";
 import type { ReportingWindow } from "./datasetSelection";
 import { autoSelectJobDatasetsInTransaction } from "./jobDatasetAutoSelect";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
@@ -26,7 +27,9 @@ export const JW13_ACTOR = "policy:jw13-dataset-backfill";
 
 export type ManualFixKind = "NO_WINDOW" | "WINDOW_MISMATCH" | "NO_EDITION" | "IMPLAUSIBLE_WINDOW";
 /** An edition as the dry run shows it: its id and source tell apart datasets whose imported `name` is a file name. */
-export type Edition = { datasetId: string; source: string; name: string; version: string; validFrom: string; validTo: string; country: string };
+export type Edition = { datasetId: string; source: string; name: string; version: string; validFrom: string; validTo: string; country: string;
+  /** The reason the selection recorded — read back, so the run checks what was written, not what was meant. */
+  reason: string };
 export type BackfillCandidate = { jobId: string; jobNumber: string; window: ReportingWindow | null };
 export type BackfillLine = BackfillCandidate & {
   result: "filled" | "manual" | "error";
@@ -83,11 +86,29 @@ class DryRunRollback extends Error {}
 const selectionNames = async (db: Queryable, organisationId: string, jobId: string) => (await db.query<{ name: string }>(
   `SELECT d.name FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
     WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.name`, [organisationId, jobId])).rows.map((row) => row.name);
-const selectedEditions = async (db: Queryable, organisationId: string, jobId: string): Promise<Edition[]> => (await db.query<{ dataset_id: string; source_name: string; name: string; version: string; valid_from: string; valid_to: string; country_code: string }>(
-  `SELECT d.dataset_id, d.source_name, d.name, d.version, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.country_code FROM nzi_console.job_dataset_selections s
+const selectedEditions = async (db: Queryable, organisationId: string, jobId: string): Promise<Edition[]> => (await db.query<{ dataset_id: string; source_name: string; name: string; version: string; valid_from: string; valid_to: string; country_code: string; reason: string }>(
+  `SELECT d.dataset_id, d.source_name, d.name, d.version, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.country_code, s.reason FROM nzi_console.job_dataset_selections s
      JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
     WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY d.country_code, d.dataset_id`, [organisationId, jobId])).rows
-  .map((row) => ({ datasetId: row.dataset_id, source: row.source_name, name: row.name, version: row.version, validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code }));
+  .map((row) => ({ datasetId: row.dataset_id, source: row.source_name, name: row.name, version: row.version, validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code, reason: row.reason }));
+
+/** An edition is a fallback when it ends before the window does — the reporting year's own is not published yet. */
+export const isFallbackEdition = (edition: Pick<Edition, "validTo">, window: { to: string }) => edition.validTo < window.to;
+
+/**
+ * What the run checks of each fill, beyond "it holds a selection": every edition records the reason its kind should — the
+ * reporting year's, or "not published yet, the latest available (year)" — and no series appears twice.
+ */
+export function fillIssues(editions: Edition[], window: { to: string }): string[] {
+  const issues: string[] = [];
+  for (const edition of editions) {
+    const expected = isFallbackEdition(edition, window) ? fallbackReason(Number(edition.validTo.slice(0, 4))) : ON_DAY_REASON;
+    if (edition.reason !== expected) issues.push(`${edition.datasetId} records "${edition.reason}"`);
+  }
+  const series = editions.map((edition) => `${datasetSeriesKey(edition.datasetId)}|${edition.country}`);
+  for (const key of new Set(series)) if (series.filter((item) => item === key).length > 1) issues.push(`two editions of the series ${key}`);
+  return issues;
+}
 
 export async function runJobDatasetBackfill(pool: PoolLike, organisationId: string, options: { commit: boolean; reason: string; runId?: string; today?: string }): Promise<BackfillOutcome> {
   const reason = options.reason.trim();
@@ -118,8 +139,10 @@ export async function runJobDatasetBackfill(pool: PoolLike, organisationId: stri
           line.editions = await selectedEditions(db, organisationId, candidate.jobId);
           // The post-condition the verify counts, checked here: the job now holds a selection.
           const { rows: [held] } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2`, [organisationId, candidate.jobId]);
-          if ((held?.n ?? 0) >= 1) line.result = "filled";
-          else line.detail = "POST-CONDITION MISS: no selection after the fill";
+          const issues = candidate.window ? fillIssues(line.editions, candidate.window) : [];
+          if ((held?.n ?? 0) < 1) line.detail = "POST-CONDITION MISS: no selection after the fill";
+          else if (issues.length) line.detail = `POST-CONDITION MISS: ${issues.join("; ")}`;
+          else line.result = "filled";
           await db.query("RELEASE SAVEPOINT jw13_job");
         } catch (error) {
           await db.query("ROLLBACK TO SAVEPOINT jw13_job");

@@ -12,6 +12,7 @@
  * dataset names only — no client names, nothing personal. Fail-closed on the boundary; verified TLS off-machine.
  */
 import { Pool } from "pg";
+import { datasetSeriesKey } from "@nzi/contracts";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 import { verifiedTlsConfig } from "../src/databaseTls";
 import { runJobDatasetBackfill, type BackfillLine, type ManualFixKind } from "../src/jobDatasetBackfill";
@@ -44,7 +45,7 @@ async function main(): Promise<void> {
   for (const line of outcome.lines) {
     const result = line.result === "filled" ? (commit ? "filled" : "would fill")
       : line.result === "manual" ? `MANUAL FIX — ${line.manualKind}` : `ERROR — ${line.detail}`;
-    const editions = line.editions.length ? line.editions.map((e) => `${e.datasetId} (${e.source}; ${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)}${line.window && e.validTo < line.window.to ? "; latest available — the reporting year's edition is not published" : ""})`).join("; ") : "—";
+    const editions = line.editions.length ? line.editions.map((e) => `${e.datasetId} (${e.source}; ${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)}${line.window && e.validTo < line.window.to ? `; FALLBACK — recorded: "${e.reason}"` : ""})`).join("; ") : "—";
     log(`  ${line.jobNumber} · current: ${line.current.length ? line.current.join(", ") : "none"} · window ${windowOf(line)} · editions: ${editions} · ${result}`);
   }
 
@@ -63,6 +64,9 @@ async function main(): Promise<void> {
   log(`  candidates (imported CRP, no selection): ${outcome.candidates} · with a current selection among them: ${outcome.lines.filter((line) => line.current.length).length}`);
   log(`  ${commit ? "filled" : "would fill"}: ${filled.length}`);
   log(`  datasets selected: ${filled.reduce((sum, line) => sum + line.datasets.length, 0)}`);
+  const editions = filled.flatMap((line) => line.editions.map((e) => ({ e, fallback: !!line.window && e.validTo < line.window.to })));
+  log(`  recorded reasons read back: ${editions.filter((x) => x.fallback && x.e.reason.startsWith("The reporting year's edition is not published yet")).length}/${editions.filter((x) => x.fallback).length} fallbacks carry the fallback reason · ${editions.filter((x) => !x.fallback && x.e.reason.startsWith("Matched the reporting year")).length}/${editions.filter((x) => !x.fallback).length} on-day editions the reporting-year reason`);
+  log(`  jobs with two editions of one series: ${filled.filter((line) => new Set(line.editions.map((e) => `${datasetSeriesKey(e.datasetId)}|${e.country}`)).size !== line.editions.length).length}`);
   log(`  of which latest-available fallbacks: ${filled.reduce((sum, line) => sum + line.editions.filter((e) => line.window && e.validTo < line.window.to).length, 0)} editions, on ${filled.filter((line) => line.editions.some((e) => line.window && e.validTo < line.window.to)).length} jobs`);
   log(`  manual fixes: ${kinds.map((kind) => `${kind} ${manual.filter((line) => line.manualKind === kind).length}`).join(" · ")}`);
   log(`  unexpected errors: ${errors.length}`);

@@ -3,7 +3,8 @@ import { after, before, describe, it } from "node:test";
 import { commandGrantForRole, type CommandContext, type CommandInputMap } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { autoSelectJobDatasets } from "../src/jobDatasetAutoSelect";
-import { implausibleWindow, JW13_ACTOR, runJobDatasetBackfill } from "../src/jobDatasetBackfill";
+import { fillIssues, implausibleWindow, JW13_ACTOR, runJobDatasetBackfill, type Edition } from "../src/jobDatasetBackfill";
+import { fallbackReason, ON_DAY_REASON } from "../src/datasetSelection";
 import { createJob } from "../src/postgresCommands";
 
 /**
@@ -137,6 +138,39 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
   });
 
   describe("the backfill's core (runJobDatasetBackfill)", () => {
+    it("checks each fill: every edition records its kind's reason, and no series appears twice", () => {
+      const edition = (datasetId: string, validTo: string, reason: string, country = "GB"): Edition =>
+        ({ datasetId, source: "t", name: "t", version: "1", validFrom: `${validTo.slice(0, 4)}-01-01`, validTo, country, reason });
+      const window = { to: "2027-03-31" };
+      assert.deepEqual(fillIssues([edition("uk-ghg-gb-2026", "2026-12-31", fallbackReason(2026)), edition("nzi-gb-2026", "2026-12-31", fallbackReason(2026))], window), []);
+      assert.deepEqual(fillIssues([edition("uk-ghg-gb-2027", "2027-12-31", ON_DAY_REASON)], window), []);
+      assert.equal(fillIssues([edition("uk-ghg-gb-2026", "2026-12-31", ON_DAY_REASON)], window).length, 1, "a fallback recorded as on-day");
+      assert.equal(fillIssues([edition("uk-ghg-gb-2025", "2025-12-31", fallbackReason(2025)), edition("uk-ghg-gb-2026", "2026-12-31", fallbackReason(2026))], window).length, 1, "two editions of one series");
+      assert.deepEqual(fillIssues([edition("mix-2026", "2026-12-31", fallbackReason(2026)), edition("mix-2026", "2026-12-31", fallbackReason(2026), "GLOBAL")], window), [], "one series id in two countries is two series");
+    });
+
+    it("a fill whose read-back fails those checks is reported as a post-condition miss, never as filled", async () => {
+      const job = await importedJob(ORG, { from: "2025-04-01", to: "2026-03-31" });
+      // What a regression in the rule would look like from the run's side: a recorded reason that is not its kind's.
+      const tampered = { connect: async () => {
+        const client = await database.pool.connect();
+        const query = client.query.bind(client), original = client.query, release = client.release.bind(client);
+        // Pooled: undo the patch on release, so the next borrower of this connection reads the truth.
+        (client as any).release = (error?: Error) => { (client as any).query = original; (client as any).release = release; return release(error); };
+        (client as any).query = async (sql: unknown, values?: unknown) => {
+          const result = await query(sql as never, values as never);
+          return typeof sql === "string" && sql.includes("d.country_code, s.reason FROM nzi_console.job_dataset_selections")
+            ? { ...result, rows: (result as unknown as { rows: Array<Record<string, unknown>> }).rows.map((row) => ({ ...row, reason: "tampered" })) } : result;
+        };
+        return client;
+      } } as never;
+      const dry = await runJobDatasetBackfill(tampered, ORG, { commit: false, reason: REASON, today: "2026-10-06" });
+      const line = dry.lines.find((item) => item.jobId === job.jobId)!;
+      assert.equal(line.result, "error");
+      assert.match(line.detail ?? "", /POST-CONDITION MISS: .*records "tampered"/);
+    });
+
+
     it("fills imported CRP jobs with none, leaves selected and console jobs alone, lists manual fixes, and re-runs to 0 — dry run rolled back, commit written, then a no-op", async () => {
       const fill = await importedJob(RUN, { from: "2024-04-01", to: "2025-03-31" });
       const calendar = await importedJob(RUN, { from: "2024-01-01", to: "2024-12-31" });
@@ -171,6 +205,8 @@ describe("JW-13 step 3: automatic datasets for imported CRP jobs, against a real
       assert.deepEqual([line(calendar.jobId).result, line(calendar.jobId).datasets], ["filled", ["Edition ds-2024"]]);
       assert.deepEqual([line(future.jobId).result, line(future.jobId).editions.map((e) => [e.datasetId, e.validTo])], ["filled", [["ds-2025", "2025-12-31"], ["ds-g2025", "2025-12-31"]]],
         "a 2027 reporting year takes each series' latest published edition — GB's from GB, GLOBAL's from GLOBAL");
+      assert.deepEqual(line(future.jobId).editions.map((e) => e.reason), [fallbackReason(2025), fallbackReason(2025)], "each fallback's recorded reason, read back in the run");
+      assert.deepEqual(line(calendar.jobId).editions.map((e) => e.reason), [ON_DAY_REASON]);
       assert.deepEqual([line(noWindow.jobId).manualKind, line(noEdition.jobId).manualKind, line(typo.jobId).manualKind], ["NO_WINDOW", "NO_EDITION", "IMPLAUSIBLE_WINDOW"]);
       assert.equal(dry.lines.some((item) => item.jobId === consoleJob.jobId), false);
       assert.deepEqual([dry.rerunCandidates, dry.rerunWouldFill], [3, 0], "the post-condition, inside the rolled-back run: only the manual fixes remain");
