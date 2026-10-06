@@ -79,16 +79,46 @@ test("saving keeps the drawer open on the row just created", async ({ page }) =>
   await page.getByRole("button", { name: /Add entry/ }).first().click();
   await expect(drawer(page)).toHaveAttribute("aria-label", /Add entry/);
 
-  // A label unique to this run, so the assertion cannot pass on a row left behind by an earlier one.
-  const label = `Gate gas ${Date.now()}`;
-  await drawer(page).getByPlaceholder(/Search this category/).fill(label);
-  await drawer(page).getByLabel("Quantity", { exact: true }).fill("4242");
+  // JW-9: the activity is a pick, not free text — typed, then Enter on the highlighted suggestion, which sets the
+  // activity and its factor and must not submit the form. A quantity unique to this run, so the assertion cannot
+  // pass on a row left behind by an earlier one (the label is the factor's, shared by every such row).
+  const quantity = String(10_000 + (Date.now() % 89_999));
+  const posts: string[] = [];
+  page.on("request", (request) => { if (request.method() === "POST" && request.url().includes("/scope-rows")) posts.push(request.url()); });
+  const search = drawer(page).getByRole("combobox", { name: /Activity/ });
+  await search.fill("Natural gas");
+  await expect(drawer(page).getByRole("listbox").getByRole("option", { name: /Natural gas — demonstration factor/ })).toBeVisible();
+  await search.press("Enter");
+  await expect(search).toHaveValue(/^Natural gas — demonstration factor/);
+  await drawer(page).getByLabel("Quantity", { exact: true }).fill(quantity);
+  // Enter picked the activity and sent nothing: a submit on Enter would have posted before the quantity was in.
+  expect(posts, "Enter in the search submitted the form").toHaveLength(0);
 
   await page.getByRole("button", { name: "Save entry" }).click();
 
-  // The drawer did not close, and it is now the *detail* drawer for the new row — a different kicker and
-  // the label just typed. Waiting on this is what makes the save's completion observable without a sleep.
-  await expect(drawer(page)).toHaveAttribute("aria-label", new RegExp(`Scope row · version \\d+: ${label}`));
+  // The drawer did not close, and it is now the *detail* drawer for the new row — a different kicker, the
+  // picked activity, and the quantity just typed. Waiting on this makes the save's completion observable
+  // without a sleep.
+  await expect(drawer(page)).toHaveAttribute("aria-label", /Scope row · version \d+: Natural gas — demonstration factor/);
+  await expect(drawer(page).locator(`input[value="${quantity}"]`)).toHaveCount(1);
+  expect(posts).toHaveLength(1);
+});
+
+test("Enter on text that matches no activity saves nothing, and Save says why (JW-9)", async ({ page }) => {
+  await openCard(page, "Purchased Electricity");
+  await page.getByRole("button", { name: /Add entry/ }).first().click();
+  await expect(drawer(page)).toHaveAttribute("aria-label", /2\.purchased-electricity · Purchased Electricity: Add entry/);
+  const posts: string[] = [];
+  page.on("request", (request) => { if (request.method() === "POST" && request.url().includes("/scope-rows")) posts.push(request.url()); });
+
+  const search = drawer(page).getByRole("combobox", { name: /Activity/ });
+  await search.fill("gas");
+  await expect(drawer(page).getByText(/No Purchased Electricity activity matches/)).toBeVisible();
+  await search.press("Enter");
+  await page.getByRole("button", { name: "Save entry" }).click();
+  await expect(drawer(page).getByRole("alert")).toContainText(/isn't one of Purchased Electricity's activities/);
+  await expect(drawer(page)).toHaveAttribute("aria-label", /Add entry/);
+  expect(posts, "nothing was sent to the write").toHaveLength(0);
 });
 
 test("clicking a row opens that row's drawer", async ({ page }) => {

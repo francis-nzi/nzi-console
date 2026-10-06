@@ -184,12 +184,14 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
   });
 
   it("still reconciles units: a declared per-litre factor is never applied to kilometres", async () => {
-    const created = await createScopeRow(database.pool, {
+    // Nothing is filled for a distance; before JW-9 the entry was then stored with no factor, and an entry needs a
+    // real factor now — so it is refused, never stored empty and never priced per litre.
+    await assert.rejects(() => createScopeRow(database.pool, {
       jobId: job, scope: "1", sourceLabel: "Fleet km", reportLabel: "Fleet km", categoryCode: "1.company-vehicles", quantity: 1000,
       unit: "km", datasetId: null, factorId: null, factorVersion: null, factorLabel: null, qualityTier: "measured",
       assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van" },
-    } as never, context());
-    assert.equal((await stored(created.data.rowId)).factor_id, null, "a per-litre factor was filled for a distance");
+    } as never, context()), (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"),
+    "a per-litre factor was filled for a distance, or the entry was stored empty");
   });
 
   // ── The portal ──────────────────────────────────────────────────────────────────────────────────────────

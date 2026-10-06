@@ -83,16 +83,28 @@ test.describe("DA4 — lean capture + drawer refine", () => {
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
 
+  // JW-9: the activity box is a combobox — its suggestions appear as you type, and only a pick (click or Enter on the
+  // highlighted one) sets the activity and its factor. Free text is never saved as an activity. Opens the list on a
+  // common letter and picks the first suggestion; null when the job has no factor for this category.
+  async function pickFirstActivity(form: import("@playwright/test").Locator): Promise<string | null> {
+    const search = form.getByRole("combobox").first();
+    for (const letter of ["e", "a", "o", "i"]) {
+      await search.fill(letter);
+      const first = form.getByRole("listbox").getByRole("option").first();
+      if (await first.count()) {
+        const label = (await first.innerText()).trim();
+        await search.press("Enter");
+        await expect(search).toHaveValue(label);
+        return label;
+      }
+    }
+    return null;
+  }
+
   test("picking a listed activity auto-matches its factor for confirmation", async ({ page }) => {
     const { form } = await openLeanCapture(page);
-
-    const activityInput = form.locator("input.nz-inp").first();
-    const options = form.locator("datalist option");
-    test.skip((await options.count()) === 0, "no factors scoped to this category on this job");
-
-    const label = await options.first().getAttribute("value");
-    expect(label).toBeTruthy();
-    await activityInput.fill(label!);
+    const label = await pickFirstActivity(form);
+    test.skip(label === null, "no factors scoped to this category on this job");
 
     const factorReview = form.locator(".nz-ef-factor-review");
     await expect(factorReview.locator(".nz-banner.ok")).toContainText(label!, { timeout: 10_000 });
@@ -101,10 +113,12 @@ test.describe("DA4 — lean capture + drawer refine", () => {
   test("accept match → qty → save creates the row; quality tier and evidence notes are then set in its drawer", async ({ page }) => {
     const { form, body, errors } = await openLeanCapture(page);
 
-    const marker = `e2e lean capture ${Date.now()}`;
-    await form.locator("input.nz-inp").first().fill(marker);
+    const label = await pickFirstActivity(form);
+    test.skip(label === null, "no factors scoped to this category on this job");
+    // A quantity unique to this run marks the row: the label is the factor's, shared by every row that uses it.
+    const marker = String(10_000 + (Date.now() % 89_999));
     const quantity = form.locator(".nz-ef-two input.nz-inp").first();
-    await quantity.fill("42");
+    await quantity.fill(marker);
 
     await form.getByRole("button", { name: "Save entry" }).click();
     await expect(form).toBeHidden({ timeout: 15_000 });

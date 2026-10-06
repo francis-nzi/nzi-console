@@ -1421,6 +1421,41 @@ function withDeclarative(evidence: ReturnType<typeof scopeEvidence>, declared: A
   };
 }
 
+/**
+ * JW-9 — a category entry needs a real factor (ruled: the quantity may wait, the factor may not). The one the row ends
+ * with, after declarative resolution has had its say: a client factor of the row's own scope, or an active factor in a
+ * dataset selected for this job whose scopes include the row's. Typed text that matched nothing arrives with no factor
+ * and is refused here, whatever the form did — Francis's "gas" in Purchased Electricity.
+ *
+ * "The row's own scope" is as fine as the factor data goes today: factors carry top-level scope tags only, so which
+ * category within a scope a factor belongs to is the mapping pass's to settle (JW-9-10 rulings). A switched-on
+ * category's declared-or-reasoned rule (Stop 2b) still applies on top, in `declarativeFactorFor`.
+ */
+async function requireEntryFactor(db: Queryable, organisationId: string, jobId: string, scope: string,
+  factor: Pick<ScopeRowWriteFields, "factorSource" | "factorId" | "datasetId" | "clientFactorId">): Promise<void> {
+  const root = scope.split(".")[0]!;
+  if ((factor.factorSource ?? "dataset") === "client") {
+    const client = (await db.query<{ scope: string }>(
+      `SELECT cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (cf.organisation_id, cf.client_id)
+        WHERE cf.organisation_id = $1 AND j.job_id = $2 AND cf.client_factor_id = $3 AND (cf.job_id IS NULL OR cf.job_id = j.job_id) AND cf.archived = false`,
+      [organisationId, jobId, factor.clientFactorId ?? ""])).rows[0];
+    if (!client) throw new CommandValidationError([{ field: "clientFactorId", code: "FACTOR_REQUIRED", message: "Pick this category's factor — an entry needs a real factor; the quantity can wait." }]);
+    if (client.scope.split(".")[0] !== root) throw new CommandValidationError([{ field: "clientFactorId", code: "FACTOR_NOT_IN_CATEGORY", message: `That client factor is a Scope ${client.scope.split(".")[0]} factor, so it cannot be this Scope ${root} entry's.` }]);
+    return;
+  }
+  const sent = factor.factorId?.trim();
+  if (!sent) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_REQUIRED", message: "Pick this category's factor — an entry needs a real factor; the quantity can wait." }]);
+  const found = (await db.query<{ label: string; scopes: string[] }>(
+    `/* nzi:entry-factor */ SELECT f.label, f.scopes FROM nzi_console.job_dataset_selections s
+       JOIN nzi_console.emission_factors_display f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
+      WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.factor_id = $3 AND f.dataset_id = $4 AND f.active`,
+    [organisationId, jobId, sent, factor.datasetId ?? ""])).rows[0];
+  if (!found) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_NOT_SELECTED", message: `'${sent}' is not an active factor in a dataset selected for this job.` }]);
+  if (!found.scopes.some((tag) => tag.split(".")[0] === root)) {
+    throw new CommandValidationError([{ field: "factorId", code: "FACTOR_NOT_IN_CATEGORY", message: `'${found.label}' is not a Scope ${root} factor, so it cannot be this entry's.` }]);
+  }
+}
+
 export async function createScopeRow(
   pool: PoolLike,
   input: CommandInputMap["scope.row.create"],
@@ -1443,6 +1478,10 @@ export async function createScopeRow(
       // the input untouched — for a category whose switch (0120) is off.
       const declared = await declarativeFactorFor(db, context, input, categoryCode);
       const effective = { ...input, ...declared.factor };
+      // A category entry — the accordion's Add entry, and any create filed under a category. (The older "Add emissions
+      // source" form requires its factor in the form; gating uncategorised creates here would rewrite the monthly/label
+      // characterisation ledger, which is its own ruling.)
+      if (categoryCode) await requireEntryFactor(db, context.organisationId, input.jobId, input.scope, effective);
       const evidence = withDeclarative(scopeEvidence({...effective,quantity:activity.quantity,monthlyActivity:activity.slots}, context), declared);
       // Units reconciled before anything is written: an entry whose unit cannot stand for the
       // factor's own is refused rather than stored and multiplied later (NZC-146).

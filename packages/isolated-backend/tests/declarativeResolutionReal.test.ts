@@ -125,15 +125,20 @@ describe("the write path resolves declaratively where a category is switched on,
 
   // ── Off: untouched ───────────────────────────────────────────────────────────────────────────────────
 
-  it("stores exactly what it was sent while the category is off — even a factor it would refuse", async () => switchedOff(["2.purchased-electricity"], async () => {
-    // The T&D factor as a Scope 2 primary is wrong, and the path before 0121 takes it. Off must mean exactly that.
-    const tnd = await createScopeRow(pool, electricity({ datasetId: "synthetic-gb-2026", factorId: "uk-ghg-13_402_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "T&D" }), context());
-    const row = await stored(tnd.data.rowId);
-    assert.equal(row.factor_id, "uk-ghg-13_402_4000_5_1");
+  it("stores exactly what it was sent while the category is off — resolution adds nothing; JW-9's entry gate still applies", async () => switchedOff(["2.purchased-electricity"], async () => {
+    // Off means off for declarative resolution: a sent factor is stored as sent, with no provenance of a decision.
+    const sent = await createScopeRow(pool, electricity(gridFactor), context());
+    const row = await stored(sent.data.rowId);
+    assert.equal(row.factor_id, "uk-ghg-7_400_4000_5_1");
     assert.equal("declarativeResolution" in row.provenance_json, false, "a provenance key was added to a row in an un-enabled category");
 
-    const empty = await createScopeRow(pool, electricity(), context());
-    assert.equal((await stored(empty.data.rowId)).factor_id, null, "a factor was filled in for an un-enabled category");
+    // JW-9, whatever the switch: an entry needs a real factor of its own scope. Before, the T&D factor (Scope 3) was
+    // stored as a Scope 2 primary and an entry with no factor was stored empty; both are refused at the write now —
+    // and with the category off, nothing is filled in to rescue the empty one.
+    await assert.rejects(() => createScopeRow(pool, electricity({ datasetId: "synthetic-gb-2026", factorId: "uk-ghg-13_402_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "T&D" }), context()),
+      (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_NOT_IN_CATEGORY"));
+    await assert.rejects(() => createScopeRow(pool, electricity(), context()),
+      (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"));
   }));
 
   // ── On: the F1 rule ──────────────────────────────────────────────────────────────────────────────────
@@ -277,10 +282,11 @@ describe("the write path resolves declaratively where a category is switched on,
     // declines it, and litres is refused by the category before resolution matters. Until the flow has a
     // per-distance rule, the sub-flow is correct and unreachable through the write path.
     await enabled(["1.company-vehicles", "3.6"], async () => {
-      const created = await createScopeRow(pool, travel(diesel), context());
-      const row = await stored(created.data.rowId);
-      assert.equal(row.factor_id, null, "business travel resolved a factor it has no accepted unit for");
-      assert.equal(row.provenance_json.declarativeResolution.decision, "search");
+      // Resolution still declines (nothing is filled). Before JW-9 the entry was then stored with no factor; an entry
+      // needs a real factor now, so it is refused at the write and the person picks one.
+      await assert.rejects(() => createScopeRow(pool, travel(diesel), context()),
+        (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"),
+        "business travel resolved a factor it has no accepted unit for, or stored an entry with none");
       await assert.rejects(() => createScopeRow(pool, travel({ ...diesel, unit: "litres" }), context()),
         (error: any) => error.issues?.some((issue: any) => issue.code === "UNIT_NOT_ACCEPTED"));
     });
