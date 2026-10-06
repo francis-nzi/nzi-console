@@ -291,6 +291,14 @@ export function entryHasFactor(fields: Pick<ScopeRowWriteFields, "factorSource" 
  * The activity search's results (JW-9): the category's options whose label contains what was typed, case-insensitive.
  * A suggestion list, never an acceptance — only a pick sets the activity and its factor.
  */
+/**
+ * A factor option as a select shows it: its label, then its unit — unless the label already ends with that unit, as the
+ * CRM's options do (`entryFactorRefsFor` writes "Natural gas · kWh"), which read "kWh · kWh" before.
+ */
+export function factorOptionText(option: { label: string; unit?: string }): string {
+  return option.unit && !option.label.endsWith(` · ${option.unit}`) ? `${option.label} · ${option.unit}` : option.label;
+}
+
 export function searchActivityOptions<T extends { label: string }>(options: readonly T[], text: string, limit = 8): T[] {
   const needle = text.trim().toLowerCase();
   return (needle ? options.filter((option) => option.label.toLowerCase().includes(needle)) : [...options]).slice(0, limit);

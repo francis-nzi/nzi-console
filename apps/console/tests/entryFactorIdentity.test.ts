@@ -73,3 +73,13 @@ describe("the picker names each factor's dataset before it is chosen (DATASET-CU
     assert.deepEqual([epd!.provenance, epd!.preferred], ["Client factor", false]);
   });
 });
+
+describe("the factor select names the unit once", () => {
+  it("adds the unit only when the label does not already end with it", async () => {
+    const { factorOptionText } = await import("../app/jobs/emissionEntryModel");
+    assert.equal(factorOptionText({ label: "Natural gas · kWh", unit: "kWh" }), "Natural gas · kWh", "the CRM's label already carries it — never 'kWh · kWh'");
+    assert.equal(factorOptionText({ label: "Natural gas", unit: "kWh" }), "Natural gas · kWh", "a label without it gains it");
+    assert.equal(factorOptionText({ label: "Natural gas" }), "Natural gas");
+    assert.equal(factorOptionText({ label: "Diesel · litres", unit: "kWh" }), "Diesel · litres · kWh", "a different unit is still shown");
+  });
+});
