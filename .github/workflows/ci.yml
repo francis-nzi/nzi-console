@@ -619,6 +619,10 @@ jobs:
       # cites but may not move onto one; acceptance stands onto a row already citing it and refuses a move onto one.
       - name: The portal's record writes and acceptance refuse a new citation of an archived site
         run: npx tsx --test packages/isolated-backend/tests/portalRecordArchivedSiteReal.test.ts
+      # Roll-forward and archived sites (ruled): a rolled-forward row is a new row, so an archived site is dropped to null;
+      # a live site is carried forward, and the prior year's rows keep theirs.
+      - name: Roll-forward drops an archived site and carries a live one
+        run: npx tsx --test packages/isolated-backend/tests/rollforwardArchivedSiteReal.test.ts
       # Phase 1b (0158): a client's intensity target per metric — active metrics only, versioned and append-only, a moved
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero

@@ -1317,9 +1317,11 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
         }
       }
     }
+    // A rolled-forward row is a new row, so it may not cite an archived site (ruled 6 Oct): an archived site is dropped
+    // to null, exactly as a site that isn't the new job's client's is.
     let siteId=row.site_id;
     if(siteId){
-      const site=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[context.organisationId,input.jobId,siteId]);
+      const site=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3 AND NOT s.archived`,[context.organisationId,input.jobId,siteId]);
       if(!site.rows[0])siteId=null;
     }
     let categoryId=row.purchased_goods_category_id;
