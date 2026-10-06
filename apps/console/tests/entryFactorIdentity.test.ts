@@ -61,3 +61,15 @@ describe("the capture form sends the factor's own id", () => {
     assert.ok(!/entryFactorRefs\s*=\s*factors\.map/.test(source), "the workspace still maps factors to options inline");
   });
 });
+
+describe("the picker names each factor's dataset before it is chosen (DATASET-CURRENCY §2)", () => {
+  it("carries the dataset's derived label and the preferred mark onto the form's option; a client factor says so", () => {
+    const [desnz, epd] = entryFactorRefsFor([
+      { factorSource: "dataset", datasetId: "uk-ghg-gb-2025", clientFactorId: null, factorId: "gas", label: "Natural gas", activityUnit: "kWh", scopes: ["1"],
+        datasetVersion: "tmpai4mgnde.csv", datasetLabel: "DESNZ GB 2025", preferred: true },
+      { factorSource: "client", datasetId: null, clientFactorId: "cf-epd", factorId: "epd-panel", label: "Panel EPD", activityUnit: "m²", scopes: ["3"], datasetVersion: null },
+    ]);
+    assert.deepEqual([desnz!.provenance, desnz!.preferred], ["DESNZ GB 2025", true]);
+    assert.deepEqual([epd!.provenance, epd!.preferred], ["Client factor", false]);
+  });
+});

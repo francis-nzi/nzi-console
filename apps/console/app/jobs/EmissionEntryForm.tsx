@@ -300,6 +300,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                           // Picked on mouse-down, before the input's blur closes the list.
                           onMouseDown={event => { event.preventDefault(); pickActivity(option); }}>
                           <b>{option.label}</b>
+                          {/* DATASET-CURRENCY §2: which dataset this factor is from, before it is chosen. */}
+                          {option.provenance ? <span className="nz-template-meta nz-factor-provenance">{option.provenance}{option.preferred ? <span className="nz-st done" style={{ marginLeft: 6 }}>Preferred</span> : null}</span> : null}
                         </button>
                       </li>
                     ))}
@@ -398,7 +400,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     factorOverrideReason: declared && id === declared.optionId ? "" : draft.factorOverrideReason });
                 }}>
                   <option value="">Select a factor</option>
-                  {factors.map(option => <option key={option.id} value={option.id}>{option.label}{option.unit ? ` · ${option.unit}` : ""}</option>)}
+                  {factors.map(option => <option key={option.id} value={option.id}>{option.label}{option.unit ? ` · ${option.unit}` : ""}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
                   <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option>
                 </select>
                 <span className="nz-hint">{declared ? `Declared for this category: ${declared.label}` : field.hint}</span>

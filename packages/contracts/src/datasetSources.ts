@@ -48,6 +48,18 @@ export function datasetSourceOf(datasetId: string): DatasetSource | null {
 export const isPreferredDataset = (datasetId: string | null, countryCode: string): boolean =>
   datasetId !== null && (datasetSourceOf(datasetId)?.preferredFor.includes(countryCode) ?? false);
 
+/**
+ * How a dataset is named to a person (DATASET-CURRENCY §2, ruled): **source · country · year**, derived — "DESNZ GB 2025".
+ * The stored `name` is left exactly as imported (an upload file name, `tmpai4mgnde.csv`; or one name shared by every
+ * year), so nothing imported is mutated. The source is the registry's label for the id's family; an unregistered dataset
+ * falls back to its `source_name`, then its id. The year is the edition's validity — one year, or a span ("2019–2025").
+ */
+export function datasetDisplayLabel(dataset: { datasetId: string; countryCode: string; validFrom: string; validTo: string; sourceName?: string | null }): string {
+  const source = datasetSourceOf(dataset.datasetId)?.label ?? (dataset.sourceName?.trim() || dataset.datasetId);
+  const from = dataset.validFrom.slice(0, 4), to = dataset.validTo.slice(0, 4);
+  return `${source} ${dataset.countryCode} ${from === to ? to : `${from}–${to}`}`;
+}
+
 /** Sort key: the preferred source first, then the other registered sources in registry order, then anything else. */
 export function datasetPreferenceRank(datasetId: string | null, countryCode: string): number {
   if (datasetId === null) return DATASET_SOURCES.length + 1;

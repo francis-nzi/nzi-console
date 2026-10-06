@@ -8,7 +8,7 @@ const factor = (over: Partial<FactorOption> = {}): FactorOption => ({
   factorId: "f-1", label: "Diesel — LGV", activityUnit: "litres", kgco2ePerUnit: 2.6,
   scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }],
   selectionSource: "automatic", factorSource: "dataset", clientFactorId: null, evidenceHash: null,
-  synthetic: true, warnings: [], preferred: false, ...over,
+  synthetic: true, warnings: [], preferred: false, datasetLabel: "DESNZ GB 2026", ...over,
 });
 
 describe("fuzzyScore (NZC-062)", () => {

@@ -117,7 +117,7 @@ export function TemplateSearchBar({ jobId, factors, siteId, siteLabel, onRowCrea
               >
                 <b>{result.factor.label}</b>
                 <span className="nz-template-meta">
-                  Scope {result.scope} · {result.categoryLabel} · {result.factor.activityUnit} · {result.factor.datasetName}
+                  Scope {result.scope} · {result.categoryLabel} · {result.factor.activityUnit} · {result.factor.datasetLabel}
                 </span>
               </button>
             </li>

@@ -87,7 +87,10 @@ test("saving keeps the drawer open on the row just created", async ({ page }) =>
   page.on("request", (request) => { if (request.method() === "POST" && request.url().includes("/scope-rows")) posts.push(request.url()); });
   const search = drawer(page).getByRole("combobox", { name: /Activity/ });
   await search.fill("Natural gas");
-  await expect(drawer(page).getByRole("listbox").getByRole("option", { name: /Natural gas — demonstration factor/ })).toBeVisible();
+  const gasOption = drawer(page).getByRole("listbox").getByRole("option", { name: /Natural gas — demonstration factor/ });
+  await expect(gasOption).toBeVisible();
+  // DATASET-CURRENCY §2: the option names its dataset — source · country · year — before it is chosen.
+  await expect(gasOption.locator(".nz-factor-provenance")).toContainText(/GB 2026/);
   await search.press("Enter");
   await expect(search).toHaveValue(/^Natural gas — demonstration factor/);
   await drawer(page).getByLabel("Quantity", { exact: true }).fill(quantity);

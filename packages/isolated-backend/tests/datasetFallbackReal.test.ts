@@ -4,7 +4,7 @@ import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { automaticDatasetsFor, fallbackReason, ON_DAY_REASON } from "../src/datasetSelection";
 import { createJob } from "../src/postgresCommands";
-import { listJobDatasetOptions, listJobFactorOptions } from "../src/readModels";
+import { listDatasetRegistry, listJobDatasetOptions, listJobFactorOptions } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
 
 /**
@@ -74,6 +74,8 @@ describe("automatic datasets: the reporting year's edition, else the latest avai
   it("the factor picker marks DESNZ preferred and lists it first where two selected datasets offer the same factor", async () => {
     const jobId = await crpJob("2025-04-01", "2026-03-31");   // April–March: the 2026 window's DESNZ is a draft, so 2025's
     const options = (await withTenantRead(database.pool, ORG, (db) => listJobFactorOptions(db, jobId))).filter((o) => o.label === "Natural gas");
+    assert.deepEqual(options.map((o) => o.datasetLabel), ["DESNZ GB 2025", "NZI GB 2025", "CEDA GB 2025", "test GB 2025"],
+      "each factor names its dataset as source · country · year — never the imported 'upload.csv'");
     assert.deepEqual(options.map((o) => [o.datasetId, o.preferred]), [["uk-ghg-gb-2025", true], ["nzi-gb-2025", false], ["ceda-gb-2025", false], ["mix-2025", false]],
       "the preferred source, then the registry's order, then an unregistered source — never alphabetical by id");
   });
@@ -84,6 +86,13 @@ describe("automatic datasets: the reporting year's edition, else the latest avai
     const listed = await withTenantRead(database.pool, ORG, (db) => listJobDatasetOptions(db, jobId));
     const warnings = (id: string) => listed.find((d) => d.datasetId === id)!.warnings;
     assert.deepEqual(warnings("uk-ghg-gb-2025"), [], "the automatic fallback edition");
+    assert.equal(listed.find((d) => d.datasetId === "uk-ghg-gb-2025")!.label, "DESNZ GB 2025", "the job's datasets panel names it by source · country · year");
+    assert.deepEqual(listed.filter((d) => d.selected).map((d) => d.datasetId).slice(0, 2), ["uk-ghg-gb-2025", "uk-ghg-gb-2024"], "the preferred source's datasets first — the automatic edition and the manual one");
+    assert.equal(listed.findIndex((d) => !d.selected) > listed.map((d) => d.selected).lastIndexOf(true), true, "selected before unselected");
+    const registry = await withTenantRead(database.pool, ORG, (db) => listDatasetRegistry(db));
+    assert.equal(registry.datasets.find((d) => d.id === "ice-gb-2026")!.label, "ICE GB 2026", "and so does the Datasets board");
+    assert.deepEqual(registry.datasets.filter((d) => d.validFrom.startsWith("2025")).map((d) => d.label).slice(0, 3), ["DESNZ GB 2025", "NZI GB 2025", "CEDA GB 2025"], "the board lists each year newest first, the preferred source first");
+    assert.equal(registry.datasets.find((d) => d.id === "ice-gb-2026")!.name, "upload.csv", "the imported name is left as it was");
     assert.ok(warnings("uk-ghg-gb-2024").some((w) => /complete reporting period/.test(w)), "the manual one still warns");
   });
 });

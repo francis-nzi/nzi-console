@@ -35,7 +35,11 @@ export type EmissionEntryDraft = {
   monthly: Record<string, string>;
 };
 
-export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean };
+export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean;
+  /** DATASET-CURRENCY §2: which dataset the factor comes from, as a person reads it — "DESNZ GB 2025" — shown before it is chosen. */
+  provenance?: string;
+  /** From the preferred source for the job's country (DESNZ for GB). */
+  preferred?: boolean };
 
 /** Result of the two-step DVLA registration lookup (UX1 lookup). */
 export type RegistrationLookupOutcome =
@@ -166,12 +170,15 @@ export type EntryFactorRef = {
   datasetVersion?: string | null;
   factorSource?: "dataset" | "client";
   clientFactorId?: string | null;
+  provenance?: string;
+  preferred?: boolean;
 };
 
 /** What the workspace knows about a factor, from the job's factor library. */
 export type EntryFactorSource = {
   factorSource: "dataset" | "client"; datasetId: string | null; clientFactorId: string | null; factorId: string;
   label: string; activityUnit: string; synthetic?: boolean; scopes: string[]; datasetVersion: string | null;
+  datasetLabel?: string; preferred?: boolean;
 };
 
 /**
@@ -192,6 +199,8 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
     datasetVersion: f.datasetVersion,
     factorSource: f.factorSource,
     clientFactorId: f.clientFactorId,
+    provenance: f.datasetLabel ?? (f.factorSource === "client" ? "Client factor" : undefined),
+    preferred: f.preferred ?? false,
   }));
 }
 
