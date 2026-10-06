@@ -29,6 +29,7 @@
     "load:v7-time": "tsx scripts/load-v7-time.ts",
     "derive:baselines": "tsx scripts/derive-baselines.ts",
     "fill:net-zero-targets": "tsx scripts/fill-net-zero-targets.ts",
+    "discard:scope-rows": "tsx scripts/discard-scope-rows.ts",
     "load:v7-org-settings": "tsx scripts/load-v7-org-settings.ts",
     "load:v7-currencies": "tsx scripts/load-v7-currencies.ts",
     "load:v7-job-items": "tsx scripts/load-v7-job-items.ts",

@@ -116,6 +116,7 @@ export * from "./clientLogo";
 export * from "./clientLogoFetch";
 export * from "./geolocation";
 export * from "./clientTargets";
+export * from "./scopeRowState";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";
 export {

@@ -49,6 +49,9 @@ export type CommandKey =
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
+  | "scope.row.discard"
+  | "scope.row.deactivate"
+  | "scope.row.reactivate"
   | "scope.review.approve"
   | "scope.review.reject"
   | "report.publish"
@@ -573,6 +576,11 @@ export type CommandInputMap = {
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
   "scope.row.calculate": { jobId: string; rowId: string; expectedVersion: number };
+  /** JW-14 — remove a console draft that holds no saved data (no quantity, never calculated, never reviewed). */
+  "scope.row.discard": { jobId: string; rowId: string; expectedVersion: number };
+  /** JW-14 — take a console row with data out of entry and totals; kept, with its figures and audit (reason required). */
+  "scope.row.deactivate": { jobId: string; rowId: string; expectedVersion: number };
+  "scope.row.reactivate": { jobId: string; rowId: string; expectedVersion: number };
   "scope.review.approve": { jobId: string; rowIds: string[]; expectedReviewVersion: number; reviewerNote?: string };
   "scope.review.reject": { jobId: string; rowIds: string[]; expectedReviewVersion: number; reviewerNote: string };
   "report.publish": { reportVersionId: string; expectedStatus: "validated"; manifestVersion: number; reviewedSnapshotId: string; expectedVersion: number };
@@ -939,6 +947,27 @@ const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
   else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
+/** JW-14 — a row-state command names the row and the version it acts on. */
+const scopeRowStateIssues = (input: { jobId: string; rowId: string; expectedVersion: number }, context: CommandContext, reasonRequired: boolean) => {
+  const issues = baseIssues(context, reasonRequired);
+  required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+  return issues;
+};
+
+/**
+ * JW-14 — whether a row is a draft that holds no saved data, and so may be discarded outright: captured in the console
+ * (never imported from v7), no quantity in any form, never calculated or overridden, never reviewed. A factor alone is
+ * not saved data — since JW-9 every new entry carries one. The write re-checks this, and also refuses a row a portal
+ * bucket or another row still refers to.
+ */
+export function scopeRowIsDiscardable(row: Pick<ScopeRowReadModel, "origin" | "quantity" | "monthlyActivity" | "calculatedTco2e" | "overrideTco2e" | "reviewStatus" | "reviewedBy">): boolean {
+  return row.origin !== "migrated"
+    && row.quantity == null
+    && !(row.monthlyActivity ?? []).some((slot) => slot.quantity != null)
+    && row.calculatedTco2e == null && row.overrideTco2e == null
+    && row.reviewStatus === "pending" && !row.reviewedBy;
+}
 /** A lookup value's own fields: a managed category, a label within bounds, an optional short code, a whole sort order. */
 const lookupIssues = (issues: CommandIssue[], input: { categoryKey: string; label: string; code?: string | null; sortOrder?: number }) => {
   if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
@@ -1414,6 +1443,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.update": { key: "scope.row.update", label: "Update scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + audit + outbox + idempotency", auditAction: "scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  "scope.row.discard": { key: "scope.row.discard", label: "Discard a draft scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "draft-only hard delete (no saved data) + audit + outbox + idempotency", auditAction: "scope_row_discarded", validate: (input, context) => scopeRowStateIssues(input, context, false) },
+  "scope.row.deactivate": { key: "scope.row.deactivate", label: "Deactivate a scope row", permission: "scoperow.edit", reasonRequired: true, transaction: "deactivation (never deletion; figures kept) + audit + outbox + idempotency", auditAction: "scope_row_deactivated", validate: (input, context) => scopeRowStateIssues(input, context, true) },
+  "scope.row.reactivate": { key: "scope.row.reactivate", label: "Reactivate a scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "reactivation + audit + outbox + idempotency", auditAction: "scope_row_reactivated", validate: (input, context) => scopeRowStateIssues(input, context, false) },
   "scope.row.calculate": { key: "scope.row.calculate", label: "Calculate scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "factor validation + numeric calculation + lineage", auditAction: "scope_row_calculated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.review.approve": { key: "scope.review.approve", label: "Approve scope rows", permission: "snapshot.review", reasonRequired: false, transaction: "scope rows + review history", auditAction: "scope_rows_approved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); if (!input.rowIds.length) issues.push({ field: "rowIds", code: "REQUIRED", message: "Select at least one scope row." }); if (!positive(input.expectedReviewVersion)) issues.push({ field: "expectedReviewVersion", code: "INVALID", message: "Expected review version must be positive." }); return issues; } },
   "scope.review.reject": { key: "scope.review.reject", label: "Reject scope rows", permission: "snapshot.review", reasonRequired: false, transaction: "scope rows + review history", auditAction: "scope_rows_rejected", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues,"reviewerNote",input.reviewerNote);if (!input.rowIds.length) issues.push({ field: "rowIds", code: "REQUIRED", message: "Select at least one scope row." }); if (!positive(input.expectedReviewVersion)) issues.push({ field: "expectedReviewVersion", code: "INVALID", message: "Expected review version must be positive." }); return issues; } },
