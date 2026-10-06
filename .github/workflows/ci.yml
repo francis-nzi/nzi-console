@@ -607,6 +607,10 @@ jobs:
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
         run: npx tsx --test packages/isolated-backend/tests/siteArchiveReal.test.ts
+      # The archived-site write check (ruled): a row may cite an archived site only if it already did — new rows and
+      # moves onto one are refused on both create paths and on edit, keeping one is allowed, unarchiving lifts it.
+      - name: An archived site refuses new citations but keeps the rows that already cite it
+        run: npx tsx --test packages/isolated-backend/tests/siteArchiveWriteCheckReal.test.ts
       # Phase 1b (0158): a client's intensity target per metric — active metrics only, versioned and append-only, a moved
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero
