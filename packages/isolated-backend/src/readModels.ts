@@ -7,10 +7,11 @@ import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues }
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
+import { getClientReportingTemplate, listReportingTemplateCategories } from "./clientReportingTemplateRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { issuerOf, type IssuerColumns } from "./reportCompositions";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { resolveReportLabel } from "@nzi/contracts";
@@ -279,7 +280,7 @@ export function resolveYearDenominators(input: {
  */
 export type ClientWorkspacePart =
   | "contacts" | "contactConsent" | "reports" | "messages" | "files"
-  | "srs" | "intensity" | "strategies";
+  | "srs" | "intensity" | "strategies" | "reportingTemplate";
 
 /** What could not be read, and why — in place of a value that would be a guess. */
 export type ClientWorkspaceDegradation = { part: ClientWorkspacePart; reason: string };
@@ -300,6 +301,7 @@ const degradedReasons: Record<ClientWorkspacePart, string> = {
   srs: "The readiness assessment could not be read.",
   intensity: "Intensity measures could not be read.",
   strategies: "The reduction plan could not be read.",
+  reportingTemplate: "The reporting template could not be read, so none is shown here.",
 };
 
 export type ClientWorkspaceReadModel = {
@@ -348,6 +350,8 @@ export type ClientWorkspaceReadModel = {
   intensityMetrics: IntensityMetricDefinition[];
   /** Phase 1b (0158) — the client's intensity targets in force, one per metric, shown beside net zero. */
   intensityTargets: ClientIntensityTarget[];
+  /** Phase 1c (0159) — the client's reporting template in force (or none), and the categories a line may be filed under. */
+  reportingTemplate: ClientReportingTemplateReadModel & { categories: Array<{ code: string; scope: ReportingTemplateScope; name: string }> };
   /**
    * Adjunct parts that could not be read this time. Empty in the normal case.
    *
@@ -402,6 +406,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
     .then((result) => result.rows.map((row) => ({ id: row.site_id, name: row.name, version: row.version })), () => [] as Array<{ id: string; name: string; version: number }>);
   const intensityTargets = await adjunct("intensity", [] as ClientIntensityTarget[], listClientIntensityTargets(db, clientId));
+  const reportingTemplate = await adjunct("reportingTemplate", { current: null, latestVersion: 0, categories: [] } as ClientWorkspaceReadModel["reportingTemplate"],
+    Promise.all([getClientReportingTemplate(db, clientId), listReportingTemplateCategories(db)]).then(([template, categories]) => ({ ...template, categories })));
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
   // Every year that has an assured snapshot, oldest first — what the pathway plots as actual
@@ -462,6 +468,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     strategies: { levers, library: libraryStrategies, plan: clientStrategies },
     intensityMetrics,
     intensityTargets,
+    reportingTemplate,
   };
 }
 

@@ -28,6 +28,7 @@ import {
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
+import { REPORTING_TEMPLATE_LABEL_MAX, REPORTING_TEMPLATE_MAX_LINES, reportingTemplateCategoryScope, type ReportingTemplateLineInput } from "./reportingTemplate";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
@@ -73,6 +74,9 @@ export type CommandKey =
   | "client.intensityMetric.deactivate"
   | "client.intensityTarget.set"
   | "client.intensityTarget.deactivate"
+  | "client.reportingTemplate.set"
+  | "client.reportingTemplate.initialiseFromJob"
+  | "client.reportingTemplate.deactivate"
   | "job.intensityValue.set"
   | "strategy.library.upsert"
   | "strategy.library.deactivate"
@@ -653,6 +657,14 @@ export type CommandInputMap = {
   "client.intensityTarget.set": { clientId: string; metricKey: string; expectedVersion: number; baselineYear: number; baselineIntensity: number;
     interimYear: number | null; interimReductionPct: number | null; targetYear: number | null; targetReductionPct: number | null };
   "client.intensityTarget.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
+  /**
+   * Phase 1c (0159) — the client's reporting template, as the next whole version: every line, in order. expectedVersion
+   * is the latest version (0 for the first), withdrawn or not.
+   */
+  "client.reportingTemplate.set": { clientId: string; expectedVersion: number; lines: ReportingTemplateLineInput[] };
+  /** Build the next version from one of the client's CRP jobs: its enabled console rows, and its v7 history "to file". */
+  "client.reportingTemplate.initialiseFromJob": { clientId: string; expectedVersion: number; jobId: string };
+  "client.reportingTemplate.deactivate": { clientId: string; expectedVersion: number };
   /** Record one metric's annual value on a job, for one reporting year. */
   "job.intensityValue.set": {
     jobId: string; reportingYear: number; metricKey: string; value: number | null;
@@ -982,6 +994,30 @@ export function scopeRowIsDiscardable(row: Pick<ScopeRowReadModel, "origin" | "q
     && !(row.monthlyActivity ?? []).some((slot) => slot.quantity != null)
     && row.calculatedTco2e == null && row.overrideTco2e == null
     && row.reviewStatus === "pending" && !row.reviewedBy;
+}
+/**
+ * Phase 1c — a reporting template's lines, each whole: a scope, an optional category of that scope, a source label, and
+ * an optional factor named within its dataset. The table holds the same line (0159); this says which line, and why.
+ */
+export function reportingTemplateLineIssues(lines: unknown): CommandIssue[] {
+  if (!Array.isArray(lines)) return [{ field: "lines", code: "INVALID", message: "The template's lines are a list." }];
+  if (lines.length === 0) return [{ field: "lines", code: "REQUIRED", message: "A template needs at least one line — to clear it, withdraw it." }];
+  if (lines.length > REPORTING_TEMPLATE_MAX_LINES) return [{ field: "lines", code: "TOO_MANY", message: `A template holds at most ${REPORTING_TEMPLATE_MAX_LINES} lines.` }];
+  const issues: CommandIssue[] = [];
+  const optionalText = (value: unknown) => value === null || (typeof value === "string" && value.trim() !== "" && value.trim().length <= REPORTING_TEMPLATE_LABEL_MAX);
+  lines.forEach((line: Partial<ReportingTemplateLineInput> | null, index) => {
+    const at = (name: string) => `lines[${index}].${name}`;
+    if (!line || typeof line !== "object") { issues.push({ field: `lines[${index}]`, code: "INVALID", message: `Line ${index + 1} is not a line.` }); return; }
+    if (!oneOf(line.scope, ["1", "2", "3"] as const)) issues.push({ field: at("scope"), code: "INVALID", message: `Line ${index + 1}: the scope is 1, 2 or 3.` });
+    if (!(typeof line.sourceLabel === "string" && line.sourceLabel.trim() !== "")) issues.push({ field: at("sourceLabel"), code: "REQUIRED", message: `Line ${index + 1} needs a source label.` });
+    else if (line.sourceLabel.trim().length > REPORTING_TEMPLATE_LABEL_MAX) issues.push({ field: at("sourceLabel"), code: "TOO_LONG", message: `Line ${index + 1}: a label is at most ${REPORTING_TEMPLATE_LABEL_MAX} characters.` });
+    if (!optionalText(line.reportLabel ?? null)) issues.push({ field: at("reportLabel"), code: "INVALID", message: `Line ${index + 1}: the report label is text, or left empty.` });
+    if (!optionalText(line.unit ?? null)) issues.push({ field: at("unit"), code: "INVALID", message: `Line ${index + 1}: the unit is text, or left empty.` });
+    const category = line.categoryCode ?? null;
+    if (category !== null && (typeof category !== "string" || reportingTemplateCategoryScope(category) !== line.scope)) issues.push({ field: at("categoryCode"), code: "CATEGORY_SCOPE", message: `Line ${index + 1}: its category belongs to another scope.` });
+    if ((line.factorId ?? null) !== null && (line.datasetId ?? null) === null) issues.push({ field: at("factorId"), code: "FACTOR_DATASET", message: `Line ${index + 1}: a factor is named within its dataset.` });
+  });
+  return issues.slice(0, 20);
 }
 /** A lookup value's own fields: a managed category, a label within bounds, an optional short code, a whole sort order. */
 const lookupIssues = (issues: CommandIssue[], input: { categoryKey: string; label: string; code?: string | null; sortOrder?: number }) => {
@@ -1595,6 +1631,26 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, true);
     required(issues, "clientId", input.clientId);
     required(issues, "metricKey", input.metricKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
+    return issues;
+  } },
+  "client.reportingTemplate.set": { key: "client.reportingTemplate.set", label: "Set the reporting template", permission: "client.edit", reasonRequired: false, transaction: "versioned template (header + lines) + audit + outbox + idempotency", auditAction: "client_reporting_template_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    issues.push(...reportingTemplateLineIssues(input.lines));
+    return issues;
+  } },
+  "client.reportingTemplate.initialiseFromJob": { key: "client.reportingTemplate.initialiseFromJob", label: "Initialise the reporting template from a job", permission: "client.edit", reasonRequired: false, transaction: "versioned template (header + lines from the job's rows) + audit + outbox + idempotency", auditAction: "client_reporting_template_initialised", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "jobId", input.jobId);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "client.reportingTemplate.deactivate": { key: "client.reportingTemplate.deactivate", label: "Withdraw the reporting template", permission: "client.edit", reasonRequired: true, transaction: "versioned template (inactive, no lines) + audit + outbox + idempotency", auditAction: "client_reporting_template_deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "clientId", input.clientId);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." });
     return issues;
   } },
