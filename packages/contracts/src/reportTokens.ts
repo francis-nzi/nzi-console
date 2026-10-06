@@ -101,8 +101,8 @@ export function resolveReportToken(key: string, snapshot: TokenSnapshot): Resolv
       const it = snapshot.intensityTarget;
       if (!it) return unresolved("No intensity target is set for this job.");
       const denominator = it.reportingDenominator;
-      if (denominator === null || !(denominator > 0)) return unresolved("The reporting denominator is unavailable — set it on the job, or record every in-boundary site's floor area for a per-m² metric.");
-      return bound((total / denominator).toLocaleString("en-GB", { maximumFractionDigits: 2 }), "Reviewed total divided by the reporting denominator.");
+      if (denominator === null || !(denominator > 0)) return unresolved("The intensity Value is unavailable — set it on the job, or record every in-boundary site's floor area for a per-m² metric.");
+      return bound((total / denominator).toLocaleString("en-GB", { maximumFractionDigits: 2 }), "Reviewed total divided by the intensity Value.");
     }
     case "intensityUnit": {
       const it = snapshot.intensityTarget;

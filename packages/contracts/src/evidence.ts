@@ -180,7 +180,7 @@ export function resolveClientEmissionsEvidence(input: { current: Snapshot | null
     const basis = target.denominatorBasis;
     const denominator = target.reportingDenominator;
     if (denominator === null || !(denominator > 0)) {
-      const reason = basis?.kind === "site-floor-area" && basis.reason ? `Per-m² intensity unavailable: ${basis.reason}` : `No reporting denominator is recorded on ${current.jobNumber}.`;
+      const reason = basis?.kind === "site-floor-area" && basis.reason ? `Per-m² intensity unavailable: ${basis.reason}` : `No intensity Value is recorded on ${current.jobNumber}.`;
       intensity = unavailable(unit, reason, source, baseLineage);
     } else {
       const denominatorDetail = basis?.kind === "site-floor-area"
