@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
-import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
+import { datasetCoverageWarnings, NEW_JOB_COUNTRY, selectAutomaticDatasets } from "./datasetSelection";
 import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
 import { assertClientCurrency } from "./commercialLookups";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
@@ -626,10 +626,11 @@ export async function createJob(
       const reportingFrom = input.reportingPeriodStart!;
       const reportingTo = input.reportingPeriodEnd!;
       await db.query(
-        `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
-        [context.organisationId, jobId, reportingFrom, reportingTo],
+        `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,$5)`,
+        [context.organisationId, jobId, reportingFrom, reportingTo, NEW_JOB_COUNTRY],
       );
-      await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, context.actorId);
+      // The rule selects for the country just written to the config.
+      await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, NEW_JOB_COUNTRY, context.actorId);
     }
     return {
       data: {

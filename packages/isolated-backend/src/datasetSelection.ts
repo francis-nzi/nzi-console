@@ -5,7 +5,8 @@ import type { Queryable } from "./postgres";
  * A CRP job's emission-factor datasets, chosen against its reporting window (NZC-070's boundary) — said once, for
  * job.create (the first choice), dataset.override.add (a manual choice's warnings) and job.update (a window that
  * moves, ruled J2). Automatic selections are derived state, chosen **per series** — one source family in one country,
- * published as yearly editions (`datasetSeriesKey`) — of the job's own country (GB) and GLOBAL:
+ * published as yearly editions (`datasetSeriesKey`) — of the job's own country (`job_emissions_config.country_code`)
+ * and GLOBAL, the complement for any country:
  *
  * - the edition **valid on the last day of the window** — the reporting year's edition, the year the period ends (JW-13,
  *   ruled: "reporting year = end year"); requiring an edition to cover the whole window chose nothing for a period that
@@ -15,7 +16,8 @@ import type { Queryable } from "./postgres";
  *   future reporting year uses the latest available until its own is published (DATASET-CURRENCY, ruled 6 Oct). A
  *   series never borrows another country's edition: GB falls back to GB, never to GLOBAL.
  *
- * Every series' pick is selected; DESNZ, the preferred UK source, is ordered first (`datasetPreferenceRank`). Manual
+ * Every series' pick is selected; the job country's preferred source (`DATASET_SOURCES.preferredFor` — DESNZ for GB) is
+ * ordered first (`datasetPreferenceRank`). Manual
  * selections are a person's choice, carrying the warnings that choice was made with.
  */
 
@@ -33,22 +35,31 @@ const SERIES_PICKS = `
            row_number() OVER (PARTITION BY regexp_replace(d.dataset_id, '${DATASET_EDITION_SUFFIX}', ''), d.country_code
                               ORDER BY (d.valid_to >= $2::date) DESC, d.valid_from DESC, d.valid_to DESC, d.dataset_id) AS pick
       FROM nzi_console.emission_factor_datasets d
-     WHERE d.organisation_id = $1 AND d.status = 'active' AND d.country_code IN ('GB', 'GLOBAL') AND d.valid_from <= $2::date) series
+     WHERE d.organisation_id = $1 AND d.status = 'active' AND d.country_code IN ($3, 'GLOBAL') AND d.valid_from <= $2::date) series
    WHERE pick = 1`;
 
 export type AutomaticDataset = { datasetId: string; name: string; fallback: boolean; editionYear: number; countryCode: string };
 
-/** The automatic choice for a window — what job.create selects and job.update re-derives — preferred source first. */
-export async function automaticDatasetsFor(db: Queryable, organisationId: string, window: ReportingWindow): Promise<AutomaticDataset[]> {
-  const { rows } = await db.query<{ dataset_id: string; name: string; valid_to: string; on_day: boolean; country_code: string }>(
-    `SELECT dataset_id, name, valid_to::text AS valid_to, on_day, country_code FROM (${SERIES_PICKS}) picks ORDER BY dataset_id`, [organisationId, window.to]);
-  return rows.map((row) => ({ datasetId: row.dataset_id, name: row.name, fallback: !row.on_day, editionYear: Number(row.valid_to.slice(0, 4)), countryCode: row.country_code }))
-    .sort((a, b) => datasetPreferenceRank(a.datasetId, "GB") - datasetPreferenceRank(b.datasetId, "GB") || a.datasetId.localeCompare(b.datasetId));
+/** The country a new emissions config is written with — GB until a client's country feeds it (a product question, unruled). */
+export const NEW_JOB_COUNTRY = "GB";
+
+/** The job's country, as its emissions config records it — what the rule selects and ranks by. */
+export async function jobCountryCode(db: Queryable, organisationId: string, jobId: string): Promise<string | null> {
+  return (await db.query<{ country_code: string }>(
+    `SELECT country_code FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.country_code ?? null;
 }
 
-/** Select the automatic datasets for a window. A dataset already selected (by hand) keeps its manual selection. */
-export async function selectAutomaticDatasets(db: Queryable, organisationId: string, jobId: string, window: ReportingWindow, actorId: string): Promise<void> {
-  for (const pick of await automaticDatasetsFor(db, organisationId, window)) {
+/** The automatic choice for a window and the job's country — what job.create selects and job.update re-derives — the country's preferred source first. */
+export async function automaticDatasetsFor(db: Queryable, organisationId: string, window: ReportingWindow, countryCode: string): Promise<AutomaticDataset[]> {
+  const { rows } = await db.query<{ dataset_id: string; name: string; valid_to: string; on_day: boolean; country_code: string }>(
+    `SELECT dataset_id, name, valid_to::text AS valid_to, on_day, country_code FROM (${SERIES_PICKS}) picks ORDER BY dataset_id`, [organisationId, window.to, countryCode]);
+  return rows.map((row) => ({ datasetId: row.dataset_id, name: row.name, fallback: !row.on_day, editionYear: Number(row.valid_to.slice(0, 4)), countryCode: row.country_code }))
+    .sort((a, b) => datasetPreferenceRank(a.datasetId, countryCode) - datasetPreferenceRank(b.datasetId, countryCode) || a.datasetId.localeCompare(b.datasetId));
+}
+
+/** Select the automatic datasets for a window and the job's country. A dataset already selected (by hand) keeps its manual selection. */
+export async function selectAutomaticDatasets(db: Queryable, organisationId: string, jobId: string, window: ReportingWindow, countryCode: string, actorId: string): Promise<void> {
+  for (const pick of await automaticDatasetsFor(db, organisationId, window, countryCode)) {
     await db.query(
       `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
        VALUES ($1,$2,$3,'automatic',$4,$5) ON CONFLICT DO NOTHING`,
@@ -65,8 +76,8 @@ export async function selectAutomaticDatasets(db: Queryable, organisationId: str
  */
 export type DatasetUpdate = { seriesKey: string; countryCode: string; fromDatasetId: string; toDatasetId: string; fromLabel: string; toLabel: string };
 export async function jobDatasetUpdates(db: Queryable, organisationId: string, jobId: string): Promise<DatasetUpdate[]> {
-  const config = (await db.query<{ reporting_from: string; reporting_to: string }>(
-    `SELECT reporting_from::text AS reporting_from, reporting_to::text AS reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`,
+  const config = (await db.query<{ reporting_from: string; reporting_to: string; country_code: string }>(
+    `SELECT reporting_from::text AS reporting_from, reporting_to::text AS reporting_to, country_code FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`,
     [organisationId, jobId])).rows[0];
   if (!config) return [];
   const selected = (await db.query<{ dataset_id: string; country_code: string; valid_from: string; valid_to: string; source_name: string }>(
@@ -75,7 +86,7 @@ export async function jobDatasetUpdates(db: Queryable, organisationId: string, j
       WHERE s.organisation_id = $1 AND s.job_id = $2 AND s.selection_source = 'automatic' AND d.valid_to < $3::date`,
     [organisationId, jobId, config.reporting_to])).rows;
   if (selected.length === 0) return [];
-  const onDay = (await automaticDatasetsFor(db, organisationId, { from: config.reporting_from, to: config.reporting_to })).filter((pick) => !pick.fallback);
+  const onDay = (await automaticDatasetsFor(db, organisationId, { from: config.reporting_from, to: config.reporting_to }, config.country_code)).filter((pick) => !pick.fallback);
   const updates: DatasetUpdate[] = [];
   for (const from of selected) {
     const seriesKey = datasetSeriesKey(from.dataset_id);

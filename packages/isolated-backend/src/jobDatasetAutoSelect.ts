@@ -10,8 +10,9 @@ import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransac
  *
  * - **Fill-blank-only:** a job holding any selection, automatic or manual, is refused (`ALREADY_SELECTED`) and untouched
  *   — a person's choice, or job.create's, is never second-guessed here. job.update is the path that re-derives.
- * - **The rule is the rule's:** `automaticDatasetsFor` / `selectAutomaticDatasets` (#413: the GB and GLOBAL editions valid
- *   on the window's last day), with job.create's selection reason — never a second copy of its SQL.
+ * - **The rule is the rule's:** `automaticDatasetsFor` / `selectAutomaticDatasets` (#413: the job country's and GLOBAL
+ *   editions valid on the window's last day, the country read from its config row), with job.create's selection reason —
+ *   never a second copy of its SQL.
  * - **The window is the job's reporting period** — what job.create / job.update feed the rule — and must agree with its
  *   `job_emissions_config` row, so a backfilled job equals a re-derivation.
  * - Refused, and left for a person: no reporting period (`NO_WINDOW`); a config window that disagrees (`WINDOW_MISMATCH`);
@@ -32,9 +33,9 @@ function autoSelectHandler(input: CommandInputMap["job.datasets.autoSelect"], co
     if ((held?.n ?? 0) > 0) throw new CommandValidationError([{ field: "jobId", code: "ALREADY_SELECTED", message: `This job already has ${held!.n} dataset selection${held!.n === 1 ? "" : "s"}; they are kept as they are.` }]);
     // The window is the job's own reporting period — the source job.create and job.update feed the rule from (they mirror
     // it into job_emissions_config as they write). A config row that disagrees is a data fault to fix by hand, never filled.
-    const { rows: [period] } = await db.query<{ period_start: string | null; period_end: string | null; config_from: string | null; config_to: string | null; has_config: boolean }>(
+    const { rows: [period] } = await db.query<{ period_start: string | null; period_end: string | null; config_from: string | null; config_to: string | null; country_code: string | null; has_config: boolean }>(
       `SELECT j.reporting_period_start::text AS period_start, j.reporting_period_end::text AS period_end,
-              c.reporting_from::text AS config_from, c.reporting_to::text AS config_to, c.job_id IS NOT NULL AS has_config
+              c.reporting_from::text AS config_from, c.reporting_to::text AS config_to, c.country_code, c.job_id IS NOT NULL AS has_config
          FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id, c.job_id) = (j.organisation_id, j.job_id)
         WHERE j.organisation_id = $1 AND j.job_id = $2`, [org, input.jobId]);
     if (!period?.period_start || !period.period_end) throw new CommandValidationError([{ field: "jobId", code: "NO_WINDOW", message: "This job has no reporting period to choose datasets against." }]);
@@ -42,10 +43,12 @@ function autoSelectHandler(input: CommandInputMap["job.datasets.autoSelect"], co
       throw new CommandValidationError([{ field: "jobId", code: "WINDOW_MISMATCH", message: "The job's reporting period and its emissions window disagree — fix the job's period first." }]);
     }
     const window: ReportingWindow = { from: period.period_start, to: period.period_end };
-    if ((await automaticDatasetsFor(db, org, window)).length === 0) {
-      throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active GB or GLOBAL dataset is published by the window's last day (${window.to}) — not even an earlier edition to fall back to.` }]);
+    // The job's country is its config row's — the same row the window was just checked against.
+    const country = period.country_code!;
+    if ((await automaticDatasetsFor(db, org, window, country)).length === 0) {
+      throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active ${country} or GLOBAL dataset is published by the window's last day (${window.to}) — not even an earlier edition to fall back to.` }]);
     }
-    await selectAutomaticDatasets(db, org, input.jobId, window, context.actorId);
+    await selectAutomaticDatasets(db, org, input.jobId, window, country, context.actorId);
     // What was written, read back — the audit says what the job now holds, not what was meant to be.
     const { rows } = await db.query<{ dataset_id: string; name: string }>(
       `SELECT s.dataset_id, d.name FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)

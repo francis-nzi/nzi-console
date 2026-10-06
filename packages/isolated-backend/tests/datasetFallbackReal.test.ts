@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { automaticDatasetsFor, fallbackReason, ON_DAY_REASON } from "../src/datasetSelection";
+import { automaticDatasetsFor, fallbackReason, jobDatasetUpdates, ON_DAY_REASON } from "../src/datasetSelection";
+import { autoSelectJobDatasets } from "../src/jobDatasetAutoSelect";
+import { updateJob } from "../src/jobUpdate";
 import { createJob } from "../src/postgresCommands";
 import { listDatasetRegistry, listJobDatasetOptions, listJobFactorOptions } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
@@ -66,7 +68,7 @@ describe("automatic datasets: the reporting year's edition, else the latest avai
   });
 
   it("orders the preferred source first: DESNZ for the UK", async () => {
-    const chosen = await withTenantRead(database.pool, ORG, (db) => automaticDatasetsFor(db, ORG, { from: "2025-01-01", to: "2025-12-31" }));
+    const chosen = await withTenantRead(database.pool, ORG, (db) => automaticDatasetsFor(db, ORG, { from: "2025-01-01", to: "2025-12-31" }, "GB"));
     assert.equal(chosen[0]!.datasetId, "uk-ghg-gb-2025");
     assert.deepEqual(chosen.map((d) => [d.datasetId, d.fallback]), [["uk-ghg-gb-2025", false], ["nzi-gb-2025", false], ["ceda-gb-2025", false], ["mix-2025", false]]);
   });
@@ -94,5 +96,69 @@ describe("automatic datasets: the reporting year's edition, else the latest avai
     assert.deepEqual(registry.datasets.filter((d) => d.validFrom.startsWith("2025")).map((d) => d.label).slice(0, 3), ["DESNZ GB 2025", "NZI GB 2025", "CEDA GB 2025"], "the board lists each year newest first, the preferred source first");
     assert.equal(registry.datasets.find((d) => d.id === "ice-gb-2026")!.name, "upload.csv", "the imported name is left as it was");
     assert.ok(warnings("uk-ghg-gb-2024").some((w) => /complete reporting period/.test(w)), "the manual one still warns");
+  });
+
+  // TICKET-dataset-selection-job-country: the rule selects for the job's country (its config row) and GLOBAL — never GB
+  // for a job of another country. Last, so the IE and GLOBAL editions it adds leave the GB tests above as they were.
+  describe("the job's own country", () => {
+    const automatic = async (jobId: string) => (await q(`SELECT dataset_id FROM nzi_console.job_dataset_selections WHERE job_id = $1 AND selection_source = 'automatic' ORDER BY dataset_id`, [jobId])).map((row) => row.dataset_id);
+    const ieJob = async (from: string, to: string) => {
+      // job.create writes GB today (where a client's country comes from is unruled), so the job is moved to IE by hand.
+      const jobId = await crpJob(from, to);
+      await q(`UPDATE nzi_console.job_emissions_config SET country_code = 'IE' WHERE job_id = $1`, [jobId]);
+      await q(`DELETE FROM nzi_console.job_dataset_selections WHERE job_id = $1`, [jobId]);
+      return jobId;
+    };
+    const autoSelect = (jobId: string) => autoSelectJobDatasets(database.pool, { jobId }, { ...staff(), reason: "Backfill" });
+    const version = async (jobId: string) => (await q(`SELECT version FROM nzi_console.jobs WHERE job_id = $1`, [jobId]))[0]!.version as number;
+    before(async () => {
+      const dataset = (id: string, year: number, country: string, source = "test") => q(
+        `INSERT INTO nzi_console.emission_factor_datasets (organisation_id, dataset_id, name, version, valid_from, valid_to, country_code, status, source_name, licence)
+         VALUES ($1, $2, 'upload.csv', $2, $3, $4, $5, 'active', $6, 'test')`, [ORG, id, `${year}-01-01`, `${year}-12-31`, country, source]);
+      await dataset("seai-ie-2024", 2024, "IE"); await dataset("seai-ie-2025", 2025, "IE");
+      await dataset("mix-ie-2025", 2025, "IE");   // an IE edition of a series GB also publishes ("mix")
+      await dataset("glob-2025", 2025, "GLOBAL");
+    });
+
+    it("an IE job takes IE and GLOBAL editions, never GB — the backfill's autoSelect reads the config row's country", async () => {
+      const jobId = await ieJob("2025-01-01", "2025-12-31");
+      const done = await autoSelect(jobId);
+      assert.deepEqual(done.data.datasets.map((d) => d.datasetId), ["glob-2025", "mix-ie-2025", "seai-ie-2025"], "IE's own series and GLOBAL — no DESNZ GB, no GB 'mix'");
+    });
+
+    it("job.update re-derives an IE job's datasets for IE, previewed and written alike", async () => {
+      const jobId = await ieJob("2025-01-01", "2025-12-31");
+      await autoSelect(jobId);
+      const moved = await updateJob(database.pool, { jobId, expectedVersion: await version(jobId), reportingPeriodStart: "2027-01-01", reportingPeriodEnd: "2027-12-31" }, { ...staff(), reason: "Moved to 2027" });
+      const expected = ["glob-2025", "mix-2026", "mix-ie-2025", "seai-ie-2025"];   // each IE and GLOBAL series' latest, as fallbacks
+      assert.deepEqual(moved.data.datasets!.automaticAdded.map((d) => d.datasetId).sort(), expected, "the plan");
+      assert.deepEqual(await automatic(jobId), expected, "the write");
+    });
+
+    it("the newer-edition banner offers an IE job its IE series' new edition", async () => {
+      const jobId = await ieJob("2026-01-01", "2026-12-31");
+      await autoSelect(jobId);
+      assert.ok((await automatic(jobId)).includes("seai-ie-2025"), "on the 2025 IE edition, as a fallback");
+      await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id, dataset_id, name, version, valid_from, valid_to, country_code, status, source_name, licence)
+               VALUES ($1, 'seai-ie-2026', 'upload.csv', 'seai-ie-2026', '2026-01-01', '2026-12-31', 'IE', 'active', 'test', 'test')`, [ORG]);
+      const updates = await withTenantRead(database.pool, ORG, (db) => jobDatasetUpdates(db, ORG, jobId));
+      assert.deepEqual(updates.map((u) => [u.fromDatasetId, u.toDatasetId]), [["seai-ie-2025", "seai-ie-2026"]]);
+    });
+
+    it("an IE job with no IE or GLOBAL edition by its last day is left for a person — a GB edition is no fallback", async () => {
+      await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id, dataset_id, name, version, valid_from, valid_to, country_code, status, source_name, licence)
+               VALUES ($1, 'nzi-gb-2023', 'upload.csv', 'nzi-gb-2023', '2023-01-01', '2023-12-31', 'GB', 'active', 'test', 'test')`, [ORG]);
+      const jobId = await ieJob("2023-01-01", "2023-12-31");
+      await assert.rejects(() => autoSelect(jobId),
+        (error: any) => error.issues?.[0]?.code === "NO_EDITION" && /No active IE or GLOBAL dataset/.test(error.issues[0].message));
+      assert.deepEqual(await automatic(jobId), []);
+    });
+
+    it("a GB job is unchanged: GB and GLOBAL only, never an IE edition", async () => {
+      const jobId = await crpJob("2025-01-01", "2025-12-31");
+      assert.deepEqual(await automatic(jobId), ["ceda-gb-2025", "glob-2025", "mix-2025", "nzi-gb-2025", "uk-ghg-gb-2025"]);
+      const chosen = await withTenantRead(database.pool, ORG, (db) => automaticDatasetsFor(db, ORG, { from: "2025-01-01", to: "2025-12-31" }, "GB"));
+      assert.equal(chosen[0]!.datasetId, "uk-ghg-gb-2025", "DESNZ still first for GB");
+    });
   });
 });
