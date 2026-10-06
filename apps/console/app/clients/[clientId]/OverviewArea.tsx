@@ -12,6 +12,7 @@ import type { EditAccess } from "../../lib/useEditAccess";
 import { ClientContacts } from "./ClientContacts";
 import { ClientSites } from "./ClientSites";
 import { ClientTargets } from "./ClientTargets";
+import { ClientIntensityTargets } from "./ClientIntensityTargets";
 import { FinancialStatusCard } from "./ClientAreaStates";
 import { EvidenceButton, TierBadge, fyLabel, tonnes } from "./FigureEvidence";
 import type { DrawerRequest } from "./clientDrawers";
@@ -85,6 +86,8 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
       title={<><span className="eyebrow">Commitment</span><h2>Baseline &amp; targets</h2></>}
       count={targets.model ? "Targets set" : targets.benchmarkInForce ? "No targets set" : "No baseline"}>
       <ClientTargets targets={targets} access={access.target} onEdit={() => onDrawer({ kind: "targets" })} hideHead />
+      {/* Phase 1b — the intensity targets live beside net zero; the job keeps only the year's Value. */}
+      <ClientIntensityTargets metrics={workspace.intensityMetrics ?? []} targets={workspace.intensityTargets ?? []} access={access.target} onEdit={(metricKey) => onDrawer({ kind: "intensity-target", metricKey })} />
       <div className="nz-card-b" style={{ paddingTop: 0 }}>
         <button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "rebaseline" })}>⇄ Re-baseline / recalculate</button>
         <p className="nz-maps">The dated baseline record and its history timeline arrive with <code>client_baselines</code>; the baseline in force is shown above.</p>

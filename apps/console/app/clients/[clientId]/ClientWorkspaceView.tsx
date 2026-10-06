@@ -17,6 +17,7 @@ import { CommsArea, FilesArea } from "./CommsFilesAreas";
 import { ProfileArea } from "./ProfileArea";
 import { ReportingArea } from "./ReportingArea";
 import { IntensityMetricsDrawer } from "./IntensityMetricsDrawer";
+import { IntensityTargetForm } from "./ClientIntensityTargets";
 import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
 import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm } from "./StrategyForms";
@@ -203,6 +204,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "compliance" ? <ComplianceForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "factors" ? <FactorsDrawerBody clientId={client.id} onClose={closeDrawer} /> : null}
       {drawer?.kind === "portal" ? <PortalDrawerBody client={client} onClose={closeDrawer} /> : null}
+      {drawer?.kind === "intensity-target" ? (() => { const metric = workspace.intensityMetrics.find((item) => item.key === drawer.metricKey); return metric ? <IntensityTargetForm key={drawer.metricKey} clientId={client.id} metric={metric} target={workspace.intensityTargets?.find((item) => item.metricKey === drawer.metricKey) ?? null} access={access.target} onClose={closeDrawer} onSaved={saved} /> : null; })() : null}
       {drawer?.kind === "intensity-metrics" ? <IntensityMetricsDrawer clientId={client.id} currency={client.profile.currency ?? "GBP"} metrics={workspace.intensityMetrics} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "contact" ? <ContactForm key={drawer.contact?.id ?? "new-contact"} clientId={client.id} contact={drawer.contact} latestConsent={workspace.contactConsent?.find((event) => event.contactId === drawer.contact?.id) ?? null} access={access.contact} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "site" ? <SiteForm key={drawer.site?.id ?? "new-site"} clientId={client.id} site={drawer.site} sites={sites} periods={[...workspace.reportingPeriods].reverse()} access={access.site} onClose={closeDrawer} onSaved={saved} onPartial={() => router.refresh()} /> : null}

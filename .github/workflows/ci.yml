@@ -594,6 +594,10 @@ jobs:
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
         run: npx tsx --test packages/isolated-backend/tests/siteArchiveReal.test.ts
+      # Phase 1b (0158): a client's intensity target per metric — active metrics only, versioned and append-only, a moved
+      # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
+      - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero
+        run: npx tsx --test packages/isolated-backend/tests/clientIntensityTargetsReal.test.ts
       # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
       - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
         run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts
