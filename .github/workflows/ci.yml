@@ -611,6 +611,10 @@ jobs:
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
         run: npx tsx --test packages/isolated-backend/tests/siteArchiveReal.test.ts
+      # The portal and archived sites (ruled): an archived site is not offered on a bucket and cannot be authorised on a
+      # grant; the grant keeps the id, and unarchiving offers it again.
+      - name: An archived site is not offered on the client portal
+        run: npx tsx --test packages/isolated-backend/tests/portalArchivedSiteReal.test.ts
       # The archived-site write check (ruled): a row may cite an archived site only if it already did — new rows and
       # moves onto one are refused on both create paths and on edit, keeping one is allowed, unarchiving lifts it.
       - name: An archived site refuses new citations but keeps the rows that already cite it
