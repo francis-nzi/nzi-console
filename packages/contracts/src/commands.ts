@@ -47,6 +47,7 @@ export type CommandKey =
   | "job.milestone.reopen"
   | "job.milestone.reschedule"
   | "job.update"
+  | "job.datasets.autoSelect"
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
@@ -580,6 +581,9 @@ export type CommandInputMap = {
   /** Edit a job's start date, reporting period and milestone template (ruled job-update-plan.md, J1–J6). A field
    *  left out is unchanged. A period change needs a reason (J5), and is refused once period-bound data exists (J1). */
   "job.update": { jobId: string; expectedVersion: number; startDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
+  /** JW-13 step 3 — apply the automatic dataset rule (the edition valid on the window's last day) to a CRP job with no
+   *  selection at all: fill-blank-only, for the jobs the v7 import wrote without one. A reason is required. */
+  "job.datasets.autoSelect": { jobId: string };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
   "scope.row.create": { jobId: string } & ScopeRowWriteFields;
   "scope.row.update": { jobId: string; rowId: string; expectedVersion: number; enabled: boolean } & ScopeRowWriteFields;
@@ -1492,6 +1496,10 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.milestoneTemplateId !== undefined && input.milestoneTemplateId !== null && !text(input.milestoneTemplateId)) issues.push({ field: "milestoneTemplateId", code: "INVALID", message: "Choose a template, or none." });
     return issues;
   } },
+  // JW-13 step 3. job.update's permission: automatic selections are derived job state, written by job.create and
+  // job.update under job.manage — dataset.manage is a person's manual choice (dataset.override.add). The guards that
+  // need the job (already selected, no window, no edition) are the command's, where the job is locked.
+  "job.datasets.autoSelect": { key: "job.datasets.autoSelect", label: "Select a job's automatic datasets", permission: "job.manage", reasonRequired: true, transaction: "fill-blank-only automatic dataset selection + audit + outbox + idempotency", auditAction: "job_datasets_auto_selected", validate: (input, context) => { const issues = baseIssues(context, true); required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.create": { key: "scope.row.create", label: "Create scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "scope row + audit + outbox + idempotency", auditAction: "scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); return issues; } },
   "scope.row.update": { key: "scope.row.update", label: "Update scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + audit + outbox + idempotency", auditAction: "scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...scopeRowIssues(input)]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.row.discard": { key: "scope.row.discard", label: "Discard a draft scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "draft-only hard delete (no saved data) + audit + outbox + idempotency", auditAction: "scope_row_discarded", validate: (input, context) => scopeRowStateIssues(input, context, false) },

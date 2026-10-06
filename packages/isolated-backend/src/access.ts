@@ -48,6 +48,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job.milestone.reopen": job,
   "job.milestone.reschedule": job,
   "job.update": job,
+  "job.datasets.autoSelect": job,
   "scope.row.create": job,
   "scope.row.update": job,
   "scope.row.calculate": job,
