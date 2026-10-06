@@ -14,7 +14,7 @@ import { issuerOf, type IssuerColumns } from "./reportCompositions";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
-import { resolveReportLabel } from "@nzi/contracts";
+import { datasetPreferenceRank, isPreferredDataset, resolveReportLabel } from "@nzi/contracts";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
@@ -961,6 +961,8 @@ export async function listGrantedPortalJobs(db:Queryable,input:{portalUserId:str
 
 type FactorRow = { dataset_id: string|null; dataset_name: string; dataset_version: string; factor_id: string; label: string; activity_unit: string; kgco2e_per_unit: string; scopes: string[]; selection_source: FactorOption["selectionSource"];factor_source:FactorOption["factorSource"];client_factor_id:string|null;evidence_hash:string|null; synthetic: boolean; warnings_json: string[] };
 export async function listJobFactorOptions(db: Queryable, jobId: string): Promise<FactorOption[]> {
+  // The job's country decides which source is preferred (DESNZ for GB); read first, so the options query is the last word.
+  const country=(await db.query<{country_code:string}>(`SELECT country_code FROM nzi_console.job_emissions_config WHERE job_id=$1`,[jobId])).rows[0]?.country_code??"GB";
   const { rows } = await db.query<FactorRow>(`SELECT * FROM (SELECT d.dataset_id,d.name AS dataset_name,d.version AS dataset_version,
       f.factor_id,f.label,f.activity_unit,f.kgco2e_per_unit::text,f.scopes,s.selection_source,'dataset'::text AS factor_source,NULL::text AS client_factor_id,NULL::text AS evidence_hash,d.synthetic,s.warnings_json
     FROM nzi_console.job_dataset_selections s
@@ -971,7 +973,7 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
     SELECT NULL::text,'Client factors','v'||cf.version::text,cf.client_factor_id,cf.report_label,cf.unit,cf.kgco2e_per_unit::text,ARRAY[cf.scope],'client','client',cf.client_factor_id,cf.evidence_hash,false,'[]'::jsonb
     FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id)
     WHERE j.job_id=$1 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false) options
-    ORDER BY lower(dataset_name),lower(label),factor_id`,[jobId]);
+    ORDER BY lower(label),lower(dataset_name),factor_id`,[jobId]);
   // NZC-062 — the fast-add template search needs each factor's category
   // hierarchy for display and filing; derived here (not stored) from the
   // same `scopes` this read model already carries, via the single shared
@@ -985,7 +987,10 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
   return rows.map((row) => ({ datasetId: row.dataset_id,datasetName: row.dataset_name,datasetVersion: row.dataset_version,
     factorId: row.factor_id,label: row.label,activityUnit: row.activity_unit,kgco2ePerUnit:Number(row.kgco2e_per_unit),
     scopes:row.scopes,categories:row.scopes.map(toCategory).filter((c):c is FactorOptionCategory=>c!==null),
-    selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [] }));
+    selectionSource:row.selection_source,factorSource:row.factor_source,clientFactorId:row.client_factor_id,evidenceHash:row.evidence_hash,synthetic:row.synthetic,warnings:row.warnings_json ?? [],preferred:isPreferredDataset(row.dataset_id,country) }))
+    // DATASET-CURRENCY: one factor offered by several selected datasets lists the preferred source first, so it is the one
+    // pre-picked; the order is otherwise by label (the imported dataset names are file names, shared across sources).
+    .sort((a,b)=>a.label.toLowerCase().localeCompare(b.label.toLowerCase())||datasetPreferenceRank(a.datasetId,country)-datasetPreferenceRank(b.datasetId,country));
 }
 
 // NZC-046 / UX1a — the scope→category accordion's applicable-category list.
@@ -1042,5 +1047,5 @@ export async function listJobDatasetOptions(db:Queryable,jobId:string):Promise<D
     JOIN nzi_console.emission_factor_datasets d ON d.organisation_id=c.organisation_id
     LEFT JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.job_id,s.dataset_id)=(c.organisation_id,c.job_id,d.dataset_id)
     WHERE c.job_id=$1 ORDER BY (s.dataset_id IS NULL),lower(d.name),d.valid_from DESC`,[jobId]);
-  return rows.map((row)=>{const reportingFrom=dateOnly(row.reporting_from),reportingTo=dateOnly(row.reporting_to),validFrom=dateOnly(row.valid_from),validTo=dateOnly(row.valid_to);const warnings:string[]=[];/* JW-13: the automatic choice is the reporting year's edition (valid on the last day); it is the rule, not a gap to warn about. */const reportingYearEdition=row.selection_source==="automatic"&&validFrom<=reportingTo&&validTo>=reportingTo;if((validFrom>reportingFrom||validTo<reportingTo)&&!reportingYearEdition)warnings.push("Does not cover the complete reporting period.");if(row.country_code!==row.job_country_code&&row.country_code!=="GLOBAL")warnings.push(`Geography ${row.country_code} differs from job geography ${row.job_country_code}.`);if(row.status!=="active")warnings.push(`Dataset status is ${row.status}.`);return {datasetId:row.dataset_id,name:row.name,version:row.version,validFrom,validTo,countryCode:row.country_code,status:row.status,synthetic:row.synthetic,selected:row.selection_source!==null,selectionSource:row.selection_source,applicable:warnings.length===0,warnings,reportingFrom,reportingTo,jobCountryCode:row.job_country_code};});
+  return rows.map((row)=>{const reportingFrom=dateOnly(row.reporting_from),reportingTo=dateOnly(row.reporting_to),validFrom=dateOnly(row.valid_from),validTo=dateOnly(row.valid_to);const warnings:string[]=[];/* JW-13 + DATASET-CURRENCY: the automatic choice is its series' reporting-year edition (valid on the last day) or, until that is published, the latest available — the rule, not a gap to warn about. */const ruledEdition=row.selection_source==="automatic"&&validFrom<=reportingTo;if((validFrom>reportingFrom||validTo<reportingTo)&&!ruledEdition)warnings.push("Does not cover the complete reporting period.");if(row.country_code!==row.job_country_code&&row.country_code!=="GLOBAL")warnings.push(`Geography ${row.country_code} differs from job geography ${row.job_country_code}.`);if(row.status!=="active")warnings.push(`Dataset status is ${row.status}.`);return {datasetId:row.dataset_id,name:row.name,version:row.version,validFrom,validTo,countryCode:row.country_code,status:row.status,synthetic:row.synthetic,selected:row.selection_source!==null,selectionSource:row.selection_source,applicable:warnings.length===0,warnings,reportingFrom,reportingTo,jobCountryCode:row.job_country_code};});
 }

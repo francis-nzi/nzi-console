@@ -590,6 +590,15 @@ jobs:
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
         run: npx tsx --test packages/isolated-backend/tests/scopeRowStateReal.test.ts
+      # JW-13 step 3: job.datasets.autoSelect fills a job with no selection by #413's end-year rule (GB + GLOBAL), refuses
+      # one already selected, with no window or no edition, and audits the reason; the backfill's core fills imported CRP
+      # jobs only, lists manual fixes (an implausible window never filled), rolls a dry run back, and re-runs to 0.
+      - name: Imported CRP jobs get their automatic datasets, fill-blank-only, with manual fixes listed
+        run: npx tsx --test packages/isolated-backend/tests/jobDatasetBackfillReal.test.ts
+      # DATASET-CURRENCY: per series, the reporting year's edition, else the latest published (never a GLOBAL substitute,
+      # never a draft); DESNZ preferred and first for the UK; a fallback edition does not warn as a coverage gap.
+      - name: Automatic datasets fall back to each series' latest published edition, DESNZ preferred
+        run: npx tsx --test packages/isolated-backend/tests/datasetFallbackReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
