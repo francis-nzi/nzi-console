@@ -588,7 +588,7 @@ function FactorPicker({ factors, onPick, quickPicks }: { factors: FactorOption[]
   const results = useMemo(() => {
     if (!query.trim()) return [];
     return factors
-      .map((factor) => ({ factor, score: fuzzyScore(query, `${factor.label} ${factor.datasetName} ${factor.activityUnit}`) }))
+      .map((factor) => ({ factor, score: fuzzyScore(query, `${factor.label} ${factor.datasetLabel} ${factor.datasetName} ${factor.activityUnit}`) }))
       .filter((entry): entry is { factor: FactorOption; score: number } => entry.score !== null)
       .sort((a, b) => b.score - a.score)
       .slice(0, 12)
@@ -622,7 +622,7 @@ function FactorPicker({ factors, onPick, quickPicks }: { factors: FactorOption[]
             <li key={`${factor.factorSource}:${factor.clientFactorId ?? factor.datasetId}|${factor.factorId}`}>
               <button type="button" onClick={() => { onPick(factor); setQuery(""); }}>
                 <b>{factor.label}</b>
-                <span className="nz-template-meta">{factor.activityUnit} · {factor.datasetName}{factor.factorSource === "client" ? " · client factor" : ""}</span>
+                <span className="nz-template-meta">{factor.activityUnit} · {factor.datasetLabel}{factor.factorSource === "client" ? " · client factor" : ""}</span>
               </button>
             </li>
           ))}

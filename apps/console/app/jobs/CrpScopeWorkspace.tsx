@@ -708,6 +708,19 @@ function DatasetPanel({
           </span>
         )}
       </div>
+      {/* DATASET-CURRENCY §2: the selected datasets by name a person can read — source, country, year — not the
+          imported file name, which stays as the tooltip. */}
+      {datasets.some((d) => d.selected) ? (
+        <ul className="nz-dataset-selected" aria-label="Selected datasets">
+          {datasets.filter((d) => d.selected).map((d) => (
+            <li key={d.datasetId} title={`${d.name} · ${d.version}`}>
+              <b>{d.label}</b>{" "}
+              <span className="muted">· {d.selectionSource === "manual" ? "added by exception" : "automatic"}</span>
+              {d.warnings.length ? <span className="nz-st est" style={{ marginLeft: 6 }}>{d.warnings.length} warning{d.warnings.length === 1 ? "" : "s"}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {available.length > 0 && (
         <div className="nz-dataset-add">
           <select
@@ -717,8 +730,8 @@ function DatasetPanel({
             onChange={(e) => setDatasetId(e.target.value)}
           >
             {available.map((d) => (
-              <option key={d.datasetId} value={d.datasetId}>
-                {d.name} · {d.version} · {d.countryCode}
+              <option key={d.datasetId} value={d.datasetId} title={`Imported as ${d.name} · ${d.version}`}>
+                {d.label}
               </option>
             ))}
           </select>
@@ -875,6 +888,7 @@ function Fields({
             >
               {f.label} · {f.activityUnit}
               {f.synthetic ? " · DEMO" : ""}
+              {` — ${f.datasetLabel}${f.preferred ? " (preferred)" : ""}`}
             </option>
           ))}
         </select>
@@ -1050,7 +1064,7 @@ function Editor({
             setValue({ ...value, datasetId: f?.datasetId ?? null, factorId: f?.factorId ?? null, factorLabel: f?.label ?? null, factorVersion: f?.datasetVersion ?? null, unit: f?.activityUnit ?? value.unit, factorSource: f?.factorSource ?? "dataset", clientFactorId: f?.clientFactorId ?? null, isCustomEntry: f?.factorSource === "client" });
           }}>
             <option value="">No factor</option>
-            {available.map((f) => <option key={factorKey(f)} value={factorKey(f)}>{f.label} · {f.activityUnit}{f.synthetic ? " · DEMO" : ""}</option>)}
+            {available.map((f) => <option key={factorKey(f)} value={factorKey(f)}>{f.label} · {f.activityUnit}{f.synthetic ? " · DEMO" : ""} — {f.datasetLabel}{f.preferred ? " (preferred)" : ""}</option>)}
           </select>
         </label>
         <div className="nz-kv"><span className="k">GHG / unit <InfoTip label="GHG per unit">The dataset factor&rsquo;s emission intensity — kg CO₂e per activity unit. Multiplied by the quantity to give the result.</InfoTip></span><span className="v">{matchedFactor ? `${matchedFactor.kgco2ePerUnit.toLocaleString("en-GB", { maximumFractionDigits: 6 })} kgCO₂e / ${matchedFactor.activityUnit}` : "—"}</span></div>
