@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   for (const line of outcome.lines) {
     const result = line.result === "filled" ? (commit ? "filled" : "would fill")
       : line.result === "manual" ? `MANUAL FIX — ${line.manualKind}` : `ERROR — ${line.detail}`;
-    const editions = line.editions.length ? line.editions.map((e) => `${e.datasetId} (${e.source}; ${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)})`).join("; ") : "—";
+    const editions = line.editions.length ? line.editions.map((e) => `${e.datasetId} (${e.source}; ${e.country}, valid ${day(e.validFrom)}–${day(e.validTo)}${line.window && e.validTo < line.window.to ? "; latest available — the reporting year's edition is not published" : ""})`).join("; ") : "—";
     log(`  ${line.jobNumber} · current: ${line.current.length ? line.current.join(", ") : "none"} · window ${windowOf(line)} · editions: ${editions} · ${result}`);
   }
 
@@ -63,6 +63,7 @@ async function main(): Promise<void> {
   log(`  candidates (imported CRP, no selection): ${outcome.candidates} · with a current selection among them: ${outcome.lines.filter((line) => line.current.length).length}`);
   log(`  ${commit ? "filled" : "would fill"}: ${filled.length}`);
   log(`  datasets selected: ${filled.reduce((sum, line) => sum + line.datasets.length, 0)}`);
+  log(`  of which latest-available fallbacks: ${filled.reduce((sum, line) => sum + line.editions.filter((e) => line.window && e.validTo < line.window.to).length, 0)} editions, on ${filled.filter((line) => line.editions.some((e) => line.window && e.validTo < line.window.to)).length} jobs`);
   log(`  manual fixes: ${kinds.map((kind) => `${kind} ${manual.filter((line) => line.manualKind === kind).length}`).join(" · ")}`);
   log(`  unexpected errors: ${errors.length}`);
   log(`  already selected, left alone: ${outcome.alreadySelected}`);

@@ -429,7 +429,9 @@ export type PublishedCrpReportReadModel={reportVersionId:string;manifestVersion:
 export type CrpReportVersionReadModel={reportVersionId:string;status:"validated"|"published"|"superseded";manifestVersion:number;publishedAt:string|null;dataHash:string;signee?:ReportSignee|null;clientLogoAssetId?:string|null;issuer?:ReportIssuer|null;snapshot:ReviewedCrpSnapshotReadModel};
 /** NZC-062 — the GHG-protocol category each of a factor's `scopes` entries resolves to (`crpScopeCategoryLabel`). */
 export type FactorOptionCategory = { scope: "1" | "2" | "3"; scopeCode: string; label: string };
-export type FactorOption = { datasetId: string|null; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; categories: FactorOptionCategory[]; selectionSource: "automatic" | "manual" | "client"; factorSource:FactorSource;clientFactorId:string|null;evidenceHash:string|null; synthetic: boolean; warnings: string[] };
+export type FactorOption = { datasetId: string|null; datasetName: string; datasetVersion: string; factorId: string; label: string; activityUnit: string; kgco2ePerUnit: number; scopes: string[]; categories: FactorOptionCategory[]; selectionSource: "automatic" | "manual" | "client"; factorSource:FactorSource;clientFactorId:string|null;evidenceHash:string|null; synthetic: boolean; warnings: string[];
+  /** DATASET-CURRENCY: from the preferred source for the job's country (DESNZ for GB) — ordered first on a tie, and pre-picked. */
+  preferred: boolean };
 export type DatasetOption = { datasetId: string; name: string; version: string; validFrom: string; validTo: string; countryCode: string; status: "active" | "superseded" | "draft"; synthetic: boolean; selected: boolean; selectionSource: "automatic" | "manual" | null; applicable: boolean; warnings: string[]; reportingFrom: string; reportingTo: string; jobCountryCode: string };
 export function isAllowedJobStageTransition(family: WorkflowJobFamily, from: string, to: string): boolean {
   const stages: readonly string[] = jobWorkflowStages[family];

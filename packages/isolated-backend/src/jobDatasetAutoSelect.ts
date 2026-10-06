@@ -15,7 +15,7 @@ import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransac
  * - **The window is the job's reporting period** — what job.create / job.update feed the rule — and must agree with its
  *   `job_emissions_config` row, so a backfilled job equals a re-derivation.
  * - Refused, and left for a person: no reporting period (`NO_WINDOW`); a config window that disagrees (`WINDOW_MISMATCH`);
- *   no active edition valid on its last day (`NO_EDITION`).
+ *   no edition published in any series by its last day — not even a latest-available fallback (`NO_EDITION`).
  * - The audit and outbox carry the job, the datasets chosen and the count — no money, rates or names (NZC-120).
  */
 
@@ -43,7 +43,7 @@ function autoSelectHandler(input: CommandInputMap["job.datasets.autoSelect"], co
     }
     const window: ReportingWindow = { from: period.period_start, to: period.period_end };
     if ((await automaticDatasetsFor(db, org, window)).length === 0) {
-      throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active GB or GLOBAL dataset is valid on the window's last day (${window.to}).` }]);
+      throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active GB or GLOBAL dataset is published by the window's last day (${window.to}) — not even an earlier edition to fall back to.` }]);
     }
     await selectAutomaticDatasets(db, org, input.jobId, window, context.actorId);
     // What was written, read back — the audit says what the job now holds, not what was meant to be.

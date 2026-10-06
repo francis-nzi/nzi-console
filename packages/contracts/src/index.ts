@@ -103,6 +103,7 @@ export * from "./targets";
 export * from "./srsReadiness";
 export * from "./intensityMetrics";
 export * from "./reportingTemplate";
+export * from "./datasetSources";
 export * from "./trainingWorkflow";
 export * from "./reductionStrategies";
 export * from "./strategyReminders";

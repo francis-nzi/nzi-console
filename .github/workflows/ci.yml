@@ -595,6 +595,10 @@ jobs:
       # jobs only, lists manual fixes (an implausible window never filled), rolls a dry run back, and re-runs to 0.
       - name: Imported CRP jobs get their automatic datasets, fill-blank-only, with manual fixes listed
         run: npx tsx --test packages/isolated-backend/tests/jobDatasetBackfillReal.test.ts
+      # DATASET-CURRENCY: per series, the reporting year's edition, else the latest published (never a GLOBAL substitute,
+      # never a draft); DESNZ preferred and first for the UK; a fallback edition does not warn as a coverage gap.
+      - name: Automatic datasets fall back to each series' latest published edition, DESNZ preferred
+        run: npx tsx --test packages/isolated-backend/tests/datasetFallbackReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
