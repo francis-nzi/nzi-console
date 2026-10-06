@@ -1,3 +1,4 @@
+import { NziMark } from "@nzi/ui";
 import { TraineeLoginForm } from "./TraineeLoginForm";
 import { deploymentNames } from "../../lib/organisationBrand";
 import { organisationCopy } from "../../lib/organisationName";
@@ -14,7 +15,7 @@ export default async function TraineeLoginPage({ searchParams }: { searchParams:
   const org = organisationCopy(await deploymentNames());
   return <main className="nz-auth-shell">
     <section className="nz-auth-story">
-      <div className="nz-auth-brand"><span>N</span><div><b>NZ Insights Pro</b><small>Trainee portal</small></div></div>
+      <div className="nz-auth-brand"><NziMark /><div><b>NZ Insights Pro</b><small>Trainee portal</small></div></div>
       <div className="nz-auth-promise">
         <span className="nz-eyebrow light">Your training, your record</span>
         <h1>Training you keep, wherever you go next.</h1>

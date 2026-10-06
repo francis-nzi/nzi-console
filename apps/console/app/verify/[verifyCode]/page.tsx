@@ -1,3 +1,4 @@
+import { NziMark } from "@nzi/ui";
 import { headers } from "next/headers";
 import {
   claimVerifyAttempt, claimVerifyMiss, clientAddressFrom, verifyTrainingCertificate,
@@ -113,7 +114,7 @@ async function LimitedCard() {
 
 function VerifyShell({ children }: { children: React.ReactNode }) {
   return <main className="nz-verify-shell">
-    <div className="nz-verify-brand"><span>N</span><div><b>NZ Insights Pro</b><small>Certificate verification</small></div></div>
+    <div className="nz-verify-brand"><NziMark /><div><b>NZ Insights Pro</b><small>Certificate verification</small></div></div>
     {children}
   </main>;
 }

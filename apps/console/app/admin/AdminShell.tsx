@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { EnvBadge } from "@nzi/ui";
+import { EnvBadge, NziMark } from "@nzi/ui";
 import { ADMIN_ICON_PATHS, ADMIN_ITEMS, ADMIN_NAV, type AdminIcon } from "./adminNav";
 
 /**
@@ -61,7 +61,7 @@ export function AdminShell({ fontClassName, environment, user, children }: {
     <div className="nz-a-app">
       <aside className={`nz-a-rail${railOpen ? " on" : ""}`} aria-label="Administration">
         <div className="nz-a-brand">
-          <span className="nz-a-mark" aria-hidden="true">N</span>
+          <NziMark className="nz-a-mark" />
           <div><b>NZ Insights Pro</b><span>Admin</span></div>
         </div>
         <nav className="nz-a-nav" aria-label="Admin sections">

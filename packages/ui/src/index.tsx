@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 import { CommandSearch } from "./CommandSearch";
 import { HelpAffordance } from "./HelpAffordance";
 import { GatedNavLink } from "./GatedNavLink";
+import { NziLogo, NziMark } from "./Brand";
 
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
 export { GatedButton } from "./GatedButton";
 export { Collapsible } from "./Collapsible";
+export { NziLogo, NziMark } from "./Brand";
 export { HelpAffordance, HelpContext, useHelpControl, type HelpControl } from "./HelpAffordance";
 export { SmartSearch, type SmartSearchOption } from "./SmartSearch";
 export { InfoTip } from "./InfoTip";
@@ -71,10 +73,13 @@ export function WorkspaceRail({
 }: { sections: NavSection[]; activeId?: string; user: { initials: string; name: string; role: string } }) {
   return (
     <aside className="nz-rail">
-      <div className="nz-brand">
-        <div className="mark">N</div>
-        <div className="wm">NZ Insights Pro<small>Staff console</small></div>
-      </div>
+      {/* The NZI logo on its white plate (it is drawn for white, the rail is navy), the product beneath; where the rail
+          turns horizontal or narrow, the tree mark alone. */}
+      <a className="nz-brand" href="/" aria-label="NZ Insights Pro staff console — home">
+        <span className="nz-brand-plate"><NziLogo /></span>
+        <NziMark className="mark" />
+        <span className="wm">NZ Insights Pro<small>Staff console</small></span>
+      </a>
       {sections.map((s) => (
         <div key={s.heading}>
           <div className="nz-navsec">{s.heading}</div>
