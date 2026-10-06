@@ -32,6 +32,10 @@ a{color:inherit}
 .nz-brand .wm{font-weight:600;font-size:16px;color:#fff;padding-left:2px}
 /* BRAND-logo: the tree mark replaces every old "N" tile — no coloured tile behind it. */
 .nz-portal-brand>.nz-brand-mark,.nz-auth-brand>.nz-brand-mark,.nz-verify-brand>.nz-brand-mark,.nz-a-mark.nz-brand-mark{background:none;border-radius:50%;padding:0;color:inherit}
+/* BRAND-logo (refinement, #420): the mark is drawn for white too — on a dark ground it sits on a white disc, as the full
+   logo sits on its plate: the collapsed staff rail, the admin rail (dark in both themes), the login's story panel, and the
+   portal and account headers. */
+.nz-brand .mark,.nz-a-mark.nz-brand-mark,.nz-auth-story .nz-brand-mark,.nz-portal-header .nz-brand-mark,.nz-account-header .nz-brand-mark{background:#fff;border-radius:50%;padding:3px;box-shadow:0 1px 2px rgba(0,0,0,.18);box-sizing:border-box}
 /* The full lockup on the login's light entry surface, above the form — no plate needed on white. */
 .nz-auth-entry-stack{display:flex;flex-direction:column;align-items:center;gap:22px;width:100%}
 .nz-auth-logo img{display:block;width:210px;height:auto}
