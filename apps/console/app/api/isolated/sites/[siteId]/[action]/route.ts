@@ -1,4 +1,4 @@
-import { editSite, recordSiteFloorArea, reinstateSite, setRegisteredOffice, vacateSite } from "@nzi/isolated-backend";
+import { archiveSite, editSite, recordSiteFloorArea, reinstateSite, setRegisteredOffice, unarchiveSite, vacateSite } from "@nzi/isolated-backend";
 import type { CommandContext, CommandInputMap, CommandKey } from "@nzi/contracts";
 import type { PoolLike } from "@nzi/isolated-backend";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
@@ -16,6 +16,9 @@ const actions = {
   "registered-office": { key: "site.registeredOffice", run: setRegisteredOffice } as SiteCommand<"site.registeredOffice">,
   vacate: { key: "site.vacate", run: vacateSite } as SiteCommand<"site.vacate">,
   reinstate: { key: "site.reinstate", run: reinstateSite } as SiteCommand<"site.reinstate">,
+  // Phase 1a — archive (reason in x-command-reason, required) / unarchive.
+  archive: { key: "site.archive", run: archiveSite } as SiteCommand<"site.archive">,
+  unarchive: { key: "site.unarchive", run: unarchiveSite } as SiteCommand<"site.unarchive">,
   "floor-area": { key: "site.floorArea.record", run: recordSiteFloorArea } as SiteCommand<"site.floorArea.record">,
 };
 

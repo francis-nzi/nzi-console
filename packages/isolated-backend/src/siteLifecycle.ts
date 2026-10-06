@@ -11,12 +11,12 @@ import { dateOnly } from "./dates";
  */
 
 type SiteRow = { client_id: string; name: string; version: number; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null;
-  address_lines_json: string[]; postcode: string | null; country: string | null };
+  address_lines_json: string[]; postcode: string | null; country: string | null; archived: boolean };
 const ddmmyyyy = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const invalid = (field: string, code: string, message: string) => new CommandValidationError([{ field, code, message }]);
 
-async function requireSite(db: Queryable, organisationId: string, siteId: string, expectedVersion: number) {
-  const { rows } = await db.query<SiteRow>(`SELECT client_id,name,version,is_registered_office,in_service_from,vacated_effective,address_lines_json,postcode,country FROM nzi_console.client_sites WHERE organisation_id=$1 AND site_id=$2 AND archived=false FOR UPDATE`, [organisationId, siteId]);
+async function requireSite(db: Queryable, organisationId: string, siteId: string, expectedVersion: number, options: { includeArchived?: boolean } = {}) {
+  const { rows } = await db.query<SiteRow>(`SELECT client_id,name,version,is_registered_office,in_service_from,vacated_effective,address_lines_json,postcode,country,archived FROM nzi_console.client_sites WHERE organisation_id=$1 AND site_id=$2 AND ($3::boolean OR archived=false) FOR UPDATE`, [organisationId, siteId, options.includeArchived === true]);
   const site = rows[0];
   if (!site) throw invalid("siteId", "NOT_FOUND", "Client site was not found.");
   if (site.version !== expectedVersion) throw new VersionConflictError();
@@ -173,6 +173,31 @@ export async function reinstateSite(pool: PoolLike, input: CommandInputMap["site
     if (site.vacatedEffective === null) throw invalid("siteId", "NOT_VACATED", `${site.name} is not vacated.`);
     const version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion, "vacated_effective=NULL", []);
     return { data: { siteId: input.siteId, version }, entityType: "client_site", entityId: input.siteId, topic: "client.site.reinstated" };
+  });
+}
+
+/**
+ * Phase 1a (ruled) — archive a site: the deactivate state for a site entered by mistake or no longer to be offered, beside
+ * the dated vacate (the client left it). Never a delete: every row that cites the site keeps it, and reports read it as
+ * before; an archived site simply stops being offered for new entries. A reason is required. The registered office is
+ * guarded — move it to another site first.
+ */
+export async function archiveSite(pool: PoolLike, input: CommandInputMap["site.archive"], context: CommandContext) {
+  return runPostgresCommand(pool, "site.archive", input, context, async (db) => {
+    const site = await requireSite(db, context.organisationId, input.siteId, input.expectedVersion, { includeArchived: true });
+    if (site.archived) throw invalid("siteId", "ALREADY_ARCHIVED", `${site.name} is already archived.`);
+    if (site.is_registered_office) throw invalid("siteId", "REGISTERED_OFFICE", `${site.name} is the registered office. Mark another site as the registered office before archiving it.`);
+    const version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion, "archived=true", []);
+    return { data: { siteId: input.siteId, version, archived: true }, before: { version: site.version, archived: false }, entityType: "client_site", entityId: input.siteId, topic: "client.site.archived" };
+  });
+}
+
+export async function unarchiveSite(pool: PoolLike, input: CommandInputMap["site.unarchive"], context: CommandContext) {
+  return runPostgresCommand(pool, "site.unarchive", input, context, async (db) => {
+    const site = await requireSite(db, context.organisationId, input.siteId, input.expectedVersion, { includeArchived: true });
+    if (!site.archived) throw invalid("siteId", "NOT_ARCHIVED", `${site.name} is not archived.`);
+    const version = await bumpVersion(db, context.organisationId, input.siteId, input.expectedVersion, "archived=false", []);
+    return { data: { siteId: input.siteId, version, archived: false }, before: { version: site.version, archived: true }, entityType: "client_site", entityId: input.siteId, topic: "client.site.unarchived" };
   });
 }
 

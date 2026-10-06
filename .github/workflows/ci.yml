@@ -590,6 +590,10 @@ jobs:
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
         run: npx tsx --test packages/isolated-backend/tests/scopeRowStateReal.test.ts
+      # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
+      # is listed as archived, and unarchives.
+      - name: A client site archives with a reason, stays kept and listed, and unarchives
+        run: npx tsx --test packages/isolated-backend/tests/siteArchiveReal.test.ts
       # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
       - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
         run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts

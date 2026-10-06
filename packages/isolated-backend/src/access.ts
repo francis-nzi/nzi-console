@@ -187,6 +187,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "site.registeredOffice": site,
   "site.vacate": site,
   "site.reinstate": site,
+  "site.archive": site,
+  "site.unarchive": site,
   "site.floorArea.record": site,
   "site.location.set": site,
   "emissions.intensity.upsert": job,
