@@ -13,6 +13,7 @@ import { ClientContacts } from "./ClientContacts";
 import { ClientSites } from "./ClientSites";
 import { ClientTargets } from "./ClientTargets";
 import { ClientIntensityTargets } from "./ClientIntensityTargets";
+import { ReportingTemplateCard } from "./ClientReportingTemplate";
 import { FinancialStatusCard } from "./ClientAreaStates";
 import { EvidenceButton, TierBadge, fyLabel, tonnes } from "./FigureEvidence";
 import type { DrawerRequest } from "./clientDrawers";
@@ -93,6 +94,10 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
         <p className="nz-maps">The dated baseline record and its history timeline arrive with <code>client_baselines</code>; the baseline in force is shown above.</p>
       </div>
     </Collapsible>
+
+    {/* Phase 1c — what the client reports, year to year, held on the Client rather than rebuilt on every job. */}
+    <ReportingTemplateCard template={workspace.reportingTemplate ?? { current: null, latestVersion: 0, categories: [] }} access={access.client}
+      onEdit={() => onDrawer({ kind: "reporting-template" })} onInitialise={() => onDrawer({ kind: "reporting-template-initialise" })} />
 
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
       title={<><span className="eyebrow">Relationship</span><h2>Activity</h2></>}

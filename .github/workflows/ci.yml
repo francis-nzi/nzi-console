@@ -598,6 +598,10 @@ jobs:
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero
         run: npx tsx --test packages/isolated-backend/tests/clientIntensityTargetsReal.test.ts
+      # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
+      # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
+      - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions
+        run: npx tsx --test packages/isolated-backend/tests/clientReportingTemplatesReal.test.ts
       # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
       - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
         run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts

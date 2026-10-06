@@ -23,6 +23,7 @@ const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matri
 const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
+const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -157,6 +158,25 @@ describe("isolated Postgres migrations", () => {
       "CONSTRAINT client_intensity_targets_deactivation_reason CHECK (active OR reason IS NOT NULL)",
     ]) assert.ok(clientIntensityTargetsMigration.includes(clause), clause);
     assert.ok(!/job_intensity_targets/.test(clientIntensityTargetsMigration.replace(/--.*$/gm, "")), "the job's table is left as history, not touched");
+  });
+  it("holds a client's reporting template as whole versions, header and lines, append-only; a line may be \"to file\" (0159, Phase 1c)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_reporting_templates", "PRIMARY KEY (organisation_id, client_id, version)",
+      "origin text NOT NULL CHECK (origin IN ('manual', 'job', 'v7-import'))",
+      "CONSTRAINT client_reporting_templates_origin_ref CHECK ((origin = 'manual') = (origin_ref IS NULL))",
+      "CONSTRAINT client_reporting_templates_deactivation_reason CHECK (active OR reason IS NOT NULL)",
+      "CREATE TABLE nzi_console.client_reporting_template_lines", "PRIMARY KEY (organisation_id, client_id, version, line_id)",
+      "FOREIGN KEY (organisation_id, client_id, version) REFERENCES nzi_console.client_reporting_templates(organisation_id, client_id, version)",
+      "category_code text REFERENCES nzi_console.input_spec_categories(category_code)",
+      "CONSTRAINT client_reporting_template_lines_category_scope CHECK (category_code IS NULL OR split_part(category_code, '.', 1) = scope)",
+      "CONSTRAINT client_reporting_template_lines_factor_dataset CHECK (factor_id IS NULL OR dataset_id IS NOT NULL)",
+    ]) assert.ok(clientReportingTemplatesMigration.includes(clause), clause);
+    for (const table of ["client_reporting_templates", "client_reporting_template_lines"]) {
+      for (const clause of [`ALTER TABLE nzi_console.${table} FORCE ROW LEVEL SECURITY`, `GRANT SELECT, INSERT ON nzi_console.${table} TO nzi_console_app`, `REVOKE UPDATE, DELETE ON nzi_console.${table}`]) {
+        assert.ok(clientReportingTemplatesMigration.includes(clause), clause);
+      }
+    }
+    assert.ok(!/\bquantity\b/.test(clientReportingTemplatesMigration.replace(/--.*$/gm, "")), "a template holds lines, never a quantity");
   });
   it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
     for (const clause of [
