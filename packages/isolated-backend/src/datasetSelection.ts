@@ -3,8 +3,11 @@ import type { Queryable } from "./postgres";
 /**
  * A CRP job's emission-factor datasets, chosen against its reporting window (NZC-070's boundary) — said once, for
  * job.create (the first choice), dataset.override.add (a manual choice's warnings) and job.update (a window that
- * moves, ruled J2). Automatic selections are derived state: every active GB or GLOBAL dataset whose validity covers the
- * window. Manual selections are a person's choice, carrying the warnings that choice was made with.
+ * moves, ruled J2). Automatic selections are derived state: every active GB or GLOBAL dataset **valid on the last day of
+ * the window** — the reporting year's edition, the year the period ends (JW-13, ruled: "reporting year = end year", as
+ * baselines and the reporting-year field already count it). Requiring an edition to cover the whole window chose nothing
+ * for a period that straddles two calendar years — an April–March job — because every GB edition is a calendar year.
+ * Manual selections are a person's choice, carrying the warnings that choice was made with.
  */
 
 export type ReportingWindow = { from: string; to: string };
@@ -13,8 +16,8 @@ export type ReportingWindow = { from: string; to: string };
 export async function automaticDatasetsFor(db: Queryable, organisationId: string, window: ReportingWindow): Promise<Array<{ datasetId: string; name: string }>> {
   const { rows } = await db.query<{ dataset_id: string; name: string }>(
     `SELECT d.dataset_id, d.name FROM nzi_console.emission_factor_datasets d
-      WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$2 AND d.valid_to>=$3 AND d.country_code IN ('GB','GLOBAL')
-      ORDER BY d.dataset_id`, [organisationId, window.from, window.to]);
+      WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$2 AND d.valid_to>=$2 AND d.country_code IN ('GB','GLOBAL')
+      ORDER BY d.dataset_id`, [organisationId, window.to]);
   return rows.map((row) => ({ datasetId: row.dataset_id, name: row.name }));
 }
 
@@ -22,10 +25,10 @@ export async function automaticDatasetsFor(db: Queryable, organisationId: string
 export async function selectAutomaticDatasets(db: Queryable, organisationId: string, jobId: string, window: ReportingWindow, actorId: string): Promise<void> {
   await db.query(
     `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
-    SELECT $1,$2,d.dataset_id,'automatic','Matched reporting period and geography.',$5 FROM nzi_console.emission_factor_datasets d
-    WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$3 AND d.valid_to>=$4 AND d.country_code IN ('GB','GLOBAL')
+    SELECT $1,$2,d.dataset_id,'automatic','Matched the reporting year (the edition valid on the period''s last day) and geography.',$4 FROM nzi_console.emission_factor_datasets d
+    WHERE d.organisation_id=$1 AND d.status='active' AND d.valid_from<=$3 AND d.valid_to>=$3 AND d.country_code IN ('GB','GLOBAL')
     ON CONFLICT DO NOTHING`,
-    [organisationId, jobId, window.from, window.to, actorId]);
+    [organisationId, jobId, window.to, actorId]);
 }
 
 /**

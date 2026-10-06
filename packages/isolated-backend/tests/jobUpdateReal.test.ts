@@ -134,6 +134,33 @@ describe("job.update, against a real database", { skip: TEST_DATABASE_URL ? fals
     });
   });
 
+  describe("a period that straddles two calendar years (JW-13: the reporting year's edition, the year the period ends)", () => {
+    const automatic = async (jobId: string) => (await q(`SELECT dataset_id FROM nzi_console.job_dataset_selections WHERE job_id = $1 AND selection_source = 'automatic' AND dataset_id LIKE 'ds-%' ORDER BY dataset_id`, [jobId])).map((row) => row.dataset_id);
+
+    it("job.create selects the edition valid on the period's last day — before, an April–March job got none", async () => {
+      const job = await crpJob({ reportingPeriodStart: "2025-04-01", reportingPeriodEnd: "2026-03-31", startDate: "2025-04-01" });
+      assert.deepEqual(await automatic(job.jobId), ["ds-2026"], "the 2026 edition only — never both years, never none");
+      const calendar = await crpJob();
+      assert.deepEqual(await automatic(calendar.jobId), ["ds-2025"], "a calendar-year job is unchanged");
+    });
+
+    it("job.update re-derives the same way when the window moves to straddle a year end", async () => {
+      const job = await crpJob();
+      await updateJob(database.pool, { jobId: job.jobId, expectedVersion: 1, reportingPeriodStart: "2025-07-01", reportingPeriodEnd: "2026-06-30" }, context(ORG, "admin", "July–June financial year"));
+      assert.deepEqual(await automatic(job.jobId), ["ds-2026"]);
+    });
+
+    it("the reporting year's edition, chosen automatically, is not listed as a coverage gap; a manual one still is", async () => {
+      const { listJobDatasetOptions } = await import("../src/readModels");
+      const job = await crpJob({ reportingPeriodStart: "2025-04-01", reportingPeriodEnd: "2026-03-31", startDate: "2025-04-01" });
+      await q(`INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, warnings_json, selected_by) VALUES ($1, $2, 'ds-2025', 'manual', 'Also the start year', '[]', 't')`, [ORG, job.jobId]);
+      const options = await withTenantRead(database.pool, ORG, (db) => listJobDatasetOptions(db, job.jobId));
+      const warn = (id: string) => options.find((option) => option.datasetId === id)?.warnings ?? null;
+      assert.deepEqual(warn("ds-2026")?.filter((w) => w.includes("reporting period")), [], "the automatic end-year edition is the rule, not a gap");
+      assert.ok(warn("ds-2025")?.some((w) => w.includes("Does not cover the complete reporting period")), "a manual edition that does not cover the window still warns");
+    });
+  });
+
   describe("the reporting period (J1, J2, J5; NZC-092)", () => {
     it("needs a reason; re-derives the year by job.create's helper; moves the window; re-derives automatic datasets; keeps manual ones with recomputed warnings — auditing both sets", async () => {
       const job = await crpJob();
