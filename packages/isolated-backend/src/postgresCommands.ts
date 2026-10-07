@@ -1681,10 +1681,11 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     client_factor_id:string|null;
     override_tco2e: string | null;
     override_reason: string | null;
+    apply_pct: string;
     monthly_activity_json:Array<{month:string;quantity:number|null}>;
     provenance_json?: Record<string, unknown> | null;
   }>(
-    `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+    `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,apply_pct,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
     [context.organisationId, input.jobId, input.rowId],
   );
   const row = found.rows[0];
@@ -1774,6 +1775,9 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
       title: "Emissions calculated",
       detail: "quantity × kgCO₂e per unit ÷ 1,000",
     },
+    // RULING-apply-pct: `quantity` is the source's full amount and `apply_pct` the share attributed to this row, applied
+    // once, here. A group roll-up arrives already scaled, at 100. A real 0% is 0 — v7's "0 means 100" is not carried over.
+    ...(Number(row.apply_pct) === 100 ? [] : [{ title: "Apportioned", detail: `${Number(row.apply_pct)}% of the source attributed to this row` }]),
     ...((row.monthly_activity_json?.length??0)>0?[{title:"Monthly activity retained",detail:`${row.monthly_activity_json.filter(slot=>slot.quantity!==null).length}/${row.monthly_activity_json.length} months populated`}]:[]),
     ...(row.override_tco2e === null
       ? []
@@ -1793,13 +1797,14 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     factorVersion: matched.version,
     kgCo2ePerUnit: matched.kgco2e_per_unit,
     synthetic: matched.synthetic,
+    applyPct: Number(row.apply_pct),
     monthlyActivity:row.monthly_activity_json??[],
   };
   const updated = await db.query<{
     version: number;
     calculated_tco2e: string;
   }>(
-    `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
+    `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000*apply_pct/100,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
     [
       context.organisationId,
       input.jobId,

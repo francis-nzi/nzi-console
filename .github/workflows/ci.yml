@@ -603,6 +603,10 @@ jobs:
       # swap not add; rows recalculated by the one calculation; overrides kept; one audit event; a reason when issued.
       - name: A job moves to its reporting year's edition — previewed, resolved, swapped and recalculated
         run: npx tsx --test packages/isolated-backend/tests/jobDatasetUpdateReal.test.ts
+      # RULING-apply-pct: calculate scales by apply_pct, once — 60% is 60%, an ungrouped 50% source equals the same source
+      # grouped (the roll-up arrives scaled, at 100), and a real 0% is 0.
+      - name: Calculate applies apportionment once — 60%, grouped equals ungrouped, 0% is 0
+        run: npx tsx --test packages/isolated-backend/tests/applyPctCalculateReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
