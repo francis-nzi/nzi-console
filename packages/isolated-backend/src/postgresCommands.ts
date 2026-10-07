@@ -3,6 +3,7 @@ import { generateMilestones, templateForNewJob, type MilestoneState } from "./mi
 import { datasetCoverageWarnings, NEW_JOB_COUNTRY, selectAutomaticDatasets } from "./datasetSelection";
 import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
 import { assertClientCurrency } from "./commercialLookups";
+import { refuseArchivedSiteChange } from "./siteArchiveGuard";
 import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
 import {
   clientUpdateIssues,
@@ -975,8 +976,9 @@ async function reconcileUnitWithFactor(
 }
 
 /** `currentSiteId` is the row's site before this write: null on create, the stored site_id on update (read in the same
- * transaction). A row may cite an archived site only if it already did — archiving keeps rows, it never strands them. */
-async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null,currentSiteId:string|null){if(!siteId)return;const found=await db.query<{archived:boolean}>(`SELECT s.archived FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);if(found.rows[0].archived&&siteId!==currentSiteId)throw new CommandValidationError([{field:"siteId",code:"SITE_ARCHIVED",message:"That site is archived — unarchive it to record against it."}]);}
+ * transaction). A row may cite an archived site only if it already did — archiving keeps rows, it never strands them.
+ * The archived comparison is the one every site-setting write shares (`refuseArchivedSiteChange`). */
+async function requireSiteForJob(db:Queryable,organisationId:string,jobId:string,siteId:string|null,currentSiteId:string|null){if(!siteId)return;const found=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3`,[organisationId,jobId,siteId]);if(!found.rows[0])throw new CommandValidationError([{field:"siteId",code:"NOT_FOUND",message:"Site was not found for this job's client."}]);await refuseArchivedSiteChange(db,organisationId,siteId,currentSiteId,(message)=>new CommandValidationError([{field:"siteId",code:"SITE_ARCHIVED",message}]));}
 
 
 async function requirePurchasedGoodsCategory(db:Queryable,organisationId:string,jobId:string,scope:string,categoryId:string|null){if(!categoryId)return;if(scope!=="3.1")throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"WRONG_SCOPE",message:"Purchased-goods categories apply only to Scope 3.1 rows."}]);const found=await db.query(`SELECT 1 FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND c.category_id=$3`,[organisationId,jobId,categoryId]);if(!found.rows[0])throw new CommandValidationError([{field:"purchasedGoodsCategoryId",code:"NOT_FOUND",message:"Purchased-goods category was not found for this client."}]);}
