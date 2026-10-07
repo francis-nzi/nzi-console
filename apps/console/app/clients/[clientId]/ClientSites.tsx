@@ -80,7 +80,8 @@ export function ClientSites({ sites, archived = [], reportingPeriods, today, acc
   const periods = [...reportingPeriods].reverse();
   const blocked = access.state !== "allowed";
 
-  return <section className="nz-panel">
+  // `client-sites`: where a job's Sites drawer sends "Manage sites on the client".
+  return <section className="nz-panel" id="client-sites">
     <div className="nz-card-h">
       <span className="eyebrow">Operations</span><h2>Sites</h2><span className="sp" />
       <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => onEdit(null)}>＋ Add</GatedButton>
