@@ -1,5 +1,5 @@
 "use client";
-import { useEffect,useState } from "react";
+import { useCallback,useEffect,useState } from "react";
 import { JobClientMark } from "./JobClientMark";
 import { LogTimeButton } from "./JobTimePanel";
 import type { ReactNode } from "react";
@@ -28,7 +28,7 @@ import type {
 import { monthsBetween } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
-import { AppShell, Collapsible, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
@@ -234,6 +234,8 @@ export function CrpScopeWorkspace({
     [quickAddBusy,setQuickAddBusy]=useState(false),
     [quickAddError,setQuickAddError]=useState(""),
     [openStages,setOpenStages]=useState<Set<string>>(()=>new Set([job.header.workflowStage,"Data entry"])),
+    // Phase 2 job shell: the drawer open over the page, or none — one at a time, as on the Client home.
+    [shellDrawer,setShellDrawer]=useState<JobShellDrawer|null>(null),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
@@ -446,6 +448,16 @@ export function CrpScopeWorkspace({
     </EvidenceDrawer>
   ))(drawerState.row)) : undefined;
 
+  // The job shell's Setup drawer: the same panels less Client sites, which has its own Sites drawer.
+  const setupPanels = (
+    <>
+      <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
+      <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
+      <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
+      <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
+    </>
+  );
   const configPanels = (
     <>
       <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
@@ -567,8 +579,8 @@ export function CrpScopeWorkspace({
   );
 
   // Phase 2 job shell (`job-shell`, JOB-REDESIGN-phase2-kickoff): a compact header with the setup as chips and drawer
-  // buttons, and data capture directly under it. The setup panels sit below the review and report stages until the
-  // drawers take them (PR 2); each button takes you to its panel.
+  // buttons, and data capture directly under it. Setup, Milestones, Time, Sites and Datasets open in one overlay drawer
+  // (the Client-home pattern), each holding the panels the page already had — relocated, not rewritten.
   const shellOn = dataEntryAdapterEnabled("job-shell");
   const shellSummary: JobShellSummary = {
     datasets: datasetsSummary(datasets),
@@ -576,8 +588,38 @@ export function CrpScopeWorkspace({
     intensity: intensityTarget ? `${INTENSITY_METRIC_LABEL[intensityTarget.metric] ?? intensityTarget.metric} · v${intensityTarget.version}` : "No intensity metric",
     milestones: milestonesSummary(shell?.milestoneStates ?? null),
   };
-  const openShellDrawer = (drawer: JobShellDrawer) =>
-    requestAnimationFrame(() => document.getElementById(`job-shell-${drawer}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  const openShellDrawer = (drawer: JobShellDrawer) => setShellDrawer(drawer);
+  const closeShellDrawer = useCallback(() => setShellDrawer(null), []);
+  const period = job.header.reportingPeriod ? `${formatDate(job.header.reportingPeriod.from)} – ${formatDate(job.header.reportingPeriod.to)}` : null;
+  const shellDrawerBody: Record<JobShellDrawer, { kicker: string; title: string; body: React.ReactNode }> = {
+    setup: { kicker: "Job", title: "Setup", body: <>
+      <div className="nz-shell-period"><span>Reporting period</span><b>{period ?? "Not set"}</b>
+        <button type="button" className="nz-btn" onClick={() => setShellDrawer("milestones")}>Change it in Milestones…</button></div>
+      <WorkflowStageControl job={job} />
+      {setupPanels}
+    </> },
+    milestones: { kicker: "Job", title: "Milestones", body: shell?.milestonesPanel ?? null },
+    time: { kicker: "Job", title: "Time", body: shell?.timePanel ?? null },
+    sites: { kicker: "Job", title: "Sites", body: <>
+      {sites.length ? <ul className="nz-shell-sites" aria-label="Sites in this job">{sites.map((site) => <li key={site.id}><b>{site.name}</b><span className="nz-st done">Included</span></li>)}</ul>
+        : <p className="nz-hint">This client has no sites in use. Entries without a site stay visible as Unallocated.</p>}
+      <p className="nz-hint">Every site the client has in use is included in this job. Archived sites are not listed.</p>
+      <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
+    </> },
+    datasets: { kicker: "Job", title: "Datasets", body: <>
+      <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
+      <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons/>
+    </> },
+  };
+  const shellDrawerView = shellDrawer ? shellDrawerBody[shellDrawer] : null;
+  const shellDrawerHost = shellOn ? (
+    <Drawer open={shellDrawerView !== null} onClose={closeShellDrawer} ariaLabel={shellDrawerView ? `${shellDrawerView.title} drawer` : "Job drawer"} className="nz-site-drawer nz-job-drawer" dismissOnOutsideClick>
+      {shellDrawerView ? <>
+        <div className="nz-dh"><div className="k">{shellDrawerView.kicker}</div><h3>{shellDrawerView.title}</h3><button type="button" className="x" onClick={closeShellDrawer} aria-label="Close">×</button></div>
+        <div className="nz-db">{shellDrawerView.body}</div>
+      </> : null}
+    </Drawer>
+  ) : null;
   const shellBody = (
     <div className="nz-body nz-shell-body">
       {noticeBanner}
@@ -601,13 +643,7 @@ export function CrpScopeWorkspace({
         {flatRegister}
         {releaseControl}
       </>}
-      <section className="nz-shell-setup" aria-label="Job setup">
-        <div id="job-shell-setup"><WorkflowStageControl job={job} />{configPanels}</div>
-        <div id="job-shell-milestones">{shell?.milestonesPanel}</div>
-        <div id="job-shell-time">{shell?.timePanel}</div>
-        <div id="job-shell-sites"><SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/></div>
-        <div id="job-shell-datasets">{datasetPanel}</div>
-      </section>
+      {shellDrawerHost}
     </div>
   );
 
@@ -720,11 +756,13 @@ function DatasetPanel({
   datasets,
   updates = [],
   notice,
+  showReasons = false,
 }: {
   jobId: string;
   datasets: DatasetOption[];
   updates?: DatasetUpdate[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
+  showReasons?: boolean;
 }) {
   const router = useRouter(),
     available = datasets.filter((d) => !d.selected),
@@ -785,6 +823,8 @@ function DatasetPanel({
               {d.warnings.length ? <span className="nz-st est" style={{ marginLeft: 6 }}>{d.warnings.length} warning{d.warnings.length === 1 ? "" : "s"}</span> : null}
               {/* DATASET-CURRENCY §3: a fallback edition whose reporting year's own is now published says so — the banner above moves it. */}
               {(() => { const update = updates.find((u) => u.fromDatasetId === d.datasetId); return update ? <span className="nz-st need" style={{ marginLeft: 6 }}>{update.toLabel} available</span> : null; })()}
+              {/* Phase 2 Datasets drawer: why it is selected — the rule's reason, or the recorded justification. */}
+              {showReasons && d.selectionReason ? <div className="nz-dataset-reason">{d.selectionReason}</div> : null}
             </li>
           ))}
         </ul>
