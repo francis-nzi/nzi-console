@@ -49,4 +49,21 @@ describe("the job shell's header summaries", () => {
     for (const drawer of ["setup", "milestones", "time", "sites", "datasets"]) assert.match(workspace, new RegExp(`\\n    ${drawer}: \\{ kicker: "Job", title: "`), `the ${drawer} drawer`);
     assert.match(workspace, /<DatasetPanel [^>]*showReasons\/>/, "the Datasets drawer says why each dataset is selected");
   });
+
+  it("logs time in the Time drawer through the Time screen's own form and command, the job fixed — no redirect out", () => {
+    const page = readFileSync(join(APP, "jobs/[jobId]/page.tsx"), "utf8");
+    assert.match(page, /const shellTimePanel = <JobTimePanel [^>]*logInPlace=\{\{ jobLabel: `\$\{job\.header\.client\} · \$\{job\.header\.number\}`, today: todayInLondon\(\) \}\} \/>;/);
+    assert.match(page, /const shell = \{ milestonesPanel: milestones, timePanel: shellTimePanel, milestoneStates \};/);
+    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}<\/>;/, "every other place keeps the panel that links to the Time screen");
+    const panel = readFileSync(join(APP, "jobs/JobTimePanel.tsx"), "utf8");
+    assert.match(panel, /<AddEntry [^>]*fixedJob=\{\{ jobId, label: logInPlace\.jobLabel \}\}/);
+    const board = readFileSync(join(APP, "time/TimeBoard.tsx"), "utf8");
+    // One form, one command: the drawer posts `time.entry.log` through the same route as the Time screen.
+    assert.match(board, /export function AddEntry\(/);
+    assert.match(board, /postBrowserCommand\("\/api\/isolated\/time\/entries", \{\n\s+jobId: draft\.jobId,/);
+    assert.match(board, /\{fixedJob \? <div className="nz-time-field wide"><span>Job<\/span><b className="nz-time-fixed-job">\{fixedJob\.label\}<\/b><\/div>/);
+    // The header's Time summary re-reads when time is logged in the drawer.
+    assert.match(panel, /window\.dispatchEvent\(new Event\(JOB_TIME_CHANGED\)\)/);
+    assert.match(readFileSync(join(APP, "jobs/JobShellHeader.tsx"), "utf8"), /window\.addEventListener\(JOB_TIME_CHANGED, changed\)/);
+  });
 });

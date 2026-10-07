@@ -6,6 +6,7 @@ import type { FamilyJob } from "@nzi/mock-data";
 import { formatDate } from "../lib/formatDate";
 import { hoursLabel } from "../time/timePeriods";
 import { JobClientMark } from "./JobClientMark";
+import { JOB_TIME_CHANGED } from "./jobTimeEvents";
 
 /**
  * Phase 2 job shell (JOB-REDESIGN-phase2-kickoff §1), behind `job-shell`: the job's identity on one line, its setup as
@@ -33,6 +34,13 @@ const DRAWERS: ReadonlyArray<{ id: JobShellDrawer; label: string }> = [
 /** The job's logged hours, from the same read as the Time panel: "14.5 h", "…" while loading, "unavailable" on failure. */
 function useJobHours(jobId: string): string {
   const [hours, setHours] = useState("…");
+  // Time logged in the Time drawer moves the total, so the summary re-reads it then.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const changed = () => setTick((value) => value + 1);
+    window.addEventListener(JOB_TIME_CHANGED, changed);
+    return () => window.removeEventListener(JOB_TIME_CHANGED, changed);
+  }, []);
   useEffect(() => {
     let live = true;
     fetch(`/api/isolated/jobs/${encodeURIComponent(jobId)}/time`, { cache: "no-store" })
@@ -44,7 +52,7 @@ function useJobHours(jobId: string): string {
       })
       .catch(() => { if (live) setHours("unavailable"); });
     return () => { live = false; };
-  }, [jobId]);
+  }, [jobId, tick]);
   return hours;
 }
 

@@ -16,12 +16,12 @@ import { OversightTab, PayrollTab, UtilisationTab } from "./TimeReports";
  * Hours only, never rates: a person logging time sees hours, and money stays finance-gated (T-Q3).
  */
 type Tab = "log" | "oversight" | "payroll" | "utilisation";
-type Load<T> = { state: "loading" } | { state: "failed"; message: string } | { state: "ready"; data: T };
+export type Load<T> = { state: "loading" } | { state: "failed"; message: string } | { state: "ready"; data: T };
 type Draft = { workDate: string; jobId: string; hours: string; activityValueId: string; billable: boolean; billableTouched: boolean; note: string };
 
 const PERIODS: Array<[PeriodKey, string]> = [["week", "This week"], ["month", "This month"], ["last-month", "Last month"], ["quarter", "This quarter"], ["custom", "Custom"]];
 
-async function readJson<T>(url: string, pick: (body: Record<string, unknown>) => T): Promise<Load<T>> {
+export async function readJson<T>(url: string, pick: (body: Record<string, unknown>) => T): Promise<Load<T>> {
   try {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) return { state: "failed", message: response.status === 403 ? "Your role can't read this." : "It could not be read just now." };
@@ -128,18 +128,23 @@ function Metric({ label, value, foot }: { label: string; value: string; foot?: s
   return <div className="nz-metric"><div className="l">{label}</div><div className="v">{value}</div>{foot ? <div className="nz-time-foot">{foot}</div> : null}</div>;
 }
 
-function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled, onSaved }: {
+/**
+ * The Add entry form. On the Time screen the job is chosen; in a job's Time drawer (Phase 2 job shell) it is that job,
+ * fixed (`fixedJob`) — the same form, the same `time.entry.log` command and its validation, with no redirect out.
+ */
+export function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled, onSaved, fixedJob }: {
   formRef: React.RefObject<HTMLFormElement | null>; today: string; initialJobId: string | null; jobs: Load<LoggableJob[]>; activities: Load<TimeActivityOption[]>;
-  writeEnabled: boolean; onSaved: (message: string) => void;
+  writeEnabled: boolean; onSaved: (message: string) => void; fixedJob?: { jobId: string; label: string };
 }) {
   const blank = (jobId: string): Draft => ({ workDate: today, jobId, hours: "", activityValueId: "", billable: true, billableTouched: false, note: "" });
-  const [draft, setDraft] = useState<Draft>(blank(initialJobId ?? ""));
+  const [draft, setDraft] = useState<Draft>(blank(fixedJob?.jobId ?? initialJobId ?? ""));
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const key = useRef(crypto.randomUUID());
   const options = jobs.state === "ready" ? jobs.data.map(jobOption) : [];
   const chosenJob = jobs.state === "ready" ? jobs.data.find((job) => job.jobId === draft.jobId) : undefined;
-  const preset = initialJobId && jobs.state === "ready" && !jobs.data.some((job) => job.jobId === initialJobId);
+  const jobLabel = fixedJob ? fixedJob.label : chosenJob ? `${chosenJob.clientName} · ${chosenJob.jobNumber}` : "the job";
+  const preset = !fixedJob && initialJobId && jobs.state === "ready" && !jobs.data.some((job) => job.jobId === initialJobId);
 
   const chooseActivity = (activityValueId: string) => {
     const activity = activities.state === "ready" ? activities.data.find((item) => item.valueId === activityValueId) : undefined;
@@ -163,7 +168,7 @@ function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled
       }, key.current);
       if (result.state !== "success") return setProblem(issueText(result));
       key.current = crypto.randomUUID();
-      onSaved(`Logged ${hoursLabel(minutes)} h on ${chosenJob ? `${chosenJob.clientName} · ${chosenJob.jobNumber}` : "the job"} for ${shortDay(draft.workDate)}.`);
+      onSaved(`Logged ${hoursLabel(minutes)} h on ${jobLabel} for ${shortDay(draft.workDate)}.`);
       setDraft({ ...blank(draft.jobId), workDate: draft.workDate });
     } finally { setSaving(false); }
   }
@@ -171,19 +176,20 @@ function AddEntry({ formRef, today, initialJobId, jobs, activities, writeEnabled
   return <section className="nz-panel nz-time-add">
     <h2>Add entry</h2>
     {!writeEnabled ? <div className="nz-banner warn" role="status"><div>Writes are switched off in this environment, so time can't be logged here.</div></div> : null}
-    {jobs.state === "failed" ? <div className="nz-banner warn" role="alert"><div>The jobs you can log against could not be read. {jobs.message}</div></div> : null}
+    {!fixedJob && jobs.state === "failed" ? <div className="nz-banner warn" role="alert"><div>The jobs you can log against could not be read. {jobs.message}</div></div> : null}
     {activities.state === "failed" ? <div className="nz-banner warn" role="alert"><div>The activities could not be read. {activities.message}</div></div> : null}
     {preset ? <div className="nz-banner warn" role="status"><div>That job isn't one you can log time against, so choose another.</div></div> : null}
     <form ref={formRef} className="nz-time-form" onSubmit={save}>
       <label className="nz-time-field"><span>Date</span>
         <input className="nz-inp" type="date" value={draft.workDate} max={today} required onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></label>
-      <div className="nz-time-field wide">
+      {fixedJob ? <div className="nz-time-field wide"><span>Job</span><b className="nz-time-fixed-job">{fixedJob.label}</b></div>
+        : <div className="nz-time-field wide">
         <label htmlFor="time-job">Job</label>
         <SmartSearch id="time-job" label="Job" options={options} value={draft.jobId} required
           emptyHint={jobs.state === "ready" ? "No jobs you can log time against." : undefined}
           placeholder={jobs.state === "loading" ? "Loading jobs…" : options.length ? "Type a client, number or title…" : "No jobs you can log against"}
           onChange={(jobId) => setDraft({ ...draft, jobId })} />
-      </div>
+      </div>}
       <label className="nz-time-field"><span>Hours</span>
         <input className="nz-inp" type="number" inputMode="decimal" min={TIME_HOURS_STEP} max={24} step={TIME_HOURS_STEP} value={draft.hours} placeholder="1.5" required
           onChange={(event) => setDraft({ ...draft, hours: event.target.value })} /></label>
