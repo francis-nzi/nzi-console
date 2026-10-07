@@ -56,6 +56,9 @@ import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTR
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
+import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
+
+const INTENSITY_METRIC_LABEL: Record<string, string> = { turnover: "Turnover", employee: "Employees", "floor-area": "Floor area" };
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
 import { formatDate, formatDateTime } from "../lib/formatDate";
@@ -160,6 +163,7 @@ export function CrpScopeWorkspace({
   writeEnabled,
   milestones,
   datasetUpdates = [],
+  shell,
 }: {
   /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
   specs: Record<string, InputSpecCategory>;
@@ -185,6 +189,11 @@ export function CrpScopeWorkspace({
   milestones?: ReactNode;
   /** DATASET-CURRENCY §3: the newer editions this job could move to (a soft read — none when it fails). */
   datasetUpdates?: DatasetUpdate[];
+  /**
+   * Phase 2 job shell (`job-shell`): the Milestones and Time panels apart, so each has its own place, and the
+   * milestones the Milestones button summarises (null when that read failed).
+   */
+  shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null };
 }) {
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
     ? {
@@ -557,6 +566,51 @@ export function CrpScopeWorkspace({
     </div>
   );
 
+  // Phase 2 job shell (`job-shell`, JOB-REDESIGN-phase2-kickoff): a compact header with the setup as chips and drawer
+  // buttons, and data capture directly under it. The setup panels sit below the review and report stages until the
+  // drawers take them (PR 2); each button takes you to its panel.
+  const shellOn = dataEntryAdapterEnabled("job-shell");
+  const shellSummary: JobShellSummary = {
+    datasets: datasetsSummary(datasets),
+    sites: `${sites.length} site${sites.length === 1 ? "" : "s"} · all included`,
+    intensity: intensityTarget ? `${INTENSITY_METRIC_LABEL[intensityTarget.metric] ?? intensityTarget.metric} · v${intensityTarget.version}` : "No intensity metric",
+    milestones: milestonesSummary(shell?.milestoneStates ?? null),
+  };
+  const openShellDrawer = (drawer: JobShellDrawer) =>
+    requestAnimationFrame(() => document.getElementById(`job-shell-${drawer}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  const shellBody = (
+    <div className="nz-body nz-shell-body">
+      {noticeBanner}
+      <section className="nz-shell-capture" aria-label="Data capture">
+        {dataEntrySurface}
+        {createForm}
+        {sourceRegister}
+      </section>
+      {stageSectionsOn ? <>
+        <StageSection n={3} name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+          {assuranceSurface}
+          {reviewQueue}
+          {flatRegister}
+        </StageSection>
+        <StageSection n={4} name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
+          {releaseControl}
+        </StageSection>
+      </> : <>
+        {assuranceSurface}
+        {reviewQueue}
+        {flatRegister}
+        {releaseControl}
+      </>}
+      <section className="nz-shell-setup" aria-label="Job setup">
+        <div id="job-shell-setup"><WorkflowStageControl job={job} />{configPanels}</div>
+        <div id="job-shell-milestones">{shell?.milestonesPanel}</div>
+        <div id="job-shell-time">{shell?.timePanel}</div>
+        <div id="job-shell-sites"><SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/></div>
+        <div id="job-shell-datasets">{datasetPanel}</div>
+      </section>
+    </div>
+  );
+
   return (
     <AppShell
       rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}
@@ -566,6 +620,10 @@ export function CrpScopeWorkspace({
        
         crumbs={crumbTrail(jobCrumbs(job.header, { label: "Scope rows" }))}
       />
+      {shellOn ? <JobShellHeader header={job.header} summary={shellSummary} onOpen={openShellDrawer} actions={<>
+        <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
+        <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
+      </>} /> : <>
       <div className="nz-head">
         <div className="nz-job-titleline">
           <div className="nz-job-client"><JobClientMark header={job.header} /><div>
@@ -582,6 +640,7 @@ export function CrpScopeWorkspace({
       </div>
       <WorkflowStageControl job={job} />
       {milestones}
+      </>}
       {/* Job-specific, so it belongs in the job content column and not above the app chrome — rendered
           from the page it pushed the whole left rail down the screen. Sticky within the column so the
           totals stay in view while entries are typed below them. */}
@@ -594,7 +653,7 @@ export function CrpScopeWorkspace({
           onSelect={setSiteId}
         />
       </div>
-      {stageSectionsOn ? stageBody : (
+      {shellOn ? shellBody : stageSectionsOn ? stageBody : (
       <div className="nz-body">
         <section className="nz-command-hero">
           <div className="nz-command-summary">

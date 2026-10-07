@@ -253,6 +253,26 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-readiness-pill i{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(255,194,75,.16)}
 .nz-readiness-pill.ready{color:var(--pine);border-color:#BEE7D3;background:var(--mint)}
 .nz-readiness-pill.ready i{background:var(--emerald);box-shadow:0 0 0 4px rgba(11,167,94,.13)}
+/* Phase 2 job shell (`job-shell`): identity on one line, setup as chips, a row of drawer buttons with summaries. */
+.nz-shell-head{padding:16px 24px 14px;background:var(--card);border-bottom:1px solid var(--line)}
+.nz-shell-identity{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.nz-shell-head h1{font-size:19px;font-weight:600;margin:0 0 3px;letter-spacing:-.2px}
+.nz-shell-meta{display:flex;flex-wrap:wrap;font-size:12.5px;color:var(--t2)}
+.nz-shell-meta>span+span::before{content:"·";margin:0 7px;color:var(--t3)}
+.nz-shell-stage{font-weight:700;color:var(--pine)}
+.nz-shell-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.nz-shell-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 11px;border:1px solid var(--line);border-radius:999px;background:var(--paper);font-family:inherit;font-size:12px;color:var(--t2);cursor:pointer}
+.nz-shell-chip b{color:var(--t1);font-weight:600}
+.nz-shell-drawers{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}
+.nz-shell-drawer-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-family:inherit;text-align:left;cursor:pointer}
+.nz-shell-drawer-btn b{font-size:13px;color:var(--t1)}
+.nz-shell-drawer-btn span{max-width:100%;overflow:hidden;font-size:11.5px;color:var(--t3);white-space:nowrap;text-overflow:ellipsis}
+.nz-shell-chip:hover,.nz-shell-drawer-btn:hover{border-color:var(--emerald)}
+.nz-shell-chip:focus-visible,.nz-shell-drawer-btn:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
+.nz-shell-body>.nz-shell-capture{display:flex;flex-direction:column;gap:14px}
+.nz-shell-setup{display:flex;flex-direction:column;gap:14px;margin-top:22px;padding-top:16px;border-top:1px dashed var(--line)}
+@media (max-width:900px){.nz-shell-identity{flex-direction:column}.nz-shell-drawers{grid-template-columns:repeat(3,minmax(0,1fr))}.nz-shell-head .nz-head-actions{flex-direction:row;flex-wrap:wrap;align-items:center}}
+@media (max-width:420px){.nz-shell-head{padding:14px 16px 12px}.nz-shell-drawers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .nz-command-hero{position:relative;display:flex;justify-content:space-between;gap:32px;margin:20px 0 0;padding:28px 30px;overflow:hidden;border-radius:16px;background:linear-gradient(130deg,#071827 0%,#0B2632 62%,#0C513D 140%);color:#fff;box-shadow:0 16px 38px rgba(11,27,43,.12)}
 .nz-command-hero:after{content:"";position:absolute;right:-90px;bottom:-150px;width:360px;height:360px;border:1px solid rgba(99,224,164,.15);border-radius:50%;box-shadow:0 0 0 52px rgba(99,224,164,.035),0 0 0 105px rgba(99,224,164,.025)}
 .nz-command-summary{position:relative;z-index:1;max-width:680px}
