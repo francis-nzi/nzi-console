@@ -604,7 +604,8 @@ export function CrpScopeWorkspace({
       {sites.length ? <ul className="nz-shell-sites" aria-label="Sites in this job">{sites.map((site) => <li key={site.id}><b>{site.name}</b><span className="nz-st done">Included</span></li>)}</ul>
         : <p className="nz-hint">This client has no sites in use. Entries without a site stay visible as Unallocated.</p>}
       <p className="nz-hint">Every site the client has in use is included in this job. Archived sites are not listed.</p>
-      <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
+      {/* Sites belong to the client (Phase 1), so they are added and edited there, not from inside a job (ruled 7 Oct). */}
+      <div><a className="nz-btn" href={`/clients/${encodeURIComponent(job.header.clientId)}#client-sites`}>Manage sites on the client</a></div>
     </> },
     datasets: { kicker: "Job", title: "Datasets", body: <>
       <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />

@@ -48,6 +48,11 @@ describe("the job shell's header summaries", () => {
     assert.match(workspace, /drawer=\{drawer\}/, "AppShell's drawer slot is still the evidence drawer");
     for (const drawer of ["setup", "milestones", "time", "sites", "datasets"]) assert.match(workspace, new RegExp(`\\n    ${drawer}: \\{ kicker: "Job", title: "`), `the ${drawer} drawer`);
     assert.match(workspace, /<DatasetPanel [^>]*showReasons\/>/, "the Datasets drawer says why each dataset is selected");
+    // Ruled 7 Oct: sites are the client's, so the Sites drawer lists them and links to the client — no inline create.
+    const sitesDrawer = workspace.slice(workspace.indexOf('\n    sites: { kicker: "Job"'), workspace.indexOf('\n    datasets: { kicker: "Job"'));
+    assert.doesNotMatch(sitesDrawer, /<SitePanel /, "no inline site create in the Sites drawer");
+    assert.match(sitesDrawer, /href=\{`\/clients\/\$\{encodeURIComponent\(job\.header\.clientId\)\}#client-sites`\}>Manage sites on the client<\/a>/);
+    assert.match(readFileSync(join(APP, "clients/[clientId]/ClientSites.tsx"), "utf8"), /<section className="nz-panel" id="client-sites">/, "the link's anchor");
   });
 
   it("logs time in the Time drawer through the Time screen's own form and command, the job fixed — no redirect out", () => {
