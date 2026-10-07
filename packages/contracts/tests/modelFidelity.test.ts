@@ -63,19 +63,21 @@ it("B. one source apportioned across two sites, with a mid-year site closure", (
   };
   const hqRow = baseRow({
     id: "row-elec-hq", scope: "2", sourceLabel: "Grid electricity", reportLabel: "Electricity",
-    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 60000, applyPct: 60,
+    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 100000, applyPct: 60,
     siteId: "site-hq", siteLabel: "HQ", sourceQuantity: 100000, sourceUnit: "kWh",
-    monthlyActivity: months([5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000]),
+    monthlyActivity: months([8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 10000, 10000]),
   });
   const depotRow = baseRow({
     id: "row-elec-depot", scope: "2", sourceLabel: "Grid electricity", reportLabel: "Electricity",
-    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 40000, applyPct: 40,
+    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 100000, applyPct: 40,
     siteId: closedSite.id, siteLabel: "Depot", sourceQuantity: 100000, sourceUnit: "kWh",
-    monthlyActivity: months([6000, 6000, 6000, 6000, 6000, 6000, null, null, null, null, null, null]),
+    monthlyActivity: months([8000, 8000, 8000, 8000, 8000, 8000, null, null, null, null, null, null]),
   });
   assert.deepEqual(roundTrip(closedSite), closedSite);
   assert.deepEqual(roundTrip(depotRow), depotRow);
   assert.equal((hqRow.applyPct ?? 0) + (depotRow.applyPct ?? 0), 100);
+  // RULING-apply-pct: `quantity` is the source's full amount; `applyPct` carries the share — never pre-apportioned.
+  for (const row of [hqRow, depotRow]) assert.equal(row.quantity, row.sourceQuantity);
   assert.equal(closedSite.vacatedEffective, "2026-07-01");
   assert.ok(depotRow.monthlyActivity.slice(6).every((slot) => slot.quantity === null));
 });

@@ -56,15 +56,17 @@ export const siteDepotVacated: ClientSite = {
   geocodeSource: "os", geocodePrecision: "rooftop", inServiceFrom: "2020-01-01", vacatedEffective: "2026-07-01",
   archived: false, createdBy: "A. Shaw", createdAt: "2026-01-01",
 };
+// `quantity` is the source's full amount and `applyPct` the share attributed to the row (RULING-apply-pct): both rows
+// carry the meter's 100,000 kWh, and the calculation takes 60% and 40% of it.
 export const apportionedElectricityRows: ScopeRowReadModel[] = [
   baseRow({ id: "row-elec-hq", scope: "2", sourceLabel: "Grid electricity", reportLabel: "Electricity",
-    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 60000, applyPct: 60,
+    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 100000, applyPct: 60,
     siteId: siteHeadOffice.id, siteLabel: "Head office", sourceQuantity: 100000, sourceUnit: "kWh",
-    monthlyActivity: months([5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000]) }),
+    monthlyActivity: months([8000,8000,8000,8000,8000,8000,8000,8000,8000,8000,10000,10000]) }),
   baseRow({ id: "row-elec-depot", scope: "2", sourceLabel: "Grid electricity", reportLabel: "Electricity",
-    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 40000, applyPct: 40,
+    categoryPath: ["Scope 2", "Purchased energy"], unit: "kWh", quantity: 100000, applyPct: 40,
     siteId: siteDepotVacated.id, siteLabel: "Depot", sourceQuantity: 100000, sourceUnit: "kWh",
-    monthlyActivity: months([6000,6000,6000,6000,6000,6000,null,null,null,null,null,null]) }),
+    monthlyActivity: months([8000,8000,8000,8000,8000,8000,null,null,null,null,null,null]) }),
 ];
 
 // C. Per-employee commuting rolling up into an auto-generated scope row.
