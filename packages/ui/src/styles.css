@@ -2026,6 +2026,10 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-time-form{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding:14px 16px;align-items:end}
 .nz-time-field{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--t2)}
 .nz-time-field.wide{grid-column:span 2}
+/* In a job's Time drawer the job is fixed: shown, not chosen. */
+.nz-time-fixed-job{display:flex;align-items:center;min-height:36px;font-size:13px;font-weight:600;color:var(--t1)}
+.nz-job-drawer .nz-time-form{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:760px){.nz-job-drawer .nz-time-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .nz-time-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--t1);height:36px;cursor:pointer}
 .nz-time-toggle input{width:16px;height:16px;accent-color:var(--pine)}
 .nz-time-problem,.nz-time-add>.nz-banner{margin:12px 16px}

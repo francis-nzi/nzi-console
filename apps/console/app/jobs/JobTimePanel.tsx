@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
-import type { JobTimeSummary, TimeMoney } from "@nzi/contracts";
+import type { JobTimeSummary, TimeActivityOption, TimeMoney } from "@nzi/contracts";
 import { hoursLabel } from "../time/timePeriods";
+import { AddEntry, readJson, type Load as TimeLoad } from "../time/TimeBoard";
+import { JOB_TIME_CHANGED } from "./jobTimeEvents";
 
 /** "+ Log time" on a job header — the per-job entry point, which pre-fills this job on the Time screen. */
 export function LogTimeButton({ jobId }: { jobId: string }) {
@@ -18,10 +20,25 @@ type Load = { state: "loading" } | { state: "failed"; message: string } | { stat
  * labour cost, charge-out value, fee and margin. The budget (job.manage) and the fee (finance.manage) are edited here,
  * each offered only to someone the read says may change it. A failed read says so; it is never shown as "no time".
  */
-export function JobTimePanel({ jobId, writeEnabled = false }: { jobId: string; writeEnabled?: boolean }) {
+export function JobTimePanel({ jobId, writeEnabled = false, logInPlace }: {
+  jobId: string; writeEnabled?: boolean;
+  /**
+   * Phase 2 job shell (the Time drawer): log time here, on this job, rather than leaving for the Time screen — the Time
+   * screen's own Add entry form and `time.entry.log`, the job fixed. `today` is the London day, resolved on the server.
+   */
+  logInPlace?: { jobLabel: string; today: string };
+}) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((value) => value + 1), []);
+  const [activities, setActivities] = useState<TimeLoad<TimeActivityOption[]>>({ state: "loading" });
+  const [logged, setLogged] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const inPlace = logInPlace !== undefined;
+  useEffect(() => {
+    if (!inPlace) return;
+    void readJson("/api/isolated/time/activities", (body) => body.activities as TimeActivityOption[]).then(setActivities);
+  }, [inPlace]);
   useEffect(() => {
     let live = true;
     fetch(`/api/isolated/jobs/${encodeURIComponent(jobId)}/time`, { cache: "no-store" })
@@ -37,8 +54,13 @@ export function JobTimePanel({ jobId, writeEnabled = false }: { jobId: string; w
   return <section className="nz-body nz-milestones-body"><div className="nz-panel nz-job-time">
     <div className="nz-milestones-heading">
       <div><h2>Time</h2><span className="sub">{load.state === "ready" && !load.summary.othersVisible ? "Your own time on this job — other people's needs time.view." : "Hours logged on this job, by person."}</span></div>
-      <LogTimeButton jobId={jobId} />
+      {logInPlace ? <a className="nz-btn" href={`/time?job=${encodeURIComponent(jobId)}`}>Open the Time screen</a> : <LogTimeButton jobId={jobId} />}
     </div>
+    {logInPlace ? <>
+      {logged ? <div className="nz-banner ok" role="status"><div>{logged}</div></div> : null}
+      <AddEntry formRef={formRef} today={logInPlace.today} initialJobId={jobId} jobs={{ state: "ready", data: [] }} activities={activities}
+        writeEnabled={writeEnabled} fixedJob={{ jobId, label: logInPlace.jobLabel }} onSaved={(message) => { setLogged(message); reload(); window.dispatchEvent(new Event(JOB_TIME_CHANGED)); }} />
+    </> : null}
     {load.state === "loading" ? <p className="nz-milestones-empty">Loading time…</p>
       : load.state === "failed" ? <div className="nz-banner warn" role="alert"><div>{load.message} Nothing is shown rather than a total that might be wrong.</div></div>
       : <JobTimeBody summary={load.summary} writeEnabled={writeEnabled} onSaved={reload} />}
