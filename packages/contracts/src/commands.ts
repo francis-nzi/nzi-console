@@ -437,7 +437,9 @@ export type FactorOption = { datasetId: string|null; datasetName: string; datase
   datasetLabel: string };
 export type DatasetOption = { datasetId: string; name: string;
   /** DATASET-CURRENCY §2: "DESNZ GB 2025" — derived; `name` is the imported file name, shown only as secondary text. */
-  label: string; version: string; validFrom: string; validTo: string; countryCode: string; status: "active" | "superseded" | "draft"; synthetic: boolean; selected: boolean; selectionSource: "automatic" | "manual" | null; applicable: boolean; warnings: string[]; reportingFrom: string; reportingTo: string; jobCountryCode: string };
+  label: string; version: string; validFrom: string; validTo: string; countryCode: string; status: "active" | "superseded" | "draft"; synthetic: boolean; selected: boolean; selectionSource: "automatic" | "manual" | null;
+  /** Why it is selected (Phase 2 Datasets drawer): the rule's reason for an automatic one, the recorded justification for a manual one. */
+  selectionReason?: string | null; applicable: boolean; warnings: string[]; reportingFrom: string; reportingTo: string; jobCountryCode: string };
 export function isAllowedJobStageTransition(family: WorkflowJobFamily, from: string, to: string): boolean {
   const stages: readonly string[] = jobWorkflowStages[family];
   const fromIndex = stages.indexOf(from); const toIndex = stages.indexOf(to);

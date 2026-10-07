@@ -39,4 +39,14 @@ describe("the job shell's header summaries", () => {
     assert.match(workspace, /\{shellOn \? shellBody : stageSectionsOn \? stageBody : \(/, "the stage-sections and legacy bodies are kept");
     assert.match(readFileSync(join(APP, "lib/featureFlags.ts"), "utf8"), /"job-shell"/);
   });
+
+  it("opens Setup, Milestones, Time, Sites and Datasets in the Client-home overlay drawer, never the evidence slot", () => {
+    const workspace = readFileSync(join(APP, "jobs/CrpScopeWorkspace.tsx"), "utf8");
+    // The overlay renders nothing when closed, so the page at rest — and the capture gate's `.nz-app.no-drawer` — is
+    // unchanged; the evidence drawer keeps AppShell's slot.
+    assert.match(workspace, /<Drawer open=\{shellDrawerView !== null\} onClose=\{closeShellDrawer\}[^>]*className="nz-site-drawer nz-job-drawer" dismissOnOutsideClick>/);
+    assert.match(workspace, /drawer=\{drawer\}/, "AppShell's drawer slot is still the evidence drawer");
+    for (const drawer of ["setup", "milestones", "time", "sites", "datasets"]) assert.match(workspace, new RegExp(`\\n    ${drawer}: \\{ kicker: "Job", title: "`), `the ${drawer} drawer`);
+    assert.match(workspace, /<DatasetPanel [^>]*showReasons\/>/, "the Datasets drawer says why each dataset is selected");
+  });
 });

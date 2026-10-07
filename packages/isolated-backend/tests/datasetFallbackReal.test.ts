@@ -89,6 +89,10 @@ describe("automatic datasets: the reporting year's edition, else the latest avai
     const warnings = (id: string) => listed.find((d) => d.datasetId === id)!.warnings;
     assert.deepEqual(warnings("uk-ghg-gb-2025"), [], "the automatic fallback edition");
     assert.equal(listed.find((d) => d.datasetId === "uk-ghg-gb-2025")!.label, "DESNZ GB 2025", "the job's datasets panel names it by source · country · year");
+    // Phase 2 Datasets drawer: why each is selected — the rule's own reason, or the person's recorded justification.
+    assert.equal(listed.find((d) => d.datasetId === "uk-ghg-gb-2025")!.selectionReason, fallbackReason(2025));
+    assert.equal(listed.find((d) => d.datasetId === "uk-ghg-gb-2024")!.selectionReason, "by hand");
+    assert.equal(listed.find((d) => !d.selected)!.selectionReason, null, "an unselected dataset has no reason");
     assert.deepEqual(listed.filter((d) => d.selected).map((d) => d.datasetId).slice(0, 2), ["uk-ghg-gb-2025", "uk-ghg-gb-2024"], "the preferred source's datasets first — the automatic edition and the manual one");
     assert.equal(listed.findIndex((d) => !d.selected) > listed.map((d) => d.selected).lastIndexOf(true), true, "selected before unselected");
     const registry = await withTenantRead(database.pool, ORG, (db) => listDatasetRegistry(db));
