@@ -29,9 +29,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     const category = typeof body.categoryCode === "string" && body.categoryCode.trim() ? body.categoryCode.trim() : null;
     const scope = typeof body.scope === "string" && body.scope.trim() ? body.scope.trim() : null;
     const { pool, organisationId } = requireIsolatedApiContext();
-    const { factor, attributes } = await withTenantRead(pool, organisationId, (db) =>
+    const { factor, attributes, classification } = await withTenantRead(pool, organisationId, (db) =>
       suggestVehicleFactor(db, organisationId, jobId, result.vehicle, result.source, category, scope));
-    return Response.json({ source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, factor, attributes },
+    return Response.json({ source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, classification, factor, attributes },
       { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiFailure(error);

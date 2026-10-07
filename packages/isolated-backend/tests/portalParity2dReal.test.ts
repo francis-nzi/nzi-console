@@ -203,7 +203,9 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     const submitted = await capture("row-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes }, "uk-ghg-1_101_1011_8_1");
     const stored = await db.query<{ detail_json: Record<string, any> }>(
       `SELECT detail_json FROM nzi_console.portal_data_entry_records WHERE bucket_grant_id=$1`, [bucket.bucketGrantId]);
-    assert.deepEqual(stored.rows[0]!.detail_json, { vehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van" } });
+    // JW-11: the draft also carries the van's banded category and v7's Average-band fallback, never the plate.
+    assert.deepEqual(stored.rows[0]!.detail_json, { vehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van",
+      category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" } });
     assert.ok(!JSON.stringify(stored.rows[0]!.detail_json).includes("AB12"), "the plate was stored in the detail");
 
     await accept(submitted);

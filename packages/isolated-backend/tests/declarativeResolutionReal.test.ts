@@ -268,6 +268,20 @@ describe("the write path resolves declaratively where a category is switched on,
     });
   });
 
+  it("JW-11: accepts a banded category in its closed shape, and refuses a plate dressed up as one", async () => {
+    await enabled(["1.company-vehicles"], async () => {
+      const banded = await createScopeRow(pool, vehicle({
+        assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van", category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" },
+      }), context());
+      assert.ok(banded.data.rowId, "a well-formed category is carried");
+      for (const category of ["AB12CDE", "van|AB12CDE|diesel", "hgv|rigid|diesel", "Car|small|petrol"]) {
+        await assert.rejects(() => createScopeRow(pool, vehicle({
+          assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van", category },
+        }), context()), (error: any) => error.issues?.some((issue: any) => issue.field === "assertedVehicleAttributes"), category);
+      }
+    });
+  });
+
   // ── Findings pinned, so the slice that changes them has to move these ─────────────────────────────────
 
   const travel = (over: Record<string, unknown> = {}): any => ({

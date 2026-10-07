@@ -77,6 +77,7 @@ export function PortalCategoryEntry({
         year: body.vehicle?.yearOfManufacture ?? null,
         // Carried to the draft, and on to acceptance, so the entry is re-resolved from what the lookup said (F3).
         attributes: body.attributes ?? null,
+        classification: body.classification ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };

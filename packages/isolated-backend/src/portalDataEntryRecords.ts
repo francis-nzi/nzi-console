@@ -20,13 +20,20 @@ import {SUPPLY_SOURCES} from "@nzi/contracts";
  * record's existing detail JSON so no column is needed. Asserted by the client at capture; re-resolved from at
  * acceptance, where a staff reviewer is a second pair of eyes the CRM path does not have.
  */
-type PortalVehicleAttributes={source:"dvla"|"stub";fuel:string|null;vehicleClass:string|null};
+type PortalVehicleAttributes={source:"dvla"|"stub";fuel:string|null;vehicleClass:string|null;category?:string;fallbackCategory?:string};
+/** JW-11: a banded vehicle (`car|small|petrol`) — the same closed shape the scope-row write accepts, and only that. */
+const VEHICLE_CATEGORY=/^(car|van)\|[a-z-]{3,12}\|[a-z]{2,10}$/;
 export function readPortalVehicleAttributes(detail:unknown):PortalVehicleAttributes|null{
   const value=(detail&&typeof detail==="object"?(detail as Record<string,unknown>).vehicleAttributes:null) as Record<string,unknown>|null|undefined;
   if(!value||typeof value!=="object")return null;
   const short=(v:unknown)=>v===null||(typeof v==="string"&&v.length<=40);
   if(!["dvla","stub"].includes(value.source as string)||!short(value.fuel)||!short(value.vehicleClass))return null;
-  return{source:value.source as "dvla"|"stub",fuel:(value.fuel as string|null)??null,vehicleClass:(value.vehicleClass as string|null)??null};
+  // The banded category travels when it is well-formed, so acceptance resolves the per-distance factor as the CRM does;
+  // anything else is dropped rather than stored, and the draft resolves as an unbanded vehicle.
+  const banded=(v:unknown)=>typeof v==="string"&&VEHICLE_CATEGORY.test(v)?v:undefined;
+  const category=banded(value.category),fallbackCategory=banded(value.fallbackCategory);
+  return{source:value.source as "dvla"|"stub",fuel:(value.fuel as string|null)??null,vehicleClass:(value.vehicleClass as string|null)??null,
+    ...(category?{category}:{}),...(fallbackCategory?{fallbackCategory}:{})};
 }
 
 // B5 — client-portal spend mirror (NZC-036 / NZC-016). A spend-kind portal
