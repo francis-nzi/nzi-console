@@ -83,24 +83,32 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
       `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code)
        VALUES ($1,$2,'2026-01-01','2026-12-31','GB')`, [ORG, JOB]);
     await db.query(readFileSync(resolve(here, "../seeds/0003_synthetic_factors.sql"), "utf8"));
+    // JW-11: the stub diesel is a Class III van, which the banded rules price per mile. The synthetic dataset has no
+    // per-mile van, so the one the rule names is added here.
+    await db.query(
+      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
+       VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
   });
 
   after(async () => { await db?.end(); await database?.end(); });
 
   // ── Company vehicles, switched on ────────────────────────────────────────────────────────────────────
 
-  it("suggests the declared factor for a looked-up diesel, and the entry calculates at it — 2.5 t", async () => {
+  it("suggests the banded per-mile factor for a looked-up diesel van, and the entry saves in its unit and calculates — 0.4 t", async () => {
     const suggestion = await lookup(PLATES.diesel, "1.company-vehicles", "1");
-    assert.equal(suggestion.factor?.factorId, "uk-ghg-1_101_1011_8_1");
+    // JW-11: diesel in the registration flow is per mile, size-banded; the per-litre default is retired.
+    assert.equal(suggestion.factor?.factorId, "uk-ghg-5_303_3095_9_1");
     assert.equal(suggestion.factor?.resolvedBy, "declared", "the suggestion did not come from the declared resolution");
     const opts = await options("1", "1.company-vehicles");
     const optionId = `dataset:${suggestion.factor!.datasetId}|${suggestion.factor!.factorId}`;
+    // The form takes the factor's own unit — `miles`, where the category offers `mi`. The write has to take it.
+    assert.equal(suggestion.factor!.unit, "miles");
     const row = await save(VEHICLES, draft({ registration: "AB12 CDH", factorId: optionId, unit: suggestion.factor!.unit,
       assertedVehicleAttributes: suggestion.attributes }), opts);
-    assert.equal(row.factor_id, "uk-ghg-1_101_1011_8_1");
+    assert.equal(row.factor_id, "uk-ghg-5_303_3095_9_1");
     assert.equal(row.provenance_json.declarativeResolution.decision, "matched");
     assert.equal(row.provenance_json.declarativeResolution.assertedVehicleAttributes.trust, "asserted-at-capture");
-    assert.equal(await calculate(row), 2.5);
+    assert.equal(await calculate(row), 0.4);
   });
 
   it("suggests nothing for a looked-up petrol vehicle — the ILIKE is retired here, so the entry goes to a person", async () => {
@@ -135,16 +143,17 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
   // ── Sub-flow propagation, through the write path ──────────────────────────────────────────────────────
 
   it("carries a change to the vehicle flow into business travel and commuting, through the write", async () => {
-    // Today the flow's one factor is per litre, which 3.6 and 3.7 cannot take (distances only). Give the flow a
-    // per-km diesel factor with its own -b and -c variants, point the vehicle rule at it, switch the two sub-flow
-    // categories on for this test, and the same write that resolved nothing now files each under its own variant.
-    // Restored afterwards, so nothing here outlives the test.
+    // The flow's Class III diesel van is per mile, and the synthetic dataset has no -b or -c variant of it, so 3.6
+    // and 3.7 resolve nothing. Give the flow a per-km diesel factor with its own -b and -c variants, point the
+    // vehicle rule at it, switch the two sub-flow categories on for this test, and the same write that resolved
+    // nothing now files each under its own variant. Restored afterwards, so nothing here outlives the test.
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES
         ($1,'synthetic-gb-2026','van-km-test','Van, diesel, per km — test','km',0.25,ARRAY['1','3']),
         ($1,'synthetic-gb-2026','van-km-test-b','Van, diesel, per km — business travel','km',0.25,ARRAY['3']),
         ($1,'synthetic-gb-2026','van-km-test-c','Van, diesel, per km — commuting','km',0.25,ARRAY['3'])`, [ORG]);
-    const attributes = { source: "stub", fuel: "diesel", vehicleClass: "van" };
+    const attributes = { source: "stub", fuel: "diesel", vehicleClass: "van", category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" };
+    const RULE = `category_code = '1.company-vehicles' AND rule_key = 'dvla-van-class-iii-diesel'`;
     const entry = (category: never) => save(category, draft({ unit: "km", assertedVehicleAttributes: attributes }), []);
     try {
       await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = true WHERE category_code IN ('3.6','3.7')`);
@@ -153,14 +162,14 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
       await assert.rejects(() => entry(TRAVEL), (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"),
         "business travel resolved before the flow could price a distance");
 
-      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'van-km-test' WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
+      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'van-km-test' WHERE ${RULE}`);
       const travel = await entry(TRAVEL);
       const commute = await entry(COMMUTING);
       assert.equal(travel.factor_id, "van-km-test-b", "the change to the vehicle flow did not reach business travel");
       assert.equal(commute.factor_id, "van-km-test-c", "the change to the vehicle flow did not reach commuting");
       assert.equal(await calculate(travel), 0.25);
     } finally {
-      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'uk-ghg-1_101_1011_8_1' WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
+      await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'uk-ghg-5_303_3095_9_1' WHERE ${RULE}`);
       await db.query(`UPDATE nzi_console.input_spec_categories SET declarative_resolution_enabled = false WHERE category_code IN ('3.6','3.7')`);
     }
   });

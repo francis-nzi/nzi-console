@@ -552,7 +552,14 @@ describe("wiring characterisation — today's paths against the declarative reso
  *   per-litre factor, where the resolver asked with an entry already in km declines (D2). In the CRM the unit
  *   follows the factor, so applying the suggestion makes the entry litres, shown before any quantity (H3); an entry
  *   *recorded in km* before the lookup is portal-shaped, where D2 governs. **Proposed at 2c: accepted by reviewed
- *   intent, pending the ruling.**
+ *   intent, pending the ruling.** **Moved by JW-11 (0160, ruled 6 Oct):** `dvla-diesel` is retired, so the
+ *   suggestion no longer names a per-litre factor either; with no per-mile factor in these fixtures both sides leave
+ *   the plated diesel to a person — identical, in both datasets. No entry carries D7 now; the class is kept so its
+ *   history reads.
+ *
+ * **JW-11 (0160) also moved the shipped plated diesel in litres in 3.6 / 3.7 (D1) to identical:** the sub-flow used to
+ * compose the diesel base's variant from `dvla-diesel`; with that retired and no `-b` / `-c` variant of a per-mile
+ * factor, nothing resolves on either side. The probe's entries stay D1, its ILIKE still answering.
  *
  * Since 2c company vehicles resolve declaratively and the ILIKE is retired for them (H6), so their plated diesel in
  * litres (was D1) and the probe's petrol and hybrid plates (was D4) are identical: both sides are the declared
@@ -561,10 +568,11 @@ describe("wiring characterisation — today's paths against the declarative reso
 const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (() => {
   const ledger: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = {};
   for (const dataset of ["shipped", "probe"] as const) {
-    // Company vehicles, enabled in 2c: plated diesel in km is the one divergence left (D7).
-    ledger[`${dataset}:1.company-vehicles:plate-dieselVan-km`] = "D7";
+    // Company vehicles, enabled in 2c: plated diesel in km was the one divergence left (D7) — moved to identical by
+    // JW-11 (0160), which retired dvla-diesel.
     for (const category of ["1.company-vehicles", "3.6", "3.7"]) {
-      if (category !== "1.company-vehicles") ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
+      // Shipped moved to identical by JW-11 (0160): no variant of a per-mile factor, so neither side resolves.
+      if (category !== "1.company-vehicles" && dataset === "probe") ledger[`${dataset}:${category}:plate-dieselVan-litres`] = "D1";
       // D2 fixed (the unit now has to reconcile): shipped went from ∅ → uk-ghg-1_101_1011_8_1 to ∅ → search, which is
       // identical; the probe's ILIKE still suggests a Scope 1 per-km van factor where a person now picks — D4.
       if (dataset === "probe" && category !== "1.company-vehicles") ledger[`probe:${category}:plate-dieselVan-km`] = "D4";

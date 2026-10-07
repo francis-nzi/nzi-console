@@ -95,6 +95,10 @@ describe("the write path resolves declaratively where a category is switched on,
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
        VALUES ($1,'synthetic-gb-2026','electricity-green-demo','Green supply — test factor','kWh',0.05,ARRAY['2'])`, [ORG]);
+    // JW-11 (0160): the looked-up diesel van's own band, per mile — what company vehicles now resolves to.
+    await db.query(
+      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
+       VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
   });
 
   after(async () => { await db?.end(); await database?.end(); });
@@ -235,18 +239,21 @@ describe("the write path resolves declaratively where a category is switched on,
 
   const vehicle = (over: Record<string, unknown> = {}): any => ({
     jobId: JOB, scope: "1", sourceLabel: "Fleet", reportLabel: "Fleet", categoryCode: "1.company-vehicles",
-    quantity: 400, unit: "litres", datasetId: null, factorId: null, factorVersion: null, factorLabel: null,
+    // JW-11 (0160): a registration entry is a distance, priced per mile at the vehicle's band; `mi` is what the category collects.
+    quantity: 400, unit: "mi", datasetId: null, factorId: null, factorVersion: null, factorLabel: null,
     qualityTier: "measured" as const, ...over,
   });
-  const diesel = { assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van" } };
+  const VAN_III_DIESEL = "uk-ghg-5_303_3095_9_1";
+  const diesel = { assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van",
+    category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" } };
 
   it("fills a looked-up diesel's factor from the attributes, and marks them as asserted at capture", async () => {
     await enabled(["1.company-vehicles"], async () => {
       const created = await createScopeRow(pool, vehicle(diesel), context());
       const row = await stored(created.data.rowId);
-      assert.equal(row.factor_id, "uk-ghg-1_101_1011_8_1");
+      assert.equal(row.factor_id, VAN_III_DIESEL);
       const trail = row.provenance_json.declarativeResolution;
-      assert.equal(trail.ruleKey, "dvla-diesel");
+      assert.equal(trail.ruleKey, "dvla-van-class-iii-diesel");
       assert.equal(trail.assertedVehicleAttributes.trust, "asserted-at-capture");
       assert.ok(!JSON.stringify(row).includes("(asserted at capture)"), "the key-field marker leaked into the row");
     });
@@ -256,7 +263,7 @@ describe("the write path resolves declaratively where a category is switched on,
     await enabled(["1.company-vehicles"], async () => {
       await assert.rejects(() => createScopeRow(pool, vehicle({ ...diesel,
         datasetId: "synthetic-gb-2026", factorId: "gas-demo", factorVersion: "2026 demo v1", factorLabel: "Gas" }), context()),
-      (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && /uk-ghg-1_101_1011_8_1/.test(error.issues[0].message));
+      (error: any) => error.issues?.[0]?.code === "FACTOR_NOT_DECLARED" && error.issues[0].message.includes(VAN_III_DIESEL));
     });
   });
 
@@ -291,18 +298,21 @@ describe("the write path resolves declaratively where a category is switched on,
   });
 
   it("PINNED FINDING: business travel cannot resolve declaratively in any unit it accepts", async () => {
-    // 3.6 and 3.7 accept distances only (passenger.km, passenger.mi, km, mi). The vehicle flow they reuse has
-    // one factor, per litre, so its variant can never price an entry they will take: in km the unit check (D2)
-    // declines it, and litres is refused by the category before resolution matters. Until the flow has a
-    // per-distance rule, the sub-flow is correct and unreachable through the write path.
+    // 3.6 and 3.7 accept distances only (passenger.km, passenger.mi, km, mi). Since 0160 (JW-11) the vehicle flow
+    // they reuse prices per mile at the vehicle's band — but the library has no business-travel (`-b`) or commuting
+    // (`-c`) variant of those per-mile factors, so the sub-flow stops rather than file the Scope 1 base under Scope 3,
+    // and nothing resolves. The sub-flow is correct and unreachable through the write path until those variants exist.
     await enabled(["1.company-vehicles", "3.6"], async () => {
       // Resolution still declines (nothing is filled). Before JW-9 the entry was then stored with no factor; an entry
       // needs a real factor now, so it is refused at the write and the person picks one.
       await assert.rejects(() => createScopeRow(pool, travel(diesel), context()),
         (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"),
         "business travel resolved a factor it has no accepted unit for, or stored an entry with none");
+      // Litres is still refused. Before 0160 the per-litre diesel resolved here first, so the category's unit check was
+      // what refused it (UNIT_NOT_ACCEPTED); since 0160 nothing resolves for business travel in any unit, so the entry
+      // is refused as needing a person's factor before the unit is weighed. Refused either way, never priced.
       await assert.rejects(() => createScopeRow(pool, travel({ ...diesel, unit: "litres" }), context()),
-        (error: any) => error.issues?.some((issue: any) => issue.code === "UNIT_NOT_ACCEPTED"));
+        (error: any) => error.issues?.some((issue: any) => issue.code === "FACTOR_REQUIRED"));
     });
   });
 

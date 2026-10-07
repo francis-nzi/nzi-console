@@ -96,6 +96,7 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     return Number((await db.query<{ t: string }>(`SELECT calculated_tco2e::text AS t FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [scopeRowId])).rows[0]!.t);
   };
   const DEVIATION = /switch it to the declared factor, or record why the client's choice stands/;
+  const VAN_III_DIESEL = "uk-ghg-5_303_3095_9_1";
 
   before(async () => {
     database = (await createDisposableDatabase("portal2d"))!;
@@ -117,7 +118,10 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES
         ($1,'synthetic-gb-2026','electricity-alt-test','UK electricity, supplier-specific — test','kWh',0.4,ARRAY['2']),
-        ($1,'synthetic-gb-2026','petrol-litres-test','Petrol — test','litres',2.3,ARRAY['1'])`, [ORG]);
+        ($1,'synthetic-gb-2026','petrol-litres-test','Petrol — test','litres',2.3,ARRAY['1']),
+        -- JW-11 (0160): the looked-up diesel van's own band, per mile — what a registration now resolves to.
+        ($1,'synthetic-gb-2026','${VAN_III_DIESEL}','Van Class III · Diesel — test','miles',0.4,ARRAY['1']),
+        ($1,'synthetic-gb-2026','petrol-van-miles-test','Van · Petrol, per mile — test','miles',0.3,ARRAY['1'])`, [ORG]);
     for (const id of ["row-elec-matched", "row-elec-override", "row-elec-switch"]) await row(id, "2", "2.purchased-electricity");
     await row("row-van", "1", "1.company-vehicles");
     await row("row-van-contradicted", "1", "1.company-vehicles");
@@ -143,7 +147,7 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
   });
 
   it("does not demand a vehicle factor at the grant — that depends on the entry, and meets F1 at acceptance", async () => {
-    await grant("row-van", ["uk-ghg-1_101_1011_8_1", "gas-demo"]);
+    await grant("row-van", [VAN_III_DIESEL, "gas-demo"]);
   });
 
   // ── The declared factor, from the listing to a number (P4) ───────────────────────────────────────────
@@ -190,17 +194,18 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
 
   // ── A looked-up vehicle: attributes asserted by the client, re-resolved at acceptance (P3) ─────────────
 
-  it("carries the lookup's attributes to acceptance, which resolves the vehicle and names both actors — 2.5 t", async () => {
+  it("carries the lookup's attributes to acceptance, which resolves the vehicle and names both actors — 0.4 t", async () => {
     const found = await lookupVehicleByRegistration("AB12CDH", { allowStub: true });
     assert.ok(found.ok);
     const suggestion = await withTenantRead(database.pool, ORG, (reader) =>
       suggestVehicleFactor(reader, ORG, JOB, found.vehicle, found.source, "1.company-vehicles", "1"));
-    assert.equal(suggestion.factor?.factorId, "uk-ghg-1_101_1011_8_1");
+    // JW-11 (0160): the stub's 3,100 kg diesel van is priced per mile at Van Class III · Diesel.
+    assert.equal(suggestion.factor?.factorId, VAN_III_DIESEL);
     const bucket = await bucketFor("row-van");
     assert.equal(bucket.declaredFactorId, null, "a vehicle bucket claimed a declared factor without a vehicle");
     assert.equal(defaultPortalFactorId(bucket.factors, bucket.declaredFactorId), "", "the vehicle bucket pre-selected a factor");
 
-    const submitted = await capture("row-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes }, "uk-ghg-1_101_1011_8_1");
+    const submitted = await capture("row-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes }, VAN_III_DIESEL);
     const stored = await db.query<{ detail_json: Record<string, any> }>(
       `SELECT detail_json FROM nzi_console.portal_data_entry_records WHERE bucket_grant_id=$1`, [bucket.bucketGrantId]);
     // JW-11: the draft also carries the van's banded category and v7's Average-band fallback, never the plate.
@@ -210,13 +215,13 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
 
     await accept(submitted);
     const result = await landed("row-van");
-    assert.equal(result.factor_id, "uk-ghg-1_101_1011_8_1");
+    assert.equal(result.factor_id, VAN_III_DIESEL);
     const resolution = result.provenance_json.declarativeResolution;
     assert.equal(resolution.decision, "matched");
     assert.equal(resolution.attributesAssertedBy, USER, "the client who asserted the attributes is not named");
     assert.equal(resolution.acceptedBy, STAFF, "the reviewer who accepted is not named");
     assert.equal(resolution.assertedVehicleAttributes.trust, "asserted-at-capture");
-    assert.equal(await calculate("row-van"), 2.5);
+    assert.equal(await calculate("row-van"), 0.4);
   });
 
   it("refuses a vehicle entry whose pick contradicts its own lookup, and switches it to what the lookup resolves", async () => {
@@ -224,17 +229,19 @@ describe("portal parity: a portal entry is resolved at acceptance as the CRM's w
     assert.ok(found.ok);
     const suggestion = await withTenantRead(database.pool, ORG, (reader) =>
       suggestVehicleFactor(reader, ORG, JOB, found.vehicle, found.source, "1.company-vehicles", "1"));
-    // A diesel van priced per litre of petrol. The bucket allows petrol; acceptance, reading the lookup, refuses it.
-    await grant("row-van-contradicted", ["uk-ghg-1_101_1011_8_1", "petrol-litres-test"]);
-    const submitted = await capture("row-van-contradicted", { assertedVehicleAttributes: suggestion.attributes }, "petrol-litres-test");
+    // A diesel van priced per mile as a petrol van. The bucket allows petrol; acceptance, reading the lookup, refuses it.
+    // JW-11 (0160): the contradiction is in a unit the van's rule prices (miles). A per-litre pick would not contradict
+    // it — the rule declines a litres entry (D2), as the test below shows, and the pick stands for the reviewer.
+    await grant("row-van-contradicted", [VAN_III_DIESEL, "petrol-van-miles-test"]);
+    const submitted = await capture("row-van-contradicted", { assertedVehicleAttributes: suggestion.attributes }, "petrol-van-miles-test");
     await assert.rejects(() => accept(submitted), DEVIATION);
     assert.equal((await landed("row-van-contradicted")).factor_id, null, "a refused acceptance wrote the client's factor");
     await accept(submitted, { useDeclaredFactor: true });
     const result = await landed("row-van-contradicted");
-    assert.equal(result.factor_id, "uk-ghg-1_101_1011_8_1", "the switch did not resolve from the stored attributes");
+    assert.equal(result.factor_id, VAN_III_DIESEL, "the switch did not resolve from the stored attributes");
     assert.equal(result.provenance_json.declarativeResolution.switchedToDeclared, true);
     assert.equal(result.provenance_json.declarativeResolution.attributesAssertedBy, USER);
-    assert.equal(await calculate("row-van-contradicted"), 2.5);
+    assert.equal(await calculate("row-van-contradicted"), 0.4);
   });
 
   it("lets a pick stand where the lookup's rule cannot price the entry's unit (D2), rather than refusing it", async () => {

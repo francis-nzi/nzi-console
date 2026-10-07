@@ -192,9 +192,22 @@ export const reconcileUnitForMapping: UnitReconciler = (entered, factorUnit) => 
  * Separate from the factor check, and asked first: "this category does not collect litres" and "this
  * factor is not priced in litres" are different problems with different fixes, and one message covering
  * both would send somebody to the wrong one.
+ *
+ * Another spelling of an offered unit is that unit: `miles` where the spec offers `mi`, because a factor library
+ * spells its activity unit its own way and applying a factor sets the entry's unit to that spelling (JW-11). Only
+ * within a convertible dimension, at the same size — `units` and `nights` are both counts of one and are not the
+ * same thing, so identity-only dimensions still need the exact spelling.
  */
 export function isAcceptedUnit(entered: string | null | undefined, accepted: readonly string[]): boolean {
   if (accepted.length === 0) return true; // Nothing declared: the field does not constrain units.
   const enteredKey = entered == null ? "" : key(entered);
-  return accepted.some((unit) => key(unit) === enteredKey);
+  const enteredUnit = UNITS[enteredKey];
+  return accepted.some((unit) => {
+    if (key(unit) === enteredKey) return true;
+    const offered = UNITS[key(unit)];
+    return !!enteredUnit && !!offered && !IDENTITY_ONLY.has(enteredUnit.dimension)
+      && offered.dimension === enteredUnit.dimension && offered.inCanonical === enteredUnit.inCanonical;
+  });
 }
+
+const IDENTITY_ONLY: ReadonlySet<UnitDimension> = new Set(["money", "count", "area"]);
