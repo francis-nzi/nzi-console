@@ -32,6 +32,8 @@ import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Ta
 import { rowSourceDetail } from "./rowSourceDetail";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
+import { useEditAccess } from "../lib/useEditAccess";
+import { datasetAddOptions } from "./datasetAddOptions";
 import { JobAnnualMetrics } from "./JobAnnualMetrics";
 import { RowStateControl } from "./RowStateControl";
 import { DatasetUpdateBanner } from "./DatasetUpdateBanner";
@@ -473,7 +475,7 @@ export function CrpScopeWorkspace({
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
-  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice}/>;
+  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} writeEnabled={writeEnabled}/>;
   const dataEntrySurface = accordionOn ? (
     <CrpDataEntryAccordion
       specs={specs}
@@ -608,7 +610,7 @@ export function CrpScopeWorkspace({
     sites: { kicker: "Job", title: "Sites", body: <JobSitesDrawer jobId={job.header.id} clientId={job.header.clientId} sites={sites} writeEnabled={writeEnabled}/> },
     datasets: { kicker: "Job", title: "Datasets", body: <>
       <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
-      <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons/>
+      <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons writeEnabled={writeEnabled}/>
     </> },
   };
   const shellDrawerView = shellDrawer ? shellDrawerBody[shellDrawer] : null;
@@ -757,19 +759,24 @@ function DatasetPanel({
   updates = [],
   notice,
   showReasons = false,
+  writeEnabled,
 }: {
   jobId: string;
   datasets: DatasetOption[];
   updates?: DatasetUpdate[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
   showReasons?: boolean;
+  writeEnabled: boolean;
 }) {
+  // Phase 3c (JW-2, ruled #12): adding an edition is dataset.manage — Admin only, pending Francis. Everyone sees the
+  // editions and the control; anyone without the capability sees why it is blocked ("ask an admin"), never a hidden one.
+  const access = useEditAccess("dataset.manage", writeEnabled);
   const router = useRouter(),
-    available = datasets.filter((d) => !d.selected),
-    [datasetId, setDatasetId] = useState(available[0]?.datasetId ?? ""),
+    options = datasetAddOptions(datasets),
+    [datasetId, setDatasetId] = useState(options[0]?.datasetId ?? ""),
     [reason, setReason] = useState(""),
     [pending, setPending] = useState(false),
-    selected = available.find((d) => d.datasetId === datasetId);
+    selected = datasets.find((d) => d.datasetId === datasetId && !d.selected);
   async function add() {
     if (!selected) return;
     setPending(true);
@@ -829,17 +836,17 @@ function DatasetPanel({
           ))}
         </ul>
       ) : null}
-      {available.length > 0 && (
-        <div className="nz-dataset-add">
+      {options.length > 0 && (
+        <div className="nz-dataset-add" aria-label="Add a dataset by exception">
           <select
             className="nz-sel"
             aria-label="Dataset for the manual exception"
             value={datasetId}
             onChange={(e) => setDatasetId(e.target.value)}
           >
-            {available.map((d) => (
-              <option key={d.datasetId} value={d.datasetId} title={`Imported as ${d.name} · ${d.version}`}>
-                {d.label}
+            {options.map((option) => (
+              <option key={option.datasetId} value={option.datasetId}>
+                {option.text}
               </option>
             ))}
           </select>
@@ -848,15 +855,18 @@ function DatasetPanel({
             aria-label="Required justification for the manual dataset addition"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Required justification for manual addition"
+            placeholder="Why this edition — required, kept with the selection"
+            disabled={access.state !== "allowed"}
           />
-          <button
+          <GatedButton
             className="nz-btn"
-            disabled={pending || !reason.trim()}
+            blocked={access.state !== "allowed" || pending || !reason.trim()}
+            blockedReason={access.state === "denied" ? "Adding a dataset is for an admin — ask one to add it, with the reason." : access.state !== "allowed" ? access.reason : undefined}
+            reasonClassName="hint nz-gated-reason"
             onClick={add}
           >
             Add dataset
-          </button>
+          </GatedButton>
         </div>
       )}
       {selected?.warnings.length ? (
