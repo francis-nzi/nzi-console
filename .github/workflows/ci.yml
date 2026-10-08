@@ -644,6 +644,12 @@ jobs:
       # every site-setting write, the portal offer and grant, and roll-forward honour it; atomic in both directions.
       - name: A job includes or leaves out each client site, and nothing records against a site it leaves out
         run: npx tsx --test packages/isolated-backend/tests/jobSiteInclusionsReal.test.ts
+      # Phase 3b (0162, ruled): a job's entries seeded from its client's reporting template — each line through the
+      # scope-row create (this year's edition of the same factor, else the declared one, else skipped); to-file, duplicate
+      # and archived/excluded sites handled; the seeding version recorded; counts-only payloads; auto-seed on CRP create;
+      # J1 ignores untouched seeded rows and a touched one locks the period.
+      - name: A job's entries are seeded from its client's reporting template, and untouched seeds leave the period free
+        run: npx tsx --test packages/isolated-backend/tests/jobTemplateSeedingReal.test.ts
       # Phase 1b (0158): a client's intensity target per metric — active metrics only, versioned and append-only, a moved
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero

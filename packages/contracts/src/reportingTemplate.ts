@@ -67,3 +67,28 @@ export function groupReportingTemplateLines(lines: ReportingTemplateLine[]): Arr
     };
   }).filter((group) => group.categories.length > 0);
 }
+
+/**
+ * Phase 3b (0162) — what seeding a job from its client's template did, in counts only (NZC-120: no labels, units or
+ * figures). `skipped` is keyed by why: `toFile` (a Scope 3 line not yet filed under a category, which cannot be a row),
+ * `duplicate` (already on the job), or the scope-row write's own refusal code for a line it would not take
+ * (`FACTOR_REQUIRED` for a factor neither the job's editions nor the declared rule could supply, `UNIT_NOT_ACCEPTED`, …).
+ * `siteDropped` counts lines whose site was archived or left out of the job, seeded without one.
+ */
+export type TemplateSeedResult = {
+  jobId: string;
+  templateVersion: number;
+  seeded: number;
+  skipped: Record<string, number>;
+  siteDropped: number;
+};
+
+/** The job's side of its template: the client's active version (null when none), and which version last seeded the job. */
+export type JobTemplateSeedingReadModel = {
+  templateVersion: number | null;
+  lineCount: number;
+  seededTemplateVersion: number | null;
+  seededAt: string | null;
+  /** False for a job with no emissions config (no reporting period): it cannot be seeded until it has one. */
+  configured: boolean;
+};

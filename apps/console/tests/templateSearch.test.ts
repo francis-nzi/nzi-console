@@ -1,16 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildTemplateSearchIndex, fuzzyScore, searchTemplateIndex, type TemplateSearchResult } from "../app/jobs/templateSearch";
-import type { FactorOption } from "@nzi/contracts";
+import { fuzzyScore } from "../app/jobs/templateSearch";
 
-const factor = (over: Partial<FactorOption> = {}): FactorOption => ({
-  datasetId: "ds-1", datasetName: "UK DEFRA 2026", datasetVersion: "2026.1",
-  factorId: "f-1", label: "Diesel — LGV", activityUnit: "litres", kgco2ePerUnit: 2.6,
-  scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }],
-  selectionSource: "automatic", factorSource: "dataset", clientFactorId: null, evidenceHash: null,
-  synthetic: true, warnings: [], preferred: false, datasetLabel: "DESNZ GB 2026", ...over,
-});
-
+// The whole-library template index and its search went with "Add rows from template" (Phase 3b, JW-6 retired); the fuzzy
+// match stays for the LCA inventory's quick-add, so its tests stay.
 describe("fuzzyScore (NZC-062)", () => {
   it("ranks an exact substring hit above a subsequence match, and earlier over later", () => {
     const exact = fuzzyScore("diesel", "Diesel — LGV")!;
@@ -31,83 +24,5 @@ describe("fuzzyScore (NZC-062)", () => {
 
   it("is case-insensitive", () => {
     assert.equal(fuzzyScore("DIESEL", "diesel fuel"), fuzzyScore("diesel", "diesel fuel"));
-  });
-});
-
-describe("buildTemplateSearchIndex (NZC-062)", () => {
-  it("a Scope 3 factor resolves to exactly one category — the GHG code is unambiguous", () => {
-    const f = factor({ scopes: ["3.7"], categories: [{ scope: "3", scopeCode: "3.7", label: "Employee commuting" }] });
-    const index = buildTemplateSearchIndex([f]);
-    assert.equal(index.length, 1);
-    assert.equal(index[0]!.categoryCode, "3.7");
-    assert.equal(index[0]!.categoryLabel, "Employee commuting");
-  });
-
-  it("a top-level-only Scope 3 factor expands to controlled categories instead of posting invalid code 3", () => {
-    const f = factor({ scopes: ["3"], categories: [{ scope: "3", scopeCode: "3", label: "Value chain" }] });
-    const index = buildTemplateSearchIndex([f]);
-    assert.equal(index.length, 15);
-    assert.ok(index.every((result) => result.scope.startsWith("3.") && result.categoryCode === result.scope));
-    assert.ok(index.every((result) => result.categoryCode !== "3"));
-  });
-
-  it("a Scope 1 factor expands to one candidate per Scope 1 taxonomy category — never guesses", () => {
-    const f = factor({ scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }] });
-    const index = buildTemplateSearchIndex([f]);
-    assert.equal(index.length, 3); // Natural Gas, Company Vehicles, Refrigerants
-    assert.deepEqual(new Set(index.map((r) => r.categoryLabel)), new Set(["Natural Gas", "Company Vehicles", "Refrigerants"]));
-    for (const result of index) assert.equal(result.factor, f);
-  });
-
-  it("a Scope 2 factor expands to the Scope 2 taxonomy categories", () => {
-    const f = factor({ scopes: ["2"], categories: [{ scope: "2", scopeCode: "2", label: "Purchased energy" }] });
-    const index = buildTemplateSearchIndex([f]);
-    assert.deepEqual(new Set(index.map((r) => r.categoryLabel)), new Set(["Purchased Electricity", "Renewable Electricity"]));
-  });
-
-  it("a multi-scope factor is indexed once per scope it applies to", () => {
-    const f = factor({ scopes: ["3.1", "3.6"], categories: [
-      { scope: "3", scopeCode: "3.1", label: "Purchased goods and services" },
-      { scope: "3", scopeCode: "3.6", label: "Business travel" },
-    ] });
-    const index = buildTemplateSearchIndex([f]);
-    assert.equal(index.length, 2);
-    assert.deepEqual(new Set(index.map((r) => r.scope)), new Set(["3.1", "3.6"]));
-  });
-
-  it("the search text carries label, category, unit and dataset — for display and matching", () => {
-    const f = factor({ scopes: ["3.7"], categories: [{ scope: "3", scopeCode: "3.7", label: "Employee commuting" }] });
-    const [result] = buildTemplateSearchIndex([f]);
-    assert.match(result!.searchText, /Diesel — LGV/);
-    assert.match(result!.searchText, /Employee commuting/);
-    assert.match(result!.searchText, /litres/);
-    assert.match(result!.searchText, /UK DEFRA 2026/);
-  });
-});
-
-describe("searchTemplateIndex (NZC-062)", () => {
-  const index: TemplateSearchResult[] = buildTemplateSearchIndex([
-    factor({ factorId: "f-diesel", label: "Diesel — LGV", scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }] }),
-    factor({ factorId: "f-petrol", label: "Petrol — car", scopes: ["1"], categories: [{ scope: "1", scopeCode: "1", label: "Direct emissions" }] }),
-    factor({ factorId: "f-commuting", label: "Car — average commuter", scopes: ["3.7"], categories: [{ scope: "3", scopeCode: "3.7", label: "Employee commuting" }] }),
-  ]);
-
-  it("an empty query returns results up to the limit, no filtering", () => {
-    assert.equal(searchTemplateIndex(index, "", 3).length, 3);
-  });
-
-  it("ranks the best match first and excludes non-matches", () => {
-    const hits = searchTemplateIndex(index, "commuting");
-    assert.ok(hits.length > 0);
-    assert.equal(hits[0]!.factor.factorId, "f-commuting");
-  });
-
-  it("matching by category text surfaces every factor filed there, not just label matches", () => {
-    const hits = searchTemplateIndex(index, "company vehicles");
-    assert.ok(hits.some((h) => h.factor.factorId === "f-diesel" && h.categoryLabel === "Company Vehicles"));
-  });
-
-  it("respects the result limit", () => {
-    assert.ok(searchTemplateIndex(index, "", 2).length <= 2);
   });
 });
