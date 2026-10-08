@@ -61,6 +61,33 @@ describe("JW-11: v7's class, at the approval and weight edges", () => {
     assert.equal(vehicleClassOf(spec({ typeApproval: null, revenueWeight: null, engineCapacity: 2501 })), null);
     assert.equal(vehicleClassOf(spec({ typeApproval: null, revenueWeight: null, engineCapacity: null })), null);
   });
+  it("a car DVLA left without a type approval (and with no plated weight) is not a car — as in v7 — so it is never banded or priced", () => {
+    // JW-11 diff review (ruled 8 Oct): DVLA's free VES often leaves type_approval blank. v7's categorize_vehicle keys a car
+    // on M1 alone (line 255); with no approval and no revenue weight it reaches only the motorbike branch (line 337,
+    // `not weight and engine_capacity <= 2500`). So a blank-approval 1,598 cc petrol hatchback is classed a motorbike, as
+    // v7 classes it — and because only cars and vans are banded, it gets no category, so no rule prices it: the entry goes
+    // to a person, never to a wrong factor.
+    for (const typeApproval of [null, "", "  "]) {
+      const hatchback = spec({ typeApproval, fuelType: "PETROL", engineCapacity: 1598, revenueWeight: null });
+      assert.equal(vehicleClassOf(hatchback), "motorbike", `approval ${JSON.stringify(typeApproval)}`);
+      assert.deepEqual(classifyVehicle(hatchback), { category: null, fallbackCategory: null, label: null });
+      assert.equal(vehicleAttributes(hatchback).category, null, "the resolver is given no category to match");
+    }
+    // Past v7's 2,500 cc motorbike ceiling the same car is unclassified in both: no class, no category.
+    const large = spec({ typeApproval: null, fuelType: "DIESEL", engineCapacity: 2993, revenueWeight: null });
+    assert.equal(vehicleClassOf(large), null);
+    assert.deepEqual(classifyVehicle(large), { category: null, fallbackCategory: null, label: null });
+    // The same car with its M1 approval is banded as v7 bands it.
+    assert.equal(classifyVehicle(spec({ typeApproval: "M1", fuelType: "PETROL", engineCapacity: 1598, revenueWeight: null })).category, "car|medium|petrol");
+  });
+  it("one recorded divergence from v7: a weightless, approval-less vehicle reporting 0 cc is unclassified here, a Small motorbike in v7", () => {
+    // v7's motorbike test has no lower bound (`engine_capacity <= 2500`, line 337), so 0 cc — which DVLA reports for many
+    // battery-electric cars — bands to "Small" motorbike there. Here a capacity must be positive. Neither prices the
+    // vehicle (motorbikes are not banded), so the only difference is the class carried to the resolver and the banner.
+    const zeroCc = spec({ typeApproval: null, fuelType: "ELECTRICITY", engineCapacity: 0, revenueWeight: null });
+    assert.equal(vehicleClassOf(zeroCc), null);
+    assert.deepEqual(classifyVehicle(zeroCc), { category: null, fallbackCategory: null, label: null });
+  });
   it("reads v7's gas fuels: gas bi-fuel and gas/petrol are petrol, plain gas is CNG", () => {
     assert.equal(fuelKeyword("GAS BI-FUEL"), "petrol");
     assert.equal(fuelKeyword("GAS/PETROL"), "petrol");
