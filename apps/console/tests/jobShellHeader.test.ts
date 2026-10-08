@@ -63,7 +63,7 @@ describe("the job shell's header summaries", () => {
     assert.match(workspace, /<Drawer open=\{shellDrawerView !== null\} onClose=\{closeShellDrawer\}[^>]*className="nz-site-drawer nz-job-drawer" dismissOnOutsideClick>/);
     assert.match(workspace, /drawer=\{drawer\}/, "AppShell's drawer slot is still the evidence drawer");
     for (const drawer of ["setup", "milestones", "time", "sites", "datasets"]) assert.match(workspace, new RegExp(`\\n    ${drawer}: \\{ kicker: "Job", title: "`), `the ${drawer} drawer`);
-    assert.match(workspace, /<DatasetPanel [^>]*showReasons\/>/, "the Datasets drawer says why each dataset is selected");
+    assert.match(workspace, /<DatasetPanel [^>]*showReasons[^>]*\/>/, "the Datasets drawer says why each dataset is selected");
     // Ruled 7 Oct: sites are the client's, so the Sites drawer lists them and links to the client — no inline create.
     // Phase 3a: the drawer is its own component, which also includes or leaves out each site for this job.
     const sitesEntry = workspace.slice(workspace.indexOf('\n    sites: { kicker: "Job"'), workspace.indexOf('\n    datasets: { kicker: "Job"'));
