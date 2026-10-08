@@ -662,6 +662,10 @@ jobs:
       # target — a custom metric's alone reports nothing; the drawer names the same one; the Value over the divider; SRS.
       - name: A job's CRP reports the client's first targeted standard intensity metric, as the drawer names it
         run: npx tsx --test packages/isolated-backend/tests/jobReportedIntensityReal.test.ts
+      # Reporting R-ST1 (ruled): every live CRP job at its derived report stage — from snapshot review, validation,
+      # publication and the client's response; nothing stored; jobs with no version listed at their stage, never as zero.
+      - name: Every live CRP job shows its derived report stage, the ones without a version too
+        run: npx tsx --test packages/isolated-backend/tests/reportStatusRegisterReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

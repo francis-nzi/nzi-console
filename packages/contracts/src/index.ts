@@ -133,3 +133,4 @@ export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";
 export * from "./jobSchedule";
+export * from "./reportStatus";
