@@ -49,7 +49,10 @@ const EXTRACT = [
   extractRow("2", "13_402_4000_5_1", "0.02", "kWh", "Scope 3", "Fuels and Energy Related Activities", "T&D - UK electricity"),
   extractRow("3", "1_101_1011_8_1", "2.6", "litres", "Scope 1", "Fuels", "Diesel (average biofuel blend)"),
   extractRow("4", "1_101_1011_8_1-vcd", "2.6", "litres", "Scope 1", "Company Vehicles", "Company Vehicles - Diesel Car"),
+  // JW-11 (0160): the stub's diesel van's own band, per mile.
+  extractRow("5", "5_303_3095_9_1", "0.4", "miles", "Scope 1", "Delivery vehicles", "Van Class III - Diesel"),
 ];
+const VAN_III_DIESEL = "uk-ghg-5_303_3095_9_1";
 
 const staff: StaffPrincipal = {
   organisationId: ORG, userId: STAFF, sessionId: "s", issuedAt: 1, expiresAt: 2,
@@ -118,11 +121,14 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
   // ── The rules ───────────────────────────────────────────────────────────────────────────────────────────
 
   it("names the ruled real ids, leaves fuel-litres inactive, and no active rule or companion names a -demo id", async () => {
+    // The banded per-mile rules 0160 seeded are proved in vehicleBandedRulesReal; here, what 0130 re-pointed.
     const rules = await db.query<{ key: string; factor_base: string; active: boolean }>(
       `SELECT category_code || '/' || rule_key AS key, factor_base, active FROM nzi_console.input_spec_factor_rules
-        WHERE category_code IN ('1.company-vehicles','2.purchased-electricity','2.renewable-electricity') ORDER BY 1`);
+        WHERE category_code IN ('1.company-vehicles','2.purchased-electricity','2.renewable-electricity')
+          AND basis_field_key IS DISTINCT FROM 'category' AND basis_field_key IS DISTINCT FROM 'fallback' ORDER BY 1`);
     assert.deepEqual(rules.rows, [
-      { key: "1.company-vehicles/dvla-diesel", factor_base: DIESEL, active: true },
+      // Re-pointed to the real diesel by 0130, then retired from the registration flow by 0160 (JW-11).
+      { key: "1.company-vehicles/dvla-diesel", factor_base: DIESEL, active: false },
       { key: "1.company-vehicles/fuel-litres", factor_base: "diesel-demo", active: false },
       { key: "2.purchased-electricity/grid-electricity", factor_base: GRID, active: true },
       { key: "2.renewable-electricity/grid-electricity", factor_base: GRID, active: true },
@@ -171,16 +177,17 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
     });
   }
 
-  it("1.company-vehicles: a diesel the lookup names fills the real diesel base, and 400 litres is 1.04 t", async () => {
+  it("1.company-vehicles: a diesel van the lookup names is priced per mile at its band (0160), and 1,000 miles is 0.4 t", async () => {
+    // JW-11: no longer the per-litre diesel base — the van's v7 band, per mile, from the real imported row.
     const created = await createScopeRow(database.pool, {
-      jobId: job, scope: "1", sourceLabel: "Fleet", reportLabel: "Fleet", categoryCode: "1.company-vehicles", quantity: 400,
-      unit: "litres", datasetId: null, factorId: null, factorVersion: null, factorLabel: null, qualityTier: "measured",
-      assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van" },
+      jobId: job, scope: "1", sourceLabel: "Fleet", reportLabel: "Fleet", categoryCode: "1.company-vehicles", quantity: 1000,
+      unit: "mi", datasetId: null, factorId: null, factorVersion: null, factorLabel: null, qualityTier: "measured",
+      assertedVehicleAttributes: { source: "stub", fuel: "diesel", vehicleClass: "van", category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" },
     } as never, context());
     const row = await stored(created.data.rowId);
-    assert.equal(row.factor_id, DIESEL, "the base was not filled — a van must not be filed as the -vcd car variant");
-    assert.equal(row.provenance_json.declarativeResolution.ruleKey, "dvla-diesel");
-    assert.equal(await tonnes(created.data.rowId), 1.04);
+    assert.equal(row.factor_id, VAN_III_DIESEL, "the van was not priced at its band — and never as the -vcd car variant");
+    assert.equal(row.provenance_json.declarativeResolution.ruleKey, "dvla-van-class-iii-diesel");
+    assert.equal(await tonnes(created.data.rowId), 0.4);
   });
 
   it("still reconciles units: a declared per-litre factor is never applied to kilometres", async () => {
@@ -227,19 +234,20 @@ describe("the enabled rules resolve to the real factors in net-zero-internationa
     assert.equal(await tonnes("row-portal-elec"), 0.2);
   });
 
-  it("portal, vehicle: a looked-up diesel is re-resolved at acceptance to the real diesel base, as the console resolves it — 2.6 t", async () => {
+  it("portal, vehicle: a looked-up diesel van is re-resolved at acceptance to its band per mile, as the console resolves it — 0.4 t", async () => {
+    // JW-11 (0160): the stub's 3,100 kg diesel van, priced at Van Class III · Diesel per mile — no longer the per-litre base.
     await scopeRow("row-portal-van", "1", "1.company-vehicles");
     await setPortalDataEntryBucketGrant(database.pool, staff, { portalUserId: USER, jobId: job, scopeRowId: "row-portal-van",
-      entryKind: "manual_activity", factorIds: [DIESEL], siteIds: [] });
+      entryKind: "manual_activity", factorIds: [VAN_III_DIESEL], siteIds: [] });
     const found = await lookupVehicleByRegistration("AB12CDH", { allowStub: true });
     assert.ok(found.ok);
     const suggestion = await withTenantRead(database.pool, ORG, (reader) =>
       suggestVehicleFactor(reader, ORG, job, found.vehicle, found.source, "1.company-vehicles", "1"));
-    assert.equal(suggestion.factor?.factorId, DIESEL);
-    await captureAndAccept("row-portal-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes, unit: "litres" }, DIESEL);
+    assert.equal(suggestion.factor?.factorId, VAN_III_DIESEL);
+    await captureAndAccept("row-portal-van", { registration: "AB12 CDH", assertedVehicleAttributes: suggestion.attributes, unit: "miles" }, VAN_III_DIESEL);
     const row = await stored("row-portal-van");
-    assert.equal(row.factor_id, DIESEL);
+    assert.equal(row.factor_id, VAN_III_DIESEL);
     assert.equal(row.provenance_json.declarativeResolution.decision, "matched");
-    assert.equal(await tonnes("row-portal-van"), 2.6);
+    assert.equal(await tonnes("row-portal-van"), 0.4);
   });
 });

@@ -30,10 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     // to the client: the bucket's authorised list decides what they may pick, and acceptance re-resolves regardless.
     const category = typeof body.categoryCode === "string" && body.categoryCode.trim() ? body.categoryCode.trim() : null;
     const scope = typeof body.scope === "string" && body.scope.trim() ? body.scope.trim() : null;
-    const { factor, attributes } = await withTenantRead(isolatedPool(), user.organisationId, (db) =>
+    const { factor, attributes, classification } = await withTenantRead(isolatedPool(), user.organisationId, (db) =>
       suggestVehicleFactor(db, user.organisationId, jobId, result.vehicle, result.source, category, scope));
     return Response.json(
-      { source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, matched: factor !== null, attributes },
+      { source: result.source, vehicle: result.vehicle, suggestedClass: result.suggestedClass, classification, matched: factor !== null, attributes },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

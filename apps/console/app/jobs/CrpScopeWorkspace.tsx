@@ -369,6 +369,7 @@ export function CrpScopeWorkspace({
         factorId: body.factor ? `dataset:${body.factor.datasetId}|${body.factor.factorId}` : null,
         factorLabel: body.factor?.label ?? null,
         attributes: body.attributes ?? null,
+        classification: body.classification ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };

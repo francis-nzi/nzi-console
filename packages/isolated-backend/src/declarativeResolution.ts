@@ -96,7 +96,10 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
     entry: entryFor(entry, attributes, [...rules, ...Object.values(rulesByCategory).flat()]),
     available: factors.map((factor) => ({ factorId: factor.factorId, scopes: factor.scopes, unit: factor.unit })),
     registry: await listCategoryVariants(db),
-    enrichment: attributes ? { dvla: { fuel: attributes.fuel, class: attributes.vehicleClass } } : undefined,
+    // JW-11: `category` / `fallback` are the banded vehicle (`car|small|petrol`) and its Average-band fallback, which the
+    // per-distance rules match; absent on an entry captured before the banding, so those rules simply decline.
+    enrichment: attributes ? { dvla: { fuel: attributes.fuel, class: attributes.vehicleClass,
+      category: attributes.category ?? null, fallback: attributes.fallbackCategory ?? null } } : undefined,
     rulesByCategory,
     reconcileUnit: reconcileUnitForMapping,
   });

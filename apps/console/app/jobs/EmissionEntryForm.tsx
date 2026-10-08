@@ -226,7 +226,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 {lookup.state === "done" ? (
                   <div className="nz-banner ok" role="status" style={{ margin: "6px 0", display: "block" }}>
                     <b>{[lookup.result.make, lookup.result.fuelType, lookup.result.year].filter(Boolean).join(" · ") || "Vehicle found"}</b>
-                    {" — "}{lookup.result.suggestedClass}
+                    {/* JW-11: what the vehicle is in the factor library's terms ("Small car · Petrol"), else its class. */}
+                    {" — "}{lookup.result.classification ?? lookup.result.suggestedClass ?? "vehicle"}
                     {audience === "crm" && lookup.result.factorLabel ? <div className="nz-hint">Suggested factor: {lookup.result.factorLabel}</div> : null}
                     {audience === "crm" && !lookup.result.factorLabel ? <div className="nz-hint">No factor matched — pick one below.</div> : null}
                     <div style={{ display: "flex", gap: 8, marginTop: 6 }}>

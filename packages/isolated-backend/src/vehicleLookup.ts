@@ -33,7 +33,7 @@ export type ResolvedVehicleFactor = {
 };
 
 export type VehicleLookupResult =
-  | { ok: true; source: "dvla" | "stub"; vehicle: VehicleSpec; suggestedClass: string }
+  | { ok: true; source: "dvla" | "stub"; vehicle: VehicleSpec; suggestedClass: string | null }
   | { ok: false; status: 400 | 404 | 429 | 503; message: string };
 
 export type VehicleLookupConfig = {
@@ -51,26 +51,86 @@ export function normaliseRegistration(registration: string): string {
 const str = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value.trim() : null);
 const numOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-/** DVLA type approval + weight → a coarse vehicle class for factor matching. */
-export function vehicleClassOf(vehicle: VehicleSpec): string {
-  const approval = (vehicle.typeApproval ?? "").toUpperCase();
+/**
+ * DVLA type approval + revenue weight → a vehicle class, as v7 decides it (`services/vehicle_categorization.py`,
+ * JW-11): M1 a car, N1 a van, N2/N3 an HGV. Without a recognised approval — DVLA often leaves it blank — a revenue
+ * weight is a goods-vehicle plating figure, so it decides van (≤ 3,500 kg) or HGV; a real motorbike never has one, so
+ * only a weightless vehicle of 2,500 cc or less is a motorbike. Anything else is unclassified (null), not a guess.
+ */
+export function vehicleClassOf(vehicle: VehicleSpec): "car" | "van" | "hgv" | "motorbike" | null {
+  const approval = (vehicle.typeApproval ?? "").trim().toUpperCase();
+  if (approval === "M1") return "car";
+  if (approval === "N1") return "van";
+  if (approval === "N2" || approval === "N3") return "hgv";
   const weight = vehicle.revenueWeight ?? 0;
-  if (approval === "N1" || (weight > 0 && weight <= 3500)) return "van";
-  if (approval === "N2" || approval === "N3" || weight > 3500) return "hgv";
-  if (approval === "L1" || approval === "L3" || (!weight && (vehicle.engineCapacity ?? 0) > 0 && (vehicle.engineCapacity ?? 0) <= 1500 && !approval)) return "motorbike";
-  return "car";
+  if (weight > 0) return weight <= 3500 ? "van" : "hgv";
+  const cc = vehicle.engineCapacity;
+  if (cc !== null && cc > 0 && cc <= 2500) return "motorbike";
+  return null;
 }
 
 export function fuelKeyword(fuelType: string | null): string | null {
-  const text = (fuelType ?? "").toUpperCase();
+  const text = (fuelType ?? "").trim().toUpperCase();
   if (!text) return null;
   if (text.includes("ELECTRIC") && !text.includes("HYBRID")) return "electric";
   if (text.includes("HYBRID")) return "hybrid";
   if (text.includes("DIESEL")) return "diesel";
-  if (text.includes("PETROL") || text.includes("GAS/PETROL")) return "petrol";
+  // LPG before petrol: "LIQUID PETROLEUM GAS" contains "PETROL", and v7 prices it as LPG.
   if (text.includes("LPG") || text.includes("LIQUID PETROLEUM")) return "lpg";
-  if (text.includes("CNG") || text.includes("COMPRESSED NATURAL")) return "cng";
+  // v7's map: a gas/petrol or gas bi-fuel vehicle is priced as petrol; plain "GAS" is CNG.
+  if (text.includes("PETROL") || text === "GAS BI-FUEL") return "petrol";
+  if (text === "GAS" || text.includes("CNG") || text.includes("COMPRESSED NATURAL")) return "cng";
   return null;
+}
+
+/**
+ * v7's size and weight bands (JW-11, ruled 6 Oct): each upper bound inclusive, as v7's `_band` reads them. A car's
+ * band is its engine size — diesel engines run larger for the same class, so diesel has its own small limit — and a
+ * van's its revenue weight. No measurement, no band: v7 then uses its "Average" row, and so do we.
+ */
+export type VehicleBand = "small" | "medium" | "large" | "class-i" | "class-ii" | "class-iii" | "average";
+
+const CAR_BANDS_PETROL: ReadonlyArray<[number, VehicleBand]> = [[1400, "small"], [2000, "medium"], [Infinity, "large"]];
+const CAR_BANDS_DIESEL: ReadonlyArray<[number, VehicleBand]> = [[1700, "small"], [2000, "medium"], [Infinity, "large"]];
+const VAN_BANDS: ReadonlyArray<[number, VehicleBand]> = [[1305, "class-i"], [1740, "class-ii"], [3500, "class-iii"]];
+
+const bandOf = (value: number | null, bands: ReadonlyArray<[number, VehicleBand]>): VehicleBand | null => {
+  if (value === null || !Number.isFinite(value) || value <= 0) return null;
+  for (const [limit, band] of bands) if (value <= limit) return band;
+  return null;
+};
+
+const BAND_LABEL: Record<VehicleBand, string> = {
+  small: "Small", medium: "Medium", large: "Large", average: "Average",
+  "class-i": "Class I (up to 1.305 tonnes)", "class-ii": "Class II (1.305 to 1.74 tonnes)", "class-iii": "Class III (1.74 to 3.5 tonnes)",
+};
+const FUEL_LABEL: Record<string, string> = { petrol: "Petrol", diesel: "Diesel", hybrid: "Hybrid", lpg: "LPG", cng: "CNG", electric: "Battery electric", unknown: "Unknown fuel" };
+
+/**
+ * What a looked-up car or van **is**, in the terms the per-distance factors are published in (JW-11):
+ *
+ * - `category`: `class|band|fuel`, e.g. `car|small|petrol` or `van|class-ii|diesel`, which a declared rule matches;
+ * - `fallbackCategory`: the same vehicle at v7's "Average" band (`car|average|petrol`), which a rule may answer when
+ *   the band's own factor is not in the job's datasets (v7's fallback, as a rule rather than a code path);
+ * - `label`: "Small car · Petrol", "Van, Class II (1.305 to 1.74 tonnes) · Diesel", for the person confirming it.
+ *
+ * Only cars and vans are banded (the ruled scope); an HGV, a motorbike or an unclassified vehicle has none and is
+ * left to a person. A missing fuel is v7's "Unknown", which the library publishes for every car and van band.
+ * **No registration appears in any of these values**: the argument is a `VehicleSpec`, which never carries one.
+ */
+export type VehicleClassification = { category: string | null; fallbackCategory: string | null; label: string | null };
+
+export function classifyVehicle(vehicle: VehicleSpec): VehicleClassification {
+  const vehicleClass = vehicleClassOf(vehicle);
+  const fuel = fuelKeyword(vehicle.fuelType) ?? "unknown";
+  if (vehicleClass !== "car" && vehicleClass !== "van") return { category: null, fallbackCategory: null, label: null };
+  const band = vehicleClass === "car"
+    ? bandOf(vehicle.engineCapacity, fuel === "diesel" ? CAR_BANDS_DIESEL : CAR_BANDS_PETROL) ?? "average"
+    : bandOf(vehicle.revenueWeight, VAN_BANDS) ?? "average";
+  const label = vehicleClass === "car"
+    ? `${BAND_LABEL[band]} car · ${FUEL_LABEL[fuel] ?? fuel}`
+    : `Van, ${band === "average" ? "Average (up to 3.5 tonnes)" : BAND_LABEL[band]} · ${FUEL_LABEL[fuel] ?? fuel}`;
+  return { category: `${vehicleClass}|${band}|${fuel}`, fallbackCategory: `${vehicleClass}|average|${fuel}`, label };
 }
 
 const STUB_VEHICLES: readonly Omit<VehicleSpec, "yearOfManufacture">[] = [
@@ -98,10 +158,14 @@ function stubVehicle(plate: string): VehicleSpec {
  * plate cannot reach the resolver through this path (NZC-103).
  */
 export function vehicleAttributes(vehicle: VehicleSpec): Record<string, string | null> {
+  const banded = classifyVehicle(vehicle);
   return {
     fuel: fuelKeyword(vehicle.fuelType),
     class: vehicleClassOf(vehicle),
     make: vehicle.make,
+    // JW-11: the banded category a per-distance rule matches, and v7's Average-band fallback.
+    category: banded.category,
+    fallback: banded.fallbackCategory,
   };
 }
 
@@ -164,7 +228,8 @@ export async function resolveVehicleFactor(
 ): Promise<ResolvedVehicleFactor | null> {
   const fuel = fuelKeyword(vehicle.fuelType);
   if (!fuel) return null;
-  const vehicleClass = vehicleClassOf(vehicle);
+  // The label match predates the banding; an unclassified vehicle is matched as a car, as it always was.
+  const vehicleClass = vehicleClassOf(vehicle) ?? "car";
   const classTerms: Record<string, string[]> = {
     car: ["car"],
     van: ["van", "light goods", "lgv"],

@@ -149,6 +149,22 @@ describe("a unit either reconciles with the factor or the entry is refused (NZC-
     assert.equal(isAcceptedUnit(" KWH ", ["kWh"]), true);
   });
 
+  it("accepts a factor's spelling of an offered unit, and only of a convertible one at the same size (JW-11)", async () => {
+    // Applying a per-mile factor sets the entry's unit to the factor's `miles`; company vehicles offer `mi`.
+    const vehicles = ["litres", "km", "mi"];
+    assert.equal(isAcceptedUnit("miles", vehicles), true);
+    assert.equal(isAcceptedUnit("litre", vehicles), true);
+    assert.equal(isAcceptedUnit("l", vehicles), true);
+    // Same dimension at a different size is a conversion, not a spelling: the spec still has to offer it.
+    assert.equal(isAcceptedUnit("m3", vehicles), false);
+    assert.equal(isAcceptedUnit("MWh", ["kWh"]), false);
+    assert.equal(isAcceptedUnit("passenger.mi", vehicles), false);
+    // Counts of one are not one another, and unknown spellings are not anything.
+    assert.equal(isAcceptedUnit("nights", ["units"]), false);
+    assert.equal(isAcceptedUnit("m2", ["m²"]), false);
+    assert.equal(isAcceptedUnit("furlongs", vehicles), false);
+  });
+
   it("holds the whole seeded spec to units it can actually check", async () => {
     // A declared unit the checker does not recognise would refuse every entry for that field — a spec
     // that cannot be satisfied. Asserted across every category rather than the handful touched here.

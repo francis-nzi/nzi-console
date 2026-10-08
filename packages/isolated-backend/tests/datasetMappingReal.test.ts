@@ -227,7 +227,10 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
   let db: pg.Client;
   let registry: CategoryVariant[];
 
-  const available = [{ factorId: "uk-ghg-1_101_1011_8_1", scopes: ["1", "3"], unit: "litres" }, { factorId: "gas-demo", scopes: ["1"], unit: "kWh" }];
+  // JW-11 (0160): the stub's diesel van prices per mile at its band, Van Class III · Diesel.
+  const VAN_III_DIESEL = "uk-ghg-5_303_3095_9_1";
+  const available = [{ factorId: "uk-ghg-1_101_1011_8_1", scopes: ["1", "3"], unit: "litres" }, { factorId: "gas-demo", scopes: ["1"], unit: "kWh" },
+    { factorId: VAN_III_DIESEL, scopes: ["1"], unit: "miles" }];
 
   before(async () => {
     database = (await createDisposableDatabase("enriched"))!;
@@ -270,10 +273,14 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     }
   };
 
-  it("seeds only the enriched rule as active; the unit rule is retired, not removed (D3)", async () => {
-    // A lookup that knows what the vehicle *is* is the only thing that may name its fuel.
+  it("seeds only enriched rules as active; the unit rule is retired, not removed (D3)", async () => {
+    // A lookup that knows what the vehicle *is* is the only thing that may name its factor. Since 0160 (JW-11) that is
+    // the vehicle's v7 band per mile — 22 band rules and 11 Average-band fallbacks — and dvla-diesel is retired.
     const rules = await vehicleRules();
-    assert.deepEqual(rules.map((rule) => [rule.kind, rule.ruleKey]), [["enriched", "dvla-diesel"]]);
+    assert.equal(rules.length, 33);
+    assert.ok(rules.every((rule) => rule.kind === "enriched"), "a non-enriched rule is active in company vehicles");
+    assert.ok(!rules.some((rule) => rule.ruleKey === "dvla-diesel"), "the per-litre diesel default is still active");
+    assert.equal(rules[0]!.ruleKey, "dvla-car-small-petrol");
 
     const retired = await db.query<{ active: boolean; version: number; updated_by: string }>(
       `SELECT active, version, updated_by FROM nzi_console.input_spec_factor_rules WHERE rule_key = 'fuel-litres'`);
@@ -295,15 +302,16 @@ describe("a vehicle resolves from what the DVLA lookup returned (NZC-151)", { sk
     // resolving path would have looked tested and would not have been.
     assert.equal(attributes.fuel, "diesel", "XY34ZAB is no longer a diesel in the stub");
 
+    // JW-11 (0160): the stub's diesel is a 3,100 kg N1 van — Class III — priced per mile, in the unit the category collects.
     const outcome = resolveFactorForEntry({ reconcileUnit: reconcileUnitForMapping,
       rules: await vehicleRules(), specGhgCategory: "1",
-      entry: { registrationFinder: "XY34ZAB", unit: "litres" },
+      entry: { registrationFinder: "XY34ZAB", unit: "mi" },
       available, registry, enrichment: { dvla: attributes },
     });
     assert.equal(outcome.kind, "resolved");
     if (outcome.kind !== "resolved") return;
-    assert.equal(outcome.factorId, "uk-ghg-1_101_1011_8_1");
-    assert.equal(outcome.rule.ruleKey, "dvla-diesel", "the unit rule answered instead of the lookup");
+    assert.equal(outcome.factorId, VAN_III_DIESEL);
+    assert.equal(outcome.rule.ruleKey, "dvla-van-class-iii-diesel", "the unit rule answered instead of the lookup");
   });
 
   it("leaves the entry unresolved when the lookup finds nothing, though a coarser rule would have matched", async () => {

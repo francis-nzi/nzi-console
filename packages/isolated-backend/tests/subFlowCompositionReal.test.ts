@@ -53,9 +53,22 @@ describe("business travel and commuting reuse the vehicle flow (NZC-158)", { ski
     const factors = await db.query<{ factor_id: string; scopes: string[]; activity_unit: string }>(
       `SELECT factor_id, scopes, activity_unit FROM nzi_console.emission_factors WHERE organisation_id = $1`, [DEMO_ORG]);
     available = factors.rows.map((row) => ({ factorId: row.factor_id, scopes: row.scopes, unit: row.activity_unit }));
+
+    // JW-11 (0160) retired `dvla-diesel` from the registration flow: the vehicle flow now prices per mile at the
+    // vehicle's band, and the library has no `-b` / `-c` variant of those per-mile factors yet, so no shipped vehicle rule
+    // currently names a base this suite's seeded variants derive from. This suite proves the sub-flow **mechanism**
+    // (composition, the STOP, ordering, the shadow invariant), not which rules ship — so it re-activates the retired rule
+    // for its own run, as the vehicle flow it composes from, and restores it after. The shipped set is proved in
+    // vehicleBandedRulesReal.
+    await db.query(`UPDATE nzi_console.input_spec_factor_rules SET active = true
+                     WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`);
   });
 
-  after(async () => { await db?.end(); await database?.end(); });
+  after(async () => {
+    await db?.query(`UPDATE nzi_console.input_spec_factor_rules SET active = false
+                      WHERE category_code = '1.company-vehicles' AND rule_key = 'dvla-diesel'`).catch(() => undefined);
+    await db?.end(); await database?.end();
+  });
 
   const rulesByCategory = async (): Promise<Record<string, readonly FactorRule[]>> => ({
     "1.company-vehicles": await factorRulesFor(db, "1.company-vehicles"),

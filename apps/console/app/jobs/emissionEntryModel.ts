@@ -29,7 +29,7 @@ export type EmissionEntryDraft = {
   /** Why a factor other than the category's declared one was chosen. Asked only when the choice diverges (Stop 2b). */
   factorOverrideReason: string;
   /** The lookup's attributes, carried to the write (Stop 2c, F3). Dropped when the registration changes. */
-  assertedVehicleAttributes?: { source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null } | null;
+  assertedVehicleAttributes?: LookupVehicleAttributes | null;
   note: string;
   monthlyOpen: boolean;
   monthly: Record<string, string>;
@@ -41,18 +41,29 @@ export type EntryFactorOption = { id: string; label: string; unit?: string; isCl
   /** From the preferred source for the job's country (DESNZ for GB). */
   preferred?: boolean };
 
+/**
+ * What a vehicle lookup said, carried to the write (Stop 2c, F3): fuel and class, and since JW-11 the banded category a
+ * per-distance rule matches (`car|small|petrol`) with v7's Average-band fallback. Never the plate.
+ */
+export type LookupVehicleAttributes = {
+  source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null;
+  category?: string | null; fallbackCategory?: string | null;
+};
+
 /** Result of the two-step DVLA registration lookup (UX1 lookup). */
 export type RegistrationLookupOutcome =
   | {
       ok: true;
       make: string | null;
       fuelType: string | null;
-      suggestedClass: string;
+      suggestedClass: string | null;
       year: number | null;
       /** CRM only — a suggested factor when one matched. */
       factorId?: string | null;
       /** What the lookup said the vehicle is — fuel and class, never the plate — for the write to re-resolve (F3). */
-      attributes?: { source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null } | null;
+      attributes?: LookupVehicleAttributes | null;
+      /** JW-11: what the vehicle is in the factor library's terms ("Small car · Petrol"), when it is a banded car or van. */
+      classification?: string | null;
       factorLabel?: string | null;
     }
   | { ok: false; message: string };

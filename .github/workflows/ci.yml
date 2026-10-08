@@ -301,6 +301,11 @@ jobs:
       # carried into both through the write. Driven through the capture path per NZC-162.
       - name: The vehicle trio resolves as ruled, and the flow reaches its sub-flows through the write
         run: npx tsx --test packages/isolated-backend/tests/vehicleTrio2cReal.test.ts
+      # JW-11 (0160) — a looked-up car or van is priced per mile at its v7 size band, falling back to the Average band
+      # for its fuel; the per-litre dvla-diesel rule is retired from the registration flow; EVs, HGVs and unbanded
+      # vehicles stay a person's pick.
+      - name: A looked-up car or van resolves to its banded per-mile factor, with the Average band as fallback
+        run: npx tsx --test packages/isolated-backend/tests/vehicleBandedRulesReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked
