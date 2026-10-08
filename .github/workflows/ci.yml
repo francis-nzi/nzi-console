@@ -619,6 +619,10 @@ jobs:
       # byte — curly quotes, dashes, € and emoji included; a plain-ASCII reason stores exactly what it did before.
       - name: A command reason reaches the audit byte for byte, whatever its characters
         run: npx tsx --test packages/isolated-backend/tests/commandReasonReal.test.ts
+      # NZC-120's live leak, fixed (Phase 3c, ruled #13): a job's intensity Value can be turnover, so the audit, idempotency
+      # record and outbox say only whether one is recorded — first record, correction, clearing; every metric kind.
+      - name: An intensity Value never reaches an audit, idempotency or outbox payload
+        run: npx tsx --test packages/isolated-backend/tests/intensityValueNoMoneyReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives

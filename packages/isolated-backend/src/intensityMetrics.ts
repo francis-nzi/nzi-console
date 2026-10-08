@@ -74,7 +74,8 @@ export function deactivateClientIntensityMetric(pool: PoolLike, input: CommandIn
   });
 }
 
-export type SetIntensityValueResult = { jobId: string; reportingYear: number; metricKey: string; version: number };
+/** Whether a Value is recorded, never the Value itself: it can be money (NZC-120). */
+export type SetIntensityValueResult = { jobId: string; reportingYear: number; metricKey: string; version: number; valueRecorded: boolean };
 
 /** Record one metric's value for one reporting year on this job. */
 export function setJobIntensityValue(pool: PoolLike, input: CommandInputMap["job.intensityValue.set"], context: CommandContext): Promise<StoredOutcome<SetIntensityValueResult>> {
@@ -109,11 +110,13 @@ export function setJobIntensityValue(pool: PoolLike, input: CommandInputMap["job
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING version`,
         [context.organisationId, input.jobId, input.reportingYear, input.metricKey, periodKey, input.value, overrides, input.note ?? "", context.actorId]);
 
+    // **A Value can be money (turnover) — never in a payload (NZC-120, ruled #13).** As job.fee.set: the audit, idempotency
+    // record and outbox say only whether a Value is recorded, before and after; the figure lives in the column alone. For
+    // every metric, not just currency ones — a `text` metric can still be money (0071 seeded turnover as text, "£m").
     return {
-      data: { jobId: input.jobId, reportingYear: input.reportingYear, metricKey: input.metricKey, version: saved.rows[0]!.version },
+      data: { jobId: input.jobId, reportingYear: input.reportingYear, metricKey: input.metricKey, version: saved.rows[0]!.version, valueRecorded: input.value !== null },
       entityType: "job_intensity_value", entityId: `${input.jobId}:${input.reportingYear}:${input.metricKey}`, topic: "job.intensity_value.set",
-      ...(previous ? { before: { value: previous.value === null ? null : Number(previous.value) } } : {}),
-      after: { value: input.value, periodKey, overridesResolved: overrides },
+      before: { valueRecorded: previous !== null && previous.value !== null },
     };
   });
 }
