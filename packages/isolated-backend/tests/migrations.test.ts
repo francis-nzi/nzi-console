@@ -25,6 +25,7 @@ const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_cl
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
 const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
 const jobSiteInclusionsMigration = readFileSync(resolve(here, "../migrations/0161_job_site_inclusions.sql"), "utf8");
+const jobTemplateSeedVersionMigration = readFileSync(resolve(here, "../migrations/0162_job_template_seed_version.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -192,6 +193,17 @@ describe("isolated Postgres migrations", () => {
     ]) assert.ok(jobSiteInclusionsMigration.includes(clause), clause);
     // Absence is included: nothing to backfill, so the migration writes no rows.
     assert.ok(!/INSERT INTO/.test(jobSiteInclusionsMigration.replace(/--.*$/gm, "")), "no backfill — an all-included job writes no rows");
+  });
+  it("records the template version that seeded a job on its config row, nullable and paired, with no backfill (0162, Phase 3b)", () => {
+    for (const clause of [
+      "ALTER TABLE nzi_console.job_emissions_config",
+      "ADD COLUMN seeded_template_version integer CHECK (seeded_template_version > 0)",
+      "ADD COLUMN seeded_at timestamptz",
+      "ADD CONSTRAINT job_emissions_config_seeded_pair CHECK ((seeded_template_version IS NULL) = (seeded_at IS NULL))",
+    ]) assert.ok(jobTemplateSeedVersionMigration.includes(clause), clause);
+    const code = jobTemplateSeedVersionMigration.replace(/--.*$/gm, "");
+    assert.ok(!/\bUPDATE\b|INSERT INTO|NOT NULL/.test(code), "additive and nullable: no backfill, no existing row touched");
+    assert.ok(!/GRANT|REVOKE|POLICY/.test(code), "the table's grants and RLS are unchanged");
   });
   it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
     for (const clause of [

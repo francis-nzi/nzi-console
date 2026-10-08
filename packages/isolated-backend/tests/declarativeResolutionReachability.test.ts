@@ -22,7 +22,7 @@ const read = (file: string) => readFileSync(join(SRC, file), "utf8");
 
 /** The body of an exported or local function, from its declaration to the next top-level function. */
 function bodyOf(source: string, name: string): string {
-  const start = source.search(new RegExp(`(?:export )?async function ${name}\\b`));
+  const start = source.search(new RegExp(`(?:export )?(?:async )?function ${name}\\b`));
   assert.ok(start >= 0, `${name} was not found — the reachability map is out of date`);
   const rest = source.slice(start + 10);
   const next = rest.search(/\n(?:export )?(?:async )?function \w+|\nexport const /);
@@ -57,9 +57,21 @@ describe("the declarative resolver is reached from the scope-row create and upda
 
   it("is called by createScopeRow and updateScopeRow", () => {
     const commands = read("postgresCommands.ts");
-    for (const name of ["createScopeRow", "updateScopeRow"]) {
-      assert.match(bodyOf(commands, name), /declarativeFactorFor\(/, `${name} does not resolve declaratively`);
+    // Phase 3b: the create's body is one handler, `scopeRowCreateHandler`, shared by the command and the in-transaction
+    // create that template seeding writes each line through — so the create resolves declaratively through it, and
+    // seeding reaches the resolver only as a scope-row create does (the call count below is unchanged).
+    for (const name of ["createScopeRow", "createScopeRowInTransaction"]) {
+      assert.match(bodyOf(commands, name), /scopeRowCreateHandler\(/, `${name} does not write through the create's one handler`);
     }
+    assert.match(bodyOf(commands, "scopeRowCreateHandler"), /declarativeFactorFor\(/, "the scope-row create does not resolve declaratively");
+    assert.match(bodyOf(commands, "updateScopeRow"), /declarativeFactorFor\(/, "updateScopeRow does not resolve declaratively");
+  });
+
+  it("is reached by template seeding only through the scope-row create (Phase 3b)", () => {
+    const seeding = read("jobTemplateSeeding.ts");
+    assert.match(seeding, /createScopeRowInTransaction\(/, "seeding does not write through the scope-row create");
+    assert.doesNotMatch(seeding, /declarativeFactorFor\(|applyDeclarativeResolution\(|resolveFactorForEntry\(|INSERT INTO nzi_console\.job_scope_rows/,
+      "seeding resolves or inserts a row by itself — it must go through the create");
   });
 
   it("is not called by the two write paths Stop 2 leaves as they were", () => {
