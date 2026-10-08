@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { datasetsSummary, milestonesSummary } from "../app/jobs/JobShellHeader";
+import { sitesSummary } from "../app/jobs/jobSitesSummary";
 
 /**
  * Phase 2 job shell (JOB-REDESIGN-phase2-kickoff): the header band's summaries say what the page already holds — the
@@ -33,6 +34,21 @@ describe("the job shell's header summaries", () => {
     assert.equal(milestonesSummary([{ dueDate: null, completedAt: null }]), "1 · 1 undated");
   });
 
+  it("says how many sites the job includes — all, or so many of so many (Phase 3a)", () => {
+    assert.equal(sitesSummary([]), "No sites");
+    assert.equal(sitesSummary([{ included: true }]), "1 site · all included");
+    assert.equal(sitesSummary([{}, { included: true }, {}]), "3 sites · all included", "a site option without the field is included");
+    assert.equal(sitesSummary([{ included: true }, { included: false }, { included: true }, { included: true }, { included: true }, { included: true }]), "5 of 6 included");
+  });
+
+  it("captures only against the sites the job includes; the drawer lists them all (Phase 3a)", () => {
+    const workspace = readFileSync(join(APP, "jobs/CrpScopeWorkspace.tsx"), "utf8");
+    assert.match(workspace, /const captureSites = includedSites\(sites\);/);
+    for (const use of [/sites=\{captureSites\.map\(site => \(\{ id: site\.id, label: site\.name \}\)\)\}/, /<EmissionSourceRegister [^>]*sites=\{captureSites\}/, /<Fields [^>]*sites=\{captureSites\}/, /sites=\{captureSites\.map\(site => \(\{ id: site\.id, name: site\.name \}\)\)\}/]) {
+      assert.match(workspace, use);
+    }
+  });
+
   it("is behind job-shell, beside the existing layouts rather than replacing them", () => {
     const workspace = readFileSync(join(APP, "jobs/CrpScopeWorkspace.tsx"), "utf8");
     assert.match(workspace, /const shellOn = dataEntryAdapterEnabled\("job-shell"\)/);
@@ -49,9 +65,15 @@ describe("the job shell's header summaries", () => {
     for (const drawer of ["setup", "milestones", "time", "sites", "datasets"]) assert.match(workspace, new RegExp(`\\n    ${drawer}: \\{ kicker: "Job", title: "`), `the ${drawer} drawer`);
     assert.match(workspace, /<DatasetPanel [^>]*showReasons\/>/, "the Datasets drawer says why each dataset is selected");
     // Ruled 7 Oct: sites are the client's, so the Sites drawer lists them and links to the client — no inline create.
-    const sitesDrawer = workspace.slice(workspace.indexOf('\n    sites: { kicker: "Job"'), workspace.indexOf('\n    datasets: { kicker: "Job"'));
-    assert.doesNotMatch(sitesDrawer, /<SitePanel /, "no inline site create in the Sites drawer");
-    assert.match(sitesDrawer, /href=\{`\/clients\/\$\{encodeURIComponent\(job\.header\.clientId\)\}#client-sites`\}>Manage sites on the client<\/a>/);
+    // Phase 3a: the drawer is its own component, which also includes or leaves out each site for this job.
+    const sitesEntry = workspace.slice(workspace.indexOf('\n    sites: { kicker: "Job"'), workspace.indexOf('\n    datasets: { kicker: "Job"'));
+    assert.match(sitesEntry, /<JobSitesDrawer jobId=\{job\.header\.id\} clientId=\{job\.header\.clientId\} sites=\{sites\}/, "the drawer gets every site, included or not");
+    const sitesDrawer = readFileSync(join(APP, "jobs/JobSitesDrawer.tsx"), "utf8");
+    assert.doesNotMatch(sitesEntry + sitesDrawer, /<SitePanel /, "no inline site create in the Sites drawer");
+    assert.match(sitesDrawer, /href=\{`\/clients\/\$\{encodeURIComponent\(clientId\)\}#client-sites`\}>Manage sites on the client<\/a>/);
+    // Leaving a site out sends its reason as the command reason; including it back needs none.
+    assert.match(sitesDrawer, /sites\/\$\{encodeURIComponent\(site\.id\)\}\/inclusion/);
+    assert.match(sitesDrawer, /putBrowserCommandWithReason<[^>]*>\(path, body, idempotency\.current\.key, reason\.trim\(\)\)/);
     assert.match(readFileSync(join(APP, "clients/[clientId]/ClientSites.tsx"), "utf8"), /<section className="nz-panel" id="client-sites">/, "the link's anchor");
   });
 

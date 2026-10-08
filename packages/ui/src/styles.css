@@ -281,6 +281,15 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-shell-sites{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .nz-shell-sites li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;font-size:13px}
 .nz-shell-sites li+li{border-top:1px solid var(--line2)}
+/* Phase 3a: a site row carries its inclusion toggle, and a reason prompt below it when leaving the site out. */
+.nz-shell-sites li.nz-shell-site{display:block}
+.nz-shell-site-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.nz-shell-site-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nz-shell-site-confirm{display:grid;gap:8px;margin-top:8px}
+.nz-shell-site-confirm .nz-shell-site-actions{justify-content:flex-end}
+.nz-shell-site .nz-hint{margin:6px 0 0}
+/* A refusal reads as one inside the drawer, where `.nz-db .nz-hint` would otherwise grey it. */
+.nz-db .nz-shell-site .nz-hint.bad{color:#B23A2B;font-weight:600}
 .nz-dataset-reason{margin-top:2px;font-size:11.5px;color:var(--t2)}
 @media (max-width:900px){.nz-shell-identity{flex-direction:column}.nz-shell-drawers{grid-template-columns:repeat(3,minmax(0,1fr))}.nz-shell-head .nz-head-actions{flex-direction:row;flex-wrap:wrap;align-items:center}}
 @media (max-width:420px){.nz-shell-head{padding:14px 16px 12px}.nz-shell-drawers{grid-template-columns:repeat(2,minmax(0,1fr))}}

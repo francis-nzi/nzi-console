@@ -1,6 +1,7 @@
 import { resolveFloorAreaDenominator, resolveSiteBoundary, type ClientSiteReadModel, type IntensityTargetReadModel, type ReportingPeriod } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import { dateOnly, isoTimestamp } from "./dates";
+import { listExcludedSiteIds } from "./siteInclusionGuard";
 
 type SiteRow = { site_id: string; name: string; is_registered_office: boolean; in_service_from: Date | string | null; vacated_effective: Date | string | null; version: number;
   address_lines_json?: string[] | null; postcode?: string | null; country?: string | null; located?: boolean };
@@ -29,6 +30,12 @@ export async function listClientSites(db: Queryable, clientId: string): Promise<
   }));
 }
 
+/** The client's sites a job reports on — its client's in-use sites less the ones the job leaves out (Phase 3a). */
+export async function listJobReportedSites(db: Queryable, clientId: string, jobId: string): Promise<ClientSiteReadModel[]> {
+  const [sites, excluded] = [await listClientSites(db, clientId), await listExcludedSiteIds(db, jobId)];
+  return sites.filter((site) => !excluded.has(site.id));
+}
+
 /**
  * The job's reporting period (NZC-070): `job_emissions_config.reporting_from/to`,
  * falling back to the job's own dates where no emissions config exists.
@@ -45,11 +52,15 @@ export async function resolveJobReportingPeriod(db: Queryable, jobId: string): P
 
 export type JobSiteBoundary = { clientId: string; period: ReportingPeriod; sites: ClientSiteReadModel[]; inBoundaryIds: Set<string> };
 
-/** The one boundary resolution for a job — every roll-up reads this, so none can disagree. */
+/**
+ * The one boundary resolution for a job — every roll-up reads this, so none can disagree. A site the job leaves out
+ * (Phase 3a, 0161) is not among its sites: not in the boundary, and not in the floor-area denominator. No row can sit at
+ * such a site (v1 refuses to exclude a site in use), so leaving one out moves the denominator, never a total.
+ */
 export async function resolveJobSiteBoundary(db: Queryable, jobId: string): Promise<JobSiteBoundary | null> {
   const job = await resolveJobReportingPeriod(db, jobId);
   if (!job) return null;
-  const sites = await listClientSites(db, job.clientId);
+  const sites = await listJobReportedSites(db, job.clientId, jobId);
   return { ...job, sites, inBoundaryIds: new Set(resolveSiteBoundary(sites, job.period).map((site) => site.id)) };
 }
 

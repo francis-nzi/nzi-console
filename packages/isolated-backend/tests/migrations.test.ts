@@ -24,6 +24,7 @@ const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matr
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
 const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
+const jobSiteInclusionsMigration = readFileSync(resolve(here, "../migrations/0161_job_site_inclusions.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -177,6 +178,20 @@ describe("isolated Postgres migrations", () => {
       }
     }
     assert.ok(!/\bquantity\b/.test(clientReportingTemplatesMigration.replace(/--.*$/gm, "")), "a template holds lines, never a quantity");
+  });
+  it("holds a job's site inclusion per (job, site), versioned and append-only; absence is included, an exclusion says why (0161, Phase 3a)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.job_site_inclusions", "PRIMARY KEY (organisation_id, job_id, site_id, version)",
+      "included boolean NOT NULL",
+      "FOREIGN KEY (organisation_id, job_id) REFERENCES nzi_console.jobs (organisation_id, job_id)",
+      "FOREIGN KEY (organisation_id, site_id) REFERENCES nzi_console.client_sites (organisation_id, site_id)",
+      "CONSTRAINT job_site_inclusions_exclusion_reason CHECK (included OR reason IS NOT NULL)",
+      "ALTER TABLE nzi_console.job_site_inclusions FORCE ROW LEVEL SECURITY",
+      "GRANT SELECT, INSERT ON nzi_console.job_site_inclusions TO nzi_console_app",
+      "REVOKE UPDATE, DELETE ON nzi_console.job_site_inclusions FROM PUBLIC, nzi_console_app, nzi_console_worker, nzi_console_auth",
+    ]) assert.ok(jobSiteInclusionsMigration.includes(clause), clause);
+    // Absence is included: nothing to backfill, so the migration writes no rows.
+    assert.ok(!/INSERT INTO/.test(jobSiteInclusionsMigration.replace(/--.*$/gm, "")), "no backfill — an all-included job writes no rows");
   });
   it("keeps client logos as append-only staging assets, PNG or SVG, frozen onto report versions (0068)", () => {
     for (const clause of [

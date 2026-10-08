@@ -632,6 +632,11 @@ jobs:
       # a live site is carried forward, and the prior year's rows keep theirs.
       - name: Roll-forward drops an archived site and carries a live one
         run: npx tsx --test packages/isolated-backend/tests/rollforwardArchivedSiteReal.test.ts
+      # Phase 3a (0161, ruled): a job's site inclusion — absence is included; an exclusion is a reasoned version recording
+      # ids only; refused for an archived site, a no-op, or a site the job uses (any row, source or pending portal record);
+      # every site-setting write, the portal offer and grant, and roll-forward honour it; atomic in both directions.
+      - name: A job includes or leaves out each client site, and nothing records against a site it leaves out
+        run: npx tsx --test packages/isolated-backend/tests/jobSiteInclusionsReal.test.ts
       # Phase 1b (0158): a client's intensity target per metric — active metrics only, versioned and append-only, a moved
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero

@@ -25,7 +25,7 @@ import type {
   ScopeRowReadModel,
   ScopeRowWriteFields,
 } from "@nzi/contracts";
-import { monthsBetween } from "@nzi/contracts";
+import { includedSites, monthsBetween } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
@@ -57,6 +57,8 @@ import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
+import {JobSitesDrawer} from "./JobSitesDrawer";
+import {sitesSummary} from "./jobSitesSummary";
 
 const INTENSITY_METRIC_LABEL: Record<string, string> = { turnover: "Turnover", employee: "Employees", "floor-area": "Floor area" };
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
@@ -195,6 +197,8 @@ export function CrpScopeWorkspace({
    */
   shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null };
 }) {
+  // Phase 3a: capture offers only the sites this job reports on; the Sites drawer lists them all, with the toggle.
+  const captureSites = includedSites(sites);
   const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
     ? {
         kind: "warn",
@@ -439,7 +443,7 @@ export function CrpScopeWorkspace({
         jobId={job.header.id}
         row={detailRow}
         factors={factors}
-        sites={sites}
+        sites={captureSites}
         purchasedGoodsCategories={purchasedGoodsCategories}
         reportingFrom={datasets[0]?.reportingFrom??`${reportingYear}-01-01`}
         reportingTo={datasets[0]?.reportingTo??`${reportingYear}-12-31`}
@@ -478,7 +482,7 @@ export function CrpScopeWorkspace({
       selectedRowId={selected?.id ?? ""}
       onOpenRow={setSelectedId}
       onAddEntry={setAddingCategory}
-      sites={sites.map(site => ({ id: site.id, label: site.name }))}
+      sites={captureSites.map(site => ({ id: site.id, label: site.name }))}
       siteId={siteId ?? ""}
       factors={entryFactorRefs}
       libraryFactors={factors}
@@ -498,7 +502,7 @@ export function CrpScopeWorkspace({
       {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
     </>
   );
-  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={sites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
+  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
   const releaseControl = <>
     {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0}/>
@@ -508,7 +512,7 @@ export function CrpScopeWorkspace({
   const createForm = creating ? (
     <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
       <div className="nz-scope-create-head"><div><span className="nz-eyebrow">New canonical evidence row</span><b>Add emissions source</b><p className="sub">Factors are limited to datasets selected for this reporting period.</p></div><span className="nz-st est">Uncalculated</span></div>
-      <Fields value={draft} change={setDraft} factors={factors} sites={sites} purchasedGoodsCategories={purchasedGoodsCategories}/>
+      <Fields value={draft} change={setDraft} factors={factors} sites={captureSites} purchasedGoodsCategories={purchasedGoodsCategories}/>
       <button className="nz-btn pri" disabled={pending}>{pending ? "Creating…" : "Create scope row"}</button>
     </form>
   ) : null;
@@ -585,7 +589,7 @@ export function CrpScopeWorkspace({
   const shellOn = dataEntryAdapterEnabled("job-shell");
   const shellSummary: JobShellSummary = {
     datasets: datasetsSummary(datasets),
-    sites: `${sites.length} site${sites.length === 1 ? "" : "s"} · all included`,
+    sites: sitesSummary(sites),
     intensity: intensityTarget ? `${INTENSITY_METRIC_LABEL[intensityTarget.metric] ?? intensityTarget.metric} · v${intensityTarget.version}` : "No intensity metric",
     milestones: milestonesSummary(shell?.milestoneStates ?? null),
   };
@@ -601,13 +605,7 @@ export function CrpScopeWorkspace({
     </> },
     milestones: { kicker: "Job", title: "Milestones", body: shell?.milestonesPanel ?? null },
     time: { kicker: "Job", title: "Time", body: shell?.timePanel ?? null },
-    sites: { kicker: "Job", title: "Sites", body: <>
-      {sites.length ? <ul className="nz-shell-sites" aria-label="Sites in this job">{sites.map((site) => <li key={site.id}><b>{site.name}</b><span className="nz-st done">Included</span></li>)}</ul>
-        : <p className="nz-hint">This client has no sites in use. Entries without a site stay visible as Unallocated.</p>}
-      <p className="nz-hint">Every site the client has in use is included in this job. Archived sites are not listed.</p>
-      {/* Sites belong to the client (Phase 1), so they are added and edited there, not from inside a job (ruled 7 Oct). */}
-      <div><a className="nz-btn" href={`/clients/${encodeURIComponent(job.header.clientId)}#client-sites`}>Manage sites on the client</a></div>
-    </> },
+    sites: { kicker: "Job", title: "Sites", body: <JobSitesDrawer jobId={job.header.id} clientId={job.header.clientId} sites={sites} writeEnabled={writeEnabled}/> },
     datasets: { kicker: "Job", title: "Datasets", body: <>
       <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
       <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons/>
@@ -685,7 +683,7 @@ export function CrpScopeWorkspace({
       <div className="nz-job-emissions">
         <EmissionsSummary jobId={job.header.id} siteId={siteId} siteLabel={siteLabel} initial={emissions} />
         <JobSiteTabs
-          sites={sites.map(site => ({ id: site.id, name: site.name }))}
+          sites={captureSites.map(site => ({ id: site.id, name: site.name }))}
           emissions={emissions}
           selected={siteId}
           onSelect={setSiteId}
