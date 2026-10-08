@@ -1,6 +1,7 @@
 import "server-only";
 import { AuthenticationError, AuthorizationError, CommandValidationError, commandGrant, IdempotencyConflictError, VersionConflictError, type StaffPrincipal } from "@nzi/isolated-backend";
 import type { CommandContext } from "@nzi/contracts";
+import { commandReason, CommandReasonEncodingError } from "@nzi/api-client";
 import { WriteApiDisabledError } from "./commandAuth";
 
 /** The command runs as the resolved principal: its tenant, its user, and its matrix grant (NZC-022). */
@@ -11,7 +12,8 @@ export function commandContext(request: Request, principal: StaffPrincipal): Com
     principal: "staff",
     idempotencyKey: request.headers.get("idempotency-key")?.trim() ?? "",
     correlationId: request.headers.get("x-correlation-id")?.trim() || crypto.randomUUID(),
-    reason: request.headers.get("x-command-reason")?.trim() || undefined,
+    // The one reader of the reason: decoded when the browser sent it encoded (any character), raw otherwise.
+    reason: commandReason(request.headers),
     grant: commandGrant(principal),
   };
 }
@@ -26,6 +28,8 @@ export function commandFailure(error: unknown) {
   // The message names the rule (own clients, separation of duties, another tenant) without echoing data.
   if (error instanceof AuthorizationError) return Response.json({ code: "PERMISSION_DENIED", message: error.message, permission: error.permission }, { status: 403 });
   if (error instanceof CommandValidationError) return Response.json({ code: "VALIDATION_FAILED", message: "Command validation failed.", issues: error.issues }, { status: 422 });
+  // A reason marked as encoded that does not decode: refused as the reason's problem, never stored half-read.
+  if (error instanceof CommandReasonEncodingError) return Response.json({ code: "VALIDATION_FAILED", message: error.message, issues: [{ field: "reason", code: "INVALID", message: error.message }] }, { status: 422 });
   // Every versioned command shares this handler, so the message must not name one record type.
   if (error instanceof VersionConflictError) return Response.json({ code: "VERSION_CONFLICT", message: "This record changed since you loaded it; refresh and try again." }, { status: 409 });
   if (error instanceof IdempotencyConflictError) return Response.json({ code: "IDEMPOTENCY_CONFLICT", message: error.message }, { status: 409 });

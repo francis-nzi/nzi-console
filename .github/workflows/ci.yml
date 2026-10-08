@@ -76,6 +76,9 @@ jobs:
       # The chart renderers. They were green but unenforced: nothing in CI ran them, so a
       # broken SVG would have reached a client-facing report unnoticed.
       - run: npm test -w @nzi/charts
+      # The browser command client, including how a command's reason is encoded (RULING-command-reason-encoding). Its
+      # tests passed but nothing in CI ran them.
+      - run: npm test -w @nzi/api-client
       - run: npm run test:console
 
   migrations:
@@ -612,6 +615,10 @@ jobs:
       # grouped (the roll-up arrives scaled, at 100), and a real 0% is 0.
       - name: Calculate applies apportionment once — 60%, grouped equals ungrouped, 0% is 0
         run: npx tsx --test packages/isolated-backend/tests/applyPctCalculateReal.test.ts
+      # RULING-command-reason-encoding: a command's reason travels percent-encoded and marked, and reaches the audit byte for
+      # byte — curly quotes, dashes, € and emoji included; a plain-ASCII reason stores exactly what it did before.
+      - name: A command reason reaches the audit byte for byte, whatever its characters
+        run: npx tsx --test packages/isolated-backend/tests/commandReasonReal.test.ts
       # Phase 1a: a client site archives with a reason (never deleted; the registered office guarded), leaves the pickers,
       # is listed as archived, and unarchives.
       - name: A client site archives with a reason, stays kept and listed, and unarchives
