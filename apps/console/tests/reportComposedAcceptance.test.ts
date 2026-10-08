@@ -318,3 +318,26 @@ describe("control level in the report plan", () => {
     }
   });
 });
+
+/** RF-1 (RULING-reporting-RF): the Intensity section marks the measure the CRP reports, from what the composition froze. */
+describe("the report's Intensity section (RF-1)", () => {
+  const view = read("apps/console/app/reports/[versionId]/ReportComposedView.tsx");
+  const css = read("apps/console/app/reports/[versionId]/report-composed.css");
+
+  it("marks the reported measure in the drawer's own words, only when the composition says so", () => {
+    assert.match(view, /metric\.reported \? <span className="nzr-tag reported">Reported in the CRP<\/span> : null/);
+    // An older composition carries no `reported` and no per-line: nothing is inferred for it.
+    assert.match(view, /metric\.denominatorText \? <div className="u">\{metric\.denominatorText\}<\/div> : null/);
+    assert.ok(!/reportedIntensityMetric|REPORTED_INTENSITY_METRICS/.test(view), "the view decides nothing — the composition froze the mark");
+  });
+
+  it("still states a gap in words rather than a zero", () => {
+    assert.match(view, /metric\.value === null\s*\? <div className="u why">\{metric\.unavailableReason\}<\/div>/);
+  });
+
+  it("does not borrow a scope colour for the mark", () => {
+    const mark = css.split("\n").find((line) => line.startsWith(".nzr-tag.reported")) ?? "";
+    assert.ok(mark, "the mark has its own rule");
+    for (const scopeColour of ["#FF5C48", "#FFC24B", "#0BA75E"]) assert.ok(!mark.includes(scopeColour), `must not use ${scopeColour}`);
+  });
+});

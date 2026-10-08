@@ -100,7 +100,19 @@ export type ReportIntensitySection = {
     value: number | null;
     /** Set only when `value` is null — the honest reason, not a dash. */
     unavailableReason: string | null;
+    /**
+     * RF-1 (RULING-reporting-RF): the metric the CRP reports — the one the review froze. Absent on compositions frozen
+     * before RF-1, which render as they always have.
+     */
+    reported?: boolean;
+    /** RF-1: what the intensity is per, as a reader sees it ("£12,500,000", "431 employee"). Absent before RF-1. */
+    denominatorText?: string | null;
   }>;
+  /**
+   * RF-1: the key of the metric the CRP reports, read from the reviewed snapshot (3c-3's adapter, frozen at review) —
+   * null when the snapshot carries none or predates 3c-3; absent on compositions frozen before RF-1.
+   */
+  reportedMetricKey?: string | null;
   provenance: ReportProvenance;
 };
 

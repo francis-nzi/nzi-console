@@ -76,17 +76,21 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
       {isReportGap(intensity)
         ? <Gap section={intensity} />
         : <>
+          {/* RF-1, to the Report Studio mockup: one row per measure — icon, name, what it is per, the figure. The measure the
+              CRP reports carries the drawer's own words; a composition frozen before RF-1 has no mark and no per-line, and
+              shows exactly the figures it always did. */}
           <div className="nzr-metrics">
-            {intensity.metrics.map((metric) => <div className="nzr-metric" key={metric.key}>
+            {intensity.metrics.map((metric) => <div className={`nzr-metric${metric.reported ? " reported" : ""}`} key={metric.key}>
               <span className="ic"><NziIcon name={iconKey(metric.iconKey)} size={18} /></span>
-              <div>
-                <div className="l">{metric.label}</div>
-                {/* A measure with no value says why, in its own words. Never a dash, and
-                    never 0 — which would read as "no emissions per employee". */}
-                {metric.value === null
-                  ? <div className="u">{metric.unavailableReason}</div>
-                  : <div className="v num">{metric.value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} <small>{metric.unit}</small></div>}
+              <div className="nm">
+                <div className="l">{metric.label}{metric.reported ? <span className="nzr-tag reported">Reported in the CRP</span> : null}</div>
+                {metric.denominatorText ? <div className="u">{metric.denominatorText}</div> : null}
               </div>
+              {/* A measure with no value says why, in its own words. Never a dash, and
+                  never 0 — which would read as "no emissions per employee". */}
+              {metric.value === null
+                ? <div className="u why">{metric.unavailableReason}</div>
+                : <div className="v num">{metric.value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} <small>{metric.unit}</small></div>}
             </div>)}
           </div>
           <Provenance provenance={intensity.provenance} />

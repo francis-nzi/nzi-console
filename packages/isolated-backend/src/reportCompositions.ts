@@ -3,12 +3,15 @@ import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
   composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit, withCurrencyDirectory,
+  intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
 import { readCurrencyDirectory } from "./commercialLookups";
-import { listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
+import { denominatorFor, listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
+import { listJobReportedSites, resolveJobReportingPeriod } from "./siteBoundary";
+import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
 import type { Queryable } from "./postgres";
@@ -63,6 +66,12 @@ export type SnapshotForComposition = {
   createdBy: string;
   measurements: Array<{ scope: string; tco2e: number; qualityTier?: string | null; factorSet?: string | null }>;
   annualComparison: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
+  /**
+   * The reported intensity as the review froze it (3c-3's one adapter) — the figure the intensity pathway draws. The
+   * Intensity section reads its reported metric from here so the two cannot disagree (RF-1). Absent or a per-job
+   * (`job-target`) shape on a snapshot frozen before 3c-3.
+   */
+  intensityTarget?: IntensityTargetReadModel | null;
 };
 
 function composeEmissions(snapshot: SnapshotForComposition): ReportEmissionsSection | ReportSectionGap {
@@ -139,15 +148,25 @@ async function composeIntensity(db: Queryable, input: {
   if (live.length === 0) {
     return { state: "unavailable", reason: "No intensity measures were set up for this client when the report was issued." };
   }
+  // RF-1: each denominator through `denominatorFor` — the one the job's Intensity drawer and 3c-3's adapter use — over the
+  // sites the job reports on (3a) and its reporting period, so a site-floor-area metric resolves here exactly as on screen.
+  const [sites, reporting] = [await listJobReportedSites(db, input.clientId, input.jobId), await resolveJobReportingPeriod(db, input.jobId)];
+  const period = reporting?.period ?? null;
+  // The metric the CRP reports is the one the review froze (3c-3's adapter, in the snapshot) — publish does not re-decide
+  // it, even if the client has reordered their metrics since. A snapshot from before 3c-3 marks nothing.
+  const frozen = input.snapshot.intensityTarget?.source === "client-target" ? input.snapshot.intensityTarget : null;
+  const reportedKey = frozen ? live.find((definition) => REPORTED_INTENSITY_METRICS[definition.key] === frozen.metric)?.key ?? null : null;
   return {
     metrics: withCurrencyDirectory(directory, () => live.map((definition) => {
-      const recorded = values.find((value) => value.metricKey === definition.key) ?? null;
-      const resolved = resolveIntensity({
-        definition,
-        emissionsTco2e: input.emissionsTco2e,
-        value: recorded?.value ?? null,
-        currency,
-      });
+      const recorded = values.find((value) => value.metricKey === definition.key && value.periodKey === "year");
+      const reported = definition.key === reportedKey;
+      // The reported metric reads its denominator from the snapshot, so this section and the intensity pathway the same
+      // document draws cannot disagree; the snapshot's figure is already over the divider, so it is restored to the
+      // metric's own units here and divided by the same resolver.
+      const denominator = reported
+        ? { value: frozen!.reportingDenominator === null ? null : frozen!.reportingDenominator * (definition.divider || 1), reason: "The reported measure's value was unavailable when the CRP was reviewed." }
+        : denominatorFor({ definition, recorded, sites, period });
+      const resolved = resolveIntensity({ definition, emissionsTco2e: input.emissionsTco2e, value: denominator.value, currency });
       return {
         key: definition.key, label: definition.label, iconKey: definition.iconKey,
         // The whole unit as the report reads it ("tCO₂e per £m", "tCO₂e per 1,000 employees"), frozen — not the bare
@@ -156,11 +175,14 @@ async function composeIntensity(db: Queryable, input: {
         value: resolved.state === "resolved" ? resolved.value : null,
         unavailableReason: resolved.state === "resolved"
           ? null
-          // The resolver already words each reason; the report repeats it rather than
-          // inventing a second explanation for the same gap.
-          : resolved.reason,
+          // A missing denominator says why in the words of whatever could not resolve it — the floor-area boundary, or the
+          // snapshot — and otherwise the resolver's own reason, rather than a second explanation for the same gap.
+          : input.emissionsTco2e !== null && denominator.value === null && denominator.reason ? denominator.reason : resolved.reason,
+        reported,
+        denominatorText: denominator.value === null ? null : intensityDenominatorText(definition, denominator.value, { currency }),
       };
     })),
+    reportedMetricKey: reportedKey,
     provenance: provenanceFrom(input.snapshot),
   };
 }
@@ -285,6 +307,27 @@ export async function composeReport(db: Queryable, input: {
 }
 
 /**
+ * The assured years the pathway plots actual against (RF-2): one snapshot per reporting period, latest version — the
+ * selection the workspace's chain reads, from the one shared reader — so a year frozen twice is counted once. The report's
+ * own period is the snapshot it was validated against, not whichever version of its job is latest.
+ */
+export async function composeAssuredActuals(db: Queryable, input: {
+  clientId: string;
+  snapshot: { id: string; jobId: string; jobNumber: string; reportingYear: number; measurements: ReadonlyArray<{ tco2e: number }> };
+}): Promise<TargetActual[]> {
+  const assured = await listAssuredPeriodSnapshots(db, input.clientId, { excludeJobId: input.snapshot.jobId });
+  return [
+    ...assured.map((entry) => ({ year: entry.reportingYear, tco2e: entry.totalTco2e, snapshotId: entry.snapshotId, jobNumber: entry.jobNumber })),
+    {
+      year: Number(input.snapshot.reportingYear),
+      tco2e: input.snapshot.measurements.reduce((total, measurement) => total + Number(measurement.tco2e), 0),
+      snapshotId: input.snapshot.id,
+      jobNumber: input.snapshot.jobNumber,
+    },
+  ].sort((a, b) => a.year - b.year);
+}
+
+/**
  * Everything a report version needs to be composed, gathered from the version itself.
  *
  * Publish knows a report version id and little else, so this walks from there to the job,
@@ -310,6 +353,7 @@ export async function composeForReportVersion(db: Queryable, input: {
       jobNumber: string; client: string; reportingYear: number;
       measurements: Array<{ scope: string; tco2e: number; qualityTier?: string; factorSet?: string }>;
       annualComparison?: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
+      intensityTarget?: IntensityTargetReadModel | null;
     };
   }>(
     `SELECT snapshot_id, job_id, data_hash, created_at, created_by, payload_json
@@ -322,22 +366,10 @@ export async function composeForReportVersion(db: Queryable, input: {
   const payload = snapshot.payload_json;
   const createdAt = snapshot.created_at instanceof Date ? snapshot.created_at.toISOString() : String(snapshot.created_at);
 
-  // The assured years the pathway plots actual against — every reviewed snapshot this
-  // client has, which is the same series the workspace reads.
-  const assured = await db.query<{ snapshot_id: string; payload_json: { reportingYear: number; jobNumber: string; measurements: Array<{ tco2e: number }> } }>(
-    `SELECT s.snapshot_id, s.payload_json
-     FROM nzi_console.reviewed_crp_snapshots s
-     JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (s.organisation_id, s.job_id)
-     WHERE s.organisation_id = $1 AND j.client_id = $2`,
-    [input.organisationId, row.client_id]);
-  const actuals: TargetActual[] = assured.rows
-    .map((entry) => ({
-      year: Number(entry.payload_json.reportingYear),
-      tco2e: (entry.payload_json.measurements ?? []).reduce((total, measurement) => total + Number(measurement.tco2e), 0),
-      snapshotId: entry.snapshot_id,
-      jobNumber: entry.payload_json.jobNumber,
-    }))
-    .sort((a, b) => a.year - b.year);
+  const actuals = await composeAssuredActuals(db, {
+    clientId: row.client_id,
+    snapshot: { id: snapshot.snapshot_id, jobId: snapshot.job_id, jobNumber: payload.jobNumber, reportingYear: payload.reportingYear, measurements: payload.measurements ?? [] },
+  });
 
   const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
@@ -350,6 +382,7 @@ export async function composeForReportVersion(db: Queryable, input: {
       dataHash: snapshot.data_hash, createdAt, createdBy: snapshot.created_by,
       measurements: payload.measurements ?? [],
       annualComparison: payload.annualComparison ?? [],
+      intensityTarget: payload.intensityTarget ?? null,
     },
   });
   // D3: the issuer the version froze at validation travels with what the report says.

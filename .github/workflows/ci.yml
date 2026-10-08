@@ -666,6 +666,11 @@ jobs:
       # publication and the client's response; nothing stored; jobs with no version listed at their stage, never as zero.
       - name: Every live CRP job shows its derived report stage, the ones without a version too
         run: npx tsx --test packages/isolated-backend/tests/reportStatusRegisterReal.test.ts
+      # Reporting RF (ruled RULING-reporting-RF): the report's Intensity section — every measure through denominatorFor
+      # (floor area from the sites the job reports on), the CRP's measure marked from the reviewed snapshot; and the
+      # pathway's actuals one assured snapshot per period, from the reader the workspace shares.
+      - name: An issued report's intensity agrees with the CRP and its pathway counts each assured period once
+        run: npx tsx --test packages/isolated-backend/tests/reportRefoundationReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions
