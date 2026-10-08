@@ -9,8 +9,9 @@ import type { Queryable } from "./postgres";
  * **Atomic by a shared lock on the job row.** `job.site.setInclusion` takes the job row `FOR UPDATE` before it counts what
  * uses the site; every site-setting write takes it `FOR SHARE` here before reading the inclusion. Writers do not block each
  * other, only an inclusion change, and the change waits for them — so a row cannot slip in between the count and the
- * exclusion, nor an exclusion between this check and the row's insert. The inclusion command locks no scope row, so there
- * is no lock-order cycle with portal acceptance, which locks the scope row first.
+ * exclusion, nor an exclusion between this check and the row's insert. Lock order is always the job row before any scope
+ * row: the inclusion command locks no scope row, and portal acceptance takes the job's shared lock before it locks the
+ * scope row it writes — the order job.update and the dataset update already use — so there is no cycle.
  */
 export const SITE_EXCLUDED_MESSAGE = "That site is left out of this job — include it in the job's Sites to record against it.";
 
