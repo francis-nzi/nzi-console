@@ -73,6 +73,9 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   training_entitlements: { periodBound: false, why: "training has no reporting period" },
   training_run_snapshots: { periodBound: false, why: "training has no reporting period" },
   time_entries: { periodBound: false, why: "time worked on the job, dated by when it was done — not by the period it reports on" },
+  // Phase 3a (0161): which client sites the job reports on — a decision about the report's scope, not a measurement of the
+  // period; moving the period does not change what it says (the site's own in-service dates still decide the boundary).
+  job_site_inclusions: { periodBound: false, why: "which of the client's sites the job reports on — a scope decision, not data for the period" },
 };
 
 /** Every table with a foreign key to `jobs`, with the columns that hold the job's organisation and id. */
