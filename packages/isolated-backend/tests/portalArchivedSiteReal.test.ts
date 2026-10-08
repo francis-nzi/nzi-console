@@ -88,7 +88,8 @@ describe("an archived site is not offered on the portal, against a real database
   });
 
   it("refuses to authorise an archived site on a grant", async () => {
-    await assert.rejects(() => grant([office, depot]), /archived site cannot be authorised/);
+    // Phase 3a widened the message to name the excluded-site case too; the archived refusal is unchanged.
+    await assert.rejects(() => grant([office, depot]), /an archived site, or one this job leaves out, cannot be authorised/);
     await grant([office]);
     assert.deepEqual(await offered(), ["Head Office"]);
   });

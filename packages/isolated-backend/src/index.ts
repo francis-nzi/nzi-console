@@ -120,6 +120,7 @@ export * from "./clientTargets";
 export * from "./scopeRowState";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
+export * from "./jobSiteInclusions";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";
 export {

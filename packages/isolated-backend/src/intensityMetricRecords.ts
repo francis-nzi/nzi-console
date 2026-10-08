@@ -1,6 +1,6 @@
 import { dateOnly } from "./dates";
 import type { Queryable } from "./postgres";
-import { listClientSites } from "./siteBoundary";
+import { listJobReportedSites } from "./siteBoundary";
 import { resolveFloorAreaDenominator, type ClientSiteReadModel, type IntensityMetricDefinition, type IntensityMetricValue, type ReportingPeriod } from "@nzi/contracts";
 
 /**
@@ -98,7 +98,8 @@ export async function getJobAnnualMetrics(db: Queryable, jobId: string, reportin
   const [metrics, values, sites, snapshot] = await Promise.all([
     listClientIntensityMetrics(db, row.client_id),
     listJobIntensityValues(db, jobId, reportingYear),
-    listClientSites(db, row.client_id),
+    // The sites this job reports on (Phase 3a): a site it leaves out gives no floor area to its Value.
+    listJobReportedSites(db, row.client_id, jobId),
     db.query<{ measurements: Array<{ tco2e: number | string }> | null }>(
       `SELECT (payload_json->'measurements') AS measurements FROM nzi_console.reviewed_crp_snapshots
        WHERE job_id=$1 AND (payload_json->>'reportingYear')::int=$2 ORDER BY snapshot_version DESC LIMIT 1`, [jobId, reportingYear]),
