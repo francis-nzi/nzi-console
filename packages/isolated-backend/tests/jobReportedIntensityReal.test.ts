@@ -4,7 +4,7 @@ import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { resolveJobReportedIntensity } from "../src/jobReportedIntensity";
 import { getJobAnnualMetrics } from "../src/intensityMetricRecords";
-import { setClientIntensityTarget } from "../src/clientIntensityTargets";
+import { deactivateClientIntensityTarget, setClientIntensityTarget } from "../src/clientIntensityTargets";
 import { resolveNziFacts } from "../src/srsReadiness";
 import { withTenantRead } from "../src/postgres";
 
@@ -26,9 +26,9 @@ const JOB = "ri-job";
 describe("the intensity a job's CRP reports (Phase 3c), against a real database", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
-  const context = (): CommandContext => {
+  const context = (reason?: string): CommandContext => {
     keys += 1;
-    return { organisationId: ORG, actorId: "ada", principal: "staff", idempotencyKey: `ri-${keys}`, correlationId: `corr-ri-${keys}`, grant: commandGrantForRole("admin", ORG, "ada") };
+    return { organisationId: ORG, actorId: "ada", principal: "staff", idempotencyKey: `ri-${keys}`, correlationId: `corr-ri-${keys}`, grant: commandGrantForRole("admin", ORG, "ada"), ...(reason ? { reason } : {}) };
   };
   const q = async (sql: string, params: unknown[] = []) => { const db = await database.admin(); try { return (await db.query(sql, params)).rows; } finally { await db.end(); } };
   const reported = () => withTenantRead(database.pool, ORG, (db) => resolveJobReportedIntensity(db, JOB));
@@ -103,5 +103,11 @@ describe("the intensity a job's CRP reports (Phase 3c), against a real database"
     // Targeted and valued: employees (431). Turnover's Value was just cleared; beds has a target but no Value.
     const facts = await withTenantRead(database.pool, ORG, (db) => resolveNziFacts(db, CLIENT));
     assert.equal(facts.intensityBasesResolved, 1);
+  });
+
+  it("a withdrawn target is not reported: the next targeted standard metric is, and the drawer agrees", async () => {
+    await deactivateClientIntensityTarget(database.pool, { clientId: CLIENT, metricKey: "turnover", expectedVersion: 1 }, context("turnover no longer a reported basis"));
+    assert.equal((await reported())!.metric, "employee");
+    assert.equal((await drawer())!.reportedMetricKey, "employees");
   });
 });
