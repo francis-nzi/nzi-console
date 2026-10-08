@@ -1,3 +1,5 @@
+import { commandReasonHeaders } from "./commandReason";
+
 export type BrowserCommandResult<T> =
   | { state: "success"; data: T; replayed: boolean }
   | { state: "conflict"; message: string }
@@ -16,7 +18,8 @@ async function sendBrowserCommand<T>(method: "POST" | "PATCH" | "PUT", path: str
         "content-type": "application/json",
         "idempotency-key": idempotencyKey,
         "x-correlation-id": crypto.randomUUID(),
-        ...(reason?.trim() ? { "x-command-reason": reason.trim() } : {}),
+        // Percent-encoded and marked, so a reason outside ISO-8859-1 (a curly quote, an em dash) can be sent at all.
+        ...commandReasonHeaders(reason),
       },
       body: JSON.stringify(input),
     });
