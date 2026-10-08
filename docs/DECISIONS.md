@@ -3144,6 +3144,13 @@ whether the application seals what it writes today.
 NZC-130 (the pending axis this empties), NZC-125 (the inventory that now carries it), NZC-133 (the role a
 test runs under).
 
+**Register note (8 Oct 2026, Phase 3 ruling #14): this number has a second, unrelated use.** The code, the tests and
+`docs/PERMISSION_MATRIX.md` also cite "NZC-120" for a different rule: **no money, rates or fees in audit, idempotency or
+outbox payloads** (a payload says only that a figure is recorded, as `job.fee.set` and `job.intensityValue.set` do). That
+rule is not this decision and has no heading of its own yet; a citation of NZC-120 beside a payload means that rule, and
+one beside sealed history means this one. Giving the payload rule its own number, and moving its citations to it, is
+left for a register-tidy PR.
+
 ### NZC-121 — The linkage table gets no direct privilege at all [Confirmed 21 Sep 2026]
 
 **Decision.** `data_subject_linkage` is reachable only through `SECURITY DEFINER` functions (migration
