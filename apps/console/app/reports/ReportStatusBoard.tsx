@@ -68,7 +68,8 @@ export function ReportStatusBoard() {
         {visible.map((job) => <tr key={job.jobId}>
           <td><Link className="nz-register-job" href={`/jobs/${job.jobId}`}>{job.jobNumber}</Link><div className="muted">{job.client}</div></td>
           <td>{job.reportingYear ?? <span className="muted">Not set</span>}</td>
-          <td><span className={`nz-st ${tone[job.stage]}`}>{reportStageLabels[job.stage]}</span>{job.reissueReady ? <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>A re-issue is validated and ready to publish</div> : null}</td>
+          <td><span className={`nz-st ${tone[job.stage]}`}>{reportStageLabels[job.stage]}</span>{job.reissueReady ? <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>A re-issue is validated and ready to publish</div> : null}
+            {job.scopes ? <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>{job.scopes.map((scope) => `${scope.scopeLabel}: ${reportStageLabels[scope.stage].toLowerCase()}`).join(" · ")}</div> : null}</td>
           <td>{job.publishedVersionId ? <Link className="nz-btn" href={`/reports/${job.publishedVersionId}`}>Open report</Link> : <Link className="nz-btn" href={`/jobs/${job.jobId}`}>Open job</Link>}</td>
         </tr>)}
       </tbody></table></div>}

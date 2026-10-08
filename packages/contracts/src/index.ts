@@ -134,3 +134,4 @@ export * from "./adminStaff";
 export * from "./adminOrganisation";
 export * from "./jobSchedule";
 export * from "./reportStatus";
+export * from "./reportScope";

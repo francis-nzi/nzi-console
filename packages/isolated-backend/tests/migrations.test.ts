@@ -26,6 +26,7 @@ const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migration
 const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
 const jobSiteInclusionsMigration = readFileSync(resolve(here, "../migrations/0161_job_site_inclusions.sql"), "utf8");
 const jobTemplateSeedVersionMigration = readFileSync(resolve(here, "../migrations/0162_job_template_seed_version.sql"), "utf8");
+const reportVersionScopeMigration = readFileSync(resolve(here, "../migrations/0163_report_version_scope.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -194,6 +195,26 @@ describe("isolated Postgres migrations", () => {
     // Absence is included: nothing to backfill, so the migration writes no rows.
     assert.ok(!/INSERT INTO/.test(jobSiteInclusionsMigration.replace(/--.*$/gm, "")), "no backfill — an all-included job writes no rows");
   });
+  it("records a report version's scope, keys 0016 on it and relaxes 0017 to one published per (job, scope) (0163, Reporting S-1)", () => {
+    for (const clause of [
+      "ADD COLUMN scope_kind text NOT NULL DEFAULT 'whole' CHECK (scope_kind IN ('whole', 'sites'))",
+      "ADD COLUMN scope_site_ids text[]",
+      "scope_site_ids = nzi_console.sorted_distinct_text(scope_site_ids)",
+      "ADD COLUMN scope_key text GENERATED ALWAYS AS (nzi_console.report_scope_key(scope_kind, scope_site_ids)) STORED",
+      "ON nzi_console.report_versions (organisation_id, reviewed_snapshot_id, manifest_version, scope_key)\n  WHERE status IN ('validated', 'published');",
+      "ON nzi_console.report_versions (organisation_id, job_id, scope_key)\n  WHERE status = 'published';",
+      "GRANT EXECUTE ON FUNCTION nzi_console.sorted_distinct_text(text[]) TO nzi_console_app;",
+      "GRANT EXECUTE ON FUNCTION nzi_console.report_scope_key(text, text[]) TO nzi_console_app;",
+    ]) assert.ok(reportVersionScopeMigration.includes(clause), clause);
+    // The indexes by name, unqualified — as the 0016/0017 tests name them (the fixture-schema guard reads tables, not indexes).
+    for (const dropped of ["report_version_validated_snapshot_unique", "report_version_one_published_per_job"]) assert.match(reportVersionScopeMigration, new RegExp(`DROP INDEX \\S*\\.${dropped};`), dropped);
+    for (const created of ["report_version_validated_snapshot_scope_unique", "report_version_one_published_per_job_scope"]) assert.match(reportVersionScopeMigration, new RegExp(`CREATE UNIQUE INDEX ${created}\\b`), created);
+    const code = reportVersionScopeMigration.replace(/--.*$/gm, "");
+    assert.ok(!/\bUPDATE\b|INSERT INTO|DELETE FROM/.test(code), "no row is touched: existing versions are whole-client by the default");
+    assert.ok(!/reviewed_crp_snapshots|POLICY|REVOKE|GRANT (SELECT|INSERT|UPDATE|DELETE)/.test(code), "the snapshot, RLS and table grants are unchanged");
+    assert.match(code, /\bIMMUTABLE\b[\s\S]*\bIMMUTABLE\b/, "both helpers are immutable, as a generated column and a CHECK require");
+  });
+
   it("records the template version that seeded a job on its config row, nullable and paired, with no backfill (0162, Phase 3b)", () => {
     for (const clause of [
       "ALTER TABLE nzi_console.job_emissions_config",
