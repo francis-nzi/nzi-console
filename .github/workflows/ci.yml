@@ -658,6 +658,10 @@ jobs:
       # baseline reasoned, withdrawn with a reason and re-set; the table's own CHECKs; a lost race is a version conflict.
       - name: A client intensity target is set, versioned, guarded and withdrawn — beside net zero
         run: npx tsx --test packages/isolated-backend/tests/clientIntensityTargetsReal.test.ts
+      # Phase 3c (ruled RULING-3c3): the CRP reports the first active standard metric, by the client's order, with a client
+      # target — a custom metric's alone reports nothing; the drawer names the same one; the Value over the divider; SRS.
+      - name: A job's CRP reports the client's first targeted standard intensity metric, as the drawer names it
+        run: npx tsx --test packages/isolated-backend/tests/jobReportedIntensityReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

@@ -32,7 +32,7 @@ export type ReviewedCrpSnapshot = {
       year: number;
       value: number;
       label: string;
-      kind: "baseline" | "interim" | "netzero";
+      kind: "baseline" | "interim" | "target" | "netzero";
     }>;
   };
 };
@@ -45,7 +45,9 @@ export type ReviewedCrpSnapshotCore = {
   generatedAt: string;
   dataHash: string;
   target?: {baselineYear:number;baselineTco2e:number;interimYear:number;interimReductionPercent:number;netZeroYear:number}|null;
-  intensityTarget?:{metric:"turnover"|"employee"|"floor-area";denominatorUnit:string;reportingDenominator:number|null;baselineYear:number;baselineIntensity:number;interimYear:number;interimReductionPercent:number;netZeroYear:number}|null;
+  /** A frozen snapshot carries the job target's interim + net zero; a client target (Phase 3c) its optional interim and its
+   *  own end point (`targetYear` at `targetReductionPercent`). Only the milestones present are drawn. */
+  intensityTarget?:{metric:"turnover"|"employee"|"floor-area";denominatorUnit:string;reportingDenominator:number|null;baselineYear:number;baselineIntensity:number;interimYear:number|null;interimReductionPercent:number|null;netZeroYear:number|null;targetYear?:number|null;targetReductionPercent?:number|null}|null;
   annualComparison?:Array<{year:number;values:Array<{scope:"1"|"2"|"3";value:number}>}>;
   measurements: Array<{
     rowId: string;
@@ -312,8 +314,33 @@ export function resolveCrpCoreCharts(
   ];
   if(snapshot.target){const t=snapshot.target,interim=t.baselineTco2e*(1-t.interimReductionPercent/100),actualTotal=snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0);charts.splice(1,0,{spec:{id:"reduction_pathway",type:"reduction_pathway",title:"Emissions reduction pathway to net zero",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,actual:[{year:t.baselineYear,value:t.baselineTco2e},...(snapshot.reportingYear===t.baselineYear?[]:[{year:snapshot.reportingYear,value:actualTotal}])],target:[{year:t.baselineYear,value:t.baselineTco2e},{year:t.interimYear,value:interim},{year:t.netZeroYear,value:0}],milestones:[{year:t.baselineYear,value:t.baselineTco2e,label:"Baseline",kind:"baseline"},{year:t.interimYear,value:interim,label:`Interim -${t.interimReductionPercent}%`,kind:"interim"},{year:t.netZeroYear,value:0,label:"Net zero",kind:"netzero"}],provenance});}
   if((snapshot.annualComparison?.length??0)>1){charts.splice(charts.length-1,0,{spec:{id:"scope_year_on_year_bar",type:"scope_year_on_year_bar",title:"Annual emissions comparison by scope",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,years:snapshot.annualComparison!,provenance});}
-  if(snapshot.intensityTarget){const t=snapshot.intensityTarget,denominator=t.reportingDenominator!==null&&t.reportingDenominator>0?t.reportingDenominator:null,current=denominator===null?null:snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0)/denominator,interim=t.baselineIntensity*(1-t.interimReductionPercent/100);charts.push({spec:{id:"intensity_pathway",type:"intensity_pathway",title:"Intensity reduction pathway",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:`tCO₂e / ${t.denominatorUnit}`,...(current===null&&snapshot.reportingYear!==t.baselineYear?{state:"degraded" as const,stateMessage:`The ${snapshot.reportingYear} intensity is unavailable: the intensity Value could not be resolved.`}:{state}),metric:t.metric,actual:[{year:t.baselineYear,value:t.baselineIntensity},...(snapshot.reportingYear===t.baselineYear||current===null?[]:[{year:snapshot.reportingYear,value:current}])],target:[{year:t.baselineYear,value:t.baselineIntensity},{year:t.interimYear,value:interim},{year:t.netZeroYear,value:0}],milestones:[{year:t.baselineYear,value:t.baselineIntensity,label:"Baseline",kind:"baseline"},{year:t.interimYear,value:interim,label:`Interim -${t.interimReductionPercent}%`,kind:"interim"},{year:t.netZeroYear,value:0,label:"Net zero",kind:"netzero"}],provenance});}
+  if(snapshot.intensityTarget){const t=snapshot.intensityTarget,denominator=t.reportingDenominator!==null&&t.reportingDenominator>0?t.reportingDenominator:null,current=denominator===null?null:snapshot.measurements.reduce((sum,row)=>sum+row.tco2e,0)/denominator,milestones=intensityMilestones(t);charts.push({spec:{id:"intensity_pathway",type:"intensity_pathway",title:"Intensity reduction pathway",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:`tCO₂e / ${t.denominatorUnit}`,...(current===null&&snapshot.reportingYear!==t.baselineYear?{state:"degraded" as const,stateMessage:`The ${snapshot.reportingYear} intensity is unavailable: the intensity Value could not be resolved.`}:{state}),metric:t.metric,actual:[{year:t.baselineYear,value:t.baselineIntensity},...(snapshot.reportingYear===t.baselineYear||current===null?[]:[{year:snapshot.reportingYear,value:current}])],target:milestones.map(({year,value})=>({year,value})),milestones,provenance});}
   if(snapshot.measurements.length){const siteTotals=new Map<string,{id:string;label:string;value:number}>();for(const row of snapshot.measurements){const id=row.siteId??"unallocated",label=row.siteLabel?.trim()||"Unallocated";const current=siteTotals.get(id)??{id,label,value:0};current.value+=row.tco2e;siteTotals.set(id,current);}charts.push({spec:{id:"emissions_site_donut",type:"emissions_site_donut",title:`${snapshot.reportingYear} emissions by site`,subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,sites:[...siteTotals.values()].sort((a,b)=>b.value-a.value),provenance});}
   const purchased=snapshot.measurements.filter(row=>row.scopeCode==="3.1");if(purchased.length){const totals=new Map<string,{id:string;label:string;scope:"3";value:number}>();for(const row of purchased){const id=row.purchasedGoodsCategoryId??"uncategorised",label=row.purchasedGoodsCategoryLabel?.trim()||"Uncategorised";const current=totals.get(id)??{id,label,scope:"3" as const,value:0};current.value+=row.tco2e;totals.set(id,current);}charts.push({spec:{id:"purchased_goods_breakdown",type:"purchased_goods_breakdown",title:"Purchased Goods & Services emissions breakdown",subtitle:`${snapshot.client} · ${snapshot.jobNumber}`,family:"crp",specVersion:1},unit:"tCO₂e",state,basis:"category",activities:[...totals.values()].sort((a,b)=>b.value-a.value),provenance});}
   return charts;
+}
+
+type IntensityMilestoneSource = NonNullable<ReviewedCrpSnapshotCore["intensityTarget"]>;
+type IntensityMilestone = { year: number; value: number; label: string; kind: "baseline" | "interim" | "target" | "netzero" };
+
+/**
+ * The intensity pathway's milestones — exactly the ones the target states, never more (Phase 3c, 3c-3 addendum (i)).
+ *
+ * A frozen snapshot from a job's own target (before 3c) always has an interim and a net-zero year, drawn at zero, as it
+ * always was. A client intensity target has an optional interim and an optional end point at its own percentage: the end
+ * point is drawn at that reduction ("Target −50%"), and only a 100% reduction is "Net zero" at zero. Nothing is drawn at zero
+ * that the target did not commit to. Sorted by year; a milestone with no year or no percentage is left out.
+ */
+export function intensityMilestones(t: IntensityMilestoneSource): IntensityMilestone[] {
+  const at = (pct: number) => t.baselineIntensity * (1 - pct / 100);
+  const milestones: IntensityMilestone[] = [{ year: t.baselineYear, value: t.baselineIntensity, label: "Baseline", kind: "baseline" }];
+  if (t.interimYear != null && t.interimReductionPercent != null) milestones.push({ year: t.interimYear, value: at(t.interimReductionPercent), label: `Interim -${t.interimReductionPercent}%`, kind: "interim" });
+  if (t.targetYear != null && t.targetReductionPercent != null) {
+    milestones.push(t.targetReductionPercent >= 100
+      ? { year: t.targetYear, value: 0, label: "Net zero", kind: "netzero" }
+      : { year: t.targetYear, value: at(t.targetReductionPercent), label: `Target -${t.targetReductionPercent}%`, kind: "target" });
+  } else if (t.netZeroYear != null) {
+    milestones.push({ year: t.netZeroYear, value: 0, label: "Net zero", kind: "netzero" });
+  }
+  return milestones.sort((a, b) => a.year - b.year);
 }

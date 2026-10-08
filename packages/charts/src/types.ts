@@ -38,7 +38,8 @@ export type ChartEnvelope = {
 export type ScopeSegment = { scope: string; label: string; value: number };
 export type ScopeDonutData = ChartEnvelope & { segments: ScopeSegment[]; total?: number };
 export type YearPoint = { year: number; value: number };
-export type PathwayMilestone = { year: number; value: number; label: string; kind: "baseline" | "interim" | "netzero" };
+/** `target` — an end point at its own percentage (a client intensity target, Phase 3c), as opposed to `netzero` at zero. */
+export type PathwayMilestone = { year: number; value: number; label: string; kind: "baseline" | "interim" | "target" | "netzero" };
 export type ReductionPathwayData = ChartEnvelope & { actual: YearPoint[]; target: YearPoint[]; milestones: PathwayMilestone[] };
 export type ScopeYearValue = { scope: "1" | "2" | "3"; value: number };
 export type ScopeYearGroup = { year: number; values: ScopeYearValue[] };

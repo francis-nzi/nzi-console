@@ -20,6 +20,11 @@ test("rejects cross-job publication evidence",()=>assert.equal(isPublishedCrpRep
 test("rejects duplicate measurement identities",()=>{const value=clone(report);value.snapshot.measurements.push(clone(value.snapshot.measurements[0]!));assert.equal(isPublishedCrpReport(value,"job-a"),false)});
 test("rejects incomplete annual scope evidence",()=>{const value=clone(report);value.snapshot.annualComparison[0]!.values.pop();assert.equal(isPublishedCrpReport(value,"job-a"),false)});
 test("rejects an invalid intensity denominator",()=>{const value=clone(report);value.snapshot.intensityTarget!.reportingDenominator=0;assert.equal(isPublishedCrpReport(value,"job-a"),false)});
+// Phase 3c: a report frozen from a client intensity target carries its own milestones — optional interim, an end point at
+// its percentage, no net-zero year — beside the per-job shape every earlier report carries.
+const clientTarget=(over:Record<string,unknown>={})=>{const value=clone(report);Object.assign(value.snapshot.intensityTarget!,{source:"client-target",metricLabel:"Turnover",metric:"turnover",denominatorUnit:"£m",baselineYear:2022,interimYear:2030,interimReductionPercent:40,targetYear:2040,targetReductionPercent:70,netZeroYear:null,...over});return value};
+test("accepts a report frozen from a client intensity target, with or without its interim",()=>{assert.equal(isPublishedCrpReport(clientTarget(),"job-a"),true);assert.equal(isPublishedCrpReport(clientTarget({interimYear:null,interimReductionPercent:null}),"job-a"),true)});
+test("rejects a client intensity target that is half a pair, out of order, empty, or claims a net-zero year",()=>{for(const over of [{interimReductionPercent:null},{interimYear:2045},{targetYear:2021},{interimYear:null,interimReductionPercent:null,targetYear:null,targetReductionPercent:null},{netZeroYear:2050},{targetReductionPercent:120}])assert.equal(isPublishedCrpReport(clientTarget(over),"job-a"),false,JSON.stringify(over))});
 
 const approval={approvalId:"approval-a",reportVersionId:"report-a",approvedAt:"2026-08-27T12:30:00.000Z",statementVersion:1 as const};
 test("binds approval evidence to the exact report version",()=>{assert.equal(isPortalReportApproval(approval,"report-a"),true);assert.equal(isPortalReportApproval(approval,"report-b"),false)});

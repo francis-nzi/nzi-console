@@ -19,7 +19,7 @@ export function ClientIntensityTargets({ metrics, targets, access, onEdit }: {
   metrics: IntensityMetricDefinition[]; targets: ClientIntensityTarget[]; access: EditAccess; onEdit: (metricKey: string) => void;
 }) {
   const active = metrics.filter((metric) => metric.active);
-  return <div className="nz-card-b nz-intensity-targets">
+  return <div className="nz-card-b nz-intensity-targets" id="client-intensity-targets">
     <div className="nz-sect">Intensity metrics</div>
     {active.length === 0
       ? <p className="sub">No intensity metrics are defined for this client — add them from Analytics → Manage metrics.</p>

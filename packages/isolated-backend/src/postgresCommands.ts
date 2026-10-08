@@ -42,7 +42,8 @@ import { VersionConflictError } from "./errors";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
-import { resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
+import { resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
+import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 import type { PoolLike, Queryable } from "./postgres";
 import { applyDeclarativeResolution, variantBaseRefusal } from "./declarativeResolution";
 import { withTenantWrite } from "./postgres";
@@ -2135,18 +2136,8 @@ export async function upsertEmissionsTarget(
     },
   );
 }
-export async function upsertIntensityTarget(pool:PoolLike,input:CommandInputMap["emissions.intensity.upsert"],context:CommandContext):Promise<StoredOutcome<{jobId:string;version:number}>>{
-  return runPostgresCommand(pool,"emissions.intensity.upsert",input,context,async (db,access)=>{
-    await requireCrpJob(db,context.organisationId,input.jobId);
-    const current=await db.query<{version:number;baseline_year:number;baseline_intensity:string}>(`SELECT version,baseline_year,baseline_intensity FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR UPDATE`,[context.organisationId,input.jobId]);
-    if((current.rows[0]?.version??0)!==input.expectedVersion)throw new VersionConflictError();
-    const governed=await governJobBaselineChange(db,context,access,"job_intensity_target",input.jobId,
-      current.rows[0]?{baselineYear:current.rows[0].baseline_year,baselineIntensity:Number(current.rows[0].baseline_intensity)}:null,
-      {baselineYear:input.baselineYear,baselineIntensity:input.baselineIntensity});
-    const saved=await db.query<{version:number}>(`INSERT INTO nzi_console.job_intensity_targets (organisation_id,job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11) ON CONFLICT(organisation_id,job_id) DO UPDATE SET metric=EXCLUDED.metric,denominator_unit=EXCLUDED.denominator_unit,reporting_denominator=EXCLUDED.reporting_denominator,baseline_year=EXCLUDED.baseline_year,baseline_intensity=EXCLUDED.baseline_intensity,interim_year=EXCLUDED.interim_year,interim_reduction_percent=EXCLUDED.interim_reduction_percent,net_zero_year=EXCLUDED.net_zero_year,version=job_intensity_targets.version+1,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING version`,[context.organisationId,input.jobId,input.metric,input.denominatorUnit.trim(),input.reportingDenominator,input.baselineYear,input.baselineIntensity,input.interimYear,input.interimReductionPercent,input.netZeroYear,context.actorId]);
-    return{data:{jobId:input.jobId,version:saved.rows[0]!.version},entityType:"job_intensity_target",entityId:input.jobId,topic:"emissions.intensity.saved",...(governed?{before:governed.before,governedEvents:[governed]}:{})};
-  });
-}
+// emissions.intensity.upsert is retired (Phase 3c, ruled (4)): a job's intensity target is its client's
+// (client_intensity_targets, 0158), and job_intensity_targets stays as read-only history. The Value is job.intensityValue.set.
 
 /**
  * A job target's baseline is a baseline too: once saved, changing its year or value is
@@ -2303,8 +2294,9 @@ export async function createReviewedCrpSnapshot(
       }>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
       const targetRow=targetResult.rows[0];
       const target=targetRow?{jobId:targetRow.job_id,baselineYear:targetRow.baseline_year,baselineTco2e:Number(targetRow.baseline_tco2e),interimYear:targetRow.interim_year,interimReductionPercent:Number(targetRow.interim_reduction_percent),netZeroYear:targetRow.net_zero_year,version:targetRow.version,updatedAt:targetRow.updated_at instanceof Date?targetRow.updated_at.toISOString():String(targetRow.updated_at),updatedBy:targetRow.updated_by}:null;
-      const intensityResult=await db.query<{job_id:string;metric:"turnover"|"employee"|"floor-area";denominator_unit:string;reporting_denominator:string|null;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string}>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
-      const intensityRow=intensityResult.rows[0],intensityTarget=intensityRow?{jobId:intensityRow.job_id,metric:intensityRow.metric,denominatorUnit:intensityRow.denominator_unit,reportingDenominator:intensityRow.reporting_denominator===null?null:Number(intensityRow.reporting_denominator),baselineYear:intensityRow.baseline_year,baselineIntensity:Number(intensityRow.baseline_intensity),interimYear:intensityRow.interim_year,interimReductionPercent:Number(intensityRow.interim_reduction_percent),netZeroYear:intensityRow.net_zero_year,version:intensityRow.version,updatedAt:intensityRow.updated_at instanceof Date?intensityRow.updated_at.toISOString():String(intensityRow.updated_at),updatedBy:intensityRow.updated_by}:null;
+      // Phase 3c (ruled): the reported intensity through the one adapter — the client's target on its first targeted standard
+      // metric, with this job's Value (floor area resolved over the sites the job reports on). Frozen as it reads now.
+      const intensityTarget=await resolveJobReportedIntensity(db,input.jobId);
       const rowResult = await db.query<{
         scope_row_id: string;
         version: number;
@@ -2438,7 +2430,7 @@ export async function createReviewedCrpSnapshot(
         reportingYear,
         jobVersion: job.version,
         target,
-        intensityTarget: withResolvedDenominator(intensityTarget, boundary),
+        intensityTarget,
         provenance,
         annualComparison,
         sections: await listReportSections(db, input.jobId),

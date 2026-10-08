@@ -5,10 +5,11 @@ import { GatedButton } from "@nzi/ui";
 import { putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   activeMetrics, currencySymbol, intensityDenominatorText, intensityUnit, intensityUnitShort, resolveIntensity,
-  type IntensityMetricDefinition, type IntensityMetricValue,
+  type ClientIntensityTarget, type IntensityMetricDefinition, type IntensityMetricValue,
 } from "@nzi/contracts";
 import { useEditAccess } from "../lib/useEditAccess";
 import { IntensityMetricIcon } from "../clients/[clientId]/IntensityMetricIcon";
+import { intensityFigure, targetText } from "./intensityTargetText";
 
 /**
  * Annual metrics — the JOB side of the intensity workflow (`job_annual_metrics_v1`).
@@ -23,7 +24,7 @@ import { IntensityMetricIcon } from "../clients/[clientId]/IntensityMetricIcon";
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
-const figure = (value: number) => value >= 100 ? Math.round(value).toLocaleString("en-GB") : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+const figure = intensityFigure;
 
 type AnnualMetricsPayload = {
   reportingYear: number;
@@ -33,12 +34,17 @@ type AnnualMetricsPayload = {
   metrics: IntensityMetricDefinition[];
   values: IntensityMetricValue[];
   resolved: Record<string, { value: number | null; reason?: string }>;
+  /** Phase 3c: the client's targets in force, and the metric the CRP reports (null when none). */
+  targets?: ClientIntensityTarget[];
+  reportedMetricKey?: string | null;
 };
 
-export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled }: {
+export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled, clientId }: {
   jobId: string;
   reportingYear: number;
   writeEnabled: boolean;
+  /** For the link to the client, where metrics are ordered and targets set (Phase 3c). */
+  clientId?: string;
 }) {
   const access = useEditAccess("scoperow.edit", writeEnabled);
   const [payload, setPayload] = useState<AnnualMetricsPayload | null>(null);
@@ -82,10 +88,12 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled }: {
 
     {active.length === 0
       ? <div className="nz-card-b"><p className="sub">This client has no intensity metrics defined. Add them on the client — Carbon Analytics → Manage metrics — and they appear here.</p></div>
-      : <table className="nz-tbl nz-metric-table">
-        <thead><tr><th>Metric</th><th>Source</th><th>Value this year</th><th>Divider</th><th className="num">Intensity</th></tr></thead>
+      : <div style={{ overflowX: "auto" }}><table className="nz-tbl nz-metric-table">
+        <thead><tr><th>Metric</th><th>Source</th><th>Value this year</th><th>Divider</th><th className="num">Intensity</th><th>Client target</th></tr></thead>
         <tbody>
           {active.map((metric) => <MetricValueRow key={metric.key} jobId={jobId} reportingYear={reportingYear} metric={metric} currency={payload?.currency ?? "GBP"}
+            target={payload?.targets?.find((entry) => entry.metricKey === metric.key) ?? null}
+            reported={payload?.reportedMetricKey === metric.key}
             assuredTotalTco2e={assuredTotalTco2e}
             recorded={values.find((value) => value.metricKey === metric.key && value.periodKey === "year") ?? null}
             resolved={resolvedValues[metric.key] ?? { value: null }}
@@ -99,20 +107,29 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled }: {
           <tr className="nz-time-row">
             <td><IntensityMetricIcon iconKey="metric" size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />Time recorded on this job</td>
             <td className="muted">—</td>
-            <td colSpan={3} className="muted" style={{ textAlign: "right" }}>Coming with system-wide time — recordable through the job here</td>
+            <td colSpan={4} className="muted" style={{ textAlign: "right" }}>Coming with system-wide time — recordable through the job here</td>
           </tr>
         </tbody>
-      </table>}
+      </table></div>}
 
     <div className="nz-card-b">
+      {/* Phase 3c (ruled): which metric the CRP reports, and how it is chosen. */}
+      <p className="nz-hint nz-reported-note" role="note">
+        {payload?.reportedMetricKey
+          ? <>The CRP reports <b>{active.find((metric) => metric.key === payload.reportedMetricKey)?.label ?? payload.reportedMetricKey}</b> — the first standard metric (turnover, employees, floor area) with a target, in the client&apos;s metric order. Reorder the metrics on the client to report another.</>
+          : <>No intensity is reported in the CRP: no standard metric (turnover, employees, floor area) has a client target. A target on a custom metric is shown here but is not reported in this version.</>}
+        {clientId ? <> <a className="nz-editlink" href={`/clients/${encodeURIComponent(clientId)}#client-intensity-targets`}>Targets and metric order on the client</a></> : null}
+      </p>
       <p className="nz-maps">Metrics are defined on the client (Carbon Analytics → Manage metrics). This job records the annual values; intensity = assured emissions × divider ÷ value. Adding a metric happens on the client, not here.</p>
       <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Values are captured <b>per reporting year</b> and versioned; each writes an audit event. A site-derived metric resolves from the client&apos;s in-service sites for this year — override it if this job needs a different basis. These figures feed the client year-on-year, the portal and the report.</span></div>
     </div>
   </section>;
 }
 
-function MetricValueRow({ jobId, reportingYear, metric, currency, assuredTotalTco2e, recorded, resolved, access, onSaved, onError }: {
+function MetricValueRow({ jobId, reportingYear, metric, currency, assuredTotalTco2e, recorded, resolved, access, onSaved, onError, target, reported }: {
   jobId: string;
+  target: ClientIntensityTarget | null;
+  reported: boolean;
   currency: string;
   reportingYear: number;
   metric: IntensityMetricDefinition;
@@ -151,7 +168,8 @@ function MetricValueRow({ jobId, reportingYear, metric, currency, assuredTotalTc
   return <tr>
     <td><IntensityMetricIcon iconKey={metric.iconKey} size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />{metric.label}
       {metric.isStandard ? <span className="nz-tag rr" style={{ marginLeft: 6 }}>Standard</span> : null}
-      {siteDerived ? <span className="nz-tag" style={{ marginLeft: 6 }}>From sites</span> : null}</td>
+      {siteDerived ? <span className="nz-tag" style={{ marginLeft: 6 }}>From sites</span> : null}
+      {reported ? <span className="nz-st done" style={{ marginLeft: 6 }}>Reported in the CRP</span> : null}</td>
     <td>{siteDerived
       ? <>Auto · in-service sites{" "}
         <button type="button" className="nz-editlink" onClick={() => setOverriding(!overriding)}>{overriding ? "use resolved" : "override"}</button></>
@@ -172,5 +190,6 @@ function MetricValueRow({ jobId, reportingYear, metric, currency, assuredTotalTc
         blockedReason={pending ? "Saving…" : access.state === "allowed" ? undefined : access.reason}
         reasonClassName="hint nz-gated-reason" onClick={() => void save()}>Save</GatedButton> : null}
     </td>
+    <td className={target ? "" : "muted"} style={{ minWidth: 200 }}>{target ? targetText(target) : "No target"}</td>
   </tr>;
 }

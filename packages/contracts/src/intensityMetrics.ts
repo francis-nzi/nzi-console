@@ -276,3 +276,28 @@ export type ClientIntensityTarget = {
   setBy: string;
   setAt: string;
 };
+
+/**
+ * The standard metrics a job's CRP can report (RULING-3c3 (1)), by the client's metric key, to the report's metric name.
+ * A custom metric is shown in the job's Intensity drawer but is not the reported one in v1, so the report's metric union
+ * stays these three.
+ */
+export const REPORTED_INTENSITY_METRICS: Readonly<Record<string, "turnover" | "employee" | "floor-area">> = {
+  turnover: "turnover",
+  employees: "employee",
+  "floor-area": "floor-area",
+};
+
+/**
+ * Which metric a job's CRP reports (RULING-3c3 (1)–(2)): the first active **standard** metric, in the client's own
+ * ordering, that has an active client target. The client changes it by reordering its metrics. Null when no standard
+ * metric has a target — a target on a custom metric alone reports nothing in v1. One rule, read by the report's adapter and
+ * the drawer alike, so the drawer's "reported in the CRP" is what the report carries.
+ */
+export function reportedIntensityMetric(metrics: readonly IntensityMetricDefinition[], targets: readonly Pick<ClientIntensityTarget, "metricKey">[]): IntensityMetricDefinition | null {
+  const targeted = new Set(targets.map((target) => target.metricKey));
+  return metrics
+    .filter((metric) => metric.active && metric.key in REPORTED_INTENSITY_METRICS && targeted.has(metric.key))
+    .slice()
+    .sort((a, b) => a.ordering - b.ordering || a.key.localeCompare(b.key))[0] ?? null;
+}
