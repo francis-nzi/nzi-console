@@ -14,6 +14,7 @@ import { issuerOf, type IssuerColumns } from "./reportCompositions";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
+import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isPreferredDataset, resolveReportLabel } from "@nzi/contracts";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
 import { resolveJobReportedIntensity } from "./jobReportedIntensity";
@@ -739,32 +740,10 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
 
   const [targetResult, priorResult, currentResult] = await Promise.all([
     db.query<{ baseline_year: number }>(`SELECT baseline_year FROM nzi_console.job_emissions_targets WHERE job_id=$1`, [jobId]),
-    db.query<{ snapshot_id: string; data_hash: string; reporting_year: number; period_from: Date | string | null; period_to: Date | string | null }>(
-      // One snapshot per prior reporting **period**, not per label (NZC-096). Two of a client's
-      // jobs can carry the same reportingYear and mean different periods; DISTINCT ON the label
-      // kept one of them and dropped the other's assured total out of the comparison silently.
-      // The period is the job's own recorded dates, else its emissions-config window — a job that
-      // has a period never reconstructs one. Where neither exists the label still separates the
-      // rows, which is all such a job has ever had.
-      //
-      // Candidates come back **with their periods** and are filtered chronologically by the chain
-      // builder (NZC-098). The SQL no longer excludes by label: under the end-year convention a
-      // job whose period ends before this one starts can carry a *larger* reporting year, and
-      // `reportingYear < currentYear` would have hidden exactly the prior year being looked for.
-      `SELECT DISTINCT ON (coalesce(pj.reporting_period_start, ec.reporting_from, make_date((s.payload_json->>'reportingYear')::integer, 1, 1)),
-                           coalesce(pj.reporting_period_end,   ec.reporting_to,   make_date((s.payload_json->>'reportingYear')::integer, 12, 31)))
-         s.snapshot_id, s.data_hash, (s.payload_json->>'reportingYear')::integer AS reporting_year,
-         coalesce(pj.reporting_period_start, ec.reporting_from) AS period_from,
-         coalesce(pj.reporting_period_end,   ec.reporting_to)   AS period_to
-       FROM nzi_console.reviewed_crp_snapshots s
-       JOIN nzi_console.jobs pj ON (pj.organisation_id, pj.job_id) = (s.organisation_id, s.job_id)
-       LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id, ec.job_id) = (pj.organisation_id, pj.job_id)
-       WHERE pj.client_id = $1 AND pj.job_family = 'crp' AND pj.job_id <> $2
-       ORDER BY coalesce(pj.reporting_period_start, ec.reporting_from, make_date((s.payload_json->>'reportingYear')::integer, 1, 1)),
-                coalesce(pj.reporting_period_end,   ec.reporting_to,   make_date((s.payload_json->>'reportingYear')::integer, 12, 31)),
-                s.snapshot_version DESC`,
-      [job.client_id, jobId],
-    ),
+    // One snapshot per prior reporting period, latest version — the one assured-series selection the issued report's
+    // pathway reads too (RF-2). Candidates come back with their periods and are filtered chronologically by the chain
+    // builder (NZC-098).
+    listAssuredPeriodSnapshots(db, job.client_id, { excludeJobId: jobId }),
     db.query<{ snapshot_id: string; data_hash: string }>(
       `SELECT snapshot_id, data_hash FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1 ORDER BY snapshot_version DESC LIMIT 1`, [jobId],
     ),
@@ -775,10 +754,7 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
     clientId: job.client_id,
     currentYear,
     baselineYear: targetResult.rows[0]?.baseline_year ?? null,
-    priorSnapshots: priorResult.rows.map((row) => ({
-      year: row.reporting_year, snapshotId: row.snapshot_id, dataHash: row.data_hash,
-      period: row.period_from && row.period_to ? { from: dateOnly(row.period_from), to: dateOnly(row.period_to) } : null,
-    })),
+    priorSnapshots: priorResult.map((row) => ({ year: row.reportingYear, snapshotId: row.snapshotId, dataHash: row.dataHash, period: row.period })),
     currentPeriod,
     baselinePeriodEnd,
     currentSnapshot: currentResult.rows[0] ? { snapshotId: currentResult.rows[0].snapshot_id, dataHash: currentResult.rows[0].data_hash } : null,
