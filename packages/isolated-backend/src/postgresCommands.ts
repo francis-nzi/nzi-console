@@ -633,6 +633,13 @@ export async function createJob(
       );
       // The rule selects for the country just written to the config.
       await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, NEW_JOB_COUNTRY, context.actorId);
+      // Phase 3b (ruled): a CRP job whose client has a reporting template in force starts with its lines as entry rows,
+      // seeded in this transaction against the editions just selected. No template, nothing done; a refused line is
+      // skipped, never failing the create. Loaded on call, because the seeding module writes through this one.
+      if (input.family === "crp") {
+        const { autoSeedNewJobInTransaction } = await import("./jobTemplateSeeding");
+        await autoSeedNewJobInTransaction(db, jobId, input.clientId, context);
+      }
     }
     return {
       data: {
@@ -1473,12 +1480,22 @@ export async function createScopeRow(
   input: CommandInputMap["scope.row.create"],
   context: CommandContext,
 ): Promise<StoredOutcome<CreateScopeRowResult>> {
-  return runPostgresCommand(
-    pool,
-    "scope.row.create",
-    input,
-    context,
-    async (db) => {
+  return runPostgresCommand(pool, "scope.row.create", input, context, scopeRowCreateHandler(input, context));
+}
+
+/**
+ * The same create inside a caller's transaction (Phase 3b, ruled #9): template seeding writes each line through exactly
+ * this — the command's validation, authorisation, declared-factor resolution, JW-9 factor rule, site rules, unit check,
+ * insert, audit and outbox — so seeding cannot create a row a person could not. The caller holds the transaction (and a
+ * savepoint per line, so a refusal undoes only that line).
+ */
+export function createScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.create"], context: CommandContext): Promise<StoredOutcome<CreateScopeRowResult>> {
+  return runPostgresCommandInTransaction(db, "scope.row.create", input, context, scopeRowCreateHandler(input, context));
+}
+
+/** The scope-row create's one handler, shared by the command and the in-transaction create. */
+function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], context: CommandContext) {
+  return async (db: Queryable) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null,null);
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
@@ -1558,8 +1575,7 @@ export async function createScopeRow(
         entityId: rowId,
         topic: "scope.row.created",
       };
-    },
-  );
+  };
 }
 
 export type UpdateScopeRowResult = {

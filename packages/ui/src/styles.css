@@ -710,11 +710,13 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-chip-mini.nodata{color:var(--t3);background:var(--paper)}
 .nz-chip-mini.todo{color:#8A6410;background:#FFF4DC;border-color:#F1D89B}
 
-/* NZC-062/063 — fast row-adding: template search + reuse-previous-year, above
-   the scope→category cards, directly below the site selector. */
-.nz-fast-add{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:14px}
-@media(max-width:900px){.nz-fast-add{grid-template-columns:1fr}}
-.nz-fast-add-search,.nz-fast-add-reuse{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}
+/* The searchable activity picker (NZC-062), shared by the entry form and the LCA inventory. Its first home, the
+   capture surface's "Add rows from template" block, was retired in Phase 3b for template seeding. */
+.nz-fast-add-search{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}
+/* Phase 3b — the client's reporting template, offered above the category cards: seed, or fill the gaps. */
+.nz-seed-template{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px 14px;margin-bottom:14px}
+.nz-seed-template .sub{margin:2px 0 0;color:var(--t2);font-size:11.5px}
+.nz-seed-template .nz-hint{margin:6px 0 0}
 .nz-fast-add-search .nz-hint{display:block;margin-top:6px;color:var(--pine)}
 .nz-template-results{list-style:none;margin:8px 0 0;padding:0;max-height:280px;overflow-y:auto;border:1px solid var(--line2);border-radius:9px}
 .nz-template-results li+li{border-top:1px solid var(--line2)}
@@ -725,17 +727,6 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 /* DATASET-CURRENCY §2 — a job's selected datasets, by derived label (source · country · year). */
 .nz-dataset-selected{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
 .nz-template-empty{padding:12px;color:var(--t3);font-size:12px;text-align:center}
-.nz-fast-add-reuse-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.nz-fast-add-reuse .sub{margin:4px 0 8px;color:var(--t2);font-size:11.5px}
-.nz-reuse-moved{color:#8A6410;font-weight:650}
-.nz-reuse-list{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto;border:1px solid var(--line2);border-radius:9px;padding:2px}
-.nz-reuse-row{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:7px;cursor:pointer}
-.nz-reuse-row:hover{background:var(--paper)}
-.nz-reuse-row.done{opacity:.55;cursor:default}
-.nz-reuse-row.nz-reuse-all{font-weight:650;font-size:12.5px;border-bottom:1px solid var(--line2);border-radius:0;margin-bottom:2px}
-.nz-reuse-info{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
-.nz-reuse-info b{font-size:12.5px}
-.nz-reuse-meta{font-size:11px;color:var(--t3)}
 
 /* Track C — LCA/PCF reference module, slice 1 (Model Register, NZC-052/054/055) */
 .nz-lca-modules{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}

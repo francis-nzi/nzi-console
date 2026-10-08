@@ -121,6 +121,7 @@ export * from "./scopeRowState";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./jobSiteInclusions";
+export { seedJobFromTemplate, getJobTemplateSeeding } from "./jobTemplateSeeding";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";
 export {

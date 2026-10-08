@@ -292,13 +292,18 @@ across both tracks is flips + human passes, not code — see each slice's own ac
 
 Spec: Francis, 4 Sep 2026 — "the two fast row-adding facilities the live site has… consultants use both
 daily." Decisions **NZC-062 / NZC-063**. Landed ahead of the LCA track (Track C) at Francis's explicit
-sequencing — LCA planning proceeds in parallel, but this ships first. Docs:
-`docs/ACCEPTANCE_FAST_ADD.md`.
+sequencing — LCA planning proceeds in parallel, but this ships first. (Its acceptance doc, `ACCEPTANCE_FAST_ADD.md`, was
+removed when both blocks were retired — see below.)
+
+**Retired in Phase 3b (JW-6, ruled 8 Oct 2026):** both blocks are replaced by template-seeded entry — a job's rows come
+from its client's reporting template (`job.seedFromTemplate`, migration 0162), so neither a whole-library search nor a
+copy of last year's rows is needed to start one. The `scope.row.rollforward` command and route stay for one release,
+unused by the UI, and are then removed in their own PR (ruled #11); the fuzzy match lives on for the LCA quick-add.
 
 | Slice | Scope | Flag | Acceptance | Status |
 |---|---|---|---|---|
-| NZC-062 | Add rows from template — fuzzy search across the whole job factor library; a pick stamps factor + scope + category + site into a fresh `scope.row.create` row, quantity empty, pending; multi-add (search stays open) | `data-entry-fast-add` | `templateSearch.test.ts`, `fast-add.spec.ts` | 🟢 built (PR #93) |
-| NZC-063 | Reuse Previous Year Rows — rollforward generalised from the spend-only register to every `job_scope_rows` type (`rolled_forward_from_row_id`, migration `0055`); pick specific prior rows, factor + hierarchy + site copied in, moved-factor/not-in-selection/already-rolled-forward flagged | `data-entry-fast-add` (shared) | `scopeRowRollforward.test.ts`, `fast-add.spec.ts` | 🟢 built (PR #93) |
+| NZC-062 | Add rows from template — fuzzy search across the whole job factor library; a pick stamps factor + scope + category + site into a fresh `scope.row.create` row, quantity empty, pending; multi-add (search stays open) | `data-entry-fast-add` | `templateSearch.test.ts` (fuzzy match only now) | ⚪ retired in Phase 3b (UI removed) |
+| NZC-063 | Reuse Previous Year Rows — rollforward generalised from the spend-only register to every `job_scope_rows` type (`rolled_forward_from_row_id`, migration `0055`); pick specific prior rows, factor + hierarchy + site copied in, moved-factor/not-in-selection/already-rolled-forward flagged | `data-entry-fast-add` (shared) | `scopeRowRollforward.test.ts` | ⚪ UI retired in Phase 3b; command kept one release (ruled #11) |
 
 Both sit in the CRP Data-entry stage's accordion, directly below the site selector and above the
 scope→category cards, gated behind one flag (`data-entry-fast-add` — split into two only if the two ever

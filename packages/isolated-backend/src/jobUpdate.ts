@@ -98,6 +98,21 @@ export type PeriodBoundFinding = { table: string; rows: number | null; why: stri
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
 /**
+ * Rows a period-bound table holds that are not data for the period, and so do not lock it (Phase 3b, ruled #10).
+ *
+ * A scope row that is still a **discardable draft** — live, no quantity and no monthly figure, never calculated or
+ * overridden, pending and never reviewed (`scopeRowIsDiscardable`, the same test `scope.row.discard` applies) — is a
+ * shape awaiting entry, as template seeding creates them. It measures nothing in the period, so moving the period
+ * changes nothing it says. The moment anyone enters a figure, calculates, overrides or reviews it, it counts again.
+ */
+export const NOT_PERIOD_DATA: Readonly<Record<string, string>> = {
+  job_scope_rows: `origin <> 'migrated' AND quantity IS NULL
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(monthly_activity_json) = 'array' THEN monthly_activity_json ELSE '[]'::jsonb END) slot
+                     WHERE slot->>'quantity' IS NOT NULL)
+    AND calculated_tco2e IS NULL AND override_tco2e IS NULL AND review_status = 'pending' AND reviewed_by IS NULL`,
+};
+
+/**
  * The period-bound data a job holds — fail-closed (J1): a table the classification does not name is treated as
  * period-bound, and one that cannot be read or counted is reported as blocking rather than skipped.
  */
@@ -113,8 +128,9 @@ export async function periodBoundData(db: Queryable, organisationId: string, job
     }
     const { rows: [access] } = await db.query<{ can: boolean }>(`SELECT has_table_privilege(current_user, $1, 'SELECT') AS can`, [`nzi_console.${linked.table}`]);
     if (!access?.can) { findings.push({ table: linked.table, rows: null, why: `${why}; it cannot be read here`, classified: !!known }); continue; }
+    const draft = NOT_PERIOD_DATA[linked.table];
     const { rows: [counted] } = await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM nzi_console.${linked.table} WHERE ${linked.organisationColumn} = $1 AND ${linked.jobColumn} = $2`, [organisationId, jobId]);
+      `SELECT count(*)::int AS n FROM nzi_console.${linked.table} WHERE ${linked.organisationColumn} = $1 AND ${linked.jobColumn} = $2${draft ? ` AND NOT (${draft})` : ""}`, [organisationId, jobId]);
     if ((counted?.n ?? 0) > 0) findings.push({ table: linked.table, rows: counted!.n, why, classified: !!known });
   }
   return findings;

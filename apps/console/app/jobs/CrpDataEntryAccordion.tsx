@@ -7,7 +7,7 @@
 // Reads `listJobApplicableCategories(…, "crm")` for the completeness view — every
 // taxonomy category for an included scope, empties shown neutrally.
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { ApplicableCategory, FactorOption, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
+import type { ApplicableCategory, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { emissionCategoryTaxonomy } from "@nzi/contracts";
 import {
   accordionAttentionRows,
@@ -18,9 +18,7 @@ import {
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
-import { dataEntryAdapterEnabled } from "../lib/featureFlags";
-import { TemplateSearchBar } from "./TemplateSearchBar";
-import { ReuseYearPanel } from "./ReuseYearPanel";
+import { JobTemplateSeeding } from "./JobTemplateSeeding";
 import { Drawer, InfoTip, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 
 const KIND_NOTE: Record<string, string> = {
@@ -67,8 +65,6 @@ type Props = {
   siteId: string;
   /** Scope-tagged factor set (workspace maps FactorOption → EntryFactorRef). */
   factors: EntryFactorRef[];
-  /** NZC-062 — the full job factor library (unmapped), for the template search. */
-  libraryFactors: FactorOption[];
   reportingMonths: string[];
   purchasedGoodsCategories: { id: string; name: string }[];
   /**
@@ -84,7 +80,7 @@ type Props = {
   notice: Notice;
 };
 
-export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onAddEntry, sites, siteId, factors, libraryFactors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
+export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onAddEntry, sites, siteId, factors, reportingMonths, purchasedGoodsCategories, categoryImport, lens: lensProp, onLensChange, notice }: Props) {
   const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
@@ -94,7 +90,6 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const [addingCode, setAddingCode] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<{ title: string; body: ReactNode } | null>(null);
 
-  const siteContext = { id: siteId === "" || siteId === "none" ? null : siteId, label: sites.find(site => site.id === siteId)?.label ?? null };
 
   const load = useCallback(async () => {
     setState("loading");
@@ -147,12 +142,11 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
         />
       </div>
 
-      {dataEntryAdapterEnabled("data-entry-fast-add") ? (
-        <div className="nz-fast-add" id="fast-add">
-          <TemplateSearchBar jobId={jobId} factors={libraryFactors} siteId={siteId} siteLabel={siteContext.label} onRowCreated={() => undefined} notice={notice} />
-          <ReuseYearPanel jobId={jobId} onRowsCreated={() => undefined} notice={notice} />
-        </div>
-      ) : null}
+      {/* Phase 3b: the client's reporting template — seed, or fill the gaps. It replaces JW-6's "Add rows from template"
+          search and "Reuse Previous Year Rows" (retired: the rows come from the template). Renders nothing when the
+          client has no template in force. */}
+      <JobTemplateSeeding jobId={jobId} notice={notice} />
+
 
       <TabPanel id="attention" idBase="crp-data-entry" active={lens === "attention"} className="nz-panel" style={{ padding: 0 }}>
         <table className="nz-tbl">

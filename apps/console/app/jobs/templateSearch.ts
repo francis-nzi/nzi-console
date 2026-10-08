@@ -1,53 +1,6 @@
-// NZC-062 — "Add rows from template": a fast, forgiving search across the
-// whole job factor library (every selected dataset + client factor, every
-// scope/category), independent of the per-category smart-search. Pure so the
-// matching itself is unit-testable without a DOM.
-import { emissionCategoryTaxonomy, type FactorOption } from "@nzi/contracts";
-
-/**
- * One pickable result: a factor stamped to one specific scope/category. A
- * factor whose `scopes` names a Scope 3 code resolves to exactly that one
- * category (Scope 3 taxonomy codes ARE the GHG codes — unambiguous). A Scope
- * 1/2 factor names only the bare scope, which spans several UI categories
- * (e.g. "1" → Natural Gas / Company Vehicles / Refrigerants) with no way to
- * tell which one a factor belongs to from the factor alone — so it expands to
- * one candidate per category in that scope, each independently pickable and
- * distinguishable by the category shown, rather than guessing.
- */
-export type TemplateSearchResult = {
-  factor: FactorOption;
-  scope: string;
-  categoryCode: string | null;
-  categoryLabel: string;
-  searchText: string;
-};
-
-export function buildTemplateSearchIndex(factors: readonly FactorOption[]): TemplateSearchResult[] {
-  const results: TemplateSearchResult[] = [];
-  for (const factor of factors) {
-    for (const category of factor.categories) {
-      const exact = emissionCategoryTaxonomy.find((entry) => entry.code === category.scopeCode);
-      // Some dataset factors are only classified to the top-level Scope 3
-      // bucket (`scopeCode: "3"`). That is not a valid row/category code and
-      // must not be posted to scope.row.create. Expand an unclassified factor
-      // across the controlled categories, just as we already do for Scope 1/2,
-      // so the consultant chooses explicitly rather than the UI guessing.
-      const candidates = exact
-        ? [{ code: exact.code, name: category.label }]
-        : emissionCategoryTaxonomy.filter((entry) => entry.scope === category.scope).map((entry) => ({ code: entry.code, name: entry.name }));
-      for (const candidate of candidates) {
-        results.push({
-          factor,
-          scope: category.scope === "3" ? candidate.code : category.scope,
-          categoryCode: candidate.code,
-          categoryLabel: candidate.name,
-          searchText: `${factor.label} ${candidate.name} ${factor.activityUnit} ${factor.datasetName}`,
-        });
-      }
-    }
-  }
-  return results;
-}
+// NZC-062 — the forgiving fuzzy match first written for "Add rows from template". That search and its whole-library index
+// were retired in Phase 3b (template seeding puts the rows there); the match stays, because the LCA inventory's quick-add
+// ranks its candidates with it. Pure so the matching is unit-testable without a DOM.
 
 /**
  * A cheap, forgiving fuzzy match: an exact substring hit ranks highest (by
@@ -74,14 +27,4 @@ export function fuzzyScore(query: string, target: string): number | null {
     cursor = found + 1;
   }
   return score;
-}
-
-export function searchTemplateIndex(index: readonly TemplateSearchResult[], query: string, limit = 30): TemplateSearchResult[] {
-  if (!query.trim()) return index.slice(0, limit);
-  return index
-    .map((result) => ({ result, score: fuzzyScore(query, result.searchText) }))
-    .filter((entry): entry is { result: TemplateSearchResult; score: number } => entry.score !== null)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((entry) => entry.result);
 }

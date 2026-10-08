@@ -487,7 +487,6 @@ export function CrpScopeWorkspace({
       sites={captureSites.map(site => ({ id: site.id, label: site.name }))}
       siteId={siteId ?? ""}
       factors={entryFactorRefs}
-      libraryFactors={factors}
       reportingMonths={spendReportingMonths}
       purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
       categoryImport={categoryImport}

@@ -50,6 +50,7 @@ export type CommandKey =
   | "job.datasets.autoSelect"
   | "job.datasets.update"
   | "job.site.setInclusion"
+  | "job.seedFromTemplate"
   | "scope.row.create"
   | "scope.row.update"
   | "scope.row.calculate"
@@ -624,6 +625,12 @@ export type CommandInputMap = {
    * the command reason (`x-command-reason`), required by the handler when `included` is false.
    */
   "job.site.setInclusion": { jobId: string; siteId: string; included: boolean; expectedVersion: number };
+  /**
+   * Phase 3b (0162, ruled 8 Oct #7–#11) — create the job's entry rows from the client's active reporting template. Additive
+   * and idempotent: a line already on the job (scope, category, source label, site) is skipped, so a re-seed fills gaps.
+   * `expectedTemplateVersion` is the template version the person was looking at; a template that moved since is a conflict.
+   */
+  "job.seedFromTemplate": { jobId: string; expectedTemplateVersion: number };
   "job.datasets.update": { jobId: string; series: string[]; expected: Array<{ rowId: string; version: number }>;
     resolutions: Array<{ rowId: string; action: "factor" | "deactivate"; factorId?: string | null }> };
   "job.stage.change": { jobId: string; fromStage: string; toStage: string; expectedVersion: number; note?: string };
@@ -1555,6 +1562,14 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "siteId", input.siteId);
     if (typeof input.included !== "boolean") issues.push({ field: "included", code: "INVALID", message: "Say whether the site is included." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  // Phase 3b (ruled #7–#9): job.manage on the job. Each line goes through scope.row.create's own validation and insert;
+  // a line that write would refuse is skipped and counted, never failing the seed.
+  "job.seedFromTemplate": { key: "job.seedFromTemplate", label: "Seed a job's entries from the client's reporting template", permission: "job.manage", reasonRequired: false, transaction: "job row locked + template lines through the scope-row write (a savepoint each) + seed version + audit + outbox + idempotency", auditAction: "job_seeded_from_template", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    if (!Number.isInteger(input.expectedTemplateVersion) || input.expectedTemplateVersion < 1) issues.push({ field: "expectedTemplateVersion", code: "INVALID", message: "Say which template version to seed from." });
     return issues;
   } },
   "job.datasets.update": { key: "job.datasets.update", label: "Move a job to its reporting year's dataset editions", permission: "scoperow.edit", reasonRequired: false, transaction: "selection swap per series + re-point and recalculate its rows + audit + outbox + idempotency", auditAction: "job_datasets_updated", validate: (input, context) => {

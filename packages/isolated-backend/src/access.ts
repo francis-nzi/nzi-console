@@ -51,6 +51,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job.datasets.autoSelect": job,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
+  "job.seedFromTemplate": job,
   "scope.row.create": job,
   "scope.row.update": job,
   "scope.row.calculate": job,
