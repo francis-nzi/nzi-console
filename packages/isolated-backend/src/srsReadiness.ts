@@ -159,10 +159,15 @@ export async function resolveNziFacts(db: Queryable, clientId: string): Promise<
   const targets = await db.query<{ has_targets: boolean }>(
     `SELECT (near_term_year IS NOT NULL OR net_zero_year IS NOT NULL) AS has_targets
      FROM nzi_console.client_targets WHERE client_id=$1 ORDER BY version DESC LIMIT 1`, [clientId]);
+  // Phase 3c (ruled): intensity bases from the client's own model — an active metric with an active client target and a
+  // Value recorded on one of the client's jobs. No longer the job's own targets (job_intensity_targets, read-only history).
   const intensity = await db.query<{ bases: string }>(
-    `SELECT count(DISTINCT t.metric)::text AS bases FROM nzi_console.job_intensity_targets t
-     JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(t.organisation_id,t.job_id)
-     WHERE j.client_id=$1 AND t.reporting_denominator IS NOT NULL`, [clientId]);
+    `WITH m AS (SELECT DISTINCT ON (metric_key) metric_key, active FROM nzi_console.client_intensity_metrics WHERE client_id=$1 ORDER BY metric_key, version DESC),
+          t AS (SELECT DISTINCT ON (metric_key) metric_key, active FROM nzi_console.client_intensity_targets WHERE client_id=$1 ORDER BY metric_key, version DESC)
+     SELECT count(*)::text AS bases FROM m JOIN t USING (metric_key)
+      WHERE m.active AND t.active
+        AND EXISTS (SELECT 1 FROM nzi_console.job_intensity_values v JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(v.organisation_id,v.job_id)
+                     WHERE j.client_id=$1 AND v.metric_key=m.metric_key AND v.value IS NOT NULL)`, [clientId]);
 
   const hasScope = (scope: string) => measurements.some((measurement) => String(measurement.scope) === scope);
   return {

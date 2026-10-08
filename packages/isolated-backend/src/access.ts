@@ -200,7 +200,6 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "site.unarchive": site,
   "site.floorArea.record": site,
   "site.location.set": site,
-  "emissions.intensity.upsert": job,
   "purchased.goods.category.create": job,
   // The question spans organisations, so it is not scoped to a client. The capability is Admin
   // alone and the handler resolves the review's own tenant.

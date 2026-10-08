@@ -15,7 +15,8 @@ import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssur
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isPreferredDataset, resolveReportLabel } from "@nzi/contracts";
-import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary, withResolvedDenominator } from "./siteBoundary";
+import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
+import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
@@ -690,9 +691,11 @@ export async function getScopeQaReadiness(db:Queryable,jobId:string):Promise<Sco
 type TargetRow={job_id:string;baseline_year:number;baseline_tco2e:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
 const mapTarget=(row:TargetRow):EmissionsTargetReadModel=>({jobId:row.job_id,baselineYear:row.baseline_year,baselineTco2e:Number(row.baseline_tco2e),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
 export async function getJobEmissionsTarget(db:Queryable,jobId:string):Promise<EmissionsTargetReadModel|null>{const {rows}=await db.query<TargetRow>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapTarget(rows[0]):null;}
-type IntensityRow={job_id:string;metric:IntensityTargetReadModel["metric"];denominator_unit:string;reporting_denominator:string|null;baseline_year:number;baseline_intensity:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
-const mapIntensity=(row:IntensityRow):IntensityTargetReadModel=>({jobId:row.job_id,metric:row.metric,denominatorUnit:row.denominator_unit,reportingDenominator:row.reporting_denominator===null?null:Number(row.reporting_denominator),baselineYear:row.baseline_year,baselineIntensity:Number(row.baseline_intensity),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
-export async function getJobIntensityTarget(db:Queryable,jobId:string):Promise<IntensityTargetReadModel|null>{const {rows}=await db.query<IntensityRow>(`SELECT job_id,metric,denominator_unit,reporting_denominator,baseline_year,baseline_intensity,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_intensity_targets WHERE job_id=$1`,[jobId]);if(!rows[0])return null;const boundary=await resolveJobSiteBoundary(db,jobId);return boundary?withResolvedDenominator(mapIntensity(rows[0]),boundary):mapIntensity(rows[0]);}
+/**
+ * The intensity a job's CRP reports — through the one adapter (Phase 3c, ruled (2)): the client's target on its first
+ * targeted standard metric, with this job's Value. No longer `job_intensity_targets`, which stays as read-only history.
+ */
+export async function getJobIntensityTarget(db:Queryable,jobId:string):Promise<IntensityTargetReadModel|null>{return resolveJobReportedIntensity(db,jobId);}
 
 type SnapshotRow={snapshot_id:string;job_id:string;snapshot_version:number;job_version:number;data_hash:string;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:EmissionsTargetReadModel|null;intensityTarget?:IntensityTargetReadModel|null;annualComparison?:ReviewedCrpSnapshotReadModel["annualComparison"];sections?:ReportSectionReadModel[];gapResolutions?:ReviewedCrpSnapshotReadModel["gapResolutions"];provenance?:SnapshotProvenanceStamp|null;measurements:ReviewedCrpSnapshotReadModel["measurements"]};created_by:string;created_at:Date|string};
 

@@ -1,7 +1,8 @@
 import { dateOnly } from "./dates";
 import type { Queryable } from "./postgres";
 import { listJobReportedSites } from "./siteBoundary";
-import { resolveFloorAreaDenominator, type ClientSiteReadModel, type IntensityMetricDefinition, type IntensityMetricValue, type ReportingPeriod } from "@nzi/contracts";
+import { reportedIntensityMetric, resolveFloorAreaDenominator, type ClientIntensityTarget, type ClientSiteReadModel, type IntensityMetricDefinition, type IntensityMetricValue, type ReportingPeriod } from "@nzi/contracts";
+import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
 
 /**
  * Reading the client's intensity metric definitions and the annual values recorded against
@@ -83,6 +84,10 @@ export type JobAnnualMetricsReadModel = {
   values: IntensityMetricValue[];
   /** What the platform resolves without being told — today, site floor area (NZC-071). */
   resolved: Record<string, { value: number | null; reason?: string }>;
+  /** Phase 3c: the client's targets in force, by metric — shown beside each metric's Value. */
+  targets: ClientIntensityTarget[];
+  /** Phase 3c (ruled): the metric this job's CRP reports — the first targeted standard metric by the client's ordering; null when none. */
+  reportedMetricKey: string | null;
 };
 
 export async function getJobAnnualMetrics(db: Queryable, jobId: string, reportingYear: number): Promise<JobAnnualMetricsReadModel | null> {
@@ -118,7 +123,9 @@ export async function getJobAnnualMetrics(db: Queryable, jobId: string, reportin
     resolved[definition.key] = reason === undefined ? { value } : { value, reason };
   }
 
-  return { jobId, clientId: row.client_id, currency: row.currency, reportingYear, assuredTotalTco2e, metrics, values, resolved };
+  const targets = await listClientIntensityTargets(db, row.client_id);
+  const reportedMetricKey = reportedIntensityMetric(metrics, targets)?.key ?? null;
+  return { jobId, clientId: row.client_id, currency: row.currency, reportingYear, assuredTotalTco2e, metrics, values, resolved, targets, reportedMetricKey };
 }
 
 /**

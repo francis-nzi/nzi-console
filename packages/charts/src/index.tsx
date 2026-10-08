@@ -28,7 +28,7 @@ export { validateManifest, assertPublishable } from "./manifest";
 export { verifyChartsAgainstSnapshot, verifyLcaChartsAgainstSnapshot } from "./verify";
 export type { ChartVerification, ChartFigureCheck, VerifiableSnapshot, VerifiableLcaSnapshot } from "./verify";
 export type { ReportManifest, ReportManifestSection, ManifestValidation, ManifestIssue } from "./manifest";
-export { CRP_RESOLVER_VERSION, crpProfessionalManifest, resolveCrpCharts,resolveCrpCoreCharts } from "./crp";
+export { CRP_RESOLVER_VERSION, crpProfessionalManifest, intensityMilestones, resolveCrpCharts,resolveCrpCoreCharts } from "./crp";
 export type { ReviewedCrpSnapshot, ReviewedCrpSnapshotCore,ReviewedScopeMeasurement } from "./crp";
 export { LCA_RESOLVER_VERSION, lcaProfessionalManifest, pcfProfessionalManifest, resolveLcaCharts, resolveLcaChartSet } from "./lca";
 export type { ReviewedLcaSnapshot } from "./lca";

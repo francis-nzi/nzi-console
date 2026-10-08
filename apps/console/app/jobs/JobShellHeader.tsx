@@ -14,7 +14,8 @@ import { JOB_TIME_CHANGED } from "./jobTimeEvents";
  * capture. Every figure here is a read the page already holds, except Time's, which is the job's own time read; a read
  * that fails says so ("unavailable") rather than showing a nought.
  */
-export type JobShellDrawer = "setup" | "milestones" | "time" | "sites" | "datasets";
+/** `intensity` (Phase 3c) opens from the Intensity chip: the client's metrics, this year's Values, and which the CRP reports. */
+export type JobShellDrawer = "setup" | "milestones" | "time" | "sites" | "datasets" | "intensity";
 
 export type JobShellSummary = {
   datasets: string;
@@ -65,7 +66,7 @@ export function JobShellHeader({ header, summary, actions, onOpen }: {
   const hours = useJobHours(header.id);
   const period = header.reportingPeriod ? `${formatDate(header.reportingPeriod.from)} – ${formatDate(header.reportingPeriod.to)}` : "No reporting period";
   const buttonSummary: Record<JobShellDrawer, string> = {
-    setup: header.workflowStage, milestones: summary.milestones, time: hours, sites: summary.sites, datasets: summary.datasets,
+    setup: header.workflowStage, milestones: summary.milestones, time: hours, sites: summary.sites, datasets: summary.datasets, intensity: summary.intensity,
   };
   return <header className="nz-shell-head" aria-label="Job summary">
     <div className="nz-shell-identity">
@@ -82,7 +83,7 @@ export function JobShellHeader({ header, summary, actions, onOpen }: {
     <div className="nz-shell-chips" aria-label="Job setup">
       <button type="button" className="nz-shell-chip" onClick={() => onOpen("datasets")}><span>Datasets</span><b>{summary.datasets}</b></button>
       <button type="button" className="nz-shell-chip" onClick={() => onOpen("sites")}><span>Sites</span><b>{summary.sites}</b></button>
-      <button type="button" className="nz-shell-chip" onClick={() => onOpen("setup")}><span>Intensity</span><b>{summary.intensity}</b></button>
+      <button type="button" className="nz-shell-chip" onClick={() => onOpen("intensity")}><span>Intensity</span><b>{summary.intensity}</b></button>
     </div>
     <nav className="nz-shell-drawers" aria-label="Job details">
       {DRAWERS.map((drawer) => <button type="button" key={drawer.id} className="nz-shell-drawer-btn" onClick={() => onOpen(drawer.id)}>

@@ -63,6 +63,8 @@ import {JobSitesDrawer} from "./JobSitesDrawer";
 import {sitesSummary} from "./jobSitesSummary";
 
 const INTENSITY_METRIC_LABEL: Record<string, string> = { turnover: "Turnover", employee: "Employees", "floor-area": "Floor area" };
+/** The reported metric by the client's own label (Phase 3c), falling back to the report's metric name. */
+const reportedIntensityLabel = (target: IntensityTargetReadModel) => target.metricLabel ?? INTENSITY_METRIC_LABEL[target.metric] ?? target.metric;
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
 import { formatDate, formatDateTime } from "../lib/formatDate";
@@ -301,7 +303,7 @@ export function CrpScopeWorkspace({
     { label: "Emission calculations", complete: qa.enabled > 0 && qa.calculationMissing === 0, detail: qa.calculationMissing ? `${qa.calculationMissing} outstanding` : "Complete" },
     { label: "Independent QA", complete: qa.enabled > 0 && qa.independentReviewPending === 0, detail: qa.independentReviewPending ? `${qa.independentReviewPending} awaiting review` : "Approved" },
     { label: "Reduction pathway", complete: target !== null, detail: target ? `Version ${target.version}` : "Required" },
-    { label: "Intensity metric", complete: intensityTarget !== null, detail: intensityTarget ? `Version ${intensityTarget.version}` : "Optional" },
+    { label: "Intensity metric", complete: intensityTarget !== null, detail: intensityTarget ? `${reportedIntensityLabel(intensityTarget)} · client target v${intensityTarget.version}` : "Optional — set a target on the client" },
   ];
   const requiredChecks = readinessChecks.slice(0, 4);
   const completedRequired = requiredChecks.filter((check) => check.complete).length;
@@ -328,7 +330,7 @@ export function CrpScopeWorkspace({
   // are a "Needs attention" exception inside Data entry.
   const openDataEntryAttention = () => { if (accordionOn) setAccordionLens("attention"); jumpToStage("Data entry"); };
   const stageSummary = {
-    setup: `${selectedDatasets} dataset${selectedDatasets === 1 ? "" : "s"} · ${target ? `−${target.interimReductionPercent}% by ${target.interimYear}` : "no pathway"} · ${intensityTarget ? `intensity v${intensityTarget.version}` : "no intensity metric"} · ${sites.length} site${sites.length === 1 ? "" : "s"} · ${purchasedGoodsCategories.length} PG&S`,
+    setup: `${selectedDatasets} dataset${selectedDatasets === 1 ? "" : "s"} · ${target ? `−${target.interimReductionPercent}% by ${target.interimYear}` : "no pathway"} · ${intensityTarget ? `intensity: ${reportedIntensityLabel(intensityTarget)}` : "no reported intensity"} · ${sites.length} site${sites.length === 1 ? "" : "s"} · ${purchasedGoodsCategories.length} PG&S`,
     data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e${noFactorCount ? ` · ${noFactorCount} without a factor` : ""}`,
     review: qa.independentReviewPending ? `${qa.independentReviewPending} pending · ${qa.approved} approved` : `${qa.approved} approved · review complete`,
     report: qa.readyForReporting ? "Evidence complete — ready to snapshot" : "Blocked until QA gates pass",
@@ -459,8 +461,7 @@ export function CrpScopeWorkspace({
   const setupPanels = (
     <>
       <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
-      <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
-      <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
+      {/* Phase 3c: intensity has its own drawer (the Intensity chip); the per-job IntensityPanel is retired. */}
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
@@ -468,8 +469,8 @@ export function CrpScopeWorkspace({
   const configPanels = (
     <>
       <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      {/* Phase 3c: the Values and the client's targets in one place; the per-job IntensityPanel is retired. */}
       <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
-      <IntensityPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={intensityTarget} notice={setNotice}/>
       <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
@@ -591,7 +592,8 @@ export function CrpScopeWorkspace({
   const shellSummary: JobShellSummary = {
     datasets: datasetsSummary(datasets),
     sites: sitesSummary(sites),
-    intensity: intensityTarget ? `${INTENSITY_METRIC_LABEL[intensityTarget.metric] ?? intensityTarget.metric} · v${intensityTarget.version}` : "No intensity metric",
+    // Phase 3c: the metric the CRP reports (the client's first targeted standard metric), or none.
+    intensity: intensityTarget ? `${reportedIntensityLabel(intensityTarget)} · reported` : "None reported",
     milestones: milestonesSummary(shell?.milestoneStates ?? null),
   };
   const openShellDrawer = (drawer: JobShellDrawer) => setShellDrawer(drawer);
@@ -607,6 +609,8 @@ export function CrpScopeWorkspace({
     milestones: { kicker: "Job", title: "Milestones", body: shell?.milestonesPanel ?? null },
     time: { kicker: "Job", title: "Time", body: shell?.timePanel ?? null },
     sites: { kicker: "Job", title: "Sites", body: <JobSitesDrawer jobId={job.header.id} clientId={job.header.clientId} sites={sites} writeEnabled={writeEnabled}/> },
+    // Phase 3c: the client's metrics, this year's Values, the targets, and which one the CRP reports.
+    intensity: { kicker: "Job", title: "Intensity", body: <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled} clientId={job.header.clientId}/> },
     datasets: { kicker: "Job", title: "Datasets", body: <>
       <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
       <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons writeEnabled={writeEnabled}/>
@@ -748,7 +752,6 @@ function TargetPanel({jobId,reportingYear,target,notice}:{jobId:string;reporting
 
 function SitePanel({jobId,sites,notice}:{jobId:string;sites:SiteOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){if(pending)return;setPending(true);const result=await postBrowserCommand<{siteId:string;name:string}>(`/api/isolated/jobs/${jobId}/sites`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Site ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Controlled dimensions</span><b>Client sites</b><div className="sub">Assign emissions rows to a controlled site list. Unassigned emissions remain visible as Unallocated.</div></div><span className="nz-st done">{sites.length} sites</span></div><div className="nz-inline-create"><label className="nz-sr-only" htmlFor="new-site">New site name</label><input id="new-site" className="nz-inp" value={name} disabled={pending} onChange={e=>setName(e.target.value)} placeholder="New site name"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>{pending?"Adding…":"Add site"}</button></div></section>}
 
-function IntensityPanel({jobId,reportingYear,target,notice}:{jobId:string;reportingYear:number;target:IntensityTargetReadModel|null;notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[value,setValue]=useState({metric:target?.metric??"turnover" as "turnover"|"employee"|"floor-area",denominatorUnit:target?.denominatorUnit??"£m revenue",reportingDenominator:target&&target.metric!=="floor-area"&&target.reportingDenominator!==null?target.reportingDenominator:0,baselineYear:target?.baselineYear??reportingYear,baselineIntensity:target?.baselineIntensity??0,interimYear:target?.interimYear??2030,interimReductionPercent:target?.interimReductionPercent??50,netZeroYear:target?.netZeroYear??2050}),[pending,setPending]=useState(false),[reason,setReason]=useState("");const rebaselining=target!==null&&(value.baselineYear!==target.baselineYear||value.baselineIntensity!==target.baselineIntensity);async function save(){if(pending)return;setPending(true);const result=await putBrowserCommandWithReason<{version:number}>(`/api/isolated/jobs/${jobId}/intensity-target`,{...value,reportingDenominator:value.metric==="floor-area"?null:value.reportingDenominator,expectedVersion:target?.version??0},crypto.randomUUID(),rebaselining?reason:"");if(result.state==="success")setReason("");setPending(false);if(result.state==="success"){notice({kind:"ok",text:`Intensity target v${result.data.version} saved for the next reviewed snapshot.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Optional normalisation</span><b>Intensity metrics</b><div className="sub">Current intensity is reviewed tCO₂e divided by the Value.</div></div><span className={`nz-st ${target?"done":"est"}`}>{target?`Version ${target.version}`:"Not configured"}</span></div><div className="nz-config-grid intensity"><label className="nz-fl">Metric<select className="nz-sel" value={value.metric} onChange={e=>{const metric=e.target.value as typeof value.metric;setValue({...value,metric,denominatorUnit:metric==="floor-area"?"m²":value.denominatorUnit});}}><option value="turnover">Turnover</option><option value="employee">Employees</option><option value="floor-area">Floor area</option></select></label><label className="nz-fl">Value unit<input className="nz-inp" value={value.denominatorUnit} onChange={e=>setValue({...value,denominatorUnit:e.target.value})}/></label>{value.metric==="floor-area"?<div className="nz-fl"><span>Value</span><div className="sub" role="status">{target?.metric==="floor-area"&&target.denominatorBasis?.kind==="site-floor-area"?(target.denominatorBasis.state==="resolved"&&target.reportingDenominator!==null?`${target.reportingDenominator.toLocaleString("en-GB")} m² — the in-boundary sites' floor area (NZC-071)`:`Unavailable — ${target.denominatorBasis.reason??"a site floor area is missing"}`):"Derived from the in-boundary sites' floor area (NZC-071) — record it on each site."}</div></div>:<label className="nz-fl">Value<input className="nz-inp" type="number" step="any" value={value.reportingDenominator} onChange={e=>setValue({...value,reportingDenominator:Number(e.target.value)})}/></label>}<label className="nz-fl">Baseline year<input className="nz-inp" type="number" value={value.baselineYear} onChange={e=>setValue({...value,baselineYear:Number(e.target.value)})}/></label><label className="nz-fl">Baseline intensity<input className="nz-inp" type="number" step="any" value={value.baselineIntensity} onChange={e=>setValue({...value,baselineIntensity:Number(e.target.value)})}/></label><label className="nz-fl">Interim year<input className="nz-inp" type="number" value={value.interimYear} onChange={e=>setValue({...value,interimYear:Number(e.target.value)})}/></label><label className="nz-fl">Interim reduction %<input className="nz-inp" type="number" step="any" value={value.interimReductionPercent} onChange={e=>setValue({...value,interimReductionPercent:Number(e.target.value)})}/></label><label className="nz-fl">Net-zero year<input className="nz-inp" type="number" value={value.netZeroYear} onChange={e=>setValue({...value,netZeroYear:Number(e.target.value)})}/></label></div>{rebaselining?<div className="nz-banner warn" role="status" style={{margin:"0 16px 12px"}}><div><b>Changing a saved baseline is a re-baseline.</b><div style={{marginTop:4}}>It needs a reason, recorded on the baseline record and in the audit log (baseline.rebaseline; a Consultant on their own clients only).</div><label className="nz-fl" style={{marginTop:8}}><span>Reason for the re-baseline</span><input className="nz-inp" value={reason} onChange={e=>setReason(e.target.value)} aria-label="Reason for the intensity re-baseline"/></label></div></div>:null}<div className="nz-config-actions"><button className="nz-btn pri" disabled={pending||(rebaselining&&!reason.trim())} onClick={save}>{pending?"Saving…":"Save intensity target"}</button></div></section>}
 
 function PurchasedGoodsPanel({jobId,categories,notice}:{jobId:string;categories:PurchasedGoodsCategoryOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){if(pending)return;setPending(true);const result=await postBrowserCommand<{categoryId:string;name:string}>(`/api/isolated/jobs/${jobId}/purchased-goods-categories`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Purchased-goods category ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Controlled dimensions</span><b>Purchased Goods &amp; Services categories</b><div className="sub">Controlled client categories are available on Scope 3.1 rows and drive the report breakdown.</div></div><span className="nz-st done">{categories.length} categories</span></div><div className="nz-inline-create"><label className="nz-sr-only" htmlFor="new-purchased-category">New purchasing category</label><input id="new-purchased-category" className="nz-inp" value={name} disabled={pending} onChange={e=>setName(e.target.value)} placeholder="New purchasing category"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>{pending?"Adding…":"Add category"}</button></div></section>}
 

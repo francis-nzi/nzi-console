@@ -46,7 +46,12 @@ function screenPool(opts: { depot?: boolean } = {}) {
       // NZC-070 — the job's reporting period and its client's sites
       if (sql.includes("LEFT JOIN nzi_console.job_emissions_config")) return { rows: [{ client_id: "client-a", reporting_from: "2026-01-01", reporting_to: "2026-12-31", start_date: "2026-01-01", due_date: "2026-12-31" }] };
       if (sql.includes("FROM nzi_console.client_sites WHERE client_id")) return { rows: [HQ, DEPOT] };
-      if (sql.includes("job_intensity_targets")) return { rows: [{ job_id: "job-a", metric: "employee", denominator_unit: "FTE", reporting_denominator: "50", baseline_year: 2022, baseline_intensity: "2", interim_year: 2030, interim_reduction_percent: "50", net_zero_year: 2045, version: 1, updated_by: "u", updated_at: "x" }] };
+      // Phase 3c: the reported intensity is the client's target on its first targeted standard metric (employees, FTE),
+      // with this job's Value (50) — the same numbers the old per-job row carried, through the one adapter.
+      if (sql.includes("cl.currency") && sql.includes("FROM nzi_console.jobs j JOIN nzi_console.clients cl")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", currency: "GBP" }] };
+      if (sql.includes("client_intensity_targets")) return { rows: [{ metric_key: "employees", version: 1, baseline_year: 2022, baseline_intensity: "2", interim_year: 2030, interim_reduction_pct: "50", target_year: 2045, target_reduction_pct: "100", active: true, set_by: "u", set_at: "2026-01-01T00:00:00Z", label: "Employees", unit_wording: "FTE" }] };
+      if (sql.includes("FROM nzi_console.client_intensity_metrics WHERE client_id")) return { rows: [{ metric_key: "employees", version: 1, label: "Employees", unit_wording: "FTE", unit_kind: "text", divider: 1, icon_key: "people", is_standard: true, value_source: "entered", active: true, ordering: 1 }] };
+      if (sql.includes("FROM nzi_console.job_intensity_values WHERE job_id")) return { rows: [{ metric_key: "employees", reporting_year: 2026, period_key: "year", value: "50", overrides_resolved: false, note: "", version: 1 }] };
       return { rows: [] };
     },
     release() {},
