@@ -22,9 +22,9 @@ describe("the renderer a composition was issued under", () => {
 describe("the section layout follows the plan", () => {
   const all = () => true;
 
-  it("the default plan is every section, in the order the report has always had", () => {
-    assert.deepEqual(defaultReportSectionPlan.map((entry) => entry.key), [...reportCompositionSections]);
-    assert.ok(defaultReportSectionPlan.every((entry) => entry.included));
+  it("the default plan is every data section, included, in the order the report has always had — and the narrative, not included (F-1, Q6)", () => {
+    assert.deepEqual(defaultReportSectionPlan.filter((entry) => !entry.key.startsWith("narrative:")).map((entry) => entry.key), [...reportCompositionSections]);
+    assert.ok(defaultReportSectionPlan.every((entry) => entry.included === !entry.key.startsWith("narrative:")));
   });
 
   it("the cover is page 1 and unnumbered; every section after it is numbered in order, a page each", () => {

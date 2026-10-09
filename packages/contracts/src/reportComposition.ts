@@ -101,17 +101,175 @@ export function reportRendererOf(composition: { renderer?: string }): ReportRend
   return (reportRenderers as readonly string[]).includes(renderer) ? renderer as ReportRenderer : null;
 }
 
-/* ── Section plan (F-0; F-1 stores it) ───────────────────────────────────────────────── */
+/* ── Section plan (F-0 draws from it; F-1 stores and freezes it) ────────────────────── */
 
-/** Which sections a report shows, in order. F-0 renders every composition with the default; F-1 freezes a chosen one. */
-export type ReportSectionPlanEntry = { key: ReportCompositionSectionKey; included: boolean };
+/**
+ * The R2 narrative sections (`reportSections.ts`), as plan keys (RULING-reporting-F Q6). Namespaced: the narrative has its own
+ * "executive-summary" (the prose), distinct from the composed data section of that name (the figures).
+ */
+export const reportNarrativePlanKeys = [
+  "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
+  "narrative:intensity-analysis", "narrative:category-analysis", "narrative:reduction-actions",
+] as const;
+export type ReportNarrativePlanKey = (typeof reportNarrativePlanKeys)[number];
+
+/** Every key a plan orders (Q6): the composed data sections and the narrative, so the key set never has to change shape. */
+export type ReportPlanSectionKey = ReportCompositionSectionKey | ReportNarrativePlanKey;
+export const reportPlanSectionKeys: readonly ReportPlanSectionKey[] = [...reportCompositionSections, ...reportNarrativePlanKeys];
+export const isReportDataSection = (key: string): key is ReportCompositionSectionKey => (reportCompositionSections as readonly string[]).includes(key);
+export const isReportNarrativeSection = (key: string): key is ReportNarrativePlanKey => (reportNarrativePlanKeys as readonly string[]).includes(key);
+
+/** Which sections a report shows, in order. */
+export type ReportSectionPlanEntry = { key: ReportPlanSectionKey; included: boolean };
 export type ReportSectionPlan = readonly ReportSectionPlanEntry[];
 
-/** Today's report: every section, in the order it has always had. */
-export const defaultReportSectionPlan: ReportSectionPlan = reportCompositionSections.map((key) => ({ key, included: true }));
+/** The narrative's place in a report, and its title there. */
+export const reportNarrativeSectionMeta: Record<ReportNarrativePlanKey, { title: string }> = {
+  "narrative:executive-summary": { title: "Executive summary (narrative)" },
+  "narrative:net-zero-commitment": { title: "Net zero commitment" },
+  "narrative:background": { title: "Background" },
+  "narrative:intensity-analysis": { title: "Intensity analysis" },
+  "narrative:category-analysis": { title: "Category analysis" },
+  "narrative:reduction-actions": { title: "Reduction actions" },
+};
+export const reportPlanSectionTitle = (key: ReportPlanSectionKey): string =>
+  isReportDataSection(key) ? reportCompositionSectionMeta[key].title : reportNarrativeSectionMeta[key].title;
 
-/** The plan a composition renders with. Until F-1 freezes one into the composition, that is the default. */
-export const reportSectionPlanOf = (_composition: ReportComposition): ReportSectionPlan => defaultReportSectionPlan;
+/**
+ * Today's report: every data section, in the order it has always had, and the narrative beside the sections it speaks to —
+ * **not included**. The narrative is not drawn in the composed report yet (Q6: it renders with F-2/F-4); where it sits by
+ * default is Francis's content call, and this is a placeholder he may move.
+ */
+export const defaultReportSectionPlan: ReportSectionPlan = ([
+  "cover", "executive-summary", "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
+  "emissions", "narrative:category-analysis", "sites", "intensity", "narrative:intensity-analysis", "targets", "plan",
+  "narrative:reduction-actions", "srs", "methodology",
+] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) }));
+
+/** The plan a composition renders with: the one frozen into it at publish (F-1), or — issued before F-1 — the default. */
+export const reportSectionPlanOf = (composition: ReportComposition): ReportSectionPlan => composition.sectionPlan ?? defaultReportSectionPlan;
+
+/**
+ * The exclusion interlock (RULING-reporting-F Q5, binding). A section may be **left out** of a report only once the client
+ * portal draws the frozen composition (F-4): until then the portal re-resolves from the snapshot, so an "excluded" section
+ * would still reach the client — the honesty trap F must not create. So F-1 is **reorder-only**, enforced here, at the one
+ * validator every command and the UI share. The exclusion machinery (the plan's `included`, the layout skipping it, the
+ * Methodology stating it) is built and tested now; **F-4's own PR flips this to true**, so exclusion and the portal that
+ * honours it cannot reach staging separately.
+ */
+export const REPORT_SECTION_EXCLUSION_AVAILABLE = false;
+
+/** Narrative sections may be included once the composed report draws them (Q6: with F-2/F-4). That PR flips this. */
+export const REPORT_NARRATIVE_SECTIONS_AVAILABLE = false;
+
+/** The sections a plan may never leave out: the cover and the basis, and a carbon report's footprint and its summary (Q1). */
+export const reportMandatorySections: readonly ReportCompositionSectionKey[] = ["cover", "executive-summary", "emissions", "methodology"];
+
+export type ReportSectionPlanIssue = { field: string; code: string; message: string };
+
+/**
+ * A plan a report may carry (Q1). Complete — every key once, nothing unknown — with the cover first and the methodology last;
+ * the mandatory sections included; narrative only once it is drawn; exclusion only once the portal honours it (Q5).
+ * `options` exists so the machinery can be tested ahead of the flips; commands pass nothing.
+ */
+export function reportSectionPlanIssues(
+  plan: unknown,
+  options: { allowExclusion?: boolean; allowNarrative?: boolean } = {},
+): ReportSectionPlanIssue[] {
+  const allowExclusion = options.allowExclusion ?? REPORT_SECTION_EXCLUSION_AVAILABLE;
+  const allowNarrative = options.allowNarrative ?? REPORT_NARRATIVE_SECTIONS_AVAILABLE;
+  if (!Array.isArray(plan)) return [{ field: "sectionPlan", code: "INVALID", message: "A section plan is a list of sections." }];
+  const issues: ReportSectionPlanIssue[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of plan.entries()) {
+    const key = (entry as { key?: unknown })?.key, included = (entry as { included?: unknown })?.included;
+    if (typeof key !== "string" || !(reportPlanSectionKeys as readonly string[]).includes(key)) {
+      issues.push({ field: `sectionPlan[${index}].key`, code: "UNKNOWN_SECTION", message: `Section ${index + 1} is not a report section.` });
+      continue;
+    }
+    if (typeof included !== "boolean") issues.push({ field: `sectionPlan[${index}].included`, code: "INVALID", message: `Say whether ${reportPlanSectionTitle(key as ReportPlanSectionKey)} is included.` });
+    if (seen.has(key)) issues.push({ field: `sectionPlan[${index}].key`, code: "DUPLICATE_SECTION", message: `${reportPlanSectionTitle(key as ReportPlanSectionKey)} appears more than once.` });
+    seen.add(key);
+  }
+  for (const key of reportPlanSectionKeys) {
+    if (!seen.has(key)) issues.push({ field: "sectionPlan", code: "MISSING_SECTION", message: `${reportPlanSectionTitle(key)} is missing from the plan.` });
+  }
+  if (issues.length) return issues;
+  const entries = plan as ReportSectionPlanEntry[];
+  if (entries[0]!.key !== "cover") issues.push({ field: "sectionPlan[0]", code: "COVER_FIRST", message: "The cover comes first." });
+  if (entries[entries.length - 1]!.key !== "methodology") issues.push({ field: `sectionPlan[${entries.length - 1}]`, code: "METHODOLOGY_LAST", message: "Methodology & provenance comes last." });
+  for (const [index, entry] of entries.entries()) {
+    if (entry.included) {
+      if (isReportNarrativeSection(entry.key) && !allowNarrative) {
+        issues.push({ field: `sectionPlan[${index}].included`, code: "NARRATIVE_NOT_YET_DRAWN", message: `${reportPlanSectionTitle(entry.key)} is not drawn in the composed report yet, so it cannot be included.` });
+      }
+      continue;
+    }
+    if (isReportNarrativeSection(entry.key)) continue;
+    if (reportMandatorySections.includes(entry.key)) {
+      issues.push({ field: `sectionPlan[${index}].included`, code: "MANDATORY_SECTION", message: `${reportPlanSectionTitle(entry.key)} is always part of the report.` });
+    } else if (!allowExclusion) {
+      issues.push({ field: `sectionPlan[${index}].included`, code: "EXCLUSION_NOT_YET_AVAILABLE", message: `Sections can be reordered but not yet left out: the client portal does not honour a left-out section until it shows the issued report itself.` });
+    }
+  }
+  return issues;
+}
+
+const samePlan = (a: ReportSectionPlan, b: ReportSectionPlan) =>
+  a.length === b.length && a.every((entry, index) => entry.key === b[index]!.key && entry.included === b[index]!.included);
+
+/** Where a version's plan came from (Q3): `default`, the client's profile at a version, or `edited` for a one-off. */
+export type ReportSectionPlanOrigin = "default" | "edited" | `profile:${number}`;
+
+/**
+ * The origin a plan carries, by what it equals — so a house style reads as the profile's even when re-chosen by hand, and a
+ * one-off reads as edited. Precedence (Q3): default ← the client's active profile ← the version's own plan.
+ */
+export function reportSectionPlanOrigin(plan: ReportSectionPlan, profile: { version: number; sectionPlan: ReportSectionPlan } | null): ReportSectionPlanOrigin {
+  if (profile && samePlan(plan, profile.sectionPlan)) return `profile:${profile.version}`;
+  if (samePlan(plan, defaultReportSectionPlan)) return "default";
+  return "edited";
+}
+
+/** The plan a version starts with at validate (Q3): the one asked for, else the client's active profile, else the default. */
+export function resolveReportSectionPlan(
+  requested: ReportSectionPlan | null | undefined,
+  profile: { version: number; sectionPlan: ReportSectionPlan } | null,
+): { plan: ReportSectionPlan; origin: ReportSectionPlanOrigin } {
+  const plan = requested ?? profile?.sectionPlan ?? defaultReportSectionPlan;
+  return { plan, origin: reportSectionPlanOrigin(plan, profile) };
+}
+
+/**
+ * The data sections a plan leaves out at the issuer's choice, by title — stated on the Methodology page, so an exclusion is
+ * never silent. The narrative is not counted: until it is drawn it is not left out, it is not yet there.
+ */
+export function reportOmittedSections(plan: ReportSectionPlan): string[] {
+  return plan.filter((entry) => !entry.included && isReportDataSection(entry.key)).map((entry) => reportPlanSectionTitle(entry.key));
+}
+
+/**
+ * The client's issuer line ("Prepared for the Board of …"): words, never money (NZC-120) — no currency symbol or code beside
+ * a figure. Trimmed, and short enough to sit on a cover.
+ */
+export const REPORT_ISSUER_LINE_MAX = 160;
+export function reportIssuerLineIssues(line: unknown): ReportSectionPlanIssue[] {
+  if (line === null || line === undefined) return [];
+  if (typeof line !== "string" || !line.trim()) return [{ field: "issuerLine", code: "INVALID", message: "An issuer line is words, or none at all." }];
+  if (line !== line.trim()) return [{ field: "issuerLine", code: "INVALID", message: "An issuer line has no leading or trailing spaces." }];
+  if (line.length > REPORT_ISSUER_LINE_MAX) return [{ field: "issuerLine", code: "TOO_LONG", message: `An issuer line is at most ${REPORT_ISSUER_LINE_MAX} characters.` }];
+  if (/[£$€¥₹]|\b(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\s?\d|\d\s?(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\b/i.test(line)) {
+    return [{ field: "issuerLine", code: "MONEY_SHAPED", message: "An issuer line names who the report is for, never an amount." }];
+  }
+  return [];
+}
+
+/** The client's report profile (R-D1): a default plan and an optional issuer line, versioned; withdrawal is a version too. */
+export type ClientReportProfile = {
+  clientId: string; version: number; active: boolean;
+  sectionPlan: ReportSectionPlan | null; issuerLine: string | null;
+  reason: string | null; setBy: string; setAt: string;
+};
 
 /**
  * Where each section lands: its printed number and its page.
@@ -123,8 +281,8 @@ export const reportSectionPlanOf = (_composition: ReportComposition): ReportSect
  */
 export function reportSectionLayout(
   plan: ReportSectionPlan,
-  present: (key: ReportCompositionSectionKey) => boolean,
-): Array<{ key: ReportCompositionSectionKey; number: string | null; page: number }> {
+  present: (key: ReportPlanSectionKey) => boolean,
+): Array<{ key: ReportPlanSectionKey; number: string | null; page: number }> {
   const shown = plan.filter((entry) => entry.included && present(entry.key));
   let numbered = 0;
   return shown.map((entry, index) => ({
@@ -401,6 +559,13 @@ export type ReportComposition = {
    * before F-0, which were issued under `composed@1`.
    */
   renderer?: string;
+  /**
+   * F-1: the sections this report shows, in order, as its version held them at publish — frozen here, so the plan is part
+   * of what was issued. Absent on compositions frozen before F-1, which show the default.
+   */
+  sectionPlan?: ReportSectionPlan;
+  /** F-1 (R-D1): the client's issuer line from its report profile, frozen at validation. Absent when there was none. */
+  issuerLine?: string;
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

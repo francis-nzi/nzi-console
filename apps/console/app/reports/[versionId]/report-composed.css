@@ -33,6 +33,7 @@
 .nzr-brand b{display:block;font-size:14px}
 .nzr-brand small{color:var(--muted);font-size:10.5px}
 .nzr-cover-client{margin-top:14px;font-size:20px;font-weight:600}
+.nzr-cover-issuer{margin-top:4px;font-size:13.5px;color:var(--ink-2)}
 .nzr-cover-meta{margin-top:6px;color:var(--muted);font-size:12.5px}
 .nzr-cover-basis{display:inline-block;margin-top:38px;padding:7px 12px;border:1px solid var(--line);border-radius:20px;background:var(--panel-2);color:var(--ink-2);font-size:11px;font-weight:600}
 

@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, type ReportSectionPlan,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
@@ -419,8 +419,9 @@ export async function composeAssuredActuals(db: Queryable, input: {
 export async function composeForReportVersion(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string;
 }): Promise<ReportComposition> {
-  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string; scope_kind: "whole" | "sites"; scope_site_ids: string[] | null } & IssuerColumns>(
-    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, ${ISSUER_COLUMNS}
+  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string; scope_kind: "whole" | "sites"; scope_site_ids: string[] | null;
+    section_plan: ReportSectionPlan | null; client_issuer_line: string | null } & IssuerColumns>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, r.section_plan, r.client_issuer_line, ${ISSUER_COLUMNS}
      FROM nzi_console.report_versions r
      JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
      WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
@@ -483,7 +484,14 @@ export async function composeForReportVersion(db: Queryable, input: {
   });
   // D3: the issuer the version froze at validation travels with what the report says.
   const issuer = issuerOf(row);
-  return issuer ? { ...composed, issuer } : composed;
+  // F-1: the version's section plan is frozen with it — a version validated before F-1 has none, and issues the default — and
+  // the client's issuer line, when its profile had one at validation.
+  return {
+    ...composed,
+    ...(issuer ? { issuer } : {}),
+    sectionPlan: row.section_plan ?? defaultReportSectionPlan,
+    ...(row.client_issuer_line ? { issuerLine: row.client_issuer_line } : {}),
+  };
 }
 
 export type FreezeCompositionResult = { compositionId: string; dataHash: string; reused: boolean };

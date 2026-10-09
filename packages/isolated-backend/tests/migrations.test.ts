@@ -27,6 +27,7 @@ const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrati
 const jobSiteInclusionsMigration = readFileSync(resolve(here, "../migrations/0161_job_site_inclusions.sql"), "utf8");
 const jobTemplateSeedVersionMigration = readFileSync(resolve(here, "../migrations/0162_job_template_seed_version.sql"), "utf8");
 const reportVersionScopeMigration = readFileSync(resolve(here, "../migrations/0163_report_version_scope.sql"), "utf8");
+const reportSectionPlanMigration = readFileSync(resolve(here, "../migrations/0164_report_section_plan.sql"), "utf8");
 const traineeSpineMigration = readFileSync(resolve(here, "../migrations/0072_trainees_and_training_spine.sql"), "utf8");
 const staffAuth = readFileSync(resolve(here, "../migrations/0006_staff_authentication.sql"), "utf8");
 const authMembership = readFileSync(resolve(here, "../migrations/0007_auth_membership_lookup.sql"), "utf8");
@@ -213,6 +214,31 @@ describe("isolated Postgres migrations", () => {
     assert.ok(!/\bUPDATE\b|INSERT INTO|DELETE FROM/.test(code), "no row is touched: existing versions are whole-client by the default");
     assert.ok(!/reviewed_crp_snapshots|POLICY|REVOKE|GRANT (SELECT|INSERT|UPDATE|DELETE)/.test(code), "the snapshot, RLS and table grants are unchanged");
     assert.match(code, /\bIMMUTABLE\b[\s\S]*\bIMMUTABLE\b/, "both helpers are immutable, as a generated column and a CHECK require");
+  });
+  it("holds the client's report profile as append-only versions, and a report version's section plan, origin and issuer line — nullable, no backfill (0164, Reporting F-1)", () => {
+    for (const clause of [
+      "CREATE TABLE nzi_console.client_report_profiles", "PRIMARY KEY (organisation_id, client_id, version)",
+      "FOREIGN KEY (organisation_id, client_id) REFERENCES nzi_console.clients(organisation_id, client_id)",
+      "section_plan jsonb CHECK (section_plan IS NULL OR jsonb_typeof(section_plan) = 'array')",
+      "CONSTRAINT client_report_profiles_plan_when_active CHECK (active = (section_plan IS NOT NULL))",
+      "CONSTRAINT client_report_profiles_withdrawn_bare CHECK (active OR issuer_line IS NULL)",
+      "CONSTRAINT client_report_profiles_deactivation_reason CHECK (active OR reason IS NOT NULL)",
+      "ALTER TABLE nzi_console.client_report_profiles FORCE ROW LEVEL SECURITY",
+      "CREATE POLICY tenant_isolation ON nzi_console.client_report_profiles",
+      "GRANT SELECT, INSERT ON nzi_console.client_report_profiles TO nzi_console_app",
+      "REVOKE UPDATE, DELETE ON nzi_console.client_report_profiles FROM PUBLIC, nzi_console_app, nzi_console_worker, nzi_console_auth",
+      "ALTER TABLE nzi_console.report_versions",
+      "ADD COLUMN section_plan jsonb CHECK (section_plan IS NULL OR jsonb_typeof(section_plan) = 'array')",
+      "ADD COLUMN section_plan_origin text CHECK (section_plan_origin IS NULL OR section_plan_origin ~ '^(default|edited|profile:[1-9][0-9]*)$')",
+      "ADD CONSTRAINT report_versions_section_plan_pair CHECK ((section_plan IS NULL) = (section_plan_origin IS NULL))",
+      "ADD COLUMN client_issuer_line text",
+    ]) assert.ok(reportSectionPlanMigration.includes(clause), clause);
+    const code = reportSectionPlanMigration.replace(/--.*$/gm, "");
+    assert.ok(!/\bUPDATE nzi_console\b|INSERT INTO|DELETE FROM/.test(code), "no row is touched: existing versions keep NULL, which is the default plan");
+    assert.ok(!/report_compositions|reviewed_crp_snapshots/.test(code), "the frozen evidence is untouched");
+    assert.ok(!/GRANT[^;]*report_versions|POLICY[^;]*report_versions/.test(code), "report_versions' grants and RLS are unchanged");
+    const alter = code.slice(code.indexOf("ALTER TABLE nzi_console.report_versions"), code.indexOf("COMMIT;"));
+    assert.ok(alter.length > 0 && !/NOT NULL|DEFAULT/.test(alter), "the new report_versions columns are nullable, with no default to backfill");
   });
 
   it("records the template version that seeded a job on its config row, nullable and paired, with no backfill (0162, Phase 3b)", () => {
