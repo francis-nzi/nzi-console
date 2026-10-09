@@ -119,7 +119,18 @@ test("the per-phrase and the denominator follow the same rules (D3c)", () => {
   // A currency value is whole units (0143): money, never "12,500,000 £m".
   assert.equal(intensityDenominatorText(turnover, 12_500_000, GBP), "£12,500,000");
   assert.equal(intensityDenominatorText(turnover, 3_000_000, { currency: "AED" }), "AED 3,000,000");
-  assert.equal(intensityDenominatorText(metric(), 240, GBP), "240 employee");
+  assert.equal(intensityDenominatorText(metric(), 240, GBP), "240 employees");
+});
+
+test("a text denominator is plural unless it is one, and a notation stays as written", () => {
+  assert.equal(intensityDenominatorText(metric(), 1, GBP), "1 employee");
+  assert.equal(intensityDenominatorText(metric(), 0, GBP), "0 employees");
+  assert.equal(intensityDenominatorText(metric(), 1.5, GBP), "1.5 employees");
+  assert.equal(intensityDenominatorText(metric({ unitWording: "box" }), 12, GBP), "12 boxes");
+  assert.equal(intensityDenominatorText(metric({ unitWording: "lorry" }), 3, GBP), "3 lorries");
+  assert.equal(intensityDenominatorText(metric({ unitWording: "m²" }), 1200, GBP), "1,200 m²");
+  assert.equal(intensityDenominatorText(metric({ unitWording: "kWh" }), 450, GBP), "450 kWh");
+  assert.equal(intensityDenominatorText(metric({ unitWording: "FTE" }), 58, GBP), "58 FTE");
 });
 
 test("the resolver stamps the unit in the client's currency, so what is frozen is right (D3c)", () => {

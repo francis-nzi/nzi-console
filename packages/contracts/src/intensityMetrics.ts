@@ -126,11 +126,12 @@ export function intensityPer(definition: Pick<IntensityMetricDefinition, "unitWo
 /**
  * The denominator itself, as a reader should see it. A currency metric's value is whole units of the client's
  * currency (0143), so it reads as money — "£12,500,000", "AED 3,000,000" — never "12,500,000 £m". A text metric
- * reads as its number and its wording, as it always has.
+ * reads as its number and its wording, plural unless the number is one — "240 employees", "1 employee" — by the same
+ * rule as `intensityPer`, so a notation stays as written ("1,200 m²", "450 kWh").
  */
 export function intensityDenominatorText(definition: Pick<IntensityMetricDefinition, "unitWording" | "unitKind">, value: number, context: IntensityUnitContext): string {
   const amount = value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
-  if (definition.unitKind !== "currency") return `${amount} ${definition.unitWording}`;
+  if (definition.unitKind !== "currency") return `${amount} ${amount === "1" ? definition.unitWording.trim() : plural(definition.unitWording)}`;
   const symbol = currencySymbol(context.currency);
   return /^[A-Z]{2,}$/.test(symbol) ? `${symbol} ${amount}` : `${symbol}${amount}`;
 }
