@@ -29,31 +29,48 @@ export type ReportStatusFacts = {
   latestSnapshotApproved: boolean;
   /** A report version is validated and not yet published. */
   hasValidatedVersion: boolean;
-  /** The job's current published version, with the client's response to it — null when none is published. */
-  published: { approvalCount: number; lastCommentFrom: "portal" | "staff" | null } | null;
+  /**
+   * The job's published reports — one per scope since S-1 (0163) — each with the client's response to it. Empty when none is
+   * published.
+   */
+  published: ReadonlyArray<PublishedScopeFacts>;
   /** The job's period is imported history whose record of account is its v7 report (decision 12). */
   v7Record: boolean;
 };
+
+export type PublishedScopeFacts = { scopeLabel: string; approvalCount: number; lastCommentFrom: "portal" | "staff" | null };
+type ClientStage = "awaiting-client" | "changes-requested" | "client-approved";
 
 export type DerivedReportStatus = {
   stage: ReportStage;
   /** A published report with a newer validated version waiting: a re-issue is ready. */
   reissueReady: boolean;
+  /** S-1: with more than one published scope, each scope's own client stage — so the row shows which one needs attention. */
+  scopes?: Array<{ scopeLabel: string; stage: ClientStage }>;
 };
 
+/** One published report's client stage. Approval outranks an open thread — the client's own act of approving is the stronger signal. */
+const clientStage = (published: PublishedScopeFacts): ClientStage =>
+  published.approvalCount > 0 ? "client-approved" : published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
+
 /**
- * One rule. The published version, when there is one, is what the client holds, so its client-side state is the job's
- * status; a validated re-issue behind it is a flag, not a regression of the stage.
+ * Across a job's published scopes the job shows the one that most needs attention (S-1, §1b): a change request first, then a
+ * report the client has yet to approve, then approved. So one scope approved and another with changes requested reads
+ * "Changes requested" — nothing is hidden behind an approval elsewhere.
+ */
+const ATTENTION: readonly ClientStage[] = ["changes-requested", "awaiting-client", "client-approved"];
+
+/**
+ * One rule. The published versions, when there are any, are what the client holds, so their client-side state is the job's
+ * status; a validated re-issue behind them is a flag, not a regression of the stage.
  *
  * "Changes requested" is derived for v1 (ruled): a published version the client has commented on last, and not approved.
- * Approval outranks an open thread — the client's own act of approving is the stronger signal.
  */
 export function deriveReportStatus(facts: ReportStatusFacts): DerivedReportStatus {
-  if (facts.published) {
-    const stage: ReportStage = facts.published.approvalCount > 0 ? "client-approved"
-      : facts.published.lastCommentFrom === "portal" ? "changes-requested"
-      : "awaiting-client";
-    return { stage, reissueReady: facts.hasValidatedVersion };
+  if (facts.published.length > 0) {
+    const scopes = facts.published.map((published) => ({ scopeLabel: published.scopeLabel, stage: clientStage(published) }));
+    const stage = ATTENTION.find((candidate) => scopes.some((scope) => scope.stage === candidate))!;
+    return { stage, reissueReady: facts.hasValidatedVersion, ...(scopes.length > 1 ? { scopes } : {}) };
   }
   if (facts.hasValidatedVersion) return { stage: "ready-to-publish", reissueReady: false };
   // Imported history is never "in preparation": its record of account already exists, in v7.

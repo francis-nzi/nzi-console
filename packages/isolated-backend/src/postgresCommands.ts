@@ -38,7 +38,8 @@ import {
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
-import { VersionConflictError } from "./errors";
+import { isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
+import { normaliseReportScope, reportScopeKey, selectableScopeSites, type ReportScope } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
@@ -2162,9 +2163,9 @@ function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:s
   if(snapshot.created_by===context.actorId)throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
 }
 /** The signee is one of the client's active report-signee contacts, frozen onto the version so the published report reproduces exactly. */
-export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
+export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
   if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);
-  const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];measurements:Array<Record<string,unknown>>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
+  const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];provenance?:{boundary?:{siteIds?:string[]}}|null;measurements:Array<Record<string,unknown>&{siteId?:string|null}>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
   const snapshot=found.rows[0];
   if(!snapshot)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
   requireReleasableSnapshot(context,snapshot);
@@ -2174,16 +2175,31 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   const charts=resolveCrpCoreCharts({id:input.reviewedSnapshotId,jobId:snapshot.job_id,jobNumber:payload.jobNumber,client:payload.client,reportingYear:payload.reportingYear,generatedAt:snapshot.created_at instanceof Date?snapshot.created_at.toISOString():String(snapshot.created_at),dataHash:snapshot.data_hash,target:payload.target as never,intensityTarget:payload.intensityTarget as never,annualComparison:payload.annualComparison as never,measurements:payload.measurements as never});
   const validation=validateManifest(crpProfessionalManifest,charts,input.reviewedSnapshotId);
   if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));
+  // S-1 (0163): the view this version issues. A site scope may pick only the snapshot's own sites — its boundary stamp, or for a
+  // snapshot frozen before the stamp, the sites its frozen rows carry (sub-ruling 3). "Every site" stays a site scope: it
+  // excludes organisation-level emissions, so it is not the whole client (ruled), and is never normalised into it.
+  const scope=normaliseReportScope(input.scope);
+  if(scope.kind==="sites"){
+    const selectable=new Set(selectableScopeSites(payload));
+    const outside=scope.siteIds.filter(id=>!selectable.has(id));
+    if(outside.length)throw new CommandValidationError([{field:"scope.siteIds",code:"SITE_NOT_SELECTABLE",message:`${outside.length===1?"A site is":`${outside.length} sites are`} not in this snapshot's reporting boundary, so ${outside.length===1?"it":"they"} cannot scope this report.`}]);
+  }
   const reportVersionId=randomUUID();
   // D3 (ruled Q2): the issuer — the organisation's names, footer and logo as they stand now — frozen with the client's logo, so
   // a later change to the profile never alters a document already validated.
   const issuer=await readOrganisationBrand(db,context.organisationId);
-  await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId]);
-  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
+  try{
+    await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null]);
+  }catch(error){
+    // 0016, keyed on scope: this snapshot is already validated (or published) at this scope.
+    if(isUniqueViolation(error))throw new ScopeConflictError("This snapshot is already validated at this scope — open that report version.");
+    throw error;
+  }
+  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null,scope},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
 });}
 
 export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string;compositionId:string;compositionHash:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{
-  const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string;version:number}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id,version FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
+  const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string;version:number;scope_key:string}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id,version,scope_key FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
   const report=found.rows[0];
   if(!report)throw new CommandValidationError([{field:"reportVersionId",code:"NOT_FOUND",message:"Validated report version was not found."}]);
   // Pinned: the version the caller saw is the version being published. Two publishes racing
@@ -2196,8 +2212,17 @@ export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["repo
   const source=(await db.query<{created_by:string;approved_by:string|null}>(`SELECT created_by,approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,report.reviewed_snapshot_id])).rows[0];
   if(!source)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
   requireReleasableSnapshot(context,source);
-  await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND status='published'`,[context.organisationId,report.job_id]);
-  const published=await db.query<{published_at:Date|string}>(`UPDATE nzi_console.report_versions SET status='published',published_at=now(),published_by=$3,version=version+1 WHERE organisation_id=$1 AND report_version_id=$2 AND status='validated' RETURNING published_at`,[context.organisationId,input.reportVersionId,context.actorId]);
+  // S-1 (0163, R-S2 as updated): one published report per job **per scope**. Publishing supersedes the published report of the
+  // same scope only; every other scope stays live beside it.
+  await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND scope_key=$3 AND status='published'`,[context.organisationId,report.job_id,report.scope_key]);
+  let published:{rows:Array<{published_at:Date|string}>};
+  try{
+    published=await db.query<{published_at:Date|string}>(`UPDATE nzi_console.report_versions SET status='published',published_at=now(),published_by=$3,version=version+1 WHERE organisation_id=$1 AND report_version_id=$2 AND status='validated' RETURNING published_at`,[context.organisationId,input.reportVersionId,context.actorId]);
+  }catch(error){
+    // 0017, relaxed to (job, scope): another publish of this scope won the race.
+    if(isUniqueViolation(error))throw new ScopeConflictError("Another report at this scope was published at the same moment — reload to see the current version.");
+    throw error;
+  }
   if(!published.rows[0])throw new VersionConflictError();
   const publishedAt=published.rows[0].published_at instanceof Date?published.rows[0].published_at.toISOString():String(published.rows[0].published_at);
 
