@@ -1,9 +1,11 @@
+import { Fragment } from "react";
 import { NziIcon, type NziIconKey } from "@nzi/ui";
 import { CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
 import {
   strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
-  reportHeadline, reportMethodologyRows, reportResidualTco2e, reportScopeFlag, reportSrsRadarChart,
-  type ReportCompositionScope, type ReportEmissionsComparison,
+  reportHeadline, reportMethodologyRows, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
+  reportSectionPlanOf, reportSrsRadarChart,
+  type ReportCompositionScope, type ReportCompositionSectionKey, type ReportEmissionsComparison,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
   type ReportSrsRoadmap, type ReportSrsSection,
 } from "@nzi/contracts";
@@ -32,23 +34,35 @@ const iconKey = (key: string): NziIconKey => key as NziIconKey;
 const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 0 });
 
 export function ReportComposedView({ composition }: { composition: ReportComposition }) {
+  // F-0 (RULING-reporting-F Q4): the layout is chosen by the composition, not by whichever view is deployed. A layout
+  // change that would alter an issued report forks to a new renderer; it never redraws this one.
+  const renderer = reportRendererOf(composition);
+  if (renderer === "composed@1") return <ComposedV1 composition={composition} />;
+  return <UnknownRenderer renderer={composition.renderer ?? ""} />;
+}
+
+/**
+ * `composed@1`: the layout every composition issued up to F-0 was drawn with. Pinned byte-for-byte in CI
+ * (`reportComposedRenderer.test.ts`). Do not change what it draws — fork to `composed@2`.
+ */
+function ComposedV1({ composition }: { composition: ReportComposition }) {
   const { emissions, intensity, targets, plan, srs } = composition;
   const footer = `${composition.client} · Carbon Reduction Plan FY${composition.reportingYear}`;
   // The figure the pathway actually lands on — read from the model, never assumed to be 0.
   const residual = isReportGap(targets) ? null : reportResidualTco2e(targets);
-  // S-2: a composition with a sites breakdown gains the "Sites & reporting boundary" section as 03; one frozen before S-2
-  // has none, and keeps its numbering exactly.
+  // S-2: a composition with a sites breakdown gains the "Sites & reporting boundary" section; one frozen before S-2 has
+  // none, and the plan's numbering closes over it.
   const hasSites = !isReportGap(emissions) && (emissions.sites?.length ?? 0) > 0;
-  const shift = hasSites ? 1 : 0;
-  const n = (base: number) => String(base + shift).padStart(2, "0");
   const scope = composition.scope;
   const realSites = hasSites && !isReportGap(emissions) ? (emissions.sites ?? []).filter((site) => site.siteId !== null) : [];
+  const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key !== "sites" || hasSites);
 
-  return <main className="nzr-doc">
-    <Cover composition={composition} />
+  // One renderer per section; the plan decides which appear, in what order, with what number and page.
+  const sections: Record<ReportCompositionSectionKey, (n: string, page: number) => React.ReactNode> = {
+    cover: () => <Cover composition={composition} />,
 
-    <Page footer={footer} number={2}>
-      <SectionHead n="01" section="executive-summary" />
+    "executive-summary": (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="executive-summary" />
       <ScopeFlag scope={scope} kind="site" />
       <p className="nzr-lede">{reportHeadline(emissions, composition.reportingYear, scope)}</p>
       {!isReportGap(emissions) ? <div className="nzr-figures">
@@ -57,10 +71,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
           label={strategyScopeLabel(entry.scope as StrategyScope)} value={tonnes(entry.tco2e)} unit="tCO₂e" />)}
       </div> : <Gap section={emissions} />}
       {!isReportGap(emissions) && emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
-    </Page>
+    </Page>,
 
-    <Page footer={footer} number={3}>
-      <SectionHead n="02" section="emissions" />
+    emissions: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="emissions" />
       <ScopeFlag scope={scope} kind="site" />
       {isReportGap(emissions)
         ? <Gap section={emissions} />
@@ -85,10 +99,11 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
           <Provenance provenance={emissions.provenance} />
         </>}
-    </Page>
+    </Page>,
 
-    {hasSites && !isReportGap(emissions) ? <Page footer={footer} number={4}>
-      <SectionHead n="03" section="sites" />
+    // Present only where a site breakdown was frozen (the layout's `present`), so emissions is never a gap here.
+    sites: (n, page) => isReportGap(emissions) ? null : <Page footer={footer} number={page}>
+      <SectionHead n={n} section="sites" />
       <ScopeFlag scope={scope} kind="site" />
       <p className="nzr-note">{scope?.kind === "sites" ? "This report covers the selected sites below." : "This report covers the following sites, and the organisation-level emissions not attributable to any one of them."}</p>
       <div className="nzr-chart"><EmissionsSiteDonut data={sitesDonut(composition, emissions)} /></div>
@@ -107,10 +122,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         </section>)}
       </> : null}
       <Provenance provenance={emissions.provenance} />
-    </Page> : null}
+    </Page>,
 
-    <Page footer={footer} number={4 + shift}>
-      <SectionHead n={n(3)} section="intensity" />
+    intensity: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="intensity" />
       <ScopeFlag scope={scope} kind="site" />
       {isReportGap(intensity)
         ? <Gap section={intensity} />
@@ -134,10 +149,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
           </div>
           <Provenance provenance={intensity.provenance} />
         </>}
-    </Page>
+    </Page>,
 
-    <Page footer={footer} number={5 + shift}>
-      <SectionHead n={n(4)} section="targets" />
+    targets: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="targets" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(targets)
         ? <Gap section={targets} />
@@ -173,10 +188,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
           </p> : null}
           <Provenance provenance={targets.provenance} />
         </>}
-    </Page>
+    </Page>,
 
-    <Page footer={footer} number={6 + shift}>
-      <SectionHead n={n(5)} section="plan" />
+    plan: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="plan" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(plan)
         ? <Gap section={plan} />
@@ -220,10 +235,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             advances. Quantified impact per strategy is not yet part of this report.
           </p>
         </>}
-    </Page>
+    </Page>,
 
-    <Page footer={footer} number={7 + shift}>
-      <SectionHead n={n(6)} section="srs" />
+    srs: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="srs" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(srs)
         ? <Gap section={srs} />
@@ -248,10 +263,10 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             statement that the disclosure has been prepared, filed or assured.
           </p>
         </>}
-    </Page>
+    </Page>,
 
-    <Page footer={footer} number={8 + shift}>
-      <SectionHead n={n(7)} section="methodology" />
+    methodology: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead n={n} section="methodology" />
       <table className="nzr-tbl">
         <tbody>{reportMethodologyRows(composition).map((row) => <tr key={row.label}>
           <td>{row.label}</td><td>{row.value}</td>
@@ -263,8 +278,25 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         measures or the readiness assessment do not alter this document. Charts are generated from the data,
         never captured as images, and render identically on screen, in the portal and in print.
       </p>
-    </Page>
+    </Page>,
+  };
+
+  return <main className="nzr-doc">
+    {layout.map((entry) => <Fragment key={entry.key}>{sections[entry.key](entry.number ?? "", entry.page)}</Fragment>)}
   </main>;
+}
+
+/**
+ * A composition naming a layout this code does not carry. Drawing it with another layout would show the client a document
+ * they were never sent, so it says so instead. Its frozen figures are untouched.
+ */
+function UnknownRenderer({ renderer }: { renderer: string }) {
+  return <main className="nzr-doc"><section className="nzr-page">
+    <p className="nzr-gap">
+      This report was issued with a layout ({renderer}) this console does not carry, so it is not drawn here rather than
+      drawn differently from how it was issued. Its frozen figures are unchanged.
+    </p>
+  </section></main>;
 }
 
 function Cover({ composition }: { composition: ReportComposition }) {

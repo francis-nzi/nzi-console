@@ -77,6 +77,63 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
   methodology: { eyebrow: "Basis", title: "Methodology & provenance" },
 };
 
+/* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
+
+/**
+ * The layouts an issued composition can name. A composition's data is frozen; this freezes **which layout draws it**, so a
+ * later change to the view cannot quietly move a report the client was already sent.
+ *
+ * The bump rule (binding): if a change to the composed view or its section/chart components would alter the markup of any
+ * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
+ * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
+ */
+export const reportRenderers = ["composed@1"] as const;
+export type ReportRenderer = (typeof reportRenderers)[number];
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@1";
+
+/**
+ * The layout a composition was issued under. One frozen before F-0 carries none, and was issued under the layout that is
+ * `composed@1`. A name this code does not know returns null — drawn with a different layout it would no longer be the
+ * report that was issued, so the view says so instead.
+ */
+export function reportRendererOf(composition: { renderer?: string }): ReportRenderer | null {
+  const renderer = composition.renderer ?? "composed@1";
+  return (reportRenderers as readonly string[]).includes(renderer) ? renderer as ReportRenderer : null;
+}
+
+/* ── Section plan (F-0; F-1 stores it) ───────────────────────────────────────────────── */
+
+/** Which sections a report shows, in order. F-0 renders every composition with the default; F-1 freezes a chosen one. */
+export type ReportSectionPlanEntry = { key: ReportCompositionSectionKey; included: boolean };
+export type ReportSectionPlan = readonly ReportSectionPlanEntry[];
+
+/** Today's report: every section, in the order it has always had. */
+export const defaultReportSectionPlan: ReportSectionPlan = reportCompositionSections.map((key) => ({ key, included: true }));
+
+/** The plan a composition renders with. Until F-1 freezes one into the composition, that is the default. */
+export const reportSectionPlanOf = (_composition: ReportComposition): ReportSectionPlan => defaultReportSectionPlan;
+
+/**
+ * Where each section lands: its printed number and its page.
+ *
+ * Numbering follows the plan rather than being written into the view. A section renders when the plan includes it and the
+ * composition has it (`present`: the Sites section exists only where a site breakdown was frozen). The cover is page 1 and
+ * carries no number; every section after it is numbered 01, 02, … in plan order, one page each, so a section that is not
+ * there never leaves a hole in the numbering.
+ */
+export function reportSectionLayout(
+  plan: ReportSectionPlan,
+  present: (key: ReportCompositionSectionKey) => boolean,
+): Array<{ key: ReportCompositionSectionKey; number: string | null; page: number }> {
+  const shown = plan.filter((entry) => entry.included && present(entry.key));
+  let numbered = 0;
+  return shown.map((entry, index) => ({
+    key: entry.key,
+    number: entry.key === "cover" ? null : String(++numbered).padStart(2, "0"),
+    page: index + 1,
+  }));
+}
+
 /**
  * A section that had nothing to say, and why.
  *
@@ -339,6 +396,11 @@ export type ReportComposition = {
    * logo as they stood then. A composition frozen before D3 has none; its report version's backfilled columns stand in.
    */
   issuer?: ReportIssuer;
+  /**
+   * F-0: the layout this composition was issued under (`reportRenderers`), stamped at freeze. Absent on compositions frozen
+   * before F-0, which were issued under `composed@1`.
+   */
+  renderer?: string;
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };
