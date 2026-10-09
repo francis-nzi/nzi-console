@@ -77,6 +77,7 @@ describe("a report composed for its scope (S-2), against a real database", { ski
     const composition = await compose();
     const emissions = emissionsOf(composition);
     assert.deepEqual(composition.scope, { kind: "whole" });
+    assert.equal(composition.renderer, "composed@1", "F-0: a new composition names the layout it is issued under");
     assert.equal(emissions.totalTco2e, 35);
     assert.deepEqual(emissions.sites!.map((site) => [site.label, site.totalTco2e]), [["Works", 10], ["Annex", 5], ["Unallocated / organisation-level", 20]]);
     assert.equal(emissions.unallocated, undefined);

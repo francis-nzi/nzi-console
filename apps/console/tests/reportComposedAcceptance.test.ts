@@ -267,8 +267,8 @@ describe("the report's readiness roadmap", () => {
   });
 
   it("renders after the maturity table and the radar", () => {
-    // S-2 numbers sections after the Sites section when a composition has one (06, or 07 with Sites), so the SRS section is n(6).
-    const section = /<SectionHead n=\{n\(6\)\} section="srs"[\s\S]*?<\/Page>/.exec(view)?.[0] ?? "";
+    // F-0: numbers come from the plan (reportSectionLayout), so the SRS section renders with the number it is handed.
+    const section = /<SectionHead n=\{n\} section="srs"[\s\S]*?<\/Page>/.exec(view)?.[0] ?? "";
     assert.ok(section.length > 0, "the SRS section exists");
     assert.ok(section.indexOf("nzr-srs") < section.indexOf("SrsRoadmap"), "roadmap follows maturity + radar");
   });

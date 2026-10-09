@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
@@ -361,6 +361,8 @@ export async function composeReport(db: Queryable, input: {
     // S-2: the scope this report was issued at, its sites named from the frozen rows.
     scope: context.scope.kind === "whole" ? { kind: "whole" }
       : { kind: "sites", siteIds: context.scope.siteIds, siteLabels: isReportGap(emissions) ? context.scope.siteIds.map((id) => context.siteNames.get(id) ?? id) : (emissions.sites ?? []).map((site) => site.label) },
+    // F-0 (RULING-reporting-F Q4): the layout this report is issued under, frozen with it, so a later layout cannot redraw it.
+    renderer: REPORT_RENDERER_LATEST,
   };
 }
 

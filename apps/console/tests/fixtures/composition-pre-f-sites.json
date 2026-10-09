@@ -1,0 +1,859 @@
+{
+  "reportVersionId": "37e48861-60c9-431e-a49c-6f04360cebc0",
+  "jobId": "j-cur",
+  "jobNumber": "J009802",
+  "client": "Serial Co",
+  "reportingYear": 2025,
+  "issuedAt": "2026-02-01T00:00:00.000Z",
+  "snapshotId": "snap-j-cur",
+  "snapshotDataHash": "sha256:8f908aaf4322414885e354ad7088b2ead136655b0f39466a0c6169d4bd8ce065",
+  "assurance": {
+    "kind": "internal-review",
+    "statement": "Reviewed snapshot (internal review); not third-party assured",
+    "reviewedBy": "ada",
+    "reviewedAt": "2026-10-09T16:06:10.642Z"
+  },
+  "emissions": {
+    "totalTco2e": 15,
+    "byScope": [
+      {
+        "scope": "1",
+        "tco2e": 10
+      },
+      {
+        "scope": "2",
+        "tco2e": 5
+      }
+    ],
+    "priorYear": null,
+    "provenance": {
+      "factorSets": [
+        "demo"
+      ],
+      "dataHash": "sha256:8f908aaf4322414885e354ad7088b2ead136655b0f39466a0c6169d4bd8ce065",
+      "asAt": "2026-10-09",
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 1
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    },
+    "sites": [
+      {
+        "siteId": "s-a",
+        "label": "Works",
+        "totalTco2e": 10,
+        "byScope": [
+          {
+            "scope": "1",
+            "tco2e": 10
+          }
+        ],
+        "activities": [
+          {
+            "label": "Gas",
+            "scope": "1",
+            "tco2e": 10
+          }
+        ],
+        "floorAreaIntensity": {
+          "value": 0.01,
+          "unit": "tCO₂e / m²",
+          "floorAreaM2": 1000,
+          "reason": null
+        }
+      },
+      {
+        "siteId": "s-b",
+        "label": "Annex",
+        "totalTco2e": 5,
+        "byScope": [
+          {
+            "scope": "2",
+            "tco2e": 5
+          }
+        ],
+        "activities": [
+          {
+            "label": "Electricity",
+            "scope": "2",
+            "tco2e": 5
+          }
+        ],
+        "floorAreaIntensity": {
+          "value": 0.01,
+          "unit": "tCO₂e / m²",
+          "floorAreaM2": 500,
+          "reason": null
+        }
+      }
+    ],
+    "comparison": {
+      "columns": [
+        {
+          "key": "previous",
+          "year": 2024,
+          "label": "Previous (FY2024)"
+        },
+        {
+          "key": "current",
+          "year": 2025,
+          "label": "Current (FY2025)"
+        }
+      ],
+      "rows": [
+        {
+          "scope": "1",
+          "values": [
+            10,
+            10
+          ]
+        },
+        {
+          "scope": "2",
+          "values": [
+            5,
+            5
+          ]
+        },
+        {
+          "scope": "3",
+          "values": [
+            0,
+            0
+          ]
+        }
+      ],
+      "totals": [
+        15,
+        15
+      ],
+      "changeVsBaselinePct": null,
+      "notes": []
+    },
+    "unallocated": {
+      "tco2e": 20,
+      "statement": "Organisation-level emissions (20 tCO₂e, not attributable to a site) are reported at whole-client level only and are not included in this site view."
+    },
+    "periodConflicts": [
+      {
+        "period": "01/01/2024 – 31/12/2024",
+        "jobNumbers": [
+          "J009801",
+          "J009899"
+        ]
+      }
+    ]
+  },
+  "intensity": {
+    "metrics": [
+      {
+        "key": "employees",
+        "label": "Employees",
+        "iconKey": "metric",
+        "unit": "tCO₂e / employee",
+        "value": 0.14583333333333334,
+        "unavailableReason": null,
+        "reported": true,
+        "denominatorText": "240 employees"
+      },
+      {
+        "key": "floor-area",
+        "label": "Floor area",
+        "iconKey": "metric",
+        "unit": "tCO₂e / m²",
+        "value": 0.023333333333333334,
+        "unavailableReason": null,
+        "reported": false,
+        "denominatorText": "1,500 m²"
+      }
+    ],
+    "reportedMetricKey": "employees",
+    "provenance": {
+      "factorSets": [
+        "demo"
+      ],
+      "dataHash": "sha256:8f908aaf4322414885e354ad7088b2ead136655b0f39466a0c6169d4bd8ce065",
+      "asAt": "2026-10-09",
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 1
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    }
+  },
+  "targets": {
+    "benchmark": {
+      "year": 2023,
+      "totalTco2e": 40,
+      "source": "client-record",
+      "reference": null
+    },
+    "trajectory": [
+      {
+        "year": 2023,
+        "tco2e": 40,
+        "kind": "benchmark",
+        "pct": 0
+      },
+      {
+        "year": 2030,
+        "tco2e": 20,
+        "kind": "near-term",
+        "pct": 50
+      },
+      {
+        "year": 2045,
+        "tco2e": 3.999999999999999,
+        "kind": "net-zero",
+        "pct": 90
+      }
+    ],
+    "benchmarkStale": false,
+    "setAt": "2026-10-09T16:06:09.704Z",
+    "provenance": {
+      "factorSets": [
+        "demo"
+      ],
+      "dataHash": "sha256:8f908aaf4322414885e354ad7088b2ead136655b0f39466a0c6169d4bd8ce065",
+      "asAt": "2026-10-09",
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 1
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    }
+  },
+  "plan": {
+    "groups": [
+      {
+        "leverId": "lever-energy",
+        "label": "Energy",
+        "strategies": [
+          {
+            "title": "Heat-pump conversion",
+            "scope": "1",
+            "category": "Heating",
+            "status": "planned",
+            "progressPct": 0,
+            "owner": "serial-admin",
+            "targetDate": "2027-02-06",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 M1",
+              "S2 S3"
+            ]
+          },
+          {
+            "title": "LED and building-management upgrade",
+            "scope": "2",
+            "category": "Energy efficiency",
+            "status": "complete",
+            "progressPct": 100,
+            "owner": "serial-admin",
+            "targetDate": "2026-08-10",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 M2"
+            ]
+          },
+          {
+            "title": "Switch to a certified renewable electricity tariff",
+            "scope": "2",
+            "category": "Energy",
+            "status": "in_progress",
+            "progressPct": 30,
+            "owner": "serial-admin",
+            "targetDate": "2026-12-08",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S1 G1"
+            ]
+          }
+        ]
+      },
+      {
+        "leverId": "lever-buildings",
+        "label": "Buildings & sites",
+        "strategies": [
+          {
+            "title": "Heat-pump conversion",
+            "scope": "1",
+            "category": "Heating",
+            "status": "planned",
+            "progressPct": 0,
+            "owner": "serial-admin",
+            "targetDate": "2027-02-06",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 M1",
+              "S2 S3"
+            ]
+          },
+          {
+            "title": "LED and building-management upgrade",
+            "scope": "2",
+            "category": "Energy efficiency",
+            "status": "complete",
+            "progressPct": 100,
+            "owner": "serial-admin",
+            "targetDate": "2026-08-10",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 M2"
+            ]
+          }
+        ]
+      },
+      {
+        "leverId": "lever-transport",
+        "label": "Transport & travel",
+        "strategies": [
+          {
+            "title": "Green fleet / EV transition",
+            "scope": "1",
+            "category": "Transport",
+            "status": "in_progress",
+            "progressPct": 40,
+            "owner": "serial-admin",
+            "targetDate": "2026-08-25",
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 M1",
+              "S2 S7"
+            ]
+          },
+          {
+            "title": "Employee commuting survey and plan",
+            "scope": "3",
+            "category": "Cat 7 · Commuting",
+            "status": "in_progress",
+            "progressPct": 25,
+            "owner": "serial-admin",
+            "targetDate": "2026-10-23",
+            "controlLevel": "influence",
+            "srsRequirementCodes": [
+              "S2 M3"
+            ]
+          }
+        ]
+      },
+      {
+        "leverId": "__unallocated",
+        "label": "Other",
+        "strategies": [
+          {
+            "title": "Site-specific heat recovery (acceptance seed)",
+            "scope": "1",
+            "category": "",
+            "status": "planned",
+            "progressPct": 10,
+            "owner": "serial-admin",
+            "targetDate": null,
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S1 M2"
+            ]
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "total": 6,
+      "planned": 2,
+      "inProgress": 3,
+      "complete": 1
+    },
+    "excludedCount": 2,
+    "qualitativeOnly": true
+  },
+  "srs": {
+    "frameworkVersion": 1,
+    "assessedOn": "2026-10-08",
+    "overallPct": 8.2,
+    "overallLabel": "Not started",
+    "pillars": [
+      {
+        "label": "Governance",
+        "maturity": 0.24,
+        "maturityLabel": "Not started"
+      },
+      {
+        "label": "Strategy",
+        "maturity": 0,
+        "maturityLabel": "Not started"
+      },
+      {
+        "label": "Risk management",
+        "maturity": 0,
+        "maturityLabel": "Not started"
+      },
+      {
+        "label": "Metrics & targets",
+        "maturity": 0.65,
+        "maturityLabel": "Developing"
+      }
+    ],
+    "radar": {
+      "maxLevel": 4,
+      "series": [
+        {
+          "key": "S2",
+          "label": "Climate",
+          "values": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "key": "S1",
+          "label": "General",
+          "values": [
+            0.67,
+            0,
+            0,
+            1.87
+          ]
+        }
+      ],
+      "target": [
+        2,
+        2,
+        2,
+        3
+      ]
+    },
+    "roadmap": {
+      "pillars": [
+        {
+          "key": "metrics",
+          "label": "Metrics & targets",
+          "gaps": [
+            {
+              "code": "S2 M1",
+              "title": "Scope 1 gross GHG emissions disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": [
+                {
+                  "title": "Green fleet / EV transition",
+                  "status": "in_progress",
+                  "statusLabel": "In progress"
+                },
+                {
+                  "title": "Heat-pump conversion",
+                  "status": "planned",
+                  "statusLabel": "Planned"
+                }
+              ]
+            },
+            {
+              "code": "S2 M2",
+              "title": "Scope 2 gross GHG emissions disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": [
+                {
+                  "title": "LED and building-management upgrade",
+                  "status": "complete",
+                  "statusLabel": "Complete"
+                }
+              ]
+            },
+            {
+              "code": "S2 M3",
+              "title": "Scope 3 GHG emissions disclosed by category",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": [
+                {
+                  "title": "Employee commuting survey and plan",
+                  "status": "in_progress",
+                  "statusLabel": "In progress"
+                }
+              ]
+            },
+            {
+              "code": "S2 M4",
+              "title": "Measurement approach, inputs and assumptions",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": []
+            },
+            {
+              "code": "S2 M5",
+              "title": "Emission factor sources and vintages disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": []
+            },
+            {
+              "code": "S2 M6",
+              "title": "Climate-related targets disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": []
+            },
+            {
+              "code": "S2 M7",
+              "title": "Progress against targets reported",
+              "maturityLabel": "Not started",
+              "targetLabel": "Advanced",
+              "shortfall": 3,
+              "strategies": []
+            },
+            {
+              "code": "S1 M8",
+              "title": "Reporting timed with the financial report",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 M8",
+              "title": "Intensity metrics disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 M11",
+              "title": "Assets or activities vulnerable to climate risk quantified",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 M12",
+              "title": "Capital deployed toward climate risks and opportunities",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 M13",
+              "title": "GHG inventory independently assured",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 M9",
+              "title": "Industry-based metrics considered",
+              "maturityLabel": "Not started",
+              "targetLabel": "Developing",
+              "shortfall": 1,
+              "strategies": []
+            },
+            {
+              "code": "S2 M10",
+              "title": "Internal carbon price disclosed, if used",
+              "maturityLabel": "Not started",
+              "targetLabel": "Developing",
+              "shortfall": 1,
+              "strategies": []
+            }
+          ]
+        },
+        {
+          "key": "governance",
+          "label": "Governance",
+          "gaps": [
+            {
+              "code": "S1 G1",
+              "title": "Oversight of sustainability risks beyond climate",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": [
+                {
+                  "title": "Switch to a certified renewable electricity tariff",
+                  "status": "in_progress",
+                  "statusLabel": "In progress"
+                }
+              ]
+            },
+            {
+              "code": "S2 G1",
+              "title": "Board body responsible for climate is identified",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 G2",
+              "title": "Terms of reference reflect climate responsibilities",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 G3",
+              "title": "Management's role and reporting lines are defined",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 G4",
+              "title": "Climate competence of the oversight body",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 G5",
+              "title": "Frequency of climate reporting to the board",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S1 G2",
+              "title": "Management's role in sustainability governance",
+              "maturityLabel": "Developing",
+              "targetLabel": "Established",
+              "shortfall": 1,
+              "strategies": []
+            },
+            {
+              "code": "S1 G3",
+              "title": "Controls and procedures support the disclosures",
+              "maturityLabel": "Developing",
+              "targetLabel": "Established",
+              "shortfall": 1,
+              "strategies": []
+            },
+            {
+              "code": "S2 G6",
+              "title": "Climate in performance and remuneration",
+              "maturityLabel": "Not started",
+              "targetLabel": "Developing",
+              "shortfall": 1,
+              "strategies": []
+            }
+          ]
+        },
+        {
+          "key": "risk",
+          "label": "Risk management",
+          "gaps": [
+            {
+              "code": "S1 R1",
+              "title": "Process to identify, assess and prioritise sustainability risks",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S1 R2",
+              "title": "Integration with enterprise risk management",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 R1",
+              "title": "Process to identify and assess climate risks",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 R2",
+              "title": "Climate risks are prioritised against other risks",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 R3",
+              "title": "Process to monitor and manage climate risks",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 R4",
+              "title": "Integration into enterprise risk management",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 R5",
+              "title": "Process to identify climate opportunities",
+              "maturityLabel": "Not started",
+              "targetLabel": "Developing",
+              "shortfall": 1,
+              "strategies": []
+            }
+          ]
+        },
+        {
+          "key": "strategy",
+          "label": "Strategy",
+          "gaps": [
+            {
+              "code": "S1 S1",
+              "title": "Material sustainability risks and opportunities identified",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S1 S2",
+              "title": "Effects on business model, strategy and financial position",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S1 S3",
+              "title": "Time horizons defined and applied consistently",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S1",
+              "title": "Climate risks and opportunities identified with time horizons",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S2",
+              "title": "Effects on the business model and value chain",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S3",
+              "title": "Effects on strategy and decision-making",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": [
+                {
+                  "title": "Heat-pump conversion",
+                  "status": "planned",
+                  "statusLabel": "Planned"
+                }
+              ]
+            },
+            {
+              "code": "S2 S4",
+              "title": "Effects on financial position, performance and cash flows",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S5",
+              "title": "Climate resilience assessed through scenario analysis",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S6",
+              "title": "Scenario method, inputs and assumptions disclosed",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": []
+            },
+            {
+              "code": "S2 S7",
+              "title": "Transition plan, with assumptions and dependencies",
+              "maturityLabel": "Not started",
+              "targetLabel": "Established",
+              "shortfall": 2,
+              "strategies": [
+                {
+                  "title": "Green fleet / EV transition",
+                  "status": "in_progress",
+                  "statusLabel": "In progress"
+                }
+              ]
+            },
+            {
+              "code": "S2 S8",
+              "title": "Planned use of carbon credits is explained",
+              "maturityLabel": "Not started",
+              "targetLabel": "Developing",
+              "shortfall": 1,
+              "strategies": []
+            }
+          ]
+        }
+      ],
+      "unaddressedCount": 35
+    }
+  },
+  "scope": {
+    "kind": "sites",
+    "siteIds": [
+      "s-a",
+      "s-b"
+    ],
+    "siteLabels": [
+      "Works",
+      "Annex"
+    ]
+  },
+  "issuer": {
+    "displayName": "serial-org",
+    "shortName": "serial-org",
+    "footer": "serial-org",
+    "logoAssetId": null
+  }
+}
