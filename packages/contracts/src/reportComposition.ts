@@ -61,7 +61,7 @@ export function reportAssurance(input: { reviewedBy: string; reviewedAt: string 
 /* ── Sections ────────────────────────────────────────────────────────────────────────── */
 
 export const reportCompositionSections = [
-  "cover", "executive-summary", "emissions", "intensity", "targets", "plan", "srs", "methodology",
+  "cover", "executive-summary", "emissions", "sites", "intensity", "targets", "plan", "srs", "methodology",
 ] as const;
 export type ReportCompositionSectionKey = (typeof reportCompositionSections)[number];
 
@@ -69,6 +69,7 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
   cover: { eyebrow: "", title: "Carbon Reduction Plan" },
   "executive-summary": { eyebrow: "Overview", title: "Executive summary" },
   emissions: { eyebrow: "Emissions", title: "Emissions by scope" },
+  sites: { eyebrow: "Boundary", title: "Sites & reporting boundary" },
   intensity: { eyebrow: "Performance", title: "Emissions intensity" },
   targets: { eyebrow: "Trajectory", title: "Targets & reduction pathway" },
   plan: { eyebrow: "Plan", title: "Decarbonisation actions" },
@@ -88,11 +89,69 @@ export const isReportGap = (section: unknown): section is ReportSectionGap =>
   typeof section === "object" && section !== null && (section as ReportSectionGap).state === "unavailable";
 
 export type ReportEmissionsSection = {
+  /** The emissions this report covers: the whole client's, or — under a site scope — only those attributable to its sites. */
   totalTco2e: number;
   byScope: Array<{ scope: string; tco2e: number }>;
+  /** Whole-client only; under a site scope the comparison carries the history and this is null. */
   priorYear: { year: number; totalTco2e: number } | null;
   provenance: ReportProvenance;
+  /**
+   * S-2 (R-S1 (A′)): the frozen rows by site, for the Sites section and its per-site subsections. At whole-client scope it
+   * ends with an "Unallocated / organisation-level" entry (siteId null) inside the total; under a site scope it holds only the
+   * selected sites. Absent on compositions frozen before S-2.
+   */
+  sites?: ReportSiteEmissions[];
+  /**
+   * S-2, sub-ruling 1: under a site scope, the organisation-level emissions this view excludes — **never apportioned**, never
+   * in the site total, stated prominently. Absent at whole-client scope (where unallocated is a line in `sites`).
+   */
+  unallocated?: { tco2e: number; statement: string };
+  /** S-2, sub-ruling 4: year-on-year for this scope, its columns following the assured periods that exist. */
+  comparison?: ReportEmissionsComparison;
+  /** S-2, sub-ruling 4: a reporting period covered by more than one job's snapshot — flagged, never summed or silently picked. */
+  periodConflicts?: Array<{ period: string; jobNumbers: string[] }>;
 };
+
+export type ReportSiteEmissions = {
+  /** null: the "Unallocated / organisation-level" line (whole-client scope only). */
+  siteId: string | null;
+  label: string;
+  totalTco2e: number;
+  byScope: Array<{ scope: string; tco2e: number }>;
+  /** The site's rows by activity, largest first. */
+  activities: Array<{ label: string; scope: string; tco2e: number }>;
+  /** Floor-area intensity for the site when floor area resolves for it; otherwise a stated gap. Sites only. */
+  floorAreaIntensity?: { value: number | null; unit: string; floorAreaM2: number | null; reason: string | null };
+};
+
+export type ReportComparisonColumn = { key: "baseline" | "previous" | "current"; year: number; label: string };
+export type ReportEmissionsComparison = {
+  columns: ReportComparisonColumn[];
+  /** Per scope, a value per column — null where that period cannot be attributed to this scope's sites (said in `notes`). */
+  rows: Array<{ scope: "1" | "2" | "3"; values: Array<number | null> }>;
+  totals: Array<number | null>;
+  /** % change of the current period against the baseline column, when both are known. */
+  changeVsBaselinePct: number | null;
+  notes: string[];
+};
+
+/** The scope a composition was issued at (S-2): the whole client, or named sites. Absent on compositions frozen before S-2 = whole. */
+export type ReportCompositionScope = { kind: "whole" } | { kind: "sites"; siteIds: string[]; siteLabels: string[] };
+
+/**
+ * Which sections a scope recomposes (S-2): emissions and intensity are **site** kind — filtered to the selection; the
+ * targets, the plan and SRS readiness are **client** kind — the client's own records, shown whole regardless of scope.
+ */
+export const reportSectionScopeKind = {
+  "executive-summary": "site", emissions: "site", intensity: "site", sites: "site",
+  targets: "client", plan: "client", srs: "client",
+} as const;
+
+/** The flag a site-kind section carries under a site scope, and the one every client-kind section carries. */
+export function reportScopeFlag(scope: ReportCompositionScope | undefined, kind: "site" | "client"): string | null {
+  if (kind === "client") return scope && scope.kind === "sites" ? "Client-level — shown for the whole client regardless of site scope" : null;
+  return scope && scope.kind === "sites" ? `Recomposed for: ${scope.siteLabels.join(", ")}` : null;
+}
 
 export type ReportIntensitySection = {
   metrics: Array<{
@@ -107,6 +166,11 @@ export type ReportIntensitySection = {
     reported?: boolean;
     /** RF-1: what the intensity is per, as a reader sees it ("£12,500,000", "431 employee"). Absent before RF-1. */
     denominatorText?: string | null;
+    /**
+     * S-2: under a site scope, a measure that has no per-site value (turnover, employees, a custom measure) is not divided
+     * by the sites' emissions — it says so here ("Reported at whole-client level only"), never apportioned.
+     */
+    scopeNote?: string | null;
   }>;
   /**
    * RF-1: the key of the metric the CRP reports, read from the reviewed snapshot (3c-3's adapter, frozen at review) —
@@ -267,6 +331,8 @@ export type ReportComposition = {
   targets: ReportTargetsSection | ReportSectionGap;
   plan: ReportPlanSection | ReportSectionGap;
   srs: ReportSrsSection | ReportSectionGap;
+  /** S-2: the scope this report was issued at — its version's. Absent on compositions frozen before S-2 (= whole client). */
+  scope?: ReportCompositionScope;
   /**
    * Who issued it, frozen at validation (D3, ruled Q2): the organisation's display and short name, its footer and its
    * logo as they stood then. A composition frozen before D3 has none; its report version's backfilled columns stand in.
@@ -352,9 +418,21 @@ export function composeReportPlan(
  * It states a year-on-year movement only when there is a prior year to compare against.
  * "Down 0%" against nothing is a claim, not a neutral default.
  */
-export function reportHeadline(emissions: ReportEmissionsSection | ReportSectionGap, reportingYear: number): string {
+export function reportHeadline(emissions: ReportEmissionsSection | ReportSectionGap, reportingYear: number, scope?: ReportCompositionScope): string {
   if (isReportGap(emissions)) return "No assured emissions figure was available when this report was issued.";
   const total = emissions.totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 0 });
+  // S-2: a site view's history is its comparison (its own sites, period by period), never the whole client's prior year.
+  if (scope?.kind === "sites" && emissions.comparison) {
+    const lead = `FY${reportingYear} assured emissions for ${scope.siteLabels.join(", ")}: ${total} tCO₂e`;
+    const columns = emissions.comparison.columns, totals = emissions.comparison.totals;
+    const earlier = columns.length - 2;
+    if (earlier < 0) return `${lead}. This is the first assured period, so there is no earlier period to compare against.`;
+    const before = totals[earlier];
+    if (before === null || before === undefined) return `${lead}. FY${columns[earlier]!.year} cannot be attributed to these sites, so no movement is stated.`;
+    if (before === 0) return `${lead}.`;
+    const movement = ((emissions.totalTco2e - before) / before) * 100;
+    return `${lead}, ${movement < 0 ? "down" : "up"} ${Math.abs(movement).toFixed(1)}% against FY${columns[earlier]!.year}.`;
+  }
   if (emissions.priorYear === null) {
     return `FY${reportingYear} assured emissions: ${total} tCO₂e. This is the first assured year, so there is no prior year to compare against.`;
   }

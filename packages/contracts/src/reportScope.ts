@@ -50,3 +50,31 @@ export function selectableScopeSites(snapshot: {
   if (Array.isArray(stamped)) return [...new Set(stamped)].sort();
   return [...new Set(snapshot.measurements.map((row) => row.siteId).filter((id): id is string => typeof id === "string" && id !== ""))].sort();
 }
+
+/**
+ * S-2: what the preparation screen offers — every selectable site with its frozen tCO₂e (a boundary site with no rows reads
+ * 0), and the organisation-level total a site scope leaves out, so the reader sees exactly why an all-sites total differs
+ * from the whole client's (ruled).
+ */
+export function reportScopeChoices(snapshot: {
+  provenance?: { boundary?: { siteIds?: string[] } } | null;
+  measurements: ReadonlyArray<{ siteId?: string | null; siteLabel?: string | null; tco2e: number }>;
+}): { sites: Array<{ siteId: string; label: string; tco2e: number }>; unallocatedTco2e: number; totalTco2e: number } {
+  const label = new Map<string, string>();
+  for (const row of snapshot.measurements) if (row.siteId && row.siteLabel?.trim()) label.set(row.siteId, row.siteLabel.trim());
+  const sum = (rows: ReadonlyArray<{ tco2e: number }>) => rows.reduce((total, row) => total + row.tco2e, 0);
+  return {
+    sites: selectableScopeSites(snapshot).map((siteId) => ({ siteId, label: label.get(siteId) ?? siteId, tco2e: sum(snapshot.measurements.filter((row) => row.siteId === siteId)) })),
+    unallocatedTco2e: sum(snapshot.measurements.filter((row) => !row.siteId)),
+    totalTco2e: sum(snapshot.measurements),
+  };
+}
+
+/** The selector's live summary: what a choice covers and, under a site scope, what it excludes. */
+export function reportScopeSummary(choices: ReturnType<typeof reportScopeChoices>, scope: ReportScope): string {
+  const fmt = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+  if (scope.kind === "whole") return `Whole client · ${choices.sites.length} site${choices.sites.length === 1 ? "" : "s"} · ${fmt(choices.totalTco2e)} tCO₂e, including ${fmt(choices.unallocatedTco2e)} tCO₂e organisation-level`;
+  const chosen = new Set(scope.siteIds);
+  const attributable = choices.sites.filter((site) => chosen.has(site.siteId)).reduce((total, site) => total + site.tco2e, 0);
+  return `Covers ${chosen.size} of ${choices.sites.length} site${choices.sites.length === 1 ? "" : "s"} · ${fmt(attributable)} tCO₂e attributable · ${fmt(choices.unallocatedTco2e)} tCO₂e organisation-level, excluded`;
+}

@@ -676,6 +676,11 @@ jobs:
       # publish race is a conflict, never a raw error; the readers list every scope, whole-client first.
       - name: A job publishes one report per scope side by side, and every reader names the scope it serves
         run: npx tsx --test packages/isolated-backend/tests/reportScopeIdentityReal.test.ts
+      # Reporting S-2 (ruled, R-S1 (A′)): a report composed for its scope from frozen rows — organisation-level emissions
+      # excluded and stated, never apportioned; history columns from the assured periods that exist; a pre-site period not
+      # attributable; a period two jobs report flagged; floor area over the selected sites, turnover whole-client only.
+      - name: A report recomposes for its scope from frozen rows and never apportions organisation-level emissions
+        run: npx tsx --test packages/isolated-backend/tests/reportScopeCompositionReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

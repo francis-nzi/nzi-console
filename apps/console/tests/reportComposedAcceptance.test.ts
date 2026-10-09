@@ -110,7 +110,7 @@ describe("the composed report", () => {
     assert.match(view, /Evidence hash \{provenance\.dataHash\}/);
     // Every data section that has provenance renders it.
     const uses = (view.match(/<Provenance provenance=/g) ?? []).length;
-    assert.equal(uses, 3, "emissions, intensity and targets each carry their own basis");
+    assert.equal(uses, 4, "emissions, the sites (S-2), intensity and targets each carry their own basis");
   });
 
   it("is one document on screen, in the portal and in print", () => {
@@ -265,8 +265,9 @@ describe("the report's readiness roadmap", () => {
   });
 
   it("renders after the maturity table and the radar", () => {
-    const section = /<SectionHead n="06"[\s\S]*?<\/Page>/.exec(view)?.[0] ?? "";
-    assert.ok(section.length > 0, "section 06 exists");
+    // S-2 numbers sections after the Sites section when a composition has one (06, or 07 with Sites), so the SRS section is n(6).
+    const section = /<SectionHead n=\{n\(6\)\} section="srs"[\s\S]*?<\/Page>/.exec(view)?.[0] ?? "";
+    assert.ok(section.length > 0, "the SRS section exists");
     assert.ok(section.indexOf("nzr-srs") < section.indexOf("SrsRoadmap"), "roadmap follows maturity + radar");
   });
 

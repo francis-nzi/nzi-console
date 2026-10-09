@@ -10,7 +10,7 @@ import {
   crpProfessionalManifest,
   resolveCrpCoreCharts,
 } from "@nzi/charts";
-import type { ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
+import { reportScopeChoices, type ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
 import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
@@ -109,7 +109,7 @@ function LiveSnapshotPreview({
           {purchasedGoods&&<PurchasedGoodsBreakdown data={purchasedGoods}/>}
         </div>
         <div className="nz-section-intro"><div><span className="nz-eyebrow">Controlled release</span><h2>Professional manifest validation</h2><p>The validator creates an immutable version before any client publication can occur.</p></div></div>
-        <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} ready={validation.valid}/>
+        <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} ready={validation.valid} choices={reportScopeChoices(snapshot)}/>
         <ManifestChartSet
           manifest={crpProfessionalManifest}
           charts={charts}

@@ -126,3 +126,23 @@
   .nzr-roadmap-pillar h4{break-after:avoid}
   .nzr-sechd{break-after:avoid}
 }
+
+/* S-2, to the Report Studio mockup: the scope a section is recomposed for (mint), or the client-level flag (grey, violet
+   dot) — a non-scope mark, so it borrows no scope colour. */
+.nzr-scopeflag{display:inline-flex;align-items:center;gap:8px;margin:-6px 0 14px;padding:5px 11px;border:1px solid #BCE8D0;border-radius:7px;background:#DFF5E9;color:#075B37;font-size:11.5px;font-weight:600}
+.nzr-scopeflag.client{border-color:var(--line);background:var(--panel-2);color:var(--ink-2)}
+.nzr-scopeflag.client::before{content:"";width:7px;height:7px;border-radius:50%;background:#6B4E9B}
+/* Sub-ruling 1: what a site view leaves out, stated where it is read — not a footnote. */
+.nzr-callout{margin:14px 0 0;padding:12px 15px;border:1px solid var(--line);border-left:4px solid var(--ink-2);border-radius:6px;background:var(--panel-2);color:var(--ink-2);font-size:12.5px;line-height:1.55;break-inside:avoid}
+.nzr-callout.unallocated{border-left-color:#6B4E9B}
+.nzr-callout.warn{border-left-color:#B4690E;background:#FFF4DC;color:#5C4300}
+.nzr-callout p{margin:0}.nzr-callout p+p{margin-top:6px}
+.nzr-chart{margin:4px 0 16px;break-inside:avoid}
+.nzr-h3{margin:22px 0 10px;color:var(--ink-2);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.nzr-site{margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;break-inside:avoid}
+.nzr-site h4{margin:0 0 10px;font-size:13px;font-weight:700}
+.nzr-site-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.nzr-compare th.r,.nzr-compare td.r{white-space:nowrap}
+.nzr-compare .muted{color:var(--faint);font-size:11px}
+.nzr-tag.whole{margin:0 0 0 8px;border-radius:999px;text-transform:none;letter-spacing:0;color:var(--ink-2);vertical-align:middle}
+@media (max-width:620px){.nzr-site-charts{grid-template-columns:1fr}}
