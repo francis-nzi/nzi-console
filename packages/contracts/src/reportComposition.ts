@@ -164,7 +164,8 @@ export type ReportIntensitySection = {
      * before RF-1, which render as they always have.
      */
     reported?: boolean;
-    /** RF-1: what the intensity is per, as a reader sees it ("£12,500,000", "431 employee"). Absent before RF-1. */
+    /** RF-1: what the intensity is per, as a reader sees it ("£12,500,000", "431 employees"). Frozen as composed, so a report issued before
+     * the plural keeps "431 employee". Absent before RF-1. */
     denominatorText?: string | null;
     /**
      * S-2: under a site scope, a measure that has no per-site value (turnover, employees, a custom measure) is not divided
