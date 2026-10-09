@@ -1,13 +1,15 @@
 import { NziIcon, type NziIconKey } from "@nzi/ui";
-import { CRP_RESOLVER_VERSION, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
+import { CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
 import {
   strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
-  reportHeadline, reportMethodologyRows, reportResidualTco2e, reportSrsRadarChart,
+  reportHeadline, reportMethodologyRows, reportResidualTco2e, reportScopeFlag, reportSrsRadarChart,
+  type ReportCompositionScope, type ReportEmissionsComparison,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
   type ReportSrsRoadmap, type ReportSrsSection,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import { LogoMark } from "../../lib/LogoMark";
+import { siteActivities, siteScopeDonut, sitesDonut } from "./scopeCharts";
 
 /**
  * The composed report (`report_v1`).
@@ -34,22 +36,32 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
   const footer = `${composition.client} · Carbon Reduction Plan FY${composition.reportingYear}`;
   // The figure the pathway actually lands on — read from the model, never assumed to be 0.
   const residual = isReportGap(targets) ? null : reportResidualTco2e(targets);
+  // S-2: a composition with a sites breakdown gains the "Sites & reporting boundary" section as 03; one frozen before S-2
+  // has none, and keeps its numbering exactly.
+  const hasSites = !isReportGap(emissions) && (emissions.sites?.length ?? 0) > 0;
+  const shift = hasSites ? 1 : 0;
+  const n = (base: number) => String(base + shift).padStart(2, "0");
+  const scope = composition.scope;
+  const realSites = hasSites && !isReportGap(emissions) ? (emissions.sites ?? []).filter((site) => site.siteId !== null) : [];
 
   return <main className="nzr-doc">
     <Cover composition={composition} />
 
     <Page footer={footer} number={2}>
       <SectionHead n="01" section="executive-summary" />
-      <p className="nzr-lede">{reportHeadline(emissions, composition.reportingYear)}</p>
+      <ScopeFlag scope={scope} kind="site" />
+      <p className="nzr-lede">{reportHeadline(emissions, composition.reportingYear, scope)}</p>
       {!isReportGap(emissions) ? <div className="nzr-figures">
         <Figure label="Assured emissions" value={tonnes(emissions.totalTco2e)} unit="tCO₂e" />
         {emissions.byScope.map((entry) => <Figure key={entry.scope}
           label={strategyScopeLabel(entry.scope as StrategyScope)} value={tonnes(entry.tco2e)} unit="tCO₂e" />)}
       </div> : <Gap section={emissions} />}
+      {!isReportGap(emissions) && emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
     </Page>
 
     <Page footer={footer} number={3}>
       <SectionHead n="02" section="emissions" />
+      <ScopeFlag scope={scope} kind="site" />
       {isReportGap(emissions)
         ? <Gap section={emissions} />
         : <>
@@ -64,15 +76,42 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             </tbody>
             <tfoot><tr><td>Total</td><td className="r num">{tonnes(emissions.totalTco2e)}</td><td className="r num">100%</td></tr></tfoot>
           </table>
-          {emissions.priorYear === null
+          {emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
+          {emissions.periodConflicts?.length ? <div className="nzr-callout warn" role="note">{emissions.periodConflicts.map((conflict) => <p key={conflict.period}>{conflict.jobNumbers.join(" and ")} both report {conflict.period}. Resolve which stands before comparing that period — it is not summed or chosen here.</p>)}</div> : null}
+          {emissions.comparison
+            ? <Comparison comparison={emissions.comparison} />
+            : emissions.priorYear === null
             ? <p className="nzr-note">This is the first assured year, so there is no prior year to compare against.</p>
             : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
           <Provenance provenance={emissions.provenance} />
         </>}
     </Page>
 
-    <Page footer={footer} number={4}>
-      <SectionHead n="03" section="intensity" />
+    {hasSites && !isReportGap(emissions) ? <Page footer={footer} number={4}>
+      <SectionHead n="03" section="sites" />
+      <ScopeFlag scope={scope} kind="site" />
+      <p className="nzr-note">{scope?.kind === "sites" ? "This report covers the selected sites below." : "This report covers the following sites, and the organisation-level emissions not attributable to any one of them."}</p>
+      <div className="nzr-chart"><EmissionsSiteDonut data={sitesDonut(composition, emissions)} /></div>
+      <table className="nzr-tbl">
+        <thead><tr><th>Site</th><th className="r">tCO₂e</th><th className="r">Share</th></tr></thead>
+        <tbody>{(emissions.sites ?? []).map((site) => <tr key={site.siteId ?? "unallocated"}><td>{site.label}</td><td className="r num">{tonnes(site.totalTco2e)}</td><td className="r num">{emissions.totalTco2e === 0 || site.siteId === null && scope?.kind === "sites" ? "—" : `${((site.totalTco2e / emissions.totalTco2e) * 100).toFixed(1)}%`}</td></tr>)}</tbody>
+        <tfoot><tr><td>Total</td><td className="r num">{tonnes(emissions.totalTco2e)}</td><td className="r num">100%</td></tr></tfoot>
+      </table>
+      {emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
+      {realSites.length > 1 ? <>
+        <h3 className="nzr-h3">By site</h3>
+        {realSites.map((site) => <section className="nzr-site" key={site.siteId}>
+          <h4>{site.label}</h4>
+          <div className="nzr-site-charts"><EmissionsScopeDonut data={siteScopeDonut(composition, emissions, site)} /><EmissionsByActivity data={siteActivities(composition, emissions, site)} /></div>
+          {site.floorAreaIntensity ? <p className="nzr-note">Floor-area intensity: {site.floorAreaIntensity.value === null ? site.floorAreaIntensity.reason : <><b className="num">{site.floorAreaIntensity.value.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</b> {site.floorAreaIntensity.unit} over {site.floorAreaIntensity.floorAreaM2?.toLocaleString("en-GB")} m²</>}. Other measures are reported at whole-client level only.</p> : null}
+        </section>)}
+      </> : null}
+      <Provenance provenance={emissions.provenance} />
+    </Page> : null}
+
+    <Page footer={footer} number={4 + shift}>
+      <SectionHead n={n(3)} section="intensity" />
+      <ScopeFlag scope={scope} kind="site" />
       {isReportGap(intensity)
         ? <Gap section={intensity} />
         : <>
@@ -83,7 +122,7 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
             {intensity.metrics.map((metric) => <div className={`nzr-metric${metric.reported ? " reported" : ""}`} key={metric.key}>
               <span className="ic"><NziIcon name={iconKey(metric.iconKey)} size={18} /></span>
               <div className="nm">
-                <div className="l">{metric.label}{metric.reported ? <span className="nzr-tag reported">Reported in the CRP</span> : null}</div>
+                <div className="l">{metric.label}{metric.reported ? <span className="nzr-tag reported">Reported in the CRP</span> : null}{metric.scopeNote ? <span className="nzr-tag whole">{metric.scopeNote}</span> : null}</div>
                 {metric.denominatorText ? <div className="u">{metric.denominatorText}</div> : null}
               </div>
               {/* A measure with no value says why, in its own words. Never a dash, and
@@ -97,8 +136,9 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         </>}
     </Page>
 
-    <Page footer={footer} number={5}>
-      <SectionHead n="04" section="targets" />
+    <Page footer={footer} number={5 + shift}>
+      <SectionHead n={n(4)} section="targets" />
+      <ScopeFlag scope={scope} kind="client" />
       {isReportGap(targets)
         ? <Gap section={targets} />
         : <>
@@ -135,8 +175,9 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         </>}
     </Page>
 
-    <Page footer={footer} number={6}>
-      <SectionHead n="05" section="plan" />
+    <Page footer={footer} number={6 + shift}>
+      <SectionHead n={n(5)} section="plan" />
+      <ScopeFlag scope={scope} kind="client" />
       {isReportGap(plan)
         ? <Gap section={plan} />
         : <>
@@ -181,8 +222,9 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         </>}
     </Page>
 
-    <Page footer={footer} number={7}>
-      <SectionHead n="06" section="srs" />
+    <Page footer={footer} number={7 + shift}>
+      <SectionHead n={n(6)} section="srs" />
+      <ScopeFlag scope={scope} kind="client" />
       {isReportGap(srs)
         ? <Gap section={srs} />
         : <>
@@ -208,8 +250,8 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
         </>}
     </Page>
 
-    <Page footer={footer} number={8}>
-      <SectionHead n="07" section="methodology" />
+    <Page footer={footer} number={8 + shift}>
+      <SectionHead n={n(7)} section="methodology" />
       <table className="nzr-tbl">
         <tbody>{reportMethodologyRows(composition).map((row) => <tr key={row.label}>
           <td>{row.label}</td><td>{row.value}</td>
@@ -329,6 +371,32 @@ function SectionHead({ n, section }: { n: string; section: keyof typeof reportCo
     <span className="n">{n}</span>
     <div><div className="eyebrow">{meta.eyebrow}</div><h2>{meta.title}</h2></div>
   </div>;
+}
+
+/** S-2: which view this section is — "Recomposed for: …" on site sections, "Client-level …" on the client's own records. */
+function ScopeFlag({ scope, kind }: { scope: ReportCompositionScope | undefined; kind: "site" | "client" }) {
+  const flag = reportScopeFlag(scope, kind);
+  return flag ? <div className={`nzr-scopeflag ${kind}`}>{flag}</div> : null;
+}
+
+/** S-2, sub-ruling 1: what a site view leaves out, said where the headline figure is — never apportioned, never a footnote. */
+function Unallocated({ statement }: { statement: string }) {
+  return <div className="nzr-callout unallocated" role="note"><b>Organisation-level emissions are not in this view.</b> {statement}</div>;
+}
+
+/** S-2, sub-ruling 4: year-on-year for this scope — the columns are the assured periods that exist, never a toggle. */
+function Comparison({ comparison }: { comparison: ReportEmissionsComparison }) {
+  const cell = (value: number | null) => value === null ? <span className="muted">Not attributable</span> : tonnes(value);
+  // With only the current period the table would repeat the scope table above: say there is nothing earlier instead.
+  if (comparison.columns.length === 1) return <p className="nzr-note">This is the first assured period, so there is no earlier period to compare against.</p>;
+  return <>
+    <table className="nzr-tbl nzr-compare">
+      <thead><tr><th>Scope</th>{comparison.columns.map((column) => <th className="r" key={column.key}>{column.label}</th>)}{comparison.changeVsBaselinePct !== null ? <th className="r">vs baseline</th> : null}</tr></thead>
+      <tbody>{comparison.rows.map((row) => <tr key={row.scope}><td>{strategyScopeLabel(row.scope as StrategyScope)}</td>{row.values.map((value, index) => <td className="r num" key={index}>{cell(value)}</td>)}{comparison.changeVsBaselinePct !== null ? <td /> : null}</tr>)}</tbody>
+      <tfoot><tr><td>Total</td>{comparison.totals.map((value, index) => <td className="r num" key={index}>{cell(value)}</td>)}{comparison.changeVsBaselinePct !== null ? <td className="r num">{comparison.changeVsBaselinePct > 0 ? "+" : comparison.changeVsBaselinePct < 0 ? "−" : ""}{Math.abs(comparison.changeVsBaselinePct).toFixed(1)}%</td> : null}</tr></tfoot>
+    </table>
+    {comparison.notes.map((note) => <p className="nzr-note" key={note}>{note}</p>)}
+  </>;
 }
 
 /** A section with nothing to say, saying so — never zeros standing in for absence. */

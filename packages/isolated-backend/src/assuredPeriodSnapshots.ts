@@ -20,12 +20,18 @@ export type AssuredPeriodSnapshot = {
   period: { from: string; to: string } | null;
   /** The frozen measurements' total, tCO₂e. */
   totalTco2e: number;
+  /**
+   * S-2: the frozen rows, as a scope filters them — site (null = organisation-level), scope, tCO₂e. `sitesKnown` is false
+   * for a snapshot frozen before rows carried a site at all, which a site scope cannot attribute.
+   */
+  rows: Array<{ siteId: string | null; scope: string; tco2e: number }>;
+  sitesKnown: boolean;
 };
 
 export async function listAssuredPeriodSnapshots(db: Queryable, clientId: string, options: { excludeJobId?: string } = {}): Promise<AssuredPeriodSnapshot[]> {
   const { rows } = await db.query<{
     snapshot_id: string; data_hash: string; job_id: string; job_number: string | null; reporting_year: number;
-    period_from: Date | string | null; period_to: Date | string | null; measurements: Array<{ tco2e: number | string }> | null;
+    period_from: Date | string | null; period_to: Date | string | null; measurements: Array<{ tco2e: number | string; scope?: string; siteId?: string | null }> | null;
   }>(
     // One snapshot per reporting **period**, not per label (NZC-096). Two of a client's jobs can carry the same
     // reportingYear and mean different periods; DISTINCT ON the label kept one of them and dropped the other's assured
@@ -52,5 +58,27 @@ export async function listAssuredPeriodSnapshots(db: Queryable, clientId: string
     reportingYear: Number(row.reporting_year),
     period: row.period_from && row.period_to ? { from: dateOnly(row.period_from), to: dateOnly(row.period_to) } : null,
     totalTco2e: (row.measurements ?? []).reduce((total, measurement) => total + Number(measurement.tco2e), 0),
+    rows: (row.measurements ?? []).map((measurement) => ({ siteId: measurement.siteId ?? null, scope: String(measurement.scope ?? ""), tco2e: Number(measurement.tco2e) })),
+    sitesKnown: (row.measurements ?? []).every((measurement) => "siteId" in measurement),
   }));
+}
+
+/**
+ * S-2, sub-ruling 4: reporting periods covered by **more than one job's** reviewed snapshot. The reader above keeps one
+ * snapshot per period; where two jobs report the same period that choice would be silent, so it is surfaced here — a data
+ * condition to flag, never to sum or to pick between quietly.
+ */
+export async function listAssuredPeriodConflicts(db: Queryable, clientId: string): Promise<Array<{ period: string; jobNumbers: string[] }>> {
+  const { rows } = await db.query<{ period: string; job_numbers: string[] }>(
+    `SELECT to_char(coalesce(pj.reporting_period_start, ec.reporting_from, make_date((s.payload_json->>'reportingYear')::integer, 1, 1)), 'DD/MM/YYYY')
+              || ' – ' ||
+            to_char(coalesce(pj.reporting_period_end, ec.reporting_to, make_date((s.payload_json->>'reportingYear')::integer, 12, 31)), 'DD/MM/YYYY') AS period,
+            array_agg(DISTINCT pj.job_number ORDER BY pj.job_number) AS job_numbers
+       FROM nzi_console.reviewed_crp_snapshots s
+       JOIN nzi_console.jobs pj ON (pj.organisation_id, pj.job_id) = (s.organisation_id, s.job_id)
+       LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id, ec.job_id) = (pj.organisation_id, pj.job_id)
+      WHERE pj.client_id = $1 AND pj.job_family = 'crp'
+      GROUP BY 1 HAVING count(DISTINCT pj.job_id) > 1
+      ORDER BY 1`, [clientId]);
+  return rows.map((row) => ({ period: row.period, jobNumbers: row.job_numbers }));
 }

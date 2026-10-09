@@ -6,12 +6,14 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE,
+  type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
 import { readCurrencyDirectory } from "./commercialLookups";
 import { denominatorFor, listClientIntensityMetrics, listJobIntensityValues } from "./intensityMetricRecords";
 import { listJobReportedSites, resolveJobReportingPeriod } from "./siteBoundary";
-import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
+import { listAssuredPeriodConflicts, listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { getBenchmarkInForce, getClientTargets, type TargetActual } from "./clientTargetRecords";
 import type { Queryable } from "./postgres";
@@ -64,7 +66,11 @@ export type SnapshotForComposition = {
   dataHash: string;
   createdAt: string;
   createdBy: string;
-  measurements: Array<{ scope: string; tco2e: number; qualityTier?: string | null; factorSet?: string | null }>;
+  measurements: Array<{
+    scope: string; tco2e: number; qualityTier?: string | null; factorSet?: string | null;
+    /** S-2: the row's frozen site (null = organisation-level) and its labels, for a scope to filter and the sites to name. */
+    siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
+  }>;
   annualComparison: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
   /**
    * The reported intensity as the review froze it (3c-3's one adapter) — the figure the intensity pathway draws. The
@@ -74,24 +80,39 @@ export type SnapshotForComposition = {
   intensityTarget?: IntensityTargetReadModel | null;
 };
 
-function composeEmissions(snapshot: SnapshotForComposition): ReportEmissionsSection | ReportSectionGap {
+/** What a scope composes against (S-2): the scope, the earlier assured periods' frozen rows, the baseline year, the conflicts. */
+export type ScopeContext = {
+  scope: ReportScope;
+  history: readonly ScopedHistoryPeriod[];
+  baselineYear: number | null;
+  periodConflicts: Array<{ period: string; jobNumbers: string[] }>;
+  /** Live site names, used only for a selected site the frozen rows never named (a boundary site with no rows). */
+  siteNames: ReadonlyMap<string, string>;
+};
+
+function composeEmissions(snapshot: SnapshotForComposition, context: ScopeContext): ReportEmissionsSection | ReportSectionGap {
   if (snapshot.measurements.length === 0) {
     return { state: "unavailable", reason: "The reviewed snapshot carried no measurements inside the reporting boundary." };
   }
-  const byScope = new Map<string, number>();
-  for (const row of snapshot.measurements) byScope.set(row.scope, (byScope.get(row.scope) ?? 0) + row.tco2e);
+  // S-2 (R-S1 (A′)): every scoped figure is a filter of the snapshot's frozen rows — nothing is re-read, nothing apportioned.
+  const scoped = composeScopedEmissions(snapshot.measurements, context.scope, context.siteNames);
 
   // The prior year comes from the snapshot's own annual comparison — the same series the
-  // charts read — rather than a second query that could disagree with them.
-  const prior = snapshot.annualComparison
+  // charts read — rather than a second query that could disagree with them. It is the whole
+  // client's, so a site view carries its history in the comparison instead.
+  const prior = context.scope.kind === "whole" ? snapshot.annualComparison
     .filter((entry) => entry.year < snapshot.reportingYear)
-    .sort((a, b) => b.year - a.year)[0] ?? null;
+    .sort((a, b) => b.year - a.year)[0] ?? null : null;
 
   return {
-    totalTco2e: snapshot.measurements.reduce((sum, row) => sum + row.tco2e, 0),
-    byScope: [...byScope.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([scope, tco2e]) => ({ scope, tco2e })),
+    totalTco2e: scoped.totalTco2e,
+    byScope: scoped.byScope,
     priorYear: prior === null ? null : { year: prior.year, totalTco2e: prior.values.reduce((sum, value) => sum + value.value, 0) },
     provenance: provenanceFrom(snapshot),
+    sites: scoped.sites,
+    ...(scoped.unallocated ? { unallocated: scoped.unallocated } : {}),
+    comparison: composeScopedComparison({ scope: context.scope, currentYear: snapshot.reportingYear, current: snapshot.measurements, history: context.history, baselineYear: context.baselineYear }),
+    ...(context.periodConflicts.length ? { periodConflicts: context.periodConflicts } : {}),
   };
 }
 
@@ -132,9 +153,29 @@ async function composeTargets(db: Queryable, input: {
  * sees. A measure with no value recorded for the year resolves to "unavailable" with its
  * own reason — never 0, and never borrowed from another year.
  */
+/**
+ * S-2: the floor area of a set of the job's sites for the period. When floor area is the measure the CRP reports, the
+ * review's frozen per-site areas (`denominatorBasis.sites`) are the source; otherwise the sites as they stand at issue, by
+ * the same resolver the drawer uses. Null with a reason when any selected site's area cannot be resolved.
+ */
+function floorAreaOf(siteIds: readonly string[], basis: { frozen: IntensityTargetReadModel | null; sites: readonly ClientSiteReadModel[]; period: ReportingPeriod | null }): { m2: number | null; reason: string | null } {
+  const frozenSites = basis.frozen?.metric === "floor-area" && basis.frozen.denominatorBasis?.kind === "site-floor-area" ? basis.frozen.denominatorBasis.sites : null;
+  if (frozenSites) {
+    const chosen = frozenSites.filter((site) => siteIds.includes(site.siteId));
+    if (chosen.length !== siteIds.length || chosen.some((site) => site.floorAreaM2 === null)) return { m2: null, reason: "A selected site had no floor area when the CRP was reviewed." };
+    return { m2: chosen.reduce((total, site) => total + (site.floorAreaM2 ?? 0), 0), reason: null };
+  }
+  if (!basis.period) return { m2: null, reason: "This year has no reporting period on record, so the sites' floor area cannot be resolved." };
+  const resolved = resolveFloorAreaDenominator(basis.sites.filter((site) => siteIds.includes(site.id)), basis.period);
+  return resolved.state === "resolved" && resolved.floorAreaM2 > 0 ? { m2: resolved.floorAreaM2, reason: null } : { m2: null, reason: resolved.state === "resolved" ? "The selected sites sum to no floor area." : resolved.reason };
+}
+
+export const WHOLE_CLIENT_ONLY = "Reported at whole-client level only";
+
 async function composeIntensity(db: Queryable, input: {
-  clientId: string; jobId: string; snapshot: SnapshotForComposition; emissionsTco2e: number | null;
+  clientId: string; jobId: string; snapshot: SnapshotForComposition; emissionsTco2e: number | null; scope?: ReportScope;
 }): Promise<ReportIntensitySection | ReportSectionGap> {
+  const scope = input.scope ?? WHOLE_CLIENT_SCOPE;
   const [definitions, values, clientRows] = await Promise.all([
     listClientIntensityMetrics(db, input.clientId),
     listJobIntensityValues(db, input.jobId, input.snapshot.reportingYear),
@@ -160,6 +201,20 @@ async function composeIntensity(db: Queryable, input: {
     metrics: withCurrencyDirectory(directory, () => live.map((definition) => {
       const recorded = values.find((value) => value.metricKey === definition.key && value.periodKey === "year");
       const reported = definition.key === reportedKey;
+      if (scope.kind === "sites") {
+        // S-2 (R-S1 (A′)): only floor area exists per site. Every other measure is the client's or the job's whole value —
+        // dividing the sites' emissions by it would invent a figure, so it is stated, never apportioned.
+        if (definition.valueSource !== "site-floor-area") {
+          return { key: definition.key, label: definition.label, iconKey: definition.iconKey, unit: intensityUnit(definition, { currency }), value: null,
+            unavailableReason: `${definition.label} has no per-site value, so its intensity is reported for the whole client only.`, reported, denominatorText: null, scopeNote: WHOLE_CLIENT_ONLY };
+        }
+        const area = floorAreaOf(scope.siteIds, { frozen: reported ? frozen : null, sites, period });
+        const resolved = resolveIntensity({ definition, emissionsTco2e: input.emissionsTco2e, value: area.m2, currency });
+        return { key: definition.key, label: definition.label, iconKey: definition.iconKey, unit: intensityUnit(definition, { currency }),
+          value: resolved.state === "resolved" ? resolved.value : null,
+          unavailableReason: resolved.state === "resolved" ? null : input.emissionsTco2e !== null && area.m2 === null && area.reason ? area.reason : resolved.reason,
+          reported, denominatorText: area.m2 === null ? null : intensityDenominatorText(definition, area.m2, { currency }), scopeNote: null };
+      }
       // The reported metric reads its denominator from the snapshot, so this section and the intensity pathway the same
       // document draws cannot disagree; the snapshot's figure is already over the divider, so it is restored to the
       // metric's own units here and divided by the same resolver.
@@ -265,11 +320,16 @@ export async function composeReport(db: Queryable, input: {
   /** The assured years the pathway plots actual against, from the client's own snapshots. */
   actuals: readonly TargetActual[];
   issuedAt: string;
+  /** S-2: the version's scope and what it composes against. Absent = the whole client, with no history or conflicts read. */
+  scopeContext?: ScopeContext;
 }): Promise<ReportComposition> {
+  const context: ScopeContext = input.scopeContext ?? { scope: WHOLE_CLIENT_SCOPE, history: [], baselineYear: null, periodConflicts: [], siteNames: new Map() };
   // Composed once and shared: intensity divides by the same footprint the emissions section
-  // states, so the two can never disagree about what the total was.
-  const emissions = composeEmissions(input.snapshot);
+  // states, so the two can never disagree about what the total was — under a site scope, the
+  // emissions attributable to the selected sites.
+  const emissions = composeEmissions(input.snapshot, context);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
+  if (!isReportGap(emissions)) await attachSiteFloorAreaIntensity(db, { clientId: input.clientId, snapshot: input.snapshot, emissions });
 
   // Read once and shared: the plan section prints these strategies and the readiness
   // roadmap answers its gaps with them. Two reads could straddle an edit and leave one
@@ -277,7 +337,7 @@ export async function composeReport(db: Queryable, input: {
   const planned = listClientStrategies(db, input.clientId);
 
   const [intensity, targets, srs, strategies, levers, requirementCodes] = await Promise.all([
-    composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e }),
+    composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e, scope: context.scope }),
     composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
     composeSrs(db, input.clientId, planned),
     planned,
@@ -303,7 +363,31 @@ export async function composeReport(db: Queryable, input: {
     targets,
     plan: composeReportPlan(strategies, levers, requirementCodes),
     srs,
+    // S-2: the scope this report was issued at, its sites named from the frozen rows.
+    scope: context.scope.kind === "whole" ? { kind: "whole" }
+      : { kind: "sites", siteIds: context.scope.siteIds, siteLabels: isReportGap(emissions) ? context.scope.siteIds.map((id) => context.siteNames.get(id) ?? id) : (emissions.sites ?? []).map((site) => site.label) },
   };
+}
+
+/**
+ * S-2: each site's floor-area intensity, for the per-site subsections — only when the client measures floor area, and only
+ * for real sites (the organisation-level line has no floor). The same resolution as the scoped Intensity section.
+ */
+async function attachSiteFloorAreaIntensity(db: Queryable, input: { clientId: string; snapshot: SnapshotForComposition; emissions: ReportEmissionsSection }): Promise<void> {
+  if (!input.emissions.sites?.length) return;
+  const floor = activeMetrics(await listClientIntensityMetrics(db, input.clientId)).find((definition) => definition.valueSource === "site-floor-area");
+  if (!floor) return;
+  const [sites, reporting, clientRows] = [await listJobReportedSites(db, input.clientId, input.snapshot.jobId), await resolveJobReportingPeriod(db, input.snapshot.jobId),
+    await db.query<{ currency: string }>(`SELECT currency FROM nzi_console.clients WHERE client_id = $1`, [input.clientId])];
+  const frozen = input.snapshot.intensityTarget?.source === "client-target" && input.snapshot.intensityTarget.metric === "floor-area" ? input.snapshot.intensityTarget : null;
+  const unit = intensityUnit(floor as IntensityMetricDefinition, { currency: clientRows.rows[0]?.currency ?? "GBP" });
+  for (const site of input.emissions.sites) {
+    if (site.siteId === null) continue;
+    const area = floorAreaOf([site.siteId], { frozen, sites, period: reporting?.period ?? null });
+    site.floorAreaIntensity = area.m2 === null
+      ? { value: null, unit, floorAreaM2: null, reason: area.reason }
+      : { value: (site.totalTco2e * (floor.divider || 1)) / area.m2, unit, floorAreaM2: area.m2, reason: null };
+  }
 }
 
 /**
@@ -338,8 +422,8 @@ export async function composeAssuredActuals(db: Queryable, input: {
 export async function composeForReportVersion(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string;
 }): Promise<ReportComposition> {
-  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string } & IssuerColumns>(
-    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, ${ISSUER_COLUMNS}
+  const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string; scope_kind: "whole" | "sites"; scope_site_ids: string[] | null } & IssuerColumns>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, ${ISSUER_COLUMNS}
      FROM nzi_console.report_versions r
      JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
      WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
@@ -351,7 +435,7 @@ export async function composeForReportVersion(db: Queryable, input: {
     snapshot_id: string; job_id: string; data_hash: string; created_at: Date | string; created_by: string;
     payload_json: {
       jobNumber: string; client: string; reportingYear: number;
-      measurements: Array<{ scope: string; tco2e: number; qualityTier?: string; factorSet?: string }>;
+      measurements: SnapshotForComposition["measurements"];
       annualComparison?: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
       intensityTarget?: IntensityTargetReadModel | null;
     };
@@ -371,11 +455,28 @@ export async function composeForReportVersion(db: Queryable, input: {
     snapshot: { id: snapshot.snapshot_id, jobId: snapshot.job_id, jobNumber: payload.jobNumber, reportingYear: payload.reportingYear, measurements: payload.measurements ?? [] },
   });
 
+  // S-2: what the version's scope composes against — the earlier assured periods' frozen rows (the RF-2 reader), the client's
+  // baseline year, any period two jobs both report (flagged), and site names for a selected site no frozen row names.
+  const scope: ReportScope = row.scope_kind === "sites" && row.scope_site_ids ? { kind: "sites", siteIds: row.scope_site_ids } : WHOLE_CLIENT_SCOPE;
+  const [history, benchmark, periodConflicts, siteNames] = await Promise.all([
+    listAssuredPeriodSnapshots(db, row.client_id, { excludeJobId: snapshot.job_id }),
+    getBenchmarkInForce(db, row.client_id),
+    listAssuredPeriodConflicts(db, row.client_id),
+    db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id]).then((result) => new Map(result.rows.map((site) => [site.site_id, site.name]))),
+  ]);
+
   const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
     clientId: row.client_id,
     issuedAt: input.issuedAt,
     actuals,
+    scopeContext: {
+      scope,
+      history: history.map((period) => ({ year: period.reportingYear, rows: period.rows, sitesKnown: period.sitesKnown })),
+      baselineYear: benchmark?.year ?? null,
+      periodConflicts,
+      siteNames,
+    },
     snapshot: {
       id: snapshot.snapshot_id, jobId: snapshot.job_id, jobNumber: payload.jobNumber,
       client: payload.client, reportingYear: payload.reportingYear,

@@ -1,0 +1,124 @@
+{
+  "reportVersionId": "1241a60e-3b26-4913-8924-a84b75936c26",
+  "jobId": "job-rf",
+  "jobNumber": "J00job-rf",
+  "client": "RF Client",
+  "reportingYear": 2025,
+  "issuedAt": "2026-02-01T00:00:00.000Z",
+  "snapshotId": "snap-rf",
+  "snapshotDataHash": "sha256:aed405470e4cd73e193dba5860c8fea70ff29da93c22b4d6d6c6ba99f45333bb",
+  "assurance": {
+    "kind": "internal-review",
+    "statement": "Reviewed snapshot (internal review); not third-party assured",
+    "reviewedBy": "ada",
+    "reviewedAt": "2026-10-08T18:43:26.239Z"
+  },
+  "emissions": {
+    "totalTco2e": 35,
+    "byScope": [
+      {
+        "scope": "1",
+        "tco2e": 10
+      },
+      {
+        "scope": "2",
+        "tco2e": 5
+      },
+      {
+        "scope": "3",
+        "tco2e": 20
+      }
+    ],
+    "priorYear": {
+      "year": 2024,
+      "totalTco2e": 12
+    },
+    "provenance": {
+      "factorSets": [
+        "demo"
+      ],
+      "dataHash": "sha256:aed405470e4cd73e193dba5860c8fea70ff29da93c22b4d6d6c6ba99f45333bb",
+      "asAt": "2026-10-08",
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 1
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    }
+  },
+  "intensity": {
+    "metrics": [
+      {
+        "key": "employees",
+        "label": "Employees",
+        "iconKey": "metric",
+        "unit": "tCO₂e / employee",
+        "value": 0.7,
+        "unavailableReason": null,
+        "reported": false,
+        "denominatorText": "50 employee"
+      },
+      {
+        "key": "turnover",
+        "label": "Turnover",
+        "iconKey": "metric",
+        "unit": "tCO₂e per £m",
+        "value": 2.8,
+        "unavailableReason": null,
+        "reported": true,
+        "denominatorText": "£12,500,000"
+      },
+      {
+        "key": "floor-area",
+        "label": "Floor area",
+        "iconKey": "metric",
+        "unit": "tCO₂e / m²",
+        "value": 0.035,
+        "unavailableReason": null,
+        "reported": false,
+        "denominatorText": "1,000 m²"
+      }
+    ],
+    "reportedMetricKey": "turnover",
+    "provenance": {
+      "factorSets": [
+        "demo"
+      ],
+      "dataHash": "sha256:aed405470e4cd73e193dba5860c8fea70ff29da93c22b4d6d6c6ba99f45333bb",
+      "asAt": "2026-10-08",
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 1
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    }
+  },
+  "targets": {
+    "state": "unavailable",
+    "reason": "No reduction target was set for this client when the report was issued."
+  },
+  "plan": {
+    "state": "unavailable",
+    "reason": "No reduction strategies were on this client's plan when the report was issued."
+  },
+  "srs": {
+    "state": "unavailable",
+    "reason": "No completed SRS readiness assessment existed for this client when the report was issued."
+  },
+  "issuer": {
+    "displayName": "rf-org",
+    "shortName": "rf-org",
+    "footer": "rf-org",
+    "logoAssetId": null
+  }
+}
