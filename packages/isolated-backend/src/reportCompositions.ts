@@ -458,12 +458,10 @@ export async function composeForReportVersion(db: Queryable, input: {
   // S-2: what the version's scope composes against — the earlier assured periods' frozen rows (the RF-2 reader), the client's
   // baseline year, any period two jobs both report (flagged), and site names for a selected site no frozen row names.
   const scope: ReportScope = row.scope_kind === "sites" && row.scope_site_ids ? { kind: "sites", siteIds: row.scope_site_ids } : WHOLE_CLIENT_SCOPE;
-  const [history, benchmark, periodConflicts, siteNames] = await Promise.all([
-    listAssuredPeriodSnapshots(db, row.client_id, { excludeJobId: snapshot.job_id }),
-    getBenchmarkInForce(db, row.client_id),
-    listAssuredPeriodConflicts(db, row.client_id),
-    db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id]).then((result) => new Map(result.rows.map((site) => [site.site_id, site.name]))),
-  ]);
+  const [history, benchmark, periodConflicts, siteRows] = [await listAssuredPeriodSnapshots(db, row.client_id, { excludeJobId: snapshot.job_id }),
+    await getBenchmarkInForce(db, row.client_id), await listAssuredPeriodConflicts(db, row.client_id),
+    await db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id])];
+  const siteNames = new Map(siteRows.rows.map((site) => [site.site_id, site.name]));
 
   const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
