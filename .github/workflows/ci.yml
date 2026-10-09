@@ -681,6 +681,10 @@ jobs:
       # attributable; a period two jobs report flagged; floor area over the selected sites, turnover whole-client only.
       - name: A report recomposes for its scope from frozen rows and never apportions organisation-level emissions
         run: npx tsx --test packages/isolated-backend/tests/reportScopeCompositionReal.test.ts
+      # §13: composing a report puts one query at a time on the tenant client — the strict overlap-refusing guard around the
+      # real client, over a fixture that reaches every section; the guarded composition equals the unguarded one.
+      - name: Composing a report never overlaps queries on the tenant client
+        run: npx tsx --test packages/isolated-backend/tests/reportCompositionSerialReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

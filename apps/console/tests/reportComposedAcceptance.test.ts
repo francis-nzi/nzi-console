@@ -237,11 +237,13 @@ describe("the report's readiness roadmap", () => {
   it("answers gaps from the plan the same report froze, never the live one", () => {
     // A second read could straddle an edit and leave one report disagreeing with its own
     // plan section about what the client is doing.
-    assert.match(compositions, /const planned = listClientStrategies\(db, input\.clientId\)/);
-    assert.match(compositions, /composeSrs\(db, input\.clientId, planned\)/);
+    // Read once, up front (§13: awaited, not a promise shared across a fan-out), and handed to both.
+    assert.match(compositions, /const strategies = await listClientStrategies\(db, input\.clientId\)/);
+    assert.match(compositions, /composeSrs\(db, input\.clientId, strategies\)/);
+    assert.match(compositions, /composeReportPlan\(strategies, levers, requirementCodes\)/);
     const composeSrs = /async function composeSrs[\s\S]*?^\}/m.exec(compositions)?.[0] ?? "";
     assert.match(composeSrs, /composeSrsRoadmap\(/);
-    assert.match(composeSrs, /\(await planned\)\.filter\(\(strategy\) => strategy\.includeInReport\)/,
+    assert.match(composeSrs, /planned\.filter\(\(strategy\) => strategy\.includeInReport\)/,
       "the same population the plan section prints");
     // And exactly one read of the strategies, shared by both sections.
     assert.equal((compositions.match(/listClientStrategies\(db, input\.clientId\)/g) ?? []).length, 1);
