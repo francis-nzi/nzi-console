@@ -176,11 +176,9 @@ async function composeIntensity(db: Queryable, input: {
   clientId: string; jobId: string; snapshot: SnapshotForComposition; emissionsTco2e: number | null; scope?: ReportScope;
 }): Promise<ReportIntensitySection | ReportSectionGap> {
   const scope = input.scope ?? WHOLE_CLIENT_SCOPE;
-  const [definitions, values, clientRows] = await Promise.all([
-    listClientIntensityMetrics(db, input.clientId),
-    listJobIntensityValues(db, input.jobId, input.snapshot.reportingYear),
-    db.query<{ currency: string; organisation_id: string }>(`SELECT currency, organisation_id FROM nzi_console.clients WHERE client_id = $1`, [input.clientId]),
-  ]);
+  const [definitions, values, clientRows] = [await listClientIntensityMetrics(db, input.clientId),
+    await listJobIntensityValues(db, input.jobId, input.snapshot.reportingYear),
+    await db.query<{ currency: string; organisation_id: string }>(`SELECT currency, organisation_id FROM nzi_console.clients WHERE client_id = $1`, [input.clientId])];
   // The client's currency, so a currency metric is frozen reading "tCO₂e per £m" (or €m, AED m) — D3c — in the issuing
   // organisation's own symbols (E1: its `currencies`, read here and held only for the synchronous work below).
   const currency = clientRows.rows[0]?.currency ?? "GBP";
@@ -255,13 +253,13 @@ async function composeSrs(
   db: Queryable,
   clientId: string,
   /**
-   * The client's strategies, awaited from the same read the plan section uses rather than
-   * queried again — the roadmap must answer its gaps with the plan *this* report froze, and
-   * a second query could return a plan edited between the two.
+   * The client's strategies, from the same read the plan section uses rather than queried
+   * again — the roadmap must answer its gaps with the plan *this* report froze, and a second
+   * query could return a plan edited between the two.
    */
-  planned: Promise<ClientStrategy[]>,
+  planned: readonly ClientStrategy[],
 ): Promise<ReportSrsSection | ReportSectionGap> {
-  const [framework, assessments] = await Promise.all([getSrsFramework(db), listSrsAssessments(db, clientId)]);
+  const [framework, assessments] = [await getSrsFramework(db), await listSrsAssessments(db, clientId)];
   const assessment = assessments.find((entry) => entry.status === "complete") ?? null;
   if (!framework || !assessment) {
     return {
@@ -302,7 +300,7 @@ async function composeSrs(
     roadmap: composeSrsRoadmap(
       framework,
       assessment.items,
-      (await planned).filter((strategy) => strategy.includeInReport),
+      planned.filter((strategy) => strategy.includeInReport),
     ),
   };
 }
@@ -334,19 +332,16 @@ export async function composeReport(db: Queryable, input: {
   // Read once and shared: the plan section prints these strategies and the readiness
   // roadmap answers its gaps with them. Two reads could straddle an edit and leave one
   // report disagreeing with itself about its own plan.
-  const planned = listClientStrategies(db, input.clientId);
+  const strategies = await listClientStrategies(db, input.clientId);
 
-  const [intensity, targets, srs, strategies, levers, requirementCodes] = await Promise.all([
-    composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e, scope: context.scope }),
-    composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals }),
-    composeSrs(db, input.clientId, planned),
-    planned,
-    listLevers(db),
-    // Requirement ids mean nothing to a reader, so the report carries codes like "S2 M2".
-    db.query<{ requirement_id: string; code: string }>(
-      `SELECT requirement_id, code FROM nzi_console.srs_requirements`,
-    ).then((result) => new Map(result.rows.map((row) => [row.requirement_id, row.code]))),
-  ]);
+  // One at a time: `db` is the tenant transaction's single client (§13).
+  const intensity = await composeIntensity(db, { clientId: input.clientId, jobId: input.snapshot.jobId, snapshot: input.snapshot, emissionsTco2e: totalTco2e, scope: context.scope });
+  const targets = await composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals });
+  const srs = await composeSrs(db, input.clientId, strategies);
+  const levers = await listLevers(db);
+  // Requirement ids mean nothing to a reader, so the report carries codes like "S2 M2".
+  const requirementRows = await db.query<{ requirement_id: string; code: string }>(`SELECT requirement_id, code FROM nzi_console.srs_requirements`);
+  const requirementCodes = new Map(requirementRows.rows.map((row) => [row.requirement_id, row.code]));
   return {
     reportVersionId: input.reportVersionId,
     jobId: input.snapshot.jobId,

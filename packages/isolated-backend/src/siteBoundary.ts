@@ -9,10 +9,11 @@ type FloorAreaRow = { site_id: string; effective_from: Date | string | null; flo
 
 /** A client's sites with their floor-area history — the one site read (NZC-070/071). */
 export async function listClientSites(db: Queryable, clientId: string): Promise<ClientSiteReadModel[]> {
-  const [sites, areas] = await Promise.all([
-    db.query<SiteRow>(`SELECT site_id,name,is_registered_office,in_service_from,vacated_effective,version,address_lines_json,postcode,country,(latitude IS NOT NULL) AS located FROM nzi_console.client_sites WHERE client_id=$1 AND archived=false ORDER BY lower(name),site_id`, [clientId]),
-    db.query<FloorAreaRow>(`SELECT a.site_id,a.effective_from,a.floor_area_m2::text AS floor_area_m2,a.recorded_by,a.recorded_at FROM nzi_console.client_site_floor_areas a JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(a.organisation_id,a.site_id) WHERE s.client_id=$1 ORDER BY a.effective_from NULLS FIRST,a.recorded_at`, [clientId]),
-  ]);
+  // One at a time: `db` is usually a tenant transaction's single client (§13).
+  const [sites, areas] = [
+    await db.query<SiteRow>(`SELECT site_id,name,is_registered_office,in_service_from,vacated_effective,version,address_lines_json,postcode,country,(latitude IS NOT NULL) AS located FROM nzi_console.client_sites WHERE client_id=$1 AND archived=false ORDER BY lower(name),site_id`, [clientId]),
+    await db.query<FloorAreaRow>(`SELECT a.site_id,a.effective_from,a.floor_area_m2::text AS floor_area_m2,a.recorded_by,a.recorded_at FROM nzi_console.client_site_floor_areas a JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(a.organisation_id,a.site_id) WHERE s.client_id=$1 ORDER BY a.effective_from NULLS FIRST,a.recorded_at`, [clientId]),
+  ];
   return sites.rows.map((row) => ({
     id: row.site_id,
     name: row.name,
