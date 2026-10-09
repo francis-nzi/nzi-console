@@ -228,23 +228,40 @@ broken core record from rendering as a calm, empty page.
 `withTenantWrite` or a command handler. Await them one at a time.**
 
 That `db` is a **single pooled client** with an open transaction, not the pool. node-postgres
-allows one query in flight per client, so firing several at once raises
-`Calling client.query() when the client is already executing a query`. Today the driver queues
-them and warns; a future major makes it an error. Parallelism was never real here — the queries
-were always going to run one after another on one connection.
+allows one query in flight per client.
 
-**Why this is a convention and not just a fixed bug.** It reads as an obvious optimisation, the
-code looks correct, the data comes back right, and nothing fails. The only symptom is a
-deprecation warning in a log — which is worse than a failure, because it is noise that shows up
-near whatever else is going on. When `getSrsFramework` did this, the warning appeared beside an
-unrelated optimistic-concurrency conflict during the NZC-080 seed run and made a
-wrong-version-passed bug look like a race, which cost a diagnosis. A warning that misattributes
-other failures is a real cost, not a tidiness issue.
+**What happens today.** Since #385, a tenant transaction hands `work` a `serialisedQueryable`
+(`packages/isolated-backend/src/postgres.ts`), so a `Promise.all` on that client is **queued, not
+warned**: each query starts when the one before it settles, and there is no live deprecation
+warning on a wrapped path. Before #385 the raw client was handed over, and the driver queued and
+warned (`Calling client.query() when the client is already executing a query`, which pg@9
+refuses outright). When `getSrsFramework` did this, the warning appeared beside an unrelated
+optimistic-concurrency conflict during the NZC-080 seed run and made a wrong-version-passed bug
+look like a race, which cost a diagnosis. That is how this rule was born.
 
-**Enforced, not just written down.** `packages/isolated-backend/tests/srsFrameworkRead.test.ts`
-drives the read through a fake that is stricter than the driver: it refuses overlap outright
-rather than queueing, so a reintroduced `Promise.all` fails a test rather than printing a warning
-nobody reads. Apply the same fake to any read model that fans out.
+**Why the rule stands, wrapper or not.** The serialiser makes an accidental fan-out *safe*, not
+*correct*.
+- **A read model must be correct on its own terms**, not dependent on a wrapper it cannot see.
+- **The serialiser is an implementation detail** and can change.
+- **Not every caller is inside the transaction.** A test driving a read directly, or a future
+  pool caller, is not serialised.
+- **Concurrency was never real on one client**, so sequential `await`s cost nothing.
+
+**Enforced, not just written down.** Drive any read model that fans out through a fake that is
+stricter than the driver: it refuses overlap outright rather than queueing, so a reintroduced
+`Promise.all` fails a test instead of being silently queued.
+- **The original example:** `packages/isolated-backend/tests/srsFrameworkRead.test.ts`, with the
+  fake over canned rows.
+- **The stronger example:** `packages/isolated-backend/tests/reportCompositionSerialReal.test.ts`.
+  It wraps the fake around the **real** tenant client, outside the serialiser, over a fixture
+  that reaches every section, so every transitive read is covered. That is how `listClientSites`
+  was caught.
+
+**Conforming the existing code.** New or modified fan-out read models conform and are guarded.
+Existing `Promise.all` sites are unrolled opportunistically, when a file is touched for another
+reason. There's no dedicated sweep. To see the backlog, run
+`git grep -n "Promise.all" packages/isolated-backend/src`; 27 sites stood when this was written
+(9 Oct 2026).
 
 **Where parallelism is fine:** separate `pool.query()` calls, or separate `withTenantRead` calls —
 each checks out its own client. The rule is about sharing *one* client, not about concurrency in
