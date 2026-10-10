@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, it } from "node:test";
-import { commandGrantForRole, isReportGap, type CommandContext, type ReportComposition, type ReportScope, type StaffRole } from "@nzi/contracts";
+import {
+  clientFacingPublishedReport, commandGrantForRole, defaultReportSectionPlan, isReportGap, reportMethodologyRows, reportOmittedSections, reportSectionPlanOf,
+  type CommandContext, type ReportComposition, type ReportScope, type StaffRole,
+} from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { publishCrpReport, validateCrpReport } from "../src/postgresCommands";
 import { getGrantedIssuerLogo, getGrantedPortalReport } from "../src/portalComposition";
@@ -159,6 +162,51 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
     assert.equal(wholeEvidence.unallocatedStatement, null);
     const legacyDocs = (await read((db) => getGrantedPortalDeliverables(db, as(PORTAL, CLIENT, "j-legacy"))))!;
     assert.deepEqual([legacyDocs.composition, portalPublicationEvidence(legacyDocs.report, legacyDocs.composition).basis], [null, "snapshot"]);
+  });
+
+  it("F-4b: a report that leaves a section out reaches the client with it frozen out and stated; the client's copy names none of the issuer's staff", async () => {
+    // Every staff identity a published report can carry is seeded with one distinctive mark, so a leak anywhere is unmistakable.
+    const MARK = "staffmark-z9k";
+    await q(`INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year) VALUES ($1, 'j-excl', $2, 9705, 'crp', 'CRP', 'open', 'delivery', 2025)`, [ORG, CLIENT]);
+    await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, 'j-excl', '2025-01-01', '2025-12-31', 'GB')`, [ORG]);
+    const payload = { jobNumber: "J-excl", client: "Portal Co", reportingYear: 2025,
+      measurements: [
+        { rowId: "x-a", rowVersion: 1, scope: "1", scopeCode: "1", siteId: "s-a", siteLabel: "Works", sourceLabel: "Gas", tco2e: 10, qualityTier: "measured", factorSet: "demo", reviewedBy: `${MARK}-row-reviewer` },
+        { rowId: "x-g", rowVersion: 1, scope: "3", scopeCode: "3.1", siteId: null, siteLabel: null, sourceLabel: "Goods", tco2e: 20, qualityTier: "estimated", factorSet: "demo", purchasedGoodsCategoryId: "pg", purchasedGoodsCategoryLabel: "Materials", reviewedBy: `${MARK}-row-reviewer` }],
+      target: { jobId: "j-excl", baselineYear: 2024, baselineTco2e: 40, interimYear: 2030, interimReductionPercent: 50, netZeroYear: 2045, version: 1, updatedAt: "2026-01-01T00:00:00.000Z", updatedBy: `${MARK}-target-editor` },
+      intensityTarget: { source: "client-target", metric: "turnover", metricLabel: "Turnover", denominatorUnit: "£m", reportingDenominator: 12.5, baselineYear: 2024, baselineIntensity: 3,
+        interimYear: 2030, interimReductionPercent: 50, targetYear: 2045, targetReductionPercent: 100, netZeroYear: null, jobId: "j-excl", version: 1, updatedAt: "2026-01-01T00:00:00.000Z", updatedBy: `${MARK}-intensity-editor` },
+      sections: [{ key: "executive-summary", title: "Executive summary", ordinal: 10, contentSource: "edited", bodyHtml: "<p>Summary.</p>", version: 2, updatedBy: `${MARK}-section-editor`, updatedAt: "2026-01-01T00:00:00.000Z" }],
+      gapResolutions: [{ gapKey: "g1", reason: "Recorded as nil.", resolvedBy: `${MARK}-gap-resolver`, resolvedAt: "2026-01-01T00:00:00.000Z" }],
+      annualComparison: [{ year: 2024, values: [{ scope: "1", value: 12 }] }, { year: 2025, values: [{ scope: "1", value: 10 }] }],
+      provenance: { resolver: "crp.snapshot.issue@2", reportingPeriod: { from: "2025-01-01", to: "2025-12-31" }, factorSets: [], boundary: { siteIds: ["s-a", "s-b"], excludedRowIds: [] } } };
+    await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
+             VALUES ($1, 'snap-excl', 'j-excl', 1, 1, $2, $3::jsonb, $4, 'rev', now())`, [ORG, `sha256:${createHash("sha256").update("snap-excl").digest("hex")}`, JSON.stringify(payload), `${MARK}-preparer`]);
+    const withoutTargets = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
+    const reportVersionId = (await validateCrpReport(database.pool, { reviewedSnapshotId: "snap-excl", manifestVersion: 1, sectionPlan: withoutTargets }, context("rev", "reviewer"))).data.reportVersionId;
+    await publishCrpReport(database.pool, { reportVersionId, expectedStatus: "validated", expectedVersion: 1, manifestVersion: 1, reviewedSnapshotId: "snap-excl" }, context("rev", "reviewer"));
+    await q(`INSERT INTO nzi_console.portal_access_grants (organisation_id, grant_id, client_id, portal_user_id, job_id, data_entry_starts_at, data_entry_expires_at)
+             VALUES ($1, 'grant-excl', $2, $3, 'j-excl', now() - interval '1 day', now() + interval '30 days')`, [ORG, CLIENT, PORTAL]);
+
+    const view = await read((db) => getGrantedPortalReport(db, as(PORTAL, CLIENT, "j-excl")));
+    if (view?.state !== "composed") throw new Error("expected the composed report");
+    // Left out, frozen out, and said: the client's copy carries the issued plan, and its Methodology states the omission.
+    assert.equal(reportSectionPlanOf(view.composition).find((entry) => entry.key === "targets")!.included, false);
+    assert.deepEqual(reportOmittedSections(reportSectionPlanOf(view.composition)), ["Targets & reduction pathway"]);
+    // No reviewer on the client's copy, and so no "Reviewed by" line; the staff copy keeps both.
+    const staff = (await read((db) => getReportComposition(db, reportVersionId)))!;
+    assert.equal(staff.assurance.reviewedBy, `${MARK}-preparer`);
+    assert.ok(reportMethodologyRows(staff).some((row) => row.label === "Reviewed by"));
+    assert.equal(view.composition.assurance.reviewedBy, "");
+    assert.ok(!reportMethodologyRows(view.composition).some((row) => row.label === "Reviewed by"), "the line goes, with no name or organisation in its place");
+    assert.ok(reportMethodologyRows(view.composition).some((row) => row.label === "Assurance basis"), "the basis stands alone");
+    // The published report as the route sends it: every staff identity gone, every figure the same.
+    const staffCopy = JSON.stringify(view.report);
+    for (const who of ["preparer", "row-reviewer", "target-editor", "intensity-editor", "section-editor", "gap-resolver"]) assert.ok(staffCopy.includes(`${MARK}-${who}`), `the fixture seeds ${who}`);
+    const client = clientFacingPublishedReport(view.report);
+    assert.ok(!JSON.stringify({ report: client, composition: view.composition }).includes(MARK), "no staff identity anywhere in what the client is sent");
+    assert.deepEqual(client.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]), view.report.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]));
+    assert.deepEqual([client.snapshot.target?.baselineTco2e, client.snapshot.intensityTarget?.reportingDenominator, client.dataHash], [40, 12.5, view.report.dataHash]);
   });
 
   it("D5: a document never disagrees with the report it is for — a total that differs from the frozen composition is refused", async () => {

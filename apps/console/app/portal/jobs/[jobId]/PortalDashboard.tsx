@@ -10,7 +10,7 @@ import { useOrganisationName } from "../../../lib/OrganisationNameProvider";
 // reachable without pixels (Narrator).
 import { useCallback, useEffect, useState } from "react";
 import { crpProfessionalManifest, ManifestChartSet, resolveCrpCoreCharts, type AnyChartData } from "@nzi/charts";
-import { crpScopeCategoryLabel, portalTargetProgress, type PortalAssuredDashboard, type PublishedCrpReportReadModel } from "@nzi/contracts";
+import { crpScopeCategoryLabel, portalTargetProgress, type PortalAssuredDashboard, type ClientFacingPublishedCrpReport } from "@nzi/contracts";
 import { redirectIfPortalSessionEnded } from "../../portalSessionClient";
 import { isPortalAssuredDashboard } from "./portalAnalyticsValidation";
 import { isPublishedCrpReport } from "./publishedReportValidation";
@@ -49,7 +49,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
       if (reportRes.ok) {
         const reportBody: unknown = await reportRes.json();
         if (reportBody && typeof reportBody === "object" && isPublishedCrpReport((reportBody as { report?: unknown }).report, jobId)) {
-          const s = ((reportBody as { report: PublishedCrpReportReadModel }).report).snapshot;
+          const s = ((reportBody as { report: ClientFacingPublishedCrpReport }).report).snapshot;
           snapshotId = s.id;
           charts = resolveCrpCoreCharts({
             id: s.id, jobId: s.jobId, jobNumber: s.jobNumber, client: s.client, reportingYear: s.reportingYear,

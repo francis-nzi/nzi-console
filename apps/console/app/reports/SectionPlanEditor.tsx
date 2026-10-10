@@ -1,15 +1,16 @@
 "use client";
 
-// Reporting F-1b — the section order, as the client's report profile and the preparation page edit it. Reorder-only (the Q5
-// interlock): leaving a section out arrives when the client portal shows the issued report itself, so this offers no
-// include/exclude switch — and the server refuses one regardless. The cover and the methodology hold their places; the
-// narrative sections are not drawn yet (Q6), so they are not listed.
-import { isMovableReportSection, isReportDataSection, moveReportSection, reportPlanSectionTitle, type ReportSectionPlan } from "@nzi/contracts";
+// Reporting F-1b / F-4b — the section plan, as the client's report profile and the preparation page edit it: the order of the
+// data sections, and (F-4b, now the portal shows the issued report itself) which optional sections are left out. The cover and
+// the methodology hold their places; the cover, executive summary, emissions and methodology are always included (Q1); the
+// narrative sections are not drawn yet (Q6), so they are not listed. A left-out section stays in the list, marked, so it can be
+// put back — and the issued report says on its Methodology page that it was left out.
+import { isMovableReportSection, isOptionalReportSection, isReportDataSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
 
 export function SectionPlanEditor({ plan, onChange, disabled = false, label = "Section order" }: {
   plan: ReportSectionPlan; onChange: (plan: ReportSectionPlan) => void; disabled?: boolean; label?: string;
 }) {
-  const shown = plan.filter((entry) => isReportDataSection(entry.key) && entry.included);
+  const shown = plan.filter((entry) => isReportDataSection(entry.key) && (entry.included || REPORT_SECTION_EXCLUSION_AVAILABLE));
   const movable = shown.filter((entry) => isMovableReportSection(entry.key));
   return <div className="nz-section-plan" role="group" aria-label={label}>
     <ol className="nz-section-plan-list">
@@ -17,8 +18,13 @@ export function SectionPlanEditor({ plan, onChange, disabled = false, label = "S
         const at = movable.findIndex((item) => item.key === entry.key);
         const fixed = at < 0;
         const title = reportPlanSectionTitle(entry.key);
-        return <li key={entry.key} className={fixed ? "fixed" : undefined}>
-          <span className="nm">{title}</span>
+        const optional = REPORT_SECTION_EXCLUSION_AVAILABLE && isOptionalReportSection(entry.key);
+        return <li key={entry.key} className={[fixed ? "fixed" : "", entry.included ? "" : "left-out"].filter(Boolean).join(" ") || undefined}>
+          <span className="nm">{title}{entry.included ? null : <span className="muted"> · left out</span>}</span>
+          {optional
+            ? <label className="nz-section-plan-include"><input type="checkbox" checked={entry.included} disabled={disabled}
+                onChange={(event) => onChange(setReportSectionIncluded(plan, entry.key, event.target.checked))} /> Include</label>
+            : null}
           {fixed
             ? <span className="muted">{entry.key === "cover" ? "Always first" : "Always last"}</span>
             : <span className="mv">
@@ -30,6 +36,8 @@ export function SectionPlanEditor({ plan, onChange, disabled = false, label = "S
         </li>;
       })}
     </ol>
-    <p className="sub">Every section stays in the report. Leaving one out arrives once the client portal shows the issued report itself, so a client never sees a section you meant to leave out.</p>
+    <p className="sub">{REPORT_SECTION_EXCLUSION_AVAILABLE
+      ? "Untick a section to leave it out. It is then absent from the issued report and from the client's portal, and the report's Methodology page says it was left out. The cover, executive summary, emissions and methodology are always included."
+      : "Every section stays in the report. Leaving one out arrives once the client portal shows the issued report itself, so a client never sees a section you meant to leave out."}</p>
   </div>;
 }

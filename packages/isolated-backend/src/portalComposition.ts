@@ -4,7 +4,7 @@
 //
 // A version issued before compositions were frozen (pre-0077) has none, and none is ever made for it (D1: composing today's
 // records into a "frozen" report would fabricate a freeze). It is returned as `pre-composition`, for the labelled snapshot render.
-import { isReportGap, type PublishedCrpReportReadModel, type ReportComposition } from "@nzi/contracts";
+import { clientFacingComposition, type PublishedCrpReportReadModel, type ReportComposition } from "@nzi/contracts";
 import type { ClientLogoAsset } from "./clientLogo";
 import { readOrganisationLogoAsset } from "./organisationSettings";
 import type { Queryable } from "./postgres";
@@ -16,17 +16,10 @@ export type PortalReportView =
   | { state: "pre-composition"; report: PublishedCrpReportReadModel };
 
 /**
- * D6: the client's copy of the report carries no internal owner of a reduction action — data minimisation on an external
- * document. Taken out here, at the read, so the name never reaches the client's browser; the view already leaves an empty
- * value off the line. Every other figure is the client's own and stands as frozen.
+ * D6 + F-4b: the client's copy carries no internal owner of a reduction action and no reviewer. Defined in contracts (pure),
+ * so the staff preview of the client's view applies the same strip; re-exported here for the portal read.
  */
-export function clientFacingComposition(composition: ReportComposition): ReportComposition {
-  if (isReportGap(composition.plan)) return composition;
-  return {
-    ...composition,
-    plan: { ...composition.plan, groups: composition.plan.groups.map((group) => ({ ...group, strategies: group.strategies.map((strategy) => ({ ...strategy, owner: "" })) })) },
-  };
-}
+export { clientFacingComposition };
 
 /**
  * The report a portal user may see: the version named (only if it is a published report of this job, under their grant), else

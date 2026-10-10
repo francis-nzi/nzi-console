@@ -12,21 +12,32 @@ const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.m
  * publishes the version it holds, the job page's publish pinning its version, the three routes, and the ruled CSS wrap.
  */
 describe("the section-plan editors (F-1b)", () => {
-  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and offers no way to leave one out (Q5)", async () => {
+  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and offers an include switch on the optional sections only (F-4b)", async () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
-    const names = [...html.matchAll(/<span class="nm">([^<]+)<\/span>/g)].map((match) => match[1]);
+    const names = [...html.matchAll(/<span class="nm">([^<]+)(?:<span|<\/span>)/g)].map((match) => match[1]);
     assert.deepEqual(names, ["Carbon Reduction Plan", "Executive summary", "Emissions by scope", "Sites &amp; reporting boundary", "Emissions intensity",
       "Targets &amp; reduction pathway", "Decarbonisation actions", "UK SRS readiness statement", "Methodology &amp; provenance"]);
     assert.match(html, /Always first/);
     assert.match(html, /Always last/);
     assert.doesNotMatch(html, /narrative|Background|Net zero commitment/i, "the narrative is not drawn yet, so it is not offered");
-    assert.doesNotMatch(html, /type="checkbox"|aria-pressed/, "no include/exclude switch");
+    // One switch per optional section (sites, intensity, targets, plan, SRS) — none on the cover, summary, emissions or methodology.
+    assert.equal([...html.matchAll(/type="checkbox"/g)].length, 5);
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move Executive summary earlier">/, "the first movable section cannot move before the cover");
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move UK SRS readiness statement later">/, "nor the last after the methodology");
     const editor = read("apps/console/app/reports/SectionPlanEditor.tsx");
-    assert.doesNotMatch(editor, /included:\s*(false|!)/, "the editor never writes an exclusion");
+    assert.match(editor, /setReportSectionIncluded\(plan, entry\.key, event\.target\.checked\)/, "an exclusion goes through the one contracts helper, which refuses a mandatory section");
+    assert.doesNotMatch(editor, /included:\s*(false|!)/, "the editor never writes an exclusion by hand");
+  });
+
+  it("a left-out section stays listed, marked, with its switch off — so it can be put back", async () => {
+    (globalThis as { React?: unknown }).React = React;
+    const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
+    const plan = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
+    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined }));
+    assert.match(html, /<li class="left-out"><span class="nm">Targets &amp; reduction pathway<span class="muted"> · left out<\/span>/);
+    assert.equal([...html.matchAll(/type="checkbox" checked=""/g)].length, 4, "the other four optional sections stay included");
   });
 
   it("the preparation page loads the validated plan, saves a reorder with the version it holds, and publishes that version", () => {
