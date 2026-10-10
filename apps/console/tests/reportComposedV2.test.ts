@@ -66,6 +66,42 @@ describe("composed@2: the composed report with the portal's charts (F-2)", () =>
     assert.ok(!html.includes(titles.intensity), "no pathway contradicting the stated gap");
   });
 
+  describe("the first assured period beside a chart of earlier reviewed years (F-2 finding 3, ruled (a))", () => {
+    const firstAssured = (issued: ReportComposition): ReportComposition => {
+      if ("state" in issued.emissions) throw new Error("expected composed emissions");
+      const { comparison } = issued.emissions;
+      if (!comparison) throw new Error("expected a comparison");
+      return { ...issued, emissions: { ...issued.emissions, comparison: { ...comparison, columns: comparison.columns.slice(1), totals: comparison.totals.slice(1), rows: comparison.rows.map((row) => ({ ...row, values: row.values.slice(1) })) } } };
+    };
+    const reworded = "This is the first assured period, so there is no earlier assured period to compare against. The chart below includes earlier reviewed years.";
+    const issuedText = "This is the first assured period, so there is no earlier period to compare against.";
+
+    it("says which is which when the chart draws earlier reviewed years — never denying the chart beneath it", async () => {
+      const html = await render(firstAssured(composition()));
+      assert.ok(html.includes(titles.yearOnYear), "the chart draws the earlier reviewed year");
+      assert.ok(html.includes(reworded));
+      assert.ok(!html.includes(issuedText));
+    });
+
+    it("keeps the plain sentence when the chart has no earlier year to show", async () => {
+      const issued = firstAssured(composition());
+      const basis = issued.chartBasis!;
+      const current = basis.annualComparison.find((entry) => entry.year === issued.reportingYear)!;
+      // A chart is still drawn (two years), but its other year is later, not earlier: nothing earlier to own up to.
+      const html = await render({ ...issued, chartBasis: { ...basis, annualComparison: [current, { ...current, year: issued.reportingYear + 1 }] } });
+      assert.ok(html.includes(titles.yearOnYear), "a chart is drawn");
+      assert.ok(html.includes(issuedText));
+      assert.ok(!html.includes("earlier reviewed years"));
+    });
+
+    it("composed@1 keeps its issued text exactly — the reword is composed@2's alone", async () => {
+      const { chartBasis: _basis, ...rest } = firstAssured(composition());
+      const html = await render({ ...rest, renderer: "composed@1" });
+      assert.ok(html.includes(issuedText));
+      assert.ok(!html.includes("earlier reviewed years"));
+    });
+  });
+
   it("a composed@2 report without a basis draws none of the basis's charts rather than guessing them", async () => {
     const { chartBasis: _basis, ...rest } = composition();
     const html = await render(rest);

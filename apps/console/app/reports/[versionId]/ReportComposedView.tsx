@@ -114,7 +114,7 @@ function ComposedV1({ composition, charts }: { composition: ReportComposition; c
           {emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
           {emissions.periodConflicts?.length ? <div className="nzr-callout warn" role="note">{emissions.periodConflicts.map((conflict) => <p key={conflict.period}>{conflict.jobNumbers.join(" and ")} both report {conflict.period}. Resolve which stands before comparing that period — it is not summed or chosen here.</p>)}</div> : null}
           {emissions.comparison
-            ? <Comparison comparison={emissions.comparison} />
+            ? <Comparison comparison={emissions.comparison} chartHasEarlierYears={yearOnYear?.years.some((entry) => entry.year < composition.reportingYear) ?? false} />
             : emissions.priorYear === null
             ? <p className="nzr-note">This is the first assured year, so there is no prior year to compare against.</p>
             : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
@@ -452,11 +452,19 @@ function Unallocated({ statement }: { statement: string }) {
   return <div className="nzr-callout unallocated" role="note"><b>Organisation-level emissions are not in this view.</b> {statement}</div>;
 }
 
-/** S-2, sub-ruling 4: year-on-year for this scope — the columns are the assured periods that exist, never a toggle. */
-function Comparison({ comparison }: { comparison: ReportEmissionsComparison }) {
+/**
+ * S-2, sub-ruling 4: year-on-year for this scope — the columns are the assured periods that exist, never a toggle.
+ *
+ * `chartHasEarlierYears` (composed@2 only, F-2 finding 3): the year-on-year chart reads the snapshot's *reviewed* history —
+ * native or re-ingested v7 — which can reach back past the first *assured* period. The note then says which is which rather
+ * than denying the chart beneath it. composed@1 draws no chart, never passes it, and keeps its issued text.
+ */
+function Comparison({ comparison, chartHasEarlierYears = false }: { comparison: ReportEmissionsComparison; chartHasEarlierYears?: boolean }) {
   const cell = (value: number | null) => value === null ? <span className="muted">Not attributable</span> : tonnes(value);
   // With only the current period the table would repeat the scope table above: say there is nothing earlier instead.
-  if (comparison.columns.length === 1) return <p className="nzr-note">This is the first assured period, so there is no earlier period to compare against.</p>;
+  if (comparison.columns.length === 1) return chartHasEarlierYears
+    ? <p className="nzr-note">This is the first assured period, so there is no earlier assured period to compare against. The chart below includes earlier reviewed years.</p>
+    : <p className="nzr-note">This is the first assured period, so there is no earlier period to compare against.</p>;
   return <>
     <table className="nzr-tbl nzr-compare">
       <thead><tr><th>Scope</th>{comparison.columns.map((column) => <th className="r" key={column.key}>{column.label}</th>)}{comparison.changeVsBaselinePct !== null ? <th className="r">vs baseline</th> : null}</tr></thead>
