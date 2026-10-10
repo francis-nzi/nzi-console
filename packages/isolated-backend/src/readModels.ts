@@ -8,7 +8,8 @@ import { listClientFiles, listClientMessages, listClientReports, type ClientFile
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
 import { getClientReportingTemplate, listReportingTemplateCategories } from "./clientReportingTemplateRecords";
-import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp } from "@nzi/contracts";
+import { readClientReportProfile } from "./reportSectionPlanRecords";
+import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp, ClientReportProfile } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { issuerOf, type IssuerColumns } from "./reportCompositions";
 import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
@@ -21,7 +22,7 @@ import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
-export type ReportVersionRegisterItem={reportVersionId:string;jobId:string;jobNumber:string;client:string;reportingYear:number|null;status:"draft"|"validated"|"published"|"superseded";manifestVersion:number;snapshotId:string;dataHash:string;createdAt:string;publishedAt:string|null;approvalCount:number;commentCount:number;/** S-1 (0163): the view the version issues. */scope:ReportScope;scopeLabel:string};
+export type ReportVersionRegisterItem={reportVersionId:string;jobId:string;jobNumber:string;client:string;reportingYear:number|null;status:"draft"|"validated"|"published"|"superseded";manifestVersion:number;snapshotId:string;dataHash:string;createdAt:string;publishedAt:string|null;approvalCount:number;commentCount:number;/** S-1 (0163): the view the version issues. */scope:ReportScope;scopeLabel:string;/** F-1b: the row's version, which report.publish pins (a section-plan change moves it). */version:number};
 export type DatasetRegistryItem={id:string;name:string;/** DATASET-CURRENCY §2: derived "DESNZ GB 2025"; `name` is as imported. */label:string;version:string;validFrom:string;validTo:string;country:string;scopes:Array<"1"|"2"|"3">;method:"activity"|"spend"|"mixed";source:string;analysisType:"published-source";year:number;licence:string;status:"active"|"superseded"|"draft";factorCount:number;usedByJobs:number;synthetic:boolean};
 export type DatasetRegistryIssue={id:string;severity:"warning"|"error";datasetId:string;jobNumber:string;message:string;state:"open"|"resolved"};
 /** One role of the current permission matrix (NZC-022): what it holds (`own` = own clients only) and what it does not. */
@@ -282,7 +283,7 @@ export function resolveYearDenominators(input: {
  */
 export type ClientWorkspacePart =
   | "contacts" | "contactConsent" | "reports" | "messages" | "files"
-  | "srs" | "intensity" | "strategies" | "reportingTemplate";
+  | "srs" | "intensity" | "strategies" | "reportingTemplate" | "reportProfile";
 
 /** What could not be read, and why — in place of a value that would be a guess. */
 export type ClientWorkspaceDegradation = { part: ClientWorkspacePart; reason: string };
@@ -304,6 +305,7 @@ const degradedReasons: Record<ClientWorkspacePart, string> = {
   intensity: "Intensity measures could not be read.",
   strategies: "The reduction plan could not be read.",
   reportingTemplate: "The reporting template could not be read, so none is shown here.",
+  reportProfile: "The report profile could not be read, so none is shown here.",
 };
 
 export type ClientWorkspaceReadModel = {
@@ -355,6 +357,11 @@ export type ClientWorkspaceReadModel = {
   /** Phase 1c (0159) — the client's reporting template in force (or none), and the categories a line may be filed under. */
   reportingTemplate: ClientReportingTemplateReadModel & { categories: Array<{ code: string; scope: ReportingTemplateScope; name: string }> };
   /**
+   * F-1 (0164, R-D1) — the client's report profile in force (or none), and the latest version, withdrawn or not, which the
+   * next save expects.
+   */
+  reportProfile: { current: ClientReportProfile | null; latestVersion: number };
+  /**
    * Adjunct parts that could not be read this time. Empty in the normal case.
    *
    * A card whose part is listed here says so rather than rendering its fallback as fact: an
@@ -386,30 +393,33 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
       return fallback;
     });
 
-  const [sites, snapshots, periods, contacts, contactConsent, reports, messages, files, srsFramework, srsAssessments, intensityMetrics, intensityValues, libraryStrategies, clientStrategies, levers] = await Promise.all([
-    listClientSites(db, clientId),
-    db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]),
-    db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]),
-    adjunct("contacts", [], listClientContacts(db, clientId)),
-    adjunct("contactConsent", new Map(), latestConsentByContact(db, clientId)),
-    adjunct("reports", [], listClientReports(db, clientId)),
-    adjunct("messages", [], listClientMessages(db, clientId)),
-    adjunct("files", [], listClientFiles(db, clientId)),
-    adjunct("srs", null, getSrsFramework(db)),
-    adjunct("srs", [], listSrsAssessments(db, clientId)),
-    adjunct("intensity", [], listClientIntensityMetrics(db, clientId)),
-    adjunct("intensity", [], listClientIntensityValues(db, clientId)),
-    adjunct("strategies", [], listLibraryStrategies(db)),
-    adjunct("strategies", [], listClientStrategies(db, clientId)),
-    adjunct("strategies", [], listLevers(db)),
-  ]);
+  // One read at a time: `db` is the tenant transaction's single client (§13; this read model is guarded in
+  // `reportPlanReadModelsReal.test.ts`). Each adjunct still fails soft on its own.
+  const sites = await listClientSites(db, clientId);
+  const snapshots = await db.query<SnapshotRow & { reporting_from: Date | string | null; reporting_to: Date | string | null }>(`SELECT s.snapshot_id,s.job_id,s.snapshot_version,s.job_version,s.data_hash,s.payload_json,s.created_by,s.created_at,ec.reporting_from,ec.reporting_to FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id,ec.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY (s.payload_json->>'reportingYear')::integer DESC,s.snapshot_version DESC`, [clientId]);
+  const periods = await db.query<{ job_id: string; job_number: string; reporting_year: number | null; reporting_from: Date | string | null; reporting_to: Date | string | null; start_date: Date | string; due_date: Date | string }>(`SELECT j.job_id,j.job_number,j.reporting_year,c.reporting_from,c.reporting_to,j.start_date,j.due_date FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id,c.job_id)=(j.organisation_id,j.job_id) WHERE j.client_id=$1 AND j.job_family='crp' ORDER BY coalesce(c.reporting_to,j.due_date) DESC,j.sequence DESC LIMIT 3`, [clientId]);
+  const contacts = await adjunct("contacts", [], listClientContacts(db, clientId));
+  const contactConsent = await adjunct("contactConsent", new Map(), latestConsentByContact(db, clientId));
+  const reports = await adjunct("reports", [], listClientReports(db, clientId));
+  const messages = await adjunct("messages", [], listClientMessages(db, clientId));
+  const files = await adjunct("files", [], listClientFiles(db, clientId));
+  const srsFramework = await adjunct("srs", null, getSrsFramework(db));
+  const srsAssessments = await adjunct("srs", [], listSrsAssessments(db, clientId));
+  const intensityMetrics = await adjunct("intensity", [], listClientIntensityMetrics(db, clientId));
+  const intensityValues = await adjunct("intensity", [], listClientIntensityValues(db, clientId));
+  const libraryStrategies = await adjunct("strategies", [], listLibraryStrategies(db));
+  const clientStrategies = await adjunct("strategies", [], listClientStrategies(db, clientId));
+  const levers = await adjunct("strategies", [], listLevers(db));
   // Soft: the Sites card lists them for unarchive; a read that fails shows none rather than taking the workspace down.
   const archivedSites = await db.query<{ site_id: string; name: string; version: number }>(
     `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
     .then((result) => result.rows.map((row) => ({ id: row.site_id, name: row.name, version: row.version })), () => [] as Array<{ id: string; name: string; version: number }>);
   const intensityTargets = await adjunct("intensity", [] as ClientIntensityTarget[], listClientIntensityTargets(db, clientId));
   const reportingTemplate = await adjunct("reportingTemplate", { current: null, latestVersion: 0, categories: [] } as ClientWorkspaceReadModel["reportingTemplate"],
-    Promise.all([getClientReportingTemplate(db, clientId), listReportingTemplateCategories(db)]).then(([template, categories]) => ({ ...template, categories })));
+    (async () => { const template = await getClientReportingTemplate(db, clientId); return { ...template, categories: await listReportingTemplateCategories(db) }; })());
+  // F-1 (R-D1): the report profile — the latest version, shown when active; a withdrawn one is history, and the next save expects it.
+  const reportProfile = await adjunct("reportProfile", { current: null, latestVersion: 0 } as ClientWorkspaceReadModel["reportProfile"],
+    readClientReportProfile(db, clientId).then((latest) => ({ current: latest?.active ? latest : null, latestVersion: latest?.version ?? 0 })));
   const reportingYears = reportingYearSnapshots(snapshots.rows);
   const [current, prior] = reportingYears.map(mapSnapshotRow);
   // Every year that has an assured snapshot, oldest first — what the pathway plots as actual
@@ -471,6 +481,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     intensityMetrics,
     intensityTargets,
     reportingTemplate,
+    reportProfile,
   };
 }
 
@@ -540,7 +551,7 @@ export async function auditEventsFor(db:Queryable,holder:{userId:string;capabili
 /** `ownerUserId` — an audit.view (own) holder sees only events about clients they own. */
 export async function listAuditEvents(db:Queryable,limit=100,options:{ownerUserId?:string|null}={}):Promise<AuditEventReadModel[]>{const safeLimit=Math.min(Math.max(Math.trunc(limit),1),250),owner=options.ownerUserId??null,{rows}=await db.query<{audit_event_id:string;occurred_at:Date|string;actor_id:string;principal_type:AuditEventReadModel["principal"];organisation_id:string;action:string;entity_type:string;entity_id:string;correlation_id:string;reason:string|null;before_json:unknown;after_json:unknown}>(`SELECT audit_event_id,occurred_at,actor_id,principal_type,organisation_id,action,entity_type,entity_id,correlation_id,reason,before_json,after_json FROM nzi_console.audit_events a WHERE ($2::text IS NULL OR EXISTS (SELECT 1 FROM nzi_console.clients c WHERE (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) AND c.owner_user_id=$2)) ORDER BY occurred_at DESC,audit_event_id DESC LIMIT $1`,[safeLimit,owner]);const display=(value:unknown)=>value==null?undefined:typeof value==="string"?value:JSON.stringify(value);return rows.map(row=>({id:row.audit_event_id,at:row.occurred_at instanceof Date?row.occurred_at.toISOString():String(row.occurred_at),actor:row.actor_id,principal:row.principal_type,organisation:row.organisation_id,action:row.action,entity:row.entity_type,entityId:row.entity_id,result:"allowed",severity:row.reason?"warning":"info",correlationId:row.correlation_id,...(display(row.before_json)?{before:display(row.before_json)}:{}),...(display(row.after_json)?{after:display(row.after_json)}:{}),...(row.reason?{reason:row.reason}:{})}));}
 
-export async function listReportVersionRegister(db:Queryable):Promise<ReportVersionRegisterItem[]>{const {rows}=await db.query<{report_version_id:string;job_id:string;job_number:string;client_name:string;reporting_year:number|null;status:ReportVersionRegisterItem["status"];manifest_version:number;reviewed_snapshot_id:string;data_hash:string;created_at:Date|string;published_at:Date|string|null;approval_count:string;comment_count:string;scope_kind:"whole"|"sites";scope_site_ids:string[]|null}>(`SELECT r.report_version_id,r.job_id,j.job_number,c.name AS client_name,j.reporting_year,r.status,r.manifest_version,r.reviewed_snapshot_id,r.data_hash,r.created_at,r.published_at,r.scope_kind,r.scope_site_ids,count(DISTINCT a.approval_id)::text AS approval_count,count(DISTINCT m.comment_id)::text AS comment_count FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) LEFT JOIN nzi_console.portal_report_approvals a ON (a.organisation_id,a.report_version_id)=(r.organisation_id,r.report_version_id) LEFT JOIN nzi_console.portal_report_comments m ON (m.organisation_id,m.report_version_id)=(r.organisation_id,r.report_version_id) GROUP BY r.organisation_id,r.report_version_id,j.organisation_id,j.job_id,c.organisation_id,c.client_id ORDER BY r.created_at DESC,r.report_version_id DESC`);const iso=(value:Date|string)=>value instanceof Date?value.toISOString():String(value);const names=rows.some(row=>row.scope_kind==="sites")?new Map((await db.query<{site_id:string;name:string}>(`SELECT site_id,name FROM nzi_console.client_sites`)).rows.map(site=>[site.site_id,site.name])):new Map<string,string>();return rows.map(row=>{const scope:ReportScope=row.scope_kind==="sites"&&row.scope_site_ids?{kind:"sites",siteIds:row.scope_site_ids}:{kind:"whole"};return{reportVersionId:row.report_version_id,jobId:row.job_id,jobNumber:row.job_number,client:row.client_name,reportingYear:row.reporting_year,status:row.status,manifestVersion:row.manifest_version,snapshotId:row.reviewed_snapshot_id,dataHash:row.data_hash,createdAt:iso(row.created_at),publishedAt:row.published_at==null?null:iso(row.published_at),approvalCount:Number(row.approval_count),commentCount:Number(row.comment_count),scope,scopeLabel:reportScopeLabel(scope,names)};});}
+export async function listReportVersionRegister(db:Queryable):Promise<ReportVersionRegisterItem[]>{const {rows}=await db.query<{report_version_id:string;job_id:string;job_number:string;client_name:string;reporting_year:number|null;status:ReportVersionRegisterItem["status"];manifest_version:number;reviewed_snapshot_id:string;data_hash:string;created_at:Date|string;published_at:Date|string|null;approval_count:string;comment_count:string;scope_kind:"whole"|"sites";scope_site_ids:string[]|null;version:number}>(`SELECT r.report_version_id,r.job_id,j.job_number,c.name AS client_name,j.reporting_year,r.status,r.manifest_version,r.reviewed_snapshot_id,r.data_hash,r.created_at,r.published_at,r.scope_kind,r.scope_site_ids,r.version,count(DISTINCT a.approval_id)::text AS approval_count,count(DISTINCT m.comment_id)::text AS comment_count FROM nzi_console.report_versions r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) LEFT JOIN nzi_console.portal_report_approvals a ON (a.organisation_id,a.report_version_id)=(r.organisation_id,r.report_version_id) LEFT JOIN nzi_console.portal_report_comments m ON (m.organisation_id,m.report_version_id)=(r.organisation_id,r.report_version_id) GROUP BY r.organisation_id,r.report_version_id,j.organisation_id,j.job_id,c.organisation_id,c.client_id ORDER BY r.created_at DESC,r.report_version_id DESC`);const iso=(value:Date|string)=>value instanceof Date?value.toISOString():String(value);const names=rows.some(row=>row.scope_kind==="sites")?new Map((await db.query<{site_id:string;name:string}>(`SELECT site_id,name FROM nzi_console.client_sites`)).rows.map(site=>[site.site_id,site.name])):new Map<string,string>();return rows.map(row=>{const scope:ReportScope=row.scope_kind==="sites"&&row.scope_site_ids?{kind:"sites",siteIds:row.scope_site_ids}:{kind:"whole"};return{reportVersionId:row.report_version_id,jobId:row.job_id,jobNumber:row.job_number,client:row.client_name,reportingYear:row.reporting_year,status:row.status,manifestVersion:row.manifest_version,snapshotId:row.reviewed_snapshot_id,dataHash:row.data_hash,createdAt:iso(row.created_at),publishedAt:row.published_at==null?null:iso(row.published_at),approvalCount:Number(row.approval_count),commentCount:Number(row.comment_count),scope,scopeLabel:reportScopeLabel(scope,names),version:row.version};});}
 
 /** Every job, unpaged — see `listAllClients`. The Jobs list page reads `listJobs` (listReads.ts). */
 export async function listAllJobs(db: Queryable): Promise<JobScreenReadModel[]> {

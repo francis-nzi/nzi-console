@@ -51,6 +51,10 @@
 .nzr-tbl{width:100%;border-collapse:collapse;margin-top:4px}
 .nzr-tbl th{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.05em;text-align:left;text-transform:uppercase}
 .nzr-tbl td{padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+/* Ruled (F-1 review, 10 Oct): a CSS-only wrap, as .nzr-prov does, so the Methodology table's unbroken evidence hash wraps on a
+   phone instead of pushing the page sideways. Only the value cell (a row's last), so labels keep whole words. Wrapping only,
+   never moving content: within Q4's accepted CSS gap, not a composed@2 fork — the markup pins stay byte-identical. */
+.nzr-tbl td:last-child{overflow-wrap:anywhere}
 .nzr-tbl tbody tr:last-child td{border-bottom:0}
 .nzr-tbl tfoot td{padding:9px 10px;border-top:1px solid var(--line);font-weight:700}
 .nzr-tbl .r{text-align:right}

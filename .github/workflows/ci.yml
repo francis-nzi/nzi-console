@@ -690,6 +690,10 @@ jobs:
       # version-bumped, separation of duties, audited; the profile append-only, no money in its issuer line.
       - name: A report issues in its frozen section order, seeded from the client's profile, reorder-only until the portal honours exclusion
         run: npx tsx --test packages/isolated-backend/tests/reportSectionPlanReal.test.ts
+      # Reporting F-1b: the read models behind the editors — the workspace's report profile, a version's plan with the version
+      # publish pins, the register's version — and getClientWorkspace serial on the tenant client (§13, guarded).
+      - name: The section-plan editors read the profile and the version they publish, and the client workspace stays serial
+        run: npx tsx --test packages/isolated-backend/tests/reportPlanReadModelsReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

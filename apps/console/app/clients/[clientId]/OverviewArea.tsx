@@ -14,6 +14,7 @@ import { ClientSites } from "./ClientSites";
 import { ClientTargets } from "./ClientTargets";
 import { ClientIntensityTargets } from "./ClientIntensityTargets";
 import { ReportingTemplateCard } from "./ClientReportingTemplate";
+import { ReportProfileCard } from "./ClientReportProfile";
 import { FinancialStatusCard } from "./ClientAreaStates";
 import { EvidenceButton, TierBadge, fyLabel, tonnes } from "./FigureEvidence";
 import type { DrawerRequest } from "./clientDrawers";
@@ -98,6 +99,10 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
     {/* Phase 1c — what the client reports, year to year, held on the Client rather than rebuilt on every job. */}
     <ReportingTemplateCard template={workspace.reportingTemplate ?? { current: null, latestVersion: 0, categories: [] }} access={access.client}
       onEdit={() => onDrawer({ kind: "reporting-template" })} onInitialise={() => onDrawer({ kind: "reporting-template-initialise" })} />
+
+    {/* F-1b (R-D1) — the order this client's reports start in, and a line for the cover. */}
+    <ReportProfileCard profile={workspace.reportProfile ?? { current: null, latestVersion: 0 }} access={access.client}
+      onEdit={() => onDrawer({ kind: "report-profile" })} />
 
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
       title={<><span className="eyebrow">Relationship</span><h2>Activity</h2></>}

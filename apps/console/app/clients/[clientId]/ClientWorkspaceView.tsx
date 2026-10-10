@@ -19,6 +19,7 @@ import { ReportingArea } from "./ReportingArea";
 import { IntensityMetricsDrawer } from "./IntensityMetricsDrawer";
 import { IntensityTargetForm } from "./ClientIntensityTargets";
 import { ReportingTemplateForm, ReportingTemplateInitialiseForm } from "./ClientReportingTemplate";
+import { ReportProfileForm } from "./ClientReportProfile";
 import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
 import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm } from "./StrategyForms";
@@ -208,6 +209,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "intensity-target" ? (() => { const metric = workspace.intensityMetrics.find((item) => item.key === drawer.metricKey); return metric ? <IntensityTargetForm key={drawer.metricKey} clientId={client.id} metric={metric} target={workspace.intensityTargets?.find((item) => item.metricKey === drawer.metricKey) ?? null} access={access.target} onClose={closeDrawer} onSaved={saved} /> : null; })() : null}
       {drawer?.kind === "reporting-template" ? <ReportingTemplateForm key={`template-${workspace.reportingTemplate.latestVersion}`} clientId={client.id} template={workspace.reportingTemplate} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "reporting-template-initialise" ? <ReportingTemplateInitialiseForm clientId={client.id} template={workspace.reportingTemplate} jobs={jobs} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
+      {drawer?.kind === "report-profile" ? <ReportProfileForm key={`profile-${workspace.reportProfile.latestVersion}`} clientId={client.id} profile={workspace.reportProfile} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "intensity-metrics" ?<IntensityMetricsDrawer clientId={client.id} currency={client.profile.currency ?? "GBP"} metrics={workspace.intensityMetrics} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "contact" ? <ContactForm key={drawer.contact?.id ?? "new-contact"} clientId={client.id} contact={drawer.contact} latestConsent={workspace.contactConsent?.find((event) => event.contactId === drawer.contact?.id) ?? null} access={access.contact} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "site" ? <SiteForm key={drawer.site?.id ?? "new-site"} clientId={client.id} site={drawer.site} sites={sites} periods={[...workspace.reportingPeriods].reverse()} access={access.site} onClose={closeDrawer} onSaved={saved} onPartial={() => router.refresh()} /> : null}
