@@ -694,6 +694,10 @@ jobs:
       # publish pins, the register's version — and getClientWorkspace serial on the tenant client (§13, guarded).
       - name: The section-plan editors read the profile and the version they publish, and the client workspace stays serial
         run: npx tsx --test packages/isolated-backend/tests/reportPlanReadModelsReal.test.ts
+      # Reporting F-2 (chart parity, RULING-reporting-F4 D2): a report composed now freezes its charts' input and is drawn
+      # composed@2; a whole-client report's charts equal the portal's today, value for value; a site report's are its own.
+      - name: A composed report draws the portal's charts from its frozen basis — parity, scope-correct
+        run: npx tsx --test packages/isolated-backend/tests/reportChartParityReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

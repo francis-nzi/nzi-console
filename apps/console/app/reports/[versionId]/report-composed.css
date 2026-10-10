@@ -108,6 +108,8 @@
 
 .nzr-srs{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
 .nzr-chart{flex:0 0 300px;max-width:100%}
+/* F-2 (composed@2): the manifest's charts. Donuts keep the 300px column; bars and pathways take the row. */
+.nzr-charts{display:flex;flex-wrap:wrap;gap:18px;margin-top:16px}.nzr-chart.wide{flex:1 1 100%;width:100%;margin-top:14px}
 .nzr-srs .nzr-tbl{flex:1 1 260px;min-width:0}
 
 @media (max-width:760px){
