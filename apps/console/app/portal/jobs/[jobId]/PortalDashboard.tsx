@@ -8,6 +8,10 @@ import { useOrganisationName } from "../../../lib/OrganisationNameProvider";
 // via @nzi/charts' `resolveCrpCoreCharts` (identical marks to the report/PDF).
 // Charts carry text/provenance chrome; the tables below make every figure
 // reachable without pixels (Narrator).
+//
+// F-4c (RULING-reporting-F4b-flip-and-dashboard): the dashboard honours the report it is drawn from — a section that report
+// leaves out (targets, intensity, sites) has its tiles, charts and table withheld here too, driven by the same plan, and the
+// omission is said. If the plan cannot be read, those pieces are withheld (fail closed). See `dashboardPlan`.
 import { useCallback, useEffect, useState } from "react";
 import { crpProfessionalManifest, ManifestChartSet, resolveCrpCoreCharts, type AnyChartData } from "@nzi/charts";
 import { crpScopeCategoryLabel, portalTargetProgress, type PortalAssuredDashboard, type ClientFacingPublishedCrpReport } from "@nzi/contracts";
@@ -15,6 +19,8 @@ import { redirectIfPortalSessionEnded } from "../../portalSessionClient";
 import { isPortalAssuredDashboard } from "./portalAnalyticsValidation";
 import { isPublishedCrpReport } from "./publishedReportValidation";
 import { formatDate } from "../../../lib/formatDate";
+import { chartsHonouringPlan, dashboardVisibilityOf, manifestHonouringPlan, type DashboardPlanSource, type DashboardVisibility } from "../../dashboardPlan";
+import { portalReportViewOf } from "../../portalReportView";
 
 const fmt = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 const pct = (value: number) => `${(value * 100).toLocaleString("en-GB", { maximumFractionDigits: 0 })}%`;
@@ -24,7 +30,20 @@ type State =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
   | { kind: "empty" }
-  | { kind: "ready"; dashboard: Extract<PortalAssuredDashboard, { published: true }>; charts: AnyChartData[]; snapshotId: string };
+  | { kind: "ready"; dashboard: Extract<PortalAssuredDashboard, { published: true }>; charts: AnyChartData[]; snapshotId: string; visibility: DashboardVisibility };
+
+/**
+ * F-4c: the plan of the report this dashboard is drawn from — the same version, read through F-4a's grant-checked composition
+ * route. Anything but a verified answer fails closed (see `dashboardVisibilityOf`).
+ */
+async function planSourceFor(jobId: string, reportVersionId: string): Promise<DashboardPlanSource> {
+  try {
+    const response = await fetch(`/api/portal/jobs/${jobId}/published-report/composition?reportVersionId=${encodeURIComponent(reportVersionId)}`, { cache: "no-store" });
+    if (!response.ok) return { state: "failed" };
+    const view = portalReportViewOf(await response.json(), { reportVersionId, jobId });
+    return view.state === "failed" ? { state: "failed" } : view;
+  } catch { return { state: "failed" }; }
+}
 
 export function PortalDashboard({ jobId }: { jobId: string }) {
   const org = useOrganisationName();
@@ -63,7 +82,8 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
           });
         }
       }
-      setState({ kind: "ready", dashboard, charts, snapshotId });
+      const visibility = dashboardVisibilityOf(await planSourceFor(jobId, dashboard.reportVersionId));
+      setState({ kind: "ready", dashboard, charts, snapshotId, visibility });
     } catch (cause) {
       setState({ kind: "failed", message: cause instanceof Error ? cause.message : "Your emissions dashboard could not be loaded." });
     }
@@ -83,7 +103,10 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
     </div>
   );
 
-  const { dashboard, charts, snapshotId } = state;
+  const { dashboard, snapshotId, visibility } = state;
+  // F-4c: only what the report it is drawn from shows — a section the report leaves out is not drawn here either.
+  const charts = chartsHonouringPlan(state.charts, visibility);
+  const manifest = manifestHonouringPlan(crpProfessionalManifest, visibility);
   const progress = portalTargetProgress(dashboard);
   const scopes: Array<"1" | "2" | "3"> = ["1", "2", "3"];
 
@@ -95,7 +118,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
           <h2><b className="num">{fmt(dashboard.total)}</b> tCO₂e</h2>
           <p>From your published report version {dashboard.reportVersionId} · evidence {dashboard.dataHash.slice(0, 15)}… · published {formatDate(dashboard.publishedAt)}</p>
         </div>
-        {dashboard.target ? (
+        {dashboard.target && visibility.targets ? (
           <div className={`nz-portal-dash-target${progress != null && progress >= 1 ? " met" : ""}`}>
             <span>Progress to your {dashboard.target.interimYear} interim target ({dashboard.target.interimReductionPercent}% below {dashboard.target.baselineYear})</span>
             <b>{progress == null ? "—" : pct(Math.max(0, Math.min(1, progress)))}</b>
@@ -104,9 +127,16 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
         ) : null}
       </div>
 
+      {visibility.omitted.length ? (
+        <p className="nz-portal-dash-omitted" role="note">Left out of your report at {org.your("adviser")}&rsquo;s choice, so not shown here either: {visibility.omitted.join(", ")}.</p>
+      ) : null}
+      {visibility.unverified ? (
+        <p className="nz-portal-dash-omitted" role="note">Your targets, intensity and site figures are not shown here because the sections of your report could not be checked just now. They are in your report itself.</p>
+      ) : null}
+
       {charts.length ? (
         <div className="nz-portal-dash-charts">
-          <ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshotId} />
+          <ManifestChartSet manifest={manifest} charts={charts} reviewedSnapshotId={snapshotId} />
         </div>
       ) : null}
 
@@ -156,7 +186,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
           </table>
         </div>
 
-        {dashboard.bySite.length > 1 ? (
+        {dashboard.bySite.length > 1 && visibility.sites ? (
           <div>
             <h3>Emissions by site</h3>
             <table className="nz-tbl">

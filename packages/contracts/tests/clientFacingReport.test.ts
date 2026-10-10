@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clientFacingComposition, clientFacingPublishedReport, CLIENT_WITHHELD_IDENTITY_FIELDS, reportMethodologyRows, type PublishedCrpReportReadModel, type ReportComposition } from "../src/index";
+import { CLIENT_WITHHELD_FREE_TEXT_FIELDS, clientFacingComposition, clientFacingPublishedReport, CLIENT_WITHHELD_IDENTITY_FIELDS, composeReportChartBasis, reportMethodologyRows, type PublishedCrpReportReadModel, type ReportComposition } from "../src/index";
 
 /**
  * F-4b (ruled on F-4a's staff-identity finding): the client's copy of a published report and of its issued document names
@@ -19,6 +19,25 @@ const report = (): PublishedCrpReportReadModel => ({
     gapResolutions: [{ gapKey: "g", reason: "nil", resolvedBy: `${STAFF}-gap`, resolvedAt: "2026-01-01T00:00:00.000Z" }],
     measurements: [{ rowId: "r", rowVersion: 1, scope: "1", sourceLabel: "Gas", tco2e: 10, factorSet: "demo", qualityTier: "measured", reviewedBy: `${STAFF}-row` }],
   } as unknown as PublishedCrpReportReadModel["snapshot"],
+});
+
+describe("the client's copy carries none of the consultants' free text (F-4c, ruled)", () => {
+  it("withholds row notes and gap-resolution reasons, and changes no figure", () => {
+    const full = report();
+    full.snapshot.measurements[0] = { ...full.snapshot.measurements[0]!, notes: "internal-note-q9" };
+    full.snapshot.gapResolutions[0] = { ...full.snapshot.gapResolutions[0]!, reason: "internal-reason-q9" };
+    const client = clientFacingPublishedReport(full);
+    assert.ok(!JSON.stringify(client).includes("q9"));
+    assert.deepEqual([...CLIENT_WITHHELD_FREE_TEXT_FIELDS], ["snapshot.measurements[].notes", "snapshot.gapResolutions[].reason"]);
+    assert.deepEqual(client.snapshot.gapResolutions, [{ gapKey: "g", resolvedAt: "2026-01-01T00:00:00.000Z" }], "the resolution itself stands");
+    assert.equal(client.snapshot.measurements[0]!.tco2e, 10);
+  });
+
+  it("the chart basis is composed without the intensity target's editor — nothing to strip on the way out", () => {
+    const basis = composeReportChartBasis({ snapshot: { ...report().snapshot, measurements: [] } as never, scope: { kind: "whole" } });
+    assert.ok(basis.intensityTarget && !("updatedBy" in basis.intensityTarget), "no editor frozen into the issued record");
+    assert.equal((basis.intensityTarget as { reportingDenominator?: number }).reportingDenominator, 12.5, "the figures stay");
+  });
 });
 
 describe("the client's copy names none of the issuer's staff (F-4b)", () => {

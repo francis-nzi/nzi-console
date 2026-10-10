@@ -171,13 +171,13 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
     await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, 'j-excl', '2025-01-01', '2025-12-31', 'GB')`, [ORG]);
     const payload = { jobNumber: "J-excl", client: "Portal Co", reportingYear: 2025,
       measurements: [
-        { rowId: "x-a", rowVersion: 1, scope: "1", scopeCode: "1", siteId: "s-a", siteLabel: "Works", sourceLabel: "Gas", tco2e: 10, qualityTier: "measured", factorSet: "demo", reviewedBy: `${MARK}-row-reviewer` },
+        { rowId: "x-a", rowVersion: 1, scope: "1", scopeCode: "1", siteId: "s-a", siteLabel: "Works", sourceLabel: "Gas", tco2e: 10, qualityTier: "measured", factorSet: "demo", reviewedBy: `${MARK}-row-reviewer`, notes: `${MARK}-row-note` },
         { rowId: "x-g", rowVersion: 1, scope: "3", scopeCode: "3.1", siteId: null, siteLabel: null, sourceLabel: "Goods", tco2e: 20, qualityTier: "estimated", factorSet: "demo", purchasedGoodsCategoryId: "pg", purchasedGoodsCategoryLabel: "Materials", reviewedBy: `${MARK}-row-reviewer` }],
       target: { jobId: "j-excl", baselineYear: 2024, baselineTco2e: 40, interimYear: 2030, interimReductionPercent: 50, netZeroYear: 2045, version: 1, updatedAt: "2026-01-01T00:00:00.000Z", updatedBy: `${MARK}-target-editor` },
       intensityTarget: { source: "client-target", metric: "turnover", metricLabel: "Turnover", denominatorUnit: "£m", reportingDenominator: 12.5, baselineYear: 2024, baselineIntensity: 3,
         interimYear: 2030, interimReductionPercent: 50, targetYear: 2045, targetReductionPercent: 100, netZeroYear: null, jobId: "j-excl", version: 1, updatedAt: "2026-01-01T00:00:00.000Z", updatedBy: `${MARK}-intensity-editor` },
       sections: [{ key: "executive-summary", title: "Executive summary", ordinal: 10, contentSource: "edited", bodyHtml: "<p>Summary.</p>", version: 2, updatedBy: `${MARK}-section-editor`, updatedAt: "2026-01-01T00:00:00.000Z" }],
-      gapResolutions: [{ gapKey: "g1", reason: "Recorded as nil.", resolvedBy: `${MARK}-gap-resolver`, resolvedAt: "2026-01-01T00:00:00.000Z" }],
+      gapResolutions: [{ gapKey: "g1", reason: `${MARK}-gap-reason`, resolvedBy: `${MARK}-gap-resolver`, resolvedAt: "2026-01-01T00:00:00.000Z" }],
       annualComparison: [{ year: 2024, values: [{ scope: "1", value: 12 }] }, { year: 2025, values: [{ scope: "1", value: 10 }] }],
       provenance: { resolver: "crp.snapshot.issue@2", reportingPeriod: { from: "2025-01-01", to: "2025-12-31" }, factorSets: [], boundary: { siteIds: ["s-a", "s-b"], excludedRowIds: [] } } };
     await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
@@ -199,13 +199,15 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
     // No reviewer on the client's copy, and so no "Reviewed by" line; the staff copy keeps both.
     const staff = (await read((db) => getReportComposition(db, reportVersionId)))!;
     assert.equal(staff.assurance.reviewedBy, `${MARK}-preparer`);
+    // F-4c: the issued record itself froze no editor into its chart basis — nothing to strip on the way out.
+    assert.ok(staff.chartBasis?.intensityTarget && !JSON.stringify(staff.chartBasis).includes(MARK));
     assert.ok(reportMethodologyRows(staff).some((row) => row.label === "Reviewed by"));
     assert.equal(view.composition.assurance.reviewedBy, "");
     assert.ok(!reportMethodologyRows(view.composition).some((row) => row.label === "Reviewed by"), "the line goes, with no name or organisation in its place");
     assert.ok(reportMethodologyRows(view.composition).some((row) => row.label === "Assurance basis"), "the basis stands alone");
     // The published report as the route sends it: every staff identity gone, every figure the same.
     const staffCopy = JSON.stringify(view.report);
-    for (const who of ["preparer", "row-reviewer", "target-editor", "intensity-editor", "section-editor", "gap-resolver"]) assert.ok(staffCopy.includes(`${MARK}-${who}`), `the fixture seeds ${who}`);
+    for (const who of ["preparer", "row-reviewer", "target-editor", "intensity-editor", "section-editor", "gap-resolver", "row-note", "gap-reason"]) assert.ok(staffCopy.includes(`${MARK}-${who}`), `the fixture seeds ${who}`);
     const client = clientFacingPublishedReport(view.report);
     assert.ok(!JSON.stringify({ report: client, composition: view.composition }).includes(MARK), "no staff identity anywhere in what the client is sent");
     assert.deepEqual(client.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]), view.report.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]));
