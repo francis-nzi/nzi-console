@@ -1,14 +1,14 @@
 "use client";
 import {useEffect,useState} from "react";
-import type {PublishedCrpReportReadModel} from "@nzi/contracts";
+import type {ClientFacingPublishedCrpReport} from "@nzi/contracts";
 import type {PortalDeliverableKind,PortalDeliverableRecord} from "@nzi/isolated-backend";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
 
 const kinds:PortalDeliverableKind[]=["report","certificate","methodology"];
 const titles:Record<PortalDeliverableKind,string>={report:"Published Carbon Reduction Plan",certificate:"Emissions certificate",methodology:"Methodology statement"};
-function validRecord(value:unknown,report:PublishedCrpReportReadModel):value is PortalDeliverableRecord{if(!value||typeof value!=="object")return false;const item=value as PortalDeliverableRecord;return kinds.includes(item.kind)&&item.documentId===`${report.reportVersionId}:${item.kind}`&&item.reportVersionId===report.reportVersionId&&item.snapshotId===report.snapshot.id&&item.evidenceHash===report.dataHash&&item.contentType==="application/pdf"&&item.filename.endsWith(".pdf")}
+function validRecord(value:unknown,report:ClientFacingPublishedCrpReport):value is PortalDeliverableRecord{if(!value||typeof value!=="object")return false;const item=value as PortalDeliverableRecord;return kinds.includes(item.kind)&&item.documentId===`${report.reportVersionId}:${item.kind}`&&item.reportVersionId===report.reportVersionId&&item.snapshotId===report.snapshot.id&&item.evidenceHash===report.dataHash&&item.contentType==="application/pdf"&&item.filename.endsWith(".pdf")}
 
-export function PortalDeliverablesPanel({report,clientMode}:{report:PublishedCrpReportReadModel;clientMode:boolean}){
+export function PortalDeliverablesPanel({report,clientMode}:{report:ClientFacingPublishedCrpReport;clientMode:boolean}){
   const [documents,setDocuments]=useState<PortalDeliverableRecord[]|null>(clientMode?null:[]),[error,setError]=useState("");
   useEffect(()=>{if(!clientMode)return;fetch(`/api/portal/jobs/${report.snapshot.jobId}/deliverables?reportVersionId=${encodeURIComponent(report.reportVersionId)}`,{cache:"no-store"}).then(async response=>{if(await redirectIfPortalSessionEnded(response))return;const body=await response.json();if(!response.ok)throw new Error(body.message??"Documents are unavailable.");if(body.reportVersionId!==report.reportVersionId||!Array.isArray(body.documents)||body.documents.length!==3||!body.documents.every((item:unknown)=>validRecord(item,report))||new Set(body.documents.map((item:PortalDeliverableRecord)=>item.kind)).size!==3)throw new Error("The document register did not match this publication.");setDocuments(body.documents)}).catch(cause=>{setError(cause instanceof Error?cause.message:"Documents are unavailable.");setDocuments([])})},[clientMode,report]);
   const displayDocuments:PortalDeliverableRecord[]=clientMode?(documents??[]):kinds.map(kind=>({kind,title:titles[kind],documentId:`${report.reportVersionId}:${kind}`,filename:"",contentType:"application/pdf",reportVersionId:report.reportVersionId,snapshotId:report.snapshot.id,evidenceHash:report.dataHash,publishedAt:report.publishedAt}));

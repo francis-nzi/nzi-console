@@ -17,8 +17,8 @@ import { withTenantRead } from "../src/postgres";
  *   recorded; a profile edited later never reaches a version already validated;
  * - the freeze: publish copies the version's plan (and the profile's issuer line) into the composition; a version validated
  *   before F-1 publishes the default;
- * - the interlock (Q5): reorder-only — exclusion is refused at validate, at the profile and at update until F-4; the
- *   narrative is refused until it is drawn; the mandatory sections always;
+ * - the interlock (Q5): exclusion is HELD (RULING-reporting-F4b-flip-and-dashboard) — refused at validate, at the profile and
+ *   at update until F-4c and the target backfill; the narrative is refused until it is drawn; the mandatory sections always;
  * - `report.sectionPlan.update` (Q2): validated only, version-checked and bumped, re-checked, held to separation of duties,
  *   audited before and after;
  * - the profile: append-only versions, withdrawal with a reason and no plan, no money in the issuer line.
@@ -129,18 +129,6 @@ describe("a report's section plan and the client's report profile (F-1), against
     assert.equal(asProfile.data.sectionPlanOrigin, "profile:2");
   });
 
-  it("is reorder-only until F-4 (Q5): leaving a section out is refused at validate, at the profile and at update; so is narrative, and a mandatory section always", async () => {
-    await assert.rejects(validate(await snapshot(), withExcluded("targets")), (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
-    await assert.rejects(setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: await profileVersion(), sectionPlan: withExcluded("srs"), issuerLine: null }, context("ada", "admin")),
-      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
-    const narrative = defaultReportSectionPlan.map((entry) => entry.key === "narrative:background" ? { ...entry, included: true } : entry);
-    await assert.rejects(validate(await snapshot(), narrative), (error) => codesOf(error).includes("NARRATIVE_NOT_YET_DRAWN"));
-    await assert.rejects(validate(await snapshot(), withExcluded("emissions")), (error) => codesOf(error).includes("MANDATORY_SECTION"));
-    const validated = await validate(await snapshot());
-    await assert.rejects(updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: withExcluded("plan") }, context("rev", "reviewer")),
-      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
-  });
-
   it("report.sectionPlan.update: validated only, version-checked and bumped, held to separation of duties, audited before and after", async () => {
     const snap = await snapshot();
     const validated = await validate(snap);
@@ -181,13 +169,13 @@ describe("a report's section plan and the client's report profile (F-1), against
   });
 
   it("a stored profile that no longer fits the rules is refused at validate, never issued", async () => {
-    // As if written under looser rules (or before a rule changed): a profile that leaves a section out.
+    // As if written under looser rules (or before a rule changed): a profile that leaves a mandatory section out.
     const version = (await profileVersion()) + 1;
     await q(`INSERT INTO nzi_console.client_report_profiles (organisation_id, client_id, version, active, section_plan, set_by, correlation_id) VALUES ($1, $2, $3, true, $4::jsonb, 'seed', 'seed')`,
-      [ORG, CLIENT, version, JSON.stringify(withExcluded("srs"))]);
+      [ORG, CLIENT, version, JSON.stringify(withExcluded("emissions"))]);
     await assert.rejects(validate(await snapshot()), (error) => {
       const issues = (error as { issues?: Array<{ code: string; field: string; message: string }> }).issues ?? [];
-      return issues.some((issue) => issue.code === "EXCLUSION_NOT_YET_AVAILABLE" && issue.field === "reportProfile" && /report profile no longer fits/.test(issue.message));
+      return issues.some((issue) => issue.code === "MANDATORY_SECTION" && issue.field === "reportProfile" && /report profile no longer fits/.test(issue.message));
     });
     // A plan chosen for this report still validates past it.
     assert.equal((await validate(await snapshot(), reordered())).data.sectionPlanOrigin, "edited");
@@ -198,5 +186,19 @@ describe("a report's section plan and the client's report profile (F-1), against
       await assert.rejects(setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: await profileVersion(), sectionPlan: reordered(), issuerLine: line }, context("ada", "admin")),
         (error) => codesOf(error).includes("MONEY_SHAPED"), line);
     }
+  });
+
+  it("while exclusion is HELD (until F-4c and the target backfill): leaving a section out is refused at validate, at the profile and at update; so is narrative, and a mandatory section always", async () => {
+    await assert.rejects(validate(await snapshot(), withExcluded("targets")), (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
+    const before = await profileVersion();
+    await assert.rejects(setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: before, sectionPlan: withExcluded("srs"), issuerLine: null }, context("ada", "admin")),
+      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
+    assert.equal(await profileVersion(), before, "a refused profile writes no version");
+    const narrative = defaultReportSectionPlan.map((entry) => entry.key === "narrative:background" ? { ...entry, included: true } : entry);
+    await assert.rejects(validate(await snapshot(), narrative), (error) => codesOf(error).includes("NARRATIVE_NOT_YET_DRAWN"));
+    await assert.rejects(validate(await snapshot(), withExcluded("emissions")), (error) => codesOf(error).includes("MANDATORY_SECTION"));
+    const validated = await validate(await snapshot(), reordered());
+    await assert.rejects(updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: withExcluded("plan") }, context("rev", "reviewer")),
+      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
   });
 });

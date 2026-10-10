@@ -6,7 +6,7 @@
 import { useRef, useState } from "react";
 import { Collapsible, GatedButton } from "@nzi/ui";
 import { postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { defaultReportSectionPlan, isReportDataSection, REPORT_ISSUER_LINE_MAX, reportIssuerLineIssues, reportPlanSectionTitle, type ReportSectionPlan } from "@nzi/contracts";
+import { defaultReportSectionPlan, isReportDataSection, REPORT_ISSUER_LINE_MAX, reportIssuerLineIssues, reportOmittedSections, reportPlanSectionTitle, type ReportSectionPlan } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { SectionPlanEditor } from "../../reports/SectionPlanEditor";
 import { formatDate } from "../../lib/formatDate";
@@ -15,8 +15,13 @@ import type { EditAccess } from "../../lib/useEditAccess";
 type Profile = ClientWorkspaceReadModel["reportProfile"];
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
-const orderText = (plan: ReportSectionPlan) => plan.filter((entry) => entry.included && isReportDataSection(entry.key) && entry.key !== "cover")
-  .map((entry) => reportPlanSectionTitle(entry.key)).join(" · ");
+const orderText = (plan: ReportSectionPlan) => {
+  const order = plan.filter((entry) => entry.included && isReportDataSection(entry.key) && entry.key !== "cover")
+    .map((entry) => reportPlanSectionTitle(entry.key)).join(" · ");
+  // F-4b: what the profile leaves out is said beside the order, never only implied by its absence.
+  const leftOut = reportOmittedSections(plan);
+  return leftOut.length ? `${order} — left out: ${leftOut.join(", ")}` : order;
+};
 
 /** The card on the Overview: the profile in force, or the standard order every report starts from without one. */
 export function ReportProfileCard({ profile, access, onEdit }: { profile: Profile; access: EditAccess; onEdit: () => void }) {

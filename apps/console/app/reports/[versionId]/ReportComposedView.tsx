@@ -38,14 +38,18 @@ import { reportPathway, siteActivities, siteScopeDonut, sitesDonut } from "./sco
 const iconKey = (key: string): NziIconKey => key as NziIconKey;
 const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 0 });
 
-export function ReportComposedView({ composition }: { composition: ReportComposition }) {
+/** Where the issuer's logo is served from: the staff route by default; the portal passes its grant-checked route (F-4, D4). */
+export type IssuerLogoSrc = (assetId: string) => string;
+export const staffIssuerLogoSrc: IssuerLogoSrc = (assetId) => `/api/isolated/organisation/logo?asset=${encodeURIComponent(assetId)}`;
+
+export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc }: { composition: ReportComposition; issuerLogoSrc?: IssuerLogoSrc }) {
   // F-0 (RULING-reporting-F Q4): the layout is chosen by the composition, not by whichever view is deployed. A layout
   // change that would alter an issued report forks to a new renderer; it never redraws this one.
   const renderer = reportRendererOf(composition);
-  if (renderer === "composed@1") return <ComposedV1 composition={composition} />;
+  if (renderer === "composed@1") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} />;
   // F-2 (chart parity): composed@1 plus the manifest's charts, drawn from the frozen chart basis by the resolver the portal
   // uses — so a client loses no chart they see today when the portal moves onto the composed report (F-4).
-  if (renderer === "composed@2") return <ComposedV1 composition={composition} charts={composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0]) : []} />;
+  if (renderer === "composed@2") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} charts={composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0]) : []} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 
@@ -56,7 +60,7 @@ type ComposedCharts = ReturnType<typeof resolveCrpCoreCharts>;
  * (`reportComposedRenderer.test.ts`). Do not change what it draws — fork to `composed@2`. `charts` is composed@2's addition:
  * absent, this draws composed@1 exactly.
  */
-function ComposedV1({ composition, charts }: { composition: ReportComposition; charts?: ComposedCharts }) {
+function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: ReportComposition; charts?: ComposedCharts; issuerLogoSrc: IssuerLogoSrc }) {
   const chart = <T,>(type: string) => charts?.find((entry) => entry.spec.type === type) as T | undefined;
   const scopeDonut = chart<ScopeDonutData>("emissions_scope_donut"), yearOnYear = chart<ScopeYearOnYearData>("scope_year_on_year_bar");
   const byActivity = chart<EmissionsByActivityData>("emissions_by_activity"), purchasedGoods = chart<PurchasedGoodsBreakdownData>("purchased_goods_breakdown");
@@ -80,7 +84,7 @@ function ComposedV1({ composition, charts }: { composition: ReportComposition; c
 
   // One renderer per section; the plan decides which appear, in what order, with what number and page.
   const sections: Record<ReportCompositionSectionKey, (n: string, page: number) => React.ReactNode> = {
-    cover: () => <Cover composition={composition} />,
+    cover: () => <Cover composition={composition} issuerLogoSrc={issuerLogoSrc} />,
 
     "executive-summary": (n, page) => <Page footer={footer} number={page}>
       <SectionHead n={n} section="executive-summary" />
@@ -333,13 +337,13 @@ function UnknownRenderer({ renderer }: { renderer: string }) {
   </section></main>;
 }
 
-function Cover({ composition }: { composition: ReportComposition }) {
+function Cover({ composition, issuerLogoSrc }: { composition: ReportComposition; issuerLogoSrc: IssuerLogoSrc }) {
   // The issuer frozen at validation (0143): a profile edited since does not change a document already issued.
   const issuer = composition.issuer ?? null;
   return <section className="nzr-page nzr-cover">
     <div className="nzr-brand">
       {issuer
-        ? <LogoMark src={issuer.logoAssetId ? `/api/isolated/organisation/logo?asset=${encodeURIComponent(issuer.logoAssetId)}` : null} name={issuer.displayName} className="nzr-brand-mark" />
+        ? <LogoMark src={issuer.logoAssetId ? issuerLogoSrc(issuer.logoAssetId) : null} name={issuer.displayName} className="nzr-brand-mark" />
         : <span className="nzr-brand-mark" aria-hidden="true">N</span>}
       <div><b>NZ Insights Pro</b>{issuer ? <small>{issuer.displayName}</small> : null}</div>
     </div>

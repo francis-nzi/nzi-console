@@ -177,8 +177,11 @@ export const reportSectionPlanOf = (composition: ReportComposition): ReportSecti
  * portal draws the frozen composition (F-4): until then the portal re-resolves from the snapshot, so an "excluded" section
  * would still reach the client — the honesty trap F must not create. So F-1 is **reorder-only**, enforced here, at the one
  * validator every command and the UI share. The exclusion machinery (the plan's `included`, the layout skipping it, the
- * Methodology stating it) is built and tested now; **F-4's own PR flips this to true**, so exclusion and the portal that
- * honours it cannot reach staging separately.
+ * Methodology stating it) was built in F-1, and F-4b moves the portal onto the frozen composition.
+ *
+ * **HELD (RULING-reporting-F4b-flip-and-dashboard, decision 1).** The flip lands only once **every** client surface honours
+ * exclusion: GATE 1, F-4c (the portal dashboard hides what the default report omits), and GATE 2, the client-target backfill.
+ * Until then nothing can be left out, so nothing can contradict.
  */
 export const REPORT_SECTION_EXCLUSION_AVAILABLE = false;
 
@@ -288,6 +291,22 @@ export function moveReportSection(plan: ReportSectionPlan, key: ReportPlanSectio
   const next = [...plan];
   [next[movable[at]!.index], next[other.index]] = [next[other.index]!, next[movable[at]!.index]!];
   return next;
+}
+
+/** A data section a plan may leave out (Q1): every one but the cover, the executive summary, the emissions and the methodology. */
+export const isOptionalReportSection = (key: ReportPlanSectionKey): boolean =>
+  isReportDataSection(key) && !reportMandatorySections.includes(key);
+
+/**
+ * F-4b: include or leave out one optional data section — what the editors' switch does. A mandatory section, a narrative
+ * section (not drawn yet, Q6) or any change while exclusion is unavailable is no change; the validator refuses the same.
+ * Returns a new plan; the input is untouched.
+ */
+export function setReportSectionIncluded(
+  plan: ReportSectionPlan, key: ReportPlanSectionKey, included: boolean, options: { allowExclusion?: boolean } = {},
+): ReportSectionPlan {
+  if (!(options.allowExclusion ?? REPORT_SECTION_EXCLUSION_AVAILABLE) || !isOptionalReportSection(key)) return plan;
+  return plan.map((entry) => (entry.key === key ? { ...entry, included } : entry));
 }
 
 /**
@@ -743,7 +762,9 @@ export function reportMethodologyRows(composition: ReportComposition): Array<{ l
     { label: "Issued", value: composition.issuedAt.slice(0, 10) },
     { label: "Evidence hash", value: composition.snapshotDataHash },
   ];
-  return rows;
+  // F-4b (ruled): the client's copy carries no reviewer (`clientFacingComposition` blanks it at the read), and the line goes
+  // with it — no name, and no organisation in its place; the assurance basis above stands alone. A staff copy always has one.
+  return rows.filter((row) => !(row.label === "Reviewed by" && row.value === ""));
 }
 
 /* ── The readiness radar ─────────────────────────────────────────────────────────────── */
