@@ -1,0 +1,430 @@
+{
+  "srs": {
+    "state": "unavailable",
+    "reason": "No completed SRS readiness assessment existed for this client when the report was issued."
+  },
+  "plan": {
+    "state": "unavailable",
+    "reason": "No reduction strategies were on this client's plan when the report was issued."
+  },
+  "jobId": "j-cur",
+  "scope": {
+    "kind": "whole"
+  },
+  "client": "Parity Co",
+  "issuer": {
+    "footer": "parity-org",
+    "shortName": "parity-org",
+    "displayName": "parity-org",
+    "logoAssetId": null
+  },
+  "targets": {
+    "setAt": "2026-10-10T13:10:30.702Z",
+    "benchmark": {
+      "year": 2024,
+      "source": "client-record",
+      "reference": null,
+      "totalTco2e": 64
+    },
+    "provenance": {
+      "asAt": "2026-10-10",
+      "dataHash": "sha256:51c5645d545d129fc5f0978e93686f4edd9202e54ff1ec3c0a82cf407e120d24",
+      "factorSets": [
+        "demo"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 2
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    },
+    "trajectory": [
+      {
+        "pct": 0,
+        "kind": "benchmark",
+        "year": 2024,
+        "tco2e": 64
+      },
+      {
+        "pct": 50,
+        "kind": "near-term",
+        "year": 2030,
+        "tco2e": 32
+      },
+      {
+        "pct": 90,
+        "kind": "net-zero",
+        "year": 2045,
+        "tco2e": 6.399999999999999
+      }
+    ],
+    "benchmarkStale": false
+  },
+  "issuedAt": "2026-10-10T13:10:31.307Z",
+  "renderer": "composed@2",
+  "assurance": {
+    "kind": "internal-review",
+    "statement": "Reviewed snapshot (internal review); not third-party assured",
+    "reviewedAt": "2026-10-10T13:10:31.067Z",
+    "reviewedBy": "prep"
+  },
+  "emissions": {
+    "sites": [
+      {
+        "label": "Works",
+        "siteId": "s-a",
+        "byScope": [
+          {
+            "scope": "1",
+            "tco2e": 10
+          },
+          {
+            "scope": "3",
+            "tco2e": 4
+          }
+        ],
+        "activities": [
+          {
+            "label": "Gas",
+            "scope": "1",
+            "tco2e": 10
+          },
+          {
+            "label": "Steel",
+            "scope": "3",
+            "tco2e": 4
+          }
+        ],
+        "totalTco2e": 14
+      },
+      {
+        "label": "Annex",
+        "siteId": "s-b",
+        "byScope": [
+          {
+            "scope": "2",
+            "tco2e": 5
+          }
+        ],
+        "activities": [
+          {
+            "label": "Electricity",
+            "scope": "2",
+            "tco2e": 5
+          }
+        ],
+        "totalTco2e": 5
+      },
+      {
+        "label": "Unallocated / organisation-level",
+        "siteId": null,
+        "byScope": [
+          {
+            "scope": "3",
+            "tco2e": 20
+          }
+        ],
+        "activities": [
+          {
+            "label": "Goods",
+            "scope": "3",
+            "tco2e": 20
+          }
+        ],
+        "totalTco2e": 20
+      }
+    ],
+    "byScope": [
+      {
+        "scope": "1",
+        "tco2e": 10
+      },
+      {
+        "scope": "2",
+        "tco2e": 5
+      },
+      {
+        "scope": "3",
+        "tco2e": 24
+      }
+    ],
+    "priorYear": {
+      "year": 2024,
+      "totalTco2e": 50
+    },
+    "comparison": {
+      "rows": [
+        {
+          "scope": "1",
+          "values": [
+            14,
+            10
+          ]
+        },
+        {
+          "scope": "2",
+          "values": [
+            6,
+            5
+          ]
+        },
+        {
+          "scope": "3",
+          "values": [
+            30,
+            24
+          ]
+        }
+      ],
+      "notes": [],
+      "totals": [
+        50,
+        39
+      ],
+      "columns": [
+        {
+          "key": "previous",
+          "year": 2024,
+          "label": "Previous (FY2024)"
+        },
+        {
+          "key": "current",
+          "year": 2025,
+          "label": "Current (FY2025)"
+        }
+      ],
+      "changeVsBaselinePct": null
+    },
+    "provenance": {
+      "asAt": "2026-10-10",
+      "dataHash": "sha256:51c5645d545d129fc5f0978e93686f4edd9202e54ff1ec3c0a82cf407e120d24",
+      "factorSets": [
+        "demo"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 2
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    },
+    "totalTco2e": 39
+  },
+  "intensity": {
+    "metrics": [
+      {
+        "key": "turnover",
+        "unit": "tCO₂e per £m",
+        "label": "Turnover",
+        "value": 3.12,
+        "iconKey": "currency",
+        "reported": true,
+        "denominatorText": "£12,500,000",
+        "unavailableReason": null
+      }
+    ],
+    "provenance": {
+      "asAt": "2026-10-10",
+      "dataHash": "sha256:51c5645d545d129fc5f0978e93686f4edd9202e54ff1ec3c0a82cf407e120d24",
+      "factorSets": [
+        "demo"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 2
+        },
+        {
+          "tier": "measured",
+          "count": 2
+        }
+      ]
+    },
+    "reportedMetricKey": "turnover"
+  },
+  "jobNumber": "J-j-cur",
+  "chartBasis": {
+    "id": "snap-cur",
+    "jobId": "j-cur",
+    "client": "Parity Co",
+    "dataHash": "sha256:51c5645d545d129fc5f0978e93686f4edd9202e54ff1ec3c0a82cf407e120d24",
+    "jobNumber": "J-j-cur",
+    "generatedAt": "2026-10-10T13:10:31.067Z",
+    "measurements": [
+      {
+        "rowId": "snap-cur-a",
+        "scope": "1",
+        "tco2e": 10,
+        "siteId": "s-a",
+        "factorSet": "demo",
+        "scopeCode": "1",
+        "siteLabel": "Works",
+        "sourceLabel": "Gas"
+      },
+      {
+        "rowId": "snap-cur-b",
+        "scope": "2",
+        "tco2e": 5,
+        "siteId": "s-b",
+        "factorSet": "demo",
+        "scopeCode": "2",
+        "siteLabel": "Annex",
+        "sourceLabel": "Electricity"
+      },
+      {
+        "rowId": "snap-cur-g",
+        "scope": "3",
+        "tco2e": 20,
+        "siteId": null,
+        "factorSet": "demo",
+        "scopeCode": "3.1",
+        "siteLabel": null,
+        "sourceLabel": "Goods",
+        "purchasedGoodsCategoryId": "pg",
+        "purchasedGoodsCategoryLabel": "Materials"
+      },
+      {
+        "rowId": "snap-cur-w",
+        "scope": "3",
+        "tco2e": 4,
+        "siteId": "s-a",
+        "factorSet": "demo",
+        "scopeCode": "3.1",
+        "siteLabel": "Works",
+        "sourceLabel": "Steel",
+        "purchasedGoodsCategoryId": "steel",
+        "purchasedGoodsCategoryLabel": "Metals"
+      }
+    ],
+    "reportingYear": 2025,
+    "intensityTarget": {
+      "jobId": "j-cur",
+      "metric": "turnover",
+      "source": "client-target",
+      "version": 1,
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "updatedBy": "ada",
+      "targetYear": 2045,
+      "interimYear": 2030,
+      "metricLabel": "Turnover",
+      "netZeroYear": null,
+      "baselineYear": 2024,
+      "denominatorUnit": "£m",
+      "baselineIntensity": 4,
+      "reportingDenominator": 12.5,
+      "targetReductionPercent": 100,
+      "interimReductionPercent": 50
+    },
+    "annualComparison": [
+      {
+        "year": 2024,
+        "values": [
+          {
+            "scope": "1",
+            "value": 14
+          },
+          {
+            "scope": "2",
+            "value": 6
+          },
+          {
+            "scope": "3",
+            "value": 30
+          }
+        ]
+      },
+      {
+        "year": 2025,
+        "values": [
+          {
+            "scope": "1",
+            "value": 10
+          },
+          {
+            "scope": "2",
+            "value": 5
+          },
+          {
+            "scope": "3",
+            "value": 24
+          }
+        ]
+      }
+    ]
+  },
+  "snapshotId": "snap-cur",
+  "sectionPlan": [
+    {
+      "key": "cover",
+      "included": true
+    },
+    {
+      "key": "executive-summary",
+      "included": true
+    },
+    {
+      "key": "narrative:executive-summary",
+      "included": false
+    },
+    {
+      "key": "narrative:net-zero-commitment",
+      "included": false
+    },
+    {
+      "key": "narrative:background",
+      "included": false
+    },
+    {
+      "key": "emissions",
+      "included": true
+    },
+    {
+      "key": "narrative:category-analysis",
+      "included": false
+    },
+    {
+      "key": "sites",
+      "included": true
+    },
+    {
+      "key": "intensity",
+      "included": true
+    },
+    {
+      "key": "narrative:intensity-analysis",
+      "included": false
+    },
+    {
+      "key": "targets",
+      "included": true
+    },
+    {
+      "key": "plan",
+      "included": true
+    },
+    {
+      "key": "narrative:reduction-actions",
+      "included": false
+    },
+    {
+      "key": "srs",
+      "included": true
+    },
+    {
+      "key": "methodology",
+      "included": true
+    }
+  ],
+  "reportingYear": 2025,
+  "reportVersionId": "4eceaca3-4440-4314-88fd-73f31b8aad3c",
+  "snapshotDataHash": "sha256:51c5645d545d129fc5f0978e93686f4edd9202e54ff1ec3c0a82cf407e120d24"
+}

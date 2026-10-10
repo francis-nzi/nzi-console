@@ -10,11 +10,13 @@ describe("the renderer a composition was issued under", () => {
   it("is composed@1 for every composition issued before the stamp, and the latest is stamped on new ones", () => {
     assert.equal(reportRendererOf({}), "composed@1");
     assert.equal(reportRendererOf({ renderer: "composed@1" }), "composed@1");
-    assert.equal(REPORT_RENDERER_LATEST, "composed@1");
+    // F-2 (chart parity): new compositions are drawn composed@2; composed@1 stays for every report issued under it.
+    assert.equal(reportRendererOf({ renderer: "composed@2" }), "composed@2");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@2");
   });
 
   it("is null for a layout this code does not carry — never quietly drawn with another", () => {
-    assert.equal(reportRendererOf({ renderer: "composed@2" }), null);
+    assert.equal(reportRendererOf({ renderer: "composed@3" }), null);
     assert.equal(reportRendererOf({ renderer: "" }), null);
   });
 });

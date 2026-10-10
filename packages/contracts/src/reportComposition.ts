@@ -87,9 +87,32 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1"] as const;
+export const reportRenderers = ["composed@1", "composed@2"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@1";
+/**
+ * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
+ * year-on-year, by-activity, purchased goods and intensity pathway drawn from the composition's frozen `chartBasis` by the
+ * resolver the portal uses today, and the reduction pathway drawn from the report's own Targets section (the client target
+ * model — never the superseded job-level target the portal's chart draws, and never a flat zero over a residual). A fork,
+ * not an edit: every `composed@1` report draws exactly as before.
+ */
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@2";
+
+/**
+ * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
+ * `resolveCrpCoreCharts` today, cut to the report's scope by the same filter its figures were (R-S1 (A′)). Structurally the
+ * resolver's `ReviewedCrpSnapshotCore`, kept here so contracts does not depend on the chart package. It carries no job-level
+ * target: the report's targets are the client's (its Targets section), and its pathway is drawn from those.
+ */
+export type ReportChartBasis = {
+  id: string; jobId: string; jobNumber: string; client: string; reportingYear: number; generatedAt: string; dataHash: string;
+  intensityTarget: Record<string, unknown> | null;
+  annualComparison: Array<{ year: number; values: Array<{ scope: "1" | "2" | "3"; value: number }> }>;
+  measurements: Array<{
+    rowId: string; scope: "1" | "2" | "3"; scopeCode?: string; sourceLabel: string; siteId?: string | null; siteLabel?: string | null;
+    purchasedGoodsCategoryId?: string | null; purchasedGoodsCategoryLabel?: string | null; tco2e: number; factorSet: string;
+  }>;
+};
 
 /**
  * The layout a composition was issued under. One frozen before F-0 carries none, and was issued under the layout that is
@@ -585,6 +608,8 @@ export type ReportComposition = {
   sectionPlan?: ReportSectionPlan;
   /** F-1 (R-D1): the client's issuer line from its report profile, frozen at validation. Absent when there was none. */
   issuerLine?: string;
+  /** F-2: the charts' input, frozen with the report (`composed@2`). Absent on compositions issued before F-2 (`composed@1`). */
+  chartBasis?: ReportChartBasis;
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

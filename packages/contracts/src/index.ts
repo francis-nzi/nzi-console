@@ -108,6 +108,7 @@ export * from "./trainingWorkflow";
 export * from "./reductionStrategies";
 export * from "./strategyReminders";
 export * from "./reportComposition";
+export * from "./reportChartBasis";
 export * from "./dayValues";
 export * from "./dataSubjects";
 export * from "./entryProvenance";

@@ -1,6 +1,11 @@
 import { Fragment } from "react";
 import { NziIcon, type NziIconKey } from "@nzi/ui";
-import { CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
+import {
+  CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway,
+  RENDERER_VERSION, resolveCrpCoreCharts, ScopeYearOnYearBar, SrsPillarRadar, TOKENS_VERSION,
+  type EmissionsByActivityData, type IntensityPathwayData, type PurchasedGoodsBreakdownData, type ScopeDonutData,
+  type ScopeYearOnYearData,
+} from "@nzi/charts";
 import {
   strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
   isReportDataSection, reportHeadline, reportMethodologyRows, reportOmittedSections, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
@@ -11,7 +16,7 @@ import {
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import { LogoMark } from "../../lib/LogoMark";
-import { siteActivities, siteScopeDonut, sitesDonut } from "./scopeCharts";
+import { reportPathway, siteActivities, siteScopeDonut, sitesDonut } from "./scopeCharts";
 
 /**
  * The composed report (`report_v1`).
@@ -38,15 +43,27 @@ export function ReportComposedView({ composition }: { composition: ReportComposi
   // change that would alter an issued report forks to a new renderer; it never redraws this one.
   const renderer = reportRendererOf(composition);
   if (renderer === "composed@1") return <ComposedV1 composition={composition} />;
+  // F-2 (chart parity): composed@1 plus the manifest's charts, drawn from the frozen chart basis by the resolver the portal
+  // uses — so a client loses no chart they see today when the portal moves onto the composed report (F-4).
+  if (renderer === "composed@2") return <ComposedV1 composition={composition} charts={composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0]) : []} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 
+type ComposedCharts = ReturnType<typeof resolveCrpCoreCharts>;
+
 /**
  * `composed@1`: the layout every composition issued up to F-0 was drawn with. Pinned byte-for-byte in CI
- * (`reportComposedRenderer.test.ts`). Do not change what it draws — fork to `composed@2`.
+ * (`reportComposedRenderer.test.ts`). Do not change what it draws — fork to `composed@2`. `charts` is composed@2's addition:
+ * absent, this draws composed@1 exactly.
  */
-function ComposedV1({ composition }: { composition: ReportComposition }) {
+function ComposedV1({ composition, charts }: { composition: ReportComposition; charts?: ComposedCharts }) {
+  const chart = <T,>(type: string) => charts?.find((entry) => entry.spec.type === type) as T | undefined;
+  const scopeDonut = chart<ScopeDonutData>("emissions_scope_donut"), yearOnYear = chart<ScopeYearOnYearData>("scope_year_on_year_bar");
+  const byActivity = chart<EmissionsByActivityData>("emissions_by_activity"), purchasedGoods = chart<PurchasedGoodsBreakdownData>("purchased_goods_breakdown");
+  const intensityPathway = chart<IntensityPathwayData>("intensity_pathway");
   const { emissions, intensity, targets, plan, srs } = composition;
+  // The reduction pathway is the report's own targets (the client target model), not the resolver's job-level target.
+  const pathway = charts && !isReportGap(targets) ? reportPathway(composition, targets) : null;
   const footer = `${composition.client} · Carbon Reduction Plan FY${composition.reportingYear}`;
   // The figure the pathway actually lands on — read from the model, never assumed to be 0.
   const residual = isReportGap(targets) ? null : reportResidualTco2e(targets);
@@ -101,6 +118,12 @@ function ComposedV1({ composition }: { composition: ReportComposition }) {
             : emissions.priorYear === null
             ? <p className="nzr-note">This is the first assured year, so there is no prior year to compare against.</p>
             : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
+          {charts ? <div className="nzr-charts">
+            {scopeDonut ? <div className="nzr-chart"><EmissionsScopeDonut data={scopeDonut} /></div> : null}
+            {yearOnYear ? <div className="nzr-chart wide"><ScopeYearOnYearBar data={yearOnYear} /></div> : null}
+            {byActivity ? <div className="nzr-chart wide"><EmissionsByActivity data={byActivity} /></div> : null}
+            {purchasedGoods ? <div className="nzr-chart wide"><PurchasedGoodsBreakdown data={purchasedGoods} /></div> : null}
+          </div> : null}
           <Provenance provenance={emissions.provenance} />
         </>}
     </Page>,
@@ -153,6 +176,9 @@ function ComposedV1({ composition }: { composition: ReportComposition }) {
           </div>
           <Provenance provenance={intensity.provenance} />
         </>}
+      {/* Found by the F-2 render: drawn only beside a composed Intensity section — a page that says "no intensity measures"
+          never also draws an intensity pathway. */}
+      {intensityPathway && !isReportGap(intensity) ? <div className="nzr-chart wide"><IntensityPathway data={intensityPathway} /></div> : null}
     </Page>,
 
     targets: (n, page) => <Page footer={footer} number={page}>
@@ -192,6 +218,7 @@ function ComposedV1({ composition }: { composition: ReportComposition }) {
           </p> : null}
           <Provenance provenance={targets.provenance} />
         </>}
+      {pathway ? <div className="nzr-chart wide"><ReductionPathway data={pathway} /></div> : null}
     </Page>,
 
     plan: (n, page) => <Page footer={footer} number={page}>
