@@ -90,6 +90,7 @@ export * from "./portalInvitations";
 export * from "./portalDataEntry";
 export * from "./portalDataEntryRecords";
 export * from "./portalDeliverables";
+export * from "./portalComposition";
 export * from "./vehicleLookup";
 export * from "./siteLifecycle";
 export * from "./siteBoundary";

@@ -698,6 +698,11 @@ jobs:
       # composed@2; a whole-client report's charts equal the portal's today, value for value; a site report's are its own.
       - name: A composed report draws the portal's charts from its frozen basis — parity, scope-correct
         run: npx tsx --test packages/isolated-backend/tests/reportChartParityReal.test.ts
+      # Reporting F-4a (RULING-reporting-F4): the portal reads the frozen composition, grant-checked; a pre-0077 version is
+      # pre-composition (never backfilled); no internal strategy owner reaches the client; the issuer logo only when frozen on a
+      # granted report; documents follow the version named, figures from its own scope, checked against the composition.
+      - name: The client portal reads the frozen report, grant-checked, and its documents carry the report's own scope
+        run: npx tsx --test packages/isolated-backend/tests/portalCompositionReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions
