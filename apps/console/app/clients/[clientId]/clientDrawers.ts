@@ -16,6 +16,7 @@ export type DrawerRequest =
   | { kind: "intensity-target"; metricKey: string }
   | { kind: "reporting-template" }
   | { kind: "reporting-template-initialise" }
+  | { kind: "report-profile" }
   | { kind: "contact"; contact: ClientContactReadModel | null }
   | { kind: "site"; site: ClientSiteReadModel | null };
 
@@ -32,6 +33,7 @@ export const drawerLabel = (request: DrawerRequest): string => {
     case "intensity-target": return "Intensity target";
     case "reporting-template": return "Reporting template";
     case "reporting-template-initialise": return "Initialise the reporting template from a job";
+    case "report-profile": return "Report profile";
     case "contact": return request.contact ? `Edit contact ${request.contact.fullName}` : "Add a contact";
     case "site": return request.site ? `Edit site ${request.site.name}` : "Add a site";
   }

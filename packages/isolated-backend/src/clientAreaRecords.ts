@@ -108,12 +108,13 @@ export type ClientFileReadModel = {
 };
 
 export async function listClientFiles(db: Queryable, clientId: string): Promise<ClientFileReadModel[]> {
-  const [logos, evidence] = await Promise.all([
-    db.query<{ asset_id: string; file_name: string; content_type: string; byte_size: number; uploaded_by: string | null; uploaded_at: Date | string }>(
+  // One at a time: `db` is a tenant transaction's single client (§13; guarded through getClientWorkspace).
+  const [logos, evidence] = [
+    await db.query<{ asset_id: string; file_name: string; content_type: string; byte_size: number; uploaded_by: string | null; uploaded_at: Date | string }>(
       `SELECT asset_id,file_name,content_type,byte_size,uploaded_by,uploaded_at FROM nzi_console.client_logo_assets WHERE client_id=$1 ORDER BY uploaded_at DESC`, [clientId]),
-    db.query<{ client_factor_id: string; report_label: string; evidence_file_name: string | null; evidence_storage_provider: string | null; evidence_url: string | null; updated_by: string | null; updated_at: Date | string }>(
+    await db.query<{ client_factor_id: string; report_label: string; evidence_file_name: string | null; evidence_storage_provider: string | null; evidence_url: string | null; updated_by: string | null; updated_at: Date | string }>(
       `SELECT client_factor_id,report_label,evidence_file_name,evidence_storage_provider,evidence_url,updated_by,updated_at FROM nzi_console.client_factors WHERE client_id=$1 AND evidence_file_name IS NOT NULL ORDER BY updated_at DESC`, [clientId]),
-  ]);
+  ];
   const files: ClientFileReadModel[] = logos.rows.map((row) => ({
     id: row.asset_id, kind: "logo" as const, name: row.file_name, contentType: row.content_type, byteSize: row.byte_size,
     storage: "console" as const, href: `/api/isolated/logo-assets/${encodeURIComponent(row.asset_id)}`,

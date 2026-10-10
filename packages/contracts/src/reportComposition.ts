@@ -248,6 +248,25 @@ export function reportOmittedSections(plan: ReportSectionPlan): string[] {
   return plan.filter((entry) => !entry.included && isReportDataSection(entry.key)).map((entry) => reportPlanSectionTitle(entry.key));
 }
 
+/** The cover and the methodology hold their places (Q1); every other data section may move. */
+export const isMovableReportSection = (key: ReportPlanSectionKey): boolean => isReportDataSection(key) && key !== "cover" && key !== "methodology";
+
+/**
+ * F-1b: move one data section a step earlier or later among the movable data sections — what the editors' up/down buttons
+ * do. The narrative stays where it is (it is not drawn yet, Q6), the cover and the methodology never move, and a move past
+ * the end is no move. Returns a new plan; the input is untouched.
+ */
+export function moveReportSection(plan: ReportSectionPlan, key: ReportPlanSectionKey, direction: "earlier" | "later"): ReportSectionPlan {
+  if (!isMovableReportSection(key)) return plan;
+  const movable = plan.map((entry, index) => ({ entry, index })).filter(({ entry }) => isMovableReportSection(entry.key));
+  const at = movable.findIndex(({ entry }) => entry.key === key);
+  const other = movable[direction === "earlier" ? at - 1 : at + 1];
+  if (at < 0 || !other) return plan;
+  const next = [...plan];
+  [next[movable[at]!.index], next[other.index]] = [next[other.index]!, next[movable[at]!.index]!];
+  return next;
+}
+
 /**
  * The client's issuer line ("Prepared for the Board of …"): words, never money (NZC-120) — no currency symbol or code beside
  * a figure. Trimmed, and short enough to sit on a cover.

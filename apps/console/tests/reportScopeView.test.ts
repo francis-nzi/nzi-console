@@ -57,9 +57,10 @@ describe("the composed report per scope (S-2)", () => {
     assert.match(selector, /aria-pressed=\{chosen\.has\(site\.siteId\)\}/);
   });
 
-  it("publishes the version it validated, pinned — report.publish refuses one without an expected version", () => {
+  it("publishes the version it holds, pinned — report.publish refuses one without an expected version", () => {
     // Found by the S-2 rendered check: the page never sent expectedVersion, so every publish from it failed validation.
+    // F-1b: the version it holds — 1 when validated, moved by each saved reorder (reportPlanEditors.test.ts).
     const action = read("apps/console/app/report-preview/ReportValidationAction.tsx");
-    assert.match(action, /\{reportVersionId:validated\.reportVersionId,expectedStatus:"validated",expectedVersion:1,manifestVersion,reviewedSnapshotId:snapshotId\}/);
+    assert.match(action, /\{reportVersionId:validated\.reportVersionId,expectedStatus:"validated",expectedVersion:held\.version,manifestVersion,reviewedSnapshotId:snapshotId\}/);
   });
 });
