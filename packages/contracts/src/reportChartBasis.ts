@@ -42,6 +42,11 @@ function scopedAnnualComparison(comparison: ReportEmissionsComparison | null | u
   }]);
 }
 
+const withoutEditor = (target: Record<string, unknown>): Record<string, unknown> => {
+  const { updatedBy: _editor, ...figures } = target;
+  return figures;
+};
+
 export function composeReportChartBasis(input: { snapshot: ChartBasisSnapshot; scope: ReportScope; comparison?: ReportEmissionsComparison | null }): ReportChartBasis {
   const { snapshot, scope } = input;
   const sites = scope.kind === "sites" ? new Set(scope.siteIds) : null;
@@ -49,7 +54,9 @@ export function composeReportChartBasis(input: { snapshot: ChartBasisSnapshot; s
   return {
     id: snapshot.id, jobId: snapshot.jobId, jobNumber: snapshot.jobNumber, client: snapshot.client, reportingYear: snapshot.reportingYear,
     generatedAt: snapshot.createdAt, dataHash: snapshot.dataHash,
-    intensityTarget: sites ? null : snapshot.intensityTarget ?? null,
+    // The chart needs the target's figures, never who last edited it: a staff identity is not frozen into an issued record
+    // (F-4c, the ruled follow-up to F-4b's read-strip; free now — no composition had been issued).
+    intensityTarget: sites || !snapshot.intensityTarget ? null : withoutEditor(snapshot.intensityTarget),
     annualComparison: sites
       ? scopedAnnualComparison(input.comparison)
       : (snapshot.annualComparison ?? []).map((year) => ({ year: year.year, values: year.values.map((value) => ({ scope: scopeOf(value.scope), value: value.value })) })),

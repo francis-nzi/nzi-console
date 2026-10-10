@@ -119,7 +119,10 @@ describe("the portal shows the issued report, and a left-out section is absent e
     const workspace = read("apps/console/app/portal-preview/PortalWorkspace.tsx");
     assert.match(workspace, /\/published-report\/comments`/);
     assert.match(workspace, /\/published-report\/approval`/);
+    // The dashboard's exclusion question was ruled (a): F-4c — it draws through the report's plan. Pinned in
+    // `portalDashboardHonoursReport`; here only that it still reads its figures from the published report.
     const dashboard = read("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx");
-    assert.match(dashboard, /<ManifestChartSet manifest=\{crpProfessionalManifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} \/>/, "the dashboard is unchanged (its exclusion question is open for a ruling)");
+    assert.match(dashboard, /fetch\(`\/api\/portal\/jobs\/\$\{jobId\}\/published-report`/);
+    assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} \/>/, "through the manifest view F-4c draws with");
   });
 });

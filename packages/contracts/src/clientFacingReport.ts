@@ -36,8 +36,8 @@ export type ClientFacingSnapshot = Without<Snapshot, "createdBy" | "approvedBy" 
   target: Without<NonNullable<Snapshot["target"]>, "updatedBy"> | null;
   intensityTarget: Without<NonNullable<Snapshot["intensityTarget"]>, "updatedBy"> | null;
   sections: Array<Without<Snapshot["sections"][number], "updatedBy">>;
-  gapResolutions: Array<Without<Snapshot["gapResolutions"][number], "resolvedBy">>;
-  measurements: Array<Without<Snapshot["measurements"][number], "reviewedBy">>;
+  gapResolutions: Array<Without<Snapshot["gapResolutions"][number], "resolvedBy" | "reason">>;
+  measurements: Array<Without<Snapshot["measurements"][number], "reviewedBy" | "notes">>;
 };
 export type ClientFacingPublishedCrpReport = Without<PublishedCrpReportReadModel, "snapshot"> & { snapshot: ClientFacingSnapshot };
 
@@ -47,13 +47,17 @@ export const CLIENT_WITHHELD_IDENTITY_FIELDS = [
   "snapshot.sections[].updatedBy", "snapshot.gapResolutions[].resolvedBy", "snapshot.measurements[].reviewedBy",
 ] as const;
 
+/** F-4c (ruled): internal free text a consultant wrote — undrawn on the portal, so not sent. */
+export const CLIENT_WITHHELD_FREE_TEXT_FIELDS = ["snapshot.measurements[].notes", "snapshot.gapResolutions[].reason"] as const;
+
 const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit<T, K> => {
   const copy = { ...value };
   for (const key of keys) delete copy[key];
   return copy;
 };
 
-/** The client's copy of a published report: the same report, without who on the issuer's side touched it. */
+/** The client's copy of a published report: the same report, without who on the issuer's side touched it, and without the free text
+ * they wrote for each other (F-4c: row notes, gap-resolution reasons). */
 export function clientFacingPublishedReport(report: PublishedCrpReportReadModel): ClientFacingPublishedCrpReport {
   const { snapshot } = report;
   return {
@@ -63,8 +67,8 @@ export function clientFacingPublishedReport(report: PublishedCrpReportReadModel)
       target: snapshot.target ? omit(snapshot.target, "updatedBy") : null,
       intensityTarget: snapshot.intensityTarget ? omit(snapshot.intensityTarget, "updatedBy") : null,
       sections: snapshot.sections.map((section) => omit(section, "updatedBy")),
-      gapResolutions: snapshot.gapResolutions.map((resolution) => omit(resolution, "resolvedBy")),
-      measurements: snapshot.measurements.map((row) => omit(row, "reviewedBy")),
+      gapResolutions: snapshot.gapResolutions.map((resolution) => omit(resolution, "resolvedBy", "reason")),
+      measurements: snapshot.measurements.map((row) => omit(row, "reviewedBy", "notes")),
     },
   };
 }
