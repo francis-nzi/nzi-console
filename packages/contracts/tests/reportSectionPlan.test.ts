@@ -58,17 +58,20 @@ describe("a plan a report may carry (Q1)", () => {
 });
 
 describe("the exclusion interlock (Q5, binding) and the narrative", () => {
-  it("is on with F-4b, the change that moves the portal onto the issued report: an optional section may be left out by default", () => {
-    assert.equal(REPORT_SECTION_EXCLUSION_AVAILABLE, true, "F-4b flips this in the same change as the portal that honours it (D7: no flag)");
-    for (const key of ["sites", "intensity", "targets", "plan", "srs"]) assert.deepEqual(codes(exclude(key)), [], key);
+  it("is HELD until every client surface honours it (GATE 1: F-4c's dashboard; GATE 2: the target backfill): leaving an optional section out is refused", () => {
+    assert.equal(REPORT_SECTION_EXCLUSION_AVAILABLE, false, "RULING-reporting-F4b-flip-and-dashboard decision 1: F-4b merges with the flip held");
+    for (const key of ["sites", "intensity", "targets", "plan", "srs"]) assert.deepEqual(codes(exclude(key)), ["EXCLUSION_NOT_YET_AVAILABLE"], key);
   });
 
-  it("never lets a mandatory section be left out (Q1)", () => {
-    for (const key of ["cover", "executive-summary", "emissions", "methodology"]) assert.deepEqual(codes(exclude(key)), ["MANDATORY_SECTION"], key);
+  it("never lets a mandatory section be left out (Q1), held or not", () => {
+    for (const key of ["cover", "executive-summary", "emissions", "methodology"]) {
+      assert.deepEqual(codes(exclude(key)), ["MANDATORY_SECTION"], key);
+      assert.deepEqual(codes(exclude(key), { allowExclusion: true }), ["MANDATORY_SECTION"], key);
+    }
   });
 
-  it("the switch is the one gate: told exclusion is unavailable, the validator refuses as before", () => {
-    for (const key of ["sites", "intensity", "targets", "plan", "srs"]) assert.deepEqual(codes(exclude(key), { allowExclusion: false }), ["EXCLUSION_NOT_YET_AVAILABLE"], key);
+  it("the machinery is ready behind the switch: with exclusion allowed, an optional section may be left out", () => {
+    for (const key of ["sites", "intensity", "targets", "plan", "srs"]) assert.deepEqual(codes(exclude(key), { allowExclusion: true }), [], key);
   });
 
   it("a left-out section is stated, by its title", () => {
@@ -76,13 +79,15 @@ describe("the exclusion interlock (Q5, binding) and the narrative", () => {
     assert.deepEqual(reportOmittedSections(defaultReportSectionPlan), [], "the narrative is not yet drawn, so it is not 'left out'");
   });
 
-  it("the editors' switch leaves out an optional section, and only an optional one", () => {
-    const cut = setReportSectionIncluded(defaultReportSectionPlan, "srs", false);
+  it("the editors' switch: no change while held; with exclusion allowed it leaves out an optional section, and only an optional one", () => {
+    assert.equal(setReportSectionIncluded(defaultReportSectionPlan, "srs", false), defaultReportSectionPlan, "held: the switch changes nothing");
+    const allow = { allowExclusion: true };
+    const cut = setReportSectionIncluded(defaultReportSectionPlan, "srs", false, allow);
     assert.equal(cut.find((entry) => entry.key === "srs")!.included, false);
-    assert.deepEqual(codes(cut), []);
-    assert.equal(setReportSectionIncluded(cut, "srs", true).find((entry) => entry.key === "srs")!.included, true, "and puts it back");
+    assert.deepEqual(codes(cut, allow), []);
+    assert.equal(setReportSectionIncluded(cut, "srs", true, allow).find((entry) => entry.key === "srs")!.included, true, "and puts it back");
     for (const key of ["cover", "executive-summary", "emissions", "methodology", "narrative:background"] as const) {
-      assert.equal(setReportSectionIncluded(defaultReportSectionPlan, key, !defaultReportSectionPlan.find((entry) => entry.key === key)!.included), defaultReportSectionPlan, key);
+      assert.equal(setReportSectionIncluded(defaultReportSectionPlan, key, !defaultReportSectionPlan.find((entry) => entry.key === key)!.included, allow), defaultReportSectionPlan, key);
     }
     assert.deepEqual(defaultReportSectionPlan.filter((entry) => isOptionalReportSection(entry.key)).map((entry) => entry.key), ["sites", "intensity", "targets", "plan", "srs"]);
   });
@@ -97,9 +102,9 @@ describe("the exclusion interlock (Q5, binding) and the narrative", () => {
   it("is enforced by every command that takes a plan, through the one validator", () => {
     const context: CommandContext = { organisationId: "o", actorId: "a", principal: "staff", idempotencyKey: "k", correlationId: "c", grant: commandGrantForRole("admin", "o", "a") };
     const cut = exclude("srs"), mandatory = exclude("emissions");
-    assert.deepEqual(validateCommand("report.validate", { reviewedSnapshotId: "s", manifestVersion: 1, sectionPlan: cut }, context), []);
-    assert.deepEqual(validateCommand("report.sectionPlan.update", { reportVersionId: "r", expectedVersion: 1, sectionPlan: cut }, context), []);
-    assert.deepEqual(validateCommand("client.reportProfile.set", { clientId: "c", expectedVersion: 0, sectionPlan: cut, issuerLine: null }, context), []);
+    assert.ok(validateCommand("report.validate", { reviewedSnapshotId: "s", manifestVersion: 1, sectionPlan: cut }, context).some((issue) => issue.code === "EXCLUSION_NOT_YET_AVAILABLE"));
+    assert.ok(validateCommand("report.sectionPlan.update", { reportVersionId: "r", expectedVersion: 1, sectionPlan: cut }, context).some((issue) => issue.code === "EXCLUSION_NOT_YET_AVAILABLE"));
+    assert.ok(validateCommand("client.reportProfile.set", { clientId: "c", expectedVersion: 0, sectionPlan: cut, issuerLine: null }, context).some((issue) => issue.code === "EXCLUSION_NOT_YET_AVAILABLE"));
     assert.ok(validateCommand("report.validate", { reviewedSnapshotId: "s", manifestVersion: 1, sectionPlan: mandatory }, context).some((issue) => issue.code === "MANDATORY_SECTION"));
     assert.ok(validateCommand("report.sectionPlan.update", { reportVersionId: "r", expectedVersion: 1, sectionPlan: mandatory }, context).some((issue) => issue.code === "MANDATORY_SECTION"));
     assert.ok(validateCommand("client.reportProfile.set", { clientId: "c", expectedVersion: 0, sectionPlan: mandatory, issuerLine: null }, context).some((issue) => issue.code === "MANDATORY_SECTION"));

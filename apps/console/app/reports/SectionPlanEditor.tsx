@@ -7,10 +7,12 @@
 // put back — and the issued report says on its Methodology page that it was left out.
 import { isMovableReportSection, isOptionalReportSection, isReportDataSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
 
-export function SectionPlanEditor({ plan, onChange, disabled = false, label = "Section order" }: {
-  plan: ReportSectionPlan; onChange: (plan: ReportSectionPlan) => void; disabled?: boolean; label?: string;
+// While exclusion is held (RULING-reporting-F4b-flip-and-dashboard) the editor is reorder-only, as in F-1b; `allowExclusion`
+// follows the one switch, and exists so the include switch can be tested before it is turned on.
+export function SectionPlanEditor({ plan, onChange, disabled = false, label = "Section order", allowExclusion = REPORT_SECTION_EXCLUSION_AVAILABLE }: {
+  plan: ReportSectionPlan; onChange: (plan: ReportSectionPlan) => void; disabled?: boolean; label?: string; allowExclusion?: boolean;
 }) {
-  const shown = plan.filter((entry) => isReportDataSection(entry.key) && (entry.included || REPORT_SECTION_EXCLUSION_AVAILABLE));
+  const shown = plan.filter((entry) => isReportDataSection(entry.key) && (entry.included || allowExclusion));
   const movable = shown.filter((entry) => isMovableReportSection(entry.key));
   return <div className="nz-section-plan" role="group" aria-label={label}>
     <ol className="nz-section-plan-list">
@@ -18,12 +20,12 @@ export function SectionPlanEditor({ plan, onChange, disabled = false, label = "S
         const at = movable.findIndex((item) => item.key === entry.key);
         const fixed = at < 0;
         const title = reportPlanSectionTitle(entry.key);
-        const optional = REPORT_SECTION_EXCLUSION_AVAILABLE && isOptionalReportSection(entry.key);
+        const optional = allowExclusion && isOptionalReportSection(entry.key);
         return <li key={entry.key} className={[fixed ? "fixed" : "", entry.included ? "" : "left-out"].filter(Boolean).join(" ") || undefined}>
           <span className="nm">{title}{entry.included ? null : <span className="muted"> · left out</span>}</span>
           {optional
             ? <label className="nz-section-plan-include"><input type="checkbox" checked={entry.included} disabled={disabled}
-                onChange={(event) => onChange(setReportSectionIncluded(plan, entry.key, event.target.checked))} /> Include</label>
+                onChange={(event) => onChange(setReportSectionIncluded(plan, entry.key, event.target.checked, { allowExclusion }))} /> Include</label>
             : null}
           {fixed
             ? <span className="muted">{entry.key === "cover" ? "Always first" : "Always last"}</span>
@@ -36,8 +38,8 @@ export function SectionPlanEditor({ plan, onChange, disabled = false, label = "S
         </li>;
       })}
     </ol>
-    <p className="sub">{REPORT_SECTION_EXCLUSION_AVAILABLE
+    <p className="sub">{allowExclusion
       ? "Untick a section to leave it out. It is then absent from the issued report and from the client's portal, and the report's Methodology page says it was left out. The cover, executive summary, emissions and methodology are always included."
-      : "Every section stays in the report. Leaving one out arrives once the client portal shows the issued report itself, so a client never sees a section you meant to leave out."}</p>
+      : "Every section stays in the report. Leaving one out arrives once every view the client has of the report honours it, so a client never sees a section you meant to leave out."}</p>
   </div>;
 }

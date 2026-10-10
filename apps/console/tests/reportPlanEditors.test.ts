@@ -12,10 +12,18 @@ const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.m
  * publishes the version it holds, the job page's publish pinning its version, the three routes, and the ruled CSS wrap.
  */
 describe("the section-plan editors (F-1b)", () => {
-  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and offers an include switch on the optional sections only (F-4b)", async () => {
+  it("while exclusion is held, the editor is reorder-only: no switch, and it says why", async () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
+    assert.doesNotMatch(html, /type="checkbox"|aria-pressed/, "no include/exclude switch while held");
+    assert.match(html, /Every section stays in the report/);
+  });
+
+  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and (exclusion allowed) offers an include switch on the optional sections only", async () => {
+    (globalThis as { React?: unknown }).React = React;
+    const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
+    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined, allowExclusion: true }));
     const names = [...html.matchAll(/<span class="nm">([^<]+)(?:<span|<\/span>)/g)].map((match) => match[1]);
     assert.deepEqual(names, ["Carbon Reduction Plan", "Executive summary", "Emissions by scope", "Sites &amp; reporting boundary", "Emissions intensity",
       "Targets &amp; reduction pathway", "Decarbonisation actions", "UK SRS readiness statement", "Methodology &amp; provenance"]);
@@ -27,7 +35,8 @@ describe("the section-plan editors (F-1b)", () => {
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move Executive summary earlier">/, "the first movable section cannot move before the cover");
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move UK SRS readiness statement later">/, "nor the last after the methodology");
     const editor = read("apps/console/app/reports/SectionPlanEditor.tsx");
-    assert.match(editor, /setReportSectionIncluded\(plan, entry\.key, event\.target\.checked\)/, "an exclusion goes through the one contracts helper, which refuses a mandatory section");
+    assert.match(editor, /setReportSectionIncluded\(plan, entry\.key, event\.target\.checked, \{ allowExclusion \}\)/, "an exclusion goes through the one contracts helper, which refuses a mandatory section");
+    assert.match(editor, /allowExclusion = REPORT_SECTION_EXCLUSION_AVAILABLE/, "the editor follows the one switch");
     assert.doesNotMatch(editor, /included:\s*(false|!)/, "the editor never writes an exclusion by hand");
   });
 
@@ -35,7 +44,7 @@ describe("the section-plan editors (F-1b)", () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const plan = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
-    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined }));
+    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined, allowExclusion: true }));
     assert.match(html, /<li class="left-out"><span class="nm">Targets &amp; reduction pathway<span class="muted"> · left out<\/span>/);
     assert.equal([...html.matchAll(/type="checkbox" checked=""/g)].length, 4, "the other four optional sections stay included");
   });

@@ -177,10 +177,13 @@ export const reportSectionPlanOf = (composition: ReportComposition): ReportSecti
  * portal draws the frozen composition (F-4): until then the portal re-resolves from the snapshot, so an "excluded" section
  * would still reach the client — the honesty trap F must not create. So F-1 is **reorder-only**, enforced here, at the one
  * validator every command and the UI share. The exclusion machinery (the plan's `included`, the layout skipping it, the
- * Methodology stating it) was built and tested in F-1; **F-4b flips this to true** in the same change that moves the portal
- * onto the frozen composition, so exclusion and the portal that honours it cannot reach staging separately (D7: no flag).
+ * Methodology stating it) was built in F-1, and F-4b moves the portal onto the frozen composition.
+ *
+ * **HELD (RULING-reporting-F4b-flip-and-dashboard, decision 1).** The flip lands only once **every** client surface honours
+ * exclusion: GATE 1, F-4c (the portal dashboard hides what the default report omits), and GATE 2, the client-target backfill.
+ * Until then nothing can be left out, so nothing can contradict.
  */
-export const REPORT_SECTION_EXCLUSION_AVAILABLE = true;
+export const REPORT_SECTION_EXCLUSION_AVAILABLE = false;
 
 /** Narrative sections may be included once the composed report draws them (Q6: with F-2/F-4). That PR flips this. */
 export const REPORT_NARRATIVE_SECTIONS_AVAILABLE = false;
@@ -299,8 +302,10 @@ export const isOptionalReportSection = (key: ReportPlanSectionKey): boolean =>
  * section (not drawn yet, Q6) or any change while exclusion is unavailable is no change; the validator refuses the same.
  * Returns a new plan; the input is untouched.
  */
-export function setReportSectionIncluded(plan: ReportSectionPlan, key: ReportPlanSectionKey, included: boolean): ReportSectionPlan {
-  if (!REPORT_SECTION_EXCLUSION_AVAILABLE || !isOptionalReportSection(key)) return plan;
+export function setReportSectionIncluded(
+  plan: ReportSectionPlan, key: ReportPlanSectionKey, included: boolean, options: { allowExclusion?: boolean } = {},
+): ReportSectionPlan {
+  if (!(options.allowExclusion ?? REPORT_SECTION_EXCLUSION_AVAILABLE) || !isOptionalReportSection(key)) return plan;
   return plan.map((entry) => (entry.key === key ? { ...entry, included } : entry));
 }
 

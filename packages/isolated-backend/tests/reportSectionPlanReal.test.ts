@@ -17,9 +17,8 @@ import { withTenantRead } from "../src/postgres";
  *   recorded; a profile edited later never reaches a version already validated;
  * - the freeze: publish copies the version's plan (and the profile's issuer line) into the composition; a version validated
  *   before F-1 publishes the default;
- * - the interlock (Q5): with F-4b (the portal on the issued report) an optional section may be left out at validate, at the
- *   profile and at update, and is frozen out at publish; the narrative is refused until it is drawn; the mandatory sections
- *   always;
+ * - the interlock (Q5): exclusion is HELD (RULING-reporting-F4b-flip-and-dashboard) — refused at validate, at the profile and
+ *   at update until F-4c and the target backfill; the narrative is refused until it is drawn; the mandatory sections always;
  * - `report.sectionPlan.update` (Q2): validated only, version-checked and bumped, re-checked, held to separation of duties,
  *   audited before and after;
  * - the profile: append-only versions, withdrawal with a reason and no plan, no money in the issuer line.
@@ -189,23 +188,17 @@ describe("a report's section plan and the client's report profile (F-1), against
     }
   });
 
-  // Last, because the profile is append-only: it leaves the client's profile at a new version the tests above do not expect.
-  it("with F-4b, an optional section may be left out at validate, at the profile and at update, and is frozen out; narrative and a mandatory section never", async () => {
-    const atValidate = await validate(await snapshot(), withExcluded("targets"));
-    assert.equal(atValidate.data.sectionPlanOrigin, "edited");
+  it("while exclusion is HELD (until F-4c and the target backfill): leaving a section out is refused at validate, at the profile and at update; so is narrative, and a mandatory section always", async () => {
+    await assert.rejects(validate(await snapshot(), withExcluded("targets")), (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
+    const before = await profileVersion();
+    await assert.rejects(setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: before, sectionPlan: withExcluded("srs"), issuerLine: null }, context("ada", "admin")),
+      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
+    assert.equal(await profileVersion(), before, "a refused profile writes no version");
     const narrative = defaultReportSectionPlan.map((entry) => entry.key === "narrative:background" ? { ...entry, included: true } : entry);
     await assert.rejects(validate(await snapshot(), narrative), (error) => codesOf(error).includes("NARRATIVE_NOT_YET_DRAWN"));
     await assert.rejects(validate(await snapshot(), withExcluded("emissions")), (error) => codesOf(error).includes("MANDATORY_SECTION"));
-    await setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: await profileVersion(), sectionPlan: withExcluded("srs"), issuerLine: null }, context("ada", "admin"));
-    const snap = await snapshot();
-    const validated = await validate(snap);
-    assert.equal(validated.data.sectionPlanOrigin, `profile:${await profileVersion()}`, "the profile's left-out SRS seeds the version");
-    assert.equal((await versionRow(validated.data.reportVersionId)).section_plan!.find((entry) => entry.key === "srs")!.included, false);
-    const updated = await updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: withExcluded("plan") }, context("rev", "reviewer"));
-    assert.equal(updated.data.origin, "edited");
-    await publish(validated.data.reportVersionId, snap, updated.data.version);
-    const frozen = (await composition(validated.data.reportVersionId)).sectionPlan!;
-    assert.equal(frozen.find((entry) => entry.key === "plan")!.included, false, "the published report froze the plan section out");
-    assert.equal(frozen.find((entry) => entry.key === "srs")!.included, true, "the update replaced the profile's plan; it did not merge with it");
+    const validated = await validate(await snapshot(), reordered());
+    await assert.rejects(updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: withExcluded("plan") }, context("rev", "reviewer")),
+      (error) => codesOf(error).includes("EXCLUSION_NOT_YET_AVAILABLE"));
   });
 });

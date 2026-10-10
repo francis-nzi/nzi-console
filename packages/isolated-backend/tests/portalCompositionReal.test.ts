@@ -183,7 +183,10 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
     await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
              VALUES ($1, 'snap-excl', 'j-excl', 1, 1, $2, $3::jsonb, $4, 'rev', now())`, [ORG, `sha256:${createHash("sha256").update("snap-excl").digest("hex")}`, JSON.stringify(payload), `${MARK}-preparer`]);
     const withoutTargets = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
-    const reportVersionId = (await validateCrpReport(database.pool, { reviewedSnapshotId: "snap-excl", manifestVersion: 1, sectionPlan: withoutTargets }, context("rev", "reviewer"))).data.reportVersionId;
+    const reportVersionId = (await validateCrpReport(database.pool, { reviewedSnapshotId: "snap-excl", manifestVersion: 1 }, context("rev", "reviewer"))).data.reportVersionId;
+    // Exclusion is held (no command may leave a section out yet), so the plan is set as the owner — the version as it will be
+    // once the flip lands — and issued through the real publish, which freezes the version's plan.
+    await q(`UPDATE nzi_console.report_versions SET section_plan = $2::jsonb, section_plan_origin = 'edited' WHERE report_version_id = $1`, [reportVersionId, JSON.stringify(withoutTargets)]);
     await publishCrpReport(database.pool, { reportVersionId, expectedStatus: "validated", expectedVersion: 1, manifestVersion: 1, reviewedSnapshotId: "snap-excl" }, context("rev", "reviewer"));
     await q(`INSERT INTO nzi_console.portal_access_grants (organisation_id, grant_id, client_id, portal_user_id, job_id, data_entry_starts_at, data_entry_expires_at)
              VALUES ($1, 'grant-excl', $2, $3, 'j-excl', now() - interval '1 day', now() + interval '30 days')`, [ORG, CLIENT, PORTAL]);
