@@ -39,7 +39,8 @@ import { getAssuranceScreen, listGapResolutions, listReportSections } from "./re
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
-import { normaliseReportScope, reportScopeKey, selectableScopeSites, type ReportScope } from "@nzi/contracts";
+import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveReportSectionPlan, selectableScopeSites, type ReportScope, type ReportSectionPlanOrigin } from "@nzi/contracts";
+import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
@@ -2158,12 +2159,12 @@ async function governJobBaselineChange(db:Queryable,context:CommandContext,acces
  * NZC-022 separation of duties — a report version is validated (and later published)
  * only from an approved snapshot, and never by the snapshot's preparer.
  */
-function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:string;approved_by:string|null}){
+export function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:string;approved_by:string|null}){
   if(!snapshot.approved_by)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"SNAPSHOT_NOT_APPROVED",message:"The reviewed snapshot must be approved before a report is released from it."}]);
   if(snapshot.created_by===context.actorId)throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
 }
 /** The signee is one of the client's active report-signee contacts, frozen onto the version so the published report reproduces exactly. */
-export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
+export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope;sectionPlanOrigin:ReportSectionPlanOrigin}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
   if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);
   const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];provenance?:{boundary?:{siteIds?:string[]}}|null;measurements:Array<Record<string,unknown>&{siteId?:string|null}>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
   const snapshot=found.rows[0];
@@ -2188,14 +2189,23 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   // D3 (ruled Q2): the issuer — the organisation's names, footer and logo as they stand now — frozen with the client's logo, so
   // a later change to the profile never alters a document already validated.
   const issuer=await readOrganisationBrand(db,context.organisationId);
+  // F-1 (RULING-reporting-F Q3): the version's section plan — the one asked for, else the client's active report profile, else
+  // the default — checked against the rules as they stand (a profile written before a rule changed is refused, not issued),
+  // with where it came from. The profile's issuer line is frozen here with the rest of the issuer; a profile edited later
+  // reaches no version already validated.
+  const clientId=(await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,snapshot.job_id])).rows[0]?.client_id??null;
+  const profile=clientId?await readActiveReportProfile(db,context.organisationId,clientId):null;
+  const sectionPlan=resolveReportSectionPlan(input.sectionPlan?normaliseReportSectionPlan(input.sectionPlan):null,profile);
+  const planIssues=reportSectionPlanIssues(sectionPlan.plan);
+  if(planIssues.length)throw new CommandValidationError(input.sectionPlan?planIssues:planIssues.map(issue=>({...issue,field:"reportProfile",message:`The client's report profile no longer fits the report: ${issue.message} Update the profile, or choose the order for this report.`})));
   try{
-    await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null]);
+    await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids,section_plan,section_plan_origin,client_issuer_line) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null,JSON.stringify(sectionPlan.plan),sectionPlan.origin,profile?.issuerLine??null]);
   }catch(error){
     // 0016, keyed on scope: this snapshot is already validated (or published) at this scope.
     if(isUniqueViolation(error))throw new ScopeConflictError("This snapshot is already validated at this scope — open that report version.");
     throw error;
   }
-  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null,scope},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
+  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null,scope,sectionPlanOrigin:sectionPlan.origin},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
 });}
 
 export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string;compositionId:string;compositionHash:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{

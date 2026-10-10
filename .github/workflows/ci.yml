@@ -685,6 +685,11 @@ jobs:
       # real client, over a fixture that reaches every section; the guarded composition equals the unguarded one.
       - name: Composing a report never overlaps queries on the tenant client
         run: npx tsx --test packages/isolated-backend/tests/reportCompositionSerialReal.test.ts
+      # Reporting F-1 (0164, ruled RULING-reporting-F): a report's section plan — default ← the client's report profile ← the
+      # version's own; frozen at publish; reorder-only until F-4 (the Q5 interlock); report.sectionPlan.update validated-only,
+      # version-bumped, separation of duties, audited; the profile append-only, no money in its issuer line.
+      - name: A report issues in its frozen section order, seeded from the client's profile, reorder-only until the portal honours exclusion
+        run: npx tsx --test packages/isolated-backend/tests/reportSectionPlanReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

@@ -3,7 +3,7 @@ import { NziIcon, type NziIconKey } from "@nzi/ui";
 import { CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, RENDERER_VERSION, SrsPillarRadar, TOKENS_VERSION } from "@nzi/charts";
 import {
   strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
-  reportHeadline, reportMethodologyRows, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
+  isReportDataSection, reportHeadline, reportMethodologyRows, reportOmittedSections, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
   reportSectionPlanOf, reportSrsRadarChart,
   type ReportCompositionScope, type ReportCompositionSectionKey, type ReportEmissionsComparison,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
@@ -55,7 +55,11 @@ function ComposedV1({ composition }: { composition: ReportComposition }) {
   const hasSites = !isReportGap(emissions) && (emissions.sites?.length ?? 0) > 0;
   const scope = composition.scope;
   const realSites = hasSites && !isReportGap(emissions) ? (emissions.sites ?? []).filter((site) => site.siteId !== null) : [];
-  const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key !== "sites" || hasSites);
+  // composed@1 draws the data sections; the narrative is not part of this layout (Q6: it renders with a later one).
+  const sectionPlan = reportSectionPlanOf(composition);
+  const layout = reportSectionLayout(sectionPlan, (key) => isReportDataSection(key) && (key !== "sites" || hasSites));
+  // F-1: a section left out at the issuer's choice is said on the Methodology page, never silently dropped.
+  const omitted = reportOmittedSections(sectionPlan);
 
   // One renderer per section; the plan decides which appear, in what order, with what number and page.
   const sections: Record<ReportCompositionSectionKey, (n: string, page: number) => React.ReactNode> = {
@@ -278,11 +282,14 @@ function ComposedV1({ composition }: { composition: ReportComposition }) {
         measures or the readiness assessment do not alter this document. Charts are generated from the data,
         never captured as images, and render identically on screen, in the portal and in print.
       </p>
+      {omitted.length > 0 ? <p className="nzr-note nzr-omitted">Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
     </Page>,
   };
 
   return <main className="nzr-doc">
-    {layout.map((entry) => <Fragment key={entry.key}>{sections[entry.key](entry.number ?? "", entry.page)}</Fragment>)}
+    {layout.map((entry) => isReportDataSection(entry.key)
+      ? <Fragment key={entry.key}>{sections[entry.key](entry.number ?? "", entry.page)}</Fragment>
+      : null)}
   </main>;
 }
 
@@ -311,6 +318,8 @@ function Cover({ composition }: { composition: ReportComposition }) {
     </div>
     <h1>{reportCompositionSectionMeta.cover.title}</h1>
     <div className="nzr-cover-client">{composition.client}</div>
+    {/* F-1 (R-D1): the client's issuer line, frozen at validation. Absent on every report issued before it. */}
+    {composition.issuerLine ? <div className="nzr-cover-issuer">{composition.issuerLine}</div> : null}
     <div className="nzr-cover-meta">
       FY{composition.reportingYear} · {composition.jobNumber} · issued {formatDate(composition.issuedAt.slice(0, 10))}
     </div>
