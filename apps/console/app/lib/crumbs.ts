@@ -44,6 +44,15 @@ export function jobCrumbs(
   return trail;
 }
 
+/**
+ * Report preparation (Track A addendum #2): Reports / Prepare from the Reports workspace; once the job is known, the job's own
+ * trail ending in "Prepare report" — so arriving from a job reads as a step inside that job, not a different product.
+ */
+export function prepareReportCrumbs(job?: { id: string; number: string; clientId: string; client: string } | null): Crumb[] {
+  if (!job) return workspaceCrumbs("Reports", "/reports", { label: "Prepare", href: "/report-preview" });
+  return jobCrumbs(job, { label: "Prepare report", href: `/report-preview?jobId=${encodeURIComponent(job.id)}` });
+}
+
 /** A workspace board that is its own destination — the crumb still links to itself. */
 export function workspaceCrumbs(label: string, href: string, child?: { label: string; href: string }): Crumb[] {
   return child

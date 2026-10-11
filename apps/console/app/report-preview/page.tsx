@@ -19,6 +19,9 @@ import {validateManifest} from "@nzi/charts";
 import {ReportValidationAction} from "./ReportValidationAction";
 import {PreviewEmpty} from "./PreviewEmpty";
 import {ReportRegisterView} from "../reports/ReportRegisterView";
+import {PrepareFrame} from "./PrepareFrame";
+import {JobPrepareFrame} from "./JobPrepareFrame";
+import {prepareReportCrumbs} from "../lib/crumbs";
 
 export default async function ReportPreviewPage({
   searchParams,
@@ -35,22 +38,25 @@ export default async function ReportPreviewPage({
       `jobs/${jobId}/reviewed-snapshots`,
     );
     // A4: no snapshot is this page's own case, not a generic "nothing here" — PreviewEmpty says why (imported v7, or awaiting
-    // evidence). ScreenState still carries loading and a failed read.
+    // evidence). ScreenState still carries loading and a failed read — in the Reports chrome (addendum #2).
     if (result.state === "empty") return <PreviewEmpty jobId={jobId} />;
     return (
-      <ScreenState result={result}>
-        {(data) => data.snapshots[0] ? <LiveSnapshotPreview snapshot={data.snapshots[0]} /> : <PreviewEmpty jobId={jobId} />}
+      <ScreenState result={result} chrome={PREPARE_CHROME}>
+        {(data) => data.snapshots[0] ? <JobPrepareFrame jobId={jobId}><LiveSnapshotPreview snapshot={data.snapshots[0]} /></JobPrepareFrame> : <PreviewEmpty jobId={jobId} />}
       </ScreenState>
     );
   }
   return <PreviewJobSelection />;
 }
 
+/** Addendum #2: report preparation is part of the Reports workspace — every state of this page sits in its chrome. */
+const PREPARE_CHROME = { activeId: "reports", label: "Reports", href: "/reports" };
+
 /**
  * A2/A3: the picker is the Reports register — the same rows, filters and link logic — so a job is found by client, consultant,
  * stage, year or search instead of a flat scroll, and an imported job says it is awaiting re-compose before anyone opens it.
  */
-function PreviewJobSelection(){return <main className="nz-preview-canvas"><section className="nz-preview-picker"><div className="nz-section-intro"><div><span className="nz-eyebrow">Governed report preparation</span><h1>Choose a CRP job to prepare</h1><p>A report is assembled from a job's reviewed snapshot. Jobs ready to prepare say <b>Prepare report</b>; imported v7 history is marked as awaiting re-compose.</p></div><a className="nz-btn" href="/reports">Return to publication studio</a></div><ReportRegisterView mode="picker"/></section></main>}
+function PreviewJobSelection(){return <PrepareFrame crumbs={prepareReportCrumbs()}><section className="nz-preview-picker"><div className="nz-section-intro"><div><span className="nz-eyebrow">Governed report preparation</span><h1>Choose a CRP job to prepare</h1><p>A report is assembled from a job's reviewed snapshot. Jobs ready to prepare say <b>Prepare report</b>; imported v7 history is marked as awaiting re-compose.</p></div><a className="nz-btn" href="/reports">Return to publication studio</a></div><ReportRegisterView mode="picker"/></section></PrepareFrame>}
 
 function LiveSnapshotPreview({
   snapshot,
@@ -89,8 +95,8 @@ function LiveSnapshotPreview({
   const intensity=charts.find(chart=>chart.spec.type==="intensity_pathway") as IntensityPathwayData|undefined;
   const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
   const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id);
+  // The frame (JobPrepareFrame) supplies the canvas and the chrome; this is the sheet.
   return (
-    <main className="nz-preview-canvas">
       <section className="nz-preview-sheet">
         <header className="nz-preview-head"><span className="nz-eyebrow">Database-backed reviewed snapshot · {snapshot.jobNumber}</span><h1>{snapshot.reportingYear} Carbon performance</h1><p>Snapshot v{snapshot.version} · created {formatDateTime(snapshot.createdAt)}</p><span className={`nz-st ${validation.valid?"done":"nof"}`}>{validation.valid?"Manifest ready":"Validation blocked"}</span><div className="nz-preview-hash"><span>Evidence hash</span><b className="num">{snapshot.dataHash}</b></div></header>
         <div className="nz-banner warn">
@@ -119,6 +125,5 @@ function LiveSnapshotPreview({
           reviewedSnapshotId={snapshot.id}
         />
       </section>
-    </main>
   );
 }

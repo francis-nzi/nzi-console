@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import { clientCrumbs, clientJobsHref, jobCrumbs, workspaceCrumbs } from "../app/lib/crumbs";
+import { clientCrumbs, clientJobsHref, jobCrumbs, prepareReportCrumbs, workspaceCrumbs } from "../app/lib/crumbs";
 
 // Resolved from this file, so the suite passes from the repo root and from the package.
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
@@ -55,9 +55,24 @@ describe("breadcrumbs", () => {
     ]);
   });
 
+  it("report preparation: Reports / Prepare, or the job's own trail ending in Prepare report when the job is known", () => {
+    assert.deepEqual(prepareReportCrumbs(), [
+      { label: "Reports", href: "/reports" },
+      { label: "Prepare", href: "/report-preview", current: true },
+    ]);
+    assert.deepEqual(prepareReportCrumbs(null), prepareReportCrumbs());
+    assert.deepEqual(prepareReportCrumbs(job), [
+      { label: "Clients", href: "/clients" },
+      { label: "Northwind Manufacturing", href: "/clients/client-a" },
+      { label: "Jobs", href: "/jobs?client=client-a" },
+      { label: "J000712", href: "/jobs/job-712", current: false },
+      { label: "Prepare report", href: "/report-preview?jobId=job-712", current: true },
+    ]);
+  });
+
   it("every crumb in every trail has a route — none is plain text", () => {
     const trails = [
-      jobCrumbs(job), jobCrumbs(job, { label: "Scope rows" }),
+      jobCrumbs(job), jobCrumbs(job, { label: "Scope rows" }), prepareReportCrumbs(), prepareReportCrumbs(job),
       clientCrumbs({ id: "client-a", name: "Northwind Manufacturing" }),
       workspaceCrumbs("Jobs", "/jobs"),
     ];
@@ -76,6 +91,7 @@ describe("breadcrumbs", () => {
       "apps/console/app/charts/page.tsx", "apps/console/app/reports/page.tsx",
       "apps/console/app/datasets/DatasetBoard.tsx", "apps/console/app/sales/SalesBoard.tsx",
       "apps/console/app/lca/LcaBoard.tsx", "apps/console/app/platform/PlatformBoard.tsx",
+      "apps/console/app/report-preview/PrepareFrame.tsx",
     ]) {
       const source = read(file);
       assert.match(source, /crumbs=\{crumbTrail\(/, `${file} builds its crumbs with the shared builder`);

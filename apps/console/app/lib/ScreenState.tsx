@@ -12,7 +12,8 @@ type StateKind = "loading" | "empty" | "failed";
  * Without it a loading, empty or failed state is a bare card with no navigation — which is how a new organisation,
  * with no clients yet, landed on a Control Room it could not leave. Every page that renders AppShell when it has data
  * passes this, so the rail and the top bar are there whatever state the data is in. Pages with no app chrome by
- * design (the report and portal previews, the printable report) leave it out.
+ * design (the portal preview, the printable report) leave it out. (Report preparation, `/report-preview`, is in the
+ * Reports chrome since Track A's addendum #2.)
  */
 export type ScreenChrome = { activeId: string; label: string; href: string };
 

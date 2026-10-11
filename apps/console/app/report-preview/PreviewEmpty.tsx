@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { v7RecordLine } from "@nzi/contracts";
-import type { ReportStatusRow } from "@nzi/isolated-backend";
+import { prepareReportCrumbs } from "../lib/crumbs";
+import { useJobReportRow } from "../lib/useJobReportRow";
+import { PrepareFrame } from "./PrepareFrame";
 
 /**
  * Track A, A4 (RULING-reporting-trackA): a job with no reviewed snapshot, said for what it is — never the bare "Nothing here
@@ -13,17 +14,16 @@ import type { ReportStatusRow } from "@nzi/isolated-backend";
  *   no console snapshot to compose yet — it is slated for re-compose.
  * - **A native job with no evidence yet:** ready for its first record, with the way to add it.
  * - **Unread:** if the job's state cannot be read, say that, rather than guess which of the two it is.
+ *
+ * Addendum #2: inside the console chrome, with the job's own trail once it is read.
  */
 export function PreviewEmpty({ jobId }: { jobId: string }) {
-  const [row, setRow] = useState<ReportStatusRow | null | undefined>(undefined);
-  useEffect(() => {
-    fetch(`/api/isolated/report-status?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" })
-      .then(async (response) => { if (!response.ok) throw new Error(); const body = await response.json() as { jobs?: ReportStatusRow[] }; setRow(body.jobs?.[0] ?? null); })
-      .catch(() => setRow(null));
-  }, [jobId]);
+  const row = useJobReportRow(jobId);
 
   const shell = (icon: string, eyebrow: string, title: string, body: React.ReactNode, actions: React.ReactNode) =>
-    <main className="nz-preview-canvas"><section className="nz-preview-empty"><span className="nz-state-icon" aria-hidden="true">{icon}</span><div><span className="nz-eyebrow">{eyebrow}</span><h1>{title}</h1>{body}<div className="nz-preview-empty-actions">{actions}</div></div></section></main>;
+    <PrepareFrame crumbs={prepareReportCrumbs(row ? { id: row.jobId, number: row.jobNumber, clientId: row.clientId, client: row.client } : null)}>
+      <section className="nz-preview-empty"><span className="nz-state-icon" aria-hidden="true">{icon}</span><div><span className="nz-eyebrow">{eyebrow}</span><h1>{title}</h1>{body}<div className="nz-preview-empty-actions">{actions}</div></div></section>
+    </PrepareFrame>;
   const back = <Link className="nz-btn" href="/report-preview">Choose another job</Link>;
 
   if (row === undefined) return shell("…", "Report preparation", "Checking this job", <p>Reading the job's report state…</p>, back);
