@@ -81,4 +81,39 @@ describe("the report pipeline register (R-ST1), against a real database", { skip
     assert.equal(rows.find((row) => row.jobId === "prep")?.ownerUserId, "owner-a");
     assert.equal(rows.find((row) => row.jobId === "client")?.ownerUserId, null);
   });
+
+  // ── Track A: one read model for the Reports list, the picker and the job's own link ─────────────────────────────────────
+
+  it("carries what the shared row shows and filters on: title, lead consultant, snapshot, v7 — in the same one query", async () => {
+    await q(`UPDATE nzi_console.jobs SET owner_name = 'Jennie Davide', title = 'Carbon Reduction Plan' WHERE job_id = 'validate'`);
+    const rows = await withTenantRead(database.pool, ORG, listReportStatusRegister);
+    const validate = rows.find((row) => row.jobId === "validate")!;
+    assert.deepEqual([validate.title, validate.leadConsultant, validate.hasSnapshot, validate.v7Record, validate.v7Report], ["Carbon Reduction Plan", "Jennie Davide", true, false, null]);
+    const prep = rows.find((row) => row.jobId === "prep")!;
+    assert.deepEqual([prep.hasSnapshot, prep.leadConsultant], [false, null], "no snapshot; an unset consultant is null, not an empty string");
+    assert.equal(rows.find((row) => row.jobId === "v7")!.v7Record, true);
+  });
+
+  it("Q1 (b): a v7 job carries its latest report version's unsealed metadata — never the sealed payload", async () => {
+    const SEALED = { ciphertext: "c2VhbGVk", iv: "aXY=", tag: "dGFn" };
+    for (const [id, version, status] of [["lr-1", 1, "superseded"], ["lr-2", 2, "final"]] as const) {
+      await q(`INSERT INTO nzi_console.legacy_report_versions (organisation_id, legacy_report_id, job_id, kind, source_system, legacy_db_id, version_number, legacy_status,
+                 finalized_at, v7_data_hash, payload_sha256, payload_sealed, content_key_wrapped, imported_by)
+               VALUES ($1, $2, 'v7', 'report', 'nzi-pro-v7', $2, $3, $4, '2025-03-31T10:00:00Z', $5, $5, $6::jsonb, $6::jsonb, 'import')`,
+        [ORG, id, version, status, createHash("sha256").update(id).digest("hex"), JSON.stringify(SEALED)]);
+    }
+    const v7 = (await withTenantRead(database.pool, ORG, listReportStatusRegister)).find((row) => row.jobId === "v7")!;
+    assert.equal(v7.v7Report?.version, 2, "the latest version");
+    assert.equal(v7.v7Report?.status, "final");
+    assert.match(String(v7.v7Report?.finalisedAt), /^2025-03-31/);
+    assert.equal(v7.v7Report?.dataHash, createHash("sha256").update("lr-2").digest("hex"));
+    assert.ok(!JSON.stringify(v7).includes(SEALED.ciphertext), "the sealed content is not read");
+  });
+
+  it("narrows to one job for the job page's link, through the same read model", async () => {
+    const one = await withTenantRead(database.pool, ORG, (db) => listReportStatusRegister(db, { jobId: "client" }));
+    assert.deepEqual(one.map((row) => row.jobId), ["client"]);
+    assert.deepEqual(await withTenantRead(database.pool, ORG, (db) => listReportStatusRegister(db, { jobId: "cancelled" })), [], "still only live CRP jobs");
+    assert.deepEqual(await withTenantRead(database.pool, OTHER, (db) => listReportStatusRegister(db, { jobId: "client" })), [], "never another organisation's");
+  });
 });

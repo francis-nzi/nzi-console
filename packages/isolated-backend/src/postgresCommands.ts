@@ -2379,7 +2379,7 @@ export async function createReviewedCrpSnapshot(
           {
             field: "jobId",
             code: MIGRATED_PERIOD,
-            message: "This job holds history imported from NZ Insights Pro v7. Its record of account is the v7 report, shown in the historical report view — a console snapshot of it would be a second, conflicting record, so none is made (decision 12).",
+            message: "This job holds history imported from NZ Insights Pro v7. Its record of account is the v7 report, kept sealed as issued — a console snapshot of it would be a second, conflicting record, so none is made (decision 12); the period is awaiting re-compose.",
           },
         ]);
       // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site
