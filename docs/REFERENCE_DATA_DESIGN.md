@@ -300,7 +300,8 @@ explicit table:
 | each, unit | units |
 | Room per night | nights |
 | kWh (Gross CV), kWh (Net CV) | kWh — distinct factors, the calorific basis kept in the label |
-| anything else (m, million litres, per FTE Working Hour…) | loaded verbatim and reported: pickable by a person, never resolved by a rule until mapped |
+| per FTE Working Hour | the same — since 0165 (NZC-168) a known unit in its own identity-only dimension, `fte-time`, accepted on 3.7 |
+| anything else (m, million litres…) | loaded verbatim and reported: pickable by a person, never resolved by a rule until mapped |
 | currencies | **every currency is loaded** as a spend unit, pickable, resolvable once that currency is enabled; CEDA's per-country code counts as one unit across currencies |
 
 ### 5.2 Load posture

@@ -238,6 +238,11 @@ jobs:
       # checker recognises, since a declared unit it cannot read would refuse every entry for that field.
       - name: A unit reconciles with its factor, or the entry is refused
         run: npx tsx --test packages/isolated-backend/tests/unitCompatibilityReal.test.ts
+      # 0165 (NZC-168): Other Stationary Fuels is Natural Gas's form with its own units; GBP, nights, tonne.km and per FTE
+      # Working Hour accepted where ruled, each in the factors' own spelling; and the migration's guards refuse a second run and
+      # a drifted spec rather than overwriting it.
+      - name: The v7 taxonomy additions land as ruled, and refuse a drifted spec
+        run: npx tsx --test packages/isolated-backend/tests/taxonomy0165Real.test.ts
       # The declared dataset mapping (NZC-149). Two things only a real database shows: that the rows 0112
       # seeds are shaped the way the resolver reads them — a mapping right in the abstract and mis-keyed
       # in the migration resolves nothing while every unit test stays green — and that the shape

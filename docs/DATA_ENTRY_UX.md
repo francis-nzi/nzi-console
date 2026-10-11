@@ -11,7 +11,7 @@ concentrates on one category at a time. **Only categories applicable to the job 
 dataset/scope config — the structure that guarantees consistency). Category names come **verbatim from the
 datasets**, never ad-hoc:
 
-- **Scope 1** (if applicable): Natural Gas (and other stationary fuels), **Company Vehicles**, Refrigerants.
+- **Scope 1** (if applicable): Natural Gas, Other Stationary Fuels (NZC-168: diesel, gas oil, LPG, burning oil, bioenergy in fixed plant), **Company Vehicles**, Refrigerants.
 - **Scope 2** (if applicable): Purchased Electricity, Renewable Electricity.
 - **Scope 3** (the 15 GHG categories, if applicable): 1 Purchased Goods and Services · 2 Capital Goods ·
   3 Fuel & Energy Related · 4 Upstream Transportation & Distribution · 5 Waste in Operations ·

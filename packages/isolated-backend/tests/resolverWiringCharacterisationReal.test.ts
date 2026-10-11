@@ -402,8 +402,10 @@ describe("wiring characterisation — today's paths against the declarative reso
     const categories = (await db.query<{ category_code: string; ghg: string }>(
       `SELECT DISTINCT category_code, split_part(category_code, '.', 1) AS ghg FROM nzi_console.input_spec_fields ORDER BY category_code`)).rows;
     const unmapped = categories.filter((category) => !ENABLED.includes(category.category_code));
-    // Fifteen, not "some": a loop over an empty list proves nothing (NZC-149's own correction).
-    assert.equal(unmapped.length, 15, `expected 15 un-enabled categories, found ${unmapped.length}`);
+    // Sixteen, not "some": a loop over an empty list proves nothing (NZC-149's own correction). Fifteen until 0165 added Other
+    // Stationary Fuels, which resolves by search like Natural Gas (NZC-168) — so it is one more on the fallback, as ruled.
+    assert.equal(unmapped.length, 16, `expected 16 un-enabled categories, found ${unmapped.length}`);
+    assert.ok(unmapped.some((category) => category.category_code === "1.other-stationary-fuels"), "Other Stationary Fuels is on the search");
 
     for (const category of unmapped) {
       // An entry shaped to tempt every kind of rule: litres, kWh, a plate, a supply source. None may fire.

@@ -365,10 +365,12 @@ export function crpScopeCategoryLabel(scope: string): string {
 // progressive disclosure (spend fields only under `spend`; the DVLA registration
 // finder under `vehicle` / `travel` / `commuting`; `fugitive` = refrigerant
 // top-ups). Scope 3 codes align with `crpScopeOptions` / the canonical row scope.
+// NZC-168 (0165): Scope 1 gains Other Stationary Fuels — combustion of a fuel other than natural gas in fixed plant.
 export type EmissionCategoryKind = "manual" | "spend" | "vehicle" | "travel" | "commuting" | "fugitive";
 export type EmissionCategory = { scope: "1" | "2" | "3"; code: string; name: string; kind: EmissionCategoryKind };
 export const emissionCategoryTaxonomy: readonly EmissionCategory[] = [
   { scope: "1", code: "1.natural-gas", name: "Natural Gas", kind: "manual" },
+  { scope: "1", code: "1.other-stationary-fuels", name: "Other Stationary Fuels", kind: "manual" },
   { scope: "1", code: "1.company-vehicles", name: "Company Vehicles", kind: "vehicle" },
   { scope: "1", code: "1.refrigerants", name: "Refrigerants", kind: "fugitive" },
   { scope: "2", code: "2.purchased-electricity", name: "Purchased Electricity", kind: "manual" },

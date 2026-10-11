@@ -50,7 +50,7 @@ describe("isolated Postgres adapter", () => {
     assert.deepEqual(result.includedScopes, ["1", "2", "3"], "a scope with no rows or datasets is shown empty, never left out");
     assert.equal(scopeQueried, false, "the CRM view does not derive its scopes");
     assert.equal(result.categories.filter((c) => c.scope === "3").length, 15);
-    assert.equal(result.categories.filter((c) => c.scope === "1").length, 3);
+    assert.equal(result.categories.filter((c) => c.scope === "1").length, 4, "NZC-168: Natural Gas, Other Stationary Fuels, Company Vehicles, Refrigerants");
     assert.deepEqual(result.categories.filter((c) => c.scope === "2").map((c) => [c.code, c.noData]), [["2.purchased-electricity", true], ["2.renewable-electricity", true]], "Scope 2 shown, empty");
     const pgs = result.categories.find((c) => c.code === "3.1")!;
     assert.equal(pgs.name, "Purchased Goods and Services");
