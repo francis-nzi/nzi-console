@@ -31,7 +31,7 @@ describe("JW-10 scope sections and imported rows, against a real database", { sk
     for (const jobId of ["empty", "no-s1"]) {
       const crm = await view(jobId, "crm");
       assert.deepEqual(crm.includedScopes, ["1", "2", "3"], `${jobId}: every scope is shown`);
-      assert.equal(crm.categories.length, 20, `${jobId}: the full taxonomy`);
+      assert.equal(crm.categories.length, 21, `${jobId}: the full taxonomy (NZC-168: 21 with Other Stationary Fuels)`);
     }
     assert.ok((await view("empty", "crm")).categories.every((c) => c.noData), "an empty job's categories are all marked no data");
     assert.deepEqual((await view("no-s1", "portal")).includedScopes, ["2"], "the portal still derives its scopes");

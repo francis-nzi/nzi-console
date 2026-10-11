@@ -34,7 +34,7 @@ import { denominatorOf, MILES_PER_KM } from "./lcaUnits";
 /** What a unit measures. Conversion happens within one of these and never across. */
 export type UnitDimension =
   | "energy" | "volume" | "mass" | "distance" | "passenger-distance"
-  | "freight" | "area" | "count" | "money";
+  | "freight" | "area" | "count" | "money" | "fte-time";
 
 type UnitDefinition = { dimension: UnitDimension; /** How many canonical units one of these is. */ inCanonical: number };
 
@@ -92,6 +92,9 @@ const UNITS: Record<string, UnitDefinition> = {
   "units": { dimension: "count", inCanonical: 1 },
   "nights": { dimension: "count", inCanonical: 1 },
   "gbp": { dimension: "money", inCanonical: 1 },
+  // Homeworking (0165, RULING-v7-taxonomy-additions T3): the factor library's own spelling, verbatim, in a dimension of its
+  // own. An FTE working hour is not an hour of anything else, so it converts to nothing and nothing converts to it.
+  "per fte working hour": { dimension: "fte-time", inCanonical: 1 },
 };
 
 /**
@@ -150,7 +153,7 @@ export function checkUnit(entered: string | null | undefined, factorUnit: string
         + `these are different quantities, and multiplying one by the other would produce a number that looks ordinary and is not`,
     };
   }
-  if (from.dimension === "money" || from.dimension === "count" || from.dimension === "area") {
+  if (IDENTITY_ONLY.has(from.dimension)) {
     // Same dimension, different spelling, no ratio between them: m² and m2 are caught by the same-key
     // test above, so reaching here means two genuinely different units of an unconvertible kind.
     return { kind: "reject", reason: `'${entered}' and '${factorUnit}' are both ${from.dimension} but there is no conversion between them` };
@@ -210,4 +213,4 @@ export function isAcceptedUnit(entered: string | null | undefined, accepted: rea
   });
 }
 
-const IDENTITY_ONLY: ReadonlySet<UnitDimension> = new Set(["money", "count", "area"]);
+const IDENTITY_ONLY: ReadonlySet<UnitDimension> = new Set(["money", "count", "area", "fte-time"]);

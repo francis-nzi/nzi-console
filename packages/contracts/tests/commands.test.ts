@@ -58,9 +58,11 @@ describe("command contracts", () => {
   });
   it("validates monthly activity slot identity and quantities",()=>{const base={jobId:"job-a",scope:"1",sourceLabel:"Gas",quantity:30,unit:"kWh",datasetId:"dataset-a",factorId:"factor-a",factorVersion:"v1",factorLabel:"Gas factor",qualityTier:"measured" as const};assert.equal(validateCommand("scope.row.create",{...base,monthlyActivity:[{month:"2026-01",quantity:10},{month:"2026-02",quantity:20}]},context).length,0);assert.ok(validateCommand("scope.row.create",{...base,monthlyActivity:[{month:"January",quantity:-1},{month:"January",quantity:2}]},context).length>=3);});
   it("requires a reviewer note for rejection",()=>assert.ok(validateCommand("scope.review.reject",{jobId:"712",rowIds:["row-a"],expectedReviewVersion:2,reviewerNote:""},context).some(issue=>issue.field==="reviewerNote")));
-  it("defines the NZC-046 category taxonomy: 3 Scope 1, 2 Scope 2, 15 Scope 3, verbatim names, aligned codes",()=>{
+  it("defines the NZC-046 category taxonomy (NZC-168: 4 Scope 1), 2 Scope 2, 15 Scope 3, verbatim names, aligned codes",()=>{
     const s1=emissionCategoryTaxonomy.filter(c=>c.scope==="1"),s2=emissionCategoryTaxonomy.filter(c=>c.scope==="2"),s3=emissionCategoryTaxonomy.filter(c=>c.scope==="3");
-    assert.equal(s1.length,3);assert.equal(s2.length,2);assert.equal(s3.length,15);
+    assert.equal(s1.length,4);assert.equal(s2.length,2);assert.equal(s3.length,15);
+    assert.deepEqual(s1.map(c=>c.code),["1.natural-gas","1.other-stationary-fuels","1.company-vehicles","1.refrigerants"],"Other Stationary Fuels follows Natural Gas (0165)");
+    assert.deepEqual(emissionCategoryTaxonomy.find(c=>c.code==="1.other-stationary-fuels"),{scope:"1",code:"1.other-stationary-fuels",name:"Other Stationary Fuels",kind:"manual"});
     assert.deepEqual(s3.map(c=>c.code),["3.1","3.2","3.3","3.4","3.5","3.6","3.7","3.8","3.9","3.10","3.11","3.12","3.13","3.14","3.15"]);
     assert.equal(emissionCategoryTaxonomy.find(c=>c.code==="3.1")!.kind,"spend");
     assert.equal(emissionCategoryTaxonomy.find(c=>c.code==="1.company-vehicles")!.kind,"vehicle");

@@ -66,7 +66,8 @@ describe("the governed spec reproduces the pinned renders", { skip: DATABASE_URL
 
     assert.deepEqual(mismatches, [],
       `the spec renders differently from the pinned model:\n  ${mismatches.slice(0, 2).join("\n  ")}`);
-    assert.equal(Object.keys(golden).length, 160, "and all 160 renders were checked, not a subset");
+    // 160 when pinned (0093); 168 since 0165 added Other Stationary Fuels (NZC-168) — the golden regenerated in its own commit.
+    assert.equal(Object.keys(golden).length, 168, "and all 168 renders were checked, not a subset");
   });
 
   it("carries each category's units in order, first being the default", async () => {

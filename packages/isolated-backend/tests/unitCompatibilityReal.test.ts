@@ -122,7 +122,9 @@ describe("a unit either reconciles with the factor or the entry is refused (NZC-
     assert.deepEqual(unitsFor("2.purchased-electricity"), ["kWh"],
       "electricity is metered in energy — it no longer offers litres and square metres");
     assert.deepEqual(unitsFor("1.company-vehicles"), ["litres", "km", "mi"]);
-    assert.deepEqual(unitsFor("3.6"), ["passenger.km", "passenger.mi", "km", "mi"]);
+    // 0111 declared the distances; 0165 (NZC-168) added spend-based travel (GBP) and hotel stays (nights), the factors' own
+    // spellings — appended to the category's units first, so the subset check below still holds.
+    assert.deepEqual(unitsFor("3.6"), ["passenger.km", "passenger.mi", "km", "mi", "GBP", "nights"]);
 
     // Each declaration is a subset of the list its category already carried: this migration narrows what
     // 0093 offered and does not invent a unit for a category.

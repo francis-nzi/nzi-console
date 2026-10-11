@@ -5679,3 +5679,26 @@ emerald) unchanged.
 
 **What this does not decide.** Rolling the language out to the rest of the console is a later decision, which would
 supersede NZC-003 rather than amend it.
+
+### NZC-168 — The taxonomy gains Other Stationary Fuels; GBP and three native units are accepted (amends NZC-046 and NZC-102) [Decided 10 Oct 2026 — Cowork + Francis]
+
+**Decision.** Migration `0165` (RULING-v7-taxonomy-additions):
+
+- **Scope 1 gains Other Stationary Fuels** (`1.other-stationary-fuels`, kind `manual`, after Natural Gas): combustion of a fuel
+  other than natural gas in fixed plant — diesel, gas oil, LPG, burning oil, bioenergy. Its form is Natural Gas's; it accepts
+  litres, kWh and tonnes; it resolves by free search with no declared rules, as Natural Gas does (the unit cannot pick the
+  fuel — NZC-160 D3). Natural Gas is not widened. The taxonomy is **21** categories (NZC-102's 20, plus this).
+- **GBP is accepted on 3.4, 3.5, 3.6 and 3.9**, so a spend-priced upstream freight, waste, business-travel or downstream
+  freight entry stays in its own category rather than moving to 3.1. **Acceptance only:** the spend *method* (net value, VAT,
+  GL code, the spend ledger and import, portal spend buckets) stays with 3.1/3.2/3.15. Spend *capture* in those four categories
+  is a logged follow-up.
+- **Three native units:** `tonne.km` (3.4), `nights` (3.6) and `per FTE Working Hour` (3.7), each spelled exactly as the loaded
+  factors spell their `activity_unit`. The last is a new identity-only dimension, `fte-time`: an FTE working hour converts to
+  nothing and nothing converts to it.
+
+**Why.** The v7 dry run (`v7-allocation-dryrun/REPORT.md` §4.2–4.4) found 95 Scope 1 fuel rows with no native category, 75
+spend-priced travel/freight/waste rows refused by their categories' units, and 229 rows in units no category offered — all
+arithmetically exact against their factors. These are the categories and units they need; nothing about the figures changes.
+
+**What this does not decide.** Re-ingesting the v7 rows into these categories (crosswalk v1, then a governed commit), and
+building spend capture outside 3.1/3.2/3.15.
