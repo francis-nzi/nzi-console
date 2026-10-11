@@ -87,10 +87,17 @@ export async function getClientTargets(db: Queryable, clientId: string, input: {
   };
 }
 
-/** The benchmark in force for a client, from the baseline the client record carries (the `client_baselines` seam). */
+/**
+ * The benchmark in force for a client, from the baseline the client record carries (the `client_baselines` seam).
+ *
+ * The organisation is pinned in the query, with the tenant policy's own expression, not left to row-level security: on a
+ * connection that bypasses RLS (the staging script role holds BYPASSRLS) a client id alone could read another
+ * organisation's baseline. With no tenant context it reads nothing, so callers see no benchmark rather than a stranger's
+ * (found by the GATE 2 dry run).
+ */
 export async function getBenchmarkInForce(db: Queryable, clientId: string): Promise<TargetBenchmark | null> {
   const { rows } = await db.query<{ baseline_period_start: Date | string | null; baseline_total_tco2e: string | null; baseline_scope1_tco2e: string | null; baseline_scope2_tco2e: string | null; baseline_scope3_tco2e: string | null }>(
-    `SELECT baseline_period_start,baseline_total_tco2e,baseline_scope1_tco2e,baseline_scope2_tco2e,baseline_scope3_tco2e FROM nzi_console.clients WHERE client_id=$1`,
+    `SELECT baseline_period_start,baseline_total_tco2e,baseline_scope1_tco2e,baseline_scope2_tco2e,baseline_scope3_tco2e FROM nzi_console.clients WHERE organisation_id=current_setting('app.organisation_id',true) AND client_id=$1`,
     [clientId],
   );
   const row = rows[0];

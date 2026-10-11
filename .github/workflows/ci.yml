@@ -594,6 +594,10 @@ jobs:
       # replaced; other targets carried forward; left-out classes reported; a refusal isolated.
       - name: A client with a baseline and no net-zero target gets the ruled one, through the governed command
         run: npx tsx --test packages/isolated-backend/tests/netZeroTargetFillReal.test.ts
+      # GATE 2 follow-up: the benchmark read pins its organisation in the query, so a connection that bypasses RLS (a script
+      # setting the tenant without the role switch) still reads only its own client.
+      - name: The benchmark in force reads its own organisation's client, even where row-level security is bypassed
+        run: npx tsx --test packages/isolated-backend/tests/benchmarkOrgPredicateReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
