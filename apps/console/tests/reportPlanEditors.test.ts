@@ -12,18 +12,21 @@ const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.m
  * publishes the version it holds, the job page's publish pinning its version, the three routes, and the ruled CSS wrap.
  */
 describe("the section-plan editors (F-1b)", () => {
-  it("while exclusion is held, the editor is reorder-only: no switch, and it says why", async () => {
+  it("with the flip, the editor offers the include switch by default and says what leaving a section out does; told exclusion is unavailable, it is reorder-only", async () => {
+    (globalThis as { React?: unknown }).React = React;
+    const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
+    const on = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
+    assert.equal([...on.matchAll(/type="checkbox"/g)].length, 5, "the switch is on by default, now both gates are met");
+    assert.match(on, /Untick a section to leave it out\. It is then absent from the issued report and from the client&#x27;s portal/);
+    const held = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined, allowExclusion: false }));
+    assert.doesNotMatch(held, /type="checkbox"|aria-pressed/, "no include/exclude switch when exclusion is unavailable");
+    assert.match(held, /Every section stays in the report/);
+  });
+
+  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and offers an include switch on the optional sections only", async () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
-    assert.doesNotMatch(html, /type="checkbox"|aria-pressed/, "no include/exclude switch while held");
-    assert.match(html, /Every section stays in the report/);
-  });
-
-  it("the editor lists the data sections in plan order, fixes the cover and the methodology, and (exclusion allowed) offers an include switch on the optional sections only", async () => {
-    (globalThis as { React?: unknown }).React = React;
-    const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
-    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined, allowExclusion: true }));
     const names = [...html.matchAll(/<span class="nm">([^<]+)(?:<span|<\/span>)/g)].map((match) => match[1]);
     assert.deepEqual(names, ["Carbon Reduction Plan", "Executive summary", "Emissions by scope", "Sites &amp; reporting boundary", "Emissions intensity",
       "Targets &amp; reduction pathway", "Decarbonisation actions", "UK SRS readiness statement", "Methodology &amp; provenance"]);
@@ -44,7 +47,7 @@ describe("the section-plan editors (F-1b)", () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const plan = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
-    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined, allowExclusion: true }));
+    const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined }));
     assert.match(html, /<li class="left-out"><span class="nm">Targets &amp; reduction pathway<span class="muted"> · left out<\/span>/);
     assert.equal([...html.matchAll(/type="checkbox" checked=""/g)].length, 4, "the other four optional sections stay included");
   });

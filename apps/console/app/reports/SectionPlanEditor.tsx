@@ -7,8 +7,8 @@
 // put back — and the issued report says on its Methodology page that it was left out.
 import { isMovableReportSection, isOptionalReportSection, isReportDataSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
 
-// While exclusion is held (RULING-reporting-F4b-flip-and-dashboard) the editor is reorder-only, as in F-1b; `allowExclusion`
-// follows the one switch, and exists so the include switch can be tested before it is turned on.
+// `allowExclusion` follows the one switch (RULING-reporting-F4b-flip-and-dashboard): on since both gates cleared, so the
+// include switch shows; told exclusion is unavailable, the editor is reorder-only, as in F-1b.
 export function SectionPlanEditor({ plan, onChange, disabled = false, label = "Section order", allowExclusion = REPORT_SECTION_EXCLUSION_AVAILABLE }: {
   plan: ReportSectionPlan; onChange: (plan: ReportSectionPlan) => void; disabled?: boolean; label?: string; allowExclusion?: boolean;
 }) {

@@ -179,11 +179,13 @@ export const reportSectionPlanOf = (composition: ReportComposition): ReportSecti
  * validator every command and the UI share. The exclusion machinery (the plan's `included`, the layout skipping it, the
  * Methodology stating it) was built in F-1, and F-4b moves the portal onto the frozen composition.
  *
- * **HELD (RULING-reporting-F4b-flip-and-dashboard, decision 1).** The flip lands only once **every** client surface honours
- * exclusion: GATE 1, F-4c (the portal dashboard hides what the default report omits), and GATE 2, the client-target backfill.
- * Until then nothing can be left out, so nothing can contradict.
+ * **ON (RULING-reporting-F4b-flip-and-dashboard, decision 3).** It was held until **every** client surface honoured exclusion,
+ * and both gates are now met: GATE 1, F-4c (#459: the portal dashboard hides what the default report omits), and GATE 2, the
+ * client-target backfill (committed on staging 11 Oct 2026, 208 clients, verified). An optional section may now be left out
+ * at validate, at the client's profile and at update; the mandatory sections never. `allowExclusion: false` still refuses,
+ * so the interlock itself stays testable.
  */
-export const REPORT_SECTION_EXCLUSION_AVAILABLE = false;
+export const REPORT_SECTION_EXCLUSION_AVAILABLE = true;
 
 /** Narrative sections may be included once the composed report draws them (Q6: with F-2/F-4). That PR flips this. */
 export const REPORT_NARRATIVE_SECTIONS_AVAILABLE = false;
