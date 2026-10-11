@@ -41,6 +41,7 @@ import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendIm
 import { isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
 import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveReportSectionPlan, selectableScopeSites, type ReportScope, type ReportSectionPlanOrigin } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
+import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
@@ -941,15 +942,16 @@ const resolveSourceMonthlyActivity = (db: Queryable, organisationId: string, job
  */
 async function reconcileUnitWithFactor(
   db: Queryable, organisationId: string, _jobId: string,
-  input: { unit?: string | null; quantity: number | null; datasetId: string | null; factorId: string | null; categoryCode?: string | null },
+  input: { unit?: string | null; quantity: number | null; datasetId: string | null; factorId: string | null; categoryCode?: string | null; skipFieldUnits?: boolean },
 ): Promise<{ quantity: number | null; unit: string | null; conversion: { from: string; to: string; factor: number } | null }> {
   const entered = input.unit?.trim() || null;
   if (!entered || !input.factorId || !input.datasetId) {
     return { quantity: input.quantity, unit: entered, conversion: null };
   }
 
-  // The spec's own answer first, when the category declares one.
-  if (input.categoryCode) {
+  // The spec's own answer first, when the category declares one. Skipped only for a re-ingested v7 row recorded in a unit
+  // today's form does not offer (the re-ingest's gated allowance); the factor's own check below still applies.
+  if (input.categoryCode && !input.skipFieldUnits) {
     const spec = await db.query<{ accepted_units: string[] | null }>(
       `SELECT accepted_units FROM nzi_console.input_spec_fields
         WHERE category_code = $1 AND field_key = 'unit' AND active`, [input.categoryCode]);
@@ -1492,13 +1494,37 @@ export async function createScopeRow(
  * insert, audit and outbox — so seeding cannot create a row a person could not. The caller holds the transaction (and a
  * savepoint per line, so a refusal undoes only that line).
  */
-export function createScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.create"], context: CommandContext): Promise<StoredOutcome<CreateScopeRowResult>> {
-  return runPostgresCommandInTransaction(db, "scope.row.create", input, context, scopeRowCreateHandler(input, context));
+export function createScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances = {}): Promise<StoredOutcome<CreateScopeRowResult>> {
+  return runPostgresCommandInTransaction(db, "scope.row.create", input, context, scopeRowCreateHandler(input, context, allowances));
+}
+
+/**
+ * The v7 re-ingest's allowances on an otherwise ordinary create (DESIGN-v7-reingest-commit-phase, ruled). Not reachable from a
+ * command's input — only the re-ingest passes them — and refused outright for any actor but `policy:v7-reingest` as the
+ * system principal (condition 3), so no consultant can write what they allow.
+ *  - `reingestedFrom`: the v7 row this live row replaces (0166).
+ *  - `reportedTotal` (D5, ruled (a)): a categorised row carrying v7's emissions total as an override, with no quantity and no
+ *    factor — only with a reason from the closed set, and only in that shape.
+ *  - `historicalUnit`: v7 recorded the row in a unit today's form does not offer (ADDENDUM-v7-reingest-accepted-units); the
+ *    field's accepted-units list is skipped, the factor's own unit check is not.
+ */
+export type ScopeRowCreateAllowances = { reingestedFrom?: string; reportedTotal?: boolean; historicalUnit?: boolean };
+
+function refuseUnlessReingest(input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances): void {
+  if (!allowances.reingestedFrom && !allowances.reportedTotal && !allowances.historicalUnit) return;
+  if (context.actorId !== V7_REINGEST_ACTOR || context.principal !== "system")
+    throw new CommandValidationError([{ field: "actorId", code: "REINGEST_ACTOR_ONLY", message: `Only ${V7_REINGEST_ACTOR} may write a re-ingested row.` }]);
+  if (!allowances.reingestedFrom)
+    throw new CommandValidationError([{ field: "reingestedFrom", code: "REQUIRED", message: "A re-ingested row names the v7 row it replaces." }]);
+  if (allowances.reportedTotal && !(isV7ReportedTotalReason(input.overrideReason) && input.quantity === null && !input.unit
+    && !input.factorId && !input.datasetId && !input.clientFactorId && typeof input.overrideTco2e === "number"))
+    throw new CommandValidationError([{ field: "overrideReason", code: "REPORTED_TOTAL_SHAPE", message: "A reported-total row carries v7's figure as an override, with a reason from the closed set, and no quantity, unit or factor." }]);
 }
 
 /** The scope-row create's one handler, shared by the command and the in-transaction create. */
-function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], context: CommandContext) {
+function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances = {}) {
   return async (db: Queryable) => {
+      refuseUnlessReingest(input, context, allowances);
       await requireCrpJob(db, context.organisationId, input.jobId);
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null,null);
       await requirePurchasedGoodsCategory(db,context.organisationId,input.jobId,input.scope,input.purchasedGoodsCategoryId??null);
@@ -1513,18 +1539,19 @@ function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], conte
       // A category entry — the accordion's Add entry, and any create filed under a category. (The older "Add emissions
       // source" form requires its factor in the form; gating uncategorised creates here would rewrite the monthly/label
       // characterisation ledger, which is its own ruling.)
-      if (categoryCode) await requireEntryFactor(db, context.organisationId, input.jobId, input.scope, effective);
+      // D5: a re-ingested reported total carries v7's figure, not a factor (gated above to the re-ingest and its reason set).
+      if (categoryCode && !allowances.reportedTotal) await requireEntryFactor(db, context.organisationId, input.jobId, input.scope, effective);
       const evidence = withDeclarative(scopeEvidence({...effective,quantity:activity.quantity,monthlyActivity:activity.slots}, context), declared);
       // Units reconciled before anything is written: an entry whose unit cannot stand for the
       // factor's own is refused rather than stored and multiplied later (NZC-146).
       const reconciled = await reconcileUnitWithFactor(db, context.organisationId, input.jobId, {
         unit: input.unit, quantity: activity.quantity, datasetId: effective.datasetId,
-        factorId: effective.factorId, categoryCode,
+        factorId: effective.factorId, categoryCode, skipFieldUnits: allowances.historicalUnit === true,
       });
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report,supply_source)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report,supply_source,reingested_from_row_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39)`,
         [
           context.organisationId,
           rowId,
@@ -1568,6 +1595,7 @@ function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], conte
           // Stored exactly as captured. Nothing here resolves a factor or a companion from it: the
           // proposer that reads it is a pure function the write path does not call (NZC-154/159).
           input.supplySource ?? null,
+          allowances.reingestedFrom ?? null,
         ],
       );
       return {
@@ -2374,7 +2402,14 @@ export async function createReviewedCrpSnapshot(
       // legacy_report_versions. A console-composed snapshot of it would compose and round differently and stand beside
       // that report as a second, conflicting record — so a job holding even one migrated row, enabled or not, is never
       // frozen here. Read from the rows just locked, so it judges exactly what would be frozen. Live jobs are unaffected.
-      if (rowResult.rows.some((row) => row.origin === "migrated"))
+      // The one way out (DESIGN-v7-reingest-commit-phase D6, ruled): a completed re-ingest run has re-written the period as
+      // live rows and switched every v7 row off — then the job holds no v7 figure that a snapshot could contradict. A job
+      // with any v7 row still enabled, or with no completed run, is refused exactly as before.
+      const migrated = rowResult.rows.filter((row) => row.origin === "migrated");
+      const reingested = migrated.length > 0 && migrated.every((row) => !row.enabled) && (await db.query(
+        `SELECT 1 FROM nzi_console.v7_reingest_runs WHERE organisation_id=$1 AND job_id=$2 AND status='completed'`,
+        [context.organisationId, input.jobId])).rows.length > 0;
+      if (migrated.length > 0 && !reingested)
         throw new CommandValidationError([
           {
             field: "jobId",

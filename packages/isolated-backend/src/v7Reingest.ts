@@ -1,0 +1,224 @@
+// The v7 re-ingest commit phase (DESIGN-v7-reingest-commit-phase, ruled in REVIEW-v7-reingest-commit-phase; ADDENDUM on
+// accepted units). One job, one transaction: v7's vintages added to the job's selection (ruling 3), v7's copied factor values
+// carried as client factors (ruling 4), every enabled v7 row re-written as a live row through the ordinary create and
+// calculate (D4), totals-only rows as labelled reported totals (D5), the v7 rows switched off (D6), and the post-conditions
+// checked before anything can commit (D7, with the per-scope check). A dry run is the same call inside a transaction the
+// caller rolls back. Tenancy is the caller's `withTenantWrite` (SET LOCAL ROLE nzi_console_app: forced RLS throughout).
+import { createHash, randomUUID } from "node:crypto";
+import {
+  V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ReingestPostconditionMisses, withinV7Tolerance,
+  type CommandContext, type CommandInputMap, type V7ReingestPlanRow,
+} from "@nzi/contracts";
+import type { Queryable } from "./postgres";
+import {
+  CommandValidationError, createScopeRowInTransaction, recalculateScopeRowInTransaction, requireCrpJob,
+  runPostgresCommandInTransaction, type StoredOutcome,
+} from "./postgresCommands";
+import { deactivateScopeRowInTransaction } from "./scopeRowState";
+
+/** The import identity a carried factor is created under, so a later run (after a revert) reuses it rather than adding another. */
+export const V7_REINGEST_SOURCE_SYSTEM = "nzi-pro-v7-reingest";
+
+export type V7ReingestResult = {
+  runId: string; jobId: string; crosswalkVersion: string;
+  /** tCO2e only (NZC-120: no money in the run's audit or its record). */
+  v7TotalTco2e: number; nativeTotalTco2e: number; scopeTotals: Record<string, { v7: number; native: number }>;
+  rowsByDisposition: Record<string, number>; datasetsAdded: string[]; clientFactorsCreated: number; v7RowsSwitchedOff: number;
+};
+export type V7ReingestRevertResult = { runId: string; jobId: string; liveRowsSwitchedOff: number; v7RowsSwitchedOn: number };
+
+type MigratedRow = { scope_row_id: string; scope: string; enabled: boolean; reported: string | null; immutable_hash: string };
+
+const fail = (code: string, message: string, field = "rows"): never => { throw new CommandValidationError([{ field, code, message }]); };
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+/** The job's migrated rows, with a fingerprint of everything 0133 keeps immutable (asserted unchanged after the run). */
+async function migratedRows(db: Queryable, organisationId: string, jobId: string): Promise<MigratedRow[]> {
+  return (await db.query<MigratedRow>(
+    `SELECT scope_row_id, scope, enabled, migrated_record->>'reported_tco2e' AS reported,
+            md5((to_jsonb(r) - ARRAY['enabled', 'version', 'updated_at'])::text) AS immutable_hash
+       FROM nzi_console.job_scope_rows r
+      WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' ORDER BY scope_row_id FOR UPDATE`,
+    [organisationId, jobId])).rows;
+}
+
+function rowContext(context: CommandContext, runId: string, v7RowId: string, step: string): CommandContext {
+  return { ...context, idempotencyKey: `${runId}:${v7RowId}:${step}` };
+}
+
+/** `v7.reingest.job`, inside the caller's transaction (the dry run is this, rolled back). */
+export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.job"], context: CommandContext): Promise<StoredOutcome<V7ReingestResult>> {
+  return runPostgresCommandInTransaction(db, "v7.reingest.job", input, context, async (db) => {
+    await requireCrpJob(db, context.organisationId, input.jobId);
+    const job = (await db.query<{ source_system: string | null; client_id: string }>(
+      `SELECT source_system, client_id FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 FOR UPDATE`,
+      [context.organisationId, input.jobId])).rows[0]!;
+    if (job.source_system !== "nzi-pro-v7") fail("NOT_A_V7_JOB", "Only a job imported from NZ Insights Pro v7 is re-ingested.", "jobId");
+    if ((await db.query(`SELECT 1 FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`,
+      [context.organisationId, input.jobId])).rows.length) fail("ALREADY_REINGESTED", "This job already has a completed re-ingest; revert it first to run again.", "jobId");
+
+    // The plan must be exactly the job's enabled v7 rows, each in its own scope, each carrying its own v7 figure.
+    const before = await migratedRows(db, context.organisationId, input.jobId);
+    const enabledV7 = before.filter((row) => row.enabled);
+    if (enabledV7.length === 0) fail("NOTHING_TO_REINGEST", "This job has no enabled v7 rows.", "jobId");
+    const v7ById = new Map(enabledV7.map((row) => [row.scope_row_id, row]));
+    const planned = new Set(input.rows.map((row) => row.v7RowId));
+    for (const row of input.rows) {
+      const v7 = v7ById.get(row.v7RowId);
+      if (!v7) fail("PLAN_UNKNOWN_ROW", `v7 row ${row.v7RowId} is not an enabled v7 row of this job.`);
+      // The scope is never moved (ruling 1): the top-level scope is v7's. v7 often stored a Scope 3 row as plain "3"; the live
+      // row's scope is its Scope 3 category ("3.6"), as every native Scope 3 row's is — a refinement, not a move.
+      if (v7!.scope.split(".")[0] !== row.scope.split(".")[0] || (v7!.scope.includes(".") && v7!.scope !== row.scope))
+        fail("PLAN_SCOPE_MOVED", `v7 row ${row.v7RowId} is scope ${v7!.scope}; the plan says ${row.scope}. The scope is never moved.`);
+      if (v7!.reported === null || !withinV7Tolerance(row.v7Tco2e, Number(v7!.reported)))
+        fail("PLAN_FIGURE_MISMATCH", `v7 row ${row.v7RowId} reported ${v7!.reported ?? "nothing"} t; the plan says ${row.v7Tco2e} t.`);
+    }
+    const unplanned = enabledV7.filter((row) => !planned.has(row.scope_row_id));
+    if (unplanned.length) fail("PLAN_INCOMPLETE", `${unplanned.length} enabled v7 row(s) have no plan row (${unplanned.slice(0, 5).map((row) => row.scope_row_id).join(", ")}…); a partial re-ingest would double count or drop them.`);
+
+    // Ruling 3: v7's vintages join the job's selection — added, never removed.
+    const datasetsAdded: string[] = [];
+    for (const datasetId of [...new Set(input.vintageDatasetIds)]) {
+      const inserted = await db.query(
+        `INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, warnings_json, selected_by)
+         VALUES ($1, $2, $3, 'manual', $4, '[]'::jsonb, $5) ON CONFLICT (organisation_id, job_id, dataset_id) DO NOTHING RETURNING dataset_id`,
+        [context.organisationId, input.jobId, datasetId, `v7 re-ingest (${input.runId}): bind to v7's dataset vintage (ruling 3)`, context.actorId]);
+      if (inserted.rows[0]) datasetsAdded.push(datasetId);
+    }
+
+    const counts: Record<string, number> = {};
+    let clientFactorsCreated = 0;
+    for (const plan of input.rows) {
+      counts[plan.disposition] = (counts[plan.disposition] ?? 0) + 1;
+      const reportedTotal = plan.disposition === "REPORTED-TOTAL";
+      let clientFactorId: string | null = null;
+      if (plan.disposition === "CARRY-V7-FACTOR") ({ clientFactorId, created: clientFactorsCreated } = await carriedFactor(db, context, input.jobId, job.client_id, plan, clientFactorsCreated));
+      const created = await createScopeRowInTransaction(db, {
+        jobId: input.jobId, scope: plan.scope, categoryCode: plan.categoryCode, sourceLabel: plan.sourceLabel,
+        quantity: plan.quantity, unit: plan.unit,
+        datasetId: plan.disposition === "RE-INGEST" ? plan.datasetId ?? null : null,
+        factorId: plan.disposition === "RE-INGEST" ? plan.factorId ?? null : clientFactorId,
+        factorVersion: null, factorLabel: reportedTotal ? V7_REPORTED_TOTAL_LABEL : null,
+        factorSource: plan.disposition === "CARRY-V7-FACTOR" ? "client" : "dataset",
+        clientFactorId, isCustomEntry: plan.disposition === "CARRY-V7-FACTOR",
+        applyPct: plan.applyPct ?? 100, qualityTier: plan.qualityTier,
+        overrideTco2e: reportedTotal ? plan.v7Tco2e : null,
+        overrideReason: reportedTotal ? V7_REPORTED_TOTAL_REASONS[0] : null,
+      }, rowContext(context, input.runId, plan.v7RowId, "create"),
+      { reingestedFrom: plan.v7RowId, reportedTotal, historicalUnit: !reportedTotal });
+      const rowId = created.data.rowId;
+      const mark = { title: reportedTotal ? "v7 reported total carried" : "Re-ingested from NZ Insights Pro v7",
+        detail: `${input.crosswalkVersion} · rule ${plan.rule} · ${plan.disposition} · reproduces v7's ${round6(plan.v7Tco2e)} t (v7 row ${plan.v7RowId}, run ${input.runId})` };
+      if (!reportedTotal) {
+        const calc = { jobId: input.jobId, rowId, expectedVersion: created.data.version };
+        await runPostgresCommandInTransaction(db, "scope.row.calculate", calc, rowContext(context, input.runId, plan.v7RowId, "calculate"),
+          (db) => recalculateScopeRowInTransaction(db, calc, rowContext(context, input.runId, plan.v7RowId, "calculate"), [mark]));
+      } else {
+        await db.query(`UPDATE nzi_console.job_scope_rows SET lineage_json = lineage_json || $3::jsonb WHERE organisation_id = $1 AND scope_row_id = $2`,
+          [context.organisationId, rowId, JSON.stringify([mark])]);
+      }
+      // The re-ingest's provenance, merged in after calculation (which writes its own): the crosswalk, the v7 row and figure.
+      await db.query(`UPDATE nzi_console.job_scope_rows SET provenance_json = coalesce(provenance_json, '{}'::jsonb) || jsonb_build_object('reingest', $3::jsonb)
+                       WHERE organisation_id = $1 AND scope_row_id = $2`,
+        [context.organisationId, rowId, JSON.stringify({ runId: input.runId, crosswalk: input.crosswalkVersion, crosswalkSha256: input.crosswalkSha256,
+          v7RowId: plan.v7RowId, v7Label: plan.sourceLabel, v7Tco2e: plan.v7Tco2e, rule: plan.rule, disposition: plan.disposition })]);
+    }
+
+    // D6: the v7 rows switch off — the only change 0133 allows them — each with its own audit event.
+    const governedEvents = [];
+    for (const v7 of enabledV7) {
+      await db.query(`UPDATE nzi_console.job_scope_rows SET enabled = false, version = version + 1, updated_at = now()
+                       WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = $3 AND origin = 'migrated'`,
+        [context.organisationId, input.jobId, v7.scope_row_id]);
+      governedEvents.push({ action: "v7_row_superseded", entityType: "scope_row", entityId: v7.scope_row_id,
+        before: { enabled: true }, after: { enabled: false, runId: input.runId } });
+    }
+
+    // D7: the post-conditions, read back from what is now in the table.
+    const live = (await db.query<{ scope_row_id: string; reingested_from_row_id: string; scope: string; tco2e: string | null; enabled: boolean }>(
+      `SELECT scope_row_id, reingested_from_row_id, scope, coalesce(override_tco2e, calculated_tco2e)::text AS tco2e, enabled
+         FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND reingested_from_row_id IS NOT NULL AND enabled`,
+      [context.organisationId, input.jobId])).rows;
+    const after = await migratedRows(db, context.organisationId, input.jobId);
+    const misses = v7ReingestPostconditionMisses({
+      v7Rows: enabledV7.map((row) => ({ rowId: row.scope_row_id, scope: row.scope, v7Tco2e: Number(row.reported) })),
+      liveRows: live.map((row) => ({ rowId: row.scope_row_id, reingestedFrom: row.reingested_from_row_id, scope: row.scope, tco2e: row.tco2e === null ? null : Number(row.tco2e), enabled: row.enabled })),
+      enabledMigratedAfter: after.filter((row) => row.enabled).length,
+    });
+    const beforeHash = new Map(before.map((row) => [row.scope_row_id, row.immutable_hash]));
+    for (const row of after) if (beforeHash.get(row.scope_row_id) !== row.immutable_hash) misses.push(`v7 row ${row.scope_row_id}: a kept field changed`);
+    if (after.length !== before.length) misses.push("the job's v7 rows changed in number");
+    if (misses.length) fail("POSTCONDITION_FAILED", `The re-ingest does not reconcile, so nothing is written: ${misses.join("; ")}.`);
+
+    const topScope = (scope: string) => scope.split(".")[0]!;
+    const scopeTotals: Record<string, { v7: number; native: number }> = {};
+    for (const row of enabledV7) (scopeTotals[topScope(row.scope)] ??= { v7: 0, native: 0 }).v7 += Number(row.reported);
+    for (const row of live) (scopeTotals[topScope(row.scope)] ??= { v7: 0, native: 0 }).native += Number(row.tco2e);
+    for (const key of Object.keys(scopeTotals)) scopeTotals[key] = { v7: round6(scopeTotals[key]!.v7), native: round6(scopeTotals[key]!.native) };
+    const v7TotalTco2e = round6(enabledV7.reduce((a, row) => a + Number(row.reported), 0));
+    const nativeTotalTco2e = round6(live.reduce((a, row) => a + Number(row.tco2e), 0));
+    await db.query(
+      `INSERT INTO nzi_console.v7_reingest_runs (organisation_id, run_id, job_id, crosswalk_version, crosswalk_sha256, v7_total_tco2e, native_total_tco2e,
+         scope_totals_json, rows_by_disposition_json, created_by, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11)`,
+      [context.organisationId, input.runId, input.jobId, input.crosswalkVersion, input.crosswalkSha256, v7TotalTco2e, nativeTotalTco2e,
+        JSON.stringify(scopeTotals), JSON.stringify(counts), context.actorId, context.correlationId]);
+    const data: V7ReingestResult = { runId: input.runId, jobId: input.jobId, crosswalkVersion: input.crosswalkVersion, v7TotalTco2e, nativeTotalTco2e,
+      scopeTotals, rowsByDisposition: counts, datasetsAdded, clientFactorsCreated, v7RowsSwitchedOff: enabledV7.length };
+    return { data, entityType: "job", entityId: input.jobId, topic: "v7.reingest.completed", before: { enabledV7Rows: enabledV7.length }, governedEvents };
+  });
+}
+
+/** Ruling 4: v7's copied factor value as a job-pinned client factor, keyed by the v7 row so a re-run reuses it. */
+async function carriedFactor(db: Queryable, context: CommandContext, jobId: string, clientId: string, plan: V7ReingestPlanRow, createdSoFar: number): Promise<{ clientFactorId: string; created: number }> {
+  const f = plan.carriedFactor!;
+  const found = (await db.query<{ client_factor_id: string }>(
+    `SELECT client_factor_id FROM nzi_console.client_factors WHERE organisation_id = $1 AND source_system = $2 AND legacy_db_id = $3`,
+    [context.organisationId, V7_REINGEST_SOURCE_SYSTEM, plan.v7RowId])).rows[0];
+  if (found) return { clientFactorId: found.client_factor_id, created: createdSoFar };
+  const clientFactorId = randomUUID();
+  await db.query(
+    `INSERT INTO nzi_console.client_factors (organisation_id, client_factor_id, client_id, job_id, scope, category_path_json, report_label, description, unit, ghg_unit,
+       kgco2e_per_unit, geography, vintage_year, source, created_by, source_system, legacy_db_id)
+     VALUES ($1,$2,$3,$4,$5,'[]'::jsonb,$6,$7,$8,'kgCO2e',$9,'GB',$10,$11,$12,$13,$14)`,
+    [context.organisationId, clientFactorId, clientId, jobId, plan.scope, f.label,
+      "v7's own factor value, carried to reproduce the issued figure (ruling 4)", f.unit, f.kgco2ePerUnit, f.vintageYear,
+      "NZ Insights Pro v7 (copied factor value; record of account)", context.actorId, V7_REINGEST_SOURCE_SYSTEM, plan.v7RowId]);
+  return { clientFactorId, created: createdSoFar + 1 };
+}
+
+/** `v7.reingest.revert`, inside the caller's transaction: before any snapshot of the job, nothing deleted either way. */
+export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext): Promise<StoredOutcome<V7ReingestRevertResult>> {
+  return runPostgresCommandInTransaction(db, "v7.reingest.revert", input, context, async (db) => {
+    await requireCrpJob(db, context.organisationId, input.jobId);
+    const run = (await db.query<{ status: string; created_at: Date }>(
+      `SELECT status, created_at FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3 FOR UPDATE`,
+      [context.organisationId, input.jobId, input.runId])).rows[0];
+    if (!run) fail("NOT_FOUND", "No such re-ingest run for this job.", "runId");
+    if (run!.status !== "completed") fail("NOT_COMPLETED", "Only a completed re-ingest is reverted.", "runId");
+    if ((await db.query(`SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2 AND created_at >= $3`,
+      [context.organisationId, input.jobId, run!.created_at])).rows.length) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
+    const live = (await db.query<{ scope_row_id: string; version: number; reingested_from_row_id: string }>(
+      `SELECT scope_row_id, version, reingested_from_row_id FROM nzi_console.job_scope_rows
+        WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND enabled AND provenance_json->'reingest'->>'runId' = $3`,
+      [context.organisationId, input.jobId, input.runId])).rows;
+    for (const row of live) {
+      const ref = { jobId: input.jobId, rowId: row.scope_row_id, expectedVersion: row.version };
+      await deactivateScopeRowInTransaction(db, ref, { ...rowContext(context, input.runId, row.scope_row_id, "revert"), reason: context.reason });
+    }
+    const governedEvents = [];
+    for (const v7RowId of [...new Set(live.map((row) => row.reingested_from_row_id))]) {
+      await db.query(`UPDATE nzi_console.job_scope_rows SET enabled = true, version = version + 1, updated_at = now()
+                       WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = $3 AND origin = 'migrated'`,
+        [context.organisationId, input.jobId, v7RowId]);
+      governedEvents.push({ action: "v7_row_restored", entityType: "scope_row", entityId: v7RowId, before: { enabled: false }, after: { enabled: true, runId: input.runId } });
+    }
+    await db.query(`UPDATE nzi_console.v7_reingest_runs SET status = 'reverted', reverted_by = $4, reverted_at = now(), revert_reason = $5
+                     WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3`,
+      [context.organisationId, input.jobId, input.runId, context.actorId, context.reason!.trim()]);
+    const data: V7ReingestRevertResult = { runId: input.runId, jobId: input.jobId, liveRowsSwitchedOff: live.length, v7RowsSwitchedOn: governedEvents.length };
+    return { data, entityType: "job", entityId: input.jobId, topic: "v7.reingest.reverted", governedEvents };
+  });
+}
+
+/** The crosswalk file's sha256, as the run records it. */
+export const crosswalkSha256 = (text: string) => createHash("sha256").update(text).digest("hex");

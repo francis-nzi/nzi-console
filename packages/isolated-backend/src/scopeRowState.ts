@@ -97,6 +97,10 @@ export function discardScopeRowInTransaction(db: Queryable, input: RowRef, conte
 export function deactivateScopeRow(pool: PoolLike, input: CommandInputMap["scope.row.deactivate"], context: CommandContext): Promise<StoredOutcome<ScopeRowStateResult>> {
   return runPostgresCommand(pool, "scope.row.deactivate", input, context, enabledHandler(input, context, false));
 }
+/** The same, inside a caller's transaction — the v7 re-ingest's revert switches its live rows off through exactly this. */
+export function deactivateScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.deactivate"], context: CommandContext): Promise<StoredOutcome<ScopeRowStateResult>> {
+  return runPostgresCommandInTransaction(db, "scope.row.deactivate", input, context, enabledHandler(input, context, false));
+}
 export function reactivateScopeRow(pool: PoolLike, input: CommandInputMap["scope.row.reactivate"], context: CommandContext): Promise<StoredOutcome<ScopeRowStateResult>> {
   return runPostgresCommand(pool, "scope.row.reactivate", input, context, enabledHandler(input, context, true));
 }

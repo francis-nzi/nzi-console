@@ -49,6 +49,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job.milestone.reschedule": job,
   "job.update": job,
   "job.datasets.autoSelect": job,
+  "v7.reingest.job": job,
+  "v7.reingest.revert": job,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
   "job.seedFromTemplate": job,

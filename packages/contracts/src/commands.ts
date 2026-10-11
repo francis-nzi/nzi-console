@@ -17,6 +17,7 @@ import { isAgreedRate, isSupplierContactEmail, SUPPLIER_CONTACT_NAME_MAX, SUPPLI
 import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, ORGANISATION_PROFILE_FIELDS, profileIssues, type OrganisationBankFields, type OrganisationProfileFields } from "./adminOrganisation";
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
+import { v7ReingestActorIssues, v7ReingestPlanIssues, type V7ReingestJobInput, type V7ReingestRevertInput } from "./v7Reingest";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -49,6 +50,8 @@ export type CommandKey =
   | "job.milestone.reschedule"
   | "job.update"
   | "job.datasets.autoSelect"
+  | "v7.reingest.job"
+  | "v7.reingest.revert"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -629,6 +632,11 @@ export type CommandInputMap = {
   /** JW-13 step 3 — apply the automatic dataset rule (the edition valid on the window's last day) to a CRP job with no
    *  selection at all: fill-blank-only, for the jobs the v7 import wrote without one. A reason is required. */
   "job.datasets.autoSelect": { jobId: string };
+  /** The v7 re-ingest (DESIGN-v7-reingest-commit-phase, ruled): one job's enabled v7 rows re-written as live rows from the
+   *  crosswalk's plan, and the v7 rows switched off, in one transaction. `policy:v7-reingest` only; a reason is required. */
+  "v7.reingest.job": V7ReingestJobInput;
+  /** Undo a completed re-ingest before the job is snapshotted: the v7 rows switched back on, the live rows switched off. */
+  "v7.reingest.revert": V7ReingestRevertInput;
   /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
@@ -1573,6 +1581,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // job.update under job.manage — dataset.manage is a person's manual choice (dataset.override.add). The guards that
   // need the job (already selected, no window, no edition) are the command's, where the job is locked.
   "job.datasets.autoSelect": { key: "job.datasets.autoSelect", label: "Select a job's automatic datasets", permission: "job.manage", reasonRequired: true, transaction: "fill-blank-only automatic dataset selection + audit + outbox + idempotency", auditAction: "job_datasets_auto_selected", validate: (input, context) => { const issues = baseIssues(context, true); required(issues, "jobId", input.jobId); return issues; } },
+  "v7.reingest.job": { key: "v7.reingest.job", label: "Re-ingest a v7 job", permission: "job.manage", reasonRequired: true, transaction: "vintage selections + carried factors + live rows (each through scope.row.create/calculate) + v7 rows switched off + post-conditions + run record + audit + outbox + idempotency", auditAction: "v7_job_reingested", validate: (input, context) => [...baseIssues(context, true), ...v7ReingestActorIssues(context), ...v7ReingestPlanIssues(input)] },
+  "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a v7 re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + v7 rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
   // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
   // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued
   // snapshot or a published report (ruling 6), never otherwise.
