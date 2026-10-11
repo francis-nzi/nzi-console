@@ -1263,6 +1263,614 @@
     ],
     "manualHint": "make · model · fuel"
   },
+  "1.other-stationary-fuels|crm|existing|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 1 · Other Stationary Fuels."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      },
+      {
+        "key": "lineage",
+        "label": "Calculation lineage",
+        "control": "lineage",
+        "hint": "Scope 1 · Direct · provenance travels with the row."
+      }
+    ],
+    "actions": [
+      {
+        "key": "reject",
+        "label": "Reject",
+        "variant": "ghost"
+      },
+      {
+        "key": "approve",
+        "label": "Approve row",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|crm|existing|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 1 · Other Stationary Fuels."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      },
+      {
+        "key": "lineage",
+        "label": "Calculation lineage",
+        "control": "lineage",
+        "hint": "Scope 1 · Direct · provenance travels with the row."
+      }
+    ],
+    "actions": [
+      {
+        "key": "reject",
+        "label": "Reject",
+        "variant": "ghost"
+      },
+      {
+        "key": "approve",
+        "label": "Approve row",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|crm|new|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 1 · Other Stationary Fuels."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "save",
+        "label": "Save entry",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|crm|new|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-review",
+        "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving."
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "save",
+        "label": "Save entry",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|portal|existing|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|portal|existing|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|portal|new|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "1.other-stationary-fuels|portal|new|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 1 · Other Stationary Fuels factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "Unit",
+        "control": "unit-select",
+        "optional": false
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "litres",
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
   "1.refrigerants|crm|existing|full": {
     "fields": [
       {
@@ -3190,6 +3798,662 @@
     ],
     "units": [
       "kWh",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|crm|existing|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      },
+      {
+        "key": "lineage",
+        "label": "Calculation lineage",
+        "control": "lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row."
+      }
+    ],
+    "actions": [
+      {
+        "key": "reject",
+        "label": "Reject",
+        "variant": "ghost"
+      },
+      {
+        "key": "approve",
+        "label": "Approve row",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|crm|existing|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      },
+      {
+        "key": "lineage",
+        "label": "Calculation lineage",
+        "control": "lineage",
+        "hint": "Scope 3 · Value chain · provenance travels with the row."
+      }
+    ],
+    "actions": [
+      {
+        "key": "reject",
+        "label": "Reject",
+        "variant": "ghost"
+      },
+      {
+        "key": "approve",
+        "label": "Approve row",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|crm|new|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-select",
+        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
+      },
+      {
+        "key": "qualityTier",
+        "label": "Quality tier",
+        "control": "select"
+      },
+      {
+        "key": "dataConfidence",
+        "label": "Data confidence",
+        "control": "select",
+        "hint": "NZC-044."
+      },
+      {
+        "key": "note",
+        "label": "Notes",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "save",
+        "label": "Save entry",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|crm|new|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Activity / source",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
+      },
+      {
+        "key": "factor",
+        "label": "Emission factor",
+        "control": "factor-review",
+        "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving."
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "save",
+        "label": "Save entry",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|portal|existing|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Supplier / description",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and your authorised purchased-goods category."
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|portal|existing|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Supplier / description",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and your authorised purchased-goods category."
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|portal|new|full": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Supplier / description",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and your authorised purchased-goods category."
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
+      "litres",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualHint": "make · model · fuel"
+  },
+  "3.1|portal|new|lean": {
+    "fields": [
+      {
+        "key": "siteBanner",
+        "label": "Site",
+        "control": "banner",
+        "hint": "This entry is allocated to the site chosen at the top of data entry."
+      },
+      {
+        "key": "activity",
+        "label": "Supplier / description",
+        "control": "smart-search",
+        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
+      },
+      {
+        "key": "quantity",
+        "label": "Net value (£)",
+        "control": "number"
+      },
+      {
+        "key": "unit",
+        "label": "VAT %",
+        "control": "number",
+        "optional": true
+      },
+      {
+        "key": "monthly",
+        "label": "Add monthly breakdown",
+        "control": "months",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true
+      },
+      {
+        "key": "spendDetails",
+        "label": "Spend details",
+        "control": "spend-group",
+        "hint": "GL / nominal code and your authorised purchased-goods category."
+      },
+      {
+        "key": "note",
+        "label": "Evidence note",
+        "control": "textarea",
+        "optional": true
+      },
+      {
+        "key": "documents",
+        "label": "Supporting documents",
+        "control": "dropzone",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true
+      }
+    ],
+    "actions": [
+      {
+        "key": "saveDraft",
+        "label": "Save draft",
+        "variant": "ghost"
+      },
+      {
+        "key": "submit",
+        "label": "Submit for review",
+        "variant": "primary"
+      }
+    ],
+    "units": [
+      "GBP",
       "litres",
       "tonnes",
       "km",
@@ -6895,662 +8159,6 @@
     ],
     "manualHint": "make · model · fuel"
   },
-  "3.1|crm|existing|full": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Activity / source",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
-      },
-      {
-        "key": "factor",
-        "label": "Emission factor",
-        "control": "factor-select",
-        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
-      },
-      {
-        "key": "qualityTier",
-        "label": "Quality tier",
-        "control": "select"
-      },
-      {
-        "key": "dataConfidence",
-        "label": "Data confidence",
-        "control": "select",
-        "hint": "NZC-044."
-      },
-      {
-        "key": "note",
-        "label": "Notes",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      },
-      {
-        "key": "lineage",
-        "label": "Calculation lineage",
-        "control": "lineage",
-        "hint": "Scope 3 · Value chain · provenance travels with the row."
-      }
-    ],
-    "actions": [
-      {
-        "key": "reject",
-        "label": "Reject",
-        "variant": "ghost"
-      },
-      {
-        "key": "approve",
-        "label": "Approve row",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|crm|existing|lean": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Activity / source",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
-      },
-      {
-        "key": "factor",
-        "label": "Emission factor",
-        "control": "factor-select",
-        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
-      },
-      {
-        "key": "qualityTier",
-        "label": "Quality tier",
-        "control": "select"
-      },
-      {
-        "key": "dataConfidence",
-        "label": "Data confidence",
-        "control": "select",
-        "hint": "NZC-044."
-      },
-      {
-        "key": "note",
-        "label": "Notes",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      },
-      {
-        "key": "lineage",
-        "label": "Calculation lineage",
-        "control": "lineage",
-        "hint": "Scope 3 · Value chain · provenance travels with the row."
-      }
-    ],
-    "actions": [
-      {
-        "key": "reject",
-        "label": "Reject",
-        "variant": "ghost"
-      },
-      {
-        "key": "approve",
-        "label": "Approve row",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|crm|new|full": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Activity / source",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
-      },
-      {
-        "key": "factor",
-        "label": "Emission factor",
-        "control": "factor-select",
-        "hint": "Set from the selected activity; limited to Scope 3 · Purchased Goods and Services."
-      },
-      {
-        "key": "qualityTier",
-        "label": "Quality tier",
-        "control": "select"
-      },
-      {
-        "key": "dataConfidence",
-        "label": "Data confidence",
-        "control": "select",
-        "hint": "NZC-044."
-      },
-      {
-        "key": "note",
-        "label": "Notes",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "save",
-        "label": "Save entry",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|crm|new|lean": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Activity / source",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and PG&S sub-category. Consultant maps factors and syncs to Scope 3.1."
-      },
-      {
-        "key": "factor",
-        "label": "Emission factor",
-        "control": "factor-review",
-        "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving."
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "save",
-        "label": "Save entry",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|portal|existing|full": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Supplier / description",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and your authorised purchased-goods category."
-      },
-      {
-        "key": "note",
-        "label": "Evidence note",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "submit",
-        "label": "Submit for review",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|portal|existing|lean": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Supplier / description",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and your authorised purchased-goods category."
-      },
-      {
-        "key": "note",
-        "label": "Evidence note",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "submit",
-        "label": "Submit for review",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|portal|new|full": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Supplier / description",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and your authorised purchased-goods category."
-      },
-      {
-        "key": "note",
-        "label": "Evidence note",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "submit",
-        "label": "Submit for review",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
-  "3.1|portal|new|lean": {
-    "fields": [
-      {
-        "key": "siteBanner",
-        "label": "Site",
-        "control": "banner",
-        "hint": "This entry is allocated to the site chosen at the top of data entry."
-      },
-      {
-        "key": "activity",
-        "label": "Supplier / description",
-        "control": "smart-search",
-        "hint": "Smart search — Scope 3 · Purchased Goods and Services factors only."
-      },
-      {
-        "key": "quantity",
-        "label": "Net value (£)",
-        "control": "number"
-      },
-      {
-        "key": "unit",
-        "label": "VAT %",
-        "control": "number",
-        "optional": true
-      },
-      {
-        "key": "monthly",
-        "label": "Add monthly breakdown",
-        "control": "months",
-        "hint": "Reporting-period aligned (NZC-032).",
-        "optional": true
-      },
-      {
-        "key": "spendDetails",
-        "label": "Spend details",
-        "control": "spend-group",
-        "hint": "GL / nominal code and your authorised purchased-goods category."
-      },
-      {
-        "key": "note",
-        "label": "Evidence note",
-        "control": "textarea",
-        "optional": true
-      },
-      {
-        "key": "documents",
-        "label": "Supporting documents",
-        "control": "dropzone",
-        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
-        "optional": true
-      }
-    ],
-    "actions": [
-      {
-        "key": "saveDraft",
-        "label": "Save draft",
-        "variant": "ghost"
-      },
-      {
-        "key": "submit",
-        "label": "Submit for review",
-        "variant": "primary"
-      }
-    ],
-    "units": [
-      "GBP",
-      "litres",
-      "tonnes",
-      "km",
-      "mi",
-      "m²",
-      "units"
-    ],
-    "manualHint": "make · model · fuel"
-  },
   "3.2|crm|existing|full": {
     "fields": [
       {
@@ -8903,7 +9511,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -8995,7 +9605,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9081,7 +9693,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9143,7 +9757,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9212,7 +9828,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9281,7 +9899,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9350,7 +9970,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9419,7 +10041,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "tonne.km"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9511,7 +10135,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9603,7 +10228,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9689,7 +10315,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9751,7 +10378,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9820,7 +10448,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9889,7 +10518,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -9958,7 +10588,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -10027,7 +10658,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -10127,7 +10759,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10227,7 +10861,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10321,7 +10957,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10391,7 +11029,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10468,7 +11108,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10545,7 +11187,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10622,7 +11266,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10699,7 +11345,9 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP",
+      "nights"
     ],
     "manualHint": "air · rail · hotel"
   },
@@ -10799,7 +11447,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -10899,7 +11548,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -10993,7 +11643,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -11063,7 +11714,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -11140,7 +11792,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -11217,7 +11870,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -11294,7 +11948,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -11371,7 +12026,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "per FTE Working Hour"
     ],
     "manualHint": "mode · WFH days"
   },
@@ -12071,7 +12727,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12163,7 +12820,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12249,7 +12907,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12311,7 +12970,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12380,7 +13040,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12449,7 +13110,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12518,7 +13180,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   },
@@ -12587,7 +13250,8 @@
       "km",
       "mi",
       "m²",
-      "units"
+      "units",
+      "GBP"
     ],
     "manualHint": "make · model · fuel"
   }
