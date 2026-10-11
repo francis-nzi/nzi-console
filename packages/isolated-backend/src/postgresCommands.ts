@@ -1422,11 +1422,15 @@ export type CreateScopeRowResult = {
  * A refusal becomes the command's validation error, inside the same transaction, so a refused write leaves
  * nothing behind. See `declarativeResolution.ts` for the F1 rule itself.
  */
-async function declarativeFactorFor(db: Queryable, context: CommandContext, input: ScopeRowWriteFields & { jobId: string }, categoryCode: string | null) {
+async function declarativeFactorFor(db: Queryable, context: CommandContext, input: ScopeRowWriteFields & { jobId: string }, categoryCode: string | null, declaredResolutionExempt = false) {
   // Stop 2c — whatever the switch: a variant category never takes the base of its own variant (the D1 leak on the
-  // manual path). The only check here that runs for a category resolution has not been switched on for.
+  // manual path). The only check here that runs for a category resolution has not been switched on for — and it runs for
+  // the v7 re-ingest too: only the declared pick below is exempt.
   const baseRefusal = await variantBaseRefusal(db, context.organisationId, input.jobId, input, categoryCode);
   if (baseRefusal) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_IS_VARIANT_BASE", message: baseRefusal }]);
+  // The v7 re-ingest names v7's own factor (rulings 1, 3, 4): the capture-time declared pick is not its step
+  // (RULING-v7-reingest-declared-factor (a); gated in `refuseUnlessReingest`). The factor is then checked as any other.
+  if (declaredResolutionExempt) return { kind: "not-enabled" as const, factor: { datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, factorLabel: input.factorLabel } };
   const result = await applyDeclarativeResolution(db, context.organisationId, input.jobId, input, categoryCode, context.actorId);
   if (result.kind === "refuse") throw new CommandValidationError([{ field: result.field, code: result.code, message: result.message }]);
   return result.kind === "apply" ? result
@@ -1501,17 +1505,26 @@ export function createScopeRowInTransaction(db: Queryable, input: CommandInputMa
 /**
  * The v7 re-ingest's allowances on an otherwise ordinary create (DESIGN-v7-reingest-commit-phase, ruled). Not reachable from a
  * command's input — only the re-ingest passes them — and refused outright for any actor but `policy:v7-reingest` as the
- * system principal (condition 3), so no consultant can write what they allow.
- *  - `reingestedFrom`: the v7 row this live row replaces (0166).
- *  - `reportedTotal` (D5, ruled (a)): a categorised row carrying v7's emissions total as an override, with no quantity and no
- *    factor — only with a reason from the closed set, and only in that shape.
- *  - `historicalUnit`: v7 recorded the row in a unit today's form does not offer (ADDENDUM-v7-reingest-accepted-units); the
- *    field's accepted-units list is skipped, the factor's own unit check is not.
+ * system principal (condition 3), so no consultant can write what they allow. Each test pins a consultant being refused.
+ *
+ * The re-ingest reproduces what v7 recorded; it is not a new entry. So it skips exactly three **capture-time affordances**
+ * that do not fit a historical reproduction, and keeps every **correctness guard**: the factor must be active in the job's
+ * (widened) selection and valid for the row's scope, the unit must reconcile with the factor's own, the variant-base guard
+ * holds, the shipped calculation computes the figure, and D7 then requires every row — and every scope, and the job — to
+ * reproduce v7 within the ruled tolerance, or nothing commits.
+ *  1. `reportedTotal` (D5, ruled (a)): a categorised row carrying v7's emissions total as an override, with no quantity and no
+ *     factor — only with a reason from the closed set, and only in that shape. (Skips: the category's factor requirement.)
+ *  2. `historicalUnit` (RULING-v7-reingest-accepted-units (i)): v7 recorded the row in a unit today's form does not offer; the
+ *     field's accepted-units whitelist is skipped, the factor's own unit check is not.
+ *  3. `declaredResolutionExempt` (RULING-v7-reingest-declared-factor (a)): the category's declared factor is not picked for the
+ *     row — the row names v7's own factor (rulings 1, 3, 4). Only the declared pick is skipped; the variant-base guard and the
+ *     factor-in-selection check still run.
+ * And `reingestedFrom`, which every re-ingested row carries: the v7 row it replaces (0166).
  */
-export type ScopeRowCreateAllowances = { reingestedFrom?: string; reportedTotal?: boolean; historicalUnit?: boolean };
+export type ScopeRowCreateAllowances = { reingestedFrom?: string; reportedTotal?: boolean; historicalUnit?: boolean; declaredResolutionExempt?: boolean };
 
 function refuseUnlessReingest(input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances): void {
-  if (!allowances.reingestedFrom && !allowances.reportedTotal && !allowances.historicalUnit) return;
+  if (!allowances.reingestedFrom && !allowances.reportedTotal && !allowances.historicalUnit && !allowances.declaredResolutionExempt) return;
   if (context.actorId !== V7_REINGEST_ACTOR || context.principal !== "system")
     throw new CommandValidationError([{ field: "actorId", code: "REINGEST_ACTOR_ONLY", message: `Only ${V7_REINGEST_ACTOR} may write a re-ingested row.` }]);
   if (!allowances.reingestedFrom)
@@ -1533,8 +1546,8 @@ function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], conte
       const categoryPath = crpScopeCategoryPath(input.scope);
       const categoryCode = input.categoryCode?.trim() || (/^3\.\d+$/.test(input.scope) ? input.scope : null);
       // Stop 2: resolved first, so the row, its evidence and its unit check all see the same factor. Inert —
-      // the input untouched — for a category whose switch (0120) is off.
-      const declared = await declarativeFactorFor(db, context, input, categoryCode);
+      // the input untouched — for a category whose switch (0120) is off, and for the gated v7 re-ingest.
+      const declared = await declarativeFactorFor(db, context, input, categoryCode, allowances.declaredResolutionExempt === true);
       const effective = { ...input, ...declared.factor };
       // A category entry — the accordion's Add entry, and any create filed under a category. (The older "Add emissions
       // source" form requires its factor in the form; gating uncategorised creates here would rewrite the monthly/label

@@ -86,6 +86,9 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       if (inserted.rows[0]) datasetsAdded.push(datasetId);
     }
 
+    // The categories whose declared-factor resolution is switched on: there, each re-ingested row records that it was not applied.
+    const declaredCategories = new Set((await db.query<{ category_code: string }>(
+      `SELECT category_code FROM nzi_console.input_spec_categories WHERE declarative_resolution_enabled`)).rows.map((row) => row.category_code));
     const counts: Record<string, number> = {};
     let clientFactorsCreated = 0;
     for (const plan of input.rows) {
@@ -105,17 +108,21 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
         overrideTco2e: reportedTotal ? plan.v7Tco2e : null,
         overrideReason: reportedTotal ? V7_REPORTED_TOTAL_REASONS[0] : null,
       }, rowContext(context, input.runId, plan.v7RowId, "create"),
-      { reingestedFrom: plan.v7RowId, reportedTotal, historicalUnit: !reportedTotal });
+      { reingestedFrom: plan.v7RowId, reportedTotal, historicalUnit: !reportedTotal, declaredResolutionExempt: true });
       const rowId = created.data.rowId;
       const mark = { title: reportedTotal ? "v7 reported total carried" : "Re-ingested from NZ Insights Pro v7",
         detail: `${input.crosswalkVersion} · rule ${plan.rule} · ${plan.disposition} · reproduces v7's ${round6(plan.v7Tco2e)} t (v7 row ${plan.v7RowId}, run ${input.runId})` };
+      // RULING-v7-reingest-declared-factor (a): where the category declares a factor, say that it was not applied, and why.
+      const marks = declaredCategories.has(plan.categoryCode)
+        ? [mark, { title: "Declared resolution not applied", detail: "declared resolution not applied: v7's own factor (ruling 3)" }]
+        : [mark];
       if (!reportedTotal) {
         const calc = { jobId: input.jobId, rowId, expectedVersion: created.data.version };
         await runPostgresCommandInTransaction(db, "scope.row.calculate", calc, rowContext(context, input.runId, plan.v7RowId, "calculate"),
-          (db) => recalculateScopeRowInTransaction(db, calc, rowContext(context, input.runId, plan.v7RowId, "calculate"), [mark]));
+          (db) => recalculateScopeRowInTransaction(db, calc, rowContext(context, input.runId, plan.v7RowId, "calculate"), marks));
       } else {
         await db.query(`UPDATE nzi_console.job_scope_rows SET lineage_json = lineage_json || $3::jsonb WHERE organisation_id = $1 AND scope_row_id = $2`,
-          [context.organisationId, rowId, JSON.stringify([mark])]);
+          [context.organisationId, rowId, JSON.stringify(marks)]);
       }
       // The re-ingest's provenance, merged in after calculation (which writes its own): the crosswalk, the v7 row and figure.
       await db.query(`UPDATE nzi_console.job_scope_rows SET provenance_json = coalesce(provenance_json, '{}'::jsonb) || jsonb_build_object('reingest', $3::jsonb)
