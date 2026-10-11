@@ -2123,7 +2123,7 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-v7-record p{margin:6px 0 0;color:var(--t2);line-height:1.5}
 .nz-job-report-link{white-space:nowrap}
 details.nz-job-report-link{white-space:normal}
-.nz-preview-picker{max-width:1180px;margin:24px auto;padding:0 16px;display:grid;gap:14px}
+.nz-preview-picker{max-width:1180px;margin:0 auto;display:grid;gap:14px}
 .nz-preview-empty-actions{display:flex;flex-wrap:wrap;gap:8px}
 .nz-v7-record-line{font-size:12px!important}
 @media (max-width:760px){.nz-pipeline-table .nz-tbl th:nth-child(4),.nz-pipeline-table .nz-tbl td:nth-child(4){display:none}}
@@ -2138,3 +2138,8 @@ details.nz-job-report-link{white-space:normal}
 /* A screen-reader-only header inside the scrolling table is absolutely placed; positioning the scroller keeps it inside. */
 .nz-pipeline-table{position:relative}
 .nz-job-report-state{align-self:center;font-size:12px;color:var(--t2)}
+/* Addendum #2: report preparation inside the app shell — the canvas is the shell body's report surface, not a full page. */
+.nz-main>.nz-preview-canvas{flex:1;min-height:0;min-width:0}
+.nz-main>.nz-preview-canvas>.nz-preview-empty{margin-top:8vh}
+/* With the rail beside it, two fixed 360 px chart columns would overflow mid-width screens; they wrap instead. */
+.nz-main>.nz-preview-canvas .nz-preview-grid{grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))}
