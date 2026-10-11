@@ -11,13 +11,14 @@ import {
   resolveCrpCoreCharts,
 } from "@nzi/charts";
 import { reportScopeChoices, type ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
-import type { JobScreenReadModel } from "@nzi/isolated-backend";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 import { formatDateTime } from "../lib/formatDate";
 import {validateManifest} from "@nzi/charts";
 import {ReportValidationAction} from "./ReportValidationAction";
+import {PreviewEmpty} from "./PreviewEmpty";
+import {ReportRegisterView} from "../reports/ReportRegisterView";
 
 export default async function ReportPreviewPage({
   searchParams,
@@ -33,21 +34,23 @@ export default async function ReportPreviewPage({
       { snapshots: [] },
       `jobs/${jobId}/reviewed-snapshots`,
     );
+    // A4: no snapshot is this page's own case, not a generic "nothing here" — PreviewEmpty says why (imported v7, or awaiting
+    // evidence). ScreenState still carries loading and a failed read.
+    if (result.state === "empty") return <PreviewEmpty jobId={jobId} />;
     return (
       <ScreenState result={result}>
         {(data) => data.snapshots[0] ? <LiveSnapshotPreview snapshot={data.snapshots[0]} /> : <PreviewEmpty jobId={jobId} />}
       </ScreenState>
     );
   }
-  const result = await loadScreen<{jobs:JobScreenReadModel[]}>("jobs",{jobs:[]},"jobs");
-  return (
-    <ScreenState result={result}>
-      {(data) => <PreviewJobSelection jobs={data.jobs.filter((job)=>job.header.family==="crp")} />}
-    </ScreenState>
-  );
+  return <PreviewJobSelection />;
 }
 
-function PreviewJobSelection({jobs}:{jobs:JobScreenReadModel[]}){return <main className="nz-preview-canvas"><section className="nz-preview-empty"><span className="nz-state-icon">CRP</span><div><span className="nz-eyebrow">Governed report preparation</span><h1>Select a live CRP job</h1><p>A preview can only be assembled from a tenant-bound reviewed snapshot. Choose a CRP job to load its latest frozen evidence.</p>{jobs.length?<div className="nz-preview-stack">{jobs.map(job=><a className="nz-template-row" href={`/report-preview?jobId=${job.header.id}`} key={job.header.id}><div className="nz-template-mark">{job.header.reportingYear??"CRP"}</div><div><b>{job.header.number} · {job.header.client}</b><span>{job.header.title} · {job.header.workflowStage}</span></div><span className="nz-btn">Open evidence</span></a>)}</div>:<div className="nz-banner warn"><div><b>No live CRP jobs are available.</b><div>Create a CRP job and complete its evidence review before preparing a report.</div></div></div>}<a className="nz-btn" href="/reports">Return to publication studio</a></div></section></main>}
+/**
+ * A2/A3: the picker is the Reports register — the same rows, filters and link logic — so a job is found by client, consultant,
+ * stage, year or search instead of a flat scroll, and an imported job says it is awaiting re-compose before anyone opens it.
+ */
+function PreviewJobSelection(){return <main className="nz-preview-canvas"><section className="nz-preview-picker"><div className="nz-section-intro"><div><span className="nz-eyebrow">Governed report preparation</span><h1>Choose a CRP job to prepare</h1><p>A report is assembled from a job's reviewed snapshot. Jobs ready to prepare say <b>Prepare report</b>; imported v7 history is marked as awaiting re-compose.</p></div><a className="nz-btn" href="/reports">Return to publication studio</a></div><ReportRegisterView mode="picker"/></section></main>}
 
 function LiveSnapshotPreview({
   snapshot,
@@ -119,5 +122,3 @@ function LiveSnapshotPreview({
     </main>
   );
 }
-
-function PreviewEmpty({jobId}:{jobId:string}){return <main className="nz-preview-canvas"><section className="nz-preview-empty"><span className="nz-state-icon">!</span><div><span className="nz-eyebrow">Report preparation</span><h1>No reviewed snapshot available</h1><p>Job {jobId} cannot be previewed or published until its emissions rows have passed review and a governed snapshot has been created.</p><a className="nz-btn pri" href={`/jobs/${jobId}`}>Return to job review</a></div></section></main>}

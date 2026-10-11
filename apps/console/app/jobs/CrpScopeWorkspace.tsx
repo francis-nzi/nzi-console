@@ -2,6 +2,7 @@
 import { useCallback,useEffect,useState } from "react";
 import { JobClientMark } from "./JobClientMark";
 import { LogTimeButton } from "./JobTimePanel";
+import { JobReportLink } from "./JobReportLink";
 import type { ReactNode } from "react";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
@@ -663,6 +664,7 @@ export function CrpScopeWorkspace({
       />
       {shellOn ? <JobShellHeader header={job.header} summary={shellSummary} onOpen={openShellDrawer} actions={<>
         <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
+        <JobReportLink jobId={job.header.id} />
         <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
       </>} /> : <>
       <div className="nz-head">
@@ -675,6 +677,7 @@ export function CrpScopeWorkspace({
           <div className="nz-head-actions">
             <LogTimeButton jobId={job.header.id} />
             <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
+            <JobReportLink jobId={job.header.id} />
             <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
           </div>
         </div>

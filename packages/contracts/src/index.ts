@@ -136,5 +136,6 @@ export * from "./adminStaff";
 export * from "./adminOrganisation";
 export * from "./jobSchedule";
 export * from "./reportStatus";
+export * from "./reportNavigation";
 export * from "./reportScope";
 export * from "./reportScopeComposition";
