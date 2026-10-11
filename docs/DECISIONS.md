@@ -5702,3 +5702,30 @@ arithmetically exact against their factors. These are the categories and units t
 
 **What this does not decide.** Re-ingesting the v7 rows into these categories (crosswalk v1, then a governed commit), and
 building spend capture outside 3.1/3.2/3.15.
+
+### NZC-169 — A v7 job is re-ingested as new live rows, the v7 rows switched off; a completed re-ingest is the one way an imported period may be snapshotted (amends decision 12) [Decided 11 Oct 2026 — Cowork + Francis]
+
+**Decision.** Migration `0166` and the `v7.reingest.job` / `v7.reingest.revert` commands (DESIGN-v7-reingest-commit-phase,
+ruled in REVIEW-v7-reingest-commit-phase):
+
+- **New rows, never changed ones.** Each enabled v7 row of the job is re-written as a live row through the ordinary create
+  and calculate — the same factor, unit and category checks a consultant meets — bound to v7's own dataset vintage (the
+  job's selection widened to it), or, where v7's factor value differs from today's record or none is bindable, to v7's copied
+  value carried as a job-pinned client factor. Each live row records the v7 row it replaces (`reingested_from_row_id`), and
+  enters **pending, for human review** — never auto-approved.
+- **The v7 rows are switched off, not removed,** in the same transaction (the one change 0133 allows them), each with its own
+  audit event. Nothing is counted twice and nothing is deleted.
+- **A v7 total with no activity quantity** is carried as an explicit **reported-total** row: the category, no quantity, unit
+  or factor, v7's figure as the override, a reason from a closed set of one, and a label that says so. Only the re-ingest's
+  own system principal may write one; a consultant still cannot.
+- **It reconciles or it does not commit:** the job's live total equals v7's, **per scope as well as in total**, every row
+  reproduces its v7 row within the ruled tolerance (ruling 2), and no v7 row is left on — checked inside the transaction.
+- **Decision 12 is narrowed, not reversed.** A job holding v7 rows is still never snapshotted — unless a completed re-ingest
+  run has switched every one of them off. Readiness reads the same rule. A run can be reverted before the job is snapshotted.
+
+**Why.** The allocation rulings (RULING-v7-allocation-decisions) settle how each v7 row maps; this is how the mapped rows
+become the console's own evidence without rewriting history or double counting, so an imported job (J000663 first) can be
+reviewed, frozen and published like any other.
+
+**What this does not decide.** Which jobs are re-ingested (each is its own dry run and Francis's sign-off); the residual rows
+for Francis; composing from v7 totals for renewed totals-only jobs (ruling 7).

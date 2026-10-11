@@ -603,6 +603,10 @@ jobs:
       # setting the tenant without the role switch) still reads only its own client.
       - name: The benchmark in force reads its own organisation's client, even where row-level security is bypassed
         run: npx tsx --test packages/isolated-backend/tests/benchmarkOrgPredicateReal.test.ts
+      # The v7 re-ingest (0166): a job's v7 rows re-written as live rows that reproduce v7 in total and per scope, the v7 rows
+      # switched off, the snapshot gate opened only by a completed run, reported totals labelled, the allowances gated, revert.
+      - name: A v7 job re-ingests as live rows that reproduce v7 exactly, and nobody else can write what the re-ingest may
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
