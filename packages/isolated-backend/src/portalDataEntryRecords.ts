@@ -11,6 +11,7 @@ import {refuseExcludedSiteChange} from "./siteInclusionGuard";
 /** The portal's writes refuse as they always have — a validation message the route returns as-is. */
 const portalRefusal=(message:string)=>new PortalAccessValidationError(message);
 import {VersionConflictError} from "./errors";
+import {reingestedRowMessage} from "./postgresCommands";
 import {primaryFactorFor} from "./portalPrimaryFactor";
 import {applyDeclarativeResolution,previewDeclaredFactor,variantBaseRefusal} from "./declarativeResolution";
 import type {ScopeRowWriteFields,SupplySource} from "@nzi/contracts";
@@ -124,8 +125,10 @@ export async function decidePortalDataEntryReview(pool:PoolLike,principal:StaffP
       // row keeps the job-then-row order every job-locking command uses (job.update, the dataset update) — never the reverse.
       await db.query(`SELECT 1 FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[principal.organisationId,row.job_id]);
       // Locked, so the scope row's site cannot change between the archived-site check below and the write.
-      const target=(await db.query<{scope:string;category_code:string|null;site_id:string|null}>(`SELECT scope,category_code,site_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND scope_row_id=$2 FOR UPDATE`,[principal.organisationId,row.scope_row_id])).rows[0];
+      const target=(await db.query<{scope:string;category_code:string|null;site_id:string|null;reingested_from_row_id:string|null}>(`SELECT scope,category_code,site_id,reingested_from_row_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND scope_row_id=$2 FOR UPDATE`,[principal.organisationId,row.scope_row_id])).rows[0];
       if(!target)throw new PortalAccessValidationError("The scope row this bucket was granted on no longer exists.");
+      // RULING-v7-reingest-row-protection 1: acceptance writes the scope row, and a re-ingested row (known by its link) is attest-only.
+      if(target.reingested_from_row_id)throw new PortalAccessValidationError(reingestedRowMessage("written by an accepted portal record"));
       // Acceptance writes the scope row's site, so the row's own site is "current": accepting onto a row that already
       // cites an archived site stands; moving the row onto one is refused — reject the record, or unarchive the site.
       await refuseArchivedSiteChange(db,principal.organisationId,row.site_id,target.site_id,portalRefusal);

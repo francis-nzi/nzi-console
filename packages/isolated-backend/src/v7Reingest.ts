@@ -6,7 +6,7 @@
 // caller rolls back. Tenancy is the caller's `withTenantWrite` (SET LOCAL ROLE nzi_console_app: forced RLS throughout).
 import { createHash, randomUUID } from "node:crypto";
 import {
-  V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ReingestPostconditionMisses, withinV7Tolerance,
+  V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ReingestPostconditionMisses, withinV7Tolerance,
   type CommandContext, type CommandInputMap, type V7ReingestPlanRow,
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
@@ -197,28 +197,52 @@ async function carriedFactor(db: Queryable, context: CommandContext, jobId: stri
 export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext): Promise<StoredOutcome<V7ReingestRevertResult>> {
   return runPostgresCommandInTransaction(db, "v7.reingest.revert", input, context, async (db) => {
     await requireCrpJob(db, context.organisationId, input.jobId);
-    const run = (await db.query<{ status: string; created_at: Date }>(
-      `SELECT status, created_at FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3 FOR UPDATE`,
+    const run = (await db.query<{ status: string; created_at: Date; rows_by_disposition_json: Record<string, number> }>(
+      `SELECT status, created_at, rows_by_disposition_json FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3 FOR UPDATE`,
       [context.organisationId, input.jobId, input.runId])).rows[0];
     if (!run) fail("NOT_FOUND", "No such re-ingest run for this job.", "runId");
     if (run!.status !== "completed") fail("NOT_COMPLETED", "Only a completed re-ingest is reverted.", "runId");
     if ((await db.query(`SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2 AND created_at >= $3`,
       [context.organisationId, input.jobId, run!.created_at])).rows.length) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
-    const live = (await db.query<{ scope_row_id: string; version: number; reingested_from_row_id: string }>(
-      `SELECT scope_row_id, version, reingested_from_row_id FROM nzi_console.job_scope_rows
-        WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND enabled AND provenance_json->'reingest'->>'runId' = $3`,
-      [context.organisationId, input.jobId, input.runId])).rows;
+    // RULING-v7-reingest-row-protection 2: the run's rows are found by what nothing but the run writes — never by provenance,
+    // which an edit could rewrite (the J000663 finding: two edited rows had lost their run id, and the revert would have
+    // reversed 78 of 80 and still marked the run reverted). The run's v7 rows are its own `v7_row_superseded` audit events
+    // (append-only), checked against the count the run recorded; its live rows, the job's enabled rows linked to them by
+    // `reingested_from_row_id` (one per v7 row, 0166's unique index).
+    const v7RowIds = (await db.query<{ entity_id: string }>(
+      `SELECT DISTINCT a.entity_id FROM nzi_console.audit_events a
+         JOIN nzi_console.job_scope_rows v ON v.organisation_id = a.organisation_id AND v.scope_row_id = a.entity_id AND v.job_id = $2 AND v.origin = 'migrated'
+        WHERE a.organisation_id = $1 AND a.action = 'v7_row_superseded' AND a.entity_type = 'scope_row' AND a.actor_id = $4 AND a.after_json->>'runId' = $3
+        ORDER BY a.entity_id`,
+      [context.organisationId, input.jobId, input.runId, V7_REINGEST_ACTOR])).rows.map((row) => row.entity_id);
+    const recorded = Object.values(run!.rows_by_disposition_json).reduce((sum, n) => sum + Number(n), 0);
+    if (v7RowIds.length !== recorded)
+      fail("REVERT_INCOMPLETE", `The run recorded ${recorded} row(s) but ${v7RowIds.length} v7 row(s) are on its record; nothing is reverted.`, "runId");
+    const live = (await db.query<{ scope_row_id: string; version: number }>(
+      `SELECT scope_row_id, version FROM nzi_console.job_scope_rows
+        WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND enabled AND reingested_from_row_id = ANY($3::text[])
+        ORDER BY scope_row_id FOR UPDATE`,
+      [context.organisationId, input.jobId, v7RowIds])).rows;
     for (const row of live) {
       const ref = { jobId: input.jobId, rowId: row.scope_row_id, expectedVersion: row.version };
       await deactivateScopeRowInTransaction(db, ref, { ...rowContext(context, input.runId, row.scope_row_id, "revert"), reason: context.reason });
     }
     const governedEvents = [];
-    for (const v7RowId of [...new Set(live.map((row) => row.reingested_from_row_id))]) {
-      await db.query(`UPDATE nzi_console.job_scope_rows SET enabled = true, version = version + 1, updated_at = now()
-                       WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = $3 AND origin = 'migrated'`,
+    for (const v7RowId of v7RowIds) {
+      const restored = await db.query(`UPDATE nzi_console.job_scope_rows SET enabled = true, version = version + 1, updated_at = now()
+                       WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = $3 AND origin = 'migrated' AND NOT enabled RETURNING scope_row_id`,
         [context.organisationId, input.jobId, v7RowId]);
-      governedEvents.push({ action: "v7_row_restored", entityType: "scope_row", entityId: v7RowId, before: { enabled: false }, after: { enabled: true, runId: input.runId } });
+      if (restored.rows.length) governedEvents.push({ action: "v7_row_restored", entityType: "scope_row", entityId: v7RowId, before: { enabled: false }, after: { enabled: true, runId: input.runId } });
     }
+    // All or nothing, read back from the table inside the transaction (as the re-ingest's D7): every live row linked to the
+    // run's v7 rows is off, and every one of those v7 rows is on — or the whole revert rolls back and the run stays completed.
+    const after = (await db.query<{ live_on: string; v7_on: string }>(
+      `SELECT count(*) FILTER (WHERE origin = 'live' AND enabled AND reingested_from_row_id = ANY($3::text[]))::text AS live_on,
+              count(*) FILTER (WHERE origin = 'migrated' AND enabled AND scope_row_id = ANY($3::text[]))::text AS v7_on
+         FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2`,
+      [context.organisationId, input.jobId, v7RowIds])).rows[0]!;
+    if (Number(after.live_on) !== 0 || Number(after.v7_on) !== v7RowIds.length)
+      fail("REVERT_INCOMPLETE", `The revert would leave ${after.live_on} re-ingested row(s) on and ${v7RowIds.length - Number(after.v7_on)} of the run's ${v7RowIds.length} v7 row(s) off; nothing is reverted.`, "runId");
     await db.query(`UPDATE nzi_console.v7_reingest_runs SET status = 'reverted', reverted_by = $4, reverted_at = now(), revert_reason = $5
                      WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3`,
       [context.organisationId, input.jobId, input.runId, context.actorId, context.reason!.trim()]);
