@@ -11,9 +11,10 @@ import {
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import {
-  CommandValidationError, createScopeRowInTransaction, recalculateScopeRowInTransaction, requireCrpJob,
+  CommandValidationError, createScopeRowInTransaction, recalculateScopeRowInTransaction, reportingMonthsFor, requireCrpJob,
   runPostgresCommandInTransaction, type StoredOutcome,
 } from "./postgresCommands";
+import { siteIncludedSql } from "./siteInclusionGuard";
 import { deactivateScopeRowInTransaction } from "./scopeRowState";
 
 /** The import identity a carried factor is created under, so a later run (after a revert) reuses it rather than adding another. */
@@ -23,11 +24,37 @@ export type V7ReingestResult = {
   runId: string; jobId: string; crosswalkVersion: string;
   /** tCO2e only (NZC-120: no money in the run's audit or its record). */
   v7TotalTco2e: number; nativeTotalTco2e: number; scopeTotals: Record<string, { v7: number; native: number }>;
+  /** Per site, by site id ("unallocated" where v7 named none): rows, v7 and native tCO2e (RULING-v7-reingest-full-record). */
+  siteTotals: Record<string, { rows: number; v7: number; native: number }>;
+  /** How many rows carried each v7 field. */
+  carried: { site: number; dataConfidence: number; columnText: number; months: number };
   rowsByDisposition: Record<string, number>; datasetsAdded: string[]; clientFactorsCreated: number; v7RowsSwitchedOff: number;
 };
 export type V7ReingestRevertResult = { runId: string; jobId: string; liveRowsSwitchedOff: number; v7RowsSwitchedOn: number };
 
-type MigratedRow = { scope_row_id: string; scope: string; enabled: boolean; reported: string | null; immutable_hash: string };
+/**
+ * A stored v7 row, with the data-row fields the re-ingest carries (RULING-v7-reingest-full-record A): read from the row itself —
+ * the record of account, immutable under 0133 — never from the plan, which stays a pure crosswalk decision.
+ */
+type MigratedRow = {
+  scope_row_id: string; scope: string; enabled: boolean; reported: string | null; immutable_hash: string;
+  site_id: string | null; data_confidence: string | null; column_text: string | null; months: Array<number | null> | null; data_source: string | null;
+};
+
+/** What the live row must carry from its v7 row — site, confidence, column text, months on the job's reporting months. */
+type Carried = { siteId: string | null; dataConfidence: string | null; columnText: string | null; slots: Array<{ month: string; quantity: number | null }> | null };
+
+/**
+ * RULING-v7-reingest-full-record C: v7's `month_i` is the i-th month of the job's reporting period (v7's own
+ * `dataset_selector._month_sequence`), so slot i goes to reporting month i. A non-empty slot (a figure other than 0) that falls
+ * outside the period refuses the run; a blank or zero one there carries nothing. Months must be figure-inert: their sum is the
+ * row's quantity, or the run refuses — and per-row D7.2 then proves the figure.
+ */
+export function v7MonthSlots(months: Array<number | null> | null, reportingMonths: string[]): { slots: Array<{ month: string; quantity: number | null }> | null; outside: number[] } {
+  if (!months || !months.some((value) => value !== null)) return { slots: null, outside: [] };
+  const outside = months.map((value, index) => (index >= reportingMonths.length && value !== null && value !== 0 ? index + 1 : 0)).filter(Boolean);
+  return { slots: reportingMonths.map((month, index) => ({ month, quantity: index < months.length ? months[index] ?? null : null })), outside };
+}
 
 const fail = (code: string, message: string, field = "rows"): never => { throw new CommandValidationError([{ field, code, message }]); };
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -36,7 +63,8 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 async function migratedRows(db: Queryable, organisationId: string, jobId: string): Promise<MigratedRow[]> {
   return (await db.query<MigratedRow>(
     `SELECT scope_row_id, scope, enabled, migrated_record->>'reported_tco2e' AS reported,
-            md5((to_jsonb(r) - ARRAY['enabled', 'version', 'updated_at'])::text) AS immutable_hash
+            md5((to_jsonb(r) - ARRAY['enabled', 'version', 'updated_at'])::text) AS immutable_hash,
+            site_id, data_confidence, column_text, migrated_record->'months' AS months, migrated_record->>'data_source' AS data_source
        FROM nzi_console.job_scope_rows r
       WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' ORDER BY scope_row_id FOR UPDATE`,
     [organisationId, jobId])).rows;
@@ -76,6 +104,39 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
     const unplanned = enabledV7.filter((row) => !planned.has(row.scope_row_id));
     if (unplanned.length) fail("PLAN_INCOMPLETE", `${unplanned.length} enabled v7 row(s) have no plan row (${unplanned.slice(0, 5).map((row) => row.scope_row_id).join(", ")}…); a partial re-ingest would double count or drop them.`);
 
+    // RULING-v7-reingest-full-record: the fields each live row carries, from its own v7 row — and refused, named, before anything
+    // is written, where they cannot be carried faithfully. Never a silent Unallocated; never a dropped or moved month.
+    const carried = new Map<string, Carried>();
+    const refusals: Array<{ field: string; code: string; message: string }> = [];
+    const siteIds = [...new Set(enabledV7.map((row) => row.site_id).filter((id): id is string => id !== null))];
+    // B: a v7 site must be the job's client's, not archived, and included in the job — or SITE_NOT_USABLE, naming it.
+    const sites = new Map((await db.query<{ site_id: string; name: string; client_id: string; archived: boolean; included: boolean }>(
+      `SELECT s.site_id, s.name, s.client_id, s.archived, ${siteIncludedSql("$2", "s.site_id")} AS included
+         FROM nzi_console.client_sites s WHERE s.organisation_id = $1 AND s.site_id = ANY($3::text[])`,
+      [context.organisationId, input.jobId, siteIds])).rows.map((site) => [site.site_id, site]));
+    const anyMonths = input.rows.some((plan) => plan.disposition !== "REPORTED-TOTAL" && v7ById.get(plan.v7RowId)!.months?.some((value) => value !== null));
+    const reportingMonths = anyMonths ? await reportingMonthsFor(db, context.organisationId, input.jobId) : [];
+    for (const plan of input.rows) {
+      const v7 = v7ById.get(plan.v7RowId)!;
+      if (v7.site_id !== null) {
+        const site = sites.get(v7.site_id);
+        const why = !site ? "no such site" : site.client_id !== job.client_id ? "another client's site" : site.archived ? "archived" : !site.included ? "excluded from this job" : null;
+        if (why) refusals.push({ field: "rows", code: "SITE_NOT_USABLE", message: `v7 row ${plan.v7RowId} is at site ${site?.name ?? v7.site_id} (${v7.site_id}), which is ${why}; the re-ingest will not leave it Unallocated.` });
+      }
+      // D5: a reported total carries v7's figure and no activity, so no months either (its shape is ruled).
+      const months = plan.disposition === "REPORTED-TOTAL" ? { slots: null, outside: [] } : v7MonthSlots(v7.months, reportingMonths);
+      if (months.outside.length)
+        refusals.push({ field: "rows", code: "MONTHS_DO_NOT_FIT", message: `v7 row ${plan.v7RowId} has activity in month ${months.outside.join(", ")} of 12, outside this job's ${reportingMonths.length}-month reporting period.` });
+      else if (months.slots) {
+        const sum = months.slots.reduce((total, slot) => total + (slot.quantity ?? 0), 0);
+        if (plan.quantity === null || Math.abs(sum - plan.quantity) > 1e-9 * Math.max(1, Math.abs(plan.quantity)))
+          refusals.push({ field: "rows", code: "MONTHS_DO_NOT_FIT", message: `v7 row ${plan.v7RowId}'s months sum to ${sum}, not its quantity ${plan.quantity ?? "none"}; carrying them would move its figure.` });
+      }
+      const columnText = v7.column_text?.trim() || null;
+      carried.set(plan.v7RowId, { siteId: v7.site_id, dataConfidence: v7.data_confidence, columnText, slots: months.slots });
+    }
+    if (refusals.length) throw new CommandValidationError(refusals);
+
     // Ruling 3: v7's vintages join the job's selection — added, never removed.
     const datasetsAdded: string[] = [];
     for (const datasetId of [...new Set(input.vintageDatasetIds)]) {
@@ -107,6 +168,9 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
         applyPct: plan.applyPct ?? 100, qualityTier: plan.qualityTier,
         overrideTco2e: reportedTotal ? plan.v7Tco2e : null,
         overrideReason: reportedTotal ? V7_REPORTED_TOTAL_REASONS[0] : null,
+        // The full record (RULING-v7-reingest-full-record), from the v7 row — through the create's own site guards as well.
+        siteId: carried.get(plan.v7RowId)!.siteId, dataConfidence: carried.get(plan.v7RowId)!.dataConfidence as "H" | "M" | "L" | null,
+        columnText: carried.get(plan.v7RowId)!.columnText, monthlyActivity: carried.get(plan.v7RowId)!.slots ?? [],
       }, rowContext(context, input.runId, plan.v7RowId, "create"),
       { reingestedFrom: plan.v7RowId, reportedTotal, historicalUnit: !reportedTotal, declaredResolutionExempt: true });
       const rowId = created.data.rowId;
@@ -116,6 +180,9 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       const marks = declaredCategories.has(plan.categoryCode)
         ? [mark, { title: "Declared resolution not applied", detail: "declared resolution not applied: v7's own factor (ruling 3)" }]
         : [mark];
+      // RULING-v7-reingest-full-record D: v7's data source, kept as a lineage line — descriptive text, no money.
+      const dataSource = v7ById.get(plan.v7RowId)!.data_source;
+      if (dataSource) marks.push({ title: "v7 data source", detail: dataSource });
       if (!reportedTotal) {
         const calc = { jobId: input.jobId, rowId, expectedVersion: created.data.version };
         await runPostgresCommandInTransaction(db, "scope.row.calculate", calc, rowContext(context, input.runId, plan.v7RowId, "calculate"),
@@ -142,14 +209,24 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
     }
 
     // D7: the post-conditions, read back from what is now in the table.
-    const live = (await db.query<{ scope_row_id: string; reingested_from_row_id: string; scope: string; tco2e: string | null; enabled: boolean }>(
-      `SELECT scope_row_id, reingested_from_row_id, scope, coalesce(override_tco2e, calculated_tco2e)::text AS tco2e, enabled
+    const live = (await db.query<{ scope_row_id: string; reingested_from_row_id: string; scope: string; tco2e: string | null; enabled: boolean;
+      site_id: string | null; data_confidence: string | null; column_text: string | null; monthly: Array<{ month: string; quantity: number | null }> | null }>(
+      `SELECT scope_row_id, reingested_from_row_id, scope, coalesce(override_tco2e, calculated_tco2e)::text AS tco2e, enabled,
+              site_id, data_confidence, column_text, monthly_activity_json AS monthly
          FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND reingested_from_row_id IS NOT NULL AND enabled`,
       [context.organisationId, input.jobId])).rows;
     const after = await migratedRows(db, context.organisationId, input.jobId);
+    // Each side's carried fields: what the v7 row says the live row must hold, and what it holds.
+    const expected = (v7: MigratedRow) => {
+      const fields = carried.get(v7.scope_row_id);
+      return { siteId: v7.site_id, dataConfidence: v7.data_confidence, columnText: fields?.columnText ?? (v7.column_text?.trim() || null),
+        months: fields?.slots ? fields.slots.map((slot) => slot.quantity) : null };
+    };
     const misses = v7ReingestPostconditionMisses({
-      v7Rows: enabledV7.map((row) => ({ rowId: row.scope_row_id, scope: row.scope, v7Tco2e: Number(row.reported) })),
-      liveRows: live.map((row) => ({ rowId: row.scope_row_id, reingestedFrom: row.reingested_from_row_id, scope: row.scope, tco2e: row.tco2e === null ? null : Number(row.tco2e), enabled: row.enabled })),
+      v7Rows: enabledV7.map((row) => ({ rowId: row.scope_row_id, scope: row.scope, v7Tco2e: Number(row.reported), ...expected(row) })),
+      liveRows: live.map((row) => ({ rowId: row.scope_row_id, reingestedFrom: row.reingested_from_row_id, scope: row.scope, tco2e: row.tco2e === null ? null : Number(row.tco2e), enabled: row.enabled,
+        siteId: row.site_id, dataConfidence: row.data_confidence, columnText: row.column_text,
+        months: Array.isArray(row.monthly) && row.monthly.length ? row.monthly.map((slot) => (slot.quantity === null || slot.quantity === undefined ? null : Number(slot.quantity))) : null })),
       enabledMigratedAfter: after.filter((row) => row.enabled).length,
     });
     const beforeHash = new Map(before.map((row) => [row.scope_row_id, row.immutable_hash]));
@@ -162,6 +239,18 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
     for (const row of enabledV7) (scopeTotals[topScope(row.scope)] ??= { v7: 0, native: 0 }).v7 += Number(row.reported);
     for (const row of live) (scopeTotals[topScope(row.scope)] ??= { v7: 0, native: 0 }).native += Number(row.tco2e);
     for (const key of Object.keys(scopeTotals)) scopeTotals[key] = { v7: round6(scopeTotals[key]!.v7), native: round6(scopeTotals[key]!.native) };
+    // Per site (Unallocated its own bucket) — ids and tCO2e only, for the run's output and audit (no names, no money).
+    const siteTotals: Record<string, { rows: number; v7: number; native: number }> = {};
+    const siteKey = (siteId: string | null) => siteId ?? "unallocated";
+    for (const row of enabledV7) { const total = (siteTotals[siteKey(row.site_id)] ??= { rows: 0, v7: 0, native: 0 }); total.rows += 1; total.v7 += Number(row.reported); }
+    for (const row of live) (siteTotals[siteKey(row.site_id)] ??= { rows: 0, v7: 0, native: 0 }).native += Number(row.tco2e);
+    for (const key of Object.keys(siteTotals)) siteTotals[key] = { rows: siteTotals[key]!.rows, v7: round6(siteTotals[key]!.v7), native: round6(siteTotals[key]!.native) };
+    const carriedCounts = {
+      site: [...carried.values()].filter((fields) => fields.siteId !== null).length,
+      dataConfidence: [...carried.values()].filter((fields) => fields.dataConfidence !== null).length,
+      columnText: [...carried.values()].filter((fields) => fields.columnText !== null).length,
+      months: [...carried.values()].filter((fields) => fields.slots !== null).length,
+    };
     const v7TotalTco2e = round6(enabledV7.reduce((a, row) => a + Number(row.reported), 0));
     const nativeTotalTco2e = round6(live.reduce((a, row) => a + Number(row.tco2e), 0));
     await db.query(
@@ -170,7 +259,7 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       [context.organisationId, input.runId, input.jobId, input.crosswalkVersion, input.crosswalkSha256, v7TotalTco2e, nativeTotalTco2e,
         JSON.stringify(scopeTotals), JSON.stringify(counts), context.actorId, context.correlationId]);
     const data: V7ReingestResult = { runId: input.runId, jobId: input.jobId, crosswalkVersion: input.crosswalkVersion, v7TotalTco2e, nativeTotalTco2e,
-      scopeTotals, rowsByDisposition: counts, datasetsAdded, clientFactorsCreated, v7RowsSwitchedOff: enabledV7.length };
+      scopeTotals, siteTotals, carried: carriedCounts, rowsByDisposition: counts, datasetsAdded, clientFactorsCreated, v7RowsSwitchedOff: enabledV7.length };
     return { data, entityType: "job", entityId: input.jobId, topic: "v7.reingest.completed", before: { enabledV7Rows: enabledV7.length }, governedEvents };
   });
 }

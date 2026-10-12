@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   commandDefinitions, commandGrantForRole, isV7ReportedTotalReason, v7QualityTier, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_REASONS,
-  v7ReingestPlanIssues, v7ReingestPostconditionMisses, validateCommand, withinV7Tolerance, type CommandContext, type V7ReingestJobInput,
+  v7ReingestPlanIssues, v7CarriedFieldMisses, v7ReingestPostconditionMisses, validateCommand, withinV7Tolerance, type CommandContext, type V7ReingestJobInput,
 } from "../src/index";
 
 /** The v7 re-ingest's pure rules (DESIGN-v7-reingest-commit-phase, ruled): the actor, the plan's shape, the reason set, D7. */
+/** The carried fields, all absent (v7 named none of them). */
+const F = { siteId: null as string | null, dataConfidence: null as string | null, columnText: null as string | null, months: null as Array<number | null> | null };
+
 describe("the v7 re-ingest's rules", () => {
   const RUN = "v7-reingest-0f8fad5b-d9cb-469f-a165-70867728950e";
   const base: V7ReingestJobInput = {
@@ -46,23 +49,53 @@ describe("the v7 re-ingest's rules", () => {
   });
 
   it("D7: the total, each scope (condition 4), each row, one live row per v7 row, and no v7 row left on", () => {
-    const v7Rows = [{ rowId: "a", scope: "1", v7Tco2e: 10 }, { rowId: "b", scope: "2", v7Tco2e: 5 }, { rowId: "c", scope: "3.6", v7Tco2e: 1 }];
-    const live = (over: Partial<Record<string, number | null>> = {}) => v7Rows.map((row, i) => ({ rowId: `l${i}`, reingestedFrom: row.rowId, scope: row.scope, tco2e: row.rowId in over ? over[row.rowId]! : row.v7Tco2e, enabled: true }));
+    const v7Rows = [{ rowId: "a", scope: "1", v7Tco2e: 10, ...F }, { rowId: "b", scope: "2", v7Tco2e: 5, ...F }, { rowId: "c", scope: "3.6", v7Tco2e: 1, ...F }];
+    const live = (over: Partial<Record<string, number | null>> = {}) => v7Rows.map((row, i) => ({ rowId: `l${i}`, reingestedFrom: row.rowId, scope: row.scope, tco2e: row.rowId in over ? over[row.rowId]! : row.v7Tco2e, enabled: true, ...F }));
     assert.deepEqual(v7ReingestPostconditionMisses({ v7Rows, liveRows: live(), enabledMigratedAfter: 0 }), []);
     // Scope 1 two tonnes light and scope 2 two tonnes heavy: the total still matches. Per scope, it does not.
     const offset = v7ReingestPostconditionMisses({ v7Rows, liveRows: live({ a: 8, b: 7 }), enabledMigratedAfter: 0 });
     assert.ok(!offset.some((miss) => miss.startsWith("total")), "the grand total alone would pass");
     assert.ok(offset.some((miss) => miss.startsWith("scope 1")) && offset.some((miss) => miss.startsWith("scope 2")), "but each scope is checked");
     // Two rows of one scope with their figures swapped: the total and the scope still match. Only each row's own check sees it.
-    const pair = [{ rowId: "x", scope: "3.1", v7Tco2e: 3 }, { rowId: "y", scope: "3.1", v7Tco2e: 7 }];
+    const pair = [{ rowId: "x", scope: "3.1", v7Tco2e: 3, ...F }, { rowId: "y", scope: "3.1", v7Tco2e: 7, ...F }];
     const swapped = v7ReingestPostconditionMisses({ v7Rows: pair, liveRows: [
-      { rowId: "lx", reingestedFrom: "x", scope: "3.1", tco2e: 7, enabled: true }, { rowId: "ly", reingestedFrom: "y", scope: "3.1", tco2e: 3, enabled: true }], enabledMigratedAfter: 0 });
+      { rowId: "lx", reingestedFrom: "x", scope: "3.1", tco2e: 7, enabled: true, ...F }, { rowId: "ly", reingestedFrom: "y", scope: "3.1", tco2e: 3, enabled: true, ...F }], enabledMigratedAfter: 0 });
     assert.deepEqual(swapped.map((miss) => miss.split(":")[0]), ["row lx", "row ly"], "each row reproduces its own v7 row, not merely the sum");
     assert.ok(v7ReingestPostconditionMisses({ v7Rows, liveRows: live().slice(1), enabledMigratedAfter: 0 }).some((miss) => miss.includes("v7 row a: 0 live rows")));
     assert.ok(v7ReingestPostconditionMisses({ v7Rows, liveRows: [...live(), { ...live()[0]!, rowId: "dup" }], enabledMigratedAfter: 0 }).some((miss) => miss.includes("2 live rows")));
     assert.ok(v7ReingestPostconditionMisses({ v7Rows, liveRows: live(), enabledMigratedAfter: 1 }).some((miss) => miss.includes("still enabled")));
     assert.ok(v7ReingestPostconditionMisses({ v7Rows, liveRows: live({ c: null }), enabledMigratedAfter: 0 }).some((miss) => miss.includes("no figure")));
     assert.deepEqual(v7ReingestPostconditionMisses({ v7Rows, liveRows: live().map((row) => row.reingestedFrom === "a" ? { ...row, enabled: false } : row), enabledMigratedAfter: 0 }).length > 0, true, "a switched-off live row is not counted");
+  });
+
+  it("RULING-v7-reingest-full-record: D7 per site, Unallocated its own bucket — the dropped-site case fails", () => {
+    const v7 = [
+      { rowId: "gas", scope: "1", v7Tco2e: 43.4, ...F, siteId: "uk" }, { rowId: "car-pl", scope: "1", v7Tco2e: 0, ...F, siteId: "pl" },
+      { rowId: "travel", scope: "3.6", v7Tco2e: 2, ...F },
+    ];
+    const live = v7.map((row) => ({ rowId: `l-${row.rowId}`, reingestedFrom: row.rowId, scope: row.scope, tco2e: row.v7Tco2e, enabled: true, ...F, siteId: row.siteId }));
+    assert.deepEqual(v7ReingestPostconditionMisses({ v7Rows: v7, liveRows: live, enabledMigratedAfter: 0 }), [], "the site-less v7 row reconciles as Unallocated");
+    // J000663's bug: every row brought in Unallocated. The total, each scope and each figure still match; the site does not.
+    const dropped = v7ReingestPostconditionMisses({ v7Rows: v7, liveRows: live.map((row) => ({ ...row, siteId: null })), enabledMigratedAfter: 0 });
+    assert.ok(!dropped.some((miss) => miss.startsWith("total") || miss.startsWith("scope")));
+    assert.ok(dropped.some((miss) => miss.startsWith("site uk:")) && dropped.some((miss) => miss.startsWith("site unallocated:")), JSON.stringify(dropped));
+    assert.ok(dropped.some((miss) => miss.includes(`site none ≠ v7's "uk"`)), "and each row names its own dropped site");
+  });
+
+  it("per row, each carried field must equal its v7 source — what catches two rows swapping sites with equal figures", () => {
+    const v7 = [{ rowId: "a", scope: "1", v7Tco2e: 5, ...F, siteId: "uk" }, { rowId: "b", scope: "1", v7Tco2e: 5, ...F, siteId: "pl" }];
+    const swapped = [{ rowId: "la", reingestedFrom: "a", scope: "1", tco2e: 5, enabled: true, ...F, siteId: "pl" }, { rowId: "lb", reingestedFrom: "b", scope: "1", tco2e: 5, enabled: true, ...F, siteId: "uk" }];
+    const misses = v7ReingestPostconditionMisses({ v7Rows: v7, liveRows: swapped, enabledMigratedAfter: 0 });
+    assert.ok(!misses.some((miss) => miss.startsWith("site ")), "the per-site totals match");
+    assert.deepEqual(misses, [`row la: site "pl" ≠ v7's "uk"`, `row lb: site "uk" ≠ v7's "pl"`]);
+    const v7Fields = { siteId: "uk", dataConfidence: "H", columnText: "Diesel (average biofuel blend)", months: [1, null, 2] };
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields }), []);
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields, dataConfidence: null }), [`data confidence none ≠ v7's "H"`]);
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields, columnText: null }).length, 1);
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields, months: null }).length, 1, "months dropped");
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields, months: [1, 0, 2] }).length, 1, "a blank month is not a zero month");
+    assert.deepEqual(v7CarriedFieldMisses(v7Fields, { ...v7Fields, months: [2, null, 1] }).length, 1, "months in the wrong place");
+    assert.deepEqual(v7CarriedFieldMisses({ ...F }, { ...F }), [], "nothing in v7, nothing on the row");
   });
 
   it("the ruled tolerance: 0.1% relative or 0.001 t absolute", () => {

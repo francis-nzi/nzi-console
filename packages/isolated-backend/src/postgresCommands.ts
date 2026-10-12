@@ -900,7 +900,7 @@ type ActivityInput = {
 };
 
 /** The months this job reports on, refusing rather than guessing when the period is not configured. */
-async function reportingMonthsFor(db: Queryable, organisationId: string, jobId: string): Promise<string[]> {
+export async function reportingMonthsFor(db: Queryable, organisationId: string, jobId: string): Promise<string[]> {
   const config = await db.query<{ reporting_from: Date | string; reporting_to: Date | string }>(
     `SELECT reporting_from,reporting_to FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`,
     [organisationId, jobId]);

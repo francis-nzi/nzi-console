@@ -40,9 +40,14 @@ async function main(): Promise<void> {
   const context = { organisationId, actorId: V7_REINGEST_ACTOR, principal: "system" as const, idempotencyKey: input.runId, correlationId: input.runId,
     reason: `v7 re-ingest of ${input.jobId} (crosswalk ${input.crosswalkVersion})${commit ? "" : " — dry run"}`, grant: commandGrantForRole("admin", organisationId, V7_REINGEST_ACTOR) };
   let outcome: Awaited<ReturnType<typeof reingestV7JobInTransaction>> | null = null;
+  let siteNames = new Map<string, string>();
   try {
     await withTenantWrite(pool, organisationId, async (db) => {
       outcome = await reingestV7JobInTransaction(db, input, context);
+      // The client's own site names, for the per-site table (the run's record keeps ids only).
+      siteNames = new Map((await db.query<{ site_id: string; name: string }>(
+        `SELECT site_id, name FROM nzi_console.client_sites WHERE organisation_id = $1 AND site_id = ANY($2::text[])`,
+        [organisationId, Object.keys(outcome.data.siteTotals)])).rows.map((row) => [row.site_id, row.name]));
       if (!commit) throw new DryRunRollback();
     });
   } catch (error) {
@@ -51,9 +56,12 @@ async function main(): Promise<void> {
     await pool.end();
   }
   const data = outcome!.data;
-  log(`\n${commit ? "Committed" : "Would commit"} — post-conditions met (D7: total, each scope, each row, every v7 row switched off)`);
+  log(`\n${commit ? "Committed" : "Would commit"} — post-conditions met (D7: total, each scope, each site, each row and its carried fields, every v7 row switched off)`);
   log(`  v7 ${data.v7TotalTco2e} t · native ${data.nativeTotalTco2e} t`);
   for (const [scope, totals] of Object.entries(data.scopeTotals)) log(`  scope ${scope}: v7 ${totals.v7} t · native ${totals.native} t`);
+  for (const [site, totals] of Object.entries(data.siteTotals))
+    log(`  site ${site === "unallocated" ? "Unallocated (v7 named no site)" : `${siteNames.get(site) ?? "?"} (${site})`}: ${totals.rows} rows · v7 ${totals.v7} t · native ${totals.native} t`);
+  log(`  carried from each v7 row: site ${data.carried.site} · data confidence ${data.carried.dataConfidence} · column text ${data.carried.columnText} · monthly activity ${data.carried.months}`);
   log(`  rows: ${Object.entries(data.rowsByDisposition).map(([d, n]) => `${d} ${n}`).join(" · ")} · v7 rows switched off ${data.v7RowsSwitchedOff}`);
   log(`  vintages added to the selection: ${data.datasetsAdded.join(", ") || "none (already selected)"} · carried factors created: ${data.clientFactorsCreated}`);
   log("\nPer row — v7 row · disposition · native category · v7 tCO2e (rule)");
