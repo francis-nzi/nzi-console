@@ -30,6 +30,7 @@
     "derive:baselines": "tsx scripts/derive-baselines.ts",
     "fill:net-zero-targets": "tsx scripts/fill-net-zero-targets.ts",
     "v7:reingest": "tsx scripts/v7-reingest-job.ts",
+    "v7:reingest:revert": "tsx scripts/v7-reingest-revert.ts",
     "discard:scope-rows": "tsx scripts/discard-scope-rows.ts",
     "backfill:job-datasets": "tsx scripts/backfill-job-datasets.ts",
     "load:v7-org-settings": "tsx scripts/load-v7-org-settings.ts",
