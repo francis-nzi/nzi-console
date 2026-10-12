@@ -69,6 +69,7 @@ const reportedIntensityLabel = (target: IntensityTargetReadModel) => target.metr
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
 import { formatDate, formatDateTime } from "../lib/formatDate";
+import { formatQuantity, formatTonnes } from "../lib/formatNumber";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -537,11 +538,11 @@ export function CrpScopeWorkspace({
               <td>{r.sourceLabel}{r.assetIdentifier?<div className="muted">ID / Ref: {r.assetIdentifier}</div>:null}</td>
               <td>{r.scope}</td>
               <td>{r.siteLabel??"Unallocated"}</td>
-              <td>{r.quantity ?? "—"}</td>
+              <td>{formatQuantity(r.quantity)}</td>
               <td>{r.unit ?? "—"}</td>
               <td>{r.factorLabel ?? "No factor"}</td>
               <td>{qualities.find((q) => q.value === r.qualityTier)?.label ?? "—"}</td>
-              <td>{r.overrideTco2e ?? r.calculatedTco2e ?? "—"}</td>
+              <td>{formatTonnes(r.overrideTco2e ?? r.calculatedTco2e)}</td>
               <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span>{r.tdAddPrompt ? <> <span className="nz-st need" title="This 3.3 entry may not include transmission & distribution losses — consider whether T&D should be added">Add T&amp;D?</span></> : null}</td>
             </tr>
           ))}

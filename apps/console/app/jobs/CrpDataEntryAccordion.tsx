@@ -14,7 +14,9 @@ import {
   accordionTotals,
   buildDataEntryAccordion,
   scopeHasNoData,
+  visibleAccordionRows,
 } from "./dataEntryAccordion";
+import { formatQuantity, formatTonnes } from "../lib/formatNumber";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
@@ -89,6 +91,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [addingCode, setAddingCode] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<{ title: string; body: ReactNode } | null>(null);
+  // SPEC §1: switched-off rows are hidden by default, one click away, never deleted.
+  const [showSwitchedOff, setShowSwitchedOff] = useState(false);
 
 
   const load = useCallback(async () => {
@@ -114,7 +118,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
     );
   }
 
-  const groups = buildDataEntryAccordion(rows, applicable);
+  const visible = visibleAccordionRows(rows, showSwitchedOff);
+  const groups = buildDataEntryAccordion(visible.rows, applicable);
   const totals = accordionTotals(groups);
   const attentionRows = accordionAttentionRows(rows);
   const toggle = (code: string) => setOpen(current => {
@@ -140,6 +145,13 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             { id: "attention", label: <>Needs attention <span className="badge att">{totals.needsAttention}</span></> },
           ] satisfies TabDescriptor[]}
         />
+        {visible.switchedOff > 0 ? (
+          <label className="nz-acc-history">
+            <input type="checkbox" checked={showSwitchedOff} onChange={event => setShowSwitchedOff(event.target.checked)} />
+            {" "}Show switched-off history ({visible.switchedOff} row{visible.switchedOff === 1 ? "" : "s"})
+            <InfoTip label="Switched-off rows">Rows that are switched off — deactivated, superseded by a re-ingest, or v7 rows a re-ingest replaced. They are kept, never deleted, and are not in any total or the report.</InfoTip>
+          </label>
+        ) : null}
       </div>
 
       {/* Phase 3b: the client's reporting template — seed, or fill the gaps. It replaces JW-6's "Add rows from template"
@@ -204,10 +216,10 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                                     onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id, entry.category); } }}>
                                     <td>{row.sourceLabel}{row.assetIdentifier ? <div className="muted">ID / Ref: {row.assetIdentifier}</div> : null}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
                                     <td>{row.siteLabel ?? "Unallocated"}</td>
-                                    <td className="num">{row.quantity ?? "—"}</td>
+                                    <td className="num">{formatQuantity(row.quantity)}</td>
                                     <td>{row.unit ?? "—"}</td>
                                     <td>{row.factorLabel ?? <span className="nz-st nof">No factor</span>}</td>
-                                    <td className="num">{row.overrideTco2e ?? row.calculatedTco2e ?? "—"}</td>
+                                    <td className="num">{formatTonnes(row.overrideTco2e ?? row.calculatedTco2e)}</td>
                                     <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
                                   </tr>
                                 ))}
@@ -254,7 +266,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                                 <td>{row.sourceLabel}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
                                 <td>{row.categoryPath.slice(0, 2).join(" › ") || "—"}</td>
                                 <td>{row.siteLabel ?? "Unallocated"}</td>
-                                <td className="num">{row.overrideTco2e ?? row.calculatedTco2e ?? "—"}</td>
+                                <td className="num">{formatTonnes(row.overrideTco2e ?? row.calculatedTco2e)}</td>
                                 <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
                               </tr>
                             ))}
@@ -283,7 +295,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                               <tr key={row.id} tabIndex={0} className={`row${row.id === selectedRowId ? " sel" : ""}`}
                                 onClick={() => onOpenRow(row.id)}
                                 onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenRow(row.id); } }}>
-                                <td>{row.sourceLabel}</td>
+                                <td>{row.sourceLabel}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
                                 <td>{row.scope}</td>
                                 <td>{row.siteLabel ?? "Unallocated"}</td>
                                 <td>{row.factorLabel ?? <span className="nz-st nof">No factor</span>}</td>

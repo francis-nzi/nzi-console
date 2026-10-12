@@ -22,6 +22,16 @@ export function rowCategoryCode(row: ScopeRowReadModel): string | null {
   return TAXONOMY_CODES.has(code) ? code : null;
 }
 
+/**
+ * SPEC-review-surface-readiness §1: the category view shows the enabled rows by default. Switched-off rows — a reverted
+ * re-ingest's superseded rows, deactivated rows, v7 rows a re-ingest switched off — stay reachable behind a toggle and are never
+ * deleted. Totals are the server's and count enabled rows either way, so the toggle changes what is listed, never a figure.
+ */
+export function visibleAccordionRows(rows: ScopeRowReadModel[], showSwitchedOff: boolean): { rows: ScopeRowReadModel[]; switchedOff: number } {
+  const switchedOff = rows.filter(row => !row.enabled).length;
+  return { rows: showSwitchedOff ? rows : rows.filter(row => row.enabled), switchedOff };
+}
+
 export type AccordionCategory = {
   category: ApplicableCategory;
   rows: ScopeRowReadModel[];
