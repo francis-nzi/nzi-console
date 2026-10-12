@@ -607,6 +607,10 @@ jobs:
       # switched off, the snapshot gate opened only by a completed run, reported totals labelled, the allowances gated, revert.
       - name: A v7 job re-ingests as live rows that reproduce v7 exactly, and nobody else can write what the re-ingest may
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestReal.test.ts
+      # RULING-v7-reingest-row-protection 2: the revert finds its rows by their link, never their provenance, and is all or
+      # nothing — the J000663 case (provenance stripped by an edit) reverses whole; a short revert rolls back.
+      - name: The v7 re-ingest revert finds every row by its link and reverses all of them, or none
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestRevertReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
