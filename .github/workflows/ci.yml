@@ -615,6 +615,10 @@ jobs:
       # the remedy; gap resolution, approve/reject, the revert and the re-ingest's own create and re-run still go through.
       - name: A re-ingested row is attest-only, and review, the revert and the re-run still go through
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestRowGuardReal.test.ts
+      # The revert runner (scripts/v7-reingest-revert.ts): as policy:v7-reingest the system principal, so the guard exempts it; a
+      # dry run is the whole revert rolled back, reporting the counts read inside it; a reason required; --commit reverts all.
+      - name: The v7 re-ingest revert runner dry-runs by default, writes nothing, and its commit reverts every row
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestRevertRunnerReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked
