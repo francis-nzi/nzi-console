@@ -11,7 +11,8 @@
 //     winning, a lineage entry naming the move;
 //   - a row that cannot move as it is (its factor missing from the new edition, its unit changed, its scope dropped) blocks
 //     its series until a person resolves it — a factor in the new edition, or deactivated — and a register-managed row
-//     blocks it outright (re-pointing sources is a named follow-up);
+//     blocks it outright (re-pointing sources is a named follow-up), and so does a re-ingested row: it keeps v7's own vintage
+//     and is attest-only (RULING-v7-reingest-row-protection 1), so neither a move nor a resolution reaches it;
 //   - a job with an issued snapshot or a published report moves only with a reason: the issued figures stay as they were.
 // One audit event for the run, as scope.row.rollforward: the series, the rows (ids and counts) and the job's total before
 // and after — emissions figures, no money, rates or person (NZC-120).
@@ -22,7 +23,7 @@ import { VersionConflictError } from "./errors";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, recalculateScopeRowInTransaction, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 
-export type BlockReason = "FACTOR_MISSING" | "UNIT_CHANGED" | "SCOPE_DROPPED" | "SOURCE_MANAGED";
+export type BlockReason = "FACTOR_MISSING" | "UNIT_CHANGED" | "SCOPE_DROPPED" | "SOURCE_MANAGED" | "REINGESTED";
 export type UpdateRow = { rowId: string; version: number; label: string; factorLabel: string | null; reviewStatus: string; hasOverride: boolean; recalculated: boolean };
 export type BlockedRow = { rowId: string; version: number; label: string; scope: string; unit: string | null; factorLabel: string | null; reason: BlockReason;
   /** Factors in the new edition this row could take instead — same scope, same unit — for the preview's inline resolution. */
@@ -42,7 +43,7 @@ export type JobDatasetUpdatePreview = { jobId: string; issued: boolean; series: 
   untouched: { migrated: number; clientFactor: number } };
 
 type RowRecord = { scope_row_id: string; version: number; scope: string; unit: string | null; quantity: string | null; factor_id: string | null; factor_label: string | null;
-  source_label: string; report_label: string | null; review_status: string; override_tco2e: string | null; source_id: string | null };
+  source_label: string; report_label: string | null; review_status: string; override_tco2e: string | null; source_id: string | null; reingested_from_row_id: string | null };
 
 const jobTotal = async (db: Queryable, organisationId: string, jobId: string) => Number((await db.query<{ total: string }>(
   `SELECT coalesce(sum(coalesce(override_tco2e, calculated_tco2e, 0)) FILTER (WHERE enabled), 0)::text AS total FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2`,
@@ -55,7 +56,7 @@ const hasIssued = async (db: Queryable, organisationId: string, jobId: string) =
 
 async function planSeries(db: Queryable, organisationId: string, jobId: string, update: DatasetUpdate, resolutions: CommandInputMap["job.datasets.update"]["resolutions"]): Promise<SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }>; versions: Map<string, number> }> {
   const { rows } = await db.query<RowRecord>(
-    `SELECT scope_row_id, version, scope, unit, quantity::text AS quantity, factor_id, factor_label, source_label, report_label, review_status, override_tco2e::text AS override_tco2e, source_id
+    `SELECT scope_row_id, version, scope, unit, quantity::text AS quantity, factor_id, factor_label, source_label, report_label, review_status, override_tco2e::text AS override_tco2e, source_id, reingested_from_row_id
        FROM nzi_console.job_scope_rows
       WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND factor_source = 'dataset' AND dataset_id = $3
       ORDER BY scope_row_id FOR UPDATE`, [organisationId, jobId, update.fromDatasetId]);
@@ -69,7 +70,7 @@ async function planSeries(db: Queryable, organisationId: string, jobId: string, 
     const top = row.scope.split(".")[0]!;
     const resolution = resolutions.find((item) => item.rowId === row.scope_row_id);
     const block = async (reason: BlockReason) => {
-      const candidates = reason === "SOURCE_MANAGED" ? [] : (await db.query<{ factor_id: string; label: string; activity_unit: string }>(
+      const candidates = reason === "SOURCE_MANAGED" || reason === "REINGESTED" ? [] : (await db.query<{ factor_id: string; label: string; activity_unit: string }>(
         `SELECT factor_id, label, activity_unit FROM nzi_console.emission_factors_display
           WHERE organisation_id = $1 AND dataset_id = $2 AND active = true AND $3 = ANY(scopes) AND ($4::text IS NULL OR lower(activity_unit) = lower($4))
           ORDER BY (lower(label) = lower($5)) DESC, lower(label), factor_id LIMIT 50`,
@@ -78,6 +79,8 @@ async function planSeries(db: Queryable, organisationId: string, jobId: string, 
     };
     // A register-managed row follows its source; re-pointing sources is a named follow-up (ruling 7), so it blocks.
     if (row.source_id) { await block("SOURCE_MANAGED"); continue; }
+    // Known by its link, never its provenance; checked before any resolution, which would be a write to it.
+    if (row.reingested_from_row_id) { await block("REINGESTED"); continue; }
     if (resolution?.action === "deactivate") { plan.deactivated.push(row.scope_row_id); continue; }
     const factorId = resolution?.action === "factor" ? resolution.factorId! : row.factor_id;
     const target = factorId ? await factorIn(factorId) : null;

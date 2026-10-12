@@ -827,6 +827,28 @@ async function refuseMigratedRow(db: Queryable, organisationId: string, jobId: s
       message: `This row is migrated from NZ Insights Pro v7 and is kept exactly as v7 recorded it, so it cannot be ${act} here. Its figure and review status are v7's (decisions 4 and 7).` }]);
 }
 
+/**
+ * RULING-v7-reingest-row-protection 1: a re-ingested row reproduces v7's record of account, so in review it is attest-only —
+ * its gaps resolved, then approved or rejected — and no other write reaches it. The remedy for a wrong one is the revert and a
+ * re-run with a corrected plan, never an edit in place. Known by `reingested_from_row_id`, the link only the re-ingest writes —
+ * never by its provenance, which an edit could rewrite (the J000663 finding). Only the re-ingest itself (`policy:v7-reingest`
+ * as the system principal, as `refuseUnlessReingest`) is exempt: its own calculate on create, and the revert's deactivate.
+ */
+export const REINGESTED_ROW_ATTEST_ONLY = "REINGESTED_ROW_ATTEST_ONLY";
+export const isV7ReingestPrincipal = (context: Pick<CommandContext, "actorId" | "principal">) =>
+  context.actorId === V7_REINGEST_ACTOR && context.principal === "system";
+export const reingestedRowMessage = (act: string) =>
+  `This row was re-ingested from NZ Insights Pro v7 and reproduces v7's record of account, so it can't be ${act}. In review it is attest-only: resolve its gaps, then approve or reject it. To change it, revert the re-ingest and re-run it with a corrected plan.`;
+export async function refuseReingestedRow(db: Queryable, context: CommandContext, jobId: string, rowId: string, act: string): Promise<void> {
+  if (isV7ReingestPrincipal(context)) return;
+  const found = await db.query<{ reingested_from_row_id: string | null }>(
+    "SELECT reingested_from_row_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3",
+    [context.organisationId, jobId, rowId],
+  );
+  if (found.rows[0]?.reingested_from_row_id)
+    throw new CommandValidationError([{ field: "rowId", code: REINGESTED_ROW_ATTEST_ONLY, message: reingestedRowMessage(act) }]);
+}
+
 export async function requireCrpJob(
   db: Queryable,
   organisationId: string,
@@ -1640,6 +1662,7 @@ export async function updateScopeRow(
     async (db) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
       await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "edited");
+      await refuseReingestedRow(db, context, input.jobId, input.rowId, "edited");
       const rollup=await db.query<{group_id:string|null;site_id:string|null}>(`SELECT group_id,site_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3`,[context.organisationId,input.jobId,input.rowId]);
       if(rollup.rows[0]?.group_id)throw new CommandValidationError([{field:"rowId",code:"GROUP_ROLLUP",message:"This row is a group roll-up — edit its member sources, then roll the group up again."}]);
       await requireSiteForJob(db,context.organisationId,input.jobId,input.siteId??null,rollup.rows[0]?.site_id??null);
@@ -1739,6 +1762,7 @@ export type CalculateScopeRowResult = {
 export async function recalculateScopeRowInTransaction(db: Queryable, input: CommandInputMap["scope.row.calculate"], context: CommandContext, extraLineage: Array<{ title: string; detail: string }> = []): Promise<CommandResult<CalculateScopeRowResult>> {
   await requireCrpJob(db, context.organisationId, input.jobId);
   await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "recalculated");
+  await refuseReingestedRow(db, context, input.jobId, input.rowId, "recalculated");
   const found = await db.query<{
     version: number;
     quantity: string | null;

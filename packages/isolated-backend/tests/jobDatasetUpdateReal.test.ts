@@ -154,6 +154,21 @@ describe("job.datasets.update: move to the reporting year's edition, previewed t
     assert.deepEqual((await withTenantRead(database.pool, ORG, (db) => jobDatasetUpdates(db, ORG, jobId))).map((u) => u.fromDatasetId), ["nzi-gb-2026"], "the banner now offers NZI only");
   });
 
+  it("RULING-v7-reingest-row-protection 1: a re-ingested row blocks its series, offers nothing, and a resolution does not reach it", async () => {
+    await scopeRow("v7-origin", { scope: "1", quantity: 100, unit: "kWh", calculated_tco2e: 0.02, enabled: false, origin: "migrated", source_system: "nzi-pro-v7", legacy_db_id: "h2",
+      migrated_record: { qty: 100, uom: "kWh", factor: 0.2, ghg_unit: "kg", original_id: "g", reported_tco2e: 0.02, data_source: "manual", enabled: true } });
+    // Known by its link only: its provenance carries nothing of the re-ingest (as an edited J000663 row's did not).
+    await scopeRow("reingested", { dataset_id: "nzi-gb-2026", factor_id: "nzi-x", quantity: 100, unit: "kWh", calculated_tco2e: 0.021, reingested_from_row_id: "v7-origin" });
+    const before = await row("reingested");
+    const nzi = (await preview(["nzi-gb-2026"], [{ rowId: "reingested", action: "deactivate" }])).series[0]!;
+    const blocked = nzi.blocked.find((r) => r.rowId === "reingested")!;
+    assert.deepEqual([blocked.reason, blocked.candidates], ["REINGESTED", []], "it keeps v7's own vintage: no factor offered");
+    assert.ok(!nzi.deactivated.includes("reingested"), "a deactivate resolution does not reach it");
+    await assert.rejects(() => updateJobDatasets(database.pool, { jobId, series: ["nzi-gb-2026"], expected: [], resolutions: [{ rowId: "reingested", action: "deactivate" }] }, ctx()), refusedWith("SERIES_BLOCKED"));
+    assert.deepEqual(await row("reingested"), before, "untouched");
+    await q(`UPDATE nzi_console.job_scope_rows SET dataset_id = NULL, factor_id = NULL WHERE scope_row_id = 'reingested'`);   // out of the series for the next test
+  });
+
   it("a job with issued figures moves only with a reason, and the issued snapshot is left as it was", async () => {
     await q(`UPDATE nzi_console.job_scope_rows SET source_id = NULL WHERE scope_row_id = 'sourced'`);   // unblock NZI for this test
     await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)

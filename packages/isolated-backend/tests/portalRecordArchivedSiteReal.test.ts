@@ -119,4 +119,23 @@ describe("the portal's record writes and acceptance refuse a new citation of an 
     await accept({ queueId: queued!.queue_id, version: queued!.submitted_version });
     assert.equal(await rowSite("row-open"), depot, "acceptance");
   });
+
+  it("RULING-v7-reingest-row-protection 1: acceptance onto a re-ingested row is refused, naming the remedy; the row is untouched", async () => {
+    await db.query(
+      `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,quantity,unit,calculated_tco2e,enabled,origin,migrated_record,source_system,legacy_db_id)
+       VALUES ($1,'v7-origin',$2,'1','Gas','Gas','v7','v7',10,'kWh',0.002,false,'migrated',$3::jsonb,'nzi-pro-v7','v7-origin')`,
+      [ORG, JOB, JSON.stringify({ qty: 10, uom: "kWh", factor: 0.2, ghg_unit: "kgCO2e", original_id: "7_x", reported_tco2e: 0.002, data_source: "Company Data", enabled: true })]);
+    // Linked, with nothing of the re-ingest in its provenance: the guard reads the link.
+    await db.query(
+      `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,category_code,reingested_from_row_id)
+       VALUES ($1,'row-reingested',$2,'1','Gas','Gas','Scope 1','Gas','1.natural-gas','v7-origin')`, [ORG, JOB]);
+    const bucket = (await setPortalDataEntryBucketGrant(database.pool, staff, {
+      portalUserId: USER, jobId: JOB, scopeRowId: "row-reingested", entryKind: "manual_activity", factorIds: ["gas-demo"], siteIds: [office] })).bucketGrantId;
+    const saved = await createPortalDataEntryRecord(database.pool, portal, JOB, entry(bucket, office));
+    const submitted = await submitPortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version);
+    const rowNow = async () => (await db.query(`SELECT version, quantity, site_id, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id='row-reingested'`)).rows[0];
+    const before = await rowNow();
+    await assert.rejects(() => accept(submitted), /re-ingested from NZ Insights Pro v7.*revert the re-ingest and re-run it with a corrected plan/);
+    assert.deepEqual(await rowNow(), before);
+  });
 });

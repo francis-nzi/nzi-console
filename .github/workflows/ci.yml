@@ -611,6 +611,10 @@ jobs:
       # nothing — the J000663 case (provenance stripped by an edit) reverses whole; a short revert rolls back.
       - name: The v7 re-ingest revert finds every row by its link and reverses all of them, or none
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestRevertReal.test.ts
+      # RULING-v7-reingest-row-protection 1: a re-ingested row (known by its link) is attest-only — every write refused, naming
+      # the remedy; gap resolution, approve/reject, the revert and the re-ingest's own create and re-run still go through.
+      - name: A re-ingested row is attest-only, and review, the revert and the re-run still go through
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestRowGuardReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked

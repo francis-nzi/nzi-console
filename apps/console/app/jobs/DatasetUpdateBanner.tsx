@@ -15,6 +15,7 @@ const REASONS: Record<string, string> = {
   UNIT_CHANGED: "its factor's unit changed in the new edition",
   SCOPE_DROPPED: "its factor no longer covers this scope",
   SOURCE_MANAGED: "it is managed by an emission-register source — move the source first",
+  REINGESTED: "it was re-ingested from v7 and keeps v7's own factor — it can't be moved or deactivated here",
 };
 const tonnes = (value: number) => `${value.toLocaleString("en-GB", { maximumFractionDigits: 3 })} tCO₂e`;
 type Resolution = { rowId: string; action: "factor" | "deactivate"; factorId?: string | null };
@@ -104,7 +105,7 @@ function UpdateDrawer({ jobId, updates, onClose }: { jobId: string; updates: Dat
             <p className="nz-hint">These rows can&rsquo;t move as they are — give each a factor in {update.toLabel}, or deactivate it:</p>
             {plan.blocked.map((row) => <div key={row.rowId} className="nz-update-row">
               <div><b>{row.label}</b> <span className="muted">· {REASONS[row.reason] ?? row.reason}</span></div>
-              {row.reason === "SOURCE_MANAGED" ? null : <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              {row.reason === "SOURCE_MANAGED" || row.reason === "REINGESTED" ? null : <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <select className="nz-sel" aria-label={`Factor in ${update.toLabel} for ${row.label}`} defaultValue="" onChange={(e) => e.target.value && resolve({ rowId: row.rowId, action: "factor", factorId: e.target.value })}>
                   <option value="">Pick a factor in {update.toLabel}…</option>
                   {row.candidates.map((factor) => <option key={factor.factorId} value={factor.factorId}>{factor.label} · {factor.unit}</option>)}
