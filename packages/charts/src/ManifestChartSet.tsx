@@ -15,7 +15,7 @@ import { SrsPillarRadar } from "./SrsPillarRadar";
 import { SrsMaturityBullets } from "./SrsMaturityBullets";
 import { SrsGapHeatmap } from "./SrsGapHeatmap";
 import { SrsReadinessTrend } from "./SrsReadinessTrend";
-import { validateManifest, type ReportManifest } from "./manifest";
+import { validateManifest, type ManifestContext, type ReportManifest } from "./manifest";
 import { tokens } from "./tokens";
 import type { AnyChartData, EmissionsByActivityData, IntensityBasesIndexedData, IntensityPathwayData, LcaHotspotsBarData, LcaModuleDonutData, LcaStageBarData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData, SrsGapHeatmapData, SrsMaturityBulletsData, SrsPillarRadarData, SrsReadinessTrendData, TrainingAttendanceData } from "./types";
 
@@ -30,17 +30,22 @@ type Props = {
    * suppressed in `@media print` by `.nzc-print-safe`.
    */
   printSafe?: boolean;
+  /** The report's own plan and years (R4/R5): charts its plan leaves out, or a single year cannot have, are absent, not blockers. */
+  context?: ManifestContext;
 };
 
 /** The only chart-assembly path for reports, PDFs and published portal results. */
-export function ManifestChartSet({ manifest, charts, reviewedSnapshotId, showSectionHeadings = true, printSafe = false }: Props) {
-  const validation = validateManifest(manifest, charts, reviewedSnapshotId);
+export function ManifestChartSet({ manifest, charts, reviewedSnapshotId, showSectionHeadings = true, printSafe = false, context = {} }: Props) {
+  const validation = validateManifest(manifest, charts, reviewedSnapshotId, context);
   if (!validation.valid) return <div role="alert" style={blocked}><b>Graphics unavailable — publication blocked.</b><ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>{validation.issues.map((issue, index) => <li key={`${issue.chartId}-${index}`}>{issue.message}</li>)}</ul></div>;
   const byId = new Map(charts.map((chart) => [chart.spec.id, chart]));
   return <div data-report-manifest={manifest.id} data-manifest-version={manifest.version} data-reviewed-snapshot={reviewedSnapshotId}>
     {manifest.sections.map((section) => <section key={section.id} style={{ marginBottom: 24 }}>
       {showSectionHeadings && <header style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 18, color: tokens.ink.primary }}>{section.title}</h3>{section.description && <p style={{ margin: "4px 0 0", fontSize: 12.5, color: tokens.ink.secondary }}>{section.description}</p>}</header>}
-      <div className={`nz-chart-manifest-grid${section.layout === "two-column" ? " two-column" : ""}`}>{section.chartIds.map((id) => <ChartFromManifest key={id} chart={byId.get(id)!} printSafe={printSafe} />)}</div>
+      <div className={`nz-chart-manifest-grid${section.layout === "two-column" ? " two-column" : ""}`}>{section.chartIds.filter((id) => byId.has(id)).map((id) => <ChartFromManifest key={id} chart={byId.get(id)!} printSafe={printSafe} />)}</div>
+      {validation.absent.filter((absence) => section.chartIds.includes(absence.chartId)).map((absence) => <p key={absence.chartId} data-chart-absent={absence.chartId} style={absentNote}>{absence.reason === "single-year"
+        ? "Annual comparison appears once this client has reviewed snapshots for at least two reporting years."
+        : `Not in this report: the ${absence.reportSection} section is left out.`}</p>)}
     </section>)}
   </div>;
 }
@@ -75,6 +80,7 @@ function ChartFromManifest({ chart, printSafe = false }: { chart: AnyChartData; 
   return <div>{printSafe && <div style={printSafeRow}><PrintSafeBadge /></div>}{graphic}<details style={evidence}><summary style={evidenceSummary}>View chart evidence</summary><div style={evidenceGrid}><span>Reviewed snapshot<b>{chart.provenance.reviewedSnapshotId}</b></span><span>Data identity<b>{chart.provenance.dataHash}</b></span><span>Factor sources<b>{chart.provenance.factorSets.join(" · ")}</b></span><span>Specification<b>v{chart.spec.specVersion} · resolver v{chart.provenance.resolverVersion}</b></span></div></details></div>;
 }
 
+const absentNote: CSSProperties = { margin: "6px 0 0", fontSize: 12, color: tokens.ink.secondary };
 const blocked: CSSProperties = { border: `1px solid ${tokens.brand.coral}`, background: "#FFF1EF", color: tokens.ink.primary, borderRadius: 10, padding: 16, fontSize: 12.5 };
 const printSafeRow: CSSProperties = { display: "flex", justifyContent: "flex-end", marginBottom: 6 };
 const printSafeStyle: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 999, border: `1px solid ${tokens.line}`, background: tokens.brand.mint, color: tokens.brand.pine, fontSize: 10, fontWeight: 650, letterSpacing: "0.02em", fontFamily: tokens.font };

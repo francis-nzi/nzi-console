@@ -94,7 +94,13 @@ function LiveSnapshotPreview({
   const sites=charts.find(chart=>chart.spec.type==="emissions_site_donut") as SiteDonutData|undefined;
   const intensity=charts.find(chart=>chart.spec.type==="intensity_pathway") as IntensityPathwayData|undefined;
   const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
-  const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id);
+  // R5: the annual comparison is judged against the snapshot's own years; R4: a chart drawn in a section the report can leave
+  // out is a blocker only while that section is in — so the validation step below can clear it by leaving the section out.
+  const reportingYears=Math.max(1,snapshot.annualComparison?.length??1);
+  const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id,{reportingYears});
+  const sectionOf=new Map(crpProfessionalManifest.charts.map(chart=>[chart.id,chart.reportSection]));
+  const sectionNeeds=validation.issues.filter(issue=>issue.code==="missing_required_chart"&&sectionOf.get(issue.chartId)).map(issue=>({chartId:issue.chartId,section:sectionOf.get(issue.chartId)!}));
+  const otherBlockers=validation.issues.filter(issue=>!(issue.code==="missing_required_chart"&&sectionOf.get(issue.chartId))).map(issue=>issue.message);
   // The frame (JobPrepareFrame) supplies the canvas and the chrome; this is the sheet.
   return (
       <section className="nz-preview-sheet">
@@ -118,11 +124,14 @@ function LiveSnapshotPreview({
           {purchasedGoods&&<PurchasedGoodsBreakdown data={purchasedGoods}/>}
         </div>
         <div className="nz-section-intro"><div><span className="nz-eyebrow">Controlled release</span><h2>Professional manifest validation</h2><p>The validator creates an immutable version before any client publication can occur.</p></div></div>
-        <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} ready={validation.valid} choices={reportScopeChoices(snapshot)}/>
+        <ReportValidationAction snapshotId={snapshot.id} manifestVersion={crpProfessionalManifest.version} sectionNeeds={sectionNeeds} otherBlockers={otherBlockers} choices={reportScopeChoices(snapshot)}/>
         <ManifestChartSet
           manifest={crpProfessionalManifest}
           charts={charts}
           reviewedSnapshotId={snapshot.id}
+          // The evidence below shows the report as it can be validated: the sections this snapshot cannot fill are out (the gate
+          // above makes leaving them out the preparer's explicit choice; the server judges the plan actually chosen).
+          context={{reportingYears,excludedSections:[...new Set(sectionNeeds.map(need=>need.section))]}}
         />
       </section>
   );

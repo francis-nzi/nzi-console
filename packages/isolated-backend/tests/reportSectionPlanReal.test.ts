@@ -208,4 +208,57 @@ describe("a report's section plan and the client's report profile (F-1), against
     assert.equal(frozen.find((entry) => entry.key === "plan")!.included, false, "the published report froze the plan section out");
     assert.equal(frozen.find((entry) => entry.key === "srs")!.included, true, "the update replaced the profile's plan; it did not merge with it");
   });
+
+  describe("RULING-report-studio-consolidation R4/R5: a first-year client — one reporting year, no target, no intensity", () => {
+    /** J000663's shape: one year, so no annual comparison; no reduction target; no intensity target. */
+    const firstYearSnapshot = async (): Promise<string> => {
+      snapshots += 1;
+      const snapshotId = `plan-first-${snapshots}`;
+      const payload = { jobNumber: "J000663", client: "Plan Co", reportingYear: 2025,
+        measurements: [
+          { rowId: `fr-${snapshots}`, scope: "1", scopeCode: "1", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Gas", tco2e: 43.4, qualityTier: "measured", factorSet: "demo" },
+          { rowId: `fg-${snapshots}`, scope: "3", scopeCode: "3.1", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Goods", tco2e: 20, qualityTier: "estimated", factorSet: "demo",
+            purchasedGoodsCategoryId: "pg", purchasedGoodsCategoryLabel: "Materials" }],
+        annualComparison: [{ year: 2025, values: [{ scope: "1", value: 43.4 }] }] };
+      await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
+               VALUES ($1, $2, $3, $4, 1, $5, $6::jsonb, 'prep', 'rev', now())`, [ORG, snapshotId, JOB, snapshots, `sha256:${createHash("sha256").update(snapshotId).digest("hex")}`, JSON.stringify(payload)]);
+      return snapshotId;
+    };
+    const firstYearPlan = defaultReportSectionPlan.map((entry) => entry.key === "intensity" || entry.key === "targets" ? { ...entry, included: false } : entry);
+    const fieldsOf = (error: unknown) => ((error as { issues?: Array<{ field: string }> }).issues ?? []).map((issue) => issue.field);
+
+    it("R5: the annual comparison is never a blocker for one year; R4: the target and intensity charts block only while their sections are in", async () => {
+      const snap = await firstYearSnapshot();
+      await assert.rejects(validate(snap, defaultReportSectionPlan), (error) => {
+        assert.deepEqual(fieldsOf(error).sort(), ["intensity_pathway", "reduction_pathway"], "only the two charts whose sections are in; never scope_year_on_year_bar");
+        assert.ok(codesOf(error).every((code) => code === "MISSING_REQUIRED_CHART"));
+        assert.match((error as { issues: Array<{ message: string }> }).issues.map((issue) => issue.message).join(" "), /Leave the "targets" section out of this report/);
+        return true;
+      });
+    });
+
+    it("with Intensity and Targets left out at validate, the first-year report validates — and they stay out", async () => {
+      const validated = await validate(await firstYearSnapshot(), firstYearPlan);
+      assert.equal(validated.data.status, "validated");
+      const row = await versionRow(validated.data.reportVersionId);
+      const included = (key: string) => row.section_plan!.find((entry) => entry.key === key)!.included;
+      assert.deepEqual([included("intensity"), included("targets"), included("emissions"), included("sites")], [false, false, true, true]);
+    });
+
+    it("a section cannot be put back into a report its snapshot cannot fill; reordering the rest still can", async () => {
+      const validated = await validate(await firstYearSnapshot(), firstYearPlan);
+      const putBack = firstYearPlan.map((entry) => entry.key === "targets" ? { ...entry, included: true } : entry);
+      await assert.rejects(updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: putBack }, context("rev", "reviewer")),
+        (error) => fieldsOf(error).includes("reduction_pathway") && codesOf(error).includes("MISSING_REQUIRED_CHART"));
+      assert.equal((await versionRow(validated.data.reportVersionId)).version, 1, "nothing changed");
+      const sitesOut = firstYearPlan.map((entry) => entry.key === "sites" ? { ...entry, included: false } : entry);
+      const updated = await updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: sitesOut }, context("rev", "reviewer"));
+      assert.equal(updated.data.version, 2);
+    });
+
+    it("a two-year snapshot with a target still validates with Targets left out: nothing is required of a section that is out", async () => {
+      const validated = await validate(await snapshot(), firstYearPlan);
+      assert.equal(validated.data.status, "validated");
+    });
+  });
 });

@@ -13,7 +13,7 @@ import {
 } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
-import { CommandValidationError, requireReleasableSnapshot, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
+import { CommandValidationError, requireReleasableSnapshot, runPostgresCommand, validateCrpSnapshotManifest, type CrpSnapshotForManifest, type StoredOutcome } from "./postgresCommands";
 import { normaliseReportSectionPlan, readActiveReportProfile, readLatestReportProfile } from "./reportSectionPlanRecords";
 export * from "./reportSectionPlanRecords";
 
@@ -99,13 +99,16 @@ export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["
     if (!row) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Report version was not found." }]);
     if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
     if (row.status !== "validated") throw new CommandValidationError([{ field: "reportVersionId", code: "PRECONDITION", message: "Only a validated report's sections can be reordered — a published report is fixed as it was issued." }]);
-    const source = (await db.query<{ created_by: string; approved_by: string | null }>(
-      `SELECT created_by, approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`,
+    const source = (await db.query<{ created_by: string; approved_by: string | null } & CrpSnapshotForManifest>(
+      `SELECT created_by, approved_by, job_id, data_hash, created_at, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`,
       [context.organisationId, row.reviewed_snapshot_id])).rows[0];
     if (!source) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Reviewed snapshot was not found." }]);
     requireReleasableSnapshot(context, source);
     const plan = normaliseReportSectionPlan(input.sectionPlan);
     requireValidSectionPlan(plan);
+    // R4: a section cannot be put back into a report whose snapshot cannot fill its charts — the same check validate makes.
+    const manifest = validateCrpSnapshotManifest(row.reviewed_snapshot_id, source, plan);
+    if (!manifest.valid) throw new CommandValidationError(manifest.issues.map((issue) => ({ field: issue.chartId, code: issue.code.toUpperCase(), message: issue.message })));
     const origin = reportSectionPlanOrigin(plan, await readActiveReportProfile(db, context.organisationId, row.client_id));
     const updated = await db.query<{ version: number }>(
       `UPDATE nzi_console.report_versions SET section_plan = $3::jsonb, section_plan_origin = $4, version = version + 1

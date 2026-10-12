@@ -136,7 +136,8 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
 
       {charts.length ? (
         <div className="nz-portal-dash-charts">
-          <ManifestChartSet manifest={manifest} charts={charts} reviewedSnapshotId={snapshotId} />
+          {/* R5: the resolver draws the annual comparison only from two reporting years, so its absence here is a single year. */}
+          <ManifestChartSet manifest={manifest} charts={charts} reviewedSnapshotId={snapshotId} context={{ reportingYears: charts.some((chart) => chart.spec.type === "scope_year_on_year_bar") ? 2 : 1 }} />
         </div>
       ) : null}
 

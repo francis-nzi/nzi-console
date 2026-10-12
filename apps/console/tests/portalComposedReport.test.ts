@@ -123,6 +123,7 @@ describe("the portal shows the issued report, and a left-out section is absent e
     // `portalDashboardHonoursReport`; here only that it still reads its figures from the published report.
     const dashboard = read("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx");
     assert.match(dashboard, /fetch\(`\/api\/portal\/jobs\/\$\{jobId\}\/published-report`/);
-    assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} \/>/, "through the manifest view F-4c draws with");
+    // RULING-report-studio-consolidation R5: with the snapshot's years, so a single-year client's annual comparison is absent, not blocking.
+    assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} context=\{\{ reportingYears: /, "through the manifest view F-4c draws with");
   });
 });

@@ -50,7 +50,8 @@ describe("the composed report per scope (S-2)", () => {
     const action = read("apps/console/app/report-preview/ReportValidationAction.tsx");
     const selector = read("apps/console/app/report-preview/ReportScopeSelector.tsx");
     const page = read("apps/console/app/report-preview/page.tsx");
-    assert.match(action, /\{reviewedSnapshotId:snapshotId,manifestVersion,scope\}/);
+    // The scope always; the section plan too when the preparer chose one before validating (RULING-report-studio-consolidation R4).
+    assert.match(action, /\{reviewedSnapshotId:snapshotId,manifestVersion,scope,\.\.\.\(planEdited\?\{sectionPlan:plan\}:\{\}\)\}/);
     assert.match(action, /disabled=\{!ready\|\|!scopeReady\|\|pending!==null\}/, "a site scope with no site cannot be validated");
     assert.match(page, /choices=\{reportScopeChoices\(snapshot\)\}/);
     assert.match(selector, /reportScopeSummary\(choices, scope\)/, "the summary says what a site view excludes");
