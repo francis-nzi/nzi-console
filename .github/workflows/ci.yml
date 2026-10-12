@@ -623,6 +623,10 @@ jobs:
       # history); only the record-of-account gaps resolved, never overwriting; the preparer refused; all or nothing; D7.2 re-checked.
       - name: A re-ingest run's rows are attested in one reviewed act, and the freeze gate opens
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestAttestReal.test.ts
+      # RULING-v7-reingest-full-record: each live row carries its v7 row's site, data confidence, column text and months (from the
+      # v7 row, never the plan); SITE_NOT_USABLE / MONTHS_DO_NOT_FIT refuse, named; D7 per site and per carried field.
+      - name: The re-ingest carries the full v7 record, and D7 reconciles per site
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestFullRecordReal.test.ts
       # JW-14: a draft with no saved data is discarded (audited); a row with data is deactivated — reason required,
       # figures kept — and reactivated; a v7 row is locked; a paired or register-managed row is in use.
       - name: A draft row discards, a row with data deactivates with a reason, and v7 rows stay locked

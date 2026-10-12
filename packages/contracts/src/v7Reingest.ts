@@ -113,11 +113,18 @@ export function v7ReingestPlanIssues(input: V7ReingestJobInput): CommandIssue[] 
   return issues;
 }
 
+/**
+ * The v7 data-row fields the re-ingest carries onto each live row (RULING-v7-reingest-full-record), read from the stored v7 row:
+ * its site (null = v7 named none, so Unallocated), its data confidence, its column text, and its monthly slots positioned on the
+ * job's reporting months (null where v7 had none). The live row must equal them, field by field.
+ */
+export type V7CarriedFields = { siteId: string | null; dataConfidence: string | null; columnText: string | null; months: Array<number | null> | null };
+
 export type V7ReingestPostconditionInput = {
-  /** v7's enabled rows before the run: id, scope, figure. */
-  v7Rows: Array<{ rowId: string; scope: string; v7Tco2e: number }>;
-  /** The live rows the run wrote, with the figure the console now holds for each (coalesce(override, calculated)). */
-  liveRows: Array<{ rowId: string; reingestedFrom: string; scope: string; tco2e: number | null; enabled: boolean }>;
+  /** v7's enabled rows before the run: id, scope, figure, and the fields the run carries. */
+  v7Rows: Array<{ rowId: string; scope: string; v7Tco2e: number } & V7CarriedFields>;
+  /** The live rows the run wrote, with the figure the console now holds for each (coalesce(override, calculated)), and their fields. */
+  liveRows: Array<{ rowId: string; reingestedFrom: string; scope: string; tco2e: number | null; enabled: boolean } & V7CarriedFields>;
   /** Migrated rows of the job still enabled after the run. */
   enabledMigratedAfter: number;
 };
@@ -129,7 +136,10 @@ const topScope = (scope: string) => scope.split(".")[0]!;
  * D7: what every run must meet before it may commit — checked inside the transaction (and by the dry run). Each failure is
  * named; any one fails the run and rolls the whole job back.
  *  1a. Σ live = Σ v7 (the job total); 1b. Σ live = Σ v7 per scope (condition 4: a total that matches by offsetting scopes
- *      does not pass); 2. every live row reproduces its v7 row; 3. one live row per v7 row, and no v7 row left enabled.
+ *      does not pass); 1c. Σ live = Σ v7 per site, Unallocated its own bucket (RULING-v7-reingest-full-record);
+ *  2. every live row reproduces its v7 row — its figure, and each carried field (site, data confidence, column text, monthly
+ *     slots), so two rows that swap sites with equal figures do not pass where the per-site totals alone would;
+ *  3. one live row per v7 row, and no v7 row left enabled.
  */
 export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInput): string[] {
   const misses: string[] = [];
@@ -144,6 +154,12 @@ export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInpu
     const got = sum(live.filter((row) => topScope(row.scope) === scope).map((row) => row.tco2e ?? 0));
     if (!withinV7Tolerance(got, v7)) misses.push(`scope ${scope}: live ${got.toFixed(6)} t ≠ v7 ${v7.toFixed(6)} t`);
   }
+  const siteOf = (siteId: string | null) => siteId ?? "unallocated";
+  for (const site of [...new Set([...input.v7Rows.map((r) => siteOf(r.siteId)), ...live.map((r) => siteOf(r.siteId))])].sort()) {
+    const v7 = sum(input.v7Rows.filter((row) => siteOf(row.siteId) === site).map((row) => row.v7Tco2e));
+    const got = sum(live.filter((row) => siteOf(row.siteId) === site).map((row) => row.tco2e ?? 0));
+    if (!withinV7Tolerance(got, v7)) misses.push(`site ${site}: live ${got.toFixed(6)} t ≠ v7 ${v7.toFixed(6)} t`);
+  }
   const linked = new Map<string, number>();
   for (const row of live) {
     linked.set(row.reingestedFrom, (linked.get(row.reingestedFrom) ?? 0) + 1);
@@ -152,12 +168,27 @@ export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInpu
     if (row.tco2e === null) misses.push(`row ${row.rowId}: no figure`);
     else if (!withinV7Tolerance(row.tco2e, v7.v7Tco2e)) misses.push(`row ${row.rowId}: ${row.tco2e} t ≠ v7 ${v7.v7Tco2e} t`);
     if (topScope(row.scope) !== topScope(v7.scope)) misses.push(`row ${row.rowId}: scope ${row.scope} ≠ v7's ${v7.scope}`);
+    for (const field of v7CarriedFieldMisses(v7, row)) misses.push(`row ${row.rowId}: ${field}`);
   }
   for (const v7 of input.v7Rows) {
     const n = linked.get(v7.rowId) ?? 0;
     if (n !== 1) misses.push(`v7 row ${v7.rowId}: ${n} live rows (exactly one expected)`);
   }
   if (input.enabledMigratedAfter !== 0) misses.push(`${input.enabledMigratedAfter} v7 row(s) still enabled`);
+  return misses;
+}
+
+/** Each carried field the live row does not equal its v7 source in, named (an empty list when it carries the record). */
+export function v7CarriedFieldMisses(v7: V7CarriedFields, live: V7CarriedFields): string[] {
+  const misses: string[] = [];
+  const show = (value: unknown) => (value === null ? "none" : JSON.stringify(value));
+  if (live.siteId !== v7.siteId) misses.push(`site ${show(live.siteId)} ≠ v7's ${show(v7.siteId)}`);
+  if (live.dataConfidence !== v7.dataConfidence) misses.push(`data confidence ${show(live.dataConfidence)} ≠ v7's ${show(v7.dataConfidence)}`);
+  if (live.columnText !== v7.columnText) misses.push(`column text ${show(live.columnText)} ≠ v7's ${show(v7.columnText)}`);
+  const months = (value: Array<number | null> | null) => (value ?? []).map((slot) => slot ?? null);
+  const a = months(live.months), b = months(v7.months);
+  if (a.length !== b.length || a.some((slot, index) => (slot === null) !== (b[index] === null) || (slot !== null && Math.abs(slot - (b[index] as number)) > 1e-9)))
+    misses.push(`monthly activity ${show(live.months)} ≠ v7's ${show(v7.months)}`);
   return misses;
 }
 
