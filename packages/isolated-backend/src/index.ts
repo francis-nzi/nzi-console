@@ -121,6 +121,7 @@ export * from "./geolocation";
 export * from "./clientTargets";
 export * from "./scopeRowState";
 export * from "./v7Reingest";
+export * from "./reingestAttest";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./reportSectionPlans";

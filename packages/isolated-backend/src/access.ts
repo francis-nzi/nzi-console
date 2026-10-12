@@ -195,6 +195,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "report.section.reset": job,
   "report.section.regenerate": job,
   "assurance.gap.resolve": job,
+  "scope.review.attest_reingest": job,
   "emissions.target.upsert": job,
   "site.create": (input) => input.jobId ? { kind: "job", id: input.jobId } : { kind: "client", id: input.clientId ?? "" },
   "site.edit": site,

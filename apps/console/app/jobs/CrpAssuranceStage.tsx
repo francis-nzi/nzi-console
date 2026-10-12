@@ -19,7 +19,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { postBrowserCommand } from "@nzi/api-client";
+import { postBrowserCommand, postBrowserCommandWithReason } from "@nzi/api-client";
+import type { ReingestAttestationPlan, ReingestAttestationResult } from "@nzi/isolated-backend";
 import { Drawer, GatedButton, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 import {
   percentVsBaseline,
@@ -322,6 +323,8 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
       {!drawerOpen && <button ref={reopenRef} type="button" className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data assurance {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
     </div>
 
+    <ReingestAttestPanel jobId={jobId} readKey={data} onAttested={onReload} />
+
     <SignOffPanel jobId={jobId} canSignOff={canSignOff} openGaps={openGaps} pendingReview={pendingReview} onSignedOff={onReload} />
 
     <AssuranceDrawer
@@ -450,6 +453,78 @@ function RowReview({ jobId, row, onReviewed }: { jobId: string; row: AssuranceAu
  *  and "all enabled rows approved" (pendingReview), both already read by this
  *  surface. The freeze is the existing report.snapshot.create/reviewed-snapshots
  *  endpoint, unforked — it now also enforces the gap half of this gate itself. */
+/**
+ * RULING-reingest-bulk-attest (D7): one reviewer's attestation over a re-ingest run's rows — shown only when the job has a
+ * completed re-ingest with something left to attest. It previews first (the act's own plan, read-only) and says exactly what the
+ * act will and will not do: the rows it approves, the record-of-account gaps it resolves, what it skips and what it leaves for an
+ * individual Resolve. A reason is required. Re-previewed whenever the surface re-reads, so it never offers a stale plan; the act
+ * itself refuses anything that moved since (CHANGED_SINCE_PREVIEW).
+ */
+function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; readKey: unknown; onAttested: () => void }) {
+  const [plan, setPlan] = useState<ReingestAttestationPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const base = `/api/isolated/jobs/${jobId}/reingest-attestation`;
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const response = await fetch(`${base}/preview`, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() }, body: "{}" });
+        const body = await response.json();
+        if (!live) return;
+        if (!response.ok) { setPlan(null); setError(body?.issues?.[0]?.message ?? body?.message ?? "The attestation preview could not be read."); return; }
+        setPlan(body as ReingestAttestationPlan); setError(null);
+      } catch { if (live) setError("The attestation preview could not be read."); }
+    })();
+    return () => { live = false; };
+  }, [base, readKey]);
+
+  async function attest() {
+    if (!plan?.runId || busy || !reason.trim()) return;
+    setBusy(true); setError(null);
+    const result = await postBrowserCommandWithReason<ReingestAttestationResult>(base,
+      { runId: plan.runId, rows: plan.attest.map((row) => ({ rowId: row.rowId, expectedReviewVersion: row.version })), gapKeys: plan.gaps.map((gap) => gap.gapKey) },
+      crypto.randomUUID(), reason.trim());
+    setBusy(false);
+    if (result.state !== "success") { setError(result.state === "validation_failed" ? result.issues[0]?.message ?? result.message : result.message); onAttested(); return; }
+    setDone(`Attested — ${result.data.approved} row${result.data.approved === 1 ? "" : "s"} approved, ${result.data.gapsResolved} record-of-account gap${result.data.gapsResolved === 1 ? "" : "s"} resolved.`);
+    setReason("");
+    onAttested();
+  }
+
+  if (done && (!plan || (plan.attest.length === 0 && plan.gaps.length === 0))) return <div className="nz-assurance-signoff"><div className="nz-banner ok" role="status">{done}</div></div>;
+  if (!plan) return error ? <div className="nz-assurance-signoff"><div className="nz-banner warn" role="alert">{error}</div></div> : null;
+  if (!plan.runId || (plan.attest.length === 0 && plan.gaps.length === 0 && plan.blocked.length === 0)) return null;
+  const zeros = plan.gaps.filter((gap) => gap.flag === "zero_blank").length, totals = plan.gaps.length - zeros;
+  const blockedReason = plan.reviewerRefusal ?? (plan.blocked.length ? `${plan.blocked.length} row${plan.blocked.length === 1 ? "" : "s"} cannot be attested — see below` : !reason.trim() ? "A reason is required" : undefined);
+  return <div className="nz-assurance-signoff nz-attest" aria-label="Attest re-ingested rows">
+    <div className="nz-sect">Attest re-ingested rows</div>
+    <p style={{ fontSize: 13, margin: "4px 0 8px" }}>
+      &ldquo;I attest that these <b>{plan.attest.length}</b> row{plan.attest.length === 1 ? "" : "s"} reproduce NZ Insights Pro v7 exactly, verified by re-ingest D7.2.&rdquo;
+      {" "}Each is recorded as your own approval. Nothing is edited.
+    </p>
+    <ul className="muted" style={{ fontSize: 12, margin: "0 0 8px", paddingLeft: 18 }}>
+      <li><b>{plan.attest.length}</b> pending row{plan.attest.length === 1 ? "" : "s"} approved{plan.skippedApproved ? <> · {plan.skippedApproved} already approved, left as they are</> : null}</li>
+      <li><b>{plan.gaps.length}</b> record-of-account gap{plan.gaps.length === 1 ? "" : "s"} resolved{plan.gaps.length ? <> ({zeros ? `${zeros} where v7 recorded zero` : ""}{zeros && totals ? ", " : ""}{totals ? `${totals} v7 reported total` : ""})</> : null}{plan.skippedResolvedGaps ? <> · {plan.skippedResolvedGaps} already resolved, kept</> : null}</li>
+      {plan.excludedRejected.length ? <li>{plan.excludedRejected.length} rejected row{plan.excludedRejected.length === 1 ? "" : "s"} excluded — review {plan.excludedRejected.length === 1 ? "it" : "them"} individually: {plan.excludedRejected.map((row) => row.label).join(", ")}</li> : null}
+      {plan.otherOpenGaps.length ? <li>{plan.otherOpenGaps.length} other open gap{plan.otherOpenGaps.length === 1 ? "" : "s"} not touched — each needs its own Resolve</li> : null}
+    </ul>
+    {plan.blocked.length ? <div className="nz-banner warn" role="alert"><div><b>Cannot attest while these rows fail a check:</b>
+      <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{plan.blocked.map((row) => <li key={row.rowId}>{row.label} — {row.reasons.join("; ")}</li>)}</ul></div></div> : null}
+    <textarea className="nz-notes" style={{ width: "100%" }} value={reason} onChange={(event) => setReason(event.target.value)} rows={2}
+      aria-label="Attestation reason" placeholder="Reason (required) — e.g. reconciled to v7 at job, scope and row level" />
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+      <GatedButton className="nz-btn pri" blocked={busy || !!blockedReason} blockedReason={!busy ? blockedReason : undefined} reasonClassName="muted nz-gated-reason"
+        aria-busy={busy || undefined} onClick={() => void attest()}>{busy ? "Attesting…" : `Attest ${plan.attest.length} row${plan.attest.length === 1 ? "" : "s"}`}</GatedButton>
+    </div>
+    {error ? <div className="nz-banner warn" role="alert" style={{ marginTop: 8 }}>{error}</div> : null}
+    {done ? <div className="nz-banner ok" role="status" style={{ marginTop: 8 }}>{done}</div> : null}
+  </div>;
+}
+
 function SignOffPanel({ jobId, canSignOff, openGaps, pendingReview, onSignedOff }: { jobId: string; canSignOff: boolean; openGaps: number; pendingReview: number; onSignedOff: () => void }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
