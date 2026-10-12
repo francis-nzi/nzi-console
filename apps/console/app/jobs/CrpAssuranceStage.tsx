@@ -18,6 +18,7 @@
 // existing QA_INCOMPLETE check.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { postBrowserCommand } from "@nzi/api-client";
 import { Drawer, GatedButton, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
 import {
@@ -29,6 +30,8 @@ import {
   type AssuranceTrend,
   type AssuranceTrendYear,
 } from "@nzi/contracts";
+import { formatQuantity } from "../lib/formatNumber";
+import { filterAuditRows, filterGaps, worklistCounts, type GapFilter, type Worklist } from "./assuranceWorklist";
 
 type Tab = "trend" | "scope" | "site" | "audit" | "intensity";
 type Screen = "loading" | "failed" | "ready";
@@ -66,6 +69,23 @@ export function CrpAssuranceStage({ jobId, onGoToRow }: { jobId: string; onGoToR
     }
   }, [jobId]);
   useEffect(() => { void load(); }, [load]);
+  // SPEC §2: after a decision (approve, reject, resolve, sign-off) the surface re-reads in place — it stays mounted, so the
+  // drawer and the selected row stay put — and the page's server data (the Step 3 "pending · approved" counter, the register,
+  // the category view) is refreshed with it, so every count moves without a reload. A failed re-read keeps the last good data
+  // and says so, rather than blanking the surface.
+  const router = useRouter();
+  const refresh = useCallback(async () => {
+    router.refresh();
+    try {
+      const response = await fetch(`/api/isolated/jobs/${jobId}/assurance`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message ?? "The assurance surface could not be refreshed.");
+      setData(body as AssuranceScreen);
+      setDegraded(null);
+    } catch (error) {
+      setDegraded(error instanceof Error ? error.message : "The assurance surface could not be refreshed.");
+    }
+  }, [jobId, router]);
 
   if (state === "loading") {
     return <section className="nz-panel nz-config-panel" aria-busy><div className="nz-register-loading" role="status"><i /><span><b>Loading data assurance</b><small>Five-year trend and the integrity gap engine…</small></span></div></section>;
@@ -75,11 +95,17 @@ export function CrpAssuranceStage({ jobId, onGoToRow }: { jobId: string; onGoToR
     return <section className="nz-panel nz-config-panel"><div className="nz-banner warn" role="alert"><div><b>Data assurance is unavailable</b><div>{degraded}</div></div></div><button className="nz-btn" onClick={() => void load()}>Retry</button></section>;
   }
 
-  return <AssuranceSurface jobId={jobId} data={data} tab={tab} onTab={setTab} onReload={load} onGoToRow={onGoToRow} />;
+  return <>
+    {degraded ? <div className="nz-banner warn" role="alert"><div>{degraded} The figures below are from the last successful read.</div></div> : null}
+    <AssuranceSurface jobId={jobId} data={data} tab={tab} onTab={setTab} onReload={() => void refresh()} onGoToRow={onGoToRow} />
+  </>;
 }
 
 function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jobId: string; data: AssuranceScreen; tab: Tab; onTab: (t: Tab) => void; onReload: () => void; onGoToRow?: (rowId: string) => void }) {
   const { trend, gaps, auditRows } = data;
+  const [worklist, setWorklist] = useState<Worklist>("todo");
+  const counts = worklistCounts(auditRows, gaps.gaps);
+  const shownAuditRows = filterAuditRows(auditRows, gaps.gaps, worklist);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const openRowDetail = (rowId: string) => { setSelectedRowId(rowId); setDrawerOpen(true); };
@@ -91,7 +117,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
   const current = trend.years.find((year) => year.kind === "current");
   const baseline = trend.years.find((year) => year.kind === "baseline");
   const openGaps = gaps.openCount;
-  const pendingReview = auditRows.filter((row) => row.reviewStatus !== "approved").length;
+  const pendingReview = counts.awaitingReview;
   const canSignOff = auditRows.length > 0 && openGaps === 0 && pendingReview === 0;
 
   const gapsByScopeCode = useMemo(() => {
@@ -248,15 +274,23 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
     </TabPanel>
 
     <TabPanel id="audit" idBase="assurance" active={tab === "audit"} className="nz-assurance-scroll">
-      <p className="sub">Row-level lineage — every enabled canonical row with its factor, activity, quality tier, confidence and review state.</p>
+      <p className="sub">Row-level lineage — every enabled canonical row with its factor, activity, quality tier, confidence and review state. A row is <b>done</b> once it is approved and none of its own gaps is open.</p>
+      <div className="nz-assurance-worklist" role="group" aria-label="Working list">
+        <span className="nz-seg">
+          {([["todo", `To do (${counts.todo})`], ["done", `Done (${counts.done})`], ["all", `All (${auditRows.length})`]] as const).map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={worklist === id} className={worklist === id ? "on" : undefined} onClick={() => setWorklist(id)}>{label}</button>
+          ))}
+        </span>
+        <span className="muted" role="status">{counts.awaitingReview} awaiting review · {counts.approved} approved · {counts.openGaps} gap{counts.openGaps === 1 ? "" : "s"} open</span>
+      </div>
       <table className="nz-tbl">
         <thead><tr><th>Category</th><th>Activity / factor</th><th className="num">Qty</th><th>Quality</th><th>Conf.</th><th>Site</th><th>Review</th></tr></thead>
         <tbody>
-          {auditRows.map((row) => (
+          {shownAuditRows.map((row) => (
             <tr key={row.rowId} className={`nz-audit-row${row.factorLabel ? "" : " nz-flagged"}`} tabIndex={0} onClick={() => openRowDetail(row.rowId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openRowDetail(row.rowId); } }}>
               <td>{row.category}</td>
               <td>{row.factorLabel ?? <span className="muted">no factor selected</span>}<div className="muted">{row.sourceLabel}</div></td>
-              <td className="num">{row.quantity == null ? "—" : `${row.quantity.toLocaleString("en-GB")}${row.unit ? ` ${row.unit}` : ""}`}</td>
+              <td className="num">{row.quantity == null ? "—" : `${formatQuantity(row.quantity)}${row.unit ? ` ${row.unit}` : ""}`}</td>
               <td>{row.qualityTier ?? "—"}</td>
               <td>{row.dataConfidence ?? "—"}</td>
               <td>{row.siteLabel}</td>
@@ -264,6 +298,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
             </tr>
           ))}
           {auditRows.length === 0 && <tr><td colSpan={7} className="nz-table-empty">No enabled rows yet.</td></tr>}
+          {auditRows.length > 0 && shownAuditRows.length === 0 && <tr><td colSpan={7} className="nz-table-empty">{worklist === "todo" ? "Nothing left to do — every row is approved with its gaps resolved." : "No rows are done yet."}</td></tr>}
         </tbody>
       </table>
     </TabPanel>
@@ -320,6 +355,9 @@ function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelect
   useEffect(() => { if (selectedRowId) setSegment("row"); }, [selectedRowId]);
   const selectedRow = selectedRowId ? auditRows.find((row) => row.rowId === selectedRowId) ?? null : null;
   const openCount = gaps.filter((gap) => !gap.resolved).length;
+  // SPEC §2: a resolved gap leaves the open list; it stays reachable under "Resolved".
+  const [gapFilter, setGapFilter] = useState<GapFilter>("open");
+  const shownGaps = filterGaps(gaps, gapFilter);
 
   return <Drawer open={open} onClose={onClose} ariaLabel="Data assurance detail" className="nz-assurance-drawer">
     <div className="nz-assurance-drawer-h">
@@ -340,9 +378,17 @@ function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelect
     </TabPanel>
 
     <TabPanel id="gaps" idBase="assurance-drawer" active={segment === "gaps"}>
+      {gaps.length > 0 && <div className="nz-assurance-worklist" role="group" aria-label="Gaps shown">
+        <span className="nz-seg">
+          {([["open", `Open (${openCount})`], ["resolved", `Resolved (${gaps.length - openCount})`], ["all", `All (${gaps.length})`]] as const).map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={gapFilter === id} className={gapFilter === id ? "on" : undefined} onClick={() => setGapFilter(id)}>{label}</button>
+          ))}
+        </span>
+      </div>}
       <ol className="nz-assurance-gaps">
-        {gaps.map((gap) => <GapCard key={gap.key} jobId={jobId} gap={gap} onSelectRow={onSelectRow} onResolved={onResolved} />)}
+        {shownGaps.map((gap) => <GapCard key={gap.key} jobId={jobId} gap={gap} onSelectRow={onSelectRow} onResolved={onResolved} />)}
         {gaps.length === 0 && <li className="nz-assurance-gap-empty">No integrity gaps — the dataset is complete, consistent and fully costed.</li>}
+        {gaps.length > 0 && shownGaps.length === 0 && <li className="nz-assurance-gap-empty">{gapFilter === "open" ? "No open gaps — every gap is resolved with a reason." : "No resolved gaps yet."}</li>}
       </ol>
       <p className="nz-assurance-drawer-note">This is the workspace&rsquo;s shared detail drawer — selecting any row shows its evidence here. By default it lists the assurance gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row&rsquo;s provenance so sign-off is defensible.</p>
     </TabPanel>
@@ -354,7 +400,7 @@ function RowDetail({ jobId, row, onEditRow, onReviewed }: { jobId: string; row: 
     <div className="nz-kv"><span className="k">Category</span><span className="v">{row.category}</span></div>
     <div className="nz-kv"><span className="k">Activity</span><span className="v">{row.sourceLabel}</span></div>
     <div className="nz-kv"><span className="k">Factor</span><span className="v">{row.factorLabel ?? "No factor selected"}</span></div>
-    <div className="nz-kv"><span className="k">Quantity</span><span className="v">{row.quantity == null ? "—" : `${row.quantity.toLocaleString("en-GB")}${row.unit ? ` ${row.unit}` : ""}`}</span></div>
+    <div className="nz-kv"><span className="k">Quantity</span><span className="v">{row.quantity == null ? "—" : `${formatQuantity(row.quantity)}${row.unit ? ` ${row.unit}` : ""}`}</span></div>
     <div className="nz-kv"><span className="k">Quality tier</span><span className="v">{row.qualityTier ?? "—"}</span></div>
     <div className="nz-kv"><span className="k">Data confidence</span><span className="v">{row.dataConfidence ?? "—"}</span></div>
     <div className="nz-kv"><span className="k">Site</span><span className="v">{row.siteLabel}</span></div>
