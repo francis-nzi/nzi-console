@@ -23,7 +23,8 @@ export default async function ReportCompositionPreviewPage({ params }: { params:
         <b>Preview — not issued.</b> Composed {formatDateTime(data.preview.previewedAt)} from this version&rsquo;s frozen snapshot and section plan, exactly as publishing
         would issue it. Nothing here is stored or sent; publishing freezes the report.
       </div>
-      <ReportComposedView composition={data.preview.composition} />
+      {/* B1: a composed@3 preview says so on its cover and Methodology page, rather than an issue date it does not have. */}
+      <ReportComposedView composition={data.preview.composition} preview />
     </>
     : <main className="report-canvas"><section className="nz-empty"><h1>Nothing to preview</h1>
       <p>Only a validated report version has a composed preview. A published version is the issued report itself.</p>

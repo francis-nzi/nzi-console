@@ -9,6 +9,20 @@ import type {
 } from "./types";
 
 export const CRP_RESOLVER_VERSION = 1;
+/** B1 (`composed@3`): resolver v2 — "Largest emissions activities" aggregated per activity. Opt-in; v1 stays the default. */
+export const CRP_RESOLVER_AGGREGATED = 2;
+
+/** One bar per activity: rows of the same scope and activity label summed, largest first; ties by label. */
+function activitiesByLabel(rows: ReviewedCrpSnapshotCore["measurements"]): EmissionsByActivityData["activities"] {
+  const byActivity = new Map<string, EmissionsByActivityData["activities"][number]>();
+  for (const row of rows) {
+    const label = row.sourceLabel.trim() || "Unlabelled activity", key = `${row.scope}|${label}`;
+    const current = byActivity.get(key) ?? { id: `${row.scope}:${label}`, label, scope: row.scope, value: 0 };
+    current.value += row.tco2e;
+    byActivity.set(key, current);
+  }
+  return [...byActivity.values()].sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+}
 export type ReviewedScopeMeasurement = {
   scope: "1" | "2" | "3";
   tco2e: number;
@@ -236,9 +250,16 @@ export function resolveCrpCharts(
   ];
 }
 
+/**
+ * The CRP chart set from a reviewed snapshot. `resolverVersion` 1 (the default) is what every surface and `composed@2` has
+ * always drawn; 2 (`composed@3`, B1) draws "Largest emissions activities" as one bar per activity — the rows sharing an
+ * activity and scope summed — rather than one bar per measurement row. Nothing else differs between them.
+ */
 export function resolveCrpCoreCharts(
   snapshot: ReviewedCrpSnapshotCore,
+  options: { resolverVersion?: typeof CRP_RESOLVER_VERSION | typeof CRP_RESOLVER_AGGREGATED } = {},
 ): AnyChartData[] {
+  const resolverVersion = options.resolverVersion ?? CRP_RESOLVER_VERSION;
   const factorSets = Array.from(
       new Set(
         snapshot.measurements.map((row) => row.factorSet).filter(Boolean),
@@ -257,7 +278,7 @@ export function resolveCrpCoreCharts(
     factorSets,
     generatedAt: snapshot.generatedAt,
     reviewedSnapshotId: snapshot.id,
-    resolverVersion: CRP_RESOLVER_VERSION,
+    resolverVersion,
     tokensVersion: TOKENS_VERSION,
     rendererVersion: RENDERER_VERSION,
   };
@@ -307,14 +328,16 @@ export function resolveCrpCoreCharts(
       state,
       stateMessage:
         state === "empty" ? "No reviewed activities are available." : undefined,
-      activities: [...snapshot.measurements]
-        .sort((a, b) => b.tco2e - a.tco2e)
-        .map((row) => ({
-          id: row.rowId,
-          label: row.sourceLabel,
-          scope: row.scope,
-          value: row.tco2e,
-        })),
+      activities: resolverVersion === CRP_RESOLVER_AGGREGATED
+        ? activitiesByLabel(snapshot.measurements)
+        : [...snapshot.measurements]
+          .sort((a, b) => b.tco2e - a.tco2e)
+          .map((row) => ({
+            id: row.rowId,
+            label: row.sourceLabel,
+            scope: row.scope,
+            value: row.tco2e,
+          })),
       provenance,
     },
   ];

@@ -158,3 +158,11 @@
 .report-preview-band{position:sticky;top:0;z-index:5;max-width:900px;margin:0 auto 12px;padding:10px 14px;border:1px solid #FFC24B;border-radius:10px;background:#FFF7E3;color:#0B1B2B;font-size:13px}
 .report-preview-band b{margin-right:4px}
 @media print{.report-preview-band{position:static;border-width:2px}}
+
+/* B1 (composed@3): the audit appendix closing Methodology — dense, scrolls within itself on a narrow screen, and in print its
+   header repeats on every page and no row splits across two (as the R5a appendix's). */
+.nzr-audit{margin-top:6px;overflow-x:auto}
+.nzr-audit-tbl{font-size:11px}
+.nzr-audit-tbl th,.nzr-audit-tbl td{padding:6px 8px}
+.nzr-audit-tbl td:last-child{white-space:nowrap}
+@media print{.nzr-audit{overflow:visible}.nzr-audit-tbl thead{display:table-header-group}.nzr-audit-tbl tr{break-inside:avoid}}

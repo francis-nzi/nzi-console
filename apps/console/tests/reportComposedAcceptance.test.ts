@@ -106,7 +106,8 @@ describe("the composed report", () => {
   });
 
   it("carries provenance beside the figures, not only on a back page", () => {
-    assert.match(view, /function Provenance\(\{ provenance \}/);
+    // B1: composed@3 passes its frozen source summary; composed@1/2 pass none and draw the section's factor sets, as issued.
+    assert.match(view, /function Provenance\(\{ provenance, summary \}/);
     assert.match(view, /Evidence hash \{provenance\.dataHash\}/);
     // Every data section that has provenance renders it.
     const uses = (view.match(/<Provenance provenance=/g) ?? []).length;

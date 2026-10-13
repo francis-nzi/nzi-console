@@ -727,6 +727,10 @@ jobs:
       # ONLY transaction and stored nowhere; a published version is never re-composed.
       - name: A validated report version previews the composition publish would freeze, storing nothing
         run: npx tsx --test packages/isolated-backend/tests/reportCompositionPreviewReal.test.ts
+      # B1 (composed@3; REVIEW-report-srcline-and-B1-rulings): a report composed now freezes its sources (the stamp's datasets
+      # by id) and its audit appendix (cut to its scope) — no upload file name, no quantity — and the preview composes the same.
+      - name: A report composed now freezes its sources by dataset id and its audit appendix, and is drawn composed@3
+        run: npx tsx --test packages/isolated-backend/tests/reportComposed3Real.test.ts
       # Reporting F-1b: the read models behind the editors — the workspace's report profile, a version's plan with the version
       # publish pins, the register's version — and getClientWorkspace serial on the tenant client (§13, guarded).
       - name: The section-plan editors read the profile and the version they publish, and the client workspace stays serial

@@ -1,4 +1,5 @@
 import {
+  CRP_RESOLVER_AGGREGATED,
   EmissionsByActivity,
   EmissionsScopeDonut,
   EmissionsSiteDonut,
@@ -89,7 +90,8 @@ function LiveSnapshotPreview({
       purchasedGoodsCategoryId:row.purchasedGoodsCategoryId,
       purchasedGoodsCategoryLabel:row.purchasedGoodsCategoryLabel,
     })),
-  }), snapshotSourceSummary(snapshot));
+  // B1: "Largest emissions activities" one bar per activity (resolver v2), as the composed@3 report it prepares draws it.
+  }, { resolverVersion: CRP_RESOLVER_AGGREGATED }), snapshotSourceSummary(snapshot));
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
   const activities=charts.find(chart=>chart.spec.type==="emissions_by_activity") as EmissionsByActivityData;
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;
