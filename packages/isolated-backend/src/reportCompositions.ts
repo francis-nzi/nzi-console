@@ -553,3 +553,22 @@ export const issuerOf = (row: Partial<IssuerColumns>): ReportIssuer | null => !r
   displayName: row.issuer_display_name, shortName: row.issuer_short_name ?? row.issuer_display_name,
   footer: row.issuer_footer ?? row.issuer_display_name, logoAssetId: row.issuer_logo_asset_id ?? null,
 };
+
+/** What a validated version would issue, composed now and stored nowhere — the composed preview (RULING-report-studio-consolidation B0). */
+export type ReportCompositionPreview = { composition: ReportComposition; previewedAt: string; status: "validated" };
+
+/**
+ * The composed preview of a **validated** version: the very composition `report.publish` would freeze — the same
+ * `composeForReportVersion`, from the same version, snapshot and plan — built on read and **stored nowhere**. Run it inside
+ * `withTenantRead` (a READ ONLY transaction), so nothing it touches can be written. A published version is read back from its
+ * frozen composition instead, never re-composed; any other status has nothing to preview (null).
+ */
+export async function previewReportComposition(db: Queryable, input: { organisationId: string; reportVersionId: string; now?: Date }): Promise<ReportCompositionPreview | null> {
+  const version = (await db.query<{ status: string }>(
+    `SELECT status FROM nzi_console.report_versions WHERE organisation_id = $1 AND report_version_id = $2`,
+    [input.organisationId, input.reportVersionId])).rows[0];
+  if (!version || version.status !== "validated") return null;
+  const previewedAt = (input.now ?? new Date()).toISOString();
+  const composition = await composeForReportVersion(db, { organisationId: input.organisationId, reportVersionId: input.reportVersionId, issuedAt: previewedAt });
+  return { composition, previewedAt, status: "validated" };
+}

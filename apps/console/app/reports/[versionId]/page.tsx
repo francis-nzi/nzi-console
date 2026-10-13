@@ -24,7 +24,7 @@ export default async function ReportVersionPage({params}:{params:Promise<{versio
     const composed=await loadScreen<{composition:ReportComposition|null}>("reportComposition",{composition:null},`report-versions/${versionId}/composition`);
     return <ScreenState result={composed}>{data=>data.composition
       ?<ReportComposedView composition={data.composition}/>
-      :<main className="report-canvas"><section className="nz-empty"><h1>This report version has not been issued</h1><p>A report freezes what it says at the moment it is issued. Until then there is nothing fixed to show — the live figures are on the client workspace.</p><a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;
+      :<main className="report-canvas"><section className="nz-empty"><h1>This report version has not been issued</h1><p>A report freezes what it says at the moment it is issued. Until then there is nothing fixed to show — the live figures are on the client workspace.</p><p>A validated version can be previewed as it would issue: composed from its frozen snapshot and plan, stored nowhere.</p><a className="nz-btn pri" href={`/reports/${encodeURIComponent(versionId)}/preview`}>Open the composed preview</a> <a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;
   }
   return <ScreenState result={result}>{data=>data.report
     ?<ReportVersion version={data.report}/>
