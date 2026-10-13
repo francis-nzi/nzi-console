@@ -62,6 +62,8 @@ export type FigureEvidence = {
   /** tCO₂e by tier, largest first — how a Mixed tier is made up. */
   tiers: Array<{ tier: QualityTier; tco2e: number }>;
   provenance: ProvenanceSignature | null;
+  /** How the drawer names the signature's factor sets — by dataset id, never an upload file name. Display only; absent without a signature. */
+  provenanceLabels?: ProvenanceLabels;
   lineage: Array<{ title: string; detail: string }>;
   source: FigureSource | null;
   /** Why the figure or its provenance is unavailable, or a qualifying note. */
@@ -120,8 +122,29 @@ export function provenanceFromSnapshot(snapshot: Snapshot): ProvenanceSignature 
 export function snapshotSourceSummary(snapshot: { jobNumber: string; provenance?: SnapshotProvenanceStamp | null }): string | null {
   const sets = snapshot.provenance?.factorSets ?? [];
   if (sets.length === 0) return null;
-  const labels = [...new Set(sets.map((set) => set.source === "dataset" ? datasetLabelFromId(set.id) : set.name))].sort((a, b) => a.localeCompare(b));
+  const labels = [...new Set(sets.map(stampedSetLabel))].sort((a, b) => a.localeCompare(b));
   return `Reviewed snapshot ${snapshot.jobNumber} · ${labels.join(" · ")}`;
+}
+
+/** A stamped factor set as a person knows it: a dataset by its id ("DESNZ GB 2026"), a client factor by its stamped name. */
+const stampedSetLabel = (set: SnapshotProvenanceStamp["factorSets"][number]): string => set.source === "dataset" ? datasetLabelFromId(set.id) : set.name;
+
+export type ProvenanceLabels = { factorSet: string; factorSetVersion: string };
+
+/**
+ * The evidence drawer's names for a signature's factor sets (ruled 13 Oct 2026, display only): the stamp's own entries,
+ * named by id — so a re-ingested job's upload file names (`tmpai4mgnde.csv`) are never shown. A dataset's edition is its
+ * id ("DESNZ GB 2026 · uk-ghg-gb-2026"), because its stamped version is that same file name; a client factor keeps its
+ * stamped name and version. Read-time only: nothing stored, and `provenanceFromSnapshot`'s signature is left exactly as is.
+ */
+export function provenanceLabelsFromSnapshot(snapshot: { provenance?: SnapshotProvenanceStamp | null }): ProvenanceLabels | null {
+  const sets = snapshot.provenance?.factorSets ?? [];
+  if (sets.length === 0) return null;
+  const sorted = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  return {
+    factorSet: sorted(sets.map(stampedSetLabel)).join(" · "),
+    factorSetVersion: sorted(sets.map((set) => set.source === "dataset" ? `${stampedSetLabel(set)} (${set.id})` : `${set.name} ${set.version}`)).join(" · "),
+  };
 }
 
 function tierMix(rows: ReadonlyArray<{ qualityTier: string; tco2e: number }>): { tier: FigureTier | null; tiers: FigureEvidence["tiers"] } {
@@ -171,8 +194,9 @@ export function resolveClientEmissionsEvidence(input: { current: Snapshot | null
     ...(period ? [{ title: "Reporting period", detail: `${ddmmyyyy(period.from)} to ${ddmmyyyy(period.to)}` }] : []),
     { title: "Rows", detail: `${rows.length} independently approved row${rows.length === 1 ? "" : "s"}${excluded ? ` · ${excluded} out-of-boundary row${excluded === 1 ? "" : "s"} excluded` : ""}` },
   ];
+  const provenanceLabels = provenance ? provenanceLabelsFromSnapshot(current) ?? undefined : undefined;
   const resolved = (value: number, unit: string, mix: ReturnType<typeof tierMix>, lineage: FigureEvidence["lineage"], note: string | null = provenanceNote): FigureEvidence =>
-    ({ state: "resolved", value, unit, qualityTier: mix.tier, tiers: mix.tiers, provenance, lineage, source, note });
+    ({ state: "resolved", value, unit, qualityTier: mix.tier, tiers: mix.tiers, provenance, ...(provenanceLabels ? { provenanceLabels } : {}), lineage, source, note });
 
   const total = sum(rows);
   const overall = tierMix(rows);
