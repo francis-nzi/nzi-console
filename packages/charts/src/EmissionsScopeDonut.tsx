@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { ScopeDonutData } from "./types";
 import { tokens, scopeColor } from "./tokens";
 import { annularSector, comma, compact, pct, f } from "./geometry";
+import { sourceTail, sourceText } from "./identity";
 
 type Props = {
   data: ScopeDonutData;
@@ -190,10 +191,11 @@ function Provenance({ data }: { data: ScopeDonutData }) {
     <p style={provStyle}>
       <span style={{ fontWeight: 600, color: tokens.ink.secondary }}>Source</span>
       {"  "}
-      {data.provenance.factorSets.join(" · ")}
+      {sourceText(data.provenance)}
       {data.provenance.quality ? ` · ${data.provenance.quality}` : ""}
       {" · as at "}
       {formatDate(data.provenance.generatedAt)}
+      {sourceTail(data.provenance)}
     </p>
   );
 }

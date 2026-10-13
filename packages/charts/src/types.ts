@@ -16,6 +16,12 @@ export type Provenance = {
   rendererVersion: number;
   quality?: DataQuality;
   signature?: ProvenanceSignature;
+  /**
+   * R3/R6 — the one source line a surface that holds the snapshot's stamp sets (`snapshotSourceSummary`): the snapshot
+   * and its datasets, by id-derived name. Absent, a chart names `factorSets` exactly as it always has — so a renderer
+   * that never sets it (composed@1/2, pinned under F-0) draws byte for byte as before.
+   */
+  sourceSummary?: string;
 };
 
 export type ChartSpec = {

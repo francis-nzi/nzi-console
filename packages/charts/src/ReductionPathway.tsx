@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { ReductionPathwayData, YearPoint } from "./types";
 import { tokens } from "./tokens";
 import { scaleLinear, niceTicks, points, comma, compact, f } from "./geometry";
+import { sourceTail, sourceText } from "./identity";
 import { formatDate } from "./EmissionsScopeDonut";
 
 type Props = {
@@ -234,9 +235,10 @@ export function ReductionPathway({ data, width, showChrome = true }: Props) {
       <p style={provStyle}>
         <span style={{ fontWeight: 600, color: tokens.ink.secondary }}>Source</span>
         {"  "}
-        {data.provenance.factorSets.join(" · ")}
+        {sourceText(data.provenance)}
         {" · as at "}
         {formatDate(data.provenance.generatedAt)}
+        {sourceTail(data.provenance)}
       </p>
     </figure>
   );

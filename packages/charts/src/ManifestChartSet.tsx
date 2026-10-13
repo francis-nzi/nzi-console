@@ -15,6 +15,7 @@ import { SrsPillarRadar } from "./SrsPillarRadar";
 import { SrsMaturityBullets } from "./SrsMaturityBullets";
 import { SrsGapHeatmap } from "./SrsGapHeatmap";
 import { SrsReadinessTrend } from "./SrsReadinessTrend";
+import { sourceText } from "./identity";
 import { validateManifest, type ManifestContext, type ReportManifest } from "./manifest";
 import { tokens } from "./tokens";
 import type { AnyChartData, EmissionsByActivityData, IntensityBasesIndexedData, IntensityPathwayData, LcaHotspotsBarData, LcaModuleDonutData, LcaStageBarData, PurchasedGoodsBreakdownData, ReductionPathwayData, ScopeDonutData, ScopeYearOnYearData, SiteDonutData, SrsGapHeatmapData, SrsMaturityBulletsData, SrsPillarRadarData, SrsReadinessTrendData, TrainingAttendanceData } from "./types";
@@ -77,7 +78,7 @@ function ChartFromManifest({ chart, printSafe = false }: { chart: AnyChartData; 
   else if (chart.spec.type === "srs_gap_heatmap") graphic=<SrsGapHeatmap data={chart as SrsGapHeatmapData}/>;
   else if (chart.spec.type === "srs_readiness_trend") graphic=<SrsReadinessTrend data={chart as SrsReadinessTrendData}/>;
   else return <div role="alert" style={blocked}>Unsupported chart type: {(chart as AnyChartData).spec.type}</div>;
-  return <div>{printSafe && <div style={printSafeRow}><PrintSafeBadge /></div>}{graphic}<details style={evidence}><summary style={evidenceSummary}>View chart evidence</summary><div style={evidenceGrid}><span>Reviewed snapshot<b>{chart.provenance.reviewedSnapshotId}</b></span><span>Data identity<b>{chart.provenance.dataHash}</b></span><span>Factor sources<b>{chart.provenance.factorSets.join(" · ")}</b></span><span>Specification<b>v{chart.spec.specVersion} · resolver v{chart.provenance.resolverVersion}</b></span></div></details></div>;
+  return <div>{printSafe && <div style={printSafeRow}><PrintSafeBadge /></div>}{graphic}<details style={evidence}><summary style={evidenceSummary}>View chart evidence</summary><div style={evidenceGrid}><span>Reviewed snapshot<b>{chart.provenance.reviewedSnapshotId}</b></span><span>Data identity<b>{chart.provenance.dataHash}</b></span><span>Factor sources<b>{sourceText(chart.provenance)}</b></span><span>Specification<b>v{chart.spec.specVersion} · resolver v{chart.provenance.resolverVersion}</b></span></div></details></div>;
 }
 
 const absentNote: CSSProperties = { margin: "6px 0 0", fontSize: 12, color: tokens.ink.secondary };

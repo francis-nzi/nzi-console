@@ -22,7 +22,7 @@ export { SrsReadinessTrend } from "./SrsReadinessTrend";
 
 export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, siteColor, moduleGroupColor, readableInkOn, srsMaturityColor, srsMaturityInk } from "./tokens";
-export { RENDERER_VERSION, chartAssetKey } from "./identity";
+export { RENDERER_VERSION, chartAssetKey, sourceTail, sourceText, withSourceSummary } from "./identity";
 export type { RenderTarget } from "./identity";
 export { validateManifest, assertPublishable } from "./manifest";
 export { verifyChartsAgainstSnapshot, verifyLcaChartsAgainstSnapshot } from "./verify";
