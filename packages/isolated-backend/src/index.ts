@@ -136,8 +136,8 @@ export {
   type UpdateStrategyResult, type UpsertStrategyResult,
 } from "./reductionStrategies";
 export {
-  composeReport, freezeReportComposition, getReportComposition,
-  type FreezeCompositionResult, type SnapshotForComposition,
+  composeReport, freezeReportComposition, getReportComposition, previewReportComposition,
+  type FreezeCompositionResult, type ReportCompositionPreview, type SnapshotForComposition,
 } from "./reportCompositions";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
