@@ -54,6 +54,12 @@ const SIGNATURE_LABELS: ReadonlyArray<[keyof ProvenanceSignature, string]> = [
   ["resolver", "Resolver"],
 ];
 
+/** A signature field as shown: the factor sets by their id-derived labels when the figure carries them (ruled 13 Oct 2026). */
+function signatureText(figure: FigureEvidence, key: keyof ProvenanceSignature): string {
+  if ((key === "factorSet" || key === "factorSetVersion") && figure.provenanceLabels) return figure.provenanceLabels[key];
+  return figure.provenance?.[key] ?? "";
+}
+
 function Kv({ label, children }: { label: string; children: ReactNode }) {
   return <div className="nz-kv"><span className="k">{label}</span><span className="v">{children}</span></div>;
 }
@@ -82,7 +88,7 @@ export function FigureEvidenceBody({ figure, context, scopes }: { figure: Figure
       </div>) : figure.qualityTier === "Mixed" ? <TierMix tiers={figure.tiers} /> : null}
       {provenance
         ? <>
-          {SIGNATURE_LABELS.map(([key, label]) => <Kv key={key} label={label}>{key === "asAtDate" ? formatDate(provenance.asAtDate) : provenance[key]}</Kv>)}
+          {SIGNATURE_LABELS.map(([key, label]) => <Kv key={key} label={label}>{key === "asAtDate" ? formatDate(provenance.asAtDate) : signatureText(figure, key)}</Kv>)}
           {isAssuredProvenance(provenance) ? null : <div className="nz-banner warn" role="status">{figure.note ?? "This stamp was reconstructed after issue — context, not assurance."}</div>}
         </>
         : <div className="nz-banner warn" role="status">{figure.note ?? "Provenance unavailable for this figure."}</div>}
