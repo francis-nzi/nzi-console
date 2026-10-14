@@ -1,0 +1,75 @@
+/* B2-1 (RULING-report-studio-B2): the Report Studio's chrome, to REPORT-STUDIO-design-reference.html — the sub-page tabs, the
+ * toolbar, the section rail and the stage around the composed document.
+ *
+ * Chrome only. The composed document (report-composed.css, .nzr-*) is the print/PDF target and is pinned; nothing here changes
+ * its markup. The two views restyle its pages from outside, on screen only (every rule sits under `.nzs-stage`, and print keeps
+ * the composed document's own rules): Continuous joins the pages with dashed "Page N break" guides; Page · A4 sets each page on
+ * an A4 sheet (794 × 1123 px at 96 dpi). Neither claims pagination fidelity — the issued PDF is the browser's print of the
+ * composed document. */
+.nzs-studio{--nzs-line:#E1E7E2;--nzs-ink:#0B1B2B;--nzs-ink-2:#3C4A43;--nzs-muted:#65746C;--nzs-surface:#FFFFFF;--nzs-surface-2:#F6F9F7;
+  --nzs-brand:#0BA75E;--nzs-brand-ink:#0B7A4B;--nzs-mint:#DFF5E9;--nzs-amber:#FFC24B;--nzs-sky:#3B8FD9;--nzs-sky-ink:#245F96;--nzs-sky-line:#BBD6EF;--nzs-sky-bg:#EEF5FC;
+  display:flex;flex-direction:column;gap:0;margin:-32px;min-height:calc(100vh - 56px);background:#EEF2F0}
+.nzs-subnav{display:flex;gap:4px;padding:10px 22px 0;background:var(--nzs-surface);border-bottom:1px solid var(--nzs-line)}
+.nzs-subnav-item{padding:9px 14px 10px;border-bottom:2px solid transparent;color:var(--nzs-ink-2);font-size:13px;font-weight:600;text-decoration:none}
+.nzs-subnav-item:hover{color:var(--nzs-ink)}
+.nzs-subnav-item.on{color:var(--nzs-brand-ink);border-bottom-color:var(--nzs-brand)}
+
+.nzs-toolbar{display:flex;align-items:center;gap:12px 14px;flex-wrap:wrap;padding:10px 22px;border-bottom:1px solid var(--nzs-line);background:var(--nzs-surface-2)}
+.nzs-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nzs-ctl-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--nzs-muted);font-weight:700}
+.nzs-hint{font-size:12px;color:var(--nzs-muted)}
+.nzs-spacer{margin-left:auto}
+.nzs-seg{display:inline-flex;background:var(--nzs-surface);border:1px solid var(--nzs-line);border-radius:9px;padding:3px;gap:2px}
+.nzs-seg>span,.nzs-seg>button{border:0;background:transparent;color:var(--nzs-ink-2);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:7px}
+.nzs-seg>button{cursor:pointer}
+.nzs-seg>.on{background:var(--nzs-ink);color:#fff}
+.nzs-seg[aria-disabled="true"]>span:not(.on){color:var(--nzs-muted)}
+.nzs-status{font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:999px;border:1px solid var(--nzs-line)}
+.nzs-status.preview{background:#FFF7E3;border-color:#FFC24B;color:#5C4300}
+.nzs-status.issued{background:var(--nzs-mint);border-color:#B8E6CC;color:var(--nzs-brand-ink)}
+
+.nzs-body{display:grid;grid-template-columns:236px minmax(0,1fr);flex:1;min-height:0}
+.nzs-rail{border-right:1px solid var(--nzs-line);background:var(--nzs-surface);padding:16px 12px;position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto}
+.nzs-rail-head{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--nzs-muted);font-weight:700;margin:2px 8px 10px}
+.nzs-rail-list{list-style:none;margin:0;padding:0}
+.nzs-rail-row{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:8px}
+.nzs-rail-row:hover{background:var(--nzs-surface-2)}
+.nzs-rail-row.off{opacity:.45}
+.nzs-rail-link{flex:1;display:flex;align-items:center;gap:9px;color:var(--nzs-ink-2);font:inherit;font-size:12.5px;cursor:pointer;border:0;background:transparent;text-align:left;min-width:0;padding:0}
+.nzs-rail-link:disabled{cursor:default}
+.nzs-rail-num{width:18px;font-size:10.5px;color:var(--nzs-muted);font-weight:700;text-align:right;flex:0 0 auto}
+.nzs-rail-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nzs-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;display:inline-block}
+.nzs-dot.default{background:#EEF2EF;border:1px solid var(--nzs-line)}
+.nzs-dot.edited{background:var(--nzs-amber)}
+.nzs-dot.ai{background:var(--nzs-sky)}
+.nzs-dot.locked{background:var(--nzs-brand)}
+.nzs-dot.none{background:transparent;border:1px dashed var(--nzs-line)}
+.nzs-switch{flex:0 0 auto;width:38px;height:20px;border-radius:999px;background:#C2CCD6;position:relative}
+.nzs-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.nzs-switch.on{background:var(--nzs-brand)}
+.nzs-switch.on::after{left:20px}
+.nzs-switch[aria-disabled="true"]{opacity:.8}
+.nzs-legend{list-style:none;margin:14px 8px 0;padding:12px 0 0;border-top:1px solid var(--nzs-line);display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--nzs-muted)}
+.nzs-legend li{display:flex;align-items:center;gap:8px}
+.nzs-rail-note{margin:12px 8px 0;font-size:11px;line-height:1.45;color:var(--nzs-muted)}
+
+.nzs-stage{min-width:0;padding:26px;overflow:auto}
+.nzs-stage>.report-preview-band{max-width:840px}
+.nzs-stage .nzr-doc{background:transparent;counter-reset:nzs-page}
+.nzs-stage .nzr-page{counter-increment:nzs-page}
+/* Continuous: one flowing paper, its pages separated by dashed guides naming the break. */
+.nzs-stage.mode-flow .nzr-doc{padding-top:0}
+.nzs-stage.mode-flow .nzr-page{margin:0;border-radius:0;box-shadow:none;border-width:0 1px}
+.nzs-stage.mode-flow .nzr-page:first-child{border-top-width:1px;border-radius:6px 6px 0 0}
+.nzs-stage.mode-flow .nzr-page:last-child{border-bottom-width:1px;border-radius:0 0 6px 6px}
+.nzs-stage.mode-flow .nzr-page+.nzr-page{position:relative;border-top:1px dashed #BBD6EF}
+.nzs-stage.mode-flow .nzr-page+.nzr-page::before{content:"Page " counter(nzs-page) " break";position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+  background:var(--nzs-sky-bg);border:1px solid var(--nzs-sky-line);color:var(--nzs-sky-ink);padding:1px 10px;border-radius:999px;
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+/* Page · A4: each page on its own A4 sheet. */
+.nzs-stage.mode-page .nzr-doc{max-width:794px;padding-left:0;padding-right:0}
+.nzs-stage.mode-page .nzr-page{min-height:1123px;margin-bottom:26px;border-radius:2px;box-shadow:0 10px 30px -12px rgba(11,27,43,.35)}
+@media print{.nzs-subnav,.nzs-toolbar,.nzs-rail{display:none}.nzs-studio{margin:0;background:none}.nzs-body{display:block}.nzs-stage{padding:0;overflow:visible}}
+@media (max-width:900px){.nzs-body{grid-template-columns:1fr}.nzs-rail{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--nzs-line)}.nzs-stage{padding:14px 8px}.nzs-studio{margin:-12px -8px}}
+.nzs-empty{margin:12vh auto 0;max-width:620px}
