@@ -60,6 +60,17 @@ export function datasetDisplayLabel(dataset: { datasetId: string; countryCode: s
   return `${source} ${dataset.countryCode} ${from === to ? to : `${from}–${to}`}`;
 }
 
+/**
+ * The same name from the id alone (R6, RULING-report-studio-consolidation), for what holds only the id: a snapshot's
+ * provenance stamp keeps `{id, name, version}`, and its `name`/`version` are the upload file name. The country and year
+ * are the id's own `-<country>-<year>` (any edition tail allowed); an unregistered family, or an id not in that shape, is
+ * named by the id itself — never by a file name.
+ */
+export function datasetLabelFromId(datasetId: string): string {
+  const source = datasetSourceOf(datasetId), edition = datasetId.match(/-([a-z]{2})-([0-9]{4})(-(original|edition-.+))?$/);
+  return source && edition ? `${source.label} ${edition[1]!.toUpperCase()} ${edition[2]}` : datasetId;
+}
+
 /** Sort key: the preferred source first, then the other registered sources in registry order, then anything else. */
 export function datasetPreferenceRank(datasetId: string | null, countryCode: string): number {
   if (datasetId === null) return DATASET_SOURCES.length + 1;

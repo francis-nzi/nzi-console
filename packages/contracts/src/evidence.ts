@@ -1,4 +1,5 @@
 import type { ReviewedCrpSnapshotReadModel } from "./commands";
+import { datasetLabelFromId } from "./datasetSources";
 
 /**
  * NZC-005 — figure evidence. Every emissions figure on a client screen is
@@ -108,6 +109,19 @@ export function provenanceFromSnapshot(snapshot: Snapshot): ProvenanceSignature 
     resolver: stamp.resolver,
     source: stamp.source ?? "issued",
   };
+}
+
+/**
+ * R3/R6 (RULING-report-studio-consolidation) — what a chart's one source line names: the reviewed snapshot and the factor
+ * sets stamped on it, each dataset by its id-derived name ("DESNZ GB 2025") and a client factor by its stamped name.
+ * Never the per-row factor strings (one per factor: 68 on J000663 — the factor wall), which belong to the audit appendix,
+ * and never an upload file name. Null without a stamp: the caller keeps the chart's own line, as it was.
+ */
+export function snapshotSourceSummary(snapshot: { jobNumber: string; provenance?: SnapshotProvenanceStamp | null }): string | null {
+  const sets = snapshot.provenance?.factorSets ?? [];
+  if (sets.length === 0) return null;
+  const labels = [...new Set(sets.map((set) => set.source === "dataset" ? datasetLabelFromId(set.id) : set.name))].sort((a, b) => a.localeCompare(b));
+  return `Reviewed snapshot ${snapshot.jobNumber} · ${labels.join(" · ")}`;
 }
 
 function tierMix(rows: ReadonlyArray<{ qualityTier: string; tco2e: number }>): { tier: FigureTier | null; tiers: FigureEvidence["tiers"] } {

@@ -9,8 +9,9 @@ import {
   ScopeYearOnYearBar,
   crpProfessionalManifest,
   resolveCrpCoreCharts,
+  withSourceSummary,
 } from "@nzi/charts";
-import { reportScopeChoices, type ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
+import { reportScopeChoices, snapshotSourceSummary, type ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
@@ -63,7 +64,9 @@ function LiveSnapshotPreview({
 }: {
   snapshot: ReviewedCrpSnapshotReadModel;
 }) {
-  const charts = resolveCrpCoreCharts({
+  // R3/R6: nothing on this page is issued, so each chart names the snapshot and its stamped datasets once ("DESNZ GB
+  // 2025"), not one string per factor and not an upload file name. Issued surfaces keep their charts as drawn.
+  const charts = withSourceSummary(resolveCrpCoreCharts({
     id: snapshot.id,
     jobId: snapshot.jobId,
     jobNumber: snapshot.jobNumber,
@@ -86,7 +89,7 @@ function LiveSnapshotPreview({
       purchasedGoodsCategoryId:row.purchasedGoodsCategoryId,
       purchasedGoodsCategoryLabel:row.purchasedGoodsCategoryLabel,
     })),
-  });
+  }), snapshotSourceSummary(snapshot));
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
   const activities=charts.find(chart=>chart.spec.type==="emissions_by_activity") as EmissionsByActivityData;
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;

@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { ScopeYearOnYearData } from "./types";
 import { tokens, scopeColor } from "./tokens";
 import { comma, niceTicks, scaleLinear } from "./geometry";
+import { sourceTail, sourceText } from "./identity";
 import { formatDate } from "./EmissionsScopeDonut";
 
 const W = 760, H = 340, M = { top: 28, right: 28, bottom: 54, left: 62 };
@@ -23,7 +24,7 @@ export function ScopeYearOnYearBar({ data, width, showChrome = true }: { data: S
   </svg>;
   return showChrome ? <figure style={frame}><figcaption><span style={kick}>{data.spec.subtitle ?? "Annual comparison"}</span><h3 style={title}>{data.spec.title}</h3></figcaption>{svg}<Footer data={data} /></figure> : svg;
 }
-function Footer({ data }: { data: ScopeYearOnYearData }) { return <p style={footer}><b>Source</b>{"  "}{data.provenance.factorSets.join(" · ")} · as at {formatDate(data.provenance.generatedAt)}</p>; }
+function Footer({ data }: { data: ScopeYearOnYearData }) { return <p style={footer}><b>Source</b>{"  "}{sourceText(data.provenance)} · as at {formatDate(data.provenance.generatedAt)}{sourceTail(data.provenance)}</p>; }
 const frame: CSSProperties = { background: tokens.surface, border: `1px solid ${tokens.line}`, borderRadius: 12, padding: "16px 18px 12px", margin: 0 };
 const kick: CSSProperties = { fontSize: 10.5, letterSpacing: ".12em", textTransform: "uppercase", color: tokens.brand.emerald, fontWeight: 600 };
 const title: CSSProperties = { fontSize: 16, fontWeight: 600, margin: "3px 0 2px", color: tokens.ink.primary };
