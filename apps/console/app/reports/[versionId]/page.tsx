@@ -1,4 +1,4 @@
-import {ManifestChartSet,crpProfessionalManifest,resolveCrpCoreCharts,validateManifest,verifyChartsAgainstSnapshot,type ChartVerification} from "@nzi/charts";
+import {ManifestChartSet,crpProfessionalManifest,resolveCrpCoreCharts,snapshotHasPurchasedGoods,validateManifest,verifyChartsAgainstSnapshot,type ChartVerification} from "@nzi/charts";
 import {buildReportAuditRows,buildReportSiteBreakdown,renderReportSectionBody,verifyReportSectionTokens,type CrpReportVersionReadModel,type ReportSectionReadModel,type SectionTokenVerification} from "@nzi/contracts";
 import {loadScreen} from "../../lib/loadScreen";
 import {ScreenState} from "../../lib/ScreenState";
@@ -56,7 +56,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
   const r5=reportFeatureEnabled("report-paged");
   const auditRows=r5?buildReportAuditRows(snapshot.measurements):[];
   const siteBreakdown=r5?buildReportSiteBreakdown(snapshot.measurements):[];
-  const manifestValid=validateManifest(crpProfessionalManifest,charts,snapshot.id,{excludedSections:version.excludedSections??[],reportingYears:Math.max(1,snapshot.annualComparison?.length??1)}).valid;
+  const manifestValid=validateManifest(crpProfessionalManifest,charts,snapshot.id,{excludedSections:version.excludedSections??[],reportingYears:Math.max(1,snapshot.annualComparison?.length??1),purchasedGoods:snapshotHasPurchasedGoods(snapshot.measurements)}).valid;
   const chartVerification=r1?verifyChartsAgainstSnapshot(tokenSnapshot,charts):null;
   const tokenVerification=r3?verifyReportSectionTokens(snapshot.sections,tokenSnapshot):null;
   // The single deterministic render-complete signal the PDF/print step waits on:
@@ -89,7 +89,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
       {r3
         ? <ReportSections sections={snapshot.sections} snapshot={tokenSnapshot}/>
         : <section className="report-summary"><h2>Executive summary</h2><p>{snapshot.client} recorded reviewed {snapshot.reportingYear} emissions of {total.toLocaleString("en-GB",{maximumFractionDigits:2})} tCO₂e. This immutable report version is assembled only from snapshot {snapshot.id}.</p></section>}
-      <ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshot.id} printSafe={r1} context={{excludedSections:version.excludedSections??[],reportingYears:Math.max(1,snapshot.annualComparison?.length??1)}}/>
+      <ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshot.id} printSafe={r1} context={{excludedSections:version.excludedSections??[],reportingYears:Math.max(1,snapshot.annualComparison?.length??1),purchasedGoods:snapshotHasPurchasedGoods(snapshot.measurements)}}/>
       <section className="report-evidence">
         <div>
           <span className="nz-eyebrow">Assurance record</span>

@@ -4,10 +4,11 @@ import type { AnyChartData, ChartType, JobFamily } from "./types";
  * A manifest chart. `reportSection` names the report section the chart is drawn in, when that section can be left out of a
  * report (RULING-report-studio-consolidation R4): a chart in an excluded section is not required. `requiredWhen: "multi-year"`
  * marks a chart that only exists with two or more reporting years (R5): for a single-year client it is absent, not a blocker.
+ * `requiredWhen: "has-3.1"` marks a chart that only exists when the snapshot has Scope 3.1 (purchased goods) emissions (R7).
  */
 export type ReportManifestChart = {
   id: string; type: ChartType; specVersion: number; required: boolean;
-  reportSection?: string; requiredWhen?: "always" | "multi-year";
+  reportSection?: string; requiredWhen?: "always" | "multi-year" | "has-3.1";
 };
 export type ReportManifestSection = {
   id: string;
@@ -30,14 +31,21 @@ export type ManifestIssue = {
   message: string;
 };
 /** A required chart that is not part of this report, and why — shown, never treated as a failure. */
-export type ManifestAbsence = { chartId: string; reason: "excluded-section" | "single-year"; reportSection?: string };
+export type ManifestAbsence = { chartId: string; reason: "excluded-section" | "single-year" | "no-3.1"; reportSection?: string };
 export type ManifestValidation = {
   valid: boolean; manifestId: string; manifestVersion: number; reviewedSnapshotId: string; issues: ManifestIssue[];
   /** Charts the report leaves out by its own plan or data: an excluded section, or a single reporting year. */
   absent: ManifestAbsence[];
 };
-/** What the report itself decides: the sections its plan leaves out, and how many reporting years its snapshot holds. */
-export type ManifestContext = { excludedSections?: readonly string[]; reportingYears?: number };
+/**
+ * What the report itself decides: the sections its plan leaves out, how many reporting years its snapshot holds, and (R7)
+ * whether it has Scope 3.1 emissions. A fact left undefined is unknown, and the chart stays required — never silently absent.
+ */
+export type ManifestContext = { excludedSections?: readonly string[]; reportingYears?: number; purchasedGoods?: boolean };
+
+/** R7: whether a snapshot has Scope 3.1 (purchased goods and services) rows — what the purchased-goods chart is drawn from. */
+export const snapshotHasPurchasedGoods = (measurements: ReadonlyArray<{ scopeCode?: string | null }>): boolean =>
+  measurements.some((row) => row.scopeCode === "3.1");
 
 /** Whether a required chart is out of this report, and why (null: it is in, and must resolve). */
 export function manifestChartAbsence(requirement: ReportManifestChart, context: ManifestContext = {}): ManifestAbsence | null {
@@ -45,6 +53,8 @@ export function manifestChartAbsence(requirement: ReportManifestChart, context: 
     return { chartId: requirement.id, reason: "excluded-section", reportSection: requirement.reportSection };
   if (requirement.requiredWhen === "multi-year" && context.reportingYears !== undefined && context.reportingYears < 2)
     return { chartId: requirement.id, reason: "single-year" };
+  if (requirement.requiredWhen === "has-3.1" && context.purchasedGoods === false)
+    return { chartId: requirement.id, reason: "no-3.1" };
   return null;
 }
 

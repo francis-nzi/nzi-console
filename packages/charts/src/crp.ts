@@ -129,6 +129,8 @@ export const crpProfessionalManifest: ReportManifest = {
       type: "purchased_goods_breakdown",
       specVersion: 1,
       required: true,
+      // R7: a breakdown of Scope 3.1 exists only when the snapshot has 3.1 emissions; without them it is absent, not a blocker.
+      requiredWhen: "has-3.1",
     },
   ],
   sections: [

@@ -24,7 +24,7 @@ export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, siteColor, moduleGroupColor, readableInkOn, srsMaturityColor, srsMaturityInk } from "./tokens";
 export { RENDERER_VERSION, chartAssetKey, sourceTail, sourceText, withSourceSummary } from "./identity";
 export type { RenderTarget } from "./identity";
-export { validateManifest, assertPublishable } from "./manifest";
+export { validateManifest, assertPublishable, snapshotHasPurchasedGoods } from "./manifest";
 export { verifyChartsAgainstSnapshot, verifyLcaChartsAgainstSnapshot } from "./verify";
 export type { ChartVerification, ChartFigureCheck, VerifiableSnapshot, VerifiableLcaSnapshot } from "./verify";
 export type { ReportManifest, ReportManifestSection, ManifestValidation, ManifestIssue } from "./manifest";

@@ -46,7 +46,9 @@ export function ManifestChartSet({ manifest, charts, reviewedSnapshotId, showSec
       <div className={`nz-chart-manifest-grid${section.layout === "two-column" ? " two-column" : ""}`}>{section.chartIds.filter((id) => byId.has(id)).map((id) => <ChartFromManifest key={id} chart={byId.get(id)!} printSafe={printSafe} />)}</div>
       {validation.absent.filter((absence) => section.chartIds.includes(absence.chartId)).map((absence) => <p key={absence.chartId} data-chart-absent={absence.chartId} style={absentNote}>{absence.reason === "single-year"
         ? "Annual comparison appears once this client has reviewed snapshots for at least two reporting years."
-        : `Not in this report: the ${absence.reportSection} section is left out.`}</p>)}
+        : absence.reason === "no-3.1"
+          ? "Purchased goods and services appears when this snapshot has Scope 3.1 emissions; it has none."
+          : `Not in this report: the ${absence.reportSection} section is left out.`}</p>)}
     </section>)}
   </div>;
 }

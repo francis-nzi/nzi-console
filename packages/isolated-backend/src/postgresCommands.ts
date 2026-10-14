@@ -5,7 +5,7 @@ import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organis
 import { assertClientCurrency } from "./commercialLookups";
 import { refuseArchivedSiteChange } from "./siteArchiveGuard";
 import { refuseExcludedSiteChange, siteIncludedSql } from "./siteInclusionGuard";
-import { crpProfessionalManifest,resolveCrpCoreCharts,validateManifest } from "@nzi/charts";
+import { crpProfessionalManifest,resolveCrpCoreCharts,snapshotHasPurchasedGoods,validateManifest } from "@nzi/charts";
 import {
   clientUpdateIssues,
   commandDefinitions,
@@ -2236,8 +2236,9 @@ export type CrpSnapshotForManifest = { job_id: string; data_hash: string; create
 /**
  * The CRP manifest check for one report (RULING-report-studio-consolidation R4/R5): the snapshot's charts, judged against the
  * report's own section plan — a chart drawn in a section the plan leaves out is not required — and the snapshot's reporting
- * years — an annual comparison is not required of a single-year client. A chart that did resolve is held to every check. Used
- * by `report.validate` and by `report.sectionPlan.update`, so a section cannot be put back into a report its data cannot fill.
+ * years — an annual comparison is not required of a single-year client — and (R7) its Scope 3.1 rows: a purchased-goods
+ * breakdown is not required of a snapshot with none. A chart that did resolve is held to every check. Used by
+ * `report.validate` and by `report.sectionPlan.update`, so a section cannot be put back into a report its data cannot fill.
  */
 export function validateCrpSnapshotManifest(reviewedSnapshotId: string, snapshot: CrpSnapshotForManifest, plan: ReportSectionPlan) {
   const payload = snapshot.payload_json;
@@ -2247,6 +2248,7 @@ export function validateCrpSnapshotManifest(reviewedSnapshotId: string, snapshot
   return validateManifest(crpProfessionalManifest, charts, reviewedSnapshotId, {
     excludedSections: plan.filter((entry) => !entry.included).map((entry) => entry.key),
     reportingYears: Math.max(1, payload.annualComparison?.length ?? 1),
+    purchasedGoods: snapshotHasPurchasedGoods(payload.measurements as Array<{ scopeCode?: string | null }>),
   });
 }
 
