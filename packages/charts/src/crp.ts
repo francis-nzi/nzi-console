@@ -79,12 +79,16 @@ export const crpProfessionalManifest: ReportManifest = {
       type: "reduction_pathway",
       specVersion: 1,
       required: true,
+      // R4: drawn in the Targets section — required only while that section is in the report.
+      reportSection: "targets",
     },
     {
       id: "scope_year_on_year_bar",
       type: "scope_year_on_year_bar",
       specVersion: 1,
       required: true,
+      // R5: an annual comparison exists only with two or more reporting years; a single-year client has none to show.
+      requiredWhen: "multi-year",
     },
     {
       id: "emissions_by_activity",
@@ -97,12 +101,14 @@ export const crpProfessionalManifest: ReportManifest = {
       type: "emissions_site_donut",
       specVersion: 1,
       required: true,
+      reportSection: "sites",
     },
     {
       id: "intensity_pathway",
       type: "intensity_pathway",
       specVersion: 1,
       required: true,
+      reportSection: "intensity",
     },
     {
       id: "purchased_goods_breakdown",

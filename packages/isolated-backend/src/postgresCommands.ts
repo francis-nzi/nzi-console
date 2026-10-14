@@ -14,6 +14,7 @@ import {
   type ClientHeldFields,
   crpReportSectionTemplate,
   type ReportSectionTemplate,
+  type ReportSectionPlan,
   crpScopeCategoryPath,
   isAllowedJobStageTransition,
   reportingPeriodForYear,
@@ -2228,6 +2229,27 @@ export function requireReleasableSnapshot(context:CommandContext,snapshot:{creat
   if(!snapshot.approved_by)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"SNAPSHOT_NOT_APPROVED",message:"The reviewed snapshot must be approved before a report is released from it."}]);
   if(snapshot.created_by===context.actorId)throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
 }
+/** A reviewed snapshot's stored row, as the report commands read it. */
+export type CrpSnapshotForManifest = { job_id: string; data_hash: string; created_at: Date | string;
+  payload_json: { jobNumber: string; client: string; reportingYear: number; target?: unknown; intensityTarget?: unknown; annualComparison?: unknown[]; measurements: Array<Record<string, unknown>> } };
+
+/**
+ * The CRP manifest check for one report (RULING-report-studio-consolidation R4/R5): the snapshot's charts, judged against the
+ * report's own section plan — a chart drawn in a section the plan leaves out is not required — and the snapshot's reporting
+ * years — an annual comparison is not required of a single-year client. A chart that did resolve is held to every check. Used
+ * by `report.validate` and by `report.sectionPlan.update`, so a section cannot be put back into a report its data cannot fill.
+ */
+export function validateCrpSnapshotManifest(reviewedSnapshotId: string, snapshot: CrpSnapshotForManifest, plan: ReportSectionPlan) {
+  const payload = snapshot.payload_json;
+  const charts = resolveCrpCoreCharts({ id: reviewedSnapshotId, jobId: snapshot.job_id, jobNumber: payload.jobNumber, client: payload.client, reportingYear: payload.reportingYear,
+    generatedAt: snapshot.created_at instanceof Date ? snapshot.created_at.toISOString() : String(snapshot.created_at), dataHash: snapshot.data_hash,
+    target: payload.target as never, intensityTarget: payload.intensityTarget as never, annualComparison: payload.annualComparison as never, measurements: payload.measurements as never });
+  return validateManifest(crpProfessionalManifest, charts, reviewedSnapshotId, {
+    excludedSections: plan.filter((entry) => !entry.included).map((entry) => entry.key),
+    reportingYears: Math.max(1, payload.annualComparison?.length ?? 1),
+  });
+}
+
 /** The signee is one of the client's active report-signee contacts, frozen onto the version so the published report reproduces exactly. */
 export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope;sectionPlanOrigin:ReportSectionPlanOrigin}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
   if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);
@@ -2238,8 +2260,17 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   const signee=input.signeeContactId?(await db.query<{contact_id:string;full_name:string;job_title:string|null}>(`SELECT k.contact_id,k.full_name,k.job_title FROM nzi_console.client_contacts k JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2 AND j.job_id=$3 AND k.status='active' AND 'report_signee'=ANY(k.roles)`,[context.organisationId,input.signeeContactId,snapshot.job_id])).rows[0]:null;
   if(input.signeeContactId&&!signee)throw new CommandValidationError([{field:"signeeContactId",code:"SIGNEE_INVALID",message:"The signee must be one of this client's active report-signee contacts."}]);
   const payload=snapshot.payload_json;
-  const charts=resolveCrpCoreCharts({id:input.reviewedSnapshotId,jobId:snapshot.job_id,jobNumber:payload.jobNumber,client:payload.client,reportingYear:payload.reportingYear,generatedAt:snapshot.created_at instanceof Date?snapshot.created_at.toISOString():String(snapshot.created_at),dataHash:snapshot.data_hash,target:payload.target as never,intensityTarget:payload.intensityTarget as never,annualComparison:payload.annualComparison as never,measurements:payload.measurements as never});
-  const validation=validateManifest(crpProfessionalManifest,charts,input.reviewedSnapshotId);
+  // F-1 (RULING-reporting-F Q3): the version's section plan — the one asked for, else the client's active report profile, else
+  // the default — checked against the rules as they stand (a profile written before a rule changed is refused, not issued),
+  // with where it came from. The profile's issuer line is frozen here with the rest of the issuer; a profile edited later
+  // reaches no version already validated. Resolved before the manifest check (RULING-report-studio-consolidation R4/R5), which
+  // judges the charts against this report's own plan and years.
+  const clientId=(await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,snapshot.job_id])).rows[0]?.client_id??null;
+  const profile=clientId?await readActiveReportProfile(db,context.organisationId,clientId):null;
+  const sectionPlan=resolveReportSectionPlan(input.sectionPlan?normaliseReportSectionPlan(input.sectionPlan):null,profile);
+  const planIssues=reportSectionPlanIssues(sectionPlan.plan);
+  if(planIssues.length)throw new CommandValidationError(input.sectionPlan?planIssues:planIssues.map(issue=>({...issue,field:"reportProfile",message:`The client's report profile no longer fits the report: ${issue.message} Update the profile, or choose the order for this report.`})));
+  const validation=validateCrpSnapshotManifest(input.reviewedSnapshotId,snapshot,sectionPlan.plan);
   if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));
   // S-1 (0163): the view this version issues. A site scope may pick only the snapshot's own sites — its boundary stamp, or for a
   // snapshot frozen before the stamp, the sites its frozen rows carry (sub-ruling 3). "Every site" stays a site scope: it
@@ -2254,15 +2285,6 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   // D3 (ruled Q2): the issuer — the organisation's names, footer and logo as they stand now — frozen with the client's logo, so
   // a later change to the profile never alters a document already validated.
   const issuer=await readOrganisationBrand(db,context.organisationId);
-  // F-1 (RULING-reporting-F Q3): the version's section plan — the one asked for, else the client's active report profile, else
-  // the default — checked against the rules as they stand (a profile written before a rule changed is refused, not issued),
-  // with where it came from. The profile's issuer line is frozen here with the rest of the issuer; a profile edited later
-  // reaches no version already validated.
-  const clientId=(await db.query<{client_id:string}>(`SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,snapshot.job_id])).rows[0]?.client_id??null;
-  const profile=clientId?await readActiveReportProfile(db,context.organisationId,clientId):null;
-  const sectionPlan=resolveReportSectionPlan(input.sectionPlan?normaliseReportSectionPlan(input.sectionPlan):null,profile);
-  const planIssues=reportSectionPlanIssues(sectionPlan.plan);
-  if(planIssues.length)throw new CommandValidationError(input.sectionPlan?planIssues:planIssues.map(issue=>({...issue,field:"reportProfile",message:`The client's report profile no longer fits the report: ${issue.message} Update the profile, or choose the order for this report.`})));
   try{
     await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids,section_plan,section_plan_origin,client_issuer_line) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null,JSON.stringify(sectionPlan.plan),sectionPlan.origin,profile?.issuerLine??null]);
   }catch(error){
