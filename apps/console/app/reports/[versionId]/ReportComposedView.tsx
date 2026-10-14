@@ -1,16 +1,16 @@
 import { Fragment } from "react";
 import { NziIcon, type NziIconKey } from "@nzi/ui";
 import {
-  CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway,
-  RENDERER_VERSION, resolveCrpCoreCharts, ScopeYearOnYearBar, SrsPillarRadar, TOKENS_VERSION,
-  type EmissionsByActivityData, type IntensityPathwayData, type PurchasedGoodsBreakdownData, type ScopeDonutData,
+  CRP_RESOLVER_AGGREGATED, CRP_RESOLVER_VERSION, EmissionsByActivity, EmissionsScopeDonut, EmissionsSiteDonut, IntensityPathway, PurchasedGoodsBreakdown, ReductionPathway,
+  RENDERER_VERSION, resolveCrpCoreCharts, ScopeYearOnYearBar, SrsPillarRadar, TOKENS_VERSION, withSourceSummary,
+  type AnyChartData, type EmissionsByActivityData, type IntensityPathwayData, type PurchasedGoodsBreakdownData, type ScopeDonutData,
   type ScopeYearOnYearData,
 } from "@nzi/charts";
 import {
   strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
   isReportDataSection, reportHeadline, reportMethodologyRows, reportOmittedSections, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
-  reportSectionPlanOf, reportSrsRadarChart,
-  type ReportCompositionScope, type ReportCompositionSectionKey, type ReportEmissionsComparison,
+  reportSectionPlanOf, reportSrsRadarChart, qualityTierLabel,
+  type ReportAuditAppendix, type ReportCompositionScope, type ReportCompositionSectionKey, type ReportEmissionsComparison,
   type StrategyScope, type ReportComposition, type ReportProvenance, type ReportSectionGap,
   type ReportSrsRoadmap, type ReportSrsSection,
 } from "@nzi/contracts";
@@ -42,7 +42,11 @@ const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractio
 export type IssuerLogoSrc = (assetId: string) => string;
 export const staffIssuerLogoSrc: IssuerLogoSrc = (assetId) => `/api/isolated/organisation/logo?asset=${encodeURIComponent(assetId)}`;
 
-export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc }: { composition: ReportComposition; issuerLogoSrc?: IssuerLogoSrc }) {
+export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc, preview = false }: {
+  composition: ReportComposition; issuerLogoSrc?: IssuerLogoSrc;
+  /** B0/B1: a composition shown before it is issued. Only `composed@3` draws it ("preview — not issued"); earlier layouts ignore it. */
+  preview?: boolean;
+}) {
   // F-0 (RULING-reporting-F Q4): the layout is chosen by the composition, not by whichever view is deployed. A layout
   // change that would alter an issued report forks to a new renderer; it never redraws this one.
   const renderer = reportRendererOf(composition);
@@ -50,24 +54,36 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   // F-2 (chart parity): composed@1 plus the manifest's charts, drawn from the frozen chart basis by the resolver the portal
   // uses — so a client loses no chart they see today when the portal moves onto the composed report (F-4).
   if (renderer === "composed@2") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} charts={composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0]) : []} />;
+  // B1 (composed@3): one source line per chart and section from the frozen `sources`, activities aggregated (resolver v2),
+  // the audit appendix closing Methodology, and a preview that says it is one.
+  if (renderer === "composed@3") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} v3={{ preview }}
+    charts={withSourceSummary(composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0], { resolverVersion: CRP_RESOLVER_AGGREGATED }) : [], composition.sources?.summary)} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 
 type ComposedCharts = ReturnType<typeof resolveCrpCoreCharts>;
+
+/** `composed@3`'s additions. Absent, `ComposedV1` draws `composed@1/2` exactly as pinned. */
+type ComposedV3 = { preview: boolean };
 
 /**
  * `composed@1`: the layout every composition issued up to F-0 was drawn with. Pinned byte-for-byte in CI
  * (`reportComposedRenderer.test.ts`). Do not change what it draws — fork to `composed@2`. `charts` is composed@2's addition:
  * absent, this draws composed@1 exactly.
  */
-function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: ReportComposition; charts?: ComposedCharts; issuerLogoSrc: IssuerLogoSrc }) {
+function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: ReportComposition; charts?: ComposedCharts; issuerLogoSrc: IssuerLogoSrc; v3?: ComposedV3 }) {
+  // composed@3: the one source line, frozen at compose — undefined on composed@1/2, whose charts and sections name what
+  // they always did.
+  const summary = v3 ? composition.sources?.summary : undefined;
+  const sourced = <T extends AnyChartData>(data: T): T => withSourceSummary([data], summary)[0]!;
   const chart = <T,>(type: string) => charts?.find((entry) => entry.spec.type === type) as T | undefined;
   const scopeDonut = chart<ScopeDonutData>("emissions_scope_donut"), yearOnYear = chart<ScopeYearOnYearData>("scope_year_on_year_bar");
   const byActivity = chart<EmissionsByActivityData>("emissions_by_activity"), purchasedGoods = chart<PurchasedGoodsBreakdownData>("purchased_goods_breakdown");
   const intensityPathway = chart<IntensityPathwayData>("intensity_pathway");
   const { emissions, intensity, targets, plan, srs } = composition;
   // The reduction pathway is the report's own targets (the client target model), not the resolver's job-level target.
-  const pathway = charts && !isReportGap(targets) ? reportPathway(composition, targets) : null;
+  const drawnPathway = charts && !isReportGap(targets) ? reportPathway(composition, targets) : null;
+  const pathway = drawnPathway ? sourced(drawnPathway) : null;
   const footer = `${composition.client} · Carbon Reduction Plan FY${composition.reportingYear}`;
   // The figure the pathway actually lands on — read from the model, never assumed to be 0.
   const residual = isReportGap(targets) ? null : reportResidualTco2e(targets);
@@ -84,7 +100,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
 
   // One renderer per section; the plan decides which appear, in what order, with what number and page.
   const sections: Record<ReportCompositionSectionKey, (n: string, page: number) => React.ReactNode> = {
-    cover: () => <Cover composition={composition} issuerLogoSrc={issuerLogoSrc} />,
+    cover: () => <Cover composition={composition} issuerLogoSrc={issuerLogoSrc} preview={v3?.preview ?? false} />,
 
     "executive-summary": (n, page) => <Page footer={footer} number={page}>
       <SectionHead n={n} section="executive-summary" />
@@ -128,7 +144,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
             {byActivity ? <div className="nzr-chart wide"><EmissionsByActivity data={byActivity} /></div> : null}
             {purchasedGoods ? <div className="nzr-chart wide"><PurchasedGoodsBreakdown data={purchasedGoods} /></div> : null}
           </div> : null}
-          <Provenance provenance={emissions.provenance} />
+          <Provenance provenance={emissions.provenance} summary={summary} />
         </>}
     </Page>,
 
@@ -137,7 +153,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
       <SectionHead n={n} section="sites" />
       <ScopeFlag scope={scope} kind="site" />
       <p className="nzr-note">{scope?.kind === "sites" ? "This report covers the selected sites below." : "This report covers the following sites, and the organisation-level emissions not attributable to any one of them."}</p>
-      <div className="nzr-chart"><EmissionsSiteDonut data={sitesDonut(composition, emissions)} /></div>
+      <div className="nzr-chart"><EmissionsSiteDonut data={sourced(sitesDonut(composition, emissions))} /></div>
       <table className="nzr-tbl">
         <thead><tr><th>Site</th><th className="r">tCO₂e</th><th className="r">Share</th></tr></thead>
         <tbody>{(emissions.sites ?? []).map((site) => <tr key={site.siteId ?? "unallocated"}><td>{site.label}</td><td className="r num">{tonnes(site.totalTco2e)}</td><td className="r num">{emissions.totalTco2e === 0 || site.siteId === null && scope?.kind === "sites" ? "—" : `${((site.totalTco2e / emissions.totalTco2e) * 100).toFixed(1)}%`}</td></tr>)}</tbody>
@@ -148,11 +164,11 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
         <h3 className="nzr-h3">By site</h3>
         {realSites.map((site) => <section className="nzr-site" key={site.siteId}>
           <h4>{site.label}</h4>
-          <div className="nzr-site-charts"><EmissionsScopeDonut data={siteScopeDonut(composition, emissions, site)} /><EmissionsByActivity data={siteActivities(composition, emissions, site)} /></div>
+          <div className="nzr-site-charts"><EmissionsScopeDonut data={sourced(siteScopeDonut(composition, emissions, site))} /><EmissionsByActivity data={sourced(siteActivities(composition, emissions, site))} /></div>
           {site.floorAreaIntensity ? <p className="nzr-note">Floor-area intensity: {site.floorAreaIntensity.value === null ? site.floorAreaIntensity.reason : <><b className="num">{site.floorAreaIntensity.value.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</b> {site.floorAreaIntensity.unit} over {site.floorAreaIntensity.floorAreaM2?.toLocaleString("en-GB")} m²</>}. Other measures are reported at whole-client level only.</p> : null}
         </section>)}
       </> : null}
-      <Provenance provenance={emissions.provenance} />
+      <Provenance provenance={emissions.provenance} summary={summary} />
     </Page>,
 
     intensity: (n, page) => <Page footer={footer} number={page}>
@@ -178,7 +194,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
                 : <div className="v num">{metric.value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} <small>{metric.unit}</small></div>}
             </div>)}
           </div>
-          <Provenance provenance={intensity.provenance} />
+          <Provenance provenance={intensity.provenance} summary={summary} />
         </>}
       {/* Found by the F-2 render: drawn only beside a composed Intensity section — a page that says "no intensity measures"
           never also draws an intensity pathway. */}
@@ -220,7 +236,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
             Net zero here means a residual of {tonnes(residual)} tCO₂e, addressed through removals
             rather than reduced to nothing.
           </p> : null}
-          <Provenance provenance={targets.provenance} />
+          <Provenance provenance={targets.provenance} summary={summary} />
         </>}
       {pathway ? <div className="nzr-chart wide"><ReductionPathway data={pathway} /></div> : null}
     </Page>,
@@ -303,7 +319,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
     methodology: (n, page) => <Page footer={footer} number={page}>
       <SectionHead n={n} section="methodology" />
       <table className="nzr-tbl">
-        <tbody>{reportMethodologyRows(composition).map((row) => <tr key={row.label}>
+        <tbody>{(v3 ? reportMethodologyRows(composition, { factorSet: summary, issued: v3.preview ? "Not issued — preview" : undefined }) : reportMethodologyRows(composition)).map((row) => <tr key={row.label}>
           <td>{row.label}</td><td>{row.value}</td>
         </tr>)}</tbody>
       </table>
@@ -314,6 +330,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc }: { composition: Repor
         never captured as images, and render identically on screen, in the portal and in print.
       </p>
       {omitted.length > 0 ? <p className="nzr-note nzr-omitted">Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
+      {v3 && composition.audit ? <AuditAppendix audit={composition.audit} /> : null}
     </Page>,
   };
 
@@ -337,7 +354,7 @@ function UnknownRenderer({ renderer }: { renderer: string }) {
   </section></main>;
 }
 
-function Cover({ composition, issuerLogoSrc }: { composition: ReportComposition; issuerLogoSrc: IssuerLogoSrc }) {
+function Cover({ composition, issuerLogoSrc, preview }: { composition: ReportComposition; issuerLogoSrc: IssuerLogoSrc; preview: boolean }) {
   // The issuer frozen at validation (0143): a profile edited since does not change a document already issued.
   const issuer = composition.issuer ?? null;
   return <section className="nzr-page nzr-cover">
@@ -352,7 +369,10 @@ function Cover({ composition, issuerLogoSrc }: { composition: ReportComposition;
     {/* F-1 (R-D1): the client's issuer line, frozen at validation. Absent on every report issued before it. */}
     {composition.issuerLine ? <div className="nzr-cover-issuer">{composition.issuerLine}</div> : null}
     <div className="nzr-cover-meta">
-      FY{composition.reportingYear} · {composition.jobNumber} · issued {formatDate(composition.issuedAt.slice(0, 10))}
+      {/* composed@3 preview (B0's deferred wording): nothing has been issued, so the cover does not claim an issue date. */}
+      {preview
+        ? <>FY{composition.reportingYear} · {composition.jobNumber} · preview — not issued</>
+        : <>FY{composition.reportingYear} · {composition.jobNumber} · issued {formatDate(composition.issuedAt.slice(0, 10))}</>}
     </div>
     {/* The basis appears on the cover as well as the methodology page: whoever reads only
         the first page should still know what this document is and is not. */}
@@ -479,6 +499,27 @@ function Comparison({ comparison, chartHasEarlierYears = false }: { comparison: 
   </>;
 }
 
+/**
+ * composed@3 (B1, ruled): the audit appendix, closing Methodology until B2's section rail gives it its own section — every
+ * row the report's figures sum, frozen at compose and cut to its scope, with the factor and dataset it rests on. The per-row
+ * detail lives here so the charts and sections can name their sources once.
+ */
+function AuditAppendix({ audit }: { audit: ReportAuditAppendix }) {
+  const t = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+  return <section className="nzr-audit" aria-label="Full emissions audit">
+    <h3 className="nzr-h3">Full emissions audit</h3>
+    <p className="nzr-note">Each of the {audit.rows.length} row{audit.rows.length === 1 ? "" : "s"} the figures in this report sum, with the factor applied, the dataset or client factor it came from and its data quality.</p>
+    <table className="nzr-tbl nzr-audit-tbl">
+      <thead><tr><th>Category</th><th>Activity</th><th>Site</th><th>Factor</th><th>Source</th><th>Quality</th><th className="r">tCO₂e</th></tr></thead>
+      <tbody>{audit.rows.map((row, index) => <tr key={index}>
+        <td>{row.category}</td><td>{row.activity}</td><td>{row.site ?? "Organisation-level"}</td><td>{row.factor}</td><td>{row.source}</td>
+        <td>{qualityTierLabel(row.qualityTier) ?? "Not recorded"}</td><td className="r num">{t(row.tco2e)}</td>
+      </tr>)}</tbody>
+      <tfoot><tr><td colSpan={6}>Total</td><td className="r num">{t(audit.totalTco2e)}</td></tr></tfoot>
+    </table>
+  </section>;
+}
+
 /** A section with nothing to say, saying so — never zeros standing in for absence. */
 function Gap({ section }: { section: ReportSectionGap }) {
   return <p className="nzr-gap">{section.reason}</p>;
@@ -488,11 +529,14 @@ function Figure({ label, value, unit }: { label: string; value: string; unit: st
   return <div className="nzr-figure"><div className="l">{label}</div><div className="v num">{value} <small>{unit}</small></div></div>;
 }
 
-/** What this section rested on, beside the numbers rather than only on a back page. */
-function Provenance({ provenance }: { provenance: ReportProvenance }) {
+/**
+ * What this section rested on, beside the numbers rather than only on a back page. composed@3 (`summary`) names the snapshot
+ * and its datasets once; composed@1/2 name the section's frozen factor sets, as they were issued.
+ */
+function Provenance({ provenance, summary }: { provenance: ReportProvenance; summary?: string }) {
   const tiers = provenance.qualityTiers.map((tier) => `${tier.tier} ${tier.count}`).join(" · ");
   return <div className="nzr-prov">
-    {provenance.factorSets.length > 0 ? <>Factor set: {provenance.factorSets.join(" · ")}. </> : null}
+    {summary ? <>Source: {summary}. </> : provenance.factorSets.length > 0 ? <>Factor set: {provenance.factorSets.join(" · ")}. </> : null}
     As at {formatDate(provenance.asAt)}. {tiers ? <>Data quality: {tiers}. </> : null}
     Evidence hash {provenance.dataHash}.
   </div>;

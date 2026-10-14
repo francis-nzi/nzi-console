@@ -1,4 +1,5 @@
 import {
+  CRP_RESOLVER_AGGREGATED,
   EmissionsByActivity,
   EmissionsScopeDonut,
   EmissionsSiteDonut,
@@ -16,7 +17,7 @@ import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdo
 import { ScreenState } from "../lib/ScreenState";
 import { loadScreen } from "../lib/loadScreen";
 import { formatDateTime } from "../lib/formatDate";
-import {validateManifest} from "@nzi/charts";
+import {snapshotHasPurchasedGoods,validateManifest} from "@nzi/charts";
 import {ReportValidationAction} from "./ReportValidationAction";
 import {PreviewEmpty} from "./PreviewEmpty";
 import {ReportRegisterView} from "../reports/ReportRegisterView";
@@ -89,7 +90,8 @@ function LiveSnapshotPreview({
       purchasedGoodsCategoryId:row.purchasedGoodsCategoryId,
       purchasedGoodsCategoryLabel:row.purchasedGoodsCategoryLabel,
     })),
-  }), snapshotSourceSummary(snapshot));
+  // B1: "Largest emissions activities" one bar per activity (resolver v2), as the composed@3 report it prepares draws it.
+  }, { resolverVersion: CRP_RESOLVER_AGGREGATED }), snapshotSourceSummary(snapshot));
   const scope=charts.find(chart=>chart.spec.type==="emissions_scope_donut") as ScopeDonutData;
   const activities=charts.find(chart=>chart.spec.type==="emissions_by_activity") as EmissionsByActivityData;
   const pathway=charts.find(chart=>chart.spec.type==="reduction_pathway") as ReductionPathwayData|undefined;
@@ -99,8 +101,9 @@ function LiveSnapshotPreview({
   const purchasedGoods=charts.find(chart=>chart.spec.type==="purchased_goods_breakdown") as PurchasedGoodsBreakdownData|undefined;
   // R5: the annual comparison is judged against the snapshot's own years; R4: a chart drawn in a section the report can leave
   // out is a blocker only while that section is in — so the validation step below can clear it by leaving the section out.
-  const reportingYears=Math.max(1,snapshot.annualComparison?.length??1);
-  const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id,{reportingYears});
+  // R7: a purchased-goods breakdown only where the snapshot has Scope 3.1 rows.
+  const reportingYears=Math.max(1,snapshot.annualComparison?.length??1),purchasedGoodsData=snapshotHasPurchasedGoods(snapshot.measurements);
+  const validation=validateManifest(crpProfessionalManifest,charts,snapshot.id,{reportingYears,purchasedGoods:purchasedGoodsData});
   const sectionOf=new Map(crpProfessionalManifest.charts.map(chart=>[chart.id,chart.reportSection]));
   const sectionNeeds=validation.issues.filter(issue=>issue.code==="missing_required_chart"&&sectionOf.get(issue.chartId)).map(issue=>({chartId:issue.chartId,section:sectionOf.get(issue.chartId)!}));
   const otherBlockers=validation.issues.filter(issue=>!(issue.code==="missing_required_chart"&&sectionOf.get(issue.chartId))).map(issue=>issue.message);
@@ -134,7 +137,7 @@ function LiveSnapshotPreview({
           reviewedSnapshotId={snapshot.id}
           // The evidence below shows the report as it can be validated: the sections this snapshot cannot fill are out (the gate
           // above makes leaving them out the preparer's explicit choice; the server judges the plan actually chosen).
-          context={{reportingYears,excludedSections:[...new Set(sectionNeeds.map(need=>need.section))]}}
+          context={{reportingYears,purchasedGoods:purchasedGoodsData,excludedSections:[...new Set(sectionNeeds.map(need=>need.section))]}}
         />
       </section>
   );

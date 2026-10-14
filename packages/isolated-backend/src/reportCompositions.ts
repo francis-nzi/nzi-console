@@ -7,7 +7,7 @@ import {
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
   composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, type ReportSectionPlan,
-  composeReportChartBasis, type ChartBasisSnapshot,
+  composeReportChartBasis, type ChartBasisSnapshot, composeReportAudit, composeReportSources, type ReportSources, type SnapshotProvenanceStamp,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
 import { listClientStrategies, listLevers } from "./reductionStrategies";
@@ -71,7 +71,11 @@ export type SnapshotForComposition = {
     scope: string; tco2e: number; qualityTier?: string | null; factorSet?: string | null;
     /** S-2: the row's frozen site (null = organisation-level) and its labels, for a scope to filter and the sites to name. */
     siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
+    /** B1: the audit appendix's — the row's scope code, and whether its factor is a client's. */
+    scopeCode?: string | null; factorSource?: string | null;
   }>;
+  /** B1 (`composed@3`): the snapshot's provenance stamp, which names its datasets by id. Absent on a snapshot issued before stamping. */
+  provenance?: SnapshotProvenanceStamp | null;
   annualComparison: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
   /**
    * The reported intensity as the review froze it (3c-3's one adapter) — the figure the intensity pathway draws. The
@@ -370,8 +374,13 @@ export async function composeReport(db: Queryable, input: {
       scope: context.scope,
       comparison: isReportGap(emissions) ? null : emissions.comparison ?? null,
     }),
+    // B1 (`composed@3`): the sources, named by dataset id and frozen; and the audit appendix, cut to this report's scope.
+    ...withSources(composeReportSources(input.snapshot)),
+    audit: composeReportAudit({ measurements: input.snapshot.measurements, provenance: input.snapshot.provenance, scope: context.scope }),
   };
 }
+
+const withSources = (sources: ReportSources | undefined) => sources ? { sources } : {};
 
 /**
  * S-2: each site's floor-area intensity, for the per-site subsections — only when the client measures floor area, and only
@@ -443,6 +452,7 @@ export async function composeForReportVersion(db: Queryable, input: {
       measurements: SnapshotForComposition["measurements"];
       annualComparison?: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
       intensityTarget?: IntensityTargetReadModel | null;
+      provenance?: SnapshotProvenanceStamp | null;
     };
   }>(
     `SELECT snapshot_id, job_id, data_hash, created_at, created_by, payload_json
@@ -487,6 +497,7 @@ export async function composeForReportVersion(db: Queryable, input: {
       measurements: payload.measurements ?? [],
       annualComparison: payload.annualComparison ?? [],
       intensityTarget: payload.intensityTarget ?? null,
+      provenance: payload.provenance ?? null,
     },
   });
   // D3: the issuer the version froze at validation travels with what the report says.

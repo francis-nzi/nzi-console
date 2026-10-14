@@ -211,14 +211,17 @@ describe("a report's section plan and the client's report profile (F-1), against
 
   describe("RULING-report-studio-consolidation R4/R5: a first-year client — one reporting year, no target, no intensity", () => {
     /** J000663's shape: one year, so no annual comparison; no reduction target; no intensity target. */
-    const firstYearSnapshot = async (): Promise<string> => {
+    const firstYearSnapshot = async (options: { purchasedGoods?: boolean } = {}): Promise<string> => {
       snapshots += 1;
       const snapshotId = `plan-first-${snapshots}`;
       const payload = { jobNumber: "J000663", client: "Plan Co", reportingYear: 2025,
         measurements: [
           { rowId: `fr-${snapshots}`, scope: "1", scopeCode: "1", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Gas", tco2e: 43.4, qualityTier: "measured", factorSet: "demo" },
-          { rowId: `fg-${snapshots}`, scope: "3", scopeCode: "3.1", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Goods", tco2e: 20, qualityTier: "estimated", factorSet: "demo",
-            purchasedGoodsCategoryId: "pg", purchasedGoodsCategoryLabel: "Materials" }],
+          // R7: a snapshot without Scope 3.1 carries a 3.6 row in its place — scope 3, but nothing to break down by category.
+          options.purchasedGoods === false
+            ? { rowId: `ft-${snapshots}`, scope: "3", scopeCode: "3.6", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Flights", tco2e: 20, qualityTier: "estimated", factorSet: "demo" }
+            : { rowId: `fg-${snapshots}`, scope: "3", scopeCode: "3.1", siteId: "site-uk", siteLabel: "UK Office", sourceLabel: "Goods", tco2e: 20, qualityTier: "estimated", factorSet: "demo",
+              purchasedGoodsCategoryId: "pg", purchasedGoodsCategoryLabel: "Materials" }],
         annualComparison: [{ year: 2025, values: [{ scope: "1", value: 43.4 }] }] };
       await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
                VALUES ($1, $2, $3, $4, 1, $5, $6::jsonb, 'prep', 'rev', now())`, [ORG, snapshotId, JOB, snapshots, `sha256:${createHash("sha256").update(snapshotId).digest("hex")}`, JSON.stringify(payload)]);
@@ -259,6 +262,24 @@ describe("a report's section plan and the client's report profile (F-1), against
     it("a two-year snapshot with a target still validates with Targets left out: nothing is required of a section that is out", async () => {
       const validated = await validate(await snapshot(), firstYearPlan);
       assert.equal(validated.data.status, "validated");
+    });
+
+    it("R7: a snapshot with no Scope 3.1 rows validates without a purchased-goods breakdown — it is never a blocker", async () => {
+      const snap = await firstYearSnapshot({ purchasedGoods: false });
+      await assert.rejects(validate(snap, defaultReportSectionPlan), (error) => {
+        assert.deepEqual(fieldsOf(error).sort(), ["intensity_pathway", "reduction_pathway"], "never purchased_goods_breakdown");
+        return true;
+      });
+      const validated = await validate(snap, firstYearPlan);
+      assert.equal(validated.data.status, "validated");
+    });
+
+    it("R7: the breakdown is held for a snapshot that has 3.1 rows — and the section plan's update re-judges it the same way", async () => {
+      const validated = await validate(await firstYearSnapshot({ purchasedGoods: false }), firstYearPlan);
+      const sitesOut = firstYearPlan.map((entry) => entry.key === "sites" ? { ...entry, included: false } : entry);
+      const updated = await updateReportSectionPlan(database.pool, { reportVersionId: validated.data.reportVersionId, expectedVersion: 1, sectionPlan: sitesOut }, context("rev", "reviewer"));
+      assert.equal(updated.data.version, 2, "an update of a no-3.1 report is not blocked by the breakdown either");
+      assert.equal((await validate(await firstYearSnapshot(), firstYearPlan)).data.status, "validated", "with 3.1 rows the breakdown resolves, and validates");
     });
   });
 });

@@ -110,6 +110,7 @@ export * from "./reductionStrategies";
 export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./reportChartBasis";
+export * from "./reportSources";
 export * from "./clientFacingReport";
 export * from "./dayValues";
 export * from "./dataSubjects";

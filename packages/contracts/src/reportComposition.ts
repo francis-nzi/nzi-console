@@ -1,5 +1,6 @@
 import { strategiesBySrsRequirement, strategyStatusLabels, type ClientStrategy, type Lever, type StrategyControlLevel, type StrategyStatus } from "./reductionStrategies";
 import { gaps as resolveGaps, maturityLabel, type SrsAssessmentItem, type SrsFramework } from "./srsReadiness";
+import type { ReportAuditAppendix, ReportSources } from "./reportSources";
 
 /**
  * The report as a **composition**, frozen when it is issued.
@@ -87,7 +88,7 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -95,8 +96,14 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * resolver the portal uses today, and the reduction pathway drawn from the report's own Targets section (the client target
  * model — never the superseded job-level target the portal's chart draws, and never a flat zero over a residual). A fork,
  * not an edit: every `composed@1` report draws exactly as before.
+ *
+ * B1 (RULING-report-studio-consolidation R3/R6; REVIEW-report-srcline-and-B1-rulings, both calls confirmed): `composed@3` is
+ * `composed@2` with one source line per chart and section — the snapshot and its datasets by id, from the composition's
+ * frozen `sources` — in place of the per-row factor strings; "Largest emissions activities" one bar per activity (resolver
+ * v2); the full per-row provenance as an audit appendix closing Methodology (frozen `audit`); and, on a preview, "preview —
+ * not issued" where an issued report states its issue date. A fork: every `composed@1/2` report draws exactly as before.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@2";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@3";
 
 /**
  * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
@@ -631,6 +638,13 @@ export type ReportComposition = {
   issuerLine?: string;
   /** F-2: the charts' input, frozen with the report (`composed@2`). Absent on compositions issued before F-2 (`composed@1`). */
   chartBasis?: ReportChartBasis;
+  /**
+   * B1 (`composed@3`): what the figures rest on, named once — the snapshot stamp's datasets labelled by id at compose and
+   * frozen, so a later relabel cannot redraw an issued report. Absent before `composed@3`, and on a snapshot with no stamp.
+   */
+  sources?: ReportSources;
+  /** B1 (`composed@3`): the audit appendix — every row the report's figures sum, with its factor and source. Absent before. */
+  audit?: ReportAuditAppendix;
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };
@@ -741,7 +755,12 @@ export function reportHeadline(emissions: ReportEmissionsSection | ReportSection
  * Built from what the sections actually carry rather than written once by hand, so a page
  * claiming "DEFRA 2024" cannot outlive the factor set the figures were built on.
  */
-export function reportMethodologyRows(composition: ReportComposition): Array<{ label: string; value: string }> {
+export function reportMethodologyRows(composition: ReportComposition, options: {
+  /** `composed@3`: the frozen source summary, in place of the per-row factor strings. */
+  factorSet?: string;
+  /** `composed@3` preview: what stands where an issued report states its issue date. */
+  issued?: string;
+} = {}): Array<{ label: string; value: string }> {
   const factorSets = new Set<string>();
   const tiers = new Map<string, number>();
   for (const section of [composition.emissions, composition.intensity, composition.targets]) {
@@ -751,7 +770,7 @@ export function reportMethodologyRows(composition: ReportComposition): Array<{ l
   }
   const rows = [
     { label: "Standard", value: "GHG Protocol · UK SRS S2 aligned" },
-    { label: "Factor set", value: factorSets.size > 0 ? [...factorSets].join(" · ") : "Not recorded" },
+    { label: "Factor set", value: options.factorSet ?? (factorSets.size > 0 ? [...factorSets].join(" · ") : "Not recorded") },
     {
       label: "Data quality",
       value: tiers.size > 0
@@ -761,7 +780,7 @@ export function reportMethodologyRows(composition: ReportComposition): Array<{ l
     // The one row that must never be softened.
     { label: "Assurance basis", value: composition.assurance.statement },
     { label: "Reviewed by", value: composition.assurance.reviewedBy },
-    { label: "Issued", value: composition.issuedAt.slice(0, 10) },
+    { label: "Issued", value: options.issued ?? composition.issuedAt.slice(0, 10) },
     { label: "Evidence hash", value: composition.snapshotDataHash },
   ];
   // F-4b (ruled): the client's copy carries no reviewer (`clientFacingComposition` blanks it at the read), and the line goes

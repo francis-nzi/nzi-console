@@ -90,9 +90,10 @@ describe("a composed report draws the portal's charts from its frozen basis (F-2
   });
   after(async () => { await database?.end(); });
 
-  it("a report composed now is drawn composed@2 and carries its charts' input", async () => {
+  it("a report composed now is drawn composed@3 and carries its charts' input", async () => {
     const issued = await composition(whole);
-    assert.equal(issued.renderer, "composed@2");
+    // B1: new compositions are drawn composed@3 — composed@2's charts from the same frozen basis, so the parity below holds.
+    assert.equal(issued.renderer, "composed@3");
     assert.ok(issued.chartBasis && issued.chartBasis.measurements.length === 4);
     if (process.env.F2_DUMP) writeFileSync(process.env.F2_DUMP, JSON.stringify(issued, null, 2));
   });

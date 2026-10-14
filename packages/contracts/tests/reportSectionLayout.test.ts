@@ -12,11 +12,13 @@ describe("the renderer a composition was issued under", () => {
     assert.equal(reportRendererOf({ renderer: "composed@1" }), "composed@1");
     // F-2 (chart parity): new compositions are drawn composed@2; composed@1 stays for every report issued under it.
     assert.equal(reportRendererOf({ renderer: "composed@2" }), "composed@2");
-    assert.equal(REPORT_RENDERER_LATEST, "composed@2");
+    // B1: new compositions are drawn composed@3; composed@1 and composed@2 stay for every report issued under them.
+    assert.equal(reportRendererOf({ renderer: "composed@3" }), "composed@3");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@3");
   });
 
   it("is null for a layout this code does not carry — never quietly drawn with another", () => {
-    assert.equal(reportRendererOf({ renderer: "composed@3" }), null);
+    assert.equal(reportRendererOf({ renderer: "composed@4" }), null);
     assert.equal(reportRendererOf({ renderer: "" }), null);
   });
 });
