@@ -731,6 +731,11 @@ jobs:
       # by id) and its audit appendix (cut to its scope) — no upload file name, no quantity — and the preview composes the same.
       - name: A report composed now freezes its sources by dataset id and its audit appendix, and is drawn composed@3
         run: npx tsx --test packages/isolated-backend/tests/reportComposed3Real.test.ts
+      # B2-2 (REVIEW-B2-1-and-B2-rulings, Q6): the Report Studio's draft is what validate would hold for the latest approved
+      # snapshot with the plan and scope asked for — READ ONLY, stored nowhere, validate's refusals beside it — and equals the
+      # validated version's B0 preview field for field.
+      - name: The Report Studio's draft is what validate would hold, composed read-only and stored nowhere
+        run: npx tsx --test packages/isolated-backend/tests/reportDraftCompositionReal.test.ts
       # Reporting F-1b: the read models behind the editors — the workspace's report profile, a version's plan with the version
       # publish pins, the register's version — and getClientWorkspace serial on the tenant client (§13, guarded).
       - name: The section-plan editors read the profile and the version they publish, and the client workspace stays serial

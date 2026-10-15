@@ -444,7 +444,28 @@ export async function composeForReportVersion(db: Queryable, input: {
     [input.organisationId, input.reportVersionId]);
   const row = version.rows[0];
   if (!row) throw new Error(`Report version ${input.reportVersionId} was not found.`);
+  return composeForSnapshot(db, {
+    organisationId: input.organisationId, reportVersionId: input.reportVersionId, issuedAt: input.issuedAt,
+    snapshotId: row.reviewed_snapshot_id, clientId: row.client_id,
+    scope: row.scope_kind === "sites" && row.scope_site_ids ? { kind: "sites", siteIds: row.scope_site_ids } : WHOLE_CLIENT_SCOPE,
+    // D3: the issuer the version froze at validation travels with what the report says. F-1: the version's section plan is
+    // frozen with it — a version validated before F-1 has none, and issues the default — and the client's issuer line, when
+    // its profile had one at validation.
+    issuer: issuerOf(row), sectionPlan: row.section_plan ?? defaultReportSectionPlan, issuerLine: row.client_issuer_line,
+  });
+}
 
+/**
+ * The composition of one reviewed snapshot for a given scope, plan and issuer — the one compose path. A report version
+ * composes through it with what it froze at validation (`composeForReportVersion`, which publish and the B0 preview use); the
+ * Report Studio's draft (B2-2) composes through it with what validate would freeze now. One path, so a draft, a preview and
+ * an issued report cannot be composed differently.
+ */
+export async function composeForSnapshot(db: Queryable, input: {
+  organisationId: string; reportVersionId: string; issuedAt: string; snapshotId: string; clientId: string;
+  scope: ReportScope; sectionPlan: ReportSectionPlan; issuer: ReportIssuer | null; issuerLine: string | null;
+}): Promise<ReportComposition> {
+  const row = { client_id: input.clientId, reviewed_snapshot_id: input.snapshotId };
   const snapshotRow = await db.query<{
     snapshot_id: string; job_id: string; data_hash: string; created_at: Date | string; created_by: string;
     payload_json: {
@@ -472,7 +493,7 @@ export async function composeForReportVersion(db: Queryable, input: {
 
   // S-2: what the version's scope composes against — the earlier assured periods' frozen rows (the RF-2 reader), the client's
   // baseline year, any period two jobs both report (flagged), and site names for a selected site no frozen row names.
-  const scope: ReportScope = row.scope_kind === "sites" && row.scope_site_ids ? { kind: "sites", siteIds: row.scope_site_ids } : WHOLE_CLIENT_SCOPE;
+  const scope = input.scope;
   const [history, benchmark, periodConflicts, siteRows] = [await listAssuredPeriodSnapshots(db, row.client_id, { excludeJobId: snapshot.job_id }),
     await getBenchmarkInForce(db, row.client_id), await listAssuredPeriodConflicts(db, row.client_id),
     await db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id])];
@@ -500,15 +521,11 @@ export async function composeForReportVersion(db: Queryable, input: {
       provenance: payload.provenance ?? null,
     },
   });
-  // D3: the issuer the version froze at validation travels with what the report says.
-  const issuer = issuerOf(row);
-  // F-1: the version's section plan is frozen with it — a version validated before F-1 has none, and issues the default — and
-  // the client's issuer line, when its profile had one at validation.
   return {
     ...composed,
-    ...(issuer ? { issuer } : {}),
-    sectionPlan: row.section_plan ?? defaultReportSectionPlan,
-    ...(row.client_issuer_line ? { issuerLine: row.client_issuer_line } : {}),
+    ...(input.issuer ? { issuer: input.issuer } : {}),
+    sectionPlan: input.sectionPlan,
+    ...(input.issuerLine ? { issuerLine: input.issuerLine } : {}),
   };
 }
 
