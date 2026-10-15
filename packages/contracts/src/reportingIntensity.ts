@@ -7,9 +7,14 @@
 type IntensityTargetShape = { metric?: unknown; reportingDenominator?: number | null };
 
 /**
- * The currency measure, in a frozen target's shape: turnover. The target names its measure only by `metric`, and turnover is
- * the one currency measure a CRP reports (0143 made the standard turnover `unit_kind = 'currency'`); a turnover is money
- * whatever unit it is drawn in, so this errs on the side of not sending it.
+ * The currency measure, in a frozen target's shape: turnover. The target names its measure only by `metric` (from its key:
+ * `turnover`, `employees` or `floor-area`), and turnover is the one currency measure a CRP reports (0143 made the standard
+ * turnover `unit_kind = 'currency'`); a turnover is money whatever unit it is drawn in, so this errs on the side of not sending it.
+ *
+ * `metric === "turnover"` is **exact**, not a heuristic, because of two guards (RULING-report-denominator-unitkind):
+ * `client.intensityMetric.set` and `organisation.intensityDefault.set` refuse a currency kind on `employees` and `floor-area`
+ * (`monetaryKindIssue`), and only those three keys can be reported — so a reported currency measure is always turnover. Lift
+ * either guard, or make another key reportable, and this rule must key on the measure's unit kind instead.
  */
 export const isCurrencyIntensityTarget = (target: IntensityTargetShape): boolean => target.metric === "turnover";
 

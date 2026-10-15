@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  clientFacingComposition, clientFacingPublishedReport, composeReportChartBasis, isCurrencyIntensityTarget, reportingIntensityOf,
-  withoutCurrencyDenominator, type ChartBasisSnapshot, type PublishedCrpReportReadModel, type ReportComposition,
+  clientFacingComposition, clientFacingPublishedReport, commandGrantForRole, composeReportChartBasis, isCurrencyIntensityTarget, REPORTED_INTENSITY_METRICS,
+  reportingIntensityOf, validateCommand, withoutCurrencyDenominator, type ChartBasisSnapshot, type CommandContext, type PublishedCrpReportReadModel, type ReportComposition,
 } from "../src/index";
 
 /**
@@ -86,5 +86,33 @@ describe("no currency denominator crosses to the client (RULING-report-denominat
       const denominator = Math.round(random() * 1e8) / [1, 1e3, 1e6][index % 3]! + 0.01;
       assert.equal(reportingIntensityOf(sample, denominator), sample.reduce((sum, row) => sum + row.tco2e, 0) / denominator);
     }
+  });
+});
+
+/**
+ * RULING-report-denominator-unitkind: the invariant the turnover rule rests on — a reported currency measure is always
+ * turnover — enforced where measures are written, by both commands that set one. Input validation only.
+ */
+describe("only turnover can be a reported currency measure (RULING-report-denominator-unitkind)", () => {
+  const context: CommandContext = { organisationId: "o", actorId: "a", principal: "staff", idempotencyKey: "k", correlationId: "c", grant: commandGrantForRole("admin", "o", "a") };
+  const measure = (metricKey: string, unitKind: "text" | "currency") => ({ metricKey, label: "Measure", unitWording: "unit", divider: 1, iconKey: "people", unitKind, expectedVersion: 0 });
+  const refused = (issues: ReturnType<typeof validateCommand>) => issues.some((issue) => issue.field === "unitKind" && /never money/.test(issue.message));
+
+  it("client.intensityMetric.set refuses a currency kind on employees and floor area — and allows it on turnover or a custom measure", () => {
+    for (const key of ["employees", "floor-area"]) {
+      assert.ok(refused(validateCommand("client.intensityMetric.set", { clientId: "c", ...measure(key, "currency") }, context)), key);
+      assert.deepEqual(validateCommand("client.intensityMetric.set", { clientId: "c", ...measure(key, "text") }, context), [], `${key} as text`);
+    }
+    for (const key of ["turnover", "revenue"]) assert.deepEqual(validateCommand("client.intensityMetric.set", { clientId: "c", ...measure(key, "currency") }, context), [], key);
+  });
+
+  it("organisation.intensityDefault.set refuses the same — a default can't seed the gap into a client", () => {
+    for (const key of ["employees", "floor-area"]) assert.ok(refused(validateCommand("organisation.intensityDefault.set", measure(key, "currency"), context)), key);
+    assert.deepEqual(validateCommand("organisation.intensityDefault.set", measure("turnover", "currency"), context), []);
+  });
+
+  it("the reportable keys are exactly turnover and the two the guard covers — a new reportable key must come with its own rule", () => {
+    assert.deepEqual(Object.keys(REPORTED_INTENSITY_METRICS).sort(), ["employees", "floor-area", "turnover"]);
+    assert.deepEqual(Object.entries(REPORTED_INTENSITY_METRICS).filter(([, metric]) => metric === "turnover").map(([key]) => key), ["turnover"]);
   });
 });

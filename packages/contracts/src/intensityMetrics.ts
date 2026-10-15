@@ -26,6 +26,20 @@ export type IntensityDivider = (typeof intensityDividers)[number];
 export type IntensityUnitKind = "text" | "currency";
 export const intensityUnitKinds: readonly IntensityUnitKind[] = ["text", "currency"];
 
+/**
+ * RULING-report-denominator-unitkind: the reportable measures that count a thing, never money. A CRP reports the measure
+ * keyed `turnover`, `employees` or `floor-area`; refusing a currency kind on the other two keeps "a currency measure is
+ * reported only as turnover" true by construction — which is what lets the client boundary key its money rule on turnover.
+ */
+export const NON_MONETARY_REPORTED_INTENSITY_KEYS: readonly string[] = ["employees", "floor-area"];
+
+/** The one refusal both metric commands give a currency kind on a non-money reportable key. Input validation only. */
+export function monetaryKindIssue(metricKey: string | undefined, unitKind: IntensityUnitKind | undefined): { field: "unitKind"; code: "INVALID"; message: string } | null {
+  return unitKind === "currency" && NON_MONETARY_REPORTED_INTENSITY_KEYS.includes(metricKey ?? "")
+    ? { field: "unitKind", code: "INVALID", message: "Employees and floor area count a thing, never money, so this metric can't count the client's currency. Choose a unit instead." }
+    : null;
+}
+
 export type IntensityMetricDefinition = {
   key: string;
   version: number;

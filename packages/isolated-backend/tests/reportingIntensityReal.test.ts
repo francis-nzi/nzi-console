@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import { clientFacingComposition, clientFacingPublishedReport, commandGrantForRole, type CommandContext, type ReportComposition, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { publishCrpReport, validateCrpReport } from "../src/postgresCommands";
+import { CommandValidationError, publishCrpReport, validateCrpReport } from "../src/postgresCommands";
+import { setClientIntensityMetric } from "../src/intensityMetrics";
 import { getReportComposition } from "../src/reportCompositions";
 import { getCurrentPublishedCrpReport } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
@@ -101,5 +102,13 @@ describe("no currency denominator crosses to the client, against a real database
     assert.ok(!("reportingIntensity" in clientReport.snapshot.intensityTarget!));
     if ("state" in issued.intensity) throw new Error("expected a composed intensity section");
     assert.equal(issued.intensity.metrics.find((metric) => metric.reported)!.denominatorText, "431 employees", "and its frozen wording");
+  });
+
+  it("an employees measure can't be made to count money — refused with the drawer's message, nothing written (RULING-report-denominator-unitkind)", async () => {
+    // The drawer's route: a client without the standard Employees adds one named "Employees" (key `employees`) counting money.
+    const attempt = setClientIntensityMetric(database.pool, { clientId: "ri-turnover", metricKey: "employees", label: "Employees", unitWording: "currency", divider: 1, iconKey: "people", unitKind: "currency", expectedVersion: 0 }, context("ada", "admin"));
+    await assert.rejects(attempt, (error: unknown) => error instanceof CommandValidationError
+      && error.issues.some((issue) => issue.field === "unitKind" && /Employees and floor area count a thing, never money/.test(issue.message)));
+    assert.deepEqual(await q(`SELECT count(*)::int AS n FROM nzi_console.client_intensity_metrics WHERE organisation_id = $1 AND client_id = 'ri-turnover' AND metric_key = 'employees'`, [ORG]), [{ n: 0 }]);
   });
 });
