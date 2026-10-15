@@ -17,7 +17,7 @@ const composition = () => JSON.parse(fixture("composition-composed3-whole.json")
 describe("Report Studio: which version it opens", async () => {
   const { pickStudioVersion, studioHasReport } = await import("../app/jobs/[jobId]/report/studio");
   const row = (id: string, jobId: string, status: "draft" | "validated" | "published" | "superseded", createdAt: string) =>
-    ({ reportVersionId: id, jobId, status, createdAt, publishedAt: status === "published" ? createdAt : null, scopeLabel: "Whole client" });
+    ({ reportVersionId: id, jobId, status, createdAt, publishedAt: status === "published" ? createdAt : null, scopeLabel: "Whole client", version: 1 });
   const register = [
     row("v-old", "j1", "published", "2026-10-01T09:00:00Z"), row("v-new", "j1", "validated", "2026-10-10T09:00:00Z"),
     row("v-gone", "j1", "superseded", "2026-10-12T09:00:00Z"), row("v-draft", "j1", "draft", "2026-10-13T09:00:00Z"),
@@ -36,9 +36,9 @@ describe("Report Studio: which version it opens", async () => {
     assert.equal(pickStudioVersion(register, "j1", "v-gone")?.reportVersionId, "v-new", "a superseded version is not the report");
   });
 
-  it("the job header offers the studio only once there is a version to draw", () => {
+  it("the job header offers the studio once there is an approved snapshot to draft from (B2-2), or a version to draw", () => {
     assert.deepEqual(["in-preparation", "awaiting-review", "ready-to-validate", "ready-to-publish", "awaiting-client", "changes-requested", "client-approved", "v7-record"]
-      .map((stage) => studioHasReport(stage as never)), [false, false, false, true, true, true, true, false]);
+      .map((stage) => studioHasReport(stage as never)), [false, false, true, true, true, true, true, false]);
   });
 });
 
@@ -75,7 +75,7 @@ describe("Report Studio: the rail and the document", async () => {
   it("the studio draws the composed document unchanged — the same markup the composed renderer gives, byte for byte", async () => {
     const { ReportStudioPrinting } = await import("../app/jobs/[jobId]/report/ReportStudio");
     const issued = composition();
-    const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client" };
+    const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client", version: 1 };
     const studio = renderToStaticMarkup(createElement(ReportStudioPrinting, { jobId: "j1", version, composition: issued }));
     const document = renderToStaticMarkup(createElement(ReportComposedView, { composition: issued, preview: false }));
     assert.ok(studio.includes(document), "the composed document appears whole and unaltered inside the studio");
@@ -88,21 +88,32 @@ describe("Report Studio: the rail and the document", async () => {
   });
 });
 
-describe("Report Studio: read only", () => {
-  const files = ["apps/console/app/jobs/[jobId]/report/ReportStudio.tsx", "apps/console/app/jobs/[jobId]/report/studio.ts",
-    "apps/console/app/jobs/[jobId]/report/printing/page.tsx", "apps/console/app/jobs/JobReportStudioLink.tsx"];
+describe("Report Studio: what it may write", () => {
+  const readOnly = ["apps/console/app/jobs/[jobId]/report/studio.ts", "apps/console/app/jobs/[jobId]/report/printing/page.tsx", "apps/console/app/jobs/JobReportStudioLink.tsx"];
 
-  it("calls no command and writes nothing: no POST, no command client, no validate/publish/section route", () => {
-    for (const file of files) {
-      const source = read(file);
-      assert.doesNotMatch(source, /postBrowserCommand|method:\s*"POST"|\/reports\/(validate|publish|section-plan|sections)/, file);
-    }
+  it("its reads and links write nothing: no POST, no command client", () => {
+    for (const file of readOnly) assert.doesNotMatch(read(file), /postBrowserCommand|method:\s*"POST"/, file);
   });
 
-  it("reads only the register and the version's composition (frozen, or its read-only preview)", () => {
+  it("B2-2: the rail writes only through the two governed commands — validate and the section-plan update — never publish or a section edit", () => {
+    const studio = read("apps/console/app/jobs/[jobId]/report/ReportStudio.tsx");
+    assert.deepEqual([...studio.matchAll(/postBrowserCommand<[^>]*>\("([^"]+)"/g)].map((match) => match[1]).sort(), ["/api/isolated/reports/section-plan", "/api/isolated/reports/validate"]);
+    assert.doesNotMatch(studio, /reports\/(publish|sections\/)/, "publishing and narrative editing are later slices");
+    assert.doesNotMatch(studio, /method:\s*"POST"|fetch\(/, "no write outside the command client");
+    assert.match(studio, /expectedVersion: version\.version, sectionPlan: plan/, "the plan update pins the version the studio opened");
+  });
+
+  it("reads only the register, the version's composition (frozen, or its read-only preview), and with no version the job's draft", () => {
     const page = read("apps/console/app/jobs/[jobId]/report/printing/page.tsx");
-    assert.deepEqual([...page.matchAll(/loadScreen<[^>]+>\("([a-zA-Z]+)"/g)].map((match) => match[1]), ["reports", "reportComposition", "reportCompositionPreview"]);
+    assert.deepEqual([...page.matchAll(/loadScreen<[^>]+>\("([a-zA-Z]+)"/g)].map((match) => match[1]), ["reports", "reportDraft", "reportComposition", "reportCompositionPreview"]);
     assert.match(page, /if \(!reportFeatureEnabled\("report-sections"\)\) notFound\(\);/, "behind the composed report's own flag");
+  });
+
+  it("the draft route is a GET in a READ ONLY transaction, and nothing else", () => {
+    const route = read("apps/console/app/api/isolated/jobs/[jobId]/report-draft/route.ts");
+    assert.match(route, /export async function GET\(/);
+    assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)/);
+    assert.match(route, /withTenantRead\(pool, organisationId, \(db\) => draftReportComposition\(db,/, "composed inside the READ ONLY tenant read");
   });
 
   it("the composed renderer is not touched: its file has no studio code", () => {

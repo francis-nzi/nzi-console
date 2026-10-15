@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "reportCompositionPreview" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "clientHistory" | "portalPreview" | "jobMilestones" | "jobSetupOptions";
+export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "reportCompositionPreview" | "reportDraft" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "clientHistory" | "portalPreview" | "jobMilestones" | "jobSetupOptions";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -42,6 +42,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // and the page says that rather than showing a blank document.
   reportComposition: { key: "reportComposition", validate: (value) => record(value) && ("composition" in value), isEmpty: () => false },
   reportCompositionPreview: { key: "reportCompositionPreview", validate: (value) => record(value) && ("preview" in value), isEmpty: () => false },
+  reportDraft: { key: "reportDraft", validate: (value) => record(value) && ("draft" in value), isEmpty: () => false },
   lca: { key: "lca", validate: (value) => rows(value, "assessments"), isEmpty: (value) => record(value) && (value.assessments as unknown[]).length === 0 },
   lcaComponents: { key: "lcaComponents", validate: (value) => rows(value, "components") && rows(value, "categories"), isEmpty: () => false },
   lcaReport: { key: "lcaReport", validate: (value) => record(value) && ("report" in value), isEmpty: () => false },
@@ -111,6 +112,7 @@ export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./reportChartBasis";
 export * from "./reportSources";
+export * from "./reportStudio";
 export * from "./clientFacingReport";
 export * from "./dayValues";
 export * from "./dataSubjects";

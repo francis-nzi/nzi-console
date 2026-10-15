@@ -139,6 +139,7 @@ export {
   composeReport, freezeReportComposition, getReportComposition, previewReportComposition,
   type FreezeCompositionResult, type ReportCompositionPreview, type SnapshotForComposition,
 } from "./reportCompositions";
+export { draftReportComposition, type ReportDraftBlocker, type ReportDraftComposition } from "./reportDraftComposition";
 
 export type TenantRecord = { id: string; organisationId: string; version: number };
 export type AuditRecord = { id: string; organisationId: string; actorId: string; action: string; entityId: string; correlationId: string; at: string };

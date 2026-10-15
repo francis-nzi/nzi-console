@@ -73,3 +73,20 @@
 @media print{.nzs-subnav,.nzs-toolbar,.nzs-rail{display:none}.nzs-studio{margin:0;background:none}.nzs-body{display:block}.nzs-stage{padding:0;overflow:visible}}
 @media (max-width:900px){.nzs-body{grid-template-columns:1fr}.nzs-rail{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--nzs-line)}.nzs-stage{padding:14px 8px}.nzs-studio{margin:-12px -8px}}
 .nzs-empty{margin:12vh auto 0;max-width:620px}
+
+/* B2-2: the rail edits the plan — reorder arrows, a real include switch, the save bar; and the draft's status and blockers. */
+.nzs-grip{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
+.nzs-grip button{border:0;background:transparent;color:var(--nzs-muted);padding:0;width:15px;height:11px;line-height:.6;font-size:10px;cursor:pointer}
+.nzs-grip button:hover:not(:disabled){color:var(--nzs-ink)}
+.nzs-grip button:disabled{opacity:.25;cursor:default}
+button.nzs-switch{border:0;padding:0;cursor:pointer}
+button.nzs-switch:disabled{cursor:default}
+.nzs-rail-save{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 8px 0}
+.nzs-rail-save .nzs-rail-note{margin:2px 0 0;flex-basis:100%}
+.nzs-rail-msg{margin:10px 8px 0;padding:8px 10px;border-radius:8px;background:#FDEBE8;color:#7A2418;font-size:11.5px;line-height:1.45}
+.nzs-status.draft{background:#EEF5FC;border-color:var(--nzs-sky-line);color:var(--nzs-sky-ink)}
+.nzs-status.validated{background:#FFF7E3;border-color:#FFC24B;color:#5C4300}
+.nzs-draft-band{background:#EEF5FC;border-color:var(--nzs-sky-line)}
+.nzs-blockers{margin:8px 0 0;padding-left:18px;color:#7A2418}
+.nzs-scope-live .nz-scope-select{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nzs-scope-live .nz-scope-summary,.nzs-scope-live .sub{margin:0;font-size:12px;color:var(--nzs-muted)}
