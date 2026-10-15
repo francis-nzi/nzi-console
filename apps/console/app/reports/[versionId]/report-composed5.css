@@ -174,6 +174,24 @@
 .nzr5 .r5-callout{background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--r5-brand-ink);margin-bottom:8px}
 .nzr5 .r5-callout-amber{background:#FFF4DC;border-color:#F3D89A;color:#7A5600}
 
+/* Methodology: the basis box, the data-quality bar, the sign-off; the glossary term; the audit's header note */
+.nzr5 .r5-verify{border:1px solid var(--r5-line);background:#fff;border-radius:12px;padding:18px 20px;margin-top:14px}
+.nzr5 .r5-verify h4{margin:0 0 10px;color:var(--r5-ink);font-size:13px}
+.nzr5 .r5-verify p{margin:0 0 8px;font-size:12.5px;color:var(--r5-ink-2);line-height:1.55} .nzr5 .r5-verify p:last-child{margin-bottom:0}
+.nzr5 .r5-dqbar{display:flex;height:26px;border-radius:7px;overflow:hidden;border:1px solid var(--r5-line);margin-top:4px}
+.nzr5 .r5-dqseg{height:100%}
+.nzr5 .r5-dqleg{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-dqleg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.nzr5 .r5-signgrid{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:10px}
+@media (max-width:560px){.nzr5 .r5-signgrid{grid-template-columns:1fr}}
+.nzr5 .r5-signbox{border:1px solid var(--r5-line);border-radius:12px;padding:14px 16px}
+.nzr5 .r5-signbox .r5-st{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--r5-brand-deep);font-weight:700;margin-bottom:12px}
+.nzr5 .r5-signbox .r5-sl{font-size:11px;color:var(--r5-muted);margin-bottom:24px;border-bottom:1px solid var(--r5-line);padding-bottom:4px}
+.nzr5 .r5-term{font-weight:600;color:var(--r5-ink)!important}
+.nzr5 .r5-thead-note{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--r5-sky-ink);background:var(--r5-sky-bg);border:1px solid var(--r5-sky-line);padding:2px 8px;border-radius:6px;margin-left:8px;vertical-align:middle}
+.nzr5 table.r5-audit .r5-prov-line{font-size:9.5px;color:var(--r5-muted);margin-top:2px}
+.nzr5 table.r5-audit thead{display:table-header-group}
+
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{
   .nzr5{background:none;padding:0}

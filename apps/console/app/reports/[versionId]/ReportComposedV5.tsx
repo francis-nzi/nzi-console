@@ -735,6 +735,143 @@ function SrsSection({ composition, number }: { composition: ReportComposition; n
   </>;
 }
 
+// ── 12 · Methodology & Sign-off, 13 · Glossary, 14 · Appendix 1, 15 · Appendix 2 ─────────────────────────────────────────
+/** The locked data-quality tiers (CLAUDE.md), in order, with their bar colours; a row the snapshot did not tier, last, in grey. */
+const QUALITY_TIERS: Array<{ key: string; label: string; colour: string }> = [
+  { key: "measured", label: "Measured", colour: BRAND }, { key: "estimated", label: "Estimated", colour: AMBER },
+  { key: "spend-based", label: "Spend-based", colour: SKY }, { key: "survey", label: "Survey", colour: VIOLET },
+  { key: "", label: "Not recorded", colour: "#C9D3CD" },
+];
+
+/** The quality mix by tCO₂e, summed at render from the frozen audit rows' own tier — nothing new frozen. */
+function qualityMix(composition: ReportComposition) {
+  const rows = composition.audit?.rows ?? [];
+  const total = rows.reduce((sum, row) => sum + row.tco2e, 0);
+  if (!(total > 0)) return null;
+  return QUALITY_TIERS.map((tier) => ({ ...tier, value: rows.filter((row) => (row.qualityTier ?? "") === tier.key || (tier.key === "" && !QUALITY_TIERS.some((known) => known.key && known.key === row.qualityTier))).reduce((sum, row) => sum + row.tco2e, 0) }))
+    .filter((tier) => tier.value > 0).map((tier) => ({ ...tier, share: pc(tier.value, total) }));
+}
+
+/** "Scope 1 & 2 measured · Scope 3 estimated & spend-based": each scope's tiers, from the frozen audit rows. */
+function qualitySummary(composition: ReportComposition): string | null {
+  const rows = composition.audit?.rows ?? [];
+  if (!rows.length) return null;
+  const tiersOf = (scope: string) => QUALITY_TIERS.filter((tier) => tier.key && rows.some((row) => row.scope === scope && row.qualityTier === tier.key)).map((tier) => tier.label.toLowerCase());
+  const groups = new Map<string, string[]>();
+  for (const scope of ["1", "2", "3"]) {
+    const tiers = tiersOf(scope);
+    if (!tiers.length) continue;
+    const key = tiers.join(" & ");
+    groups.set(key, [...(groups.get(key) ?? []), scope]);
+  }
+  return [...groups.entries()].map(([tiers, scopes]) => `Scope ${scopes.join(" & ")} ${tiers}`).join(" · ") || null;
+}
+
+/** The sections this report leaves out at the issuer's choice, by composed@5's titles — said on Methodology, never silent (F-1). */
+function omittedSections(composition: ReportComposition): string[] {
+  return reportSectionPlanOf(composition).filter((entry) => !entry.included && entry.key in DRAWN && entry.key !== "cover").map((entry) => COMPOSED5_TITLES[entry.key] ?? entry.key);
+}
+
+function MethodologySection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const issuer = composition.issuer;
+  const mix = qualityMix(composition);
+  const omitted = omittedSections(composition);
+  const period = composition.reportingPeriod;
+  const asAt = composition.chartBasis?.generatedAt;
+  const factors = composition.sources?.sets.map((set) => set.label).join(" · ");
+  return <>
+    <div className="r5-kicker">{number} · Assurance</div><h2 className="r5-h2">Standards, Methodology &amp; Sign-off</h2>
+    <div className="r5-kvbox">
+      <div className="r5-kr"><span>Framework</span><b>GHG Protocol Corporate Standard</b></div>
+      <div className="r5-kr"><span>Emission factors</span><b>{factors || NOT_RECORDED}</b></div>
+      <div className="r5-kr"><span>Reporting boundary</span><b>Operational control · in-service sites for {reportingYearLabel(composition)}</b></div>
+      <div className="r5-kr"><span>Data quality</span><b>{qualitySummary(composition) ?? NOT_RECORDED}</b></div>
+      <div className="r5-kr"><span>Assurance basis</span><b>{composition.assurance.statement}</b></div>
+      <div className="r5-kr"><span>As-at date</span><b>{asAt ? dd(asAt) : period ? dd(period.to) : NOT_RECORDED}</b></div>
+    </div>
+    <div className="r5-verify"><h4>Basis of preparation</h4>
+      <p>This greenhouse gas emissions report has been prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. Every figure is derived from {composition.client}&apos;s reviewed measurement snapshot and carries its factor set, version, data hash and as-at date. The platform records who reviewed the measurement; this report is <b>not third-party assured</b>.</p>
+      {omitted.length ? <p>Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
+    </div>
+    <h3 className="r5-h3">Data quality</h3>
+    <p className="r5-prose r5-lead">The mix of measured, estimated, spend-based and survey activity data behind the reported emissions, by tCO₂e.</p>
+    {mix ? <><div className="r5-dqbar">{mix.map((tier) => <div key={tier.label} className="r5-dqseg" style={{ width: `${tier.share}%`, background: tier.colour }} />)}</div>
+      <div className="r5-dqleg">{mix.map((tier) => <span key={tier.label}><i style={{ background: tier.colour }} />{tier.label} {tier.share}%</span>)}</div></>
+      : <p className="r5-unavailable">This report holds no per-row quality record.</p>}
+    <h3 className="r5-h3">Declaration &amp; sign-off</h3>
+    <div className="r5-signgrid">
+      {/* The firm's side is the frozen issuer (D3); the client's, the signee the version named (B2-3 call 2) — never guessed. */}
+      <div className="r5-signbox"><div className="r5-st">Consultant</div>
+        <div className="r5-sl">{issuer ? issuer.displayName : "Name & position"}</div><div className="r5-sl">Signature</div><div className="r5-sl">Date</div></div>
+      <div className="r5-signbox"><div className="r5-st">Client approval</div>
+        <div className="r5-sl">{composition.signee ? `${composition.signee.name}${composition.signee.jobTitle ? `, ${composition.signee.jobTitle}` : ""}` : "Name & position"}</div><div className="r5-sl">Signature</div><div className="r5-sl">Date</div></div>
+    </div>
+  </>;
+}
+
+/** The mockup's glossary: fixed terms, words only — no figures, no money. */
+const GLOSSARY: Array<[string, string]> = [
+  ["Baseline year", "The reference year against which emissions reductions are measured."],
+  ["Emission factor", "A coefficient that converts activity data into GHG emissions."],
+  ["GHG Protocol", "The globally recognised framework for measuring and managing greenhouse gas emissions."],
+  ["Intensity metric", "Emissions normalised by business activity (per employee, per £ revenue, per tonne of product)."],
+  ["Net zero", "A balance between greenhouse gas emissions produced and removed from the atmosphere."],
+  ["Scope 1 / 2 / 3", "Direct emissions / purchased energy / all other value-chain emissions."],
+  ["tCO₂e", "Tonnes of carbon dioxide equivalent — the standard unit for measuring carbon emissions."],
+];
+
+function GlossarySection() {
+  return <>
+    <div className="r5-kicker">Reference</div><h2 className="r5-h2">Glossary</h2>
+    <table className="r5-rt"><thead><tr><th>Term</th><th>Definition</th></tr></thead>
+      <tbody>{GLOSSARY.map(([term, definition]) => <tr key={term}><td className="r5-term">{term}</td><td>{definition}</td></tr>)}</tbody></table>
+  </>;
+}
+
+function AuditSection({ composition }: { composition: ReportComposition }) {
+  const head = <><div className="r5-kicker">Appendix 1</div><h2 className="r5-h2">Full Emissions Audit <span className="r5-thead-note">header repeats each page</span></h2><SiteFlag composition={composition} /></>;
+  const audit = composition.audit;
+  if (!audit || audit.rows.length === 0) return <>{head}<p className="r5-unavailable">This report holds no per-row audit record.</p></>;
+  return <>
+    {head}
+    {/* The frozen audit, row for row, in the mockup's six columns. Details carries the activity, with the factor and its
+        source beneath (composed@3's per-row provenance, B1); Quality stands where the mockup's Unit does — no unit is frozen. */}
+    <table className="r5-rt r5-audit">
+      <thead><tr><th>Site</th><th>Scope</th><th>Category</th><th>Details</th><th>Quality</th><th className="r5-num">tCO₂e</th></tr></thead>
+      <tbody>
+        {audit.rows.map((row, index) => <tr key={index}><td>{row.site ?? "Organisation-level"}</td><td className="r5-nowrap">Scope {row.scope}</td><td>{row.category}</td>
+          <td>{row.activity}<div className="r5-prov-line">{row.factor}{row.source && row.source !== "Not recorded" ? ` · ${row.source}` : ""}</div></td>
+          <td>{QUALITY_TIERS.find((tier) => tier.key && tier.key === row.qualityTier)?.label ?? "Not recorded"}</td><td className="r5-num">{f1(row.tco2e)}</td></tr>)}
+        <tr className="r5-total"><td colSpan={5}>Total emissions</td><td className="r5-num">{f1(audit.totalTco2e)}</td></tr>
+      </tbody>
+    </table>
+    <div className="r5-note">Every line item is derived from the job&apos;s reviewed figures; the total above reconciles to the report total with no rounding drift.</div>
+  </>;
+}
+
+function SiteScopeAppendix({ composition }: { composition: ReportComposition }) {
+  const head = <><div className="r5-kicker">Appendix 2</div><h2 className="r5-h2">Emissions by Site, Scope &amp; Category</h2><SiteFlag composition={composition} /></>;
+  const slices = siteSlices(composition);
+  if (!slices.length) return <>{head}<p className="r5-unavailable">This report has no site breakdown.</p></>;
+  const total = slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0);
+  return <>
+    {head}
+    <table className="r5-rt">
+      <thead><tr><th>Site &amp; scope</th><th className="r5-num">tCO₂e</th></tr></thead>
+      <tbody>
+        {slices.map(({ site }) => {
+          const by = new Map(site.byScope.map((entry) => [entry.scope, entry.tco2e]));
+          return <Fragment key={site.siteId ?? "org"}>
+            <tr className="r5-sub"><td>{site.label}</td><td className="r5-num">{f1(site.totalTco2e)}</td></tr>
+            {["1", "2", "3"].filter((scope) => by.has(scope)).map((scope) => <tr key={scope}><td>Scope {scope}</td><td className="r5-num">{f1(by.get(scope)!)}</td></tr>)}
+          </Fragment>;
+        })}
+        <tr className="r5-total"><td>Total emissions</td><td className="r5-num">{f1(total)}</td></tr>
+      </tbody>
+    </table>
+  </>;
+}
+
 /** composed@5's section titles, as its pages head them — the studio's rail names its rows by these. */
 export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   "executive-summary": "Executive Summary",
@@ -748,6 +885,10 @@ export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   "category-analysis": "Emissions by Scope & Category",
   plan: "Carbon Reduction Actions",
   srs: "UK SRS Readiness Statement",
+  methodology: "Standards, Methodology & Sign-off",
+  glossary: "Glossary",
+  audit: "Full Emissions Audit",
+  "appendix-sites": "Emissions by Site, Scope & Category",
 };
 
 /** Whether composed@5 draws a plan key as a page of its own — the same test its layout numbers by, shared with the rail. */
@@ -766,6 +907,10 @@ const DRAWN: Record<string, (composition: ReportComposition, number: string) => 
   "category-analysis": (composition, number) => <CategoryAnalysis composition={composition} number={number} />,
   plan: (composition, number) => <ActionsSection composition={composition} number={number} />,
   srs: (composition, number) => <SrsSection composition={composition} number={number} />,
+  methodology: (composition, number) => <MethodologySection composition={composition} number={number} />,
+  glossary: () => <GlossarySection />,
+  audit: (composition) => <AuditSection composition={composition} />,
+  "appendix-sites": (composition) => <SiteScopeAppendix composition={composition} />,
 };
 
 
