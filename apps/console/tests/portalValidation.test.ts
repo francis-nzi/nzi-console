@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {PublishedCrpReportReadModel} from "@nzi/contracts";
+import {clientFacingPublishedReport,type PublishedCrpReportReadModel} from "@nzi/contracts";
 import {isPortalIdentity,isPortalJobList} from "../app/portal/portalPortfolioValidation";
 import {isPortalReportApproval,isPortalReportComment,isPublishedCrpReport,isThreadReadEvidence} from "../app/portal/jobs/[jobId]/publishedReportValidation";
 
@@ -24,6 +24,13 @@ test("rejects an invalid intensity denominator",()=>{const value=clone(report);v
 // its percentage, no net-zero year — beside the per-job shape every earlier report carries.
 const clientTarget=(over:Record<string,unknown>={})=>{const value=clone(report);Object.assign(value.snapshot.intensityTarget!,{source:"client-target",metricLabel:"Turnover",metric:"turnover",denominatorUnit:"£m",baselineYear:2022,interimYear:2030,interimReductionPercent:40,targetYear:2040,targetReductionPercent:70,netZeroYear:null,...over});return value};
 test("accepts a report frozen from a client intensity target, with or without its interim",()=>{assert.equal(isPublishedCrpReport(clientTarget(),"job-a"),true);assert.equal(isPublishedCrpReport(clientTarget({interimYear:null,interimReductionPercent:null}),"job-a"),true)});
+// RULING-report-denominator: the client's copy of a turnover report carries the year's intensity in place of the turnover —
+// the portal must still accept it, and still refuse one that carries neither figure (or a non-currency one without its own).
+test("accepts the client's copy of a turnover report — the year's intensity, no turnover",()=>{const copy=clientFacingPublishedReport(clientTarget());assert.ok(!("reportingDenominator" in copy.snapshot.intensityTarget!));assert.equal(copy.snapshot.intensityTarget!.reportingIntensity,1);assert.equal(isPublishedCrpReport(copy,"job-a"),true)});
+test("refuses a turnover report with neither figure, or a negative or non-finite intensity — and a non-currency one without its denominator",()=>{
+  const strip=(value:ReturnType<typeof clientTarget>,intensity?:unknown)=>{const target=value.snapshot.intensityTarget as Record<string,unknown>;delete target.reportingDenominator;if(intensity!==undefined)target.reportingIntensity=intensity;return value};
+  for(const intensity of [undefined,null,-1,Number.NaN,Number.POSITIVE_INFINITY])assert.equal(isPublishedCrpReport(strip(clientTarget(),intensity),"job-a"),false,String(intensity));
+  const employee=clone(report);delete (employee.snapshot.intensityTarget as Record<string,unknown>).reportingDenominator;(employee.snapshot.intensityTarget as Record<string,unknown>).reportingIntensity=1;assert.equal(isPublishedCrpReport(employee,"job-a"),false,"only turnover is sent without its denominator")});
 test("rejects a client intensity target that is half a pair, out of order, empty, or claims a net-zero year",()=>{for(const over of [{interimReductionPercent:null},{interimYear:2045},{targetYear:2021},{interimYear:null,interimReductionPercent:null,targetYear:null,targetReductionPercent:null},{netZeroYear:2050},{targetReductionPercent:120}])assert.equal(isPublishedCrpReport(clientTarget(over),"job-a"),false,JSON.stringify(over))});
 
 const approval={approvalId:"approval-a",reportVersionId:"report-a",approvedAt:"2026-08-27T12:30:00.000Z",statementVersion:1 as const};

@@ -111,6 +111,7 @@ export * from "./reductionStrategies";
 export * from "./strategyReminders";
 export * from "./reportComposition";
 export * from "./reportChartBasis";
+export * from "./reportingIntensity";
 export * from "./reportSources";
 export * from "./reportStudio";
 export * from "./clientFacingReport";

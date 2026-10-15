@@ -736,6 +736,11 @@ jobs:
       # read complete, keeping its order and choices; the preview still equals what publish freezes.
       - name: A report composed now is drawn composed@4, freezing its period and signee, and reads stored plans complete
         run: npx tsx --test packages/isolated-backend/tests/reportComposed4Real.test.ts
+      # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
+      # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
+      # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.
+      - name: No currency denominator reaches the client; the year's intensity matches the report at full precision
+        run: npx tsx --test packages/isolated-backend/tests/reportingIntensityReal.test.ts
       # B2-2 (REVIEW-B2-1-and-B2-rulings, Q6): the Report Studio's draft is what validate would hold for the latest approved
       # snapshot with the plan and scope asked for — READ ONLY, stored nowhere, validate's refusals beside it — and equals the
       # validated version's B0 preview field for field.

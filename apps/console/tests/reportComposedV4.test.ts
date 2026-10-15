@@ -87,6 +87,8 @@ describe("composed@4: the mockup's section set (B2-3)", () => {
     const html = await render(composition());
     assert.doesNotMatch(html, /[£$€]\s?\d|\b(GBP|USD|EUR)\b|\.csv|\.xlsx/);
     assert.match(html, /tCO₂e \/ £m/, "the intensity unit stays (F4)");
+    // RULING-report-denominator: and none in the composition itself — its chart basis carries the year's intensity, not the turnover.
+    assert.doesNotMatch(fixture("composition-composed4-whole.json"), /reportingDenominator|12,500,000|12500000/);
   });
 
   it("a currency measure's amount is never printed by composed@4, even one a composition carried — composed@3 draws what it froze", async () => {

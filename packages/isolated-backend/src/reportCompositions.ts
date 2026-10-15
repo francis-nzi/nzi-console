@@ -3,7 +3,7 @@ import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
   composeSrsRoadmap, isReportGap, maturityLabel, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit, withCurrencyDirectory,
-  intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
+  intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel, isCurrencyIntensityTarget, reportingIntensityOf,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
   composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
@@ -235,7 +235,11 @@ async function composeIntensity(db: Queryable, input: {
         // The whole unit as the report reads it ("tCO₂e per £m", "tCO₂e per 1,000 employees"), frozen — not the bare
         // wording, which printed "12.3 £m" beside a figure that is tCO₂e per £m. Compositions frozen before D3c keep theirs.
         unit: intensityUnit(definition, { currency }),
-        value: resolved.state === "resolved" ? resolved.value : null,
+        // RULING-report-denominator: the reported currency measure's intensity is the one the chart basis freezes in place of
+        // the turnover (`reportingIntensityOf`, the pathway's own division), so the section and the chart agree at full
+        // precision — the resolver's divider-scaled division can differ from it in the last digit.
+        value: resolved.state !== "resolved" ? null
+          : reported && isCurrencyIntensityTarget(frozen!) ? reportingIntensityOf(input.snapshot.measurements, frozen!.reportingDenominator) : resolved.value,
         unavailableReason: resolved.state === "resolved"
           ? null
           // A missing denominator says why in the words of whatever could not resolve it — the floor-area boundary, or the

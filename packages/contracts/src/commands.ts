@@ -29,7 +29,7 @@ import {
 } from "./strategyProjection";
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
-import { intensityDividers, intensityUnitKinds, isIntensityIconKey, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
+import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
 import { REPORTING_TEMPLATE_LABEL_MAX, REPORTING_TEMPLATE_MAX_LINES, reportingTemplateCategoryScope, type ReportingTemplateLineInput } from "./reportingTemplate";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
@@ -1727,6 +1727,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
     if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
     if (input.unitKind !== undefined && !intensityUnitKinds.includes(input.unitKind)) issues.push({ field: "unitKind", code: "INVALID", message: "A metric counts either a thing (text) or the client's currency." });
+    // RULING-report-denominator-unitkind: employees and floor area are never money (keeps the client boundary's turnover rule exact).
+    const monetary = monetaryKindIssue(input.metricKey, input.unitKind);
+    if (monetary) issues.push(monetary);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
@@ -2354,6 +2357,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!intensityDividers.includes(input.divider as IntensityDivider)) issues.push({ field: "divider", code: "INVALID", message: "The divider is one of 1, 10, 100, 1,000, 10,000, 100,000 or 1,000,000." });
     if (!isIntensityIconKey(input.iconKey ?? "")) issues.push({ field: "iconKey", code: "INVALID", message: "The icon must come from the curated set." });
     if (input.unitKind !== undefined && !intensityUnitKinds.includes(input.unitKind)) issues.push({ field: "unitKind", code: "INVALID", message: "A metric counts either a thing (text) or the client's currency." });
+    // RULING-report-denominator-unitkind: employees and floor area are never money (keeps the client boundary's turnover rule exact).
+    const monetary = monetaryKindIssue(input.metricKey, input.unitKind);
+    if (monetary) issues.push(monetary);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },

@@ -209,7 +209,11 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
     const client = clientFacingPublishedReport(view.report);
     assert.ok(!JSON.stringify({ report: client, composition: view.composition }).includes(MARK), "no staff identity anywhere in what the client is sent");
     assert.deepEqual(client.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]), view.report.snapshot.measurements.map((row) => [row.rowId, row.tco2e, row.sourceLabel]));
-    assert.deepEqual([client.snapshot.target?.baselineTco2e, client.snapshot.intensityTarget?.reportingDenominator, client.dataHash], [40, 12.5, view.report.dataHash]);
+    // RULING-report-denominator: every figure the same — but the client's turnover is not sent; the year's intensity is.
+    const tonnes = view.report.snapshot.measurements.reduce((sum, row) => sum + row.tco2e, 0);
+    assert.deepEqual([client.snapshot.target?.baselineTco2e, client.snapshot.intensityTarget?.reportingIntensity, client.dataHash], [40, tonnes / 12.5, view.report.dataHash]);
+    assert.equal(view.report.snapshot.intensityTarget?.reportingDenominator, 12.5, "the staff copy keeps it");
+    assert.doesNotMatch(JSON.stringify({ report: client, composition: view.composition }), /reportingDenominator/, "neither client route carries a denominator for turnover");
   });
 
   it("D5: a document never disagrees with the report it is for — a total that differs from the frozen composition is refused", async () => {

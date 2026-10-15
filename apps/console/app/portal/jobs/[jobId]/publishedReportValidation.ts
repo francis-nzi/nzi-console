@@ -17,9 +17,13 @@ function milestonePair(year:unknown,pct:unknown):{ok:boolean;year:number|null}{i
  * Either intensity shape (Phase 3c): a frozen job target — interim + net-zero year, both required, in order — or a client
  * target — an optional interim and an optional end point (`targetYear` at `targetReductionPercent`), each a whole pair, after
  * the baseline and in order. The metric, unit, denominator, baseline and provenance are required for both.
+ * RULING-report-denominator: a currency measure (turnover) arrives with the year's intensity in place of its denominator.
  */
+const hasReportingFigure=(target:NonNullable<Snapshot["intensityTarget"]>)=>target.metric==="turnover"&&!("reportingDenominator" in target)
+  ?finiteNonNegative(target.reportingIntensity as number)
+  :typeof target.reportingDenominator==="number"&&Number.isFinite(target.reportingDenominator)&&target.reportingDenominator>0;
 function isIntensityTarget(value:unknown,jobId:string){if(value===null)return true;if(!value||typeof value!=="object")return false;const target=value as NonNullable<Snapshot["intensityTarget"]>;
-  const common=target.jobId===jobId&&(["turnover","employee","floor-area"] as const).includes(target.metric)&&typeof target.denominatorUnit==="string"&&target.denominatorUnit.length>0&&typeof target.reportingDenominator==="number"&&Number.isFinite(target.reportingDenominator)&&target.reportingDenominator>0&&Number.isInteger(target.baselineYear)&&finiteNonNegative(target.baselineIntensity)&&positiveVersion(target.version)&&validDate(target.updatedAt);
+  const common=target.jobId===jobId&&(["turnover","employee","floor-area"] as const).includes(target.metric)&&typeof target.denominatorUnit==="string"&&target.denominatorUnit.length>0&&hasReportingFigure(target)&&Number.isInteger(target.baselineYear)&&finiteNonNegative(target.baselineIntensity)&&positiveVersion(target.version)&&validDate(target.updatedAt);
   if(!common)return false;
   if(target.source==="client-target"){const interim=milestonePair(target.interimYear,target.interimReductionPercent),end=milestonePair(target.targetYear,target.targetReductionPercent);
     return interim.ok&&end.ok&&(interim.year!==null||end.year!==null)&&target.netZeroYear==null&&(interim.year===null||interim.year>target.baselineYear)&&(end.year===null||end.year>target.baselineYear)&&(interim.year===null||end.year===null||interim.year<end.year);}

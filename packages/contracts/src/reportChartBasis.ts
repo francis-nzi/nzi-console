@@ -9,6 +9,7 @@
 // (the reported intensity is client-level) rather than site actuals drawn against a whole-client target.
 import type { ReportChartBasis, ReportEmissionsComparison } from "./reportComposition";
 import type { ReportScope } from "./reportScope";
+import { withoutCurrencyDenominator } from "./reportingIntensity";
 
 type SnapshotRow = Record<string, unknown> & { scope: string; tco2e: number };
 
@@ -56,7 +57,9 @@ export function composeReportChartBasis(input: { snapshot: ChartBasisSnapshot; s
     generatedAt: snapshot.createdAt, dataHash: snapshot.dataHash,
     // The chart needs the target's figures, never who last edited it: a staff identity is not frozen into an issued record
     // (F-4c, the ruled follow-up to F-4b's read-strip; free now — no composition had been issued).
-    intensityTarget: sites || !snapshot.intensityTarget ? null : withoutEditor(snapshot.intensityTarget),
+    // RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) is not frozen — the year's
+    // intensity is, from these same rows, so the pathway draws exactly what it always has.
+    intensityTarget: sites || !snapshot.intensityTarget ? null : withoutCurrencyDenominator(withoutEditor(snapshot.intensityTarget), rows),
     annualComparison: sites
       ? scopedAnnualComparison(input.comparison)
       : (snapshot.annualComparison ?? []).map((year) => ({ year: year.year, values: year.values.map((value) => ({ scope: scopeOf(value.scope), value: value.value })) })),
