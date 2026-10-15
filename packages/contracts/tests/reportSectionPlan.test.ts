@@ -20,7 +20,8 @@ describe("the plan key set spans the data sections and the narrative (Q6)", () =
   it("names the six R2 narrative sections, namespaced apart from the data section of the same name", () => {
     assert.deepEqual([...reportNarrativePlanKeys], ["narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
       "narrative:intensity-analysis", "narrative:category-analysis", "narrative:reduction-actions"]);
-    assert.equal(reportPlanSectionKeys.length, 15);
+    // B2-3: fourteen data sections (nine + composed@4's Analysis by scope, Scope & category, and the three-section reference block) + six narrative.
+    assert.equal(reportPlanSectionKeys.length, 20);
     assert.ok(reportPlanSectionKeys.includes("executive-summary") && reportPlanSectionKeys.includes("narrative:executive-summary"));
   });
 
@@ -88,7 +89,9 @@ describe("the exclusion interlock (Q5, binding) and the narrative", () => {
     for (const key of ["cover", "executive-summary", "emissions", "methodology", "narrative:background"] as const) {
       assert.equal(setReportSectionIncluded(defaultReportSectionPlan, key, !defaultReportSectionPlan.find((entry) => entry.key === key)!.included), defaultReportSectionPlan, key);
     }
-    assert.deepEqual(defaultReportSectionPlan.filter((entry) => isOptionalReportSection(entry.key)).map((entry) => entry.key), ["sites", "intensity", "targets", "plan", "srs"]);
+    // B2-3: composed@4's five new sections are optional too; the mandatory four are unchanged (Q1).
+    assert.deepEqual(defaultReportSectionPlan.filter((entry) => isOptionalReportSection(entry.key)).map((entry) => entry.key),
+      ["sites", "intensity", "targets", "scope-analysis", "category-analysis", "plan", "srs", "glossary", "audit", "appendix-sites"]);
   });
 
   it("refuses the narrative until it is drawn (with F-2/F-4)", () => {

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultReportSectionPlan } from "@nzi/contracts";
+import { defaultReportSectionPlan, legacyReportSectionPlanV3 } from "@nzi/contracts";
 
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
@@ -16,7 +16,8 @@ describe("the section-plan editors (F-1b)", () => {
     (globalThis as { React?: unknown }).React = React;
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const on = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
-    assert.equal([...on.matchAll(/type="checkbox"/g)].length, 5, "the switch is on by default, now both gates are met");
+    // B2-3: the default plan adds five optional sections (Analysis by scope, Scope & category, and the reference block's three).
+    assert.equal([...on.matchAll(/type="checkbox"/g)].length, 10, "the switch is on by default, now both gates are met");
     assert.match(on, /Untick a section to leave it out\. It is then absent from the issued report and from the client&#x27;s portal/);
     const held = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined, allowExclusion: false }));
     assert.doesNotMatch(held, /type="checkbox"|aria-pressed/, "no include/exclude switch when exclusion is unavailable");
@@ -28,13 +29,20 @@ describe("the section-plan editors (F-1b)", () => {
     const { SectionPlanEditor } = await import("../app/reports/SectionPlanEditor");
     const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: defaultReportSectionPlan, onChange: () => undefined }));
     const names = [...html.matchAll(/<span class="nm">([^<]+)(?:<span|<\/span>)/g)].map((match) => match[1]);
-    assert.deepEqual(names, ["Carbon Reduction Plan", "Executive summary", "Emissions by scope", "Sites &amp; reporting boundary", "Emissions intensity",
-      "Targets &amp; reduction pathway", "Decarbonisation actions", "UK SRS readiness statement", "Methodology &amp; provenance"]);
+    // B2-3: the default plan is composed@4's order — Methodology ends the main body, the reference block follows it, fixed.
+    assert.deepEqual(names, ["Carbon Reduction Plan", "Executive summary", "Sites &amp; reporting boundary", "Emissions by scope", "Emissions intensity",
+      "Targets &amp; reduction pathway", "Analysis by scope", "Emissions by scope &amp; category", "Decarbonisation actions", "UK SRS readiness statement",
+      "Methodology &amp; provenance", "Glossary", "Full emissions audit", "Emissions by site &amp; scope"]);
     assert.match(html, /Always first/);
-    assert.match(html, /Always last/);
+    assert.match(html, /Methodology &amp; provenance<\/span><span class="muted">Ends the main body/);
+    assert.equal([...html.matchAll(/Reference, after Methodology/g)].length, 3, "the reference block holds its place");
+    assert.doesNotMatch(html, /aria-label="Move (Glossary|Full emissions audit|Emissions by site &amp; scope)/, "no reference section moves");
     assert.doesNotMatch(html, /narrative|Background|Net zero commitment/i, "the narrative is not drawn yet, so it is not offered");
-    // One switch per optional section (sites, intensity, targets, plan, SRS) — none on the cover, summary, emissions or methodology.
-    assert.equal([...html.matchAll(/type="checkbox"/g)].length, 5);
+    // One switch per optional section (sites, intensity, targets, scope analysis, scope & category, plan, SRS, and the reference
+    // block's three) — none on the cover, summary, emissions or methodology.
+    assert.equal([...html.matchAll(/type="checkbox"/g)].length, 10);
+    const legacy = renderToStaticMarkup(createElement(SectionPlanEditor, { plan: legacyReportSectionPlanV3, onChange: () => undefined }));
+    assert.match(legacy, /Methodology &amp; provenance<\/span><span class="muted">Always last/, "a plan without the reference block ends at Methodology, as before");
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move Executive summary earlier">/, "the first movable section cannot move before the cover");
     assert.match(html, /<button type="button" class="nz-editlink" disabled="" aria-label="Move UK SRS readiness statement later">/, "nor the last after the methodology");
     const editor = read("apps/console/app/reports/SectionPlanEditor.tsx");
@@ -49,7 +57,7 @@ describe("the section-plan editors (F-1b)", () => {
     const plan = defaultReportSectionPlan.map((entry) => entry.key === "targets" ? { ...entry, included: false } : entry);
     const html = renderToStaticMarkup(createElement(SectionPlanEditor, { plan, onChange: () => undefined }));
     assert.match(html, /<li class="left-out"><span class="nm">Targets &amp; reduction pathway<span class="muted"> · left out<\/span>/);
-    assert.equal([...html.matchAll(/type="checkbox" checked=""/g)].length, 4, "the other four optional sections stay included");
+    assert.equal([...html.matchAll(/type="checkbox" checked=""/g)].length, 9, "the other nine optional sections stay included");
   });
 
   it("the preparation page loads the validated plan, saves a reorder with the version it holds, and publishes that version", () => {

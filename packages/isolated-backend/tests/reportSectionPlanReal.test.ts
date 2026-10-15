@@ -120,7 +120,9 @@ describe("a report's section plan and the client's report profile (F-1), against
     assert.deepEqual(issued.sectionPlan, reordered(), "the order is part of what was issued");
     assert.equal(issued.issuerLine, "Prepared for the Board of Plan Co");
     const order = reportSectionLayout(issued.sectionPlan!, (key) => !key.startsWith("narrative:") && key !== "sites").map((entry) => `${entry.number ?? "-"} ${entry.key}`);
-    assert.deepEqual(order, ["- cover", "01 executive-summary", "02 emissions", "03 targets", "04 intensity", "05 plan", "06 srs", "07 methodology"]);
+    // B2-3: the default (and so this reordered profile) is composed@4's order — the main body to Methodology, then the reference block.
+    assert.deepEqual(order, ["- cover", "01 executive-summary", "02 emissions", "03 targets", "04 intensity", "05 scope-analysis", "06 category-analysis",
+      "07 plan", "08 srs", "09 methodology", "10 glossary", "11 audit", "12 appendix-sites"]);
   });
 
   it("a plan asked for at validate is the version's own (edited); one equal to the active profile reads as the profile's", async () => {

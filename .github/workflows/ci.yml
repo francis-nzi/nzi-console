@@ -729,8 +729,13 @@ jobs:
         run: npx tsx --test packages/isolated-backend/tests/reportCompositionPreviewReal.test.ts
       # B1 (composed@3; REVIEW-report-srcline-and-B1-rulings): a report composed now freezes its sources (the stamp's datasets
       # by id) and its audit appendix (cut to its scope) — no upload file name, no quantity — and the preview composes the same.
-      - name: A report composed now freezes its sources by dataset id and its audit appendix, and is drawn composed@3
+      - name: A report composed now freezes its sources by dataset id and its audit appendix (composed@3's freeze, carried into composed@4)
         run: npx tsx --test packages/isolated-backend/tests/reportComposed3Real.test.ts
+      # B2-3 (RULING-report-B2-3): a report composed now is drawn composed@4 with its plan complete; it freezes the stamp's
+      # reporting period (none stamped, none frozen) and the client signee the version named; a profile written before B2-3 is
+      # read complete, keeping its order and choices; the preview still equals what publish freezes.
+      - name: A report composed now is drawn composed@4, freezing its period and signee, and reads stored plans complete
+        run: npx tsx --test packages/isolated-backend/tests/reportComposed4Real.test.ts
       # B2-2 (REVIEW-B2-1-and-B2-rulings, Q6): the Report Studio's draft is what validate would hold for the latest approved
       # snapshot with the plan and scope asked for — READ ONLY, stored nowhere, validate's refusals beside it — and equals the
       # validated version's B0 preview field for field.

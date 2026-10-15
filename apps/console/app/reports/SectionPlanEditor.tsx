@@ -5,7 +5,14 @@
 // the methodology hold their places; the cover, executive summary, emissions and methodology are always included (Q1); the
 // narrative sections are not drawn yet (Q6), so they are not listed. A left-out section stays in the list, marked, so it can be
 // put back — and the issued report says on its Methodology page that it was left out.
-import { isMovableReportSection, isOptionalReportSection, isReportDataSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
+import { isMovableReportSection, isOptionalReportSection, isReportDataSection, isReportReferenceSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
+
+// B2-3: the cover leads; Methodology closes the main body and the reference block (Glossary, the audit, Appendix 2) follows it
+// in a fixed order, so none of them moves. A plan without the reference block (composed@1/2/3) ends at Methodology, as before.
+const fixedLabel = (key: string, plan: ReportSectionPlan): string =>
+  key === "cover" ? "Always first"
+    : isReportReferenceSection(key) ? "Reference, after Methodology"
+      : plan.some((entry) => isReportReferenceSection(entry.key)) ? "Ends the main body" : "Always last";
 
 // `allowExclusion` follows the one switch (RULING-reporting-F4b-flip-and-dashboard): on since both gates cleared, so the
 // include switch shows; told exclusion is unavailable, the editor is reorder-only, as in F-1b.
@@ -28,7 +35,7 @@ export function SectionPlanEditor({ plan, onChange, disabled = false, label = "S
                 onChange={(event) => onChange(setReportSectionIncluded(plan, entry.key, event.target.checked, { allowExclusion }))} /> Include</label>
             : null}
           {fixed
-            ? <span className="muted">{entry.key === "cover" ? "Always first" : "Always last"}</span>
+            ? <span className="muted">{fixedLabel(entry.key, plan)}</span>
             : <span className="mv">
               <button type="button" className="nz-editlink" disabled={disabled || at === 0} aria-label={`Move ${title} earlier`}
                 onClick={() => onChange(moveReportSection(plan, entry.key, "earlier"))}>↑</button>

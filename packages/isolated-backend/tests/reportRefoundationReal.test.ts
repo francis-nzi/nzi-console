@@ -89,7 +89,10 @@ describe("reporting re-foundation (RF-1, RF-2), against a real database", { skip
     assert.equal(floor!.denominatorText, "1,000 m²");
     // The reported measure is the snapshot's £12.5m, not the £14m corrected since: 35 / 12.5 = 2.8, as the pathway draws.
     assert.equal(turnover!.value, 2.8);
-    assert.equal(turnover!.denominatorText, "£12,500,000");
+    // RULING-B2-3-two-decisions (NZC-120): the turnover amount is money, so it is never frozen — the unit and the intensity are.
+    assert.equal(turnover!.denominatorText, null);
+    assert.equal(employees!.denominatorText, "50 employees", "a non-currency denominator is still frozen");
+    assert.doesNotMatch(JSON.stringify(intensity), /12,500,000|12500000|14,000,000|14000000/, "no turnover amount anywhere in the section");
     assert.equal(turnover!.unit, "tCO₂e per £m");
     assert.equal(employees!.value, 0.7, "a context measure resolves at issue, as it always has");
   });

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { defaultReportSectionPlan, isMovableReportSection, moveReportSection, reportSectionPlanIssues, type ReportSectionPlan } from "../src/reportComposition";
+import { isMovableReportSection, legacyReportSectionPlanV3 as defaultReportSectionPlan, moveReportSection, normaliseReportPlanKeys, reportSectionPlanIssues, type ReportSectionPlan } from "../src/reportComposition";
 
-/** F-1b: what the editors' up/down buttons do to a plan — always to another valid plan. */
+/** F-1b: what the editors' up/down buttons do to a plan — always to another valid plan. The fixture is the frozen v3 legacy plan
+ * (B2-3): the move rules are unchanged, and the order this file was written against is that one. */
 const order = (plan: ReportSectionPlan) => plan.filter((entry) => !entry.key.startsWith("narrative:")).map((entry) => entry.key);
 
 describe("moving a section in a plan (F-1b)", () => {
@@ -11,7 +12,7 @@ describe("moving a section in a plan (F-1b)", () => {
     assert.deepEqual(order(moved), ["cover", "executive-summary", "emissions", "sites", "targets", "intensity", "plan", "srs", "methodology"]);
     const narrative = (plan: ReportSectionPlan) => plan.map((entry, index) => entry.key.startsWith("narrative:") ? `${index}:${entry.key}` : null).filter(Boolean);
     assert.deepEqual(narrative(moved), narrative(defaultReportSectionPlan), "every narrative entry keeps its index");
-    assert.deepEqual(reportSectionPlanIssues(moved), [], "the result is a valid plan");
+    assert.deepEqual(reportSectionPlanIssues(normaliseReportPlanKeys(moved)), [], "the result is a valid plan, once read complete (B2-3)");
   });
 
   it("moves across a narrative entry to the next data section", () => {

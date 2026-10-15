@@ -7,7 +7,7 @@ import {
   type ScopeYearOnYearData,
 } from "@nzi/charts";
 import {
-  strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta,
+  strategyControlLevelLabels, strategyScopeLabel, strategyStatusLabels, isReportGap, reportCompositionSectionMeta, reportSectionMetaV4, reportComposed4Sections,
   isReportDataSection, reportHeadline, reportMethodologyRows, reportOmittedSections, reportRendererOf, reportResidualTco2e, reportScopeFlag, reportSectionLayout,
   reportSectionPlanOf, reportSrsRadarChart, qualityTierLabel,
   type ReportAuditAppendix, type ReportCompositionScope, type ReportCompositionSectionKey, type ReportEmissionsComparison,
@@ -58,13 +58,18 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   // the audit appendix closing Methodology, and a preview that says it is one.
   if (renderer === "composed@3") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} v3={{ preview }}
     charts={withSourceSummary(composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0], { resolverVersion: CRP_RESOLVER_AGGREGATED }) : [], composition.sources?.summary)} />;
+  // B2-3 (composed@4): composed@3 with the mockup's section set and titles — Analysis by Scope, Emissions by Scope & Category,
+  // and the reference block after Methodology (Glossary, the Full Emissions Audit, Appendix 2) — the cover's metacard and the
+  // sign-off. The same charts as composed@3.
+  if (renderer === "composed@4") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} v3={{ preview, v4: true }}
+    charts={withSourceSummary(composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0], { resolverVersion: CRP_RESOLVER_AGGREGATED }) : [], composition.sources?.summary)} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 
 type ComposedCharts = ReturnType<typeof resolveCrpCoreCharts>;
 
-/** `composed@3`'s additions. Absent, `ComposedV1` draws `composed@1/2` exactly as pinned. */
-type ComposedV3 = { preview: boolean };
+/** `composed@3`'s additions, and `composed@4`'s (`v4`). Absent, `ComposedV1` draws `composed@1/2` exactly as pinned. */
+type ComposedV3 = { preview: boolean; v4?: boolean };
 
 /**
  * `composed@1`: the layout every composition issued up to F-0 was drawn with. Pinned byte-for-byte in CI
@@ -80,7 +85,12 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
   const scopeDonut = chart<ScopeDonutData>("emissions_scope_donut"), yearOnYear = chart<ScopeYearOnYearData>("scope_year_on_year_bar");
   const byActivity = chart<EmissionsByActivityData>("emissions_by_activity"), purchasedGoods = chart<PurchasedGoodsBreakdownData>("purchased_goods_breakdown");
   const intensityPathway = chart<IntensityPathwayData>("intensity_pathway");
-  const { emissions, intensity, targets, plan, srs } = composition;
+  const { emissions, targets, plan, srs } = composition;
+  // B2-3 (RULING-report-B2-3 / F4, NZC-120): composed@4 never prints a money amount — a currency measure's frozen denominator
+  // ("£12,500,000", RF-1) is left out; its ratio unit ("tCO₂e / £m") stays. composed@1/2/3 draw what they always did.
+  const intensity = v3?.v4 && !isReportGap(composition.intensity)
+    ? { ...composition.intensity, metrics: composition.intensity.metrics.map((metric) => isMoneyText(metric.denominatorText) ? { ...metric, denominatorText: null } : metric) }
+    : composition.intensity;
   // The reduction pathway is the report's own targets (the client target model), not the resolver's job-level target.
   const drawnPathway = charts && !isReportGap(targets) ? reportPathway(composition, targets) : null;
   const pathway = drawnPathway ? sourced(drawnPathway) : null;
@@ -93,17 +103,22 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
   const scope = composition.scope;
   const realSites = hasSites && !isReportGap(emissions) ? (emissions.sites ?? []).filter((site) => site.siteId !== null) : [];
   // composed@1 draws the data sections; the narrative is not part of this layout (Q6: it renders with a later one).
+  // B2-3: composed@4 also draws its own sections, by its own titles; composed@1/2/3 never draw them, whatever a plan holds.
+  const v4 = v3?.v4 === true;
+  const meta = v4 ? reportSectionMetaV4 : reportCompositionSectionMeta;
   const sectionPlan = reportSectionPlanOf(composition);
-  const layout = reportSectionLayout(sectionPlan, (key) => isReportDataSection(key) && (key !== "sites" || hasSites));
+  const layout = reportSectionLayout(sectionPlan, (key) => isReportDataSection(key) && (key !== "sites" || hasSites) && (v4 || !reportComposed4Sections.includes(key)));
   // F-1: a section left out at the issuer's choice is said on the Methodology page, never silently dropped.
-  const omitted = reportOmittedSections(sectionPlan);
+  const omitted = v4 ? sectionPlan.filter((entry) => !entry.included && isReportDataSection(entry.key)).map((entry) => reportSectionMetaV4[entry.key as ReportCompositionSectionKey].title) : reportOmittedSections(sectionPlan);
+  // B2-3: composed@4's Appendix-derived tables, summed at render from the frozen audit rows (no new frozen data, no money).
+  const auditRows = v4 ? composition.audit?.rows ?? [] : [];
 
   // One renderer per section; the plan decides which appear, in what order, with what number and page.
   const sections: Record<ReportCompositionSectionKey, (n: string, page: number) => React.ReactNode> = {
-    cover: () => <Cover composition={composition} issuerLogoSrc={issuerLogoSrc} preview={v3?.preview ?? false} />,
+    cover: () => <Cover composition={composition} issuerLogoSrc={issuerLogoSrc} preview={v3?.preview ?? false} v4={v4} />,
 
     "executive-summary": (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="executive-summary" />
+      <SectionHead meta={meta} n={n} section="executive-summary" />
       <ScopeFlag scope={scope} kind="site" />
       <p className="nzr-lede">{reportHeadline(emissions, composition.reportingYear, scope)}</p>
       {!isReportGap(emissions) ? <div className="nzr-figures">
@@ -115,7 +130,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     emissions: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="emissions" />
+      <SectionHead meta={meta} n={n} section="emissions" />
       <ScopeFlag scope={scope} kind="site" />
       {isReportGap(emissions)
         ? <Gap section={emissions} />
@@ -133,16 +148,18 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
           </table>
           {emissions.unallocated ? <Unallocated statement={emissions.unallocated.statement} /> : null}
           {emissions.periodConflicts?.length ? <div className="nzr-callout warn" role="note">{emissions.periodConflicts.map((conflict) => <p key={conflict.period}>{conflict.jobNumbers.join(" and ")} both report {conflict.period}. Resolve which stands before comparing that period — it is not summed or chosen here.</p>)}</div> : null}
-          {emissions.comparison
+          {/* B2-3: composed@4 draws the comparison and the year-on-year chart in Analysis by Scope, and the purchased-goods
+              breakdown in Emissions by Scope & Category. */}
+          {v4 ? null : emissions.comparison
             ? <Comparison comparison={emissions.comparison} chartHasEarlierYears={yearOnYear?.years.some((entry) => entry.year < composition.reportingYear) ?? false} />
             : emissions.priorYear === null
             ? <p className="nzr-note">This is the first assured year, so there is no prior year to compare against.</p>
             : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
           {charts ? <div className="nzr-charts">
             {scopeDonut ? <div className="nzr-chart"><EmissionsScopeDonut data={scopeDonut} /></div> : null}
-            {yearOnYear ? <div className="nzr-chart wide"><ScopeYearOnYearBar data={yearOnYear} /></div> : null}
+            {yearOnYear && !v4 ? <div className="nzr-chart wide"><ScopeYearOnYearBar data={yearOnYear} /></div> : null}
             {byActivity ? <div className="nzr-chart wide"><EmissionsByActivity data={byActivity} /></div> : null}
-            {purchasedGoods ? <div className="nzr-chart wide"><PurchasedGoodsBreakdown data={purchasedGoods} /></div> : null}
+            {purchasedGoods && !v4 ? <div className="nzr-chart wide"><PurchasedGoodsBreakdown data={purchasedGoods} /></div> : null}
           </div> : null}
           <Provenance provenance={emissions.provenance} summary={summary} />
         </>}
@@ -150,7 +167,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
 
     // Present only where a site breakdown was frozen (the layout's `present`), so emissions is never a gap here.
     sites: (n, page) => isReportGap(emissions) ? null : <Page footer={footer} number={page}>
-      <SectionHead n={n} section="sites" />
+      <SectionHead meta={meta} n={n} section="sites" />
       <ScopeFlag scope={scope} kind="site" />
       <p className="nzr-note">{scope?.kind === "sites" ? "This report covers the selected sites below." : "This report covers the following sites, and the organisation-level emissions not attributable to any one of them."}</p>
       <div className="nzr-chart"><EmissionsSiteDonut data={sourced(sitesDonut(composition, emissions))} /></div>
@@ -172,7 +189,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     intensity: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="intensity" />
+      <SectionHead meta={meta} n={n} section="intensity" />
       <ScopeFlag scope={scope} kind="site" />
       {isReportGap(intensity)
         ? <Gap section={intensity} />
@@ -202,7 +219,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     targets: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="targets" />
+      <SectionHead meta={meta} n={n} section="targets" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(targets)
         ? <Gap section={targets} />
@@ -242,7 +259,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     plan: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="plan" />
+      <SectionHead meta={meta} n={n} section="plan" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(plan)
         ? <Gap section={plan} />
@@ -289,7 +306,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     srs: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="srs" />
+      <SectionHead meta={meta} n={n} section="srs" />
       <ScopeFlag scope={scope} kind="client" />
       {isReportGap(srs)
         ? <Gap section={srs} />
@@ -317,7 +334,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
     </Page>,
 
     methodology: (n, page) => <Page footer={footer} number={page}>
-      <SectionHead n={n} section="methodology" />
+      <SectionHead meta={meta} n={n} section="methodology" />
       <table className="nzr-tbl">
         <tbody>{(v3 ? reportMethodologyRows(composition, { factorSet: summary, issued: v3.preview ? "Not issued — preview" : undefined }) : reportMethodologyRows(composition)).map((row) => <tr key={row.label}>
           <td>{row.label}</td><td>{row.value}</td>
@@ -330,7 +347,58 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
         never captured as images, and render identically on screen, in the portal and in print.
       </p>
       {omitted.length > 0 ? <p className="nzr-note nzr-omitted">Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
-      {v3 && composition.audit ? <AuditAppendix audit={composition.audit} /> : null}
+      {/* composed@3 closes Methodology with the audit; composed@4 gives it its own section and closes with the sign-off. */}
+      {v3 && !v4 && composition.audit ? <AuditAppendix audit={composition.audit} /> : null}
+      {v4 ? <SignOff composition={composition} preview={v3?.preview ?? false} /> : null}
+    </Page>,
+
+    // ── B2-3: composed@4's sections (RULING-report-B2-3). composed@1/2/3 never reach these: their layouts never hold them. ──
+
+    "scope-analysis": (n, page) => <Page footer={footer} number={page}>
+      <SectionHead meta={meta} n={n} section="scope-analysis" />
+      <ScopeFlag scope={scope} kind="site" />
+      {isReportGap(emissions)
+        ? <Gap section={emissions} />
+        : <>
+          {/* F3: the comparison shows the columns the assured periods support — never a chooser, never a guessed year. */}
+          {emissions.comparison
+            ? <Comparison comparison={emissions.comparison} chartHasEarlierYears={yearOnYear?.years.some((entry) => entry.year < composition.reportingYear) ?? false} />
+            : emissions.priorYear === null
+            ? <p className="nzr-note">This is the first assured year, so there is no prior year to compare against.</p>
+            : <p className="nzr-note">FY{emissions.priorYear.year} assured total: {tonnes(emissions.priorYear.totalTco2e)} tCO₂e.</p>}
+          {yearOnYear ? <div className="nzr-chart wide"><ScopeYearOnYearBar data={yearOnYear} /></div> : null}
+          <Provenance provenance={emissions.provenance} summary={summary} />
+        </>}
+    </Page>,
+
+    "category-analysis": (n, page) => <Page footer={footer} number={page}>
+      <SectionHead meta={meta} n={n} section="category-analysis" />
+      <ScopeFlag scope={scope} kind="site" />
+      {isReportGap(emissions) || auditRows.length === 0
+        ? <Gap section={isReportGap(emissions) ? emissions : { state: "unavailable", reason: "This report holds no row-level detail to group by category." }} />
+        : <>
+          <CategoryTable rows={auditRows} />
+          {purchasedGoods ? <div className="nzr-chart wide"><PurchasedGoodsBreakdown data={purchasedGoods} /></div> : null}
+          <p className="nzr-note">Categories are this period&rsquo;s, summed from the rows in the Full Emissions Audit. A comparison by category across periods is not part of this report.</p>
+        </>}
+    </Page>,
+
+    glossary: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead meta={meta} n={n} section="glossary" />
+      <table className="nzr-tbl nzr-glossary">
+        <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+        <tbody>{REPORT_GLOSSARY.map((entry) => <tr key={entry.term}><td>{entry.term}</td><td>{entry.definition}</td></tr>)}</tbody>
+      </table>
+    </Page>,
+
+    audit: (n, page) => <Page footer={footer} number={page}>
+      <SectionHead meta={meta} n={n} section="audit" />
+      {composition.audit ? <AuditAppendix audit={composition.audit} heading={false} /> : <Gap section={{ state: "unavailable", reason: "This report holds no row-level audit." }} />}
+    </Page>,
+
+    "appendix-sites": (n, page) => <Page footer={footer} number={page}>
+      <SectionHead meta={meta} n={n} section="appendix-sites" />
+      {auditRows.length === 0 ? <Gap section={{ state: "unavailable", reason: "This report holds no row-level detail to group by site." }} /> : <SiteScopeAppendix rows={auditRows} />}
     </Page>,
   };
 
@@ -354,7 +422,7 @@ function UnknownRenderer({ renderer }: { renderer: string }) {
   </section></main>;
 }
 
-function Cover({ composition, issuerLogoSrc, preview }: { composition: ReportComposition; issuerLogoSrc: IssuerLogoSrc; preview: boolean }) {
+function Cover({ composition, issuerLogoSrc, preview, v4 = false }: { composition: ReportComposition; issuerLogoSrc: IssuerLogoSrc; preview: boolean; v4?: boolean }) {
   // The issuer frozen at validation (0143): a profile edited since does not change a document already issued.
   const issuer = composition.issuer ?? null;
   return <section className="nzr-page nzr-cover">
@@ -374,6 +442,8 @@ function Cover({ composition, issuerLogoSrc, preview }: { composition: ReportCom
         ? <>FY{composition.reportingYear} · {composition.jobNumber} · preview — not issued</>
         : <>FY{composition.reportingYear} · {composition.jobNumber} · issued {formatDate(composition.issuedAt.slice(0, 10))}</>}
     </div>
+    {/* B2-3 (composed@4): the mockup's metacard. A row the composition does not hold (no stamped period) is left out, never guessed. */}
+    {v4 ? <Metacard composition={composition} preview={preview} /> : null}
     {/* The basis appears on the cover as well as the methodology page: whoever reads only
         the first page should still know what this document is and is not. */}
     <div className="nzr-cover-basis">{composition.assurance.statement}</div>
@@ -457,8 +527,9 @@ function SrsRoadmap({ roadmap }: { roadmap: ReportSrsRoadmap }) {
   </div>;
 }
 
-function SectionHead({ n, section }: { n: string; section: keyof typeof reportCompositionSectionMeta }) {
-  const meta = reportCompositionSectionMeta[section];
+/** A section's number, eyebrow and title — from the renderer's own title table (composed@1/2/3's, or composed@4's). */
+function SectionHead({ n, section, meta: titles = reportCompositionSectionMeta }: { n: string; section: ReportCompositionSectionKey; meta?: Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> }) {
+  const meta = titles[section];
   return <div className="nzr-sechd">
     <span className="n">{n}</span>
     <div><div className="eyebrow">{meta.eyebrow}</div><h2>{meta.title}</h2></div>
@@ -504,10 +575,11 @@ function Comparison({ comparison, chartHasEarlierYears = false }: { comparison: 
  * row the report's figures sum, frozen at compose and cut to its scope, with the factor and dataset it rests on. The per-row
  * detail lives here so the charts and sections can name their sources once.
  */
-function AuditAppendix({ audit }: { audit: ReportAuditAppendix }) {
+function AuditAppendix({ audit, heading = true }: { audit: ReportAuditAppendix; heading?: boolean }) {
   const t = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
   return <section className="nzr-audit" aria-label="Full emissions audit">
-    <h3 className="nzr-h3">Full emissions audit</h3>
+    {/* composed@4 draws the audit as its own section, whose heading names it; composed@3's closing block names itself. */}
+    {heading ? <h3 className="nzr-h3">Full emissions audit</h3> : null}
     <p className="nzr-note">Each of the {audit.rows.length} row{audit.rows.length === 1 ? "" : "s"} the figures in this report sum, with the factor applied, the dataset or client factor it came from and its data quality.</p>
     <table className="nzr-tbl nzr-audit-tbl">
       <thead><tr><th>Category</th><th>Activity</th><th>Site</th><th>Factor</th><th>Source</th><th>Quality</th><th className="r">tCO₂e</th></tr></thead>
@@ -524,6 +596,102 @@ function AuditAppendix({ audit }: { audit: ReportAuditAppendix }) {
 function Gap({ section }: { section: ReportSectionGap }) {
   return <p className="nzr-gap">{section.reason}</p>;
 }
+
+/* ── B2-3: composed@4's pieces (RULING-report-B2-3). Each draws only what the composition froze; none carries money. ── */
+
+type AuditRows = ReportAuditAppendix["rows"];
+/** A money amount — a currency symbol, or a currency code beside a figure (the issuer-line rule's shape). */
+const isMoneyText = (text: string | null | undefined): boolean =>
+  !!text && /[£$€¥₹]|\b(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\b/i.test(text);
+const dd = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const share = (part: number, total: number) => total === 0 ? "—" : `${((part / total) * 100).toFixed(1)}%`;
+const t2 = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+
+/** The cover's metacard: client, title, reporting period (when frozen), scope, and when the report was generated. */
+function Metacard({ composition, preview }: { composition: ReportComposition; preview: boolean }) {
+  const scope = composition.scope?.kind === "sites" ? composition.scope.siteLabels.join(", ") : "Whole client";
+  const rows: Array<[string, string]> = [
+    ["Client", composition.client],
+    ["Report title", `${composition.client} Carbon Reduction Plan FY${composition.reportingYear}`],
+    ...(composition.reportingPeriod ? [["Reporting period", `${dd(composition.reportingPeriod.from)} – ${dd(composition.reportingPeriod.to)}`] as [string, string]] : []),
+    ["Scope", scope],
+    ["Report generated", preview ? "Not issued — preview" : formatDate(composition.issuedAt.slice(0, 10))],
+  ];
+  return <dl className="nzr-metacard">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
+}
+
+/**
+ * The declaration and sign-off (call 2): the firm's side is the frozen issuer; the client's is the signee the version named at
+ * validate — with blank signature and date lines for wet signing. No other identity is introduced.
+ */
+function SignOff({ composition, preview }: { composition: ReportComposition; preview: boolean }) {
+  return <section className="nzr-signoff" aria-label="Declaration and sign-off">
+    <h3 className="nzr-h3">Declaration &amp; sign-off</h3>
+    <p className="nzr-note">{preview
+      ? "This is a preview: the report is signed once it is issued."
+      : "Prepared from the reviewed snapshot named above. Signed by the client to confirm the report reflects its organisation and boundary."}</p>
+    <div className="nzr-signoff-boxes">
+      <div className="nzr-signoff-box"><div className="eyebrow">Prepared by</div><b>{composition.issuer?.displayName ?? "The issuing organisation"}</b>
+        <div className="nzr-signoff-line">Signature</div><div className="nzr-signoff-line">Date</div></div>
+      <div className="nzr-signoff-box"><div className="eyebrow">Client approval</div>
+        <b>{composition.signee ? composition.signee.name : <span className="muted">Name</span>}</b>
+        {composition.signee?.jobTitle ? <div className="nzr-note">{composition.signee.jobTitle}</div> : null}
+        <div className="nzr-signoff-line">Signature</div><div className="nzr-signoff-line">Date</div></div>
+    </div>
+  </section>;
+}
+
+/** Emissions by scope and category, this period — summed from the frozen audit rows (call 3). */
+function CategoryTable({ rows }: { rows: AuditRows }) {
+  const groups = new Map<string, { scope: string; scopeCode: string; category: string; tco2e: number }>();
+  for (const row of rows) {
+    const current = groups.get(row.scopeCode) ?? { scope: row.scope, scopeCode: row.scopeCode, category: row.category, tco2e: 0 };
+    current.tco2e += row.tco2e;
+    groups.set(row.scopeCode, current);
+  }
+  const ordered = [...groups.values()].sort((a, b) => a.scopeCode.localeCompare(b.scopeCode, "en", { numeric: true }));
+  const total = ordered.reduce((sum, group) => sum + group.tco2e, 0);
+  return <table className="nzr-tbl nzr-category-tbl">
+    <thead><tr><th>Scope</th><th>Category</th><th className="r">tCO₂e</th><th className="r">Share</th></tr></thead>
+    <tbody>{ordered.map((group) => <tr key={group.scopeCode}><td>{strategyScopeLabel(group.scope as StrategyScope)}</td><td>{group.category}</td><td className="r num">{t2(group.tco2e)}</td><td className="r num">{share(group.tco2e, total)}</td></tr>)}</tbody>
+    <tfoot><tr><td colSpan={2}>Total</td><td className="r num">{t2(total)}</td><td className="r num">100%</td></tr></tfoot>
+  </table>;
+}
+
+/** Appendix 2: each site's total, then its Scope 1, 2 and 3 — summed from the frozen audit rows. */
+function SiteScopeAppendix({ rows }: { rows: AuditRows }) {
+  const sites = new Map<string, { label: string; byScope: Map<string, number>; total: number }>();
+  for (const row of rows) {
+    const label = row.site ?? "Organisation-level";
+    const site = sites.get(label) ?? { label, byScope: new Map<string, number>(), total: 0 };
+    site.byScope.set(row.scope, (site.byScope.get(row.scope) ?? 0) + row.tco2e);
+    site.total += row.tco2e;
+    sites.set(label, site);
+  }
+  const ordered = [...sites.values()].sort((a, b) => (a.label === "Organisation-level" ? 1 : 0) - (b.label === "Organisation-level" ? 1 : 0) || a.label.localeCompare(b.label));
+  const total = ordered.reduce((sum, site) => sum + site.total, 0);
+  return <table className="nzr-tbl nzr-site-scope-tbl">
+    <thead><tr><th>Site &amp; scope</th><th className="r">tCO₂e</th></tr></thead>
+    <tbody>{ordered.map((site) => <Fragment key={site.label}>
+      <tr className="sub"><td><b>{site.label}</b></td><td className="r num"><b>{t2(site.total)}</b></td></tr>
+      {(["1", "2", "3"] as const).filter((scope) => site.byScope.has(scope)).map((scope) => <tr key={`${site.label}-${scope}`}><td className="ind">{strategyScopeLabel(scope as StrategyScope)}</td><td className="r num">{t2(site.byScope.get(scope)!)}</td></tr>)}
+    </Fragment>)}</tbody>
+    <tfoot><tr><td>Total emissions</td><td className="r num">{t2(total)}</td></tr></tfoot>
+  </table>;
+}
+
+/** The Glossary — fixed text, versioned with composed@4. Words only: no figures, no money. */
+const REPORT_GLOSSARY: ReadonlyArray<{ term: string; definition: string }> = [
+  { term: "tCO₂e", definition: "Tonnes of carbon dioxide equivalent: greenhouse gases expressed as the amount of carbon dioxide with the same warming effect." },
+  { term: "Scope 1", definition: "Direct emissions from sources the organisation owns or controls, such as fuel burned on its sites or in its own vehicles." },
+  { term: "Scope 2", definition: "Indirect emissions from the electricity, heat and steam the organisation buys." },
+  { term: "Scope 3", definition: "Other indirect emissions in the organisation's value chain, such as purchased goods and services, business travel and waste." },
+  { term: "Reporting boundary", definition: "The sites and activities this report includes." },
+  { term: "Emission factor", definition: "The figure that converts an activity — energy used, distance travelled, goods bought — into emissions. Each factor's source is named in the Full Emissions Audit." },
+  { term: "Data quality", definition: "How each figure was obtained: measured, estimated, spend-based or from a survey." },
+  { term: "Baseline", definition: "The reference period against which reductions are measured." },
+  { term: "Net zero", definition: "Reducing emissions as far as possible, and addressing the residual that remains through removals." },
+];
 
 function Figure({ label, value, unit }: { label: string; value: string; unit: string }) {
   return <div className="nzr-figure"><div className="l">{label}</div><div className="v num">{value} <small>{unit}</small></div></div>;
