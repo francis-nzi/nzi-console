@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { isReportGap, reportSectionLayout, reportSectionPlanOf, type ReportComposition } from "@nzi/contracts";
+import { crpScopeCategoryLabel, isReportGap, reportSectionLayout, reportSectionPlanOf, type ReportComposition } from "@nzi/contracts";
 import { LogoMark } from "../../lib/LogoMark";
 
 /**
@@ -562,6 +562,100 @@ function TargetsSection({ composition, number }: { composition: ReportCompositio
   </>;
 }
 
+// ── 08 · Analysis by Scope, 09 · Emissions by Scope & Category ───────────────────────────────────────────────────────────
+/** The mockup's vertical bars: one bar per item, its value above it. */
+function VBars({ items }: { items: Array<{ label: string; value: number; colour: string }> }) {
+  const W = 660, H = 220, pl = 46, pb = 28, pt = 12, pr = 8, cw = (W - pl - pr) / Math.max(1, items.length);
+  const max = niceMax(Math.max(...items.map((item) => item.value), 0) * 1.06);
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Emissions by scope, bar chart">
+    {[0, 1, 2, 3, 4].map((i) => { const y = pt + (H - pt - pb) * (i / 4); return <g key={i}><line x1={pl} y1={y.toFixed(1)} x2={W - pr} y2={y.toFixed(1)} stroke={LINE} />
+      <text x={pl - 6} y={(y + 3).toFixed(1)} textAnchor="end" fontFamily="Inter" fontSize={9.5} fill={MUTED}>{axisLabel(max * (1 - i / 4), max)}</text></g>; })}
+    {items.map((item, index) => {
+      const bh = (H - pt - pb) * (item.value / max), x = pl + cw * index + cw * 0.25, bw = cw * 0.5, y = H - pb - bh;
+      return <g key={item.label}>
+        <rect x={x.toFixed(1)} y={y.toFixed(1)} width={bw.toFixed(1)} height={Math.max(0, bh).toFixed(1)} rx={3} fill={item.colour} />
+        <text x={(x + bw / 2).toFixed(1)} y={(y - 5).toFixed(1)} textAnchor="middle" fontFamily="Inter" fontSize={10} fontWeight={700} fill={INK}>{f1(item.value)}</text>
+        <text x={(pl + cw * index + cw / 2).toFixed(1)} y={H - 9} textAnchor="middle" fontFamily="Inter" fontSize={10} fill={INK_2}>{item.label}</text>
+      </g>;
+    })}
+  </svg>;
+}
+const INK_2 = "#3E4C45";
+
+/** A year-aware comparison table's head and cells — the frozen comparison's own columns, the % difference against the baseline. */
+function comparisonColumns(composition: ReportComposition) {
+  const comparison = isReportGap(composition.emissions) ? undefined : composition.emissions.comparison;
+  const columns = comparison?.columns ?? [];
+  const baseAt = columns.findIndex((column) => column.key === "baseline"), currentAt = columns.length - 1;
+  const head = <>{columns.map((column) => <th key={column.key} className="r5-num">{COLUMN_HEADS[column.key] ?? column.label}</th>)}{baseAt >= 0 ? <th className="r5-num">% difference</th> : null}</>;
+  const cells = (values: ReadonlyArray<number | null>) => <>{values.map((value, index) => <td key={index} className="r5-num">{value === null ? DASH : f1(value)}</td>)}
+    {baseAt >= 0 ? <td className="r5-num">{pctChange(values[currentAt] ?? null, values[baseAt] ?? null)}</td> : null}</>;
+  return { comparison, head, cells };
+}
+
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  "1": "Fuels used at company premises and company vehicles.",
+  "2": "Purchased electricity used at the company's premises.",
+  "3": "Purchased goods, transport, commuting, waste and all other value-chain activities.",
+};
+
+function ScopeAnalysis({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Analysis</div><h2 className="r5-h2">Analysis by Scope</h2><SiteFlag composition={composition} /></>;
+  const scopes = scopesOf(composition);
+  if (!scopes || isReportGap(composition.emissions)) return <>{head}<p className="r5-unavailable">{isReportGap(composition.emissions) ? composition.emissions.reason : "Emissions are unavailable for this report."}</p></>;
+  const total = composition.emissions.totalTco2e;
+  const { comparison, head: columnsHead, cells } = comparisonColumns(composition);
+  return <>
+    {head}
+    <div className="r5-chartcard">
+      <div className="r5-chead"><b>Year-on-year comparison by scope</b><SvgTag /></div>
+      <VBars items={[...scopes.map((scope) => ({ label: scope.label, value: scope.value, colour: BRAND_DEEP })), { label: "Total", value: total, colour: BRAND_DEEP }]} />
+      <ChartLegend items={[{ label: `Current year ${reportingYearLabel(composition)}`, colour: BRAND_DEEP }]} />
+      <SrcLine composition={composition} />
+    </div>
+    <h3 className="r5-h3">Emissions by scope</h3>
+    {comparison ? <table className="r5-rt">
+      <thead><tr><th>Scope</th><th>Description</th>{columnsHead}</tr></thead>
+      <tbody>
+        {comparison.rows.map((row) => <tr key={row.scope}><td>{row.scope}</td><td>{SCOPE_DESCRIPTIONS[row.scope]}</td>{cells(row.values)}</tr>)}
+        <tr className="r5-total"><td colSpan={2}>Total</td>{cells(comparison.totals)}</tr>
+      </tbody>
+    </table> : <p className="r5-unavailable">This report has no comparison by period.</p>}
+  </>;
+}
+
+/** The scopes in order of size, for the category narrative — never assumes which is largest. */
+function scopeOrder(scopes: Scopes) {
+  return [...scopes].sort((a, b) => b.value - a.value);
+}
+
+function CategoryAnalysis({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Analysis</div><h2 className="r5-h2">Emissions by Scope &amp; Category</h2><SiteFlag composition={composition} /></>;
+  const scopes = scopesOf(composition);
+  const { comparison, head: columnsHead, cells } = comparisonColumns(composition);
+  if (!scopes || isReportGap(composition.emissions) || !comparison?.categories?.length) {
+    return <>{head}<p className="r5-unavailable">{isReportGap(composition.emissions) ? composition.emissions.reason : "This report holds no category breakdown."}</p></>;
+  }
+  const total = composition.emissions.totalTco2e;
+  const [largest, second, third] = scopeOrder(scopes) as [Scopes[number], Scopes[number], Scopes[number]];
+  return <>
+    {head}
+    <table className="r5-rt">
+      <thead><tr><th>Scope</th><th>Category</th>{columnsHead}</tr></thead>
+      <tbody>
+        {comparison.categories.map((category) => <tr key={category.scopeCode}><td className="r5-nowrap">Scope {category.scope}</td><td>{crpScopeCategoryLabel(category.scopeCode)}</td>{cells(category.values)}</tr>)}
+        <tr className="r5-total"><td colSpan={2}>Total emissions</td>{cells(comparison.totals)}</tr>
+      </tbody>
+    </table>
+    <div className="r5-gap">
+      <Narrative>
+        <p>For the <Tok>{reportingYearLabel(composition)}</Tok> reporting year total measured carbon emissions are <Tok>{f1(total)} tCO₂e</Tok>. {largest.label} is the largest share at <Tok>{f1(largest.value)} tCO₂e</Tok> (<Tok>{pc(largest.value, total)}%</Tok>), followed by {second.label} at <Tok>{f1(second.value)} tCO₂e</Tok> and {third.label} at <Tok>{f1(third.value)} tCO₂e</Tok>.</p>
+        <p>The largest categories are the focus of the reduction actions.</p>
+      </Narrative>
+    </div>
+  </>;
+}
+
 /** composed@5's section titles, as its pages head them — the studio's rail names its rows by these. */
 export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   "executive-summary": "Executive Summary",
@@ -571,6 +665,8 @@ export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   emissions: "Carbon Emissions Overview",
   intensity: "Intensity Metric Analysis",
   targets: "Targets & Reduction Pathway",
+  "scope-analysis": "Analysis by Scope",
+  "category-analysis": "Emissions by Scope & Category",
 };
 
 /** Whether composed@5 draws a plan key as a page of its own — the same test its layout numbers by, shared with the rail. */
@@ -585,6 +681,8 @@ const DRAWN: Record<string, (composition: ReportComposition, number: string) => 
   emissions: (composition, number) => <OverviewSection composition={composition} number={number} />,
   intensity: (composition, number) => <IntensitySection composition={composition} number={number} />,
   targets: (composition, number) => <TargetsSection composition={composition} number={number} />,
+  "scope-analysis": (composition, number) => <ScopeAnalysis composition={composition} number={number} />,
+  "category-analysis": (composition, number) => <CategoryAnalysis composition={composition} number={number} />,
 };
 
 

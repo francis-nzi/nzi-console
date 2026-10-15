@@ -8,7 +8,7 @@ import type { ReportComparisonColumn, ReportEmissionsComparison, ReportSiteEmiss
 export type ScopedMeasurement = {
   scope: string; tco2e: number; siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
 };
-export type ScopedHistoryPeriod = { year: number; rows: ReadonlyArray<{ siteId: string | null; scope: string; tco2e: number }>; sitesKnown: boolean };
+export type ScopedHistoryPeriod = { year: number; rows: ReadonlyArray<{ siteId: string | null; scope: string; scopeCode?: string; tco2e: number }>; sitesKnown: boolean };
 
 export const UNALLOCATED_LABEL = "Unallocated / organisation-level";
 /** How many activities a site's breakdown lists before the rest are summed into one line. */
@@ -87,7 +87,7 @@ export function composeScopedEmissions(measurements: readonly ScopedMeasurement[
  * a site scope, and says so rather than reading as nought.
  */
 export function composeScopedComparison(input: {
-  scope: ReportScope; currentYear: number; current: ReadonlyArray<{ siteId?: string | null; scope: string; tco2e: number }>;
+  scope: ReportScope; currentYear: number; current: ReadonlyArray<{ siteId?: string | null; scope: string; scopeCode?: string | null; tco2e: number }>;
   history: readonly ScopedHistoryPeriod[]; baselineYear: number | null;
 }): ReportEmissionsComparison {
   const earlier = input.history.filter((period) => period.year < input.currentYear).sort((a, b) => a.year - b.year);
@@ -102,7 +102,7 @@ export function composeScopedComparison(input: {
   };
   if (baseline) periods.push({ column: { key: "baseline", year: baseline.year, label: `Baseline (FY${baseline.year})` }, rows: attributable(baseline), sitesKnown: baseline.sitesKnown });
   if (previous && (!baseline || previous.year > baseline.year)) periods.push({ column: { key: "previous", year: previous.year, label: `Previous (FY${previous.year})` }, rows: attributable(previous), sitesKnown: previous.sitesKnown });
-  periods.push({ column: { key: "current", year: input.currentYear, label: `Current (FY${input.currentYear})` }, rows: input.current.map((row) => ({ siteId: row.siteId ?? null, scope: row.scope, tco2e: row.tco2e })), sitesKnown: true });
+  periods.push({ column: { key: "current", year: input.currentYear, label: `Current (FY${input.currentYear})` }, rows: input.current.map((row) => ({ siteId: row.siteId ?? null, scope: row.scope, ...(row.scopeCode ? { scopeCode: row.scopeCode } : {}), tco2e: row.tco2e })), sitesKnown: true });
   const selected = input.scope.kind === "sites" ? new Set(input.scope.siteIds) : null;
   const inScope = (rows: ScopedHistoryPeriod["rows"]) => selected ? rows.filter((row) => row.siteId !== null && selected.has(row.siteId)) : rows;
   const value = (rows: ScopedHistoryPeriod["rows"] | null, scope?: string) => rows === null ? null : sumBy(inScope(rows).filter((row) => scope === undefined || row.scope === scope), (row) => row.tco2e);
@@ -117,6 +117,19 @@ export function composeScopedComparison(input: {
     const rows = inScope(period.rows).filter((row) => row.siteId === siteId);
     return rows.length ? sumBy(rows, (row) => row.tco2e) : null;
   };
+  // composed@5 (ACCEPT-composed5-checkpoint4: the category table year-aware, like the by-site one): each current category's own
+  // figure per column, by its GHG code. A period whose rows carry no code, or with no row in that category, is null — "—".
+  const codeOf = (row: ScopedHistoryPeriod["rows"][number]) => row.scopeCode ?? null;
+  const currentRows = inScope(current.rows ?? []);
+  const codes = [...new Map(currentRows.filter((row) => codeOf(row) !== null).map((row) => [codeOf(row)!, row.scope])).entries()]
+    .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }));
+  const categoryValue = (period: (typeof periods)[number], code: string) => {
+    if (period.rows === null) return null;
+    const rows = inScope(period.rows);
+    if (!rows.some((row) => codeOf(row) !== null)) return null;
+    const matching = rows.filter((row) => codeOf(row) === code);
+    return matching.length ? sumBy(matching, (row) => row.tco2e) : null;
+  };
   return {
     columns: periods.map((period) => period.column),
     rows: SCOPES.map((scope) => ({ scope, values: periods.map((period) => value(period.rows, scope)) })),
@@ -124,5 +137,6 @@ export function composeScopedComparison(input: {
     changeVsBaselinePct: baselineTotal !== null && baselineTotal > 0 && currentTotal !== null ? ((currentTotal - baselineTotal) / baselineTotal) * 100 : null,
     notes,
     sites: siteIds.map((siteId) => ({ siteId, values: periods.map((period) => siteValue(period, siteId)) })),
+    categories: codes.map(([scopeCode, scope]) => ({ scope, scopeCode, values: periods.map((period) => categoryValue(period, scopeCode)) })),
   };
 }

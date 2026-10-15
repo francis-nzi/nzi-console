@@ -552,6 +552,11 @@ export type ReportEmissionsComparison = {
    * before its rows carried a site. Absent on compositions frozen before composed@5.
    */
   sites?: Array<{ siteId: string | null; values: Array<number | null> }>;
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint4): each current GHG category's own figure per column, by its code ("3.1") — null
+   * where the category has no row in a period, or the period's rows carry no code. Absent before composed@5.
+   */
+  categories?: Array<{ scope: string; scopeCode: string; values: Array<number | null> }>;
 };
 
 /** The scope a composition was issued at (S-2): the whole client, or named sites. Absent on compositions frozen before S-2 = whole. */

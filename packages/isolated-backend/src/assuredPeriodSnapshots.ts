@@ -24,14 +24,15 @@ export type AssuredPeriodSnapshot = {
    * S-2: the frozen rows, as a scope filters them — site (null = organisation-level), scope, tCO₂e. `sitesKnown` is false
    * for a snapshot frozen before rows carried a site at all, which a site scope cannot attribute.
    */
-  rows: Array<{ siteId: string | null; scope: string; tco2e: number }>;
+  /** composed@5: each row's GHG category code ("3.1"), when the snapshot's row carried one — for the by-category comparison. */
+  rows: Array<{ siteId: string | null; scope: string; scopeCode?: string; tco2e: number }>;
   sitesKnown: boolean;
 };
 
 export async function listAssuredPeriodSnapshots(db: Queryable, clientId: string, options: { excludeJobId?: string } = {}): Promise<AssuredPeriodSnapshot[]> {
   const { rows } = await db.query<{
     snapshot_id: string; data_hash: string; job_id: string; job_number: string | null; reporting_year: number;
-    period_from: Date | string | null; period_to: Date | string | null; measurements: Array<{ tco2e: number | string; scope?: string; siteId?: string | null }> | null;
+    period_from: Date | string | null; period_to: Date | string | null; measurements: Array<{ tco2e: number | string; scope?: string; scopeCode?: string; siteId?: string | null }> | null;
   }>(
     // One snapshot per reporting **period**, not per label (NZC-096). Two of a client's jobs can carry the same
     // reportingYear and mean different periods; DISTINCT ON the label kept one of them and dropped the other's assured
@@ -58,7 +59,8 @@ export async function listAssuredPeriodSnapshots(db: Queryable, clientId: string
     reportingYear: Number(row.reporting_year),
     period: row.period_from && row.period_to ? { from: dateOnly(row.period_from), to: dateOnly(row.period_to) } : null,
     totalTco2e: (row.measurements ?? []).reduce((total, measurement) => total + Number(measurement.tco2e), 0),
-    rows: (row.measurements ?? []).map((measurement) => ({ siteId: measurement.siteId ?? null, scope: String(measurement.scope ?? ""), tco2e: Number(measurement.tco2e) })),
+    rows: (row.measurements ?? []).map((measurement) => ({ siteId: measurement.siteId ?? null, scope: String(measurement.scope ?? ""),
+      ...(typeof measurement.scopeCode === "string" && measurement.scopeCode ? { scopeCode: measurement.scopeCode } : {}), tco2e: Number(measurement.tco2e) })),
     sitesKnown: (row.measurements ?? []).every((measurement) => "siteId" in measurement),
   }));
 }
