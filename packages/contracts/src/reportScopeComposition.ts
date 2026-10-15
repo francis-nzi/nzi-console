@@ -118,16 +118,15 @@ export function composeScopedComparison(input: {
     return rows.length ? sumBy(rows, (row) => row.tco2e) : null;
   };
   // composed@5 (ACCEPT-composed5-checkpoint4: the category table year-aware, like the by-site one): each current category's own
-  // figure per column, by its GHG code. A period whose rows carry no code, or with no row in that category, is null — "—".
+  // figure per column, by its GHG code. A period with no row in that category is null — "—"; so is a period whose rows carry no
+  // code (frozen before rows carried one), as none of its rows can match a code.
   const codeOf = (row: ScopedHistoryPeriod["rows"][number]) => row.scopeCode ?? null;
   const currentRows = inScope(current.rows ?? []);
   const codes = [...new Map(currentRows.filter((row) => codeOf(row) !== null).map((row) => [codeOf(row)!, row.scope])).entries()]
     .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }));
   const categoryValue = (period: (typeof periods)[number], code: string) => {
     if (period.rows === null) return null;
-    const rows = inScope(period.rows);
-    if (!rows.some((row) => codeOf(row) !== null)) return null;
-    const matching = rows.filter((row) => codeOf(row) === code);
+    const matching = inScope(period.rows).filter((row) => codeOf(row) === code);
     return matching.length ? sumBy(matching, (row) => row.tco2e) : null;
   };
   return {

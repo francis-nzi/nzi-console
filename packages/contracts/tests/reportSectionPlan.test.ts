@@ -86,19 +86,26 @@ describe("the exclusion interlock (Q5, binding) and the narrative", () => {
     assert.equal(cut.find((entry) => entry.key === "srs")!.included, false);
     assert.deepEqual(codes(cut), []);
     assert.equal(setReportSectionIncluded(cut, "srs", true).find((entry) => entry.key === "srs")!.included, true, "and puts it back");
-    for (const key of ["cover", "executive-summary", "emissions", "methodology", "narrative:background"] as const) {
+    // An embedded narrative (it rides inside its data section) is no switch; the standalone two are optional (decision 3).
+    for (const key of ["cover", "executive-summary", "emissions", "methodology", "narrative:intensity-analysis"] as const) {
       assert.equal(setReportSectionIncluded(defaultReportSectionPlan, key, !defaultReportSectionPlan.find((entry) => entry.key === key)!.included), defaultReportSectionPlan, key);
     }
-    // B2-3: composed@4's five new sections are optional too; the mandatory four are unchanged (Q1).
+    // B2-3: composed@4's five new sections are optional too; composed@5 (decision 3): so are the two standalone narrative
+    // sections. The mandatory four are unchanged (Q1).
     assert.deepEqual(defaultReportSectionPlan.filter((entry) => isOptionalReportSection(entry.key)).map((entry) => entry.key),
-      ["sites", "intensity", "targets", "scope-analysis", "category-analysis", "plan", "srs", "glossary", "audit", "appendix-sites"]);
+      ["narrative:net-zero-commitment", "narrative:background", "sites", "intensity", "targets", "scope-analysis", "category-analysis", "plan", "srs", "glossary", "audit", "appendix-sites"]);
   });
 
-  it("refuses the narrative until it is drawn (with F-2/F-4)", () => {
+  it("refuses the embedded narrative until it is drawn (with F-2/F-4); the two standalone sections composed@5 draws may be included", () => {
     assert.equal(REPORT_NARRATIVE_SECTIONS_AVAILABLE, false);
-    const plan = defaultReportSectionPlan.map((entry) => entry.key === "narrative:background" ? { ...entry, included: true } : entry);
-    assert.deepEqual(codes(plan), ["NARRATIVE_NOT_YET_DRAWN"]);
-    assert.deepEqual(codes(plan, { allowNarrative: true }), []);
+    const embedded = defaultReportSectionPlan.map((entry) => entry.key === "narrative:intensity-analysis" ? { ...entry, included: true } : entry);
+    assert.deepEqual(codes(embedded), ["NARRATIVE_NOT_YET_DRAWN"]);
+    assert.deepEqual(codes(embedded, { allowNarrative: true }), []);
+    // ACCEPT-composed5-checkpoint2, decision 3: Net Zero Commitment and Background are sections composed@5 draws.
+    for (const key of ["narrative:net-zero-commitment", "narrative:background"]) {
+      assert.deepEqual(codes(defaultReportSectionPlan.map((entry) => entry.key === key ? { ...entry, included: true } : entry)), [], key);
+      assert.deepEqual(codes(defaultReportSectionPlan.map((entry) => entry.key === key ? { ...entry, included: false } : entry)), [], `${key} may be left out`);
+    }
   });
 
   it("is enforced by every command that takes a plan, through the one validator", () => {

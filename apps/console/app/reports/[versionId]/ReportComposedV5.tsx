@@ -476,7 +476,8 @@ function IntensitySection({ composition, number }: { composition: ReportComposit
       {metrics.map((metric) => <div className="r5-imrow" key={metric.key}>
         <div className="r5-im-ic">{iconFor(metric.iconKey)}</div>
         {/* No turnover amount (NZC-120): a currency measure's denominator is not frozen, so its line names the unit only. */}
-        <div><div className="r5-nm">{metric.label}{metric.reported ? <span className="r5-rep">Reported in the CRP</span> : null}</div>
+        {/* RULING-intensity-badge: no pill on an intensity row — neither "Standard" nor "Reported in the CRP". */}
+        <div><div className="r5-nm">{metric.label}</div>
           <div className="r5-u">{metric.denominatorText ?? unitShort(metric.unit)}</div></div>
         <div className="r5-val">{metric.value !== null ? <><b>{f1(metric.value)}</b> <span className="r5-uu">{unitShort(metric.unit)}</span></> : <span className="r5-nr">{metric.unavailableReason ?? "Unavailable"}</span>}</div>
       </div>)}

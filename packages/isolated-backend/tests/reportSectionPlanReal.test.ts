@@ -195,7 +195,7 @@ describe("a report's section plan and the client's report profile (F-1), against
   it("with the flip (both gates met), an optional section may be left out at validate, at the profile and at update, and is frozen out; narrative and a mandatory section never", async () => {
     const atValidate = await validate(await snapshot(), withExcluded("targets"));
     assert.equal(atValidate.data.sectionPlanOrigin, "edited");
-    const narrative = defaultReportSectionPlan.map((entry) => entry.key === "narrative:background" ? { ...entry, included: true } : entry);
+    const narrative = defaultReportSectionPlan.map((entry) => entry.key === "narrative:intensity-analysis" ? { ...entry, included: true } : entry);
     await assert.rejects(validate(await snapshot(), narrative), (error) => codesOf(error).includes("NARRATIVE_NOT_YET_DRAWN"));
     await assert.rejects(validate(await snapshot(), withExcluded("emissions")), (error) => codesOf(error).includes("MANDATORY_SECTION"));
     await setClientReportProfile(database.pool, { clientId: CLIENT, expectedVersion: await profileVersion(), sectionPlan: withExcluded("srs"), issuerLine: null }, context("ada", "admin"));
