@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel, isCurrencyIntensityTarget, reportingIntensityOf,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, siteFloorAreaForPeriod, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
   composeReportChartBasis, type ChartBasisSnapshot, composeReportAudit, composeReportSources, type ReportSources, type SnapshotProvenanceStamp,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
@@ -342,6 +342,7 @@ export async function composeReport(db: Queryable, input: {
   const emissions = composeEmissions(input.snapshot, context);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
   if (!isReportGap(emissions)) await attachSiteFloorAreaIntensity(db, { clientId: input.clientId, snapshot: input.snapshot, emissions });
+  if (!isReportGap(emissions)) await attachSiteFacts(db, { clientId: input.clientId, snapshot: input.snapshot, emissions });
 
   // Read once and shared: the plan section prints these strategies and the readiness
   // roadmap answers its gaps with them. Two reads could straddle an edit and leave one
@@ -414,6 +415,22 @@ async function attachSiteFloorAreaIntensity(db: Queryable, input: { clientId: st
     site.floorAreaIntensity = area.m2 === null
       ? { value: null, unit, floorAreaM2: null, reason: area.reason }
       : { value: (site.totalTco2e * (floor.divider || 1)) / area.m2, unit, floorAreaM2: area.m2, reason: null };
+  }
+}
+
+/**
+ * composed@5 (ACCEPT-composed5-checkpoint3): each site's in-service date and its floor area for the reporting period, from the
+ * client's site records — the site table's columns, whether or not a floor-area measure is reported. Not money.
+ */
+async function attachSiteFacts(db: Queryable, input: { clientId: string; snapshot: SnapshotForComposition; emissions: ReportEmissionsSection }): Promise<void> {
+  if (!input.emissions.sites?.length) return;
+  const [sites, reporting] = [await listJobReportedSites(db, input.clientId, input.snapshot.jobId), await resolveJobReportingPeriod(db, input.snapshot.jobId)];
+  const byId = new Map(sites.map((site) => [site.id, site]));
+  for (const site of input.emissions.sites) {
+    if (site.siteId === null) continue;
+    const record = byId.get(site.siteId);
+    site.inServiceFrom = record?.inServiceFrom ?? null;
+    site.floorAreaM2 = record && reporting?.period ? siteFloorAreaForPeriod(record, reporting.period) : null;
   }
 }
 

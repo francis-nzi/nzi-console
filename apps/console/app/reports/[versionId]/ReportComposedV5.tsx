@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { isReportGap, reportSectionLayout, reportSectionPlanOf, type ReportComposition } from "@nzi/contracts";
 import { LogoMark } from "../../lib/LogoMark";
 
@@ -305,7 +305,8 @@ function SitesSection({ composition, number }: { composition: ReportComposition;
   const total = slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0);
   const scopes: Scopes = slices.map(({ site, colour }) => ({ key: site.siteId ?? "org", label: site.label, value: site.totalTco2e, colour }));
   const realSites = slices.filter((slice) => slice.site.siteId !== null);
-  const floors = slices.map(({ site }) => site.floorAreaIntensity?.floorAreaM2 ?? null);
+  // The site's floor area for the period (frozen at compose), else the floor-area measure's own, when either is held.
+  const floors = slices.map(({ site }) => site.floorAreaM2 ?? site.floorAreaIntensity?.floorAreaM2 ?? null);
   return <>
     {head}
     <p className="r5-prose r5-lead">This report covers the following sites:</p>
@@ -319,8 +320,8 @@ function SitesSection({ composition, number }: { composition: ReportComposition;
       <tbody>
         {slices.map(({ site }, index) => <tr key={site.siteId ?? "org"}>
           <td>{site.label}</td>
-          {/* Not frozen into the composition — listed for Cowork's ruling (CHECKPOINT-composed5-3). */}
-          <td>{site.siteId === null ? "" : NOT_RECORDED}</td>
+          {/* The site record's first day in service (frozen at compose); "before records" when it has none. */}
+          <td>{site.siteId === null ? "" : site.inServiceFrom ? dd(site.inServiceFrom) : site.inServiceFrom === null ? "Before records" : NOT_RECORDED}</td>
           <td className="r5-num">{floors[index] !== null ? f0(floors[index]!) : site.siteId === null ? "" : NOT_RECORDED}</td>
           <td className="r5-num">{f1(site.totalTco2e)}</td><td className="r5-num">{pc(site.totalTco2e, total)}%</td>
         </tr>)}
@@ -330,6 +331,41 @@ function SitesSection({ composition, number }: { composition: ReportComposition;
     </table>
     {realSites.length > 1 ? <><h3 className="r5-h3">By site</h3>{realSites.map(({ site }) => <SiteSubsection key={site.siteId} composition={composition} site={site} />)}</> : null}
   </>;
+}
+
+const COLUMN_HEADS: Record<string, string> = { baseline: "Baseline period", previous: "Previous period", current: "Current period" };
+const DASH = <span className="r5-nr">—</span>;
+/** The mockup's "% difference": signed, one decimal, a true minus sign. */
+const pctChange = (current: number | null, base: number | null) => {
+  if (current === null || base === null || !(base > 0)) return DASH;
+  const change = ((current - base) / base) * 100;
+  return <b>{change > 0 ? "+" : change < 0 ? "−" : ""}{f1(Math.abs(change))}%</b>;
+};
+
+/**
+ * Emissions by site, year-aware: the frozen comparison's own columns (baseline, previous, current — as the assured periods
+ * that exist allow, F3) and each site's own figure in each (ACCEPT-composed5-checkpoint3). A site with no figure for a period
+ * reads "—", never a modelled number. The total row is the comparison's own column totals.
+ */
+function SiteComparisonTable({ composition, slices }: { composition: ReportComposition; slices: ReturnType<typeof siteSlices> }) {
+  const comparison = isReportGap(composition.emissions) ? undefined : composition.emissions.comparison;
+  const columns = comparison?.sites ? comparison.columns : [{ key: "current", year: composition.reportingYear, label: "" }];
+  const valuesOf = (siteId: string | null, current: number) => comparison?.sites?.find((entry) => entry.siteId === siteId)?.values ?? columns.map((column) => column.key === "current" ? current : null);
+  const totals = comparison?.sites ? comparison.totals : [slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0)];
+  const baseAt = columns.findIndex((column) => column.key === "baseline"), currentAt = columns.length - 1;
+  const cell = (value: number | null | undefined) => <td className="r5-num">{value === null || value === undefined ? DASH : f1(value)}</td>;
+  return <table className="r5-rt">
+    <thead><tr><th>Site</th>{columns.map((column) => <th key={column.key} className="r5-num">{COLUMN_HEADS[column.key] ?? column.label}</th>)}{baseAt >= 0 ? <th className="r5-num">% difference</th> : null}</tr></thead>
+    <tbody>
+      {slices.map(({ site }) => {
+        const values = valuesOf(site.siteId, site.totalTco2e);
+        return <tr key={site.siteId ?? "org"}><td>{site.label}</td>{values.map((value, index) => <Fragment key={index}>{cell(value)}</Fragment>)}
+          {baseAt >= 0 ? <td className="r5-num">{pctChange(values[currentAt] ?? null, values[baseAt] ?? null)}</td> : null}</tr>;
+      })}
+      <tr className="r5-total"><td>Total</td>{totals.map((value, index) => <Fragment key={index}>{cell(value)}</Fragment>)}
+        {baseAt >= 0 ? <td className="r5-num">{pctChange(totals[currentAt] ?? null, totals[baseAt] ?? null)}</td> : null}</tr>
+    </tbody>
+  </table>;
 }
 
 const FACTOR_NOTE = "Calculated emissions use the most up-to-date emission factors at publication; factors are applied retrospectively, so values may change when recalculated in future years.";
@@ -349,20 +385,179 @@ function OverviewSection({ composition, number }: { composition: ReportCompositi
       <div className="r5-statbig"><div className="r5-lbl">Total carbon emissions</div><div className="r5-big">{f1(total)}</div>
         <div className="r5-u">tCO₂e{period ? ` · ${dd(period.from)} – ${dd(period.to)}` : ` · ${reportingYearLabel(composition)}`}</div></div>
       {slices.length > 0 ? <div className="r5-overview-sites"><h3 className="r5-h3 r5-flush">Emissions by site</h3>
-        {/* Per-site figures exist for this period only; earlier periods are not frozen by site (listed for the ruling). */}
-        <table className="r5-rt">
-          <thead><tr><th>Site</th><th className="r5-num">Current period</th></tr></thead>
-          <tbody>
-            {slices.map(({ site }) => <tr key={site.siteId ?? "org"}><td>{site.label}</td><td className="r5-num">{f1(site.totalTco2e)}</td></tr>)}
-            <tr className="r5-total"><td>Total</td><td className="r5-num">{f1(slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0))}</td></tr>
-          </tbody>
-        </table></div> : null}
+        <SiteComparisonTable composition={composition} slices={slices} />
+      </div> : null}
     </div>
     <div className="r5-note">{FACTOR_NOTE}</div>
     <div className="r5-chartcard">
       <div className="r5-chead"><b>Emissions summary by scope</b><SvgTag /></div>
       <div className="r5-donutwrap"><Donut scopes={scopes} total={total} /><DonutLegend scopes={scopes} total={total} /></div>
       <SrcLine composition={composition} />
+    </div>
+  </>;
+}
+
+// ── 06 · Intensity Metric Analysis, 07 · Targets & Reduction Pathway ──────────────────────────────────────────────────
+const SKY = "#2E86C1", VIOLET = "#6B4E9B", BRAND = "#0BA75E", BRAND_DEEP = "#0B7A4B", AMBER = "#FFC24B", LINE = "#E3EAE6", SURFACE_2 = "#F1F5F2";
+
+/** "tCO₂e per £m" as the mockup prints a unit beside a value: "tCO₂e / £m". */
+const unitShort = (unit: string) => unit.replace(/ per /, " / ");
+
+/** A rounded axis ceiling a little above the largest value — 14,020 tops out at 16,000, as the mockup's pathway does. */
+function niceMax(value: number): number {
+  if (!(value > 0)) return 1;
+  const power = 10 ** Math.floor(Math.log10(value));
+  return ([1, 1.2, 1.5, 1.6, 2, 2.5, 3, 4, 5, 6, 8, 10].map((step) => step * power).find((step) => step >= value * 1.08) ?? 10 * power);
+}
+/** An axis label: whole numbers, as the mockup's axes read, unless the scale is under 10. */
+const axisLabel = (value: number, max: number) => max >= 10 ? f0(value) : f1(value);
+
+function ChartLegend({ items }: { items: Array<{ label: string; colour: string }> }) {
+  return <div className="r5-chartlegend">{items.map((item) => <span key={item.label}><span className="r5-legline" style={{ background: item.colour }} />{item.label}</span>)}</div>;
+}
+
+type Point = { year: number; value: number };
+
+/**
+ * The reported measure's intensity pathway to its target year, in the mockup's style: the baseline and this year's intensity
+ * (solid), then the target milestones (dashed), with the interim and end years marked. Only the reported measure has targets
+ * (the client's intensity target, frozen in the chart basis); no other measure's line is drawn — never assumed.
+ */
+function IntensityTargetsChart({ actual, target, interimYear, endYear }: { actual: Point[]; target: Point[]; interimYear: number | null; endYear: number }) {
+  const W = 680, H = 240, pl = 46, pb = 30, pt = 14, pr = 14;
+  const years = [...actual, ...target].map((point) => point.year), x0 = Math.min(...years), x1 = Math.max(...years, endYear);
+  const max = niceMax(Math.max(...[...actual, ...target].map((point) => point.value)));
+  const X = (year: number) => pl + (W - pl - pr) * ((year - x0) / Math.max(1, x1 - x0)), Y = (value: number) => pt + (H - pt - pb) * (1 - value / max);
+  const path = (points: Point[]) => points.map((point, index) => `${index ? "L" : "M"}${X(point.year).toFixed(1)} ${Y(point.value).toFixed(1)}`).join(" ");
+  const ticks = [...new Set([x0, ...[2030, 2035, 2040, 2045, 2050].filter((year) => year > x0 && year < x1), x1])];
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Intensity pathway to the target year">
+    {[0, 1, 2, 3, 4].map((i) => { const y = pt + (H - pt - pb) * (i / 4); return <g key={i}><line x1={pl} y1={y.toFixed(1)} x2={W - pr} y2={y.toFixed(1)} stroke={LINE} />
+      <text x={pl - 6} y={(y + 3).toFixed(1)} textAnchor="end" fontFamily="Inter" fontSize={9} fill={MUTED}>{axisLabel(max * (1 - i / 4), max)}</text></g>; })}
+    {[interimYear, endYear].filter((year): year is number => year !== null).map((year) =>
+      <line key={year} x1={X(year)} y1={pt} x2={X(year)} y2={H - pb} stroke={year === endYear ? BRAND : AMBER} strokeDasharray="3 3" opacity={0.7} />)}
+    {ticks.map((year) => <text key={year} x={X(year).toFixed(1)} y={H - 9} textAnchor="middle" fontFamily="Inter" fontSize={9} fill={MUTED}>{year}</text>)}
+    <path d={path(actual)} fill="none" stroke={BRAND_DEEP} strokeWidth={2.6} />
+    <path d={path(target)} fill="none" stroke={SKY} strokeWidth={2.4} strokeDasharray="5 4" />
+    {target.map((point) => <circle key={`t${point.year}`} cx={X(point.year).toFixed(1)} cy={Y(point.value).toFixed(1)} r={3.4} fill={SKY} />)}
+    {actual.map((point) => <circle key={`a${point.year}`} cx={X(point.year).toFixed(1)} cy={Y(point.value).toFixed(1)} r={4} fill={BRAND_DEEP} />)}
+  </svg>;
+}
+
+function IntensitySection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Performance</div><h2 className="r5-h2">Intensity Metric Analysis</h2><SiteFlag composition={composition} /></>;
+  if (isReportGap(composition.intensity) || composition.intensity.metrics.length === 0) {
+    return <>{head}<p className="r5-unavailable">{isReportGap(composition.intensity) ? composition.intensity.reason : "No intensity measures were set up for this client when the report was issued."}</p></>;
+  }
+  const metrics = composition.intensity.metrics;
+  const reported = metrics.find((metric) => metric.reported) ?? null;
+  // The reported measure's target, frozen in the chart basis (whole client only): its baseline, this year, the milestones.
+  const basis = composition.chartBasis?.intensityTarget as undefined | null | {
+    baselineYear: number; baselineIntensity: number; interimYear: number | null; interimReductionPercent: number | null;
+    targetYear?: number | null; targetReductionPercent?: number | null; netZeroYear: number | null; reportingIntensity?: number | null; reportingDenominator?: number | null };
+  const current = reported?.value ?? null;
+  const chart = basis && reported ? (() => {
+    const actual: Point[] = [{ year: basis.baselineYear, value: basis.baselineIntensity }, ...(current !== null && composition.reportingYear !== basis.baselineYear ? [{ year: composition.reportingYear, value: current }] : [])];
+    const milestones: Point[] = [
+      ...(basis.interimYear !== null && basis.interimReductionPercent !== null ? [{ year: basis.interimYear, value: basis.baselineIntensity * (1 - basis.interimReductionPercent / 100) }] : []),
+      ...(basis.targetYear != null && basis.targetReductionPercent != null ? [{ year: basis.targetYear, value: basis.baselineIntensity * (1 - basis.targetReductionPercent / 100) }] : []),
+    ];
+    if (milestones.length === 0) return null;
+    return { actual, target: [actual[actual.length - 1]!, ...milestones], interimYear: basis.interimYear, endYear: milestones[milestones.length - 1]!.year };
+  })() : null;
+  return <>
+    {head}
+    <Narrative>
+      <p>Intensity metrics normalise emissions against business activity so performance can be compared year on year regardless of changes in scale. {composition.client} reports {metrics.length === 1 ? "one intensity measure" : `${metrics.length} intensity measures`}: {metrics.map((metric) => metric.label.toLowerCase()).join(", ")}.</p>
+    </Narrative>
+    <div className="r5-imrows">
+      {metrics.map((metric) => <div className="r5-imrow" key={metric.key}>
+        <div className="r5-im-ic">{iconFor(metric.iconKey)}</div>
+        {/* No turnover amount (NZC-120): a currency measure's denominator is not frozen, so its line names the unit only. */}
+        <div><div className="r5-nm">{metric.label}{metric.reported ? <span className="r5-rep">Reported in the CRP</span> : null}</div>
+          <div className="r5-u">{metric.denominatorText ?? unitShort(metric.unit)}</div></div>
+        <div className="r5-val">{metric.value !== null ? <><b>{f1(metric.value)}</b> <span className="r5-uu">{unitShort(metric.unit)}</span></> : <span className="r5-nr">{metric.unavailableReason ?? "Unavailable"}</span>}</div>
+      </div>)}
+    </div>
+    {chart && reported ? <div className="r5-chartcard">
+      <div className="r5-chead"><b>{composition.client} intensity — {reported.label.toLowerCase()} pathway to {chart.endYear}</b><SvgTag /></div>
+      <IntensityTargetsChart {...chart} />
+      <ChartLegend items={[{ label: `Actual (${unitShort(reported.unit)})`, colour: BRAND_DEEP }, { label: "Target pathway", colour: SKY }]} />
+      <SrcLine composition={composition} />
+    </div> : null}
+    <div className="r5-prov"><b>One resolver.</b> Intensity is emissions × divider ÷ value, computed by the single resolver the client workspace, the portal and this report all use, so they cannot diverge. A measure with no recorded value reads &quot;unavailable&quot;, never 0.</div>
+  </>;
+}
+
+/** The mockup's reduction pathway: the target line (dashed, violet, labelled milestones) and the actuals (solid). */
+function PathwayChart({ target, actual }: { target: Array<Point & { label: string }>; actual: Point[] }) {
+  const W = 680, H = 250, pl = 58, pb = 30, pt = 14, pr = 14;
+  const years = [...target, ...actual].map((point) => point.year), x0 = Math.min(...years), x1 = Math.max(...years);
+  const max = niceMax(Math.max(...[...target, ...actual].map((point) => point.value)));
+  const X = (year: number) => pl + (W - pl - pr) * ((year - x0) / Math.max(1, x1 - x0)), Y = (value: number) => pt + (H - pt - pb) * (1 - value / max);
+  const path = (points: Point[]) => points.map((point, index) => `${index ? "L" : "M"}${X(point.year).toFixed(1)} ${Y(point.value).toFixed(1)}`).join(" ");
+  const ticks = [...new Set([...target, ...actual].map((point) => point.year))].sort((a, b) => a - b);
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Emissions reduction pathway">
+    {[0, 1, 2, 3, 4].map((i) => { const y = pt + (H - pt - pb) * (i / 4); return <g key={i}><line x1={pl} y1={y.toFixed(1)} x2={W - pr} y2={y.toFixed(1)} stroke={LINE} />
+      <text x={pl - 6} y={(y + 3).toFixed(1)} textAnchor="end" fontFamily="Inter" fontSize={9.5} fill={MUTED}>{f0(max * (1 - i / 4))}</text></g>; })}
+    {ticks.map((year) => <text key={year} x={X(year).toFixed(1)} y={H - 9} textAnchor="middle" fontFamily="Inter" fontSize={9.5} fill={MUTED}>{year}</text>)}
+    <path d={path(target)} fill="none" stroke={VIOLET} strokeWidth={2} strokeDasharray="6 5" />
+    <path d={path(actual)} fill="none" stroke={BRAND_DEEP} strokeWidth={2.6} />
+    {target.map((point) => <g key={`t${point.year}`}><circle cx={X(point.year).toFixed(1)} cy={Y(point.value).toFixed(1)} r={4} fill={VIOLET} />
+      <text x={X(point.year).toFixed(1)} y={(Y(point.value) - 10).toFixed(1)} textAnchor="middle" fontFamily="Inter" fontSize={9.5} fontWeight={700} fill={INK}>{point.label}</text></g>)}
+    {actual.map((point) => <circle key={`a${point.year}`} cx={X(point.year).toFixed(1)} cy={Y(point.value).toFixed(1)} r={4} fill={BRAND_DEEP} />)}
+  </svg>;
+}
+
+/** The mockup's progress ring: the share of the way to the interim reduction, clamped to 0–100%. */
+function Ring({ fraction, label, sub }: { fraction: number; label: string; sub: string }) {
+  const size = 150, c = 75, r = 58, sw = 15, C = 2 * Math.PI * r, dash = Math.max(0, Math.min(1, fraction)) * C;
+  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${sub}: ${label}`}>
+    <circle cx={c} cy={c} r={r} fill="none" stroke={SURFACE_2} strokeWidth={sw} />
+    <circle cx={c} cy={c} r={r} fill="none" stroke={BRAND} strokeWidth={sw} strokeLinecap="round" strokeDasharray={`${dash.toFixed(1)} ${(C - dash).toFixed(1)}`} transform={`rotate(-90 ${c} ${c})`} />
+    <text x={c} y={c - 1} textAnchor="middle" fontFamily="Inter" fontSize={26} fontWeight={800} fill={INK}>{label}</text>
+    <text x={c} y={c + 16} textAnchor="middle" fontFamily="Inter" fontSize={9} fill={MUTED}>{sub}</text>
+  </svg>;
+}
+
+function TargetsSection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Trajectory</div><h2 className="r5-h2">Targets &amp; Reduction Pathway</h2><ClientFlag /></>;
+  if (isReportGap(composition.targets)) return <>{head}<p className="r5-unavailable">{composition.targets.reason}</p></>;
+  const { trajectory, benchmark } = composition.targets;
+  const baseline = trajectory.find((point) => point.kind === "benchmark") ?? null;
+  const interim = trajectory.find((point) => point.kind === "near-term") ?? null, netZero = trajectory.find((point) => point.kind === "net-zero") ?? null;
+  // The client's current total, against a client-level target — whole-client reports only (a site view does not hold it).
+  const current = composition.scope?.kind !== "sites" && !isReportGap(composition.emissions) ? composition.emissions.totalTco2e : null;
+  const year = reportingYearLabel(composition);
+  const target = trajectory.map((point) => ({ year: point.year, value: point.tco2e,
+    label: point.kind === "benchmark" ? "Baseline" : point.kind === "near-term" ? `Interim −${point.pct}%` : `Net zero −${point.pct}%` }));
+  const actual = baseline ? [{ year: baseline.year, value: baseline.tco2e }, ...(current !== null && composition.reportingYear !== baseline.year ? [{ year: composition.reportingYear, value: current }] : [])] : [];
+  const reduction = baseline && current !== null && baseline.tco2e > 0 ? (baseline.tco2e - current) / baseline.tco2e : null;
+  const progress = reduction !== null && interim && interim.pct > 0 ? reduction / (interim.pct / 100) : null;
+  const baselineLabel = baseline ? yearLabel(composition, baseline.year) : null;
+  return <>
+    {head}
+    <p className="r5-prose">Actual emissions (solid) against the agreed target pathway (dashed), anchored on the baseline. A partial target is drawn as its own reduction; net zero carries its residual, not zero.</p>
+    {current !== null ? <div className="r5-chartcard">
+      <div className="r5-chead"><b>Emissions reduction pathway to net zero</b><SvgTag /></div>
+      <PathwayChart target={target} actual={actual} />
+      <ChartLegend items={[{ label: "Actual", colour: BRAND_DEEP }, { label: "Target pathway", colour: VIOLET }]} />
+      <SrcLine composition={composition} />
+    </div> : <p className="r5-unavailable">The pathway compares the whole client's emissions with its targets, so a site view does not draw it.</p>}
+    <div className="r5-grid2">
+      <div className="r5-chartcard"><div className="r5-chead"><b>Progress to interim target</b><SvgTag /></div>
+        {progress !== null && interim
+          ? <><div className="r5-centre"><Ring fraction={progress} label={`${Math.round(Math.max(0, progress) * 100)}%`} sub={`to −${interim.pct}% by ${interim.year}`} /></div>
+            <div className="r5-note r5-centre-text">{reduction! >= 0 ? "Down" : "Up"} {f1(Math.abs(reduction! * 100))}% on the client&apos;s {baselineLabel} baseline — about {Math.round(Math.max(0, progress) * 100)}% of the way to the −{interim.pct}% interim target.</div></>
+          : <p className="r5-unavailable">{interim ? "Progress needs the whole client's current emissions and its baseline." : "No interim target was set."}</p>}
+      </div>
+      <div className="r5-chartcard"><div className="r5-chead"><b>Target summary</b></div>
+        <table className="r5-rt"><tbody>
+          <tr><td>Baseline ({baselineLabel ?? "—"}, from client targets)</td><td className="r5-num">{benchmark ? f1(benchmark.totalTco2e) : baseline ? f1(baseline.tco2e) : DASH}</td></tr>
+          <tr><td>Current ({year})</td><td className="r5-num">{current !== null ? f1(current) : DASH}</td></tr>
+          {interim ? <tr><td>Interim target</td><td className="r5-num">−{interim.pct}% · {interim.year}</td></tr> : null}
+          {netZero ? <tr className="r5-total"><td>Net zero</td><td className="r5-num">−{netZero.pct}% · {netZero.year}</td></tr> : null}
+        </tbody></table>
+      </div>
     </div>
   </>;
 }
@@ -374,6 +569,8 @@ export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   "narrative:background": "Background & Organisation",
   sites: "Sites & Reporting Boundary",
   emissions: "Carbon Emissions Overview",
+  intensity: "Intensity Metric Analysis",
+  targets: "Targets & Reduction Pathway",
 };
 
 /** Whether composed@5 draws a plan key as a page of its own — the same test its layout numbers by, shared with the rail. */
@@ -386,6 +583,8 @@ const DRAWN: Record<string, (composition: ReportComposition, number: string) => 
   "narrative:background": (composition, number) => <Background composition={composition} number={number} />,
   sites: (composition, number) => <SitesSection composition={composition} number={number} />,
   emissions: (composition, number) => <OverviewSection composition={composition} number={number} />,
+  intensity: (composition, number) => <IntensitySection composition={composition} number={number} />,
+  targets: (composition, number) => <TargetsSection composition={composition} number={number} />,
 };
 
 

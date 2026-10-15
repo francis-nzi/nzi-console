@@ -93,26 +93,36 @@ export function composeScopedComparison(input: {
   const earlier = input.history.filter((period) => period.year < input.currentYear).sort((a, b) => a.year - b.year);
   const baseline = input.baselineYear !== null && input.baselineYear < input.currentYear ? earlier.find((period) => period.year === input.baselineYear) ?? null : null;
   const previous = [...earlier].reverse().find((period) => period !== baseline) ?? null;
-  const periods: Array<{ column: ReportComparisonColumn; rows: ScopedHistoryPeriod["rows"] | null }> = [];
+  const periods: Array<{ column: ReportComparisonColumn; rows: ScopedHistoryPeriod["rows"] | null; sitesKnown?: boolean }> = [];
   const notes: string[] = [];
   const attributable = (period: ScopedHistoryPeriod) => {
     if (input.scope.kind === "whole" || period.sitesKnown) return period.rows;
     notes.push(`FY${period.year} was frozen before its rows carried a site, so it cannot be attributed to these sites.`);
     return null;
   };
-  if (baseline) periods.push({ column: { key: "baseline", year: baseline.year, label: `Baseline (FY${baseline.year})` }, rows: attributable(baseline) });
-  if (previous && (!baseline || previous.year > baseline.year)) periods.push({ column: { key: "previous", year: previous.year, label: `Previous (FY${previous.year})` }, rows: attributable(previous) });
-  periods.push({ column: { key: "current", year: input.currentYear, label: `Current (FY${input.currentYear})` }, rows: input.current.map((row) => ({ siteId: row.siteId ?? null, scope: row.scope, tco2e: row.tco2e })) });
+  if (baseline) periods.push({ column: { key: "baseline", year: baseline.year, label: `Baseline (FY${baseline.year})` }, rows: attributable(baseline), sitesKnown: baseline.sitesKnown });
+  if (previous && (!baseline || previous.year > baseline.year)) periods.push({ column: { key: "previous", year: previous.year, label: `Previous (FY${previous.year})` }, rows: attributable(previous), sitesKnown: previous.sitesKnown });
+  periods.push({ column: { key: "current", year: input.currentYear, label: `Current (FY${input.currentYear})` }, rows: input.current.map((row) => ({ siteId: row.siteId ?? null, scope: row.scope, tco2e: row.tco2e })), sitesKnown: true });
   const selected = input.scope.kind === "sites" ? new Set(input.scope.siteIds) : null;
   const inScope = (rows: ScopedHistoryPeriod["rows"]) => selected ? rows.filter((row) => row.siteId !== null && selected.has(row.siteId)) : rows;
   const value = (rows: ScopedHistoryPeriod["rows"] | null, scope?: string) => rows === null ? null : sumBy(inScope(rows).filter((row) => scope === undefined || row.scope === scope), (row) => row.tco2e);
   const totals = periods.map((period) => value(period.rows));
   const baselineTotal = baseline ? totals[0] ?? null : null, currentTotal = totals[totals.length - 1] ?? null;
+  // composed@5 (ACCEPT-composed5-checkpoint3): each current site's own figure in each column, from the same frozen periods.
+  // A site with no row in a period, or a period frozen before its rows carried a site, is null — said, never modelled.
+  const current = periods[periods.length - 1]!;
+  const siteIds = [...new Set(inScope(current.rows ?? []).map((row) => row.siteId))];
+  const siteValue = (period: (typeof periods)[number], siteId: string | null) => {
+    if (period.rows === null || !period.sitesKnown) return null;
+    const rows = inScope(period.rows).filter((row) => row.siteId === siteId);
+    return rows.length ? sumBy(rows, (row) => row.tco2e) : null;
+  };
   return {
     columns: periods.map((period) => period.column),
     rows: SCOPES.map((scope) => ({ scope, values: periods.map((period) => value(period.rows, scope)) })),
     totals,
     changeVsBaselinePct: baselineTotal !== null && baselineTotal > 0 && currentTotal !== null ? ((currentTotal - baselineTotal) / baselineTotal) * 100 : null,
     notes,
+    sites: siteIds.map((siteId) => ({ siteId, values: periods.map((period) => siteValue(period, siteId)) })),
   };
 }

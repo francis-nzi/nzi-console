@@ -143,6 +143,17 @@
 .nzr5 .r5-statbig .r5-big{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
 .nzr5 .r5-statbig .r5-u{color:var(--r5-muted);font-size:13px}
 
+/* Intensity and Targets: the reported badge, chart legends, the provenance note, centred ring */
+.nzr5 .r5-imrows{margin-top:8px}
+.nzr5 .r5-rep{font-size:10px;font-weight:700;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:999px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+.nzr5 .r5-chartlegend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-chartlegend > span{display:inline-flex;align-items:center;gap:7px}
+.nzr5 .r5-legline{width:14px;height:3px;border-radius:2px;display:inline-block}
+.nzr5 .r5-prov{font-size:10.5px;color:var(--r5-muted);border-top:1px solid var(--r5-line-2);margin-top:14px;padding-top:10px}
+.nzr5 .r5-prov b{color:var(--r5-ink-2)}
+.nzr5 .r5-centre{display:flex;justify-content:center}
+.nzr5 .r5-centre-text{text-align:center}
+
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{
   .nzr5{background:none;padding:0}

@@ -531,6 +531,10 @@ export type ReportSiteEmissions = {
   activities: Array<{ label: string; scope: string; tco2e: number }>;
   /** Floor-area intensity for the site when floor area resolves for it; otherwise a stated gap. Sites only. */
   floorAreaIntensity?: { value: number | null; unit: string; floorAreaM2: number | null; reason: string | null };
+  /** composed@5 (ACCEPT-composed5-checkpoint3): the site's first day in service, from the client's site record. null: before records. */
+  inServiceFrom?: string | null;
+  /** composed@5: the site's floor area for the reporting period (m²), whether or not a floor-area measure is reported. null: not recorded. */
+  floorAreaM2?: number | null;
 };
 
 export type ReportComparisonColumn = { key: "baseline" | "previous" | "current"; year: number; label: string };
@@ -542,6 +546,12 @@ export type ReportEmissionsComparison = {
   /** % change of the current period against the baseline column, when both are known. */
   changeVsBaselinePct: number | null;
   notes: string[];
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint3): each current site's own figure per column (the organisation-level line as
+   * `siteId: null`), from the same frozen periods — null where the site has no row in a period, or the period was frozen
+   * before its rows carried a site. Absent on compositions frozen before composed@5.
+   */
+  sites?: Array<{ siteId: string | null; values: Array<number | null> }>;
 };
 
 /** The scope a composition was issued at (S-2): the whole client, or named sites. Absent on compositions frozen before S-2 = whole. */
