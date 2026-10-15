@@ -234,7 +234,7 @@
         "value": 3.12,
         "iconKey": "currency",
         "reported": true,
-        "denominatorText": "£12,500,000",
+        "denominatorText": null,
         "unavailableReason": null
       }
     ],

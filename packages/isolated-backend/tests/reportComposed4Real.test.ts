@@ -77,6 +77,16 @@ describe("composed@4 freezes its period and signee, and reads stored plans compl
     assert.deepEqual(drawn.reportingPeriod, { from: "2025-04-01", to: "2026-03-31" });
   });
 
+  it("freezes no turnover amount: the currency measure's denominator is never in the composition (RULING-B2-3-two-decisions)", async () => {
+    const drawn = await preview(signedId);
+    if ("state" in drawn.intensity) throw new Error("expected a composed intensity section");
+    const turnover = drawn.intensity.metrics.find((metric) => metric.key === "turnover")!;
+    assert.equal(turnover.denominatorText, null);
+    assert.equal(turnover.unit, "tCO₂e per £m", "the unit stays");
+    assert.equal(turnover.value, 2.8, "and the intensity: 35 tCO₂e over £12.5m");
+    assert.doesNotMatch(JSON.stringify(drawn), /12,500,000|12500000|£12/, "nowhere in the payload");
+  });
+
   it("freezes the client signee the version named — and nothing about the preparer or reviewer", async () => {
     const drawn = await preview(signedId);
     assert.deepEqual(drawn.signee, { name: "Sam Taylor", jobTitle: "Head of Sustainability" });

@@ -189,6 +189,11 @@ async function composeIntensity(db: Queryable, input: {
   const currency = clientRows.rows[0]?.currency ?? "GBP";
   const directory = clientRows.rows[0] ? await readCurrencyDirectory(db, clientRows.rows[0].organisation_id) : [];
   const live = activeMetrics(definitions);
+  // RULING-B2-3-two-decisions, decision 1 (NZC-120): a currency measure's denominator is money — the client's turnover — so
+  // it is never frozen into the composition (nor so the client's portal copy). Its unit ("tCO₂e per £m") and the intensity
+  // itself are. Every other measure's denominator ("1,000 m²", "50 employees") is frozen as before.
+  const denominatorText = (definition: (typeof live)[number], value: number): string | null =>
+    definition.unitKind === "currency" ? null : intensityDenominatorText(definition, value, { currency });
   if (live.length === 0) {
     return { state: "unavailable", reason: "No intensity measures were set up for this client when the report was issued." };
   }
@@ -216,7 +221,7 @@ async function composeIntensity(db: Queryable, input: {
         return { key: definition.key, label: definition.label, iconKey: definition.iconKey, unit: intensityUnit(definition, { currency }),
           value: resolved.state === "resolved" ? resolved.value : null,
           unavailableReason: resolved.state === "resolved" ? null : input.emissionsTco2e !== null && area.m2 === null && area.reason ? area.reason : resolved.reason,
-          reported, denominatorText: area.m2 === null ? null : intensityDenominatorText(definition, area.m2, { currency }), scopeNote: null };
+          reported, denominatorText: area.m2 === null ? null : denominatorText(definition, area.m2), scopeNote: null };
       }
       // The reported metric reads its denominator from the snapshot, so this section and the intensity pathway the same
       // document draws cannot disagree; the snapshot's figure is already over the divider, so it is restored to the
@@ -237,7 +242,7 @@ async function composeIntensity(db: Queryable, input: {
           // snapshot — and otherwise the resolver's own reason, rather than a second explanation for the same gap.
           : input.emissionsTco2e !== null && denominator.value === null && denominator.reason ? denominator.reason : resolved.reason,
         reported,
-        denominatorText: denominator.value === null ? null : intensityDenominatorText(definition, denominator.value, { currency }),
+        denominatorText: denominator.value === null ? null : denominatorText(definition, denominator.value),
       };
     })),
     reportedMetricKey: reportedKey,

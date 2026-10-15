@@ -89,12 +89,16 @@ describe("composed@4: the mockup's section set (B2-3)", () => {
     assert.match(html, /tCO₂e \/ £m/, "the intensity unit stays (F4)");
   });
 
-  it("a currency measure's frozen amount (RF-1's \"£12,500,000\") is never printed by composed@4 — composed@3 still draws it as issued", async () => {
+  it("a currency measure's amount is never printed by composed@4, even one a composition carried — composed@3 draws what it froze", async () => {
+    // Compose no longer freezes it (RULING-B2-3-two-decisions), so the fixture carries none; the renderer's guard is checked
+    // against a composition that does, as one composed before the ruling would.
     const issued = composition();
     if ("state" in issued.intensity) throw new Error("expected a composed intensity section");
-    assert.ok(issued.intensity.metrics.some((metric) => metric.denominatorText === "£12,500,000"), "the fixture carries the frozen amount");
-    assert.doesNotMatch(await render(issued), /12,500,000/);
-    assert.match(await render({ ...issued, renderer: "composed@3" }), /£12,500,000/, "composed@3 unchanged");
+    assert.ok(issued.intensity.metrics.every((metric) => !/£/.test(metric.denominatorText ?? "")), "the fixture, as composed now, carries no amount");
+    const carried = { ...issued, intensity: { ...issued.intensity, metrics: issued.intensity.metrics.map((metric) => metric.key === "turnover" ? { ...metric, denominatorText: "£12,500,000" } : metric) } };
+    assert.ok(carried.intensity.metrics.some((metric) => metric.denominatorText === "£12,500,000"), "the turnover measure is in the fixture");
+    assert.doesNotMatch(await render(carried), /12,500,000/);
+    assert.match(await render({ ...carried, renderer: "composed@3" }), /£12,500,000/, "composed@3 unchanged");
   });
 
   it("the fork is the difference: the same composition under composed@3 draws as composed@3 — none of the new sections", async () => {
