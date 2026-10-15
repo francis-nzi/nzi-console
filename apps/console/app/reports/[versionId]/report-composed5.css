@@ -1,0 +1,97 @@
+/* composed@5 (BUILD-report-studio-composed5): the Report Studio mockup's document styles, rule for rule, scoped under .nzr5
+   (every class r5-) so nothing leaks into the app or from it. The values are the mockup's (`MOCKUP-report-studio.html`);
+   colours are the locked brand palette. */
+.nzr5{
+  --r5-ink:#0B1B2B; --r5-ink-2:#3E4C45; --r5-muted:#616B65;
+  --r5-line:#E3EAE6; --r5-line-2:#EDF1EF;
+  --r5-surface-2:#F1F5F2; --r5-surface-3:#E7EEE9;
+  --r5-brand:#0BA75E; --r5-brand-deep:#0B7A4B; --r5-brand-ink:#075B37;
+  --r5-mint:#DFF5E9; --r5-mint-line:#BCE8D0;
+  --r5-sky-ink:#1A5580; --r5-sky-bg:#E7F1FA; --r5-sky-line:#BBD8EE;
+  --r5-violet:#6B4E9B;
+  --r5-paper:#FFFFFF; --r5-paper-edge:#D9E2DC; --r5-paper-ground:#E9EFEB;
+  --r5-shadow-lg:0 12px 40px rgba(11,27,43,.16);
+  --r5-font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r5-lockico:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='11' width='16' height='9' rx='2'/><path d='M8 11V7a4 4 0 0 1 8 0v4'/></svg>");
+  font-family:var(--r5-font);color:var(--r5-ink);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  background:var(--r5-paper-ground);padding:26px;
+}
+.nzr5 *{box-sizing:border-box}
+.nzr5 .r5-tnum{font-variant-numeric:tabular-nums}
+.nzr5 .r5-nowrap{white-space:nowrap}
+.nzr5 .r5-pageflow{display:flex;flex-direction:column;align-items:center;gap:0}
+.nzr5 .r5-pagewrap{display:contents}
+.nzr5 .r5-page{background:var(--r5-paper);color:var(--r5-ink);width:794px;max-width:100%;position:relative}
+
+/* Page view: A4 sheets with the running head and foot. */
+.nzr5.r5-mode-page .r5-page{min-height:1123px;box-shadow:var(--r5-shadow-lg);border:1px solid var(--r5-paper-edge);margin-bottom:26px;padding:64px 66px 74px}
+/* Continuous view: one flow, a marker where each page breaks. */
+.nzr5.r5-mode-flow .r5-page{box-shadow:none;border:0;border-top:1px dashed var(--r5-paper-edge);margin-bottom:0;padding:30px 60px 40px;min-height:0}
+.nzr5.r5-mode-flow .r5-page:first-child{border-top:0}
+@media (max-width:560px){.nzr5{padding:10px} .nzr5.r5-mode-page .r5-page{padding:30px 22px 40px} .nzr5.r5-mode-flow .r5-page{padding:24px 22px}}
+.nzr5 .r5-runhead{position:absolute;top:24px;left:66px;right:66px;text-align:center;font-size:9.5px;color:var(--r5-muted);line-height:1.55}
+.nzr5 .r5-runhead b{display:block;color:var(--r5-ink-2);font-weight:700;font-size:10px}
+.nzr5 .r5-runfoot{position:absolute;bottom:26px;left:66px;right:66px;display:flex;justify-content:space-between;font-size:9.5px;color:var(--r5-muted);border-top:1px solid var(--r5-line-2);padding-top:8px}
+.nzr5.r5-mode-flow .r5-runhead,.nzr5.r5-mode-flow .r5-runfoot{display:none}
+.nzr5 .r5-pbreak{display:none}
+.nzr5.r5-mode-flow .r5-pbreak{display:flex;align-items:center;gap:12px;color:var(--r5-sky-ink);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:0;width:794px;max-width:100%;background:var(--r5-paper)}
+.nzr5.r5-mode-flow .r5-pbreak::before,.nzr5.r5-mode-flow .r5-pbreak::after{content:"";height:0;border-top:2px dashed var(--r5-sky-line);flex:1}
+.nzr5.r5-mode-flow .r5-pbreak .r5-pb-num{background:var(--r5-sky-bg);border:1px solid var(--r5-sky-line);padding:2px 10px;border-radius:999px;white-space:nowrap}
+
+/* Headings and prose */
+.nzr5 .r5-kicker{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--r5-brand-deep);font-weight:700;margin:0 0 7px}
+.nzr5 .r5-h2{font-size:17px;font-weight:700;letter-spacing:-.015em;margin:0 0 12px;color:var(--r5-ink);text-wrap:balance}
+.nzr5 .r5-prose{font-size:12.5px;line-height:1.6;color:var(--r5-ink-2)}
+.nzr5 .r5-prose p{margin:0 0 12px} .nzr5 .r5-prose p:last-child{margin-bottom:0}
+.nzr5 .r5-unavailable{font-size:12.5px;color:var(--r5-muted);font-style:italic;margin:0}
+.nzr5 .r5-scopeflag{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:7px;padding:5px 11px;margin-bottom:14px}
+.nzr5 .r5-scopeflag.r5-client{color:var(--r5-ink-2);background:var(--r5-surface-2);border-color:var(--r5-line)}
+.nzr5 .r5-scopeflag.r5-client::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--r5-violet)}
+
+/* Locked data tokens */
+.nzr5 .r5-tok{font-family:var(--r5-font);font-weight:700;font-variant-numeric:tabular-nums;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:5px;padding:0 5px;white-space:nowrap;cursor:default;position:relative;font-size:.94em}
+.nzr5 .r5-tok::before{content:"";display:inline-block;width:8px;height:8px;margin-right:3px;vertical-align:-1px;background:currentColor;-webkit-mask:var(--r5-lockico) center/contain no-repeat;mask:var(--r5-lockico) center/contain no-repeat;opacity:.75}
+
+/* Narrative block and its state pill */
+.nzr5 .r5-editblock{position:relative;margin:4px 0 14px}
+.nzr5 .r5-spill{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-bottom:8px;background:var(--r5-surface-3);color:var(--r5-muted);border:1px solid var(--r5-line)}
+
+/* Cover */
+.nzr5 .r5-cover{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:30px}
+.nzr5 .r5-nzilogo{height:68px;width:auto;max-width:100%;margin-bottom:8px}
+.nzr5 .r5-nzimark{margin-bottom:8px}
+.nzr5 .r5-cover-title{margin:6px 0 0}
+.nzr5 .r5-cover-title .r5-cn{font-size:22px;font-weight:800;letter-spacing:-.01em;line-height:1.2;color:var(--r5-ink);text-wrap:balance}
+.nzr5 .r5-cover-title .r5-rtt{font-size:14px;font-weight:600;color:var(--r5-ink-2);margin-top:5px}
+.nzr5 .r5-clientlogo{margin:24px 0 2px;text-align:center}
+.nzr5 .r5-clframe{display:inline-flex;align-items:center;gap:11px;border:1px solid var(--r5-line);border-radius:12px;padding:12px 20px;background:var(--r5-surface-2)}
+.nzr5 .r5-clframe img{height:46px;width:auto;max-width:200px;display:block}
+.nzr5 .r5-metacard{margin-top:30px;width:460px;max-width:100%;border:1px solid var(--r5-line);border-radius:12px;overflow:hidden;text-align:left}
+.nzr5 .r5-metacard .r5-row{display:flex;gap:14px;padding:11px 16px;font-size:12px;border-top:1px solid var(--r5-line-2)}
+.nzr5 .r5-metacard .r5-row:first-child{border-top:0}
+.nzr5 .r5-metacard .r5-k{color:var(--r5-muted);width:130px;flex:0 0 auto;border-left:3px solid var(--r5-brand-deep);padding-left:11px}
+.nzr5 .r5-metacard b{color:var(--r5-ink);font-weight:600}
+.nzr5 .r5-cover .r5-conf{margin-top:34px;font-size:11px;color:var(--r5-muted);letter-spacing:.02em}
+
+/* Chart card, donut and legend */
+.nzr5 .r5-chartcard{border:1px solid var(--r5-line);border-radius:14px;padding:20px 22px;margin-top:14px}
+.nzr5 .r5-chartcard .r5-chead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.nzr5 .r5-chartcard .r5-chead b{font-size:12px}
+.nzr5 .r5-svgtag{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);padding:3px 8px;border-radius:6px;white-space:nowrap}
+.nzr5 .r5-svgtag svg{width:11px;height:11px}
+.nzr5 .r5-srcline{font-size:10.5px;color:var(--r5-muted);margin-top:12px}
+.nzr5 .r5-donutwrap{display:flex;align-items:center;gap:30px;flex-wrap:wrap}
+.nzr5 .r5-donutwrap svg{flex:0 0 auto}
+.nzr5 .r5-leg{flex:1;min-width:210px;display:flex;flex-direction:column;gap:2px}
+.nzr5 .r5-leg .r5-lr{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--r5-line-2);font-size:12px}
+.nzr5 .r5-leg .r5-lr:first-child{border-top:0}
+.nzr5 .r5-leg .r5-sw{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+.nzr5 .r5-leg .r5-nm{flex:1} .nzr5 .r5-leg .r5-vv{font-weight:700;font-variant-numeric:tabular-nums} .nzr5 .r5-leg .r5-pc{color:var(--r5-muted);width:54px;text-align:right;font-variant-numeric:tabular-nums}
+.nzr5 .r5-leg .r5-lr.r5-tot{border-top:1.5px solid var(--r5-line);font-weight:700;margin-top:3px}
+
+/* Print: the page view, one sheet per page, no ground or shadow. */
+@media print{
+  .nzr5{background:none;padding:0}
+  .nzr5 .r5-pbreak{display:none!important}
+  .nzr5 .r5-page{box-shadow:none!important;border:0!important;margin:0!important;break-after:page;min-height:auto}
+}

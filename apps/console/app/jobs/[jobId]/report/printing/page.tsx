@@ -7,6 +7,7 @@ import { reportFeatureEnabled } from "../../../../lib/reportFlags";
 import { ReportStudioEmpty, ReportStudioFrame, ReportStudioPrinting } from "../ReportStudio";
 import { pickStudioVersion, studioDraftQuery, type StudioRegisterRow } from "../studio";
 import "../../../../reports/[versionId]/report-composed.css";
+import "../../../../reports/[versionId]/report-composed5.css";
 import "../report-studio.css";
 
 export const dynamic = "force-dynamic";

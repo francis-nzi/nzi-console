@@ -116,7 +116,13 @@ export const reportSectionMetaV4: Record<ReportCompositionSectionKey, { eyebrow:
 
 /** A section's heading as the composition's own renderer prints it — so the studio's rail and the document agree. */
 export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> =>
-  reportRendererOf(composition) === "composed@4" ? reportSectionMetaV4 : reportCompositionSectionMeta;
+  drawsMockupSectionSet(composition) ? reportSectionMetaV4 : reportCompositionSectionMeta;
+
+/** `composed@4` and its successor `composed@5` draw the mockup's section set and read their plans complete. */
+export const drawsMockupSectionSet = (composition: { renderer?: string }): boolean => {
+  const renderer = reportRendererOf(composition);
+  return renderer === "composed@4" || renderer === "composed@5";
+};
 
 /* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
 
@@ -128,7 +134,7 @@ export const reportSectionMetaFor = (composition: { renderer?: string }): Record
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -147,8 +153,12 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * Category, and the reference block after Methodology: Glossary, the Full Emissions Audit as its own section, Appendix 2 by
  * site & scope), its titles, the cover's metacard (with the frozen reporting period) and the sign-off (the frozen client
  * signee and issuer). A fork: every `composed@1/2/3` report draws exactly as before, with the plan it always had.
+ *
+ * BUILD-report-studio-composed5: `composed@5` is the mockup (`_handoff/MOCKUP-report-studio.html`) rendered — its own document
+ * (pages, cover, narrative with locked data tokens, charts, tables), bound to the frozen composition and never to the mockup's
+ * sample figures; no turnover amount anywhere (NZC-120). A fork: every `composed@1/2/3/4` report draws exactly as before.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@4";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@5";
 
 /**
  * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
@@ -267,7 +277,7 @@ export function normaliseReportPlanKeys(plan: ReportSectionPlan): ReportSectionP
  * **frozen v3 default**, exactly as always. `composed@4`: its own plan (or the default), read complete.
  */
 export const reportSectionPlanOf = (composition: ReportComposition): ReportSectionPlan =>
-  reportRendererOf(composition) === "composed@4"
+  drawsMockupSectionSet(composition)
     ? normaliseReportPlanKeys(composition.sectionPlan ?? defaultReportSectionPlan)
     : composition.sectionPlan ?? legacyReportSectionPlanV3;
 
@@ -757,6 +767,11 @@ export type ReportComposition = {
    * Absent when the version named none, and on a draft.
    */
   signee?: { name: string; jobTitle: string | null };
+  /**
+   * composed@5 (BUILD-report-studio-composed5): the client's logo — the asset the report version froze at validate (an append-
+   * only asset, so the issued report keeps it). Absent when the client had none: the cover then shows no logo, never a stand-in.
+   */
+  clientLogoAssetId?: string;
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

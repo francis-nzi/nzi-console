@@ -1,6 +1,7 @@
 import { PortalWorkspace } from "./PortalWorkspace";
 // F-4b: the issued document's own stylesheet, for the composed report the workspace draws.
 import "../reports/[versionId]/report-composed.css";
+import "../reports/[versionId]/report-composed5.css";
 import { portalAccessSample, portalBucketsSample, publishedReportSample } from "@nzi/mock-data";
 import { loadFixtureScreen } from "@nzi/api-client";
 import { ScreenState } from "../lib/ScreenState";

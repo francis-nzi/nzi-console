@@ -85,6 +85,8 @@ export async function draftReportComposition(db: Queryable, input: {
     snapshotId: snapshot.snapshot_id, clientId: snapshot.client_id, scope, sectionPlan: resolved.plan,
     issuer: { displayName: brand.displayName, shortName: brand.shortName, footer: brand.footer, logoAssetId: brand.logoAssetId },
     issuerLine: profile?.issuerLine ?? null,
+    // composed@5: the client's logo as validate would freeze it (the client record's, now).
+    clientLogoAssetId: (await db.query<{ logo_asset_id: string | null }>(`SELECT logo_asset_id FROM nzi_console.clients WHERE client_id = $1`, [snapshot.client_id])).rows[0]?.logo_asset_id ?? null,
   });
   return {
     composition, draftedAt, snapshotId: snapshot.snapshot_id, snapshotVersion: snapshot.snapshot_version,

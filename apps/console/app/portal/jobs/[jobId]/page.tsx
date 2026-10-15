@@ -6,6 +6,7 @@ import type {PortalReportApproval} from "@nzi/isolated-backend";
 import {PortalWorkspace} from "../../../portal-preview/PortalWorkspace";
 // F-4b: the issued document's own stylesheet, for the composed report the workspace draws.
 import "../../../reports/[versionId]/report-composed.css";
+import "../../../reports/[versionId]/report-composed5.css";
 import {isPortalReportApproval,isPublishedCrpReport} from "./publishedReportValidation";
 import {portalReportViewOf,type PortalReportView} from "../../portalReportView";
 import {deploymentNames} from "../../../lib/organisationBrand";
