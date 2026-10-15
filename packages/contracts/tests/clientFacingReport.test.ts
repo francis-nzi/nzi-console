@@ -36,7 +36,10 @@ describe("the client's copy carries none of the consultants' free text (F-4c, ru
   it("the chart basis is composed without the intensity target's editor — nothing to strip on the way out", () => {
     const basis = composeReportChartBasis({ snapshot: { ...report().snapshot, measurements: [] } as never, scope: { kind: "whole" } });
     assert.ok(basis.intensityTarget && !("updatedBy" in basis.intensityTarget), "no editor frozen into the issued record");
-    assert.equal((basis.intensityTarget as { reportingDenominator?: number }).reportingDenominator, 12.5, "the figures stay");
+    // RULING-report-denominator: the figures stay — but the turnover is not one the client is sent; the year's intensity is.
+    assert.ok(!("reportingDenominator" in basis.intensityTarget), "no turnover frozen");
+    assert.equal((basis.intensityTarget as { reportingIntensity?: number }).reportingIntensity, 0, "no rows, so no tonnes over £12.5m");
+    assert.equal((basis.intensityTarget as { baselineIntensity?: number }).baselineIntensity, 3, "the figures stay");
   });
 });
 
@@ -48,7 +51,9 @@ describe("the client's copy names none of the issuer's staff (F-4b)", () => {
     const client = clientFacingPublishedReport(full);
     assert.ok(!JSON.stringify(client).includes(STAFF));
     assert.deepEqual(client.snapshot.measurements, [{ rowId: "r", rowVersion: 1, scope: "1", sourceLabel: "Gas", tco2e: 10, factorSet: "demo", qualityTier: "measured" }]);
-    assert.deepEqual([client.snapshot.target?.baselineTco2e, client.snapshot.intensityTarget?.reportingDenominator, client.snapshot.approvedAt, client.dataHash], [40, 12.5, "2026-01-02T00:00:00.000Z", "sha256:a"]);
+    // RULING-report-denominator: every figure stands, but the turnover is replaced by the year's intensity (10 / 12.5).
+    assert.deepEqual([client.snapshot.target?.baselineTco2e, client.snapshot.intensityTarget?.reportingIntensity, client.snapshot.approvedAt, client.dataHash], [40, 0.8, "2026-01-02T00:00:00.000Z", "sha256:a"]);
+    assert.ok(client.snapshot.intensityTarget && !("reportingDenominator" in client.snapshot.intensityTarget), "no turnover sent");
     assert.ok(JSON.stringify(full).includes(STAFF), "the input is untouched");
   });
 

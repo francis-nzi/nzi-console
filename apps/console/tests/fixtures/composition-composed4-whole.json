@@ -339,9 +339,9 @@
       "baselineYear": 2024,
       "denominatorUnit": "£m",
       "baselineIntensity": 4,
-      "reportingDenominator": 12.5,
       "targetReductionPercent": 100,
-      "interimReductionPercent": 50
+      "interimReductionPercent": 50,
+      "reportingIntensity": 3.12
     },
     "annualComparison": [
       {

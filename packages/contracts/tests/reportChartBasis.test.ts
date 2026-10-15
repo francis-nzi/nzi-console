@@ -24,7 +24,8 @@ describe("a report's chart basis (F-2)", () => {
   it("whole client: every row, the reported intensity and the snapshot's year-on-year — as the portal passes them", () => {
     const basis = composeReportChartBasis({ snapshot, scope: { kind: "whole" } });
     assert.deepEqual([basis.generatedAt, basis.dataHash, basis.measurements.length], ["2026-01-01T00:00:00.000Z", "sha256:x", 3]);
-    assert.deepEqual(basis.intensityTarget, snapshot.intensityTarget);
+    // RULING-report-denominator: the turnover is not frozen — the year's intensity is, from these rows (35 / 12.5).
+    assert.deepEqual(basis.intensityTarget, { metric: "turnover", denominatorUnit: "£m", reportingIntensity: 2.8 });
     // The superseded job-level target is never frozen: the report's pathway is its own Targets section (NZC-072).
     assert.ok(!("target" in basis), "no job-level target in the basis");
     assert.deepEqual(basis.annualComparison.map((year) => year.year), [2024, 2025]);

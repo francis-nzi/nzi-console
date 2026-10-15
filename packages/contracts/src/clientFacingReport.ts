@@ -4,6 +4,7 @@
 // minimisation, not presentation: a name the client is not shown is a name the client is not sent.
 import type { PublishedCrpReportReadModel, ReviewedCrpSnapshotReadModel } from "./commands";
 import { isReportGap, type ReportComposition } from "./reportComposition";
+import { withoutCurrencyDenominator } from "./reportingIntensity";
 
 /**
  * The client's copy of a frozen composition.
@@ -17,8 +18,10 @@ export function clientFacingComposition(composition: ReportComposition): ReportC
   const assurance = { ...composition.assurance, reviewedBy: "" };
   // F-2's chart basis froze the reported intensity target whole — its last editor included (found by F-4b's leak test). The
   // chart needs the figures, never the editor: dropped from the client's copy like every other staff identity.
+  // RULING-report-denominator: compose no longer freezes a currency denominator; one frozen before is not sent either (the
+  // chart draws the same intensity from the same rows). The issued composition itself is never touched.
   const chartBasis = composition.chartBasis?.intensityTarget
-    ? { ...composition.chartBasis, intensityTarget: omit(composition.chartBasis.intensityTarget, "updatedBy") }
+    ? { ...composition.chartBasis, intensityTarget: withoutCurrencyDenominator(omit(composition.chartBasis.intensityTarget, "updatedBy"), composition.chartBasis.measurements) }
     : composition.chartBasis;
   const base = { ...composition, assurance, ...(chartBasis ? { chartBasis } : {}) };
   if (isReportGap(composition.plan)) return base;
@@ -34,7 +37,9 @@ type Without<T, K extends keyof T> = Omit<T, K>;
 /** The snapshot as the client receives it: every staff identity removed, every figure as frozen. */
 export type ClientFacingSnapshot = Without<Snapshot, "createdBy" | "approvedBy" | "target" | "intensityTarget" | "sections" | "gapResolutions" | "measurements"> & {
   target: Without<NonNullable<Snapshot["target"]>, "updatedBy"> | null;
-  intensityTarget: Without<NonNullable<Snapshot["intensityTarget"]>, "updatedBy"> | null;
+  /** RULING-report-denominator: a currency measure carries `reportingIntensity` in place of `reportingDenominator`. */
+  intensityTarget: (Without<NonNullable<Snapshot["intensityTarget"]>, "updatedBy" | "reportingDenominator">
+    & { reportingDenominator?: number | null; reportingIntensity?: number | null }) | null;
   sections: Array<Without<Snapshot["sections"][number], "updatedBy">>;
   gapResolutions: Array<Without<Snapshot["gapResolutions"][number], "resolvedBy" | "reason">>;
   measurements: Array<Without<Snapshot["measurements"][number], "reviewedBy" | "notes">>;
@@ -65,7 +70,9 @@ export function clientFacingPublishedReport(report: PublishedCrpReportReadModel)
     snapshot: {
       ...omit(snapshot, "createdBy", "approvedBy"),
       target: snapshot.target ? omit(snapshot.target, "updatedBy") : null,
-      intensityTarget: snapshot.intensityTarget ? omit(snapshot.intensityTarget, "updatedBy") : null,
+      // RULING-report-denominator (NZC-120): the client's turnover is money, so a currency measure's denominator is not sent —
+      // the year's intensity is, from the same rows, by the same helper the composition's chart basis uses.
+      intensityTarget: snapshot.intensityTarget ? withoutCurrencyDenominator(omit(snapshot.intensityTarget, "updatedBy"), snapshot.measurements) : null,
       sections: snapshot.sections.map((section) => omit(section, "updatedBy")),
       gapResolutions: snapshot.gapResolutions.map((resolution) => omit(resolution, "resolvedBy", "reason")),
       measurements: snapshot.measurements.map((row) => omit(row, "reviewedBy", "notes")),
