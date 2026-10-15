@@ -204,6 +204,15 @@ export const reportPlanSectionKeys: readonly ReportPlanSectionKey[] = [...report
 export const isReportDataSection = (key: string): key is ReportCompositionSectionKey => (reportCompositionSections as readonly string[]).includes(key);
 export const isReportNarrativeSection = (key: string): key is ReportNarrativePlanKey => (reportNarrativePlanKeys as readonly string[]).includes(key);
 
+/**
+ * ACCEPT-composed5-checkpoint2, decision 3: the narrative sections `composed@5` draws as sections of their own — Net Zero
+ * Commitment and Background & Organisation — so a plan may include, leave out and move them like any optional section. The
+ * other four narratives ride inside their host data sections (the Executive Summary, Intensity, Category, Actions) and stay
+ * where they are. `composed@1/2/3/4` never draw any narrative, whatever a plan holds.
+ */
+export const reportStandaloneNarrativeSections: readonly ReportNarrativePlanKey[] = ["narrative:net-zero-commitment", "narrative:background"];
+export const isReportStandaloneNarrativeSection = (key: string): boolean => (reportStandaloneNarrativeSections as readonly string[]).includes(key);
+
 /** Which sections a report shows, in order. */
 export type ReportSectionPlanEntry = { key: ReportPlanSectionKey; included: boolean };
 export type ReportSectionPlan = readonly ReportSectionPlanEntry[];
@@ -240,7 +249,9 @@ export const defaultReportSectionPlan: ReportSectionPlan = ([
   "cover", "executive-summary", "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
   "sites", "emissions", "intensity", "narrative:intensity-analysis", "targets", "scope-analysis", "category-analysis",
   "narrative:category-analysis", "plan", "narrative:reduction-actions", "srs", "methodology", ...reportReferenceSections,
-] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) }));
+  // composed@5 (decision 3): the two standalone narrative sections are on by default, as in the mockup; the narrative that
+  // rides inside a data section is not a plan choice.
+] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) || isReportStandaloneNarrativeSection(key) }));
 
 /**
  * B2-3 (RULING-report-B2-3): a stored plan written before a key existed, read complete — deterministically. Each key the plan
@@ -345,7 +356,9 @@ export function reportSectionPlanIssues(
   }
   for (const [index, entry] of entries.entries()) {
     if (entry.included) {
-      if (isReportNarrativeSection(entry.key) && !allowNarrative) {
+      // Decision 3: a standalone narrative section is drawn by the renderer new reports stamp (composed@5), so it may be
+      // included; the narrative that rides inside a data section still may not be, on its own.
+      if (isReportNarrativeSection(entry.key) && !allowNarrative && !isReportStandaloneNarrativeSection(entry.key)) {
         issues.push({ field: `sectionPlan[${index}].included`, code: "NARRATIVE_NOT_YET_DRAWN", message: `${reportPlanSectionTitle(entry.key)} is not drawn in the composed report yet, so it cannot be included.` });
       }
       continue;
@@ -395,7 +408,7 @@ export function reportOmittedSections(plan: ReportSectionPlan): string[] {
 
 /** The cover and the methodology hold their places (Q1), as does the reference block after it (B2-3); every other data section may move. */
 export const isMovableReportSection = (key: ReportPlanSectionKey): boolean =>
-  isReportDataSection(key) && key !== "cover" && key !== "methodology" && !isReportReferenceSection(key);
+  (isReportDataSection(key) && key !== "cover" && key !== "methodology" && !isReportReferenceSection(key)) || isReportStandaloneNarrativeSection(key);
 
 /**
  * F-1b: move one data section a step earlier or later among the movable data sections — what the editors' up/down buttons
@@ -415,7 +428,7 @@ export function moveReportSection(plan: ReportSectionPlan, key: ReportPlanSectio
 
 /** A data section a plan may leave out (Q1): every one but the cover, the executive summary, the emissions and the methodology. */
 export const isOptionalReportSection = (key: ReportPlanSectionKey): boolean =>
-  isReportDataSection(key) && !reportMandatorySections.includes(key);
+  (isReportDataSection(key) && !reportMandatorySections.includes(key)) || isReportStandaloneNarrativeSection(key);
 
 /**
  * F-4b: include or leave out one optional data section — what the editors' switch does. A mandatory section, a narrative
@@ -772,6 +785,11 @@ export type ReportComposition = {
    * only asset, so the issued report keeps it). Absent when the client had none: the cover then shows no logo, never a stand-in.
    */
   clientLogoAssetId?: string;
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint2, decision 1): the client record's industry (its sector) and location, for
+   * Background & Organisation. Absent when the record has neither; a missing one reads "Not recorded", never guessed.
+   */
+  organisation?: { industry: string | null; location: string | null };
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

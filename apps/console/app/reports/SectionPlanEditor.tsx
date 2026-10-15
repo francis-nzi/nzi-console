@@ -5,7 +5,7 @@
 // the methodology hold their places; the cover, executive summary, emissions and methodology are always included (Q1); the
 // narrative sections are not drawn yet (Q6), so they are not listed. A left-out section stays in the list, marked, so it can be
 // put back — and the issued report says on its Methodology page that it was left out.
-import { isMovableReportSection, isOptionalReportSection, isReportDataSection, isReportReferenceSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
+import { isMovableReportSection, isOptionalReportSection, isReportDataSection, isReportReferenceSection, isReportStandaloneNarrativeSection, moveReportSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportPlanSectionTitle, setReportSectionIncluded, type ReportSectionPlan } from "@nzi/contracts";
 
 // B2-3: the cover leads; Methodology closes the main body and the reference block (Glossary, the audit, Appendix 2) follows it
 // in a fixed order, so none of them moves. A plan without the reference block (composed@1/2/3) ends at Methodology, as before.
@@ -19,7 +19,8 @@ const fixedLabel = (key: string, plan: ReportSectionPlan): string =>
 export function SectionPlanEditor({ plan, onChange, disabled = false, label = "Section order", allowExclusion = REPORT_SECTION_EXCLUSION_AVAILABLE }: {
   plan: ReportSectionPlan; onChange: (plan: ReportSectionPlan) => void; disabled?: boolean; label?: string; allowExclusion?: boolean;
 }) {
-  const shown = plan.filter((entry) => isReportDataSection(entry.key) && (entry.included || allowExclusion));
+  // composed@5 (decision 3): Net Zero Commitment and Background are sections of their own, offered like any optional one.
+  const shown = plan.filter((entry) => (isReportDataSection(entry.key) || isReportStandaloneNarrativeSection(entry.key)) && (entry.included || allowExclusion));
   const movable = shown.filter((entry) => isMovableReportSection(entry.key));
   return <div className="nz-section-plan" role="group" aria-label={label}>
     <ol className="nz-section-plan-list">

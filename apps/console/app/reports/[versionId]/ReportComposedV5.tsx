@@ -214,9 +214,9 @@ function Background({ composition, number }: { composition: ReportComposition; n
     <div className="r5-kv">
       <div className="r5-kvbox">
         <div className="r5-kr"><span>Organisation</span><b>{composition.client}</b></div>
-        {/* Not yet frozen into the composition — listed for Cowork's ruling (CHECKPOINT-composed5-2): never guessed. */}
-        <div className="r5-kr"><span>Industry</span><b>{NOT_RECORDED}</b></div>
-        <div className="r5-kr"><span>Location</span><b>{NOT_RECORDED}</b></div>
+        {/* Frozen from the client record at compose (decision 1); a field the record lacks reads "Not recorded", never guessed. */}
+        <div className="r5-kr"><span>Industry</span><b>{composition.organisation?.industry ?? NOT_RECORDED}</b></div>
+        <div className="r5-kr"><span>Location</span><b>{composition.organisation?.location ?? NOT_RECORDED}</b></div>
         <div className="r5-kr"><span>Sites</span><b>{sites > 0 ? sites : NOT_RECORDED}</b></div>
       </div>
       <div className="r5-kvbox">
@@ -229,27 +229,173 @@ function Background({ composition, number }: { composition: ReportComposition; n
   </>;
 }
 
+// ── 04 · Sites & Reporting Boundary, 05 · Carbon Emissions Overview ─────────────────────────────────────────────────
+/** The mockup's by-site categorical set (validated, distinct from the scope palette); the organisation-level line in grey. */
+const SITE_COLOURS = ["#2E86C1", "#6B4E9B", "#0B7A4B"];
+const ORG_LEVEL_COLOUR = "#9AA59F";
+const f0 = (value: number) => Math.round(value).toLocaleString("en-GB");
+
+const SiteFlag = ({ composition }: { composition: ReportComposition }) =>
+  composition.scope?.kind === "sites" ? <div className="r5-scopeflag">Recomposed for: {scopeLabel(composition)}</div> : null;
+
+/** The frozen site rows, each with its colour: the sites first, the organisation-level line (whole client only) last, in grey. */
+function siteSlices(composition: ReportComposition) {
+  if (isReportGap(composition.emissions)) return [];
+  let index = 0;
+  return (composition.emissions.sites ?? []).map((site) => ({ site, colour: site.siteId === null ? ORG_LEVEL_COLOUR : SITE_COLOURS[index++ % SITE_COLOURS.length]! }));
+}
+
+/** The mockup's horizontal activity bars: one bar per frozen activity, largest first. */
+function Bars({ items }: { items: Array<{ label: string; value: number }> }) {
+  const max = Math.max(...items.map((item) => item.value), 0) || 1;
+  return <>{items.map((item) => <div className="r5-barrow" key={item.label}><span className="r5-bn">{item.label}</span>
+    <div className="r5-bartrack"><div className="r5-barfill" style={{ width: `${Math.max(1.5, (item.value / max) * 100)}%` }} /></div>
+    <span className="r5-bv">{f1(item.value)}</span></div>)}</>;
+}
+
+const ICONS: Record<string, ReactNode> = {
+  people: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3" /><path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1" /><path d="M16 4a3 3 0 0 1 0 6" /></svg>,
+  currency: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 5a3.5 3.5 0 0 0-6 2.5V19" /><path d="M8 12h6" /><path d="M7 19h10" /></svg>,
+  box: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" /></svg>,
+};
+const iconFor = (iconKey: string) => ICONS[iconKey] ?? ICONS.box;
+
+/**
+ * A site's intensity rows: one per measure the client reports. Only floor area exists per site (R-S1 (A′)); every other
+ * measure is the client's whole value, so it is stated as client-level — never apportioned to a site. No turnover amount.
+ */
+function SiteIntensity({ composition, site }: { composition: ReportComposition; site: NonNullable<Extract<ReportComposition["emissions"], { totalTco2e: number }>["sites"]>[number] }) {
+  if (isReportGap(composition.intensity) || composition.intensity.metrics.length === 0) return null;
+  return <>
+    <h4 className="r5-sitecard-sh">Intensity</h4>
+    {composition.intensity.metrics.map((metric) => {
+      const floor = metric.key === "floor-area" ? site.floorAreaIntensity : undefined;
+      const value = floor?.value ?? null;
+      return <div className="r5-imrow" key={metric.key}>
+        <div className="r5-im-ic">{iconFor(metric.iconKey)}</div>
+        <div><div className="r5-nm">{metric.label}</div>
+          <div className="r5-u">{floor ? (floor.floorAreaM2 !== null ? `${f0(floor.floorAreaM2)} m²` : floor.reason ?? "Floor area not recorded") : "Reported for the whole client only"}</div></div>
+        <div className="r5-val">{value !== null ? <><b>{f1(value)}</b> <span className="r5-uu">{floor!.unit}</span></> : <span className="r5-nr">Not apportioned to sites</span>}</div>
+      </div>;
+    })}
+  </>;
+}
+
+function SiteSubsection({ composition, site }: { composition: ReportComposition; site: Parameters<typeof SiteIntensity>[0]["site"] }) {
+  const by = new Map(site.byScope.map((entry) => [entry.scope, entry.tco2e]));
+  const scopes: Scopes = ["1", "2", "3"].map((scope) => ({ key: scope, label: `Scope ${scope}`, value: by.get(scope) ?? 0, colour: SCOPE_COLOUR[scope]! }));
+  return <div className="r5-sitecard">
+    <div className="r5-sitecard-h">{site.label}</div>
+    <div className="r5-grid2">
+      <div className="r5-chartcard r5-flush"><div className="r5-chead"><b>By scope</b><SvgTag /></div>
+        <div className="r5-donutwrap"><Donut scopes={scopes} total={site.totalTco2e} size={160} /><DonutLegend scopes={scopes} total={site.totalTco2e} /></div></div>
+      <div className="r5-chartcard r5-flush"><div className="r5-chead"><b>By activity</b><SvgTag /></div>
+        <Bars items={site.activities.map((activity) => ({ label: activity.label, value: activity.tco2e }))} /></div>
+    </div>
+    <SiteIntensity composition={composition} site={site} />
+  </div>;
+}
+
+function SitesSection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Boundary</div><h2 className="r5-h2">Sites &amp; Reporting Boundary</h2><SiteFlag composition={composition} /></>;
+  const slices = siteSlices(composition);
+  if (isReportGap(composition.emissions) || slices.length === 0) {
+    return <>{head}<p className="r5-unavailable">{isReportGap(composition.emissions) ? composition.emissions.reason : "This report has no site breakdown."}</p></>;
+  }
+  const total = slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0);
+  const scopes: Scopes = slices.map(({ site, colour }) => ({ key: site.siteId ?? "org", label: site.label, value: site.totalTco2e, colour }));
+  const realSites = slices.filter((slice) => slice.site.siteId !== null);
+  const floors = slices.map(({ site }) => site.floorAreaIntensity?.floorAreaM2 ?? null);
+  return <>
+    {head}
+    <p className="r5-prose r5-lead">This report covers the following sites:</p>
+    <div className="r5-chartcard">
+      <div className="r5-chead"><b>Emissions by site</b><SvgTag /></div>
+      <div className="r5-donutwrap"><Donut scopes={scopes} total={total} /><DonutLegend scopes={scopes} total={total} /></div>
+      <SrcLine composition={composition} />
+    </div>
+    <table className="r5-rt r5-gap">
+      <thead><tr><th>Site</th><th>In service</th><th className="r5-num">Floor m²</th><th className="r5-num">tCO₂e</th><th className="r5-num">% of client</th></tr></thead>
+      <tbody>
+        {slices.map(({ site }, index) => <tr key={site.siteId ?? "org"}>
+          <td>{site.label}</td>
+          {/* Not frozen into the composition — listed for Cowork's ruling (CHECKPOINT-composed5-3). */}
+          <td>{site.siteId === null ? "" : NOT_RECORDED}</td>
+          <td className="r5-num">{floors[index] !== null ? f0(floors[index]!) : site.siteId === null ? "" : NOT_RECORDED}</td>
+          <td className="r5-num">{f1(site.totalTco2e)}</td><td className="r5-num">{pc(site.totalTco2e, total)}%</td>
+        </tr>)}
+        <tr className="r5-total"><td>Total ({realSites.length})</td><td /><td className="r5-num">{floors.every((floor, index) => floor !== null || slices[index]!.site.siteId === null) && floors.some((floor) => floor !== null) ? f0(floors.reduce<number>((sum, floor) => sum + (floor ?? 0), 0)) : ""}</td>
+          <td className="r5-num">{f1(total)}</td><td className="r5-num" /></tr>
+      </tbody>
+    </table>
+    {realSites.length > 1 ? <><h3 className="r5-h3">By site</h3>{realSites.map(({ site }) => <SiteSubsection key={site.siteId} composition={composition} site={site} />)}</> : null}
+  </>;
+}
+
+const FACTOR_NOTE = "Calculated emissions use the most up-to-date emission factors at publication; factors are applied retrospectively, so values may change when recalculated in future years.";
+
+function OverviewSection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Overview</div><h2 className="r5-h2">Carbon Emissions Overview</h2><SiteFlag composition={composition} /></>;
+  const scopes = scopesOf(composition);
+  if (!scopes || isReportGap(composition.emissions)) {
+    return <>{head}<p className="r5-unavailable">{isReportGap(composition.emissions) ? composition.emissions.reason : "Emissions are unavailable for this report."}</p></>;
+  }
+  const total = composition.emissions.totalTco2e;
+  const slices = siteSlices(composition);
+  const period = composition.reportingPeriod;
+  return <>
+    {head}
+    <div className="r5-overview-top">
+      <div className="r5-statbig"><div className="r5-lbl">Total carbon emissions</div><div className="r5-big">{f1(total)}</div>
+        <div className="r5-u">tCO₂e{period ? ` · ${dd(period.from)} – ${dd(period.to)}` : ` · ${reportingYearLabel(composition)}`}</div></div>
+      {slices.length > 0 ? <div className="r5-overview-sites"><h3 className="r5-h3 r5-flush">Emissions by site</h3>
+        {/* Per-site figures exist for this period only; earlier periods are not frozen by site (listed for the ruling). */}
+        <table className="r5-rt">
+          <thead><tr><th>Site</th><th className="r5-num">Current period</th></tr></thead>
+          <tbody>
+            {slices.map(({ site }) => <tr key={site.siteId ?? "org"}><td>{site.label}</td><td className="r5-num">{f1(site.totalTco2e)}</td></tr>)}
+            <tr className="r5-total"><td>Total</td><td className="r5-num">{f1(slices.reduce((sum, slice) => sum + slice.site.totalTco2e, 0))}</td></tr>
+          </tbody>
+        </table></div> : null}
+    </div>
+    <div className="r5-note">{FACTOR_NOTE}</div>
+    <div className="r5-chartcard">
+      <div className="r5-chead"><b>Emissions summary by scope</b><SvgTag /></div>
+      <div className="r5-donutwrap"><Donut scopes={scopes} total={total} /><DonutLegend scopes={scopes} total={total} /></div>
+      <SrcLine composition={composition} />
+    </div>
+  </>;
+}
+
+/** composed@5's section titles, as its pages head them — the studio's rail names its rows by these. */
+export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
+  "executive-summary": "Executive Summary",
+  "narrative:net-zero-commitment": "Net Zero Commitment",
+  "narrative:background": "Background & Organisation",
+  sites: "Sites & Reporting Boundary",
+  emissions: "Carbon Emissions Overview",
+};
+
+/** Whether composed@5 draws a plan key as a page of its own — the same test its layout numbers by, shared with the rail. */
+export const composed5Draws = (key: string): boolean => key in DRAWN;
+
 /** The sections composed@5 draws so far, by plan key — the rest arrive at later checkpoints. */
 const DRAWN: Record<string, (composition: ReportComposition, number: string) => ReactNode> = {
   "executive-summary": (composition, number) => <ExecutiveSummary composition={composition} number={number} />,
   "narrative:net-zero-commitment": (composition, number) => <NetZeroCommitment composition={composition} number={number} />,
   "narrative:background": (composition, number) => <Background composition={composition} number={number} />,
+  sites: (composition, number) => <SitesSection composition={composition} number={number} />,
+  emissions: (composition, number) => <OverviewSection composition={composition} number={number} />,
 };
 
-/**
- * The mockup's Net Zero Commitment and Background are sections of the document; the plan still holds them as narrative keys,
- * not yet includable (the validator's Q6 rule). composed@5 draws them in their plan places — listed for Cowork's ruling
- * (CHECKPOINT-composed5-2) on how the plan includes or leaves them out.
- */
-const ALWAYS_DRAWN = new Set(["narrative:net-zero-commitment", "narrative:background"]);
 
 export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetId) => `/api/isolated/logo-assets/${encodeURIComponent(assetId)}`, preview = false, mode = "page" }: {
   composition: ReportComposition; issuerLogoSrc: LogoSrc; clientLogoSrc?: LogoSrc; preview?: boolean;
   /** The mockup's two views: A4 pages with running head and foot, or one continuous flow with page-break markers. */
   mode?: "page" | "flow";
 }) {
-  const plan = reportSectionPlanOf(composition).map((entry) => ALWAYS_DRAWN.has(entry.key) ? { ...entry, included: true } : entry);
-  const layout = reportSectionLayout(plan, (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
+  // The plan decides: Net Zero Commitment and Background are optional and movable like any section (decision 3).
+  const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
   const pages = layout.length + 1;
   const title = reportTitle(composition);
   return <main className={`nzr5 r5-mode-${mode}`} data-renderer="composed@5">

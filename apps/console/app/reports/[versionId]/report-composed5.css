@@ -115,6 +115,34 @@
 .nzr5 .r5-kvbox .r5-kr span{color:var(--r5-muted)} .nzr5 .r5-kvbox .r5-kr b{color:var(--r5-ink);font-weight:600}
 .nzr5 .r5-nr{color:var(--r5-muted)!important;font-weight:500;font-style:italic}
 
+/* Sites and Overview: lead line, site cards, the two-column grid, activity bars, intensity rows, the big stat, notes */
+.nzr5 .r5-lead{margin:0 0 12px}
+.nzr5 .r5-gap{margin-top:16px}
+.nzr5 .r5-flush{margin-top:0!important}
+.nzr5 .r5-note{font-size:11px;line-height:1.55;color:var(--r5-muted);margin:14px 0 0}
+.nzr5 .r5-sitecard{border:1px solid var(--r5-line);border-radius:14px;padding:16px 18px;margin-top:14px}
+.nzr5 .r5-sitecard-h{font-weight:700;font-size:13px;margin-bottom:12px;color:var(--r5-ink)}
+.nzr5 .r5-sitecard-sh{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-ink-2);font-weight:700;margin:14px 0 2px}
+.nzr5 .r5-grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+@media (max-width:620px){.nzr5 .r5-grid2{grid-template-columns:1fr}}
+.nzr5 .r5-barrow{display:grid;grid-template-columns:150px 1fr 54px;align-items:center;gap:12px;padding:6px 0;font-size:12.5px}
+.nzr5 .r5-barrow .r5-bn{color:var(--r5-ink-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nzr5 .r5-bartrack{background:var(--r5-surface-2);border-radius:6px;height:20px;overflow:hidden}
+.nzr5 .r5-barfill{height:100%;border-radius:6px;background:var(--r5-brand-deep)}
+.nzr5 .r5-barrow .r5-bv{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.nzr5 .r5-imrow{display:flex;align-items:center;gap:13px;padding:12px 0;border-bottom:1px solid var(--r5-line-2)}
+.nzr5 .r5-imrow:last-child{border:0}
+.nzr5 .r5-im-ic{width:38px;height:38px;border-radius:10px;background:var(--r5-surface-2);display:grid;place-items:center;color:var(--r5-brand-deep);flex:0 0 auto}
+.nzr5 .r5-im-ic svg{width:20px;height:20px}
+.nzr5 .r5-imrow .r5-nm{font-weight:600} .nzr5 .r5-imrow .r5-u{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-imrow .r5-val{margin-left:auto;text-align:right} .nzr5 .r5-imrow .r5-val b{font-size:15px;font-variant-numeric:tabular-nums} .nzr5 .r5-imrow .r5-val .r5-uu{font-size:11px;color:var(--r5-muted)}
+.nzr5 .r5-overview-top{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.nzr5 .r5-overview-sites{flex:1;min-width:260px}
+.nzr5 .r5-statbig{border:1px solid var(--r5-line);border-radius:14px;padding:22px;text-align:center;min-width:220px}
+.nzr5 .r5-statbig .r5-lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--r5-muted);font-weight:700}
+.nzr5 .r5-statbig .r5-big{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.nzr5 .r5-statbig .r5-u{color:var(--r5-muted);font-size:13px}
+
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{
   .nzr5{background:none;padding:0}

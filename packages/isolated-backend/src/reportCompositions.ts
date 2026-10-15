@@ -523,6 +523,15 @@ export async function composeForSnapshot(db: Queryable, input: {
     await getBenchmarkInForce(db, row.client_id), await listAssuredPeriodConflicts(db, row.client_id),
     await db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id])];
   const siteNames = new Map(siteRows.rows.map((site) => [site.site_id, site.name]));
+  // composed@5 (ACCEPT-composed5-checkpoint2, decision 1): the client record's industry and location for Background &
+  // Organisation — the sector's curated label (else its stored text, NZC-090's fallback) and the location (else headquarters).
+  const organisationRow = (await db.query<{ industry: string | null; location: string | null }>(
+    `SELECT COALESCE((SELECT rv.label FROM nzi_console.reference_values rv WHERE (rv.organisation_id, rv.value_id) = (c.organisation_id, c.sector_value_id)),
+                     NULLIF(btrim(c.sector), '')) AS industry,
+            COALESCE(NULLIF(btrim(c.location), ''), NULLIF(btrim(c.headquarters), '')) AS location
+     FROM nzi_console.clients c WHERE c.client_id = $1`, [row.client_id])).rows[0];
+  const organisation = organisationRow && (organisationRow.industry || organisationRow.location)
+    ? { industry: organisationRow.industry, location: organisationRow.location } : null;
 
   const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
@@ -553,6 +562,7 @@ export async function composeForSnapshot(db: Queryable, input: {
     ...(input.issuerLine ? { issuerLine: input.issuerLine } : {}),
     ...(input.signee ? { signee: input.signee } : {}),
     ...(input.clientLogoAssetId ? { clientLogoAssetId: input.clientLogoAssetId } : {}),
+    ...(organisation ? { organisation } : {}),
   };
 }
 
