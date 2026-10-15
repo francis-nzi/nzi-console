@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, type ReportSectionPlan,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
   composeReportChartBasis, type ChartBasisSnapshot, composeReportAudit, composeReportSources, type ReportSources, type SnapshotProvenanceStamp,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
@@ -377,8 +377,13 @@ export async function composeReport(db: Queryable, input: {
     // B1 (`composed@3`): the sources, named by dataset id and frozen; and the audit appendix, cut to this report's scope.
     ...withSources(composeReportSources(input.snapshot)),
     audit: composeReportAudit({ measurements: input.snapshot.measurements, provenance: input.snapshot.provenance, scope: context.scope }),
+    // B2-3 (`composed@4`): the reporting period the snapshot stamp holds — the cover's metacard row. None stamped: none frozen.
+    ...withPeriod(input.snapshot.provenance?.reportingPeriod),
   };
 }
+
+const withPeriod = (period: { from?: string; to?: string } | undefined) =>
+  period?.from && period?.to ? { reportingPeriod: { from: period.from.slice(0, 10), to: period.to.slice(0, 10) } } : {};
 
 const withSources = (sources: ReportSources | undefined) => sources ? { sources } : {};
 
@@ -436,8 +441,8 @@ export async function composeForReportVersion(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string;
 }): Promise<ReportComposition> {
   const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string; scope_kind: "whole" | "sites"; scope_site_ids: string[] | null;
-    section_plan: ReportSectionPlan | null; client_issuer_line: string | null } & IssuerColumns>(
-    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, r.section_plan, r.client_issuer_line, ${ISSUER_COLUMNS}
+    section_plan: ReportSectionPlan | null; client_issuer_line: string | null; signee_name: string | null; signee_job_title: string | null } & IssuerColumns>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, r.section_plan, r.client_issuer_line, r.signee_name, r.signee_job_title, ${ISSUER_COLUMNS}
      FROM nzi_console.report_versions r
      JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
      WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
@@ -451,7 +456,10 @@ export async function composeForReportVersion(db: Queryable, input: {
     // D3: the issuer the version froze at validation travels with what the report says. F-1: the version's section plan is
     // frozen with it — a version validated before F-1 has none, and issues the default — and the client's issuer line, when
     // its profile had one at validation.
-    issuer: issuerOf(row), sectionPlan: row.section_plan ?? defaultReportSectionPlan, issuerLine: row.client_issuer_line,
+    // B2-3: composed now, it is a `composed@4` composition, so its plan is frozen read complete (a version validated before
+    // B2-3 holds a plan without the new keys). B2-3 call 2: the client signee the version named at validate.
+    issuer: issuerOf(row), sectionPlan: normaliseReportPlanKeys(row.section_plan ?? defaultReportSectionPlan), issuerLine: row.client_issuer_line,
+    signee: row.signee_name ? { name: row.signee_name, jobTitle: row.signee_job_title } : null,
   });
 }
 
@@ -464,6 +472,8 @@ export async function composeForReportVersion(db: Queryable, input: {
 export async function composeForSnapshot(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string; snapshotId: string; clientId: string;
   scope: ReportScope; sectionPlan: ReportSectionPlan; issuer: ReportIssuer | null; issuerLine: string | null;
+  /** B2-3: the client signee the version named (none on a draft). */
+  signee?: { name: string; jobTitle: string | null } | null;
 }): Promise<ReportComposition> {
   const row = { client_id: input.clientId, reviewed_snapshot_id: input.snapshotId };
   const snapshotRow = await db.query<{
@@ -526,6 +536,7 @@ export async function composeForSnapshot(db: Queryable, input: {
     ...(input.issuer ? { issuer: input.issuer } : {}),
     sectionPlan: input.sectionPlan,
     ...(input.issuerLine ? { issuerLine: input.issuerLine } : {}),
+    ...(input.signee ? { signee: input.signee } : {}),
   };
 }
 

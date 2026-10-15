@@ -1,16 +1,21 @@
 // Reporting F-1 (0164): reading the client's report profile — shared by the profile commands and by `report.validate`, which
 // seeds a version's plan from it (RULING-reporting-F Q3). Reads only; no command imports, so validate can use it.
-import { defaultReportSectionPlan, type ClientReportProfile, type ReportSectionPlan } from "@nzi/contracts";
+import { defaultReportSectionPlan, normaliseReportPlanKeys, type ClientReportProfile, type ReportSectionPlan } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 
 type ProfileRow = { version: number; active: boolean; section_plan: ReportSectionPlan | null; issuer_line: string | null; reason: string | null; set_by: string; set_at: Date | string };
 
-/** Only `{ key, included }`, in order — what a plan is, and all that is stored or hashed. */
-export const normaliseReportSectionPlan = (plan: ReportSectionPlan): ReportSectionPlan => plan.map(({ key, included }) => ({ key, included }));
+/**
+ * Only `{ key, included }`, in order — what a plan is, and all that is stored or hashed — and, since B2-3 (RULING-report-B2-3),
+ * complete: a plan written before a section existed reads with it at its default place (`normaliseReportPlanKeys`,
+ * deterministic, never reordering what it held). Every stored plan that feeds new work is read through this, as is every plan
+ * a command is given; a frozen composition's plan is not (its renderer reads it as it was issued).
+ */
+export const normaliseReportSectionPlan = (plan: ReportSectionPlan): ReportSectionPlan => normaliseReportPlanKeys(plan.map(({ key, included }) => ({ key, included })));
 
 const toProfile = (clientId: string, row: ProfileRow): ClientReportProfile => ({
-  clientId, version: row.version, active: row.active, sectionPlan: row.section_plan, issuerLine: row.issuer_line, reason: row.reason,
-  setBy: row.set_by, setAt: row.set_at instanceof Date ? row.set_at.toISOString() : String(row.set_at),
+  clientId, version: row.version, active: row.active, sectionPlan: row.section_plan ? normaliseReportSectionPlan(row.section_plan) : null,
+  issuerLine: row.issuer_line, reason: row.reason, setBy: row.set_by, setAt: row.set_at instanceof Date ? row.set_at.toISOString() : String(row.set_at),
 });
 
 /** The client's latest profile version, withdrawn or not; null when it has never had one. */
@@ -38,8 +43,8 @@ export async function getReportVersionSectionPlan(db: Queryable, reportVersionId
     `SELECT status, version, section_plan, section_plan_origin, client_issuer_line FROM nzi_console.report_versions WHERE report_version_id = $1`,
     [reportVersionId])).rows[0];
   if (!row) return null;
-  // A version validated before 0164 holds no plan: it issues the default, and says so.
-  return { reportVersionId, status: row.status, version: row.version, sectionPlan: row.section_plan ?? defaultReportSectionPlan,
+  // A version validated before 0164 holds no plan: it issues the default, and says so. One validated before B2-3 reads complete.
+  return { reportVersionId, status: row.status, version: row.version, sectionPlan: normaliseReportSectionPlan(row.section_plan ?? defaultReportSectionPlan),
     origin: row.section_plan_origin ?? "default", issuerLine: row.client_issuer_line };
 }
 

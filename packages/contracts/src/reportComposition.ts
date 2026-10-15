@@ -63,9 +63,21 @@ export function reportAssurance(input: { reviewedBy: string; reviewedAt: string 
 
 export const reportCompositionSections = [
   "cover", "executive-summary", "emissions", "sites", "intensity", "targets", "plan", "srs", "methodology",
+  // B2-3 (RULING-report-B2-3, F2): the mockup's further sections — drawn by `composed@4` only.
+  "scope-analysis", "category-analysis", "glossary", "audit", "appendix-sites",
 ] as const;
 export type ReportCompositionSectionKey = (typeof reportCompositionSections)[number];
 
+/**
+ * B2-3 (RULING-report-B2-3, call 1): the reference block — the Glossary and the two appendices — which follows Methodology in
+ * exactly this order and is followed by nothing. Each may be left out; none may move.
+ */
+export const reportReferenceSections = ["glossary", "audit", "appendix-sites"] as const satisfies readonly ReportCompositionSectionKey[];
+export const isReportReferenceSection = (key: string): boolean => (reportReferenceSections as readonly string[]).includes(key);
+/** The sections only `composed@4` (and later) draws; `composed@1/2/3` never do, whatever a plan holds. */
+export const reportComposed4Sections: readonly ReportCompositionSectionKey[] = ["scope-analysis", "category-analysis", ...reportReferenceSections];
+
+/** Section headings as `composed@1/2/3` print them — pinned byte for byte with those renderers; never edit (fork instead). */
 export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> = {
   cover: { eyebrow: "", title: "Carbon Reduction Plan" },
   "executive-summary": { eyebrow: "Overview", title: "Executive summary" },
@@ -76,7 +88,35 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
   plan: { eyebrow: "Plan", title: "Decarbonisation actions" },
   srs: { eyebrow: "Disclosure", title: "UK SRS readiness statement" },
   methodology: { eyebrow: "Basis", title: "Methodology & provenance" },
+  // Never drawn by composed@1/2/3; named here only so the table is complete (the plan editors list them).
+  "scope-analysis": { eyebrow: "Analysis", title: "Analysis by scope" },
+  "category-analysis": { eyebrow: "Analysis", title: "Emissions by scope & category" },
+  glossary: { eyebrow: "Reference", title: "Glossary" },
+  audit: { eyebrow: "Appendix 1", title: "Full emissions audit" },
+  "appendix-sites": { eyebrow: "Appendix 2", title: "Emissions by site & scope" },
 };
+
+/** B2-3 (RULING-report-B2-3, call 4): the headings `composed@4` prints — the mockup's titles. */
+export const reportSectionMetaV4: Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> = {
+  cover: { eyebrow: "", title: "Carbon Reduction Plan" },
+  "executive-summary": { eyebrow: "Overview", title: "Executive Summary" },
+  sites: { eyebrow: "Boundary", title: "Sites & Reporting Boundary" },
+  emissions: { eyebrow: "Overview", title: "Carbon Emissions Overview" },
+  intensity: { eyebrow: "Performance", title: "Intensity Metric Analysis" },
+  targets: { eyebrow: "Trajectory", title: "Targets & Reduction Pathway" },
+  "scope-analysis": { eyebrow: "Analysis", title: "Analysis by Scope" },
+  "category-analysis": { eyebrow: "Analysis", title: "Emissions by Scope & Category" },
+  plan: { eyebrow: "Plan", title: "Carbon Reduction Actions" },
+  srs: { eyebrow: "Disclosure", title: "UK SRS Readiness Statement" },
+  methodology: { eyebrow: "Assurance", title: "Standards, Methodology & Sign-off" },
+  glossary: { eyebrow: "Reference", title: "Glossary" },
+  audit: { eyebrow: "Appendix 1", title: "Full Emissions Audit" },
+  "appendix-sites": { eyebrow: "Appendix 2", title: "Emissions by Site & Scope" },
+};
+
+/** A section's heading as the composition's own renderer prints it — so the studio's rail and the document agree. */
+export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> =>
+  reportRendererOf(composition) === "composed@4" ? reportSectionMetaV4 : reportCompositionSectionMeta;
 
 /* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
 
@@ -88,7 +128,7 @@ export const reportCompositionSectionMeta: Record<ReportCompositionSectionKey, {
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2", "composed@3"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -102,8 +142,13 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * frozen `sources` — in place of the per-row factor strings; "Largest emissions activities" one bar per activity (resolver
  * v2); the full per-row provenance as an audit appendix closing Methodology (frozen `audit`); and, on a preview, "preview —
  * not issued" where an issued report states its issue date. A fork: every `composed@1/2` report draws exactly as before.
+ *
+ * B2-3 (RULING-report-B2-3): `composed@4` is the mockup's document — its section set (Analysis by Scope, Emissions by Scope &
+ * Category, and the reference block after Methodology: Glossary, the Full Emissions Audit as its own section, Appendix 2 by
+ * site & scope), its titles, the cover's metacard (with the frozen reporting period) and the sign-off (the frozen client
+ * signee and issuer). A fork: every `composed@1/2/3` report draws exactly as before, with the plan it always had.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@3";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@4";
 
 /**
  * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
@@ -166,18 +211,65 @@ export const reportPlanSectionTitle = (key: ReportPlanSectionKey): string =>
   isReportDataSection(key) ? reportCompositionSectionMeta[key].title : reportNarrativeSectionMeta[key].title;
 
 /**
- * Today's report: every data section, in the order it has always had, and the narrative beside the sections it speaks to —
- * **not included**. The narrative is not drawn in the composed report yet (Q6: it renders with F-2/F-4); where it sits by
- * default is Francis's content call, and this is a placeholder he may move.
+ * The default plan up to `composed@3` — **frozen** (RULING-report-B2-3: the critical guarantee). A `composed@1/2/3` composition
+ * issued before F-1 froze no plan and renders with this, so it never starts drawing the sections `composed@4` added. Never
+ * edit: a change here would redraw issued reports.
  */
-export const defaultReportSectionPlan: ReportSectionPlan = ([
+export const legacyReportSectionPlanV3: ReportSectionPlan = ([
   "cover", "executive-summary", "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
   "emissions", "narrative:category-analysis", "sites", "intensity", "narrative:intensity-analysis", "targets", "plan",
   "narrative:reduction-actions", "srs", "methodology",
 ] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) }));
 
-/** The plan a composition renders with: the one frozen into it at publish (F-1), or — issued before F-1 — the default. */
-export const reportSectionPlanOf = (composition: ReportComposition): ReportSectionPlan => composition.sectionPlan ?? defaultReportSectionPlan;
+/**
+ * The report's default plan — `composed@4`'s canonical order, the mockup's (RULING-report-B2-3): the narrative beside the
+ * sections it speaks to (**not included**: not drawn until B2-4), the main body ending at Methodology, then the reference block.
+ * Every new key is included by default, as in the mockup; each optional one may be left out.
+ */
+export const defaultReportSectionPlan: ReportSectionPlan = ([
+  "cover", "executive-summary", "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
+  "sites", "emissions", "intensity", "narrative:intensity-analysis", "targets", "scope-analysis", "category-analysis",
+  "narrative:category-analysis", "plan", "narrative:reduction-actions", "srs", "methodology", ...reportReferenceSections,
+] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) }));
+
+/**
+ * B2-3 (RULING-report-B2-3): a stored plan written before a key existed, read complete — deterministically. Each key the plan
+ * lacks is put at its default place: straight after the nearest key before it (in the default order) that the plan holds, and
+ * a reference section at its fixed place in the trailing block. Nothing the plan held is removed or reordered, and a complete
+ * plan is returned as it is. Applied to stored plans that feed new work (a profile, a validated version, a `composed@4`
+ * composition) — **never** to an issued `composed@1/2/3` composition, which keeps the plan it was issued with.
+ */
+export function normaliseReportPlanKeys(plan: ReportSectionPlan): ReportSectionPlan {
+  const held = new Set(plan.map((entry) => entry.key));
+  if (defaultReportSectionPlan.every((entry) => held.has(entry.key))) return plan;
+  const next = [...plan];
+  for (const [index, entry] of defaultReportSectionPlan.entries()) {
+    if (held.has(entry.key)) continue;
+    let at = 0;
+    if (isReportReferenceSection(entry.key)) {
+      // After Methodology and any reference section that precedes this one; the block's order is fixed.
+      const anchors = ["methodology", ...reportReferenceSections.slice(0, reportReferenceSections.indexOf(entry.key as never))];
+      at = Math.max(...anchors.map((key) => next.findIndex((item) => item.key === key))) + 1;
+    } else {
+      for (let back = index - 1; back >= 0; back--) {
+        const found = next.findIndex((item) => item.key === defaultReportSectionPlan[back]!.key);
+        if (found >= 0) { at = found + 1; break; }
+      }
+    }
+    next.splice(at, 0, { key: entry.key, included: entry.included });
+    held.add(entry.key);
+  }
+  return next;
+}
+
+/**
+ * The plan a composition renders with. `composed@1/2/3`: the one frozen into it at publish (F-1), or — issued before F-1 — the
+ * **frozen v3 default**, exactly as always. `composed@4`: its own plan (or the default), read complete.
+ */
+export const reportSectionPlanOf = (composition: ReportComposition): ReportSectionPlan =>
+  reportRendererOf(composition) === "composed@4"
+    ? normaliseReportPlanKeys(composition.sectionPlan ?? defaultReportSectionPlan)
+    : composition.sectionPlan ?? legacyReportSectionPlanV3;
 
 /**
  * The exclusion interlock (RULING-reporting-F Q5, binding). A section may be **left out** of a report only once the client
@@ -232,7 +324,15 @@ export function reportSectionPlanIssues(
   if (issues.length) return issues;
   const entries = plan as ReportSectionPlanEntry[];
   if (entries[0]!.key !== "cover") issues.push({ field: "sectionPlan[0]", code: "COVER_FIRST", message: "The cover comes first." });
-  if (entries[entries.length - 1]!.key !== "methodology") issues.push({ field: `sectionPlan[${entries.length - 1}]`, code: "METHODOLOGY_LAST", message: "Methodology & provenance comes last." });
+  // B2-3 (RULING-report-B2-3, call 1): the main body ends at Methodology; after it comes exactly the reference block — the
+  // Glossary, the Full Emissions Audit, Appendix 2 — in that order, and nothing else. Strict about everything else.
+  const methodologyAt = entries.findIndex((entry) => entry.key === "methodology");
+  const trailing = entries.slice(methodologyAt + 1).map((entry) => entry.key as string);
+  if (trailing.some((key) => !isReportReferenceSection(key))) {
+    issues.push({ field: `sectionPlan[${methodologyAt}]`, code: "METHODOLOGY_LAST", message: "Methodology & provenance ends the report's main body: only the Glossary and the appendices follow it." });
+  } else if (trailing.join(",") !== reportReferenceSections.join(",")) {
+    issues.push({ field: `sectionPlan[${methodologyAt + 1}]`, code: "REFERENCE_BLOCK", message: "After Methodology & provenance come the Glossary, the Full Emissions Audit and Appendix 2, in that order." });
+  }
   for (const [index, entry] of entries.entries()) {
     if (entry.included) {
       if (isReportNarrativeSection(entry.key) && !allowNarrative) {
@@ -283,8 +383,9 @@ export function reportOmittedSections(plan: ReportSectionPlan): string[] {
   return plan.filter((entry) => !entry.included && isReportDataSection(entry.key)).map((entry) => reportPlanSectionTitle(entry.key));
 }
 
-/** The cover and the methodology hold their places (Q1); every other data section may move. */
-export const isMovableReportSection = (key: ReportPlanSectionKey): boolean => isReportDataSection(key) && key !== "cover" && key !== "methodology";
+/** The cover and the methodology hold their places (Q1), as does the reference block after it (B2-3); every other data section may move. */
+export const isMovableReportSection = (key: ReportPlanSectionKey): boolean =>
+  isReportDataSection(key) && key !== "cover" && key !== "methodology" && !isReportReferenceSection(key);
 
 /**
  * F-1b: move one data section a step earlier or later among the movable data sections — what the editors' up/down buttons
@@ -645,6 +746,17 @@ export type ReportComposition = {
   sources?: ReportSources;
   /** B1 (`composed@3`): the audit appendix — every row the report's figures sum, with its factor and source. Absent before. */
   audit?: ReportAuditAppendix;
+  /**
+   * B2-3 (`composed@4`, RULING-report-B2-3): the reporting period, from the snapshot stamp's own — the cover's metacard row.
+   * Absent when the stamp has none: the row is then left out, never guessed.
+   */
+  reportingPeriod?: { from: string; to: string };
+  /**
+   * B2-3 (`composed@4`, call 2): the client's signee chosen at validate (a contact's name and job title, already on the
+   * version) — the sign-off box's client side, with blank signature and date lines. The firm's side is the frozen issuer.
+   * Absent when the version named none, and on a draft.
+   */
+  signee?: { name: string; jobTitle: string | null };
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

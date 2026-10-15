@@ -1,6 +1,6 @@
 import {
   encodeStudioPlan, encodeStudioScope, isMovableReportSection, isOptionalReportSection, isReportDataSection, isReportGap,
-  REPORT_SECTION_EXCLUSION_AVAILABLE, reportCompositionSectionMeta, reportSectionLayout, reportSectionPlanOf,
+  REPORT_SECTION_EXCLUSION_AVAILABLE, reportComposed4Sections, reportRendererOf, reportSectionLayout, reportSectionMetaFor, reportSectionPlanOf,
   type ReportComposition, type ReportCompositionSectionKey, type ReportScope, type ReportSectionPlan, type ReportStage,
 } from "@nzi/contracts";
 
@@ -58,13 +58,16 @@ export type StudioRailRow = {
  */
 export function studioRail(composition: ReportComposition, plan: ReportSectionPlan = reportSectionPlanOf(composition)): StudioRailRow[] {
   const hasSites = !isReportGap(composition.emissions) && (composition.emissions.sites?.length ?? 0) > 0;
-  const present = (key: string) => isReportDataSection(key) && (key !== "sites" || hasSites);
+  // The renderer's own "present" test and titles (B2-3): composed@4 draws its further sections by its own headings; earlier
+  // renderers never draw them.
+  const v4 = reportRendererOf(composition) === "composed@4", meta = reportSectionMetaFor(composition);
+  const present = (key: string) => isReportDataSection(key) && (key !== "sites" || hasSites) && (v4 || !reportComposed4Sections.includes(key));
   const numbers = new Map(reportSectionLayout(plan, present).map((entry) => [entry.key, entry.number]));
   return plan.filter((entry) => isReportDataSection(entry.key)).map((entry) => {
     const key = entry.key as ReportCompositionSectionKey;
     const drawn = numbers.has(key);
     return {
-      key, title: reportCompositionSectionMeta[key].title, number: numbers.get(key) ?? null, included: entry.included, drawn,
+      key, title: meta[key].title, number: numbers.get(key) ?? null, included: entry.included, drawn,
       note: !entry.included ? "Left out of this report" : drawn ? null : "Nothing to draw: this report has no site breakdown",
       movable: isMovableReportSection(key), optional: REPORT_SECTION_EXCLUSION_AVAILABLE && isOptionalReportSection(key),
     };
