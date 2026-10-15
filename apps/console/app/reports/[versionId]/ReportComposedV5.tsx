@@ -1,5 +1,8 @@
 import { Fragment, type ReactNode } from "react";
-import { crpScopeCategoryLabel, isReportGap, reportSectionLayout, reportSectionPlanOf, type ReportComposition } from "@nzi/contracts";
+import {
+  crpScopeCategoryLabel, isReportGap, reportSectionLayout, reportSectionPlanOf, strategyControlLevelLabels, strategyControlLevels, strategyStatusLabels,
+  type ReportComposition,
+} from "@nzi/contracts";
 import { LogoMark } from "../../lib/LogoMark";
 
 /**
@@ -656,6 +659,82 @@ function CategoryAnalysis({ composition, number }: { composition: ReportComposit
   </>;
 }
 
+// ── 10 · Carbon Reduction Actions, 11 · UK SRS Readiness ─────────────────────────────────────────────────────────────────
+const ACTION_ICONS: Record<string, ReactNode> = {
+  bolt: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>,
+  truck: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 7h11v9H2z" /><path d="M13 10h4l3 3v3h-7z" /><circle cx="6" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" /></svg>,
+  handshake: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="m11 17 2 2 4-4" /><path d="M3 9l4-4 5 3 5-3 4 4-5 5-2-2-3 2z" /></svg>,
+  recycle: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M7 5l2-3 2 3" /><path d="M9 2v7" /><path d="M17 9l3 1-1 3" /><path d="M4 14l-1 3 3 1" /></svg>,
+};
+type PlanStrategy = Extract<ReportComposition["plan"], { groups: unknown }>["groups"][number]["strategies"][number];
+/** A strategy's icon, from what it is about: energy, transport, else how much of it the client controls. */
+const actionIcon = (strategy: PlanStrategy) =>
+  /energy|electric|power|heat/i.test(strategy.category) ? ACTION_ICONS.bolt
+    : /transport|fleet|travel|vehicle|logistic/i.test(strategy.category) ? ACTION_ICONS.truck
+      : strategy.controlLevel === "supply_chain" ? ACTION_ICONS.handshake : strategy.controlLevel === "influence" ? ACTION_ICONS.recycle : ACTION_ICONS.bolt;
+/** The chip the mockup puts beside an action: who does it. */
+const CONTROL_CHIP: Record<string, string> = { direct_control: "Operational", supply_chain: "Value chain", influence: "Influence" };
+
+function ActionsSection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Plan</div><h2 className="r5-h2">Carbon Reduction Actions</h2><ClientFlag /></>;
+  if (isReportGap(composition.plan)) return <>{head}<p className="r5-unavailable">{composition.plan.reason}</p></>;
+  const strategies = composition.plan.groups.flatMap((group) => group.strategies);
+  // Grouped by how much of each the client controls, in the mockup's order; a strategy frozen without one is said to be so.
+  const levels = [...strategyControlLevels, null] as const;
+  const groups = levels.map((level) => ({ level, items: strategies.filter((strategy) => (strategy.controlLevel ?? null) === level) })).filter((group) => group.items.length);
+  const points = targetPoints(composition);
+  const total = isReportGap(composition.emissions) ? null : composition.emissions.totalTco2e;
+  return <>
+    {head}
+    <Narrative>
+      <p>{composition.client} has identified <Tok>{strategies.length}</Tok> carbon reduction action{strategies.length === 1 ? "" : "s"}, grouped by how much of each the client controls{total !== null ? <> and targeted at the categories that drive its <Tok>{f1(total)} tCO₂e</Tok> emissions</> : null}.</p>
+      {points?.netZero ? <p>Progress is reviewed at least annually alongside the recalculated emissions{points.interim ? <>, on the pathway to <Tok>−{points.interim.pct}% by {points.interim.year}</Tok></> : null} and net zero by <Tok>{points.netZero.year}</Tok>.</p> : null}
+    </Narrative>
+    {groups.map((group) => <div key={group.level ?? "none"}>
+      <div className="r5-control-level">{group.level ? strategyControlLevelLabels[group.level] : "Not classified by control level"}</div>
+      {group.items.map((strategy) => <div className="r5-act" key={strategy.title}>
+        <div className="r5-ai">{actionIcon(strategy)}</div>
+        <div><div className="r5-nm">{strategy.title}{strategy.controlLevel ? <span className="r5-cl">{CONTROL_CHIP[strategy.controlLevel]}</span> : null}</div>
+          <div className="r5-u">Scope {strategy.scope} · {strategy.category}</div></div>
+        <span className={`r5-st r5-st-${strategy.status}`}>{strategyStatusLabels[strategy.status]}{strategy.status === "in_progress" ? ` · ${strategy.progressPct}%` : ""}</span>
+      </div>)}
+    </div>)}
+    <div className="r5-note">{composition.plan.excludedCount > 0 ? `${composition.plan.excludedCount} further strateg${composition.plan.excludedCount === 1 ? "y is" : "ies are"} on the client's plan but not included in this report. ` : ""}The plan is qualitative: its percentages are progress, not carbon.</div>
+  </>;
+}
+
+/** The mockup's five-step ladder colours, lightest to darkest. */
+const MATURITY_COLOURS = ["#E4E9E5", "#CDEBD9", "#8FD3AE", "#2E9E68", "#0B6B41"];
+
+function SrsSection({ composition, number }: { composition: ReportComposition; number: string }) {
+  const head = <><div className="r5-kicker">{number} · Disclosure</div><h2 className="r5-h2">UK SRS Readiness Statement</h2><ClientFlag /></>;
+  if (isReportGap(composition.srs)) return <>{head}<p className="r5-unavailable">{composition.srs.reason}</p></>;
+  const srs = composition.srs;
+  const roadmap = srs.roadmap;
+  const gaps = roadmap ? roadmap.pillars.flatMap((pillar) => pillar.gaps.map((gap) => ({ pillar, gap }))) : [];
+  return <>
+    {head}
+    <p className="r5-prose">Assessed against UK SRS S2 (climate), led, with S1 (general) alongside — {srs.pillars.length === 4 ? "four" : srs.pillars.length} pillars on a five-step maturity ladder. Overall <b>{srs.overallLabel} ({Math.round(srs.overallPct)}%)</b>, assessed on {dd(srs.assessedOn)}. {roadmap ? "The roadmap below lists the shortfall-ordered gaps and the client strategies addressing each, frozen at issue." : ""}</p>
+    <div className="r5-mgrid">
+      {srs.pillars.map((pillar) => {
+        // The pillar's frozen maturity (the average of its requirements, 0–4), drawn on the five-step ladder.
+        const level = Math.max(0, Math.min(4, Math.round(pillar.maturity)));
+        return <div className="r5-mat" key={pillar.label}><div className="r5-p">{pillar.label}</div><div className="r5-lv">{pillar.maturityLabel}</div>
+          <div className="r5-dots">{[0, 1, 2, 3, 4].map((step) => <i key={step} style={{ background: step <= level ? MATURITY_COLOURS[level] : MATURITY_COLOURS[0] }} />)}</div></div>;
+      })}
+    </div>
+    {roadmap ? <>
+      <h3 className="r5-h3">Readiness roadmap</h3>
+      {gaps.length === 0 ? <div className="r5-callout">Nothing sits below its target maturity.</div> : gaps.map(({ pillar, gap }) =>
+        <div key={`${pillar.key}-${gap.code}`} className={`r5-callout${gap.strategies.length ? "" : " r5-callout-amber"}`}>
+          {gap.code} {pillar.label} — {gap.title} · {gap.strategies.length
+            ? <><b>Addressed by:</b> {gap.strategies.map((strategy) => `${strategy.title}, ${strategy.statusLabel.toLowerCase()}`).join("; ")}</>
+            : "No strategy aligned yet"}
+        </div>)}
+    </> : null}
+  </>;
+}
+
 /** composed@5's section titles, as its pages head them — the studio's rail names its rows by these. */
 export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   "executive-summary": "Executive Summary",
@@ -667,6 +746,8 @@ export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
   targets: "Targets & Reduction Pathway",
   "scope-analysis": "Analysis by Scope",
   "category-analysis": "Emissions by Scope & Category",
+  plan: "Carbon Reduction Actions",
+  srs: "UK SRS Readiness Statement",
 };
 
 /** Whether composed@5 draws a plan key as a page of its own — the same test its layout numbers by, shared with the rail. */
@@ -683,6 +764,8 @@ const DRAWN: Record<string, (composition: ReportComposition, number: string) => 
   targets: (composition, number) => <TargetsSection composition={composition} number={number} />,
   "scope-analysis": (composition, number) => <ScopeAnalysis composition={composition} number={number} />,
   "category-analysis": (composition, number) => <CategoryAnalysis composition={composition} number={number} />,
+  plan: (composition, number) => <ActionsSection composition={composition} number={number} />,
+  srs: (composition, number) => <SrsSection composition={composition} number={number} />,
 };
 
 

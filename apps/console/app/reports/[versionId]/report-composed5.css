@@ -154,6 +154,26 @@
 .nzr5 .r5-centre{display:flex;justify-content:center}
 .nzr5 .r5-centre-text{text-align:center}
 
+/* Actions: control-level groups, action rows, chips and statuses */
+.nzr5 .r5-control-level{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--r5-brand-deep);margin:16px 0 4px}
+.nzr5 .r5-act{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--r5-line-2)}
+.nzr5 .r5-act .r5-ai{width:30px;height:30px;border-radius:8px;background:var(--r5-surface-2);display:grid;place-items:center;color:var(--r5-brand-deep);flex:0 0 auto}
+.nzr5 .r5-act .r5-ai svg{width:17px;height:17px}
+.nzr5 .r5-act .r5-nm{font-weight:600} .nzr5 .r5-act .r5-u{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-act .r5-st{margin-left:auto;font-size:11px;font-weight:600;color:var(--r5-muted)}
+.nzr5 .r5-act .r5-st-in_progress{color:#7A5600}
+.nzr5 .r5-act .r5-st-complete{color:var(--r5-brand-ink)}
+.nzr5 .r5-cl{font-size:10px;font-weight:700;border:1px solid var(--r5-line);border-radius:999px;padding:1px 7px;color:var(--r5-muted);margin-left:8px}
+
+/* SRS: the maturity grid and roadmap callouts */
+.nzr5 .r5-mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+@media (max-width:560px){.nzr5 .r5-mgrid{grid-template-columns:1fr}}
+.nzr5 .r5-mat{border:1px solid var(--r5-line);border-radius:9px;padding:10px 12px}
+.nzr5 .r5-mat .r5-p{font-weight:600;font-size:12.5px} .nzr5 .r5-mat .r5-lv{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-dots{display:flex;gap:3px;margin-top:6px} .nzr5 .r5-dots i{width:100%;height:6px;border-radius:3px}
+.nzr5 .r5-callout{background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--r5-brand-ink);margin-bottom:8px}
+.nzr5 .r5-callout-amber{background:#FFF4DC;border-color:#F3D89A;color:#7A5600}
+
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{
   .nzr5{background:none;padding:0}
