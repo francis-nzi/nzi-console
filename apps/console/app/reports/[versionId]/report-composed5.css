@@ -22,6 +22,9 @@
 .nzr5 .r5-pageflow{display:flex;flex-direction:column;align-items:center;gap:0}
 .nzr5 .r5-pagewrap{display:contents}
 .nzr5 .r5-page{background:var(--r5-paper);color:var(--r5-ink);width:794px;max-width:100%;position:relative}
+/* On screen, each sheet is its own layer so small text is drawn with greyscale antialiasing, as the mockup's is — sub-pixel
+   (LCD) antialiasing fringes the 9.5px running head and foot bluish. Print is unaffected. */
+@media screen{.nzr5 .r5-page{will-change:transform}}
 
 /* Page view: A4 sheets with the running head and foot. */
 .nzr5.r5-mode-page .r5-page{min-height:1123px;box-shadow:var(--r5-shadow-lg);border:1px solid var(--r5-paper-edge);margin-bottom:26px;padding:64px 66px 74px}
@@ -88,6 +91,29 @@
 .nzr5 .r5-leg .r5-sw{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
 .nzr5 .r5-leg .r5-nm{flex:1} .nzr5 .r5-leg .r5-vv{font-weight:700;font-variant-numeric:tabular-nums} .nzr5 .r5-leg .r5-pc{color:var(--r5-muted);width:54px;text-align:right;font-variant-numeric:tabular-nums}
 .nzr5 .r5-leg .r5-lr.r5-tot{border-top:1.5px solid var(--r5-line);font-weight:700;margin-top:3px}
+
+/* Sub-headings, the commitments list, tables (dark head, banded rows, sub and total rows) */
+.nzr5 .r5-h3{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-ink-2);font-weight:700;margin:22px 0 9px}
+.nzr5 .r5-commit-list{list-style:none;padding:0;margin:14px 0 0;display:flex;flex-direction:column;gap:9px}
+.nzr5 .r5-commit-list li{display:flex;gap:10px;font-size:12.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-commit-list li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--r5-brand);margin-top:7px;flex:0 0 auto}
+.nzr5 table.r5-rt{width:100%;border-collapse:collapse;font-size:11px}
+.nzr5 table.r5-rt thead th{background:var(--r5-ink);color:#EAF2ED;text-align:left;font-weight:600;font-size:9.5px;letter-spacing:.03em;padding:8px 11px}
+.nzr5 table.r5-rt thead th.r5-num{text-align:right}
+.nzr5 table.r5-rt tbody td{padding:8px 12px;border-bottom:1px solid var(--r5-line-2);color:var(--r5-ink-2)}
+.nzr5 table.r5-rt tbody td.r5-num{text-align:right;font-variant-numeric:tabular-nums}
+.nzr5 table.r5-rt tbody tr:nth-child(even) td{background:var(--r5-surface-2)}
+.nzr5 table.r5-rt tr.r5-sub td{font-weight:700;color:var(--r5-ink);background:var(--r5-surface-3)!important}
+.nzr5 table.r5-rt tr.r5-total td{font-weight:800;color:var(--r5-ink);border-top:2px solid var(--r5-ink);background:transparent!important}
+
+/* Key/value boxes */
+.nzr5 .r5-kv{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:16px}
+@media (max-width:560px){.nzr5 .r5-kv{grid-template-columns:1fr}}
+.nzr5 .r5-kvbox{border:1px solid var(--r5-line);border-radius:12px;overflow:hidden}
+.nzr5 .r5-kvbox .r5-kr{display:flex;justify-content:space-between;gap:10px;padding:9px 14px;font-size:11.5px;border-top:1px solid var(--r5-line-2)}
+.nzr5 .r5-kvbox .r5-kr:first-child{border-top:0}
+.nzr5 .r5-kvbox .r5-kr span{color:var(--r5-muted)} .nzr5 .r5-kvbox .r5-kr b{color:var(--r5-ink);font-weight:600}
+.nzr5 .r5-nr{color:var(--r5-muted)!important;font-weight:500;font-style:italic}
 
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{

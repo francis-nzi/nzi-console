@@ -146,17 +146,110 @@ function ExecutiveSummary({ composition, number }: { composition: ReportComposit
   </>;
 }
 
+/** The mockup's `flag(kind)`: a client-level section says so, whatever the scope; a site section names a site scope. */
+const ClientFlag = () => <div className="r5-scopeflag r5-client">Client-level — shown for the whole client regardless of site scope</div>;
+
+/** The year a target or baseline is named by, in the report's own convention (a split reporting year reads "2022–2023"). */
+function yearLabel(composition: ReportComposition, year: number): string {
+  const period = composition.reportingPeriod;
+  return period && period.from.slice(0, 4) !== period.to.slice(0, 4) ? `${year}–${year + 1}` : String(year);
+}
+
+/** The frozen targets' interim (near-term) and net-zero points, and the baseline they are measured from. */
+function targetPoints(composition: ReportComposition) {
+  if (isReportGap(composition.targets)) return null;
+  const { trajectory, benchmark } = composition.targets;
+  return { interim: trajectory.find((point) => point.kind === "near-term") ?? null, netZero: trajectory.find((point) => point.kind === "net-zero") ?? null, benchmark };
+}
+
+const COMMITMENTS = ["Achieve the reduction targets set out in this plan.", "Set realistic short- and long-term targets consistent with the net zero commitment.",
+  "Report total greenhouse gas emissions at least annually."];
+
+function NetZeroCommitment({ composition, number }: { composition: ReportComposition; number: string }) {
+  const points = targetPoints(composition);
+  const head = <><div className="r5-kicker">{number} · Commitment</div><h2 className="r5-h2">Net Zero Commitment</h2><ClientFlag /></>;
+  if (!points || !points.netZero) {
+    return <>{head}<p className="r5-unavailable">{isReportGap(composition.targets) ? composition.targets.reason : "No net zero target was set for this client when the report was issued."}</p></>;
+  }
+  const { interim, netZero, benchmark } = points;
+  return <>
+    {head}
+    <Narrative>
+      <p>{composition.client} is committed to achieving net zero greenhouse gas emissions across all scopes by <Tok>{netZero.year}</Tok>, supported by a credible, evidence-led reduction pathway{benchmark ? <> anchored to the client&apos;s <Tok>{yearLabel(composition, benchmark.year)}</Tok> baseline set in its targets</> : null}.</p>
+    </Narrative>
+    <ul className="r5-commit-list">{COMMITMENTS.map((line) => <li key={line}>{line}</li>)}</ul>
+    <h3 className="r5-h3">Reduction targets</h3>
+    <table className="r5-rt">
+      <thead><tr><th>Target type</th><th className="r5-num">Year</th><th className="r5-num">Reduction</th><th>Scope</th></tr></thead>
+      <tbody>
+        {interim ? <tr><td>Interim target</td><td className="r5-num">{interim.year}</td><td className="r5-num">{interim.pct}%</td><td>1, 2 &amp; 3</td></tr> : null}
+        <tr className="r5-sub"><td>Net zero target</td><td className="r5-num">{netZero.year}</td><td className="r5-num">{netZero.pct}%</td><td>1, 2 &amp; 3</td></tr>
+      </tbody>
+    </table>
+  </>;
+}
+
+/** The sites the report covers: the frozen site rows (the organisation-level line is not a site). */
+const siteCount = (composition: ReportComposition) =>
+  isReportGap(composition.emissions) ? 0 : (composition.emissions.sites ?? []).filter((site) => site.siteId !== null).length;
+
+/** The employees the report states: the frozen wording of the client's employees measure ("240 employees"), when it has one. */
+function employeesOf(composition: ReportComposition): string | null {
+  if (isReportGap(composition.intensity)) return null;
+  const text = composition.intensity.metrics.find((metric) => metric.key === "employees")?.denominatorText ?? null;
+  return text ? text.split(" ")[0]! : null;
+}
+
+const NOT_RECORDED = <span className="r5-nr">Not recorded</span>;
+
+function Background({ composition, number }: { composition: ReportComposition; number: string }) {
+  const sites = siteCount(composition), employees = employeesOf(composition);
+  const period = composition.reportingPeriod;
+  return <>
+    <div className="r5-kicker">{number} · Background</div><h2 className="r5-h2">Background &amp; Organisation</h2>
+    <Narrative>
+      <p>{composition.client} reports its greenhouse gas emissions for the <Tok>{reportingYearLabel(composition)}</Tok> reporting year under the operational control approach{sites > 0 ? <>, across <Tok>{sites} site{sites === 1 ? "" : "s"}</Tok> in its reporting boundary</> : null}.</p>
+      <p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>
+    </Narrative>
+    <div className="r5-kv">
+      <div className="r5-kvbox">
+        <div className="r5-kr"><span>Organisation</span><b>{composition.client}</b></div>
+        {/* Not yet frozen into the composition — listed for Cowork's ruling (CHECKPOINT-composed5-2): never guessed. */}
+        <div className="r5-kr"><span>Industry</span><b>{NOT_RECORDED}</b></div>
+        <div className="r5-kr"><span>Location</span><b>{NOT_RECORDED}</b></div>
+        <div className="r5-kr"><span>Sites</span><b>{sites > 0 ? sites : NOT_RECORDED}</b></div>
+      </div>
+      <div className="r5-kvbox">
+        <div className="r5-kr"><span>Employees</span><b>{employees ?? NOT_RECORDED}</b></div>
+        <div className="r5-kr"><span>Reporting period</span><b>{period ? `${dd(period.from)} – ${dd(period.to)}` : NOT_RECORDED}</b></div>
+        <div className="r5-kr"><span>Boundary</span><b>Operational control</b></div>
+        <div className="r5-kr"><span>Framework</span><b>GHG Protocol</b></div>
+      </div>
+    </div>
+  </>;
+}
+
 /** The sections composed@5 draws so far, by plan key — the rest arrive at later checkpoints. */
 const DRAWN: Record<string, (composition: ReportComposition, number: string) => ReactNode> = {
   "executive-summary": (composition, number) => <ExecutiveSummary composition={composition} number={number} />,
+  "narrative:net-zero-commitment": (composition, number) => <NetZeroCommitment composition={composition} number={number} />,
+  "narrative:background": (composition, number) => <Background composition={composition} number={number} />,
 };
+
+/**
+ * The mockup's Net Zero Commitment and Background are sections of the document; the plan still holds them as narrative keys,
+ * not yet includable (the validator's Q6 rule). composed@5 draws them in their plan places — listed for Cowork's ruling
+ * (CHECKPOINT-composed5-2) on how the plan includes or leaves them out.
+ */
+const ALWAYS_DRAWN = new Set(["narrative:net-zero-commitment", "narrative:background"]);
 
 export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetId) => `/api/isolated/logo-assets/${encodeURIComponent(assetId)}`, preview = false, mode = "page" }: {
   composition: ReportComposition; issuerLogoSrc: LogoSrc; clientLogoSrc?: LogoSrc; preview?: boolean;
   /** The mockup's two views: A4 pages with running head and foot, or one continuous flow with page-break markers. */
   mode?: "page" | "flow";
 }) {
-  const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
+  const plan = reportSectionPlanOf(composition).map((entry) => ALWAYS_DRAWN.has(entry.key) ? { ...entry, included: true } : entry);
+  const layout = reportSectionLayout(plan, (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
   const pages = layout.length + 1;
   const title = reportTitle(composition);
   return <main className={`nzr5 r5-mode-${mode}`} data-renderer="composed@5">
