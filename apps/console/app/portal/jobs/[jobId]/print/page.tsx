@@ -7,6 +7,7 @@ import {PrintControls} from "./PrintControls";
 import {isPublishedCrpReport} from "../publishedReportValidation";
 import "./print.css";
 import "../../../../reports/[versionId]/report-composed.css";
+import "../../../../reports/[versionId]/report-composed5.css";
 import { formatDate } from "../../../../lib/formatDate";
 import { LogoMark } from "../../../../lib/LogoMark";
 import {deploymentNames} from "../../../../lib/organisationBrand";

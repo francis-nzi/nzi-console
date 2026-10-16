@@ -15,15 +15,26 @@ describe("moving a section in a plan (F-1b)", () => {
     assert.deepEqual(reportSectionPlanIssues(normaliseReportPlanKeys(moved)), [], "the result is a valid plan, once read complete (B2-3)");
   });
 
-  it("moves across a narrative entry to the next data section", () => {
-    // In the default, narrative entries sit between executive-summary and emissions.
-    assert.deepEqual(order(moveReportSection(defaultReportSectionPlan, "emissions", "earlier")).slice(0, 3), ["cover", "emissions", "executive-summary"]);
+  it("moves across an embedded narrative entry to the next movable section", () => {
+    // In the legacy plan the category narrative sits between emissions and sites: sites moves past it, it stays put.
+    const moved = moveReportSection(defaultReportSectionPlan, "sites", "earlier");
+    assert.deepEqual(order(moved).slice(0, 4), ["cover", "executive-summary", "sites", "emissions"]);
+    assert.equal(moved.findIndex((entry) => entry.key === "narrative:category-analysis"), defaultReportSectionPlan.findIndex((entry) => entry.key === "narrative:category-analysis"));
+  });
+
+  it("moves the two standalone narrative sections like any section (ACCEPT-composed5-checkpoint2, decision 3) — the embedded four never", () => {
+    assert.equal(isMovableReportSection("narrative:background"), true);
+    assert.equal(isMovableReportSection("narrative:net-zero-commitment"), true);
+    for (const key of ["narrative:executive-summary", "narrative:intensity-analysis", "narrative:category-analysis", "narrative:reduction-actions"] as const) assert.equal(isMovableReportSection(key), false, key);
+    // Emissions moving earlier now swaps with Background, the movable section before it.
+    const keys = moveReportSection(defaultReportSectionPlan, "emissions", "earlier").map((entry) => entry.key);
+    assert.ok(keys.indexOf("emissions") < keys.indexOf("narrative:background"));
   });
 
   it("never moves the cover or the methodology, nor anything past them, nor past either end", () => {
     assert.equal(isMovableReportSection("cover"), false);
     assert.equal(isMovableReportSection("methodology"), false);
-    assert.equal(isMovableReportSection("narrative:background"), false);
+    assert.equal(isMovableReportSection("narrative:executive-summary"), false, "an embedded narrative rides with its host");
     assert.equal(moveReportSection(defaultReportSectionPlan, "cover", "later"), defaultReportSectionPlan);
     assert.equal(moveReportSection(defaultReportSectionPlan, "methodology", "earlier"), defaultReportSectionPlan);
     assert.equal(moveReportSection(defaultReportSectionPlan, "executive-summary", "earlier"), defaultReportSectionPlan, "first movable: nothing earlier but the cover");

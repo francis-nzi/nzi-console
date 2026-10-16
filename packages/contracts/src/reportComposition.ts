@@ -116,7 +116,13 @@ export const reportSectionMetaV4: Record<ReportCompositionSectionKey, { eyebrow:
 
 /** A section's heading as the composition's own renderer prints it — so the studio's rail and the document agree. */
 export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> =>
-  reportRendererOf(composition) === "composed@4" ? reportSectionMetaV4 : reportCompositionSectionMeta;
+  drawsMockupSectionSet(composition) ? reportSectionMetaV4 : reportCompositionSectionMeta;
+
+/** `composed@4` and its successor `composed@5` draw the mockup's section set and read their plans complete. */
+export const drawsMockupSectionSet = (composition: { renderer?: string }): boolean => {
+  const renderer = reportRendererOf(composition);
+  return renderer === "composed@4" || renderer === "composed@5";
+};
 
 /* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
 
@@ -128,7 +134,7 @@ export const reportSectionMetaFor = (composition: { renderer?: string }): Record
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -147,8 +153,12 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * Category, and the reference block after Methodology: Glossary, the Full Emissions Audit as its own section, Appendix 2 by
  * site & scope), its titles, the cover's metacard (with the frozen reporting period) and the sign-off (the frozen client
  * signee and issuer). A fork: every `composed@1/2/3` report draws exactly as before, with the plan it always had.
+ *
+ * BUILD-report-studio-composed5: `composed@5` is the mockup (`_handoff/MOCKUP-report-studio.html`) rendered — its own document
+ * (pages, cover, narrative with locked data tokens, charts, tables), bound to the frozen composition and never to the mockup's
+ * sample figures; no turnover amount anywhere (NZC-120). A fork: every `composed@1/2/3/4` report draws exactly as before.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@4";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@5";
 
 /**
  * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
@@ -194,6 +204,15 @@ export const reportPlanSectionKeys: readonly ReportPlanSectionKey[] = [...report
 export const isReportDataSection = (key: string): key is ReportCompositionSectionKey => (reportCompositionSections as readonly string[]).includes(key);
 export const isReportNarrativeSection = (key: string): key is ReportNarrativePlanKey => (reportNarrativePlanKeys as readonly string[]).includes(key);
 
+/**
+ * ACCEPT-composed5-checkpoint2, decision 3: the narrative sections `composed@5` draws as sections of their own — Net Zero
+ * Commitment and Background & Organisation — so a plan may include, leave out and move them like any optional section. The
+ * other four narratives ride inside their host data sections (the Executive Summary, Intensity, Category, Actions) and stay
+ * where they are. `composed@1/2/3/4` never draw any narrative, whatever a plan holds.
+ */
+export const reportStandaloneNarrativeSections: readonly ReportNarrativePlanKey[] = ["narrative:net-zero-commitment", "narrative:background"];
+export const isReportStandaloneNarrativeSection = (key: string): boolean => (reportStandaloneNarrativeSections as readonly string[]).includes(key);
+
 /** Which sections a report shows, in order. */
 export type ReportSectionPlanEntry = { key: ReportPlanSectionKey; included: boolean };
 export type ReportSectionPlan = readonly ReportSectionPlanEntry[];
@@ -230,7 +249,9 @@ export const defaultReportSectionPlan: ReportSectionPlan = ([
   "cover", "executive-summary", "narrative:executive-summary", "narrative:net-zero-commitment", "narrative:background",
   "sites", "emissions", "intensity", "narrative:intensity-analysis", "targets", "scope-analysis", "category-analysis",
   "narrative:category-analysis", "plan", "narrative:reduction-actions", "srs", "methodology", ...reportReferenceSections,
-] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) }));
+  // composed@5 (decision 3): the two standalone narrative sections are on by default, as in the mockup; the narrative that
+  // rides inside a data section is not a plan choice.
+] as const).map((key) => ({ key, included: !isReportNarrativeSection(key) || isReportStandaloneNarrativeSection(key) }));
 
 /**
  * B2-3 (RULING-report-B2-3): a stored plan written before a key existed, read complete — deterministically. Each key the plan
@@ -267,7 +288,7 @@ export function normaliseReportPlanKeys(plan: ReportSectionPlan): ReportSectionP
  * **frozen v3 default**, exactly as always. `composed@4`: its own plan (or the default), read complete.
  */
 export const reportSectionPlanOf = (composition: ReportComposition): ReportSectionPlan =>
-  reportRendererOf(composition) === "composed@4"
+  drawsMockupSectionSet(composition)
     ? normaliseReportPlanKeys(composition.sectionPlan ?? defaultReportSectionPlan)
     : composition.sectionPlan ?? legacyReportSectionPlanV3;
 
@@ -335,7 +356,9 @@ export function reportSectionPlanIssues(
   }
   for (const [index, entry] of entries.entries()) {
     if (entry.included) {
-      if (isReportNarrativeSection(entry.key) && !allowNarrative) {
+      // Decision 3: a standalone narrative section is drawn by the renderer new reports stamp (composed@5), so it may be
+      // included; the narrative that rides inside a data section still may not be, on its own.
+      if (isReportNarrativeSection(entry.key) && !allowNarrative && !isReportStandaloneNarrativeSection(entry.key)) {
         issues.push({ field: `sectionPlan[${index}].included`, code: "NARRATIVE_NOT_YET_DRAWN", message: `${reportPlanSectionTitle(entry.key)} is not drawn in the composed report yet, so it cannot be included.` });
       }
       continue;
@@ -385,7 +408,7 @@ export function reportOmittedSections(plan: ReportSectionPlan): string[] {
 
 /** The cover and the methodology hold their places (Q1), as does the reference block after it (B2-3); every other data section may move. */
 export const isMovableReportSection = (key: ReportPlanSectionKey): boolean =>
-  isReportDataSection(key) && key !== "cover" && key !== "methodology" && !isReportReferenceSection(key);
+  (isReportDataSection(key) && key !== "cover" && key !== "methodology" && !isReportReferenceSection(key)) || isReportStandaloneNarrativeSection(key);
 
 /**
  * F-1b: move one data section a step earlier or later among the movable data sections — what the editors' up/down buttons
@@ -405,7 +428,7 @@ export function moveReportSection(plan: ReportSectionPlan, key: ReportPlanSectio
 
 /** A data section a plan may leave out (Q1): every one but the cover, the executive summary, the emissions and the methodology. */
 export const isOptionalReportSection = (key: ReportPlanSectionKey): boolean =>
-  isReportDataSection(key) && !reportMandatorySections.includes(key);
+  (isReportDataSection(key) && !reportMandatorySections.includes(key)) || isReportStandaloneNarrativeSection(key);
 
 /**
  * F-4b: include or leave out one optional data section — what the editors' switch does. A mandatory section, a narrative
@@ -508,6 +531,10 @@ export type ReportSiteEmissions = {
   activities: Array<{ label: string; scope: string; tco2e: number }>;
   /** Floor-area intensity for the site when floor area resolves for it; otherwise a stated gap. Sites only. */
   floorAreaIntensity?: { value: number | null; unit: string; floorAreaM2: number | null; reason: string | null };
+  /** composed@5 (ACCEPT-composed5-checkpoint3): the site's first day in service, from the client's site record. null: before records. */
+  inServiceFrom?: string | null;
+  /** composed@5: the site's floor area for the reporting period (m²), whether or not a floor-area measure is reported. null: not recorded. */
+  floorAreaM2?: number | null;
 };
 
 export type ReportComparisonColumn = { key: "baseline" | "previous" | "current"; year: number; label: string };
@@ -519,6 +546,17 @@ export type ReportEmissionsComparison = {
   /** % change of the current period against the baseline column, when both are known. */
   changeVsBaselinePct: number | null;
   notes: string[];
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint3): each current site's own figure per column (the organisation-level line as
+   * `siteId: null`), from the same frozen periods — null where the site has no row in a period, or the period was frozen
+   * before its rows carried a site. Absent on compositions frozen before composed@5.
+   */
+  sites?: Array<{ siteId: string | null; values: Array<number | null> }>;
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint4): each current GHG category's own figure per column, by its code ("3.1") — null
+   * where the category has no row in a period, or the period's rows carry no code. Absent before composed@5.
+   */
+  categories?: Array<{ scope: string; scopeCode: string; values: Array<number | null> }>;
 };
 
 /** The scope a composition was issued at (S-2): the whole client, or named sites. Absent on compositions frozen before S-2 = whole. */
@@ -757,6 +795,16 @@ export type ReportComposition = {
    * Absent when the version named none, and on a draft.
    */
   signee?: { name: string; jobTitle: string | null };
+  /**
+   * composed@5 (BUILD-report-studio-composed5): the client's logo — the asset the report version froze at validate (an append-
+   * only asset, so the issued report keeps it). Absent when the client had none: the cover then shows no logo, never a stand-in.
+   */
+  clientLogoAssetId?: string;
+  /**
+   * composed@5 (ACCEPT-composed5-checkpoint2, decision 1): the client record's industry (its sector) and location, for
+   * Background & Organisation. Absent when the record has neither; a missing one reads "Not recorded", never guessed.
+   */
+  organisation?: { industry: string | null; location: string | null };
 };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };

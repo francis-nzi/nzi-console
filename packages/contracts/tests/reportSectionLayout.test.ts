@@ -15,11 +15,13 @@ describe("the renderer a composition was issued under", () => {
     // B1: composed@3; B2-3: new compositions are drawn composed@4 — every earlier layout stays for the reports issued under it.
     assert.equal(reportRendererOf({ renderer: "composed@3" }), "composed@3");
     assert.equal(reportRendererOf({ renderer: "composed@4" }), "composed@4");
-    assert.equal(REPORT_RENDERER_LATEST, "composed@4");
+    // BUILD-report-studio-composed5: new compositions are drawn composed@5 — the mockup rendered; composed@1–4 stay as issued.
+    assert.equal(reportRendererOf({ renderer: "composed@5" }), "composed@5");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@5");
   });
 
   it("is null for a layout this code does not carry — never quietly drawn with another", () => {
-    assert.equal(reportRendererOf({ renderer: "composed@5" }), null);
+    assert.equal(reportRendererOf({ renderer: "composed@6" }), null);
     assert.equal(reportRendererOf({ renderer: "" }), null);
   });
 });
@@ -42,13 +44,14 @@ describe("the section layout follows the plan", () => {
     assert.ok(legacyReportSectionPlanV3.every((entry) => entry.included === !entry.key.startsWith("narrative:")));
   });
 
-  it("the default plan (B2-3, composed@4's canonical order): the cover unnumbered, then the mockup's sections, a page each", () => {
+  it("the default plan (the mockup's canonical order): the cover unnumbered, then its sections, a page each — Net Zero Commitment and Background on (composed@5, decision 3)", () => {
     assert.deepEqual(reportSectionLayout(defaultReportSectionPlan, all).map((entry) => [entry.key, entry.number, entry.page]), [
-      ["cover", null, 1], ["executive-summary", "01", 2], ["sites", "02", 3], ["emissions", "03", 4], ["intensity", "04", 5],
-      ["targets", "05", 6], ["scope-analysis", "06", 7], ["category-analysis", "07", 8], ["plan", "08", 9], ["srs", "09", 10],
-      ["methodology", "10", 11], ["glossary", "11", 12], ["audit", "12", 13], ["appendix-sites", "13", 14],
+      ["cover", null, 1], ["executive-summary", "01", 2], ["narrative:net-zero-commitment", "02", 3], ["narrative:background", "03", 4],
+      ["sites", "04", 5], ["emissions", "05", 6], ["intensity", "06", 7], ["targets", "07", 8], ["scope-analysis", "08", 9],
+      ["category-analysis", "09", 10], ["plan", "10", 11], ["srs", "11", 12], ["methodology", "12", 13], ["glossary", "13", 14], ["audit", "14", 15], ["appendix-sites", "15", 16],
     ]);
-    assert.ok(defaultReportSectionPlan.every((entry) => entry.included === !entry.key.startsWith("narrative:")), "the narrative is not included");
+    // The two standalone narrative sections are on; the four that ride inside a data section are not plan choices.
+    assert.deepEqual(defaultReportSectionPlan.filter((entry) => entry.key.startsWith("narrative:") && entry.included).map((entry) => entry.key), ["narrative:net-zero-commitment", "narrative:background"]);
   });
 
   it("a section the composition does not have leaves no hole in the numbering (a composition without a site breakdown)", () => {

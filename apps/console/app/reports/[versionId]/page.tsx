@@ -11,6 +11,7 @@ import { LogoMark } from "../../lib/LogoMark";
 import { ReportComposedView } from "./ReportComposedView";
 import type { ReportComposition } from "@nzi/contracts";
 import "./report-composed.css";
+import "./report-composed5.css";
 
 export const dynamic="force-dynamic";
 

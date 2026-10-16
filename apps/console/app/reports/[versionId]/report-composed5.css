@@ -1,0 +1,199 @@
+/* composed@5 (BUILD-report-studio-composed5): the Report Studio mockup's document styles, rule for rule, scoped under .nzr5
+   (every class r5-) so nothing leaks into the app or from it. The values are the mockup's (`MOCKUP-report-studio.html`);
+   colours are the locked brand palette. */
+.nzr5{
+  --r5-ink:#0B1B2B; --r5-ink-2:#3E4C45; --r5-muted:#616B65;
+  --r5-line:#E3EAE6; --r5-line-2:#EDF1EF;
+  --r5-surface-2:#F1F5F2; --r5-surface-3:#E7EEE9;
+  --r5-brand:#0BA75E; --r5-brand-deep:#0B7A4B; --r5-brand-ink:#075B37;
+  --r5-mint:#DFF5E9; --r5-mint-line:#BCE8D0;
+  --r5-sky-ink:#1A5580; --r5-sky-bg:#E7F1FA; --r5-sky-line:#BBD8EE;
+  --r5-violet:#6B4E9B;
+  --r5-paper:#FFFFFF; --r5-paper-edge:#D9E2DC; --r5-paper-ground:#E9EFEB;
+  --r5-shadow-lg:0 12px 40px rgba(11,27,43,.16);
+  --r5-font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r5-lockico:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='11' width='16' height='9' rx='2'/><path d='M8 11V7a4 4 0 0 1 8 0v4'/></svg>");
+  font-family:var(--r5-font);color:var(--r5-ink);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  background:var(--r5-paper-ground);padding:26px;
+}
+.nzr5 *{box-sizing:border-box}
+.nzr5 .r5-tnum{font-variant-numeric:tabular-nums}
+.nzr5 .r5-nowrap{white-space:nowrap}
+.nzr5 .r5-pageflow{display:flex;flex-direction:column;align-items:center;gap:0}
+.nzr5 .r5-pagewrap{display:contents}
+.nzr5 .r5-page{background:var(--r5-paper);color:var(--r5-ink);width:794px;max-width:100%;position:relative}
+/* On screen, each sheet is its own layer so small text is drawn with greyscale antialiasing, as the mockup's is — sub-pixel
+   (LCD) antialiasing fringes the 9.5px running head and foot bluish. Print is unaffected. */
+@media screen{.nzr5 .r5-page{will-change:transform}}
+
+/* Page view: A4 sheets with the running head and foot. */
+.nzr5.r5-mode-page .r5-page{min-height:1123px;box-shadow:var(--r5-shadow-lg);border:1px solid var(--r5-paper-edge);margin-bottom:26px;padding:64px 66px 74px}
+/* Continuous view: one flow, a marker where each page breaks. */
+.nzr5.r5-mode-flow .r5-page{box-shadow:none;border:0;border-top:1px dashed var(--r5-paper-edge);margin-bottom:0;padding:30px 60px 40px;min-height:0}
+.nzr5.r5-mode-flow .r5-page:first-child{border-top:0}
+@media (max-width:560px){.nzr5{padding:10px} .nzr5.r5-mode-page .r5-page{padding:30px 22px 40px} .nzr5.r5-mode-flow .r5-page{padding:24px 22px}}
+.nzr5 .r5-runhead{position:absolute;top:24px;left:66px;right:66px;text-align:center;font-size:9.5px;color:var(--r5-muted);line-height:1.55}
+.nzr5 .r5-runhead b{display:block;color:var(--r5-ink-2);font-weight:700;font-size:10px}
+.nzr5 .r5-runfoot{position:absolute;bottom:26px;left:66px;right:66px;display:flex;justify-content:space-between;font-size:9.5px;color:var(--r5-muted);border-top:1px solid var(--r5-line-2);padding-top:8px}
+.nzr5.r5-mode-flow .r5-runhead,.nzr5.r5-mode-flow .r5-runfoot{display:none}
+.nzr5 .r5-pbreak{display:none}
+.nzr5.r5-mode-flow .r5-pbreak{display:flex;align-items:center;gap:12px;color:var(--r5-sky-ink);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:0;width:794px;max-width:100%;background:var(--r5-paper)}
+.nzr5.r5-mode-flow .r5-pbreak::before,.nzr5.r5-mode-flow .r5-pbreak::after{content:"";height:0;border-top:2px dashed var(--r5-sky-line);flex:1}
+.nzr5.r5-mode-flow .r5-pbreak .r5-pb-num{background:var(--r5-sky-bg);border:1px solid var(--r5-sky-line);padding:2px 10px;border-radius:999px;white-space:nowrap}
+
+/* Headings and prose */
+.nzr5 .r5-kicker{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--r5-brand-deep);font-weight:700;margin:0 0 7px}
+.nzr5 .r5-h2{font-size:17px;font-weight:700;letter-spacing:-.015em;margin:0 0 12px;color:var(--r5-ink);text-wrap:balance}
+.nzr5 .r5-prose{font-size:12.5px;line-height:1.6;color:var(--r5-ink-2)}
+.nzr5 .r5-prose p{margin:0 0 12px} .nzr5 .r5-prose p:last-child{margin-bottom:0}
+.nzr5 .r5-unavailable{font-size:12.5px;color:var(--r5-muted);font-style:italic;margin:0}
+.nzr5 .r5-scopeflag{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:7px;padding:5px 11px;margin-bottom:14px}
+.nzr5 .r5-scopeflag.r5-client{color:var(--r5-ink-2);background:var(--r5-surface-2);border-color:var(--r5-line)}
+.nzr5 .r5-scopeflag.r5-client::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--r5-violet)}
+
+/* Locked data tokens */
+.nzr5 .r5-tok{font-family:var(--r5-font);font-weight:700;font-variant-numeric:tabular-nums;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:5px;padding:0 5px;white-space:nowrap;cursor:default;position:relative;font-size:.94em}
+.nzr5 .r5-tok::before{content:"";display:inline-block;width:8px;height:8px;margin-right:3px;vertical-align:-1px;background:currentColor;-webkit-mask:var(--r5-lockico) center/contain no-repeat;mask:var(--r5-lockico) center/contain no-repeat;opacity:.75}
+
+/* Narrative block and its state pill */
+.nzr5 .r5-editblock{position:relative;margin:4px 0 14px}
+.nzr5 .r5-spill{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-bottom:8px;background:var(--r5-surface-3);color:var(--r5-muted);border:1px solid var(--r5-line)}
+
+/* Cover */
+.nzr5 .r5-cover{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:30px}
+.nzr5 .r5-nzilogo{height:68px;width:auto;max-width:100%;margin-bottom:8px}
+.nzr5 .r5-nzimark{margin-bottom:8px}
+.nzr5 .r5-cover-title{margin:6px 0 0}
+.nzr5 .r5-cover-title .r5-cn{font-size:22px;font-weight:800;letter-spacing:-.01em;line-height:1.2;color:var(--r5-ink);text-wrap:balance}
+.nzr5 .r5-cover-title .r5-rtt{font-size:14px;font-weight:600;color:var(--r5-ink-2);margin-top:5px}
+.nzr5 .r5-clientlogo{margin:24px 0 2px;text-align:center}
+.nzr5 .r5-clframe{display:inline-flex;align-items:center;gap:11px;border:1px solid var(--r5-line);border-radius:12px;padding:12px 20px;background:var(--r5-surface-2)}
+.nzr5 .r5-clframe img{height:46px;width:auto;max-width:200px;display:block}
+.nzr5 .r5-metacard{margin-top:30px;width:460px;max-width:100%;border:1px solid var(--r5-line);border-radius:12px;overflow:hidden;text-align:left}
+.nzr5 .r5-metacard .r5-row{display:flex;gap:14px;padding:11px 16px;font-size:12px;border-top:1px solid var(--r5-line-2)}
+.nzr5 .r5-metacard .r5-row:first-child{border-top:0}
+.nzr5 .r5-metacard .r5-k{color:var(--r5-muted);width:130px;flex:0 0 auto;border-left:3px solid var(--r5-brand-deep);padding-left:11px}
+.nzr5 .r5-metacard b{color:var(--r5-ink);font-weight:600}
+.nzr5 .r5-cover .r5-conf{margin-top:34px;font-size:11px;color:var(--r5-muted);letter-spacing:.02em}
+
+/* Chart card, donut and legend */
+.nzr5 .r5-chartcard{border:1px solid var(--r5-line);border-radius:14px;padding:20px 22px;margin-top:14px}
+.nzr5 .r5-chartcard .r5-chead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.nzr5 .r5-chartcard .r5-chead b{font-size:12px}
+.nzr5 .r5-svgtag{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-brand-ink);background:var(--r5-mint);border:1px solid var(--r5-mint-line);padding:3px 8px;border-radius:6px;white-space:nowrap}
+.nzr5 .r5-svgtag svg{width:11px;height:11px}
+.nzr5 .r5-srcline{font-size:10.5px;color:var(--r5-muted);margin-top:12px}
+.nzr5 .r5-donutwrap{display:flex;align-items:center;gap:30px;flex-wrap:wrap}
+.nzr5 .r5-donutwrap svg{flex:0 0 auto}
+.nzr5 .r5-leg{flex:1;min-width:210px;display:flex;flex-direction:column;gap:2px}
+.nzr5 .r5-leg .r5-lr{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--r5-line-2);font-size:12px}
+.nzr5 .r5-leg .r5-lr:first-child{border-top:0}
+.nzr5 .r5-leg .r5-sw{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+.nzr5 .r5-leg .r5-nm{flex:1} .nzr5 .r5-leg .r5-vv{font-weight:700;font-variant-numeric:tabular-nums} .nzr5 .r5-leg .r5-pc{color:var(--r5-muted);width:54px;text-align:right;font-variant-numeric:tabular-nums}
+.nzr5 .r5-leg .r5-lr.r5-tot{border-top:1.5px solid var(--r5-line);font-weight:700;margin-top:3px}
+
+/* Sub-headings, the commitments list, tables (dark head, banded rows, sub and total rows) */
+.nzr5 .r5-h3{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-ink-2);font-weight:700;margin:22px 0 9px}
+.nzr5 .r5-commit-list{list-style:none;padding:0;margin:14px 0 0;display:flex;flex-direction:column;gap:9px}
+.nzr5 .r5-commit-list li{display:flex;gap:10px;font-size:12.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-commit-list li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--r5-brand);margin-top:7px;flex:0 0 auto}
+.nzr5 table.r5-rt{width:100%;border-collapse:collapse;font-size:11px}
+.nzr5 table.r5-rt thead th{background:var(--r5-ink);color:#EAF2ED;text-align:left;font-weight:600;font-size:9.5px;letter-spacing:.03em;padding:8px 11px}
+.nzr5 table.r5-rt thead th.r5-num{text-align:right}
+.nzr5 table.r5-rt tbody td{padding:8px 12px;border-bottom:1px solid var(--r5-line-2);color:var(--r5-ink-2)}
+.nzr5 table.r5-rt tbody td.r5-num{text-align:right;font-variant-numeric:tabular-nums}
+.nzr5 table.r5-rt tbody tr:nth-child(even) td{background:var(--r5-surface-2)}
+.nzr5 table.r5-rt tr.r5-sub td{font-weight:700;color:var(--r5-ink);background:var(--r5-surface-3)!important}
+.nzr5 table.r5-rt tr.r5-total td{font-weight:800;color:var(--r5-ink);border-top:2px solid var(--r5-ink);background:transparent!important}
+
+/* Key/value boxes */
+.nzr5 .r5-kv{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:16px}
+@media (max-width:560px){.nzr5 .r5-kv{grid-template-columns:1fr}}
+.nzr5 .r5-kvbox{border:1px solid var(--r5-line);border-radius:12px;overflow:hidden}
+.nzr5 .r5-kvbox .r5-kr{display:flex;justify-content:space-between;gap:10px;padding:9px 14px;font-size:11.5px;border-top:1px solid var(--r5-line-2)}
+.nzr5 .r5-kvbox .r5-kr:first-child{border-top:0}
+.nzr5 .r5-kvbox .r5-kr span{color:var(--r5-muted)} .nzr5 .r5-kvbox .r5-kr b{color:var(--r5-ink);font-weight:600}
+.nzr5 .r5-nr{color:var(--r5-muted)!important;font-weight:500;font-style:italic}
+
+/* Sites and Overview: lead line, site cards, the two-column grid, activity bars, intensity rows, the big stat, notes */
+.nzr5 .r5-lead{margin:0 0 12px}
+.nzr5 .r5-gap{margin-top:16px}
+.nzr5 .r5-flush{margin-top:0!important}
+.nzr5 .r5-note{font-size:11px;line-height:1.55;color:var(--r5-muted);margin:14px 0 0}
+.nzr5 .r5-sitecard{border:1px solid var(--r5-line);border-radius:14px;padding:16px 18px;margin-top:14px}
+.nzr5 .r5-sitecard-h{font-weight:700;font-size:13px;margin-bottom:12px;color:var(--r5-ink)}
+.nzr5 .r5-sitecard-sh{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--r5-ink-2);font-weight:700;margin:14px 0 2px}
+.nzr5 .r5-grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+@media (max-width:620px){.nzr5 .r5-grid2{grid-template-columns:1fr}}
+.nzr5 .r5-barrow{display:grid;grid-template-columns:150px 1fr 54px;align-items:center;gap:12px;padding:6px 0;font-size:12.5px}
+.nzr5 .r5-barrow .r5-bn{color:var(--r5-ink-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nzr5 .r5-bartrack{background:var(--r5-surface-2);border-radius:6px;height:20px;overflow:hidden}
+.nzr5 .r5-barfill{height:100%;border-radius:6px;background:var(--r5-brand-deep)}
+.nzr5 .r5-barrow .r5-bv{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.nzr5 .r5-imrow{display:flex;align-items:center;gap:13px;padding:12px 0;border-bottom:1px solid var(--r5-line-2)}
+.nzr5 .r5-imrow:last-child{border:0}
+.nzr5 .r5-im-ic{width:38px;height:38px;border-radius:10px;background:var(--r5-surface-2);display:grid;place-items:center;color:var(--r5-brand-deep);flex:0 0 auto}
+.nzr5 .r5-im-ic svg{width:20px;height:20px}
+.nzr5 .r5-imrow .r5-nm{font-weight:600} .nzr5 .r5-imrow .r5-u{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-imrow .r5-val{margin-left:auto;text-align:right} .nzr5 .r5-imrow .r5-val b{font-size:15px;font-variant-numeric:tabular-nums} .nzr5 .r5-imrow .r5-val .r5-uu{font-size:11px;color:var(--r5-muted)}
+.nzr5 .r5-overview-top{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.nzr5 .r5-overview-sites{flex:1;min-width:260px}
+.nzr5 .r5-statbig{border:1px solid var(--r5-line);border-radius:14px;padding:22px;text-align:center;min-width:220px}
+.nzr5 .r5-statbig .r5-lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--r5-muted);font-weight:700}
+.nzr5 .r5-statbig .r5-big{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.nzr5 .r5-statbig .r5-u{color:var(--r5-muted);font-size:13px}
+
+/* Intensity and Targets: the reported badge, chart legends, the provenance note, centred ring */
+.nzr5 .r5-imrows{margin-top:8px}
+.nzr5 .r5-chartlegend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-chartlegend > span{display:inline-flex;align-items:center;gap:7px}
+.nzr5 .r5-legline{width:14px;height:3px;border-radius:2px;display:inline-block}
+.nzr5 .r5-prov{font-size:10.5px;color:var(--r5-muted);border-top:1px solid var(--r5-line-2);margin-top:14px;padding-top:10px}
+.nzr5 .r5-prov b{color:var(--r5-ink-2)}
+.nzr5 .r5-centre{display:flex;justify-content:center}
+.nzr5 .r5-centre-text{text-align:center}
+
+/* Actions: control-level groups, action rows, chips and statuses */
+.nzr5 .r5-control-level{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--r5-brand-deep);margin:16px 0 4px}
+.nzr5 .r5-act{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--r5-line-2)}
+.nzr5 .r5-act .r5-ai{width:30px;height:30px;border-radius:8px;background:var(--r5-surface-2);display:grid;place-items:center;color:var(--r5-brand-deep);flex:0 0 auto}
+.nzr5 .r5-act .r5-ai svg{width:17px;height:17px}
+.nzr5 .r5-act .r5-nm{font-weight:600} .nzr5 .r5-act .r5-u{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-act .r5-st{margin-left:auto;font-size:11px;font-weight:600;color:var(--r5-muted)}
+.nzr5 .r5-act .r5-st-in_progress{color:#7A5600}
+.nzr5 .r5-act .r5-st-complete{color:var(--r5-brand-ink)}
+.nzr5 .r5-cl{font-size:10px;font-weight:700;border:1px solid var(--r5-line);border-radius:999px;padding:1px 7px;color:var(--r5-muted);margin-left:8px}
+
+/* SRS: the maturity grid and roadmap callouts */
+.nzr5 .r5-mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+@media (max-width:560px){.nzr5 .r5-mgrid{grid-template-columns:1fr}}
+.nzr5 .r5-mat{border:1px solid var(--r5-line);border-radius:9px;padding:10px 12px}
+.nzr5 .r5-mat .r5-p{font-weight:600;font-size:12.5px} .nzr5 .r5-mat .r5-lv{font-size:11.5px;color:var(--r5-muted)}
+.nzr5 .r5-dots{display:flex;gap:3px;margin-top:6px} .nzr5 .r5-dots i{width:100%;height:6px;border-radius:3px}
+.nzr5 .r5-callout{background:var(--r5-mint);border:1px solid var(--r5-mint-line);border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--r5-brand-ink);margin-bottom:8px}
+.nzr5 .r5-callout-amber{background:#FFF4DC;border-color:#F3D89A;color:#7A5600}
+
+/* Methodology: the basis box, the data-quality bar, the sign-off; the glossary term; the audit's header note */
+.nzr5 .r5-verify{border:1px solid var(--r5-line);background:#fff;border-radius:12px;padding:18px 20px;margin-top:14px}
+.nzr5 .r5-verify h4{margin:0 0 10px;color:var(--r5-ink);font-size:13px}
+.nzr5 .r5-verify p{margin:0 0 8px;font-size:12.5px;color:var(--r5-ink-2);line-height:1.55} .nzr5 .r5-verify p:last-child{margin-bottom:0}
+.nzr5 .r5-dqbar{display:flex;height:26px;border-radius:7px;overflow:hidden;border:1px solid var(--r5-line);margin-top:4px}
+.nzr5 .r5-dqseg{height:100%}
+.nzr5 .r5-dqleg{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--r5-ink-2)}
+.nzr5 .r5-dqleg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.nzr5 .r5-signgrid{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:10px}
+@media (max-width:560px){.nzr5 .r5-signgrid{grid-template-columns:1fr}}
+.nzr5 .r5-signbox{border:1px solid var(--r5-line);border-radius:12px;padding:14px 16px}
+.nzr5 .r5-signbox .r5-st{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--r5-brand-deep);font-weight:700;margin-bottom:12px}
+.nzr5 .r5-signbox .r5-sl{font-size:11px;color:var(--r5-muted);margin-bottom:24px;border-bottom:1px solid var(--r5-line);padding-bottom:4px}
+.nzr5 .r5-term{font-weight:600;color:var(--r5-ink)!important}
+.nzr5 .r5-thead-note{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--r5-sky-ink);background:var(--r5-sky-bg);border:1px solid var(--r5-sky-line);padding:2px 8px;border-radius:6px;margin-left:8px;vertical-align:middle}
+.nzr5 table.r5-audit .r5-prov-line{font-size:9.5px;color:var(--r5-muted);margin-top:2px}
+.nzr5 table.r5-audit thead{display:table-header-group}
+
+/* Print: the page view, one sheet per page, no ground or shadow. */
+@media print{
+  .nzr5{background:none;padding:0}
+  .nzr5 .r5-pbreak{display:none!important}
+  .nzr5 .r5-page{box-shadow:none!important;border:0!important;margin:0!important;break-after:page;min-height:auto}
+}

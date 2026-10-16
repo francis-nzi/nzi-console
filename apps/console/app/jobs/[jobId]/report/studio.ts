@@ -1,8 +1,10 @@
 import {
   encodeStudioPlan, encodeStudioScope, isMovableReportSection, isOptionalReportSection, isReportDataSection, isReportGap,
-  REPORT_SECTION_EXCLUSION_AVAILABLE, reportComposed4Sections, reportRendererOf, reportSectionLayout, reportSectionMetaFor, reportSectionPlanOf,
+  isReportStandaloneNarrativeSection, REPORT_SECTION_EXCLUSION_AVAILABLE, reportComposed4Sections, reportPlanSectionTitle, reportRendererOf,
+  reportSectionLayout, reportSectionMetaFor, reportSectionPlanOf,
   type ReportComposition, type ReportCompositionSectionKey, type ReportScope, type ReportSectionPlan, type ReportStage,
 } from "@nzi/contracts";
+import { COMPOSED5_TITLES, composed5Draws } from "../../../reports/[versionId]/ReportComposedV5";
 
 /**
  * The Report Studio's reads, as pure functions — which of a job's report versions the studio shows (B2-1), the section rail
@@ -60,14 +62,18 @@ export function studioRail(composition: ReportComposition, plan: ReportSectionPl
   const hasSites = !isReportGap(composition.emissions) && (composition.emissions.sites?.length ?? 0) > 0;
   // The renderer's own "present" test and titles (B2-3): composed@4 draws its further sections by its own headings; earlier
   // renderers never draw them.
-  const v4 = reportRendererOf(composition) === "composed@4", meta = reportSectionMetaFor(composition);
-  const present = (key: string) => isReportDataSection(key) && (key !== "sites" || hasSites) && (v4 || !reportComposed4Sections.includes(key));
+  const renderer = reportRendererOf(composition), meta = reportSectionMetaFor(composition);
+  const v4 = renderer === "composed@4", v5 = renderer === "composed@5";
+  // composed@5 numbers by its own "draws" test and heads by its own titles, its standalone narrative sections included.
+  const present = v5
+    ? (key: string) => composed5Draws(key) && (key !== "sites" || hasSites)
+    : (key: string) => isReportDataSection(key) && (key !== "sites" || hasSites) && (v4 || !reportComposed4Sections.includes(key));
   const numbers = new Map(reportSectionLayout(plan, present).map((entry) => [entry.key, entry.number]));
-  return plan.filter((entry) => isReportDataSection(entry.key)).map((entry) => {
+  return plan.filter((entry) => isReportDataSection(entry.key) || (v5 && isReportStandaloneNarrativeSection(entry.key))).map((entry) => {
     const key = entry.key as ReportCompositionSectionKey;
     const drawn = numbers.has(key);
     return {
-      key, title: meta[key].title, number: numbers.get(key) ?? null, included: entry.included, drawn,
+      key, title: (v5 ? COMPOSED5_TITLES[key] : undefined) ?? meta[key]?.title ?? reportPlanSectionTitle(entry.key), number: numbers.get(key) ?? null, included: entry.included, drawn,
       note: !entry.included ? "Left out of this report" : drawn ? null : "Nothing to draw: this report has no site breakdown",
       movable: isMovableReportSection(key), optional: REPORT_SECTION_EXCLUSION_AVAILABLE && isOptionalReportSection(key),
     };

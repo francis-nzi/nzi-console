@@ -64,7 +64,7 @@ describe("the Report Studio's draft of a job's report, against a real database",
     const drafted = (await draft())!;
     assert.equal(drafted.snapshotId, snapshotId, "version 2 is unapproved, so version 1 is drafted");
     assert.equal(drafted.snapshotVersion, 1);
-    assert.equal(drafted.composition.renderer, "composed@4", "a draft is drawn as a new composition would be");
+    assert.equal(drafted.composition.renderer, "composed@5", "a draft is drawn as a new composition would be");
     assert.equal(await draft({ jobId: "draft-unapproved" }), null);
     assert.equal(await draft({ jobId: "no-such-job" }), null);
   });

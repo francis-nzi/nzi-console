@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel, isCurrencyIntensityTarget, reportingIntensityOf,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, siteFloorAreaForPeriod, WHOLE_CLIENT_SCOPE, REPORT_RENDERER_LATEST, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
   composeReportChartBasis, type ChartBasisSnapshot, composeReportAudit, composeReportSources, type ReportSources, type SnapshotProvenanceStamp,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
@@ -342,6 +342,7 @@ export async function composeReport(db: Queryable, input: {
   const emissions = composeEmissions(input.snapshot, context);
   const totalTco2e = isReportGap(emissions) ? null : emissions.totalTco2e;
   if (!isReportGap(emissions)) await attachSiteFloorAreaIntensity(db, { clientId: input.clientId, snapshot: input.snapshot, emissions });
+  if (!isReportGap(emissions)) await attachSiteFacts(db, { clientId: input.clientId, snapshot: input.snapshot, emissions });
 
   // Read once and shared: the plan section prints these strategies and the readiness
   // roadmap answers its gaps with them. Two reads could straddle an edit and leave one
@@ -418,6 +419,22 @@ async function attachSiteFloorAreaIntensity(db: Queryable, input: { clientId: st
 }
 
 /**
+ * composed@5 (ACCEPT-composed5-checkpoint3): each site's in-service date and its floor area for the reporting period, from the
+ * client's site records — the site table's columns, whether or not a floor-area measure is reported. Not money.
+ */
+async function attachSiteFacts(db: Queryable, input: { clientId: string; snapshot: SnapshotForComposition; emissions: ReportEmissionsSection }): Promise<void> {
+  if (!input.emissions.sites?.length) return;
+  const [sites, reporting] = [await listJobReportedSites(db, input.clientId, input.snapshot.jobId), await resolveJobReportingPeriod(db, input.snapshot.jobId)];
+  const byId = new Map(sites.map((site) => [site.id, site]));
+  for (const site of input.emissions.sites) {
+    if (site.siteId === null) continue;
+    const record = byId.get(site.siteId);
+    site.inServiceFrom = record?.inServiceFrom ?? null;
+    site.floorAreaM2 = record && reporting?.period ? siteFloorAreaForPeriod(record, reporting.period) : null;
+  }
+}
+
+/**
  * The assured years the pathway plots actual against (RF-2): one snapshot per reporting period, latest version — the
  * selection the workspace's chain reads, from the one shared reader — so a year frozen twice is counted once. The report's
  * own period is the snapshot it was validated against, not whichever version of its job is latest.
@@ -450,8 +467,10 @@ export async function composeForReportVersion(db: Queryable, input: {
   organisationId: string; reportVersionId: string; issuedAt: string;
 }): Promise<ReportComposition> {
   const version = await db.query<{ job_id: string; reviewed_snapshot_id: string; client_id: string; scope_kind: "whole" | "sites"; scope_site_ids: string[] | null;
-    section_plan: ReportSectionPlan | null; client_issuer_line: string | null; signee_name: string | null; signee_job_title: string | null } & IssuerColumns>(
-    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, r.section_plan, r.client_issuer_line, r.signee_name, r.signee_job_title, ${ISSUER_COLUMNS}
+    section_plan: ReportSectionPlan | null; client_issuer_line: string | null; signee_name: string | null; signee_job_title: string | null;
+    client_logo_asset_id: string | null } & IssuerColumns>(
+    `SELECT r.job_id, r.reviewed_snapshot_id, j.client_id, r.scope_kind, r.scope_site_ids, r.section_plan, r.client_issuer_line, r.signee_name, r.signee_job_title,
+            r.client_logo_asset_id, ${ISSUER_COLUMNS}
      FROM nzi_console.report_versions r
      JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (r.organisation_id, r.job_id)
      WHERE r.organisation_id = $1 AND r.report_version_id = $2`,
@@ -469,6 +488,8 @@ export async function composeForReportVersion(db: Queryable, input: {
     // B2-3 holds a plan without the new keys). B2-3 call 2: the client signee the version named at validate.
     issuer: issuerOf(row), sectionPlan: normaliseReportPlanKeys(row.section_plan ?? defaultReportSectionPlan), issuerLine: row.client_issuer_line,
     signee: row.signee_name ? { name: row.signee_name, jobTitle: row.signee_job_title } : null,
+    // composed@5 (BUILD-report-studio-composed5): the client's logo the version froze at validate, for the cover.
+    clientLogoAssetId: row.client_logo_asset_id,
   });
 }
 
@@ -483,6 +504,8 @@ export async function composeForSnapshot(db: Queryable, input: {
   scope: ReportScope; sectionPlan: ReportSectionPlan; issuer: ReportIssuer | null; issuerLine: string | null;
   /** B2-3: the client signee the version named (none on a draft). */
   signee?: { name: string; jobTitle: string | null } | null;
+  /** composed@5: the client's logo asset — the version's frozen one, or (a draft) the client's as validate would freeze it. */
+  clientLogoAssetId?: string | null;
 }): Promise<ReportComposition> {
   const row = { client_id: input.clientId, reviewed_snapshot_id: input.snapshotId };
   const snapshotRow = await db.query<{
@@ -517,6 +540,15 @@ export async function composeForSnapshot(db: Queryable, input: {
     await getBenchmarkInForce(db, row.client_id), await listAssuredPeriodConflicts(db, row.client_id),
     await db.query<{ site_id: string; name: string }>(`SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [row.client_id])];
   const siteNames = new Map(siteRows.rows.map((site) => [site.site_id, site.name]));
+  // composed@5 (ACCEPT-composed5-checkpoint2, decision 1): the client record's industry and location for Background &
+  // Organisation — the sector's curated label (else its stored text, NZC-090's fallback) and the location (else headquarters).
+  const organisationRow = (await db.query<{ industry: string | null; location: string | null }>(
+    `SELECT COALESCE((SELECT rv.label FROM nzi_console.reference_values rv WHERE (rv.organisation_id, rv.value_id) = (c.organisation_id, c.sector_value_id)),
+                     NULLIF(btrim(c.sector), '')) AS industry,
+            COALESCE(NULLIF(btrim(c.location), ''), NULLIF(btrim(c.headquarters), '')) AS location
+     FROM nzi_console.clients c WHERE c.client_id = $1`, [row.client_id])).rows[0];
+  const organisation = organisationRow && (organisationRow.industry || organisationRow.location)
+    ? { industry: organisationRow.industry, location: organisationRow.location } : null;
 
   const composed = await composeReport(db, {
     reportVersionId: input.reportVersionId,
@@ -546,6 +578,8 @@ export async function composeForSnapshot(db: Queryable, input: {
     sectionPlan: input.sectionPlan,
     ...(input.issuerLine ? { issuerLine: input.issuerLine } : {}),
     ...(input.signee ? { signee: input.signee } : {}),
+    ...(input.clientLogoAssetId ? { clientLogoAssetId: input.clientLogoAssetId } : {}),
+    ...(organisation ? { organisation } : {}),
   };
 }
 

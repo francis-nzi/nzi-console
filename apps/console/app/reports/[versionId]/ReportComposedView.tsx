@@ -16,6 +16,7 @@ import {
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import { LogoMark } from "../../lib/LogoMark";
+import { ComposedV5 } from "./ReportComposedV5";
 import { reportPathway, siteActivities, siteScopeDonut, sitesDonut } from "./scopeCharts";
 
 /**
@@ -42,10 +43,14 @@ const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractio
 export type IssuerLogoSrc = (assetId: string) => string;
 export const staffIssuerLogoSrc: IssuerLogoSrc = (assetId) => `/api/isolated/organisation/logo?asset=${encodeURIComponent(assetId)}`;
 
-export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc, preview = false }: {
+export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc, clientLogoSrc, preview = false, mode = "page" }: {
   composition: ReportComposition; issuerLogoSrc?: IssuerLogoSrc;
+  /** composed@5: where the client's frozen logo is served from (the staff route by default; the portal passes its own). */
+  clientLogoSrc?: IssuerLogoSrc;
   /** B0/B1: a composition shown before it is issued. Only `composed@3` draws it ("preview — not issued"); earlier layouts ignore it. */
   preview?: boolean;
+  /** composed@5: the mockup's page view (A4 sheets) or continuous view. Earlier layouts ignore it. */
+  mode?: "page" | "flow";
 }) {
   // F-0 (RULING-reporting-F Q4): the layout is chosen by the composition, not by whichever view is deployed. A layout
   // change that would alter an issued report forks to a new renderer; it never redraws this one.
@@ -63,6 +68,9 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   // sign-off. The same charts as composed@3.
   if (renderer === "composed@4") return <ComposedV1 composition={composition} issuerLogoSrc={issuerLogoSrc} v3={{ preview, v4: true }}
     charts={withSourceSummary(composition.chartBasis ? resolveCrpCoreCharts(composition.chartBasis as Parameters<typeof resolveCrpCoreCharts>[0], { resolverVersion: CRP_RESOLVER_AGGREGATED }) : [], composition.sources?.summary)} />;
+  // BUILD-report-studio-composed5: the mockup's document, its own renderer (ReportComposedV5.tsx) — composed@1/2/3/4 above
+  // are untouched by it.
+  if (renderer === "composed@5") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 

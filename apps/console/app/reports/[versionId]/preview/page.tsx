@@ -4,6 +4,7 @@ import { ScreenState } from "../../../lib/ScreenState";
 import { formatDateTime } from "../../../lib/formatDate";
 import { ReportComposedView } from "../ReportComposedView";
 import "../report-composed.css";
+import "../report-composed5.css";
 
 export const dynamic = "force-dynamic";
 

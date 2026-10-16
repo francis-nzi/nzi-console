@@ -731,11 +731,22 @@ jobs:
       # by id) and its audit appendix (cut to its scope) — no upload file name, no quantity — and the preview composes the same.
       - name: A report composed now freezes its sources by dataset id and its audit appendix (composed@3's freeze, carried into composed@4)
         run: npx tsx --test packages/isolated-backend/tests/reportComposed3Real.test.ts
-      # B2-3 (RULING-report-B2-3): a report composed now is drawn composed@4 with its plan complete; it freezes the stamp's
-      # reporting period (none stamped, none frozen) and the client signee the version named; a profile written before B2-3 is
-      # read complete, keeping its order and choices; the preview still equals what publish freezes.
-      - name: A report composed now is drawn composed@4, freezing its period and signee, and reads stored plans complete
+      # B2-3 (RULING-report-B2-3): a report composed now is drawn by the latest renderer (composed@5 since BUILD-report-studio-
+      # composed5) with its plan complete; it freezes the stamp's reporting period (none stamped, none frozen) and the client
+      # signee the version named; a profile written before B2-3 is read complete, keeping its order and choices; the preview
+      # still equals what publish freezes.
+      - name: A report composed now is drawn by the latest renderer, freezing its period and signee, and reads stored plans complete
         run: npx tsx --test packages/isolated-backend/tests/reportComposed4Real.test.ts
+      # composed@5 (BUILD-report-studio-composed5; ACCEPT-composed5-full-document): a report composed now freezes the client's
+      # logo asset, its industry and location, each site's in-service date and floor area, and each site's and category's own
+      # figure per comparison period (null where none, never modelled); the preview equals what publish freezes; no money.
+      - name: A report composed now is drawn composed@5, freezing its logo, organisation, site details and per-site/per-category years
+        run: npx tsx --test packages/isolated-backend/tests/reportComposed5Real.test.ts
+      # Migration 0167 (ACCEPT-composed5-checkpoint3/4): Net Zero Commitment and Background turned on, once — a new version of an
+      # active profile, a validated version in place with its version bumped — never a published version, a withdrawn profile or
+      # a frozen composition; run again, nothing changes.
+      - name: Migration 0167 turns the standalone narrative sections on in the plans that feed new reports, never an issued one
+        run: npx tsx --test packages/isolated-backend/tests/migration0167Real.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.
