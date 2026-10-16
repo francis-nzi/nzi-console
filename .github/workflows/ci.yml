@@ -770,6 +770,10 @@ jobs:
       # granted report; documents follow the version named, figures from its own scope, checked against the composition.
       - name: The client portal reads the frozen report, grant-checked, and its documents carry the report's own scope
         run: npx tsx --test packages/isolated-backend/tests/portalCompositionReal.test.ts
+      # The composed@5 publish gate: the client's logo a published report froze (at validate, though the client's logo changed
+      # since) is what the portal's client-scoped route serves to that client — never to another client's portal user.
+      - name: The portal serves a published report's frozen client logo to its own client only
+        run: npx tsx --test packages/isolated-backend/tests/portalClientLogoReal.test.ts
       # Phase 1c (0159): the client's reporting template — whole versions; initialised from a job (v7 history "to file");
       # set by hand with the client's own references; withdrawn with a reason; the tables' own CHECKs; a lost race.
       - name: A client reporting template is initialised, set, guarded and withdrawn — whole versions

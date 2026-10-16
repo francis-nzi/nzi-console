@@ -29,3 +29,10 @@ export function portalReportViewOf(body: unknown, expected: { reportVersionId: s
 /** The issuer logo a portal user may load: the grant-checked portal route (D4), never the staff one. */
 export const portalIssuerLogoSrc = (jobId: string) => (assetId: string) =>
   `/api/portal/jobs/${encodeURIComponent(jobId)}/published-report/issuer-logo?asset=${encodeURIComponent(assetId)}`;
+
+/**
+ * The client's own logo as a published report froze it, for a portal user: the portal's client-scoped asset route (an asset
+ * of the user's own client only), never the staff one. composed@5's cover draws it; the issued-for card and the print header
+ * load the same frozen asset through it.
+ */
+export const portalClientLogoSrc = (assetId: string) => `/api/portal/logo-assets/${encodeURIComponent(assetId)}`;
