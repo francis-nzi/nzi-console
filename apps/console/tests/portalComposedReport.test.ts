@@ -98,7 +98,8 @@ describe("the portal shows the issued report, and a left-out section is absent e
   it("the client's print renders the same issued document, and prints nothing for an unreadable one", () => {
     const print = read("apps/console/app/portal/jobs/[jobId]/print/page.tsx");
     assert.match(print, /if\(view\.state==="failed"\)return <PrintUnavailable/);
-    assert.match(print, /if\(view\.state==="composed"\)return [\s\S]*<ReportComposedView composition=\{view\.composition\} issuerLogoSrc=\{portalIssuerLogoSrc\(jobId\)\}\/>/);
+    // The composed@5 publish gate: the client's logo through the portal's route too (pinned below).
+    assert.match(print, /if\(view\.state==="composed"\)return [\s\S]*<ReportComposedView composition=\{view\.composition\} issuerLogoSrc=\{portalIssuerLogoSrc\(jobId\)\} clientLogoSrc=\{portalClientLogoSrc\}\/>/);
     assert.match(print, /PRE_COMPOSITION_LABEL/);
   });
 
@@ -125,5 +126,68 @@ describe("the portal shows the issued report, and a left-out section is absent e
     assert.match(dashboard, /fetch\(`\/api\/portal\/jobs\/\$\{jobId\}\/published-report`/);
     // RULING-report-studio-consolidation R5: with the snapshot's years, so a single-year client's annual comparison is absent, not blocking.
     assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} context=\{\{ reportingYears: /, "through the manifest view F-4c draws with");
+  });
+});
+
+/**
+ * The composed@5 publish gate: composed@5's cover draws the client's frozen logo. In the portal it must load through the portal's
+ * client-scoped route (`/api/portal/logo-assets/{id}`, an asset of the user's own client only) — never the staff route, which a
+ * client cannot reach. The real-database half (the route serves the frozen asset to its own client only) is
+ * `portalClientLogoReal`.
+ */
+describe("the portal draws a composed@5 report's client logo through the portal's route (the composed@5 publish gate)", () => {
+  const LOGO = "c5-client-logo";
+  const composition = () => clientFacingComposition(JSON.parse(fixture("composition-composed5-whole.json")) as ReportComposition);
+  const reportFor = (issued: ReportComposition): ClientFacingPublishedCrpReport => ({
+    reportVersionId: issued.reportVersionId, manifestVersion: 1, publishedAt: "2026-02-01T00:00:00.000Z", dataHash: issued.snapshotDataHash,
+    scopeLabel: "Whole client", signee: null, clientLogoAssetId: issued.clientLogoAssetId ?? null, issuer: issued.issuer,
+    snapshot: {
+      id: issued.snapshotId, jobId: issued.jobId, jobNumber: issued.jobNumber, client: issued.client, reportingYear: issued.reportingYear,
+      version: 1, jobVersion: 1, createdAt: "2026-01-01T00:00:00.000Z", dataHash: issued.snapshotDataHash, target: null, intensityTarget: null,
+      annualComparison: [], sections: [], gapResolutions: [], measurements: [],
+    },
+  });
+  const workspace = async (clientMode: boolean) => {
+    (globalThis as { React?: unknown }).React = React;
+    const { PortalWorkspace } = await import("../app/portal-preview/PortalWorkspace");
+    const issued = composition();
+    return renderToStaticMarkup(createElement(PortalWorkspace, { specs: {}, report: reportFor(issued), approval: null, view: { state: "composed", composition: issued } as never, clientMode }));
+  };
+  const cover = (html: string) => html.match(/<div class="r5-clframe"><img src="([^"]*)"/)?.[1];
+
+  it("the fixture is a composed@5 report that froze a client logo", () => {
+    assert.equal(composition().renderer, "composed@5");
+    assert.equal(composition().clientLogoAssetId, LOGO, "kept in the client's copy");
+  });
+
+  it("the client's portal: the cover's logo, and the issued-for card's, from the portal's route — never the staff one", async () => {
+    const html = await workspace(true);
+    assert.equal(cover(html), `/api/portal/logo-assets/${LOGO}`);
+    assert.match(html, /class="nz-portal-issued"[\s\S]*?src="\/api\/portal\/logo-assets\/c5-client-logo"/, "the card loads the same asset, the same way");
+    assert.doesNotMatch(html, /\/api\/isolated\//, "no staff route anywhere on the client's page");
+  });
+
+  it("the staff preview of the same report keeps the staff routes, as before", async () => {
+    const html = await workspace(false);
+    assert.equal(cover(html), `/api/isolated/logo-assets/${LOGO}`);
+    assert.doesNotMatch(html, /\/api\/portal\//);
+  });
+
+  it("the client's print: the cover, the header and the issuer all through the portal's routes; no staff route in the page", () => {
+    const print = read("apps/console/app/portal/jobs/[jobId]/print/page.tsx");
+    assert.match(print, /<ReportComposedView composition=\{view\.composition\} issuerLogoSrc=\{portalIssuerLogoSrc\(jobId\)\} clientLogoSrc=\{portalClientLogoSrc\}\/>/);
+    assert.match(print, /<LogoMark src=\{report\.clientLogoAssetId\?portalClientLogoSrc\(report\.clientLogoAssetId\):null\}/);
+    assert.doesNotMatch(print, /\/api\/isolated\/|staffIssuerLogoSrc/);
+  });
+
+  it("one helper names the route; it encodes the asset id; the route reads only the portal user's own client's asset", async () => {
+    const { portalClientLogoSrc } = await import("../app/portal/portalReportView");
+    assert.equal(portalClientLogoSrc("a/b c"), "/api/portal/logo-assets/a%2Fb%20c");
+    const route = read("apps/console/app/api/portal/logo-assets/[assetId]/route.ts");
+    assert.match(route, /const user = await currentPortalUserForData\(request\)/, "the portal session, terms accepted");
+    assert.match(route, /getLogoAsset\(db, assetId, \{ clientId: user\.clientId \}\)/, "restricted to the user's own client");
+    assert.match(route, /withTenantRead\(isolatedPool\(\), user\.organisationId,/);
+    assert.match(route, /logoResponse\(/, "served as every logo is (nosniff, sandbox)");
+    assert.doesNotMatch(route, /requireIsolatedApiContext|currentStaff/, "never the staff context");
   });
 });
