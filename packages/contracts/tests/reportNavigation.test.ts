@@ -31,6 +31,14 @@ describe("A1: a job's report link follows its state — never an empty preview",
     assert.equal(reportLinkFor(row({ v7Record: true, hasSnapshot: true })).kind, "prepare");
     assert.equal(reportLinkFor(row({ v7Record: true, publishedVersionId: "rv" })).kind, "published");
   });
+  it("the one path: where the studio is on, \"Prepare report\" opens the Report Studio — and nothing else moves", () => {
+    const studio = { studio: true };
+    assert.deepEqual(reportLinkFor(row({ jobId: "j 1", hasSnapshot: true }), studio), { kind: "prepare", label: "Prepare report", href: "/jobs/j%201/report/printing" });
+    for (const over of [{ publishedVersionId: "rv 1", hasSnapshot: true }, { v7Record: true }, {}]) {
+      assert.deepEqual(reportLinkFor(row(over), studio), reportLinkFor(row(over)), JSON.stringify(over));
+    }
+    assert.deepEqual(reportLinkFor(row({ hasSnapshot: true }), { studio: false }), reportLinkFor(row({ hasSnapshot: true })), "off: exactly as before");
+  });
 });
 
 describe("A3/A5: eligibility and the filters", () => {

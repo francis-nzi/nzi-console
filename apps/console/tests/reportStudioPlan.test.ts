@@ -48,7 +48,7 @@ describe("the rail's rights over each section", async () => {
 describe("what each state lets the rail touch", async () => {
   const { ReportStudioPrinting } = await import("../app/jobs/[jobId]/report/ReportStudio");
   const { ReportComposedView } = await import("../app/reports/[versionId]/ReportComposedView");
-  const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client", version: 3 };
+  const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client", version: 3, manifestVersion: 1, snapshotId: "snap-1" };
   const switches = (html: string) => [...html.matchAll(/<button type="button" class="nzs-switch[^"]*" role="switch" aria-checked="(true|false)"( disabled="")?[^>]*aria-label="([^:]+):/g)]
     .map((match) => [match[3], match[2] ? "fixed" : "operable"]);
 

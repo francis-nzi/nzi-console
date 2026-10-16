@@ -8,6 +8,7 @@ import {
   v7RecordLine, type ReportRegisterQuery, type ReportStage,
 } from "@nzi/contracts";
 import type { ReportStatusRow } from "@nzi/isolated-backend";
+import { reportFeatureEnabled } from "../lib/reportFlags";
 
 const STAGES: ReportStage[] = [...REPORT_STAGES, "v7-record"];
 const STAGE_SET = new Set<string>(STAGES);
@@ -114,7 +115,8 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
 
 /** A2: one job's row — the same on the Reports page and in the picker. */
 function ReportRegisterRow({ job }: { job: ReportStatusRow }) {
-  const link = reportLinkFor(job);
+  // The one path: "Prepare report" opens the Report Studio wherever it is on.
+  const link = reportLinkFor(job, { studio: reportFeatureEnabled("report-sections") });
   const eligibility = reportEligibilityOf(job);
   return <tr>
     <td>

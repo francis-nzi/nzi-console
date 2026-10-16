@@ -90,3 +90,9 @@ button.nzs-switch:disabled{cursor:default}
 .nzs-blockers{margin:8px 0 0;padding-left:18px;color:#7A2418}
 .nzs-scope-live .nz-scope-select{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .nzs-scope-live .nz-scope-summary,.nzs-scope-live .sub{margin:0;font-size:12px;color:var(--nzs-muted)}
+/* The one path (CORRECTION-report-studio-live-path): Preparation arrives with B2-6; the signee chosen for validate; publish's
+   confirmation, inline in the toolbar. */
+.nzs-subnav-item.soon{color:var(--nzs-muted);cursor:default;opacity:.7}
+.nzs-signee{flex-wrap:nowrap}
+.nzs-signee .nz-sel{width:auto;min-width:220px;max-width:320px}
+.nzs-confirm{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-radius:8px;background:#FFF7E3;border:1px solid #FFC24B;color:#5C4300;font-size:12.5px}

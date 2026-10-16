@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { reportLinkFor, v7RecordLine } from "@nzi/contracts";
+import { reportFeatureEnabled } from "../lib/reportFlags";
 import { useJobReportRow } from "../lib/useJobReportRow";
 
 /**
@@ -14,7 +15,8 @@ import { useJobReportRow } from "../lib/useJobReportRow";
 export function JobReportLink({ jobId }: { jobId: string }) {
   const row = useJobReportRow(jobId);
   if (!row) return null;
-  const link = reportLinkFor(row);
+  // The one path: "Prepare report" opens the Report Studio wherever it is on.
+  const link = reportLinkFor(row, { studio: reportFeatureEnabled("report-sections") });
   // On the job's own page, "Add evidence" would link to itself; it says where the report stands instead, beside the job's
   // own "Add emissions source" (found by the rendered check).
   if (link.kind === "add-evidence") return <span className="nz-job-report-link nz-job-report-state">No report yet — add evidence to begin</span>;

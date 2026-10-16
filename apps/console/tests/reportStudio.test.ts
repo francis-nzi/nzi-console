@@ -17,7 +17,7 @@ const composition = () => JSON.parse(fixture("composition-composed3-whole.json")
 describe("Report Studio: which version it opens", async () => {
   const { pickStudioVersion, studioHasReport } = await import("../app/jobs/[jobId]/report/studio");
   const row = (id: string, jobId: string, status: "draft" | "validated" | "published" | "superseded", createdAt: string) =>
-    ({ reportVersionId: id, jobId, status, createdAt, publishedAt: status === "published" ? createdAt : null, scopeLabel: "Whole client", version: 1 });
+    ({ reportVersionId: id, jobId, status, createdAt, publishedAt: status === "published" ? createdAt : null, scopeLabel: "Whole client", version: 1, manifestVersion: 1, snapshotId: `snap-${id}` });
   const register = [
     row("v-old", "j1", "published", "2026-10-01T09:00:00Z"), row("v-new", "j1", "validated", "2026-10-10T09:00:00Z"),
     row("v-gone", "j1", "superseded", "2026-10-12T09:00:00Z"), row("v-draft", "j1", "draft", "2026-10-13T09:00:00Z"),
@@ -75,7 +75,7 @@ describe("Report Studio: the rail and the document", async () => {
   it("the studio draws the composed document unchanged — the same markup the composed renderer gives, byte for byte", async () => {
     const { ReportStudioPrinting } = await import("../app/jobs/[jobId]/report/ReportStudio");
     const issued = composition();
-    const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client", version: 1 };
+    const version = { reportVersionId: "v1", status: "published" as const, createdAt: "2026-10-10T09:00:00Z", publishedAt: "2026-10-10T09:00:00Z", scopeLabel: "Whole client", version: 1, manifestVersion: 1, snapshotId: "snap-1" };
     const studio = renderToStaticMarkup(createElement(ReportStudioPrinting, { jobId: "j1", version, composition: issued }));
     const document = renderToStaticMarkup(createElement(ReportComposedView, { composition: issued, preview: false }));
     assert.ok(studio.includes(document), "the composed document appears whole and unaltered inside the studio");
@@ -95,12 +95,18 @@ describe("Report Studio: what it may write", () => {
     for (const file of readOnly) assert.doesNotMatch(read(file), /postBrowserCommand|method:\s*"POST"/, file);
   });
 
-  it("B2-2: the rail writes only through the two governed commands — validate and the section-plan update — never publish or a section edit", () => {
+  // The one path (CORRECTION-report-studio-live-path) adds publish to B2-2's two: still only governed commands, never a
+  // narrative edit (B2-4, awaiting its ruling).
+  it("the studio writes only through three governed commands — validate, the section-plan update and publish — never a section edit", () => {
     const studio = read("apps/console/app/jobs/[jobId]/report/ReportStudio.tsx");
-    assert.deepEqual([...studio.matchAll(/postBrowserCommand<[^>]*>\("([^"]+)"/g)].map((match) => match[1]).sort(), ["/api/isolated/reports/section-plan", "/api/isolated/reports/validate"]);
-    assert.doesNotMatch(studio, /reports\/(publish|sections\/)/, "publishing and narrative editing are later slices");
+    assert.deepEqual([...studio.matchAll(/postBrowserCommand<[^>]*>\("([^"]+)"/g)].map((match) => match[1]).sort(),
+      ["/api/isolated/reports/publish", "/api/isolated/reports/section-plan", "/api/isolated/reports/validate"]);
+    assert.doesNotMatch(studio, /reports\/sections\/|report\.section\./, "narrative editing is B2-4");
     assert.doesNotMatch(studio, /method:\s*"POST"|fetch\(/, "no write outside the command client");
     assert.match(studio, /expectedVersion: version\.version, sectionPlan: plan/, "the plan update pins the version the studio opened");
+    assert.match(studio, /reportVersionId: version\.reportVersionId, expectedStatus: "validated", expectedVersion: version\.version,\s*manifestVersion: version\.manifestVersion, reviewedSnapshotId: version\.snapshotId/,
+      "publish pins exactly the version the studio opened");
+    assert.match(studio, /signeeContactId: signeeId \|\| null/, "validate freezes the chosen signee, as the job's release panel does");
   });
 
   it("reads only the register, the version's composition (frozen, or its read-only preview), and with no version the job's draft", () => {
