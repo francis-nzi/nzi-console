@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { crpProfessionalManifest } from "@nzi/charts";
 import {
-  moveReportSection, reportSectionPlanOf, setReportSectionIncluded,
+  moveReportSection, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
   type ReportComposition, type ReportScope, type ReportSectionPlan,
 } from "@nzi/contracts";
 import type { ReportDraftComposition } from "@nzi/isolated-backend";
 import { jobCrumbs, workspaceCrumbs } from "../../../lib/crumbs";
 import { formatDate, formatDateTime } from "../../../lib/formatDate";
+import { accessFor, useStaffMe, type EditAccess } from "../../../lib/useEditAccess";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
+import { useReportSignees } from "../../../lib/useReportSignees";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
 import { ReportScopeSelector } from "../../../report-preview/ReportScopeSelector";
 import { ReportComposedView } from "../../../reports/[versionId]/ReportComposedView";
@@ -42,10 +44,11 @@ export function ReportStudioFrame({ jobId, page, children }: { jobId: string; pa
   const crumbs = row
     ? jobCrumbs({ id: row.jobId, number: row.jobNumber, clientId: row.clientId, client: row.client }, { label: PAGE_LABEL[page], href: studioHref(jobId, page) })
     : workspaceCrumbs("Reports", "/reports", { label: PAGE_LABEL[page], href: studioHref(jobId, page) });
-  // Preparation and Client Review are today's surfaces — the validation gate on /report-preview and the review inbox on
-  // /reports — until B2-6 brings them into the studio.
-  const tabs: Array<{ page: StudioPage; href: string }> = [
-    { page: "preparation", href: `/report-preview?jobId=${encodeURIComponent(jobId)}` },
+  // The one path (CORRECTION-report-studio-live-path): drafting, sections, scope, validation and publishing are all on Report
+  // Printing, so Preparation no longer opens the old /report-preview page — it arrives as its own sub-page with B2-6. Client
+  // Review is still the review inbox on /reports until then.
+  const tabs: Array<{ page: StudioPage; href: string | null }> = [
+    { page: "preparation", href: null },
     { page: "printing", href: studioHref(jobId, "printing") },
     { page: "review", href: "/reports" },
   ];
@@ -54,7 +57,9 @@ export function ReportStudioFrame({ jobId, page, children }: { jobId: string; pa
       <nav className="nzs-subnav" aria-label="Report">
         {tabs.map((tab) => tab.page === page
           ? <span key={tab.page} className="nzs-subnav-item on" aria-current="page">{PAGE_LABEL[tab.page]}</span>
-          : <Link key={tab.page} className="nzs-subnav-item" href={tab.href}>{PAGE_LABEL[tab.page]}</Link>)}
+          : tab.href === null
+            ? <span key={tab.page} className="nzs-subnav-item soon" aria-disabled="true" title="Coming with B2-6. Drafting, sections, scope and validation are on Report Printing.">{PAGE_LABEL[tab.page]}</span>
+            : <Link key={tab.page} className="nzs-subnav-item" href={tab.href}>{PAGE_LABEL[tab.page]}</Link>)}
       </nav>
       {children}
     </div>
@@ -80,12 +85,27 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   const drawnPlan = reportSectionPlanOf(composition);
   const [plan, setPlan] = useState<ReportSectionPlan>(drawnPlan);
   const [scope, setScope] = useState<ReportScope>(draft?.scope ?? composition.scope ?? { kind: "whole" });
-  const [pending, setPending] = useState<"save" | "validate" | null>(null);
+  const [pending, setPending] = useState<"save" | "validate" | "publish" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const editable = kind !== "published" && pending === null;
   const rail = studioRail(composition, plan);
   const dirty = kind === "validated" && !samePlan(plan, drawnPlan);
   const whole = scope.kind === "whole";
+
+  // The signee validate freezes onto the version — the client's report-signee contacts, offered as the job page's release
+  // panel offers them (the first by default; "No signee" is a choice, never a guess).
+  const signees = useReportSignees(jobId, kind === "draft");
+  const [signeeId, setSigneeId] = useState("");
+  useEffect(() => { if (signees?.length) setSigneeId((current) => current && signees.some((item) => item.id === current) ? current : signees[0]!.id); }, [signees]);
+
+  // Publishing (report.publish) on a validated version: shown with its access reason up front; the server stays authoritative
+  // (it refuses the snapshot's preparer — NZC-022 — and a version that moved since this screen opened).
+  const me = useStaffMe(kind === "validated");
+  const publishAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
+    : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to publish." }
+    : me === null ? { state: "unavailable", reason: "Your permissions could not be checked, so publishing is unavailable." }
+    : accessFor(me, "report.publish");
+  const [confirming, setConfirming] = useState(false);
 
   // A draft is re-read with the rail's choice: the server composes the draft the studio shows, from the plan and scope in the
   // URL. A plan is carried once it has been chosen here (or was already), so validate otherwise applies its own fallbacks.
@@ -125,19 +145,37 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
     const result = await postBrowserCommand<{ reportVersionId: string }>("/api/isolated/reports/validate", {
       reviewedSnapshotId: draft.snapshotId, manifestVersion: crpProfessionalManifest.version, scope,
       ...(draft.planOrigin === "edited" ? { sectionPlan: plan } : {}),
+      signeeContactId: signeeId || null,
     }, crypto.randomUUID());
     setPending(null);
     if (result.state === "success") { window.location.assign(`${studioHref(jobId)}?version=${encodeURIComponent(result.data.reportVersionId)}`); return; }
     setMessage(result.state === "validation_failed" ? result.issues?.map((issue) => issue.message).join(" ") || result.message || "Validation blocked." : result.message || "Validation failed.");
   }
 
-  // The rail names a page by the heading the document gives it; the document itself is not touched (its markup is pinned).
+  async function publish() {
+    if (kind !== "validated" || !version || dirty || pending || publishAccess.state !== "allowed") return;
+    setPending("publish");
+    // report.publish pins exactly the version this screen opened — its row version, manifest and snapshot — so a version that
+    // moved elsewhere (a saved plan change bumps it) is refused, never published unseen.
+    const result = await postBrowserCommand<{ reportVersionId: string; publishedAt: string }>("/api/isolated/reports/publish", {
+      reportVersionId: version.reportVersionId, expectedStatus: "validated", expectedVersion: version.version,
+      manifestVersion: version.manifestVersion, reviewedSnapshotId: version.snapshotId,
+    }, crypto.randomUUID());
+    setPending(null);
+    setConfirming(false);
+    if (result.state === "success") { window.location.assign(`${studioHref(jobId)}?version=${encodeURIComponent(version.reportVersionId)}`); return; }
+    setMessage(result.state === "validation_failed" ? result.issues?.map((issue) => issue.message).join(" ") || result.message || "Publication blocked." : result.message || "Publication failed.");
+  }
+
+  // The rail finds a page in the document without touching it (its markup is pinned): composed@5 marks each section with
+  // `data-section`; composed@1–4 are found by the heading they give the page, as before.
   const goTo = (key: string, title: string) => {
     const root = stage.current;
     if (!root) return;
     const target = key === "cover"
-      ? root.querySelector<HTMLElement>(".nzr-cover")
-      : Array.from(root.querySelectorAll<HTMLElement>("section.nzr-page")).find((page) => page.querySelector("h2")?.textContent?.trim() === title) ?? null;
+      ? root.querySelector<HTMLElement>(".nzr-cover, .r5-cover")
+      : root.querySelector<HTMLElement>(`[data-section="${CSS.escape(key)}"]`)
+        ?? Array.from(root.querySelectorAll<HTMLElement>("section.nzr-page")).find((page) => page.querySelector("h2")?.textContent?.trim() === title) ?? null;
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const movable = rail.filter((row) => row.movable);
@@ -157,8 +195,26 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         </div>}
       <span className="nzs-spacer" />
       <span className={`nzs-status ${kind === "published" ? "issued" : kind}`} data-studio-status={kind}>{status}</span>
+      {kind === "draft" ? <div className="nzs-ctl nzs-signee">
+        <span className="nzs-ctl-label" aria-hidden="true">Signee</span>
+        <select className="nz-sel" value={signeeId} onChange={(event) => setSigneeId(event.target.value)} disabled={pending !== null || !signees} aria-label="Report signee" data-studio-signee
+          title="Frozen onto the validated version and shown on the report's sign-off. Only the client's contacts marked Report signee are offered.">
+          {signees?.length ? null : <option value="">{signees === undefined ? "Loading signees…" : signees === null ? "Signees could not be read" : "No report-signee contacts"}</option>}
+          {signees?.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName}{contact.jobTitle ? ` — ${contact.jobTitle}` : ""}</option>)}
+          {signees?.length ? <option value="">No signee on this report</option> : null}
+        </select>
+      </div> : null}
       {kind === "draft" ? <button type="button" className="nz-btn pri" data-studio-validate disabled={!draft || draft.blockers.length > 0 || pending !== null}
         title={draft && draft.blockers.length > 0 ? "Resolve what validation would refuse first" : undefined} onClick={validate}>{pending === "validate" ? "Validating…" : "Validate this report"}</button> : null}
+      {kind === "validated" && !confirming ? <button type="button" className="nz-btn pri" data-studio-publish
+        disabled={dirty || pending !== null || publishAccess.state !== "allowed"}
+        title={dirty ? "Save the section plan first, so the report issues as shown" : publishAccess.state !== "allowed" ? publishAccess.reason : "Publish this exact version to the client portal"}
+        onClick={() => { setMessage(null); setConfirming(true); }}>Publish to client portal</button> : null}
+      {kind === "validated" && confirming ? <span className="nzs-confirm" role="group" aria-label="Confirm publication" data-studio-publish-confirm>
+        <span>Publish version {version?.reportVersionId} to the client portal? It cannot be changed afterwards.</span>
+        <button type="button" className="nz-btn pri" disabled={pending !== null || dirty} onClick={publish}>{pending === "publish" ? "Publishing…" : "Publish"}</button>
+        <button type="button" className="nz-btn" disabled={pending !== null} onClick={() => setConfirming(false)}>Cancel</button>
+      </span> : null}
       <div className="nzs-seg" role="group" aria-label="View">
         <button type="button" className={mode === "flow" ? "on" : ""} aria-pressed={mode === "flow"} onClick={() => setMode("flow")}>Continuous</button>
         <button type="button" className={mode === "page" ? "on" : ""} aria-pressed={mode === "page"} onClick={() => setMode("page")}>Page · A4</button>
@@ -210,19 +266,31 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         </div> : kind === "validated" ? <div className="report-preview-band" role="note" data-report-preview="not-issued">
           <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it. Nothing here is stored or sent.
         </div> : null}
-        <ReportComposedView composition={composition} preview={kind !== "published"} />
+        <ReportComposedView composition={composition} preview={kind !== "published"} mode={mode} />
       </div>
     </div>
   </ReportStudioFrame>;
 }
 
-/** Nothing to show: the job has no approved snapshot yet, so there is no report to prepare. */
+/**
+ * Nothing to draft: the job has no approved reviewed snapshot. Said for what it is — as the old preparation page said it, so
+ * the studio no longer sends anyone back there (the one path): imported v7 history awaiting re-compose; a snapshot awaiting
+ * approval by someone other than its preparer; a job with no evidence yet; or, unread, that it could not be told which.
+ */
 export function ReportStudioEmpty({ jobId }: { jobId: string }) {
+  const row = useJobReportRow(jobId);
+  const job = `/jobs/${encodeURIComponent(jobId)}`;
+  const state = row === undefined ? "checking" : row === null ? "unread" : row.v7Record && !row.hasSnapshot ? "v7" : row.hasSnapshot ? "awaiting-approval" : "no-evidence";
   return <ReportStudioFrame jobId={jobId} page="printing">
-    <section className="nz-empty nzs-empty" data-studio-empty>
+    <section className="nz-empty nzs-empty" data-studio-empty={state}>
       <h1>Nothing to print yet</h1>
-      <p>Report Printing composes the report from the job&rsquo;s approved reviewed snapshot. This job has none yet: its evidence is reviewed and approved first.</p>
-      <Link className="nz-btn pri" href={`/report-preview?jobId=${encodeURIComponent(jobId)}`}>Open Report Preparation</Link>
+      {state === "checking" ? <p>Reading the job&rsquo;s report state…</p>
+        : state === "v7" ? <><p>This period&rsquo;s record of account is its NZ Insights Pro v7 report — there is no console snapshot to compose yet. It is slated for re-compose: once its v7 figures are re-ingested and reviewed, its report is drafted here.</p>
+          <p className="nz-v7-record-line">{v7RecordLine(row!.v7Report)} Its content is kept sealed as issued.</p></>
+        : state === "awaiting-approval" ? <p>This job&rsquo;s reviewed snapshot is awaiting approval by someone other than its preparer. Once it is approved on the job, its report is drafted here.</p>
+        : state === "no-evidence" ? <p>Report Printing composes the report from the job&rsquo;s approved reviewed snapshot. This job has none yet: add and review its evidence, then take and approve a snapshot of it.</p>
+        : <p>No approved snapshot was found for this job, and whether it is imported history or a job awaiting evidence could not be checked. Nothing has been assumed.</p>}
+      <Link className="nz-btn pri" href={job}>Open the job</Link>
     </section>
   </ReportStudioFrame>;
 }

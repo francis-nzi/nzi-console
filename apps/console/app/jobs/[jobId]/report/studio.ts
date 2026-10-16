@@ -18,9 +18,14 @@ export type StudioRegisterRow = {
   createdAt: string; publishedAt: string | null; scopeLabel: string;
   /** The row's version — what `report.sectionPlan.update` and `report.publish` pin. */
   version: number;
+  /** What `report.publish` also pins: the manifest the version was validated against, and its reviewed snapshot. */
+  manifestVersion: number; snapshotId: string;
 };
 
-export type StudioVersion = { reportVersionId: string; status: "validated" | "published"; createdAt: string; publishedAt: string | null; scopeLabel: string; version: number };
+export type StudioVersion = {
+  reportVersionId: string; status: "validated" | "published"; createdAt: string; publishedAt: string | null; scopeLabel: string; version: number;
+  manifestVersion: number; snapshotId: string;
+};
 
 /**
  * The job's version the studio opens: its newest validated or published one. A published version is the issued report; a
@@ -33,7 +38,8 @@ export function pickStudioVersion(register: readonly StudioRegisterRow[], jobId:
     row.jobId === jobId && (row.status === "validated" || row.status === "published"));
   const newest = (wanted ? open.find((row) => row.reportVersionId === wanted) : undefined)
     ?? [...open].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.reportVersionId.localeCompare(a.reportVersionId))[0];
-  return newest ? { reportVersionId: newest.reportVersionId, status: newest.status, createdAt: newest.createdAt, publishedAt: newest.publishedAt, scopeLabel: newest.scopeLabel, version: newest.version } : null;
+  return newest ? { reportVersionId: newest.reportVersionId, status: newest.status, createdAt: newest.createdAt, publishedAt: newest.publishedAt, scopeLabel: newest.scopeLabel, version: newest.version,
+    manifestVersion: newest.manifestVersion, snapshotId: newest.snapshotId } : null;
 }
 
 export type StudioRailRow = {
@@ -64,9 +70,10 @@ export function studioRail(composition: ReportComposition, plan: ReportSectionPl
   // renderers never draw them.
   const renderer = reportRendererOf(composition), meta = reportSectionMetaFor(composition);
   const v4 = renderer === "composed@4", v5 = renderer === "composed@5";
-  // composed@5 numbers by its own "draws" test and heads by its own titles, its standalone narrative sections included.
+  // composed@5 numbers by its own "draws" test and heads by its own titles, its standalone narrative sections included. Its
+  // cover is drawn always, outside that set (the layout never numbers a cover, so counting it here moves no number).
   const present = v5
-    ? (key: string) => composed5Draws(key) && (key !== "sites" || hasSites)
+    ? (key: string) => key === "cover" || (composed5Draws(key) && (key !== "sites" || hasSites))
     : (key: string) => isReportDataSection(key) && (key !== "sites" || hasSites) && (v4 || !reportComposed4Sections.includes(key));
   const numbers = new Map(reportSectionLayout(plan, present).map((entry) => [entry.key, entry.number]));
   return plan.filter((entry) => isReportDataSection(entry.key) || (v5 && isReportStandaloneNarrativeSection(entry.key))).map((entry) => {
@@ -74,7 +81,7 @@ export function studioRail(composition: ReportComposition, plan: ReportSectionPl
     const drawn = numbers.has(key);
     return {
       key, title: (v5 ? COMPOSED5_TITLES[key] : undefined) ?? meta[key]?.title ?? reportPlanSectionTitle(entry.key), number: numbers.get(key) ?? null, included: entry.included, drawn,
-      note: !entry.included ? "Left out of this report" : drawn ? null : "Nothing to draw: this report has no site breakdown",
+      note: !entry.included ? "Left out of this report" : drawn ? null : key === "sites" ? "Nothing to draw: this report has no site breakdown" : "Nothing to draw in this report",
       movable: isMovableReportSection(key), optional: REPORT_SECTION_EXCLUSION_AVAILABLE && isOptionalReportSection(key),
     };
   });

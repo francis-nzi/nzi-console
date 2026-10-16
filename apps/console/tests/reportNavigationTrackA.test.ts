@@ -12,7 +12,8 @@ describe("Track A: report navigation", () => {
     const workspace = read("apps/console/app/jobs/CrpScopeWorkspace.tsx");
     assert.equal(workspace.split("<JobReportLink jobId={job.header.id} />").length - 1, 2, "the job shell header and the legacy header");
     const link = read("apps/console/app/jobs/JobReportLink.tsx");
-    assert.match(link, /reportLinkFor\(row\)/);
+    // The one path (CORRECTION-report-studio-live-path): the same rule, opening the studio wherever it is on.
+    assert.match(link, /reportLinkFor\(row, \{ studio: reportFeatureEnabled\("report-sections"\) \}\)/);
     assert.match(link, /const row = useJobReportRow\(jobId\);/);
     assert.match(read("apps/console/app/lib/useJobReportRow.ts"), /report-status\?jobId=\$\{encodeURIComponent\(jobId\)\}/, "the job's own row of the register");
     assert.match(link, /if \(!row\) return null;/, "an unread state offers nothing rather than a guess");

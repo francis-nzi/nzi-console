@@ -14,7 +14,9 @@ import {
 } from "@nzi/charts";
 import { reportScopeChoices, snapshotSourceSummary, type ReviewedCrpSnapshotReadModel } from "@nzi/contracts";
 import type { EmissionsByActivityData,IntensityPathwayData,PurchasedGoodsBreakdownData,ReductionPathwayData,ScopeDonutData,ScopeYearOnYearData,SiteDonutData } from "@nzi/charts";
+import { redirect } from "next/navigation";
 import { ScreenState } from "../lib/ScreenState";
+import { reportFeatureEnabled } from "../lib/reportFlags";
 import { loadScreen } from "../lib/loadScreen";
 import { formatDateTime } from "../lib/formatDate";
 import {snapshotHasPurchasedGoods,validateManifest} from "@nzi/charts";
@@ -31,6 +33,10 @@ export default async function ReportPreviewPage({
   searchParams: Promise<{ jobId?: string }>;
 }) {
   const { jobId } = await searchParams;
+  // The one path (CORRECTION-report-studio-live-path): where the Report Studio is on, a job's preparation is the studio —
+  // drafting, sections, scope, validation and publishing in one place — so an old link or bookmark lands there. The job-less
+  // picker below stays: it is how a job is chosen, and its "Prepare report" opens the studio.
+  if (jobId && reportFeatureEnabled("report-sections")) redirect(`/jobs/${encodeURIComponent(jobId)}/report/printing`);
   if (jobId) {
     const result = await loadScreen<{
       snapshots: ReviewedCrpSnapshotReadModel[];

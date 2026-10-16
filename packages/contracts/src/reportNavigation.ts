@@ -24,10 +24,14 @@ export type ReportLink =
 /**
  * A1: the one report link a job has, computed from its state — so the same control does the right thing before and after a
  * job is re-composed, and never leads to an empty preview.
+ *
+ * `studio` (CORRECTION-report-studio-live-path, the one path): where the Report Studio is on (`report-sections`), "Prepare
+ * report" opens the studio — drafting, sections, scope, validation and publishing in one place — instead of the old preparation
+ * page. Off, the link is exactly as before.
  */
-export function reportLinkFor(facts: ReportNavFacts): ReportLink {
+export function reportLinkFor(facts: ReportNavFacts, options: { studio?: boolean } = {}): ReportLink {
   if (facts.publishedVersionId) return { kind: "published", label: "View composed report", href: `/reports/${encodeURIComponent(facts.publishedVersionId)}` };
-  if (facts.hasSnapshot) return { kind: "prepare", label: "Prepare report", href: `/report-preview?jobId=${encodeURIComponent(facts.jobId)}` };
+  if (facts.hasSnapshot) return { kind: "prepare", label: "Prepare report", href: options.studio ? `/jobs/${encodeURIComponent(facts.jobId)}/report/printing` : `/report-preview?jobId=${encodeURIComponent(facts.jobId)}` };
   if (facts.v7Record) return { kind: "v7-record", label: "v7 record of account · awaiting re-compose", href: null };
   return { kind: "add-evidence", label: "Add evidence", href: `/jobs/${encodeURIComponent(facts.jobId)}` };
 }
