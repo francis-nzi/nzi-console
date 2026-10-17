@@ -16,3 +16,6 @@ export class ScopeConflictError extends VersionConflictError {
 
 /** Postgres's unique-violation code, for the indexes 0163 keys on scope. */
 export const isUniqueViolation = (error: unknown): boolean => Boolean(error && typeof error === "object" && (error as { code?: string }).code === "23505");
+/** A CHECK constraint refusal (23514), by the constraint's name — so a database backstop can be told apart and named. */
+export const isCheckViolation = (error: unknown, constraint: string): boolean =>
+  Boolean(error && typeof error === "object" && (error as { code?: string }).code === "23514" && (error as { constraint?: string }).constraint === constraint);

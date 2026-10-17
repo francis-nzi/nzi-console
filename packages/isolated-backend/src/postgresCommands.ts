@@ -39,7 +39,7 @@ import {
 import { getAssuranceScreen, listGapResolutions, listReportSections } from "./readModels";
 import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
-import { isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
+import { isCheckViolation, isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
 import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveReportSectionPlan, selectableScopeSites, type ReportScope, type ReportSectionPlanOrigin } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
@@ -2371,10 +2371,20 @@ export async function approveReviewedCrpSnapshot(pool: PoolLike, input: CommandI
     if (snapshot.approved_by) throw new CommandValidationError([{ field: "reviewedSnapshotId", code: "ALREADY_APPROVED", message: "This snapshot is already approved." }]);
     const selfApproved = snapshot.created_by === context.actorId;
     if (selfApproved && !preparerMayProceed(context, access)) throw new SeparationOfDutiesError("snapshot.review", "You prepared this snapshot, so someone else must approve it.");
-    const approved = await db.query<{ approved_at: Date | string }>(
-      `UPDATE nzi_console.reviewed_crp_snapshots SET approved_by=$3,approved_at=now(),approval_note=$4 WHERE organisation_id=$1 AND snapshot_id=$2 AND approved_by IS NULL RETURNING approved_at`,
-      [context.organisationId, input.reviewedSnapshotId, context.actorId, input.note?.trim() || null],
-    );
+    // 0168: a self-approval is recorded on the row as well as in the audit, in the same statement — the database admits
+    // approver = preparer only on a row marked self_approved, so the two can never disagree.
+    let approved: { rows: Array<{ approved_at: Date | string }> };
+    try {
+      approved = await db.query<{ approved_at: Date | string }>(
+        `UPDATE nzi_console.reviewed_crp_snapshots SET approved_by=$3,approved_at=now(),approval_note=$4,self_approved=$5 WHERE organisation_id=$1 AND snapshot_id=$2 AND approved_by IS NULL RETURNING approved_at`,
+        [context.organisationId, input.reviewedSnapshotId, context.actorId, input.note?.trim() || null, selfApproved],
+      );
+    } catch (error) {
+      // The database's backstop refused it: say what was refused, not "the command could not be completed".
+      if (isCheckViolation(error, "reviewed_crp_snapshots_independent_approval") || isCheckViolation(error, "reviewed_crp_snapshots_self_approval_is_preparer"))
+        throw new SeparationOfDutiesError("snapshot.review", "You prepared this snapshot, so someone else must approve it.");
+      throw error;
+    }
     if (!approved.rows[0]) throw new VersionConflictError();
     const approvedAt = approved.rows[0].approved_at instanceof Date ? approved.rows[0].approved_at.toISOString() : String(approved.rows[0].approved_at);
     return {
