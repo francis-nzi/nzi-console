@@ -5,7 +5,8 @@ import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 
 export const dynamic = "force-dynamic";
 
-// NZC-022 — snapshot.review, by anyone except the snapshot's preparer (checked in the command).
+// NZC-022 — snapshot.review, by anyone except the snapshot's preparer, unless REPORT_REQUIRE_INDEPENDENT_APPROVAL is false
+// and they hold the self-approval capability (checked in the command; RULING-NZC022-relax-self-approval).
 export async function POST(request: Request, { params }: { params: Promise<{ snapshotId: string }> }) {
   try {
     const principal = await requireCommandPrincipal(request, "report.snapshot.approve");

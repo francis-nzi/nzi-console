@@ -30,9 +30,12 @@ import {
   type AssuranceScreen,
   type AssuranceTrend,
   type AssuranceTrendYear,
+  type ReviewedCrpSnapshotReadModel,
 } from "@nzi/contracts";
 import { formatQuantity } from "../lib/formatNumber";
+import { useStaffMe } from "../lib/useEditAccess";
 import { filterAuditRows, filterGaps, worklistCounts, type GapFilter, type Worklist } from "./assuranceWorklist";
+import { isSelfApproved, readIndependentApprovalRequired, snapshotActAccess } from "./snapshotApproval";
 
 type Tab = "trend" | "scope" | "site" | "audit" | "intensity";
 type Screen = "loading" | "failed" | "ready";
@@ -327,6 +330,8 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
 
     <SignOffPanel jobId={jobId} canSignOff={canSignOff} openGaps={openGaps} pendingReview={pendingReview} onSignedOff={onReload} />
 
+    <SnapshotApprovalPanel jobId={jobId} readKey={data} onApproved={onReload} />
+
     <AssuranceDrawer
       open={drawerOpen}
       jobId={jobId}
@@ -566,6 +571,76 @@ function SignOffPanel({ jobId, canSignOff, openGaps, pendingReview, onSignedOff 
       >{busy ? "Signing off…" : "Sign off & freeze snapshot"}</GatedButton>
     </div>
     {result && <div className={`nz-banner ${result.kind}`} role={result.kind === "warn" ? "alert" : "status"} style={{ marginTop: 8 }}>{result.text}</div>}
+  </div>;
+}
+
+/**
+ * RULING-NZC022-relax-self-approval §5: the latest reviewed snapshot's approval, next to the sign-off that froze it — the
+ * same report.snapshot.approve command the release control calls. The button is offered only to someone the command will
+ * accept: anyone but the preparer, and the preparer too while independent approval is relaxed and they may release
+ * reports. Anyone else sees that it awaits approval, and why. Re-read whenever the surface re-reads, so a fresh sign-off
+ * shows here at once.
+ */
+function SnapshotApprovalPanel({ jobId, readKey, onApproved }: { jobId: string; readKey: unknown; onApproved: () => void }) {
+  const me = useStaffMe();
+  const [snapshot, setSnapshot] = useState<ReviewedCrpSnapshotReadModel | null | undefined>(undefined);
+  const [independentRequired, setIndependentRequired] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [reads, setReads] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/isolated/jobs/${jobId}/reviewed-snapshots`, { cache: "no-store" });
+        const body = await response.json();
+        if (!live) return;
+        if (!response.ok) { setError(body?.message ?? "The reviewed snapshot could not be read."); return; }
+        setSnapshot(Array.isArray(body.snapshots) ? body.snapshots[0] ?? null : null);
+        setIndependentRequired(readIndependentApprovalRequired(body));
+        setError(null);
+      } catch { if (live) setError("The reviewed snapshot could not be read."); }
+    })();
+    return () => { live = false; };
+  }, [jobId, readKey, reads]);
+
+  async function approve() {
+    if (!snapshot || busy) return;
+    setBusy(true); setError(null);
+    const result = await postBrowserCommand<{ approvedAt: string; selfApproved?: true }>(
+      `/api/isolated/reviewed-snapshots/${encodeURIComponent(snapshot.id)}/approve`, {}, crypto.randomUUID());
+    setBusy(false);
+    if (result.state !== "success") { setError(result.state === "validation_failed" ? result.issues[0]?.message ?? "The snapshot could not be approved." : result.message); return; }
+    setDone(`Reviewed snapshot v${snapshot.version} approved${result.data.selfApproved ? " — recorded as your self-approval" : ""}. It can now be validated and published.`);
+    setReads((n) => n + 1);
+    onApproved();
+  }
+
+  // Not read yet, or nothing frozen: the sign-off above is the step before this one.
+  if (snapshot === undefined) return error ? <div className="nz-assurance-signoff"><div className="nz-banner warn" role="alert">{error}</div></div> : null;
+  if (snapshot === null) return null;
+  if (snapshot.approvedBy) {
+    const on = snapshot.approvedAt ? ` · ${snapshot.approvedAt.slice(0, 10).split("-").reverse().join("/")}` : "";
+    return <div className="nz-assurance-signoff">
+      <div className="nz-sect">Snapshot approval</div>
+      <div className="nz-banner ok" role="status">{done ?? `Reviewed snapshot v${snapshot.version} approved${on}${isSelfApproved(snapshot) ? " · self-approved" : ""}.`}</div>
+    </div>;
+  }
+  const access = snapshotActAccess(me, snapshot, "snapshot.review", independentRequired);
+  return <div className="nz-assurance-signoff" aria-label="Approve reviewed snapshot">
+    <div className="nz-sect">Snapshot approval</div>
+    <p className="muted" style={{ fontSize: 12 }}>
+      Reviewed snapshot v{snapshot.version} is frozen and awaiting approval. A report is validated and published only from an approved snapshot.
+      {independentRequired ? " Its preparer cannot approve it." : " Independent approval is relaxed: a preparer who may release reports can approve their own snapshot, and it is recorded as a self-approval."}
+    </p>
+    {access.state === "allowed"
+      ? <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" className="nz-btn pri" disabled={busy} aria-busy={busy || undefined} onClick={() => void approve()}>{busy ? "Approving…" : "Approve reviewed snapshot"}</button>
+        </div>
+      : <div className="muted nz-gated-reason" role="note">{access.reason}</div>}
+    {error ? <div className="nz-banner warn" role="alert" style={{ marginTop: 8 }}>{error}</div> : null}
   </div>;
 }
 

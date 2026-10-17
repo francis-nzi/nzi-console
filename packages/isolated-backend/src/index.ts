@@ -95,6 +95,7 @@ export * from "./vehicleLookup";
 export * from "./siteLifecycle";
 export * from "./siteBoundary";
 export * from "./access";
+export * from "./independentApproval";
 export * from "./clientContacts";
 export * from "./knowledge";
 export * from "./tourSeen";

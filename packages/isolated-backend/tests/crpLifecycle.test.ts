@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import {describe,it} from "node:test";
-import {AuthorizationError,approveReviewedCrpSnapshot,approveScopeRow,calculateScopeRow,CommandValidationError,createJob,createReviewedCrpSnapshot,createScopeRow,publishCrpReport,validateCrpReport,VersionConflictError} from "../src/index";
-import { commandGrantForRole } from "@nzi/contracts";
+import {AuthorizationError,approveReviewedCrpSnapshot,approveScopeRow,calculateScopeRow,CommandValidationError,createJob,createReviewedCrpSnapshot,createScopeRow,independentApprovalRequired,publishCrpReport,validateCrpReport,VersionConflictError} from "../src/index";
+import { commandGrantForRole, type CapabilityGrant } from "@nzi/contracts";
 
 type Stored={request_hash:string;outcome_json:Record<string,unknown>};
 
 function lifecyclePool(options:{incomplete?:boolean;startEmpty?:boolean}={}){
-  const idempotency=new Map<string,Stored>(),audits:string[]=[],outbox:string[]=[];
+  const idempotency=new Map<string,Stored>(),audits:string[]=[],auditData:Array<Record<string,unknown>>=[],outbox:string[]=[];
   let snapshot:{id:string;hash:string;payload:Record<string,unknown>;createdAt:string;createdBy:string;approvedBy:string|null}|undefined,report:{id:string;status:string;manifest:number;snapshotId:string}|undefined;
   let jobId="job-a",jobVersion=options.startEmpty?1:5;
   const rows:Array<Record<string,unknown>>=options.startEmpty?[]:["1","2","3.1"].map((scope,index)=>({scope_row_id:`row-${scope}`,version:4,scope,source_label:`Scope ${scope} evidence`,site_id:null,site_label:null,purchased_goods_category_id:scope==="3.1"?"category-a":null,purchased_goods_category_label:scope==="3.1"?"Purchased materials":null,calculated_tco2e:String((index+1)*10),override_tco2e:null,factor_label:"Governed factor",factor_version:"2026.1",quality_tier:"measured",review_status:options.incomplete&&scope==="3.1"?"pending":"approved",reviewed_by:options.incomplete&&scope==="3.1"?null:"reviewer-a",enabled:true,provenance_json:{calculatedBy:"consultant-a"}}));
   const client={async query(sql:string,values:readonly unknown[]=[]){if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};if(sql.includes("/* nzi:entry-factor */"))return{rows:[{label:"Governed factor",scopes:["1","2","3"]}]};if(sql.includes("FROM nzi_console.organisation_profiles"))return{rows:[{display_name:"Example Organisation",short_name:"EXO",legal_name:"Example Organisation Limited",logo_asset_id:null,version:1,updated_at:new Date("2026-01-01T00:00:00Z"),updated_by:"seed",source_system:null,registration_number:null,vat_number:null,website_url:null,footer_override:null,signatory_user_id:null,signatory_title:null,address_line_1:null,address_line_2:null,address_city:null,address_region:null,address_postcode:null,address_country:null,contact_email:null,contact_phone:null}]};
     if(sql.includes("FROM nzi_console.command_idempotency")){const stored=idempotency.get(String(values[1]));return{rows:stored?[stored]:[]};}
     if(sql.includes("INSERT INTO nzi_console.command_idempotency")){idempotency.set(String(values[1]),{request_hash:String(values[3]),outcome_json:JSON.parse(String(values[4]))});return{rows:[]};}
-    if(sql.includes("INSERT INTO nzi_console.audit_events")){audits.push(String(values[4]));return{rows:[]};}
+    if(sql.includes("INSERT INTO nzi_console.audit_events")){audits.push(String(values[4]));auditData.push(JSON.parse(String(values[9])));return{rows:[]};}
     if(sql.includes("INSERT INTO nzi_console.transactional_outbox")){outbox.push(String(values[2]));return{rows:[]};}
     if(sql.includes("allocate_job_sequence"))return{rows:[{sequence:717}]};
     // NZC-070 — the job's reporting period and its client's sites (none: every row is unallocated)
@@ -49,7 +49,7 @@ function lifecyclePool(options:{incomplete?:boolean;startEmpty?:boolean}={}){
     if(sql.includes("SET status='published'")){if(report?.status!=="validated")return{rows:[]};report.status="published";return{rows:[{published_at:"2026-08-28T08:15:00.000Z"}]};}
     return{rows:[]};
   },release(){}};
-  return{pool:{connect:async()=>client} as never,state:()=>({snapshot,report,audits,outbox,rows,jobId})};
+  return{pool:{connect:async()=>client} as never,state:()=>({snapshot,report,audits,auditData,outbox,rows,jobId})};
 }
 
 const context=(key:string,actorId="reviewer-a")=>({organisationId:"org-a",actorId,principal:"staff" as const, grant: commandGrantForRole("admin", "org-a", actorId),idempotencyKey:key,correlationId:`corr-${key}`});
@@ -71,4 +71,83 @@ describe("canonical CRP lifecycle acceptance",()=>{
     const published=await publishCrpReport(state.pool,{reportVersionId:validated.data.reportVersionId,expectedStatus:"validated",expectedVersion:1,manifestVersion:1,reviewedSnapshotId:snapshot.data.snapshotId},context("sod-publish","reviewer-a"));
     assert.equal(published.data.status,"published");
   });
+});
+
+// RULING-NZC022-relax-self-approval: REPORT_REQUIRE_INDEPENDENT_APPROVAL, default true. Both states pinned.
+async function withFlag(value:string|undefined,run:()=>Promise<void>){
+  const before=process.env.REPORT_REQUIRE_INDEPENDENT_APPROVAL;
+  if(value===undefined)delete process.env.REPORT_REQUIRE_INDEPENDENT_APPROVAL;else process.env.REPORT_REQUIRE_INDEPENDENT_APPROVAL=value;
+  try{await run();}finally{if(before===undefined)delete process.env.REPORT_REQUIRE_INDEPENDENT_APPROVAL;else process.env.REPORT_REQUIRE_INDEPENDENT_APPROVAL=before;}
+}
+// A user who may freeze, approve rows and approve snapshots, but not release reports — not the CRM/admin capability.
+const withoutRelease=(key:string,actorId:string)=>{const base=context(key,actorId),capabilities:CapabilityGrant[]=base.grant.capabilities.filter(grant=>grant.capability!=="report.publish");return{...base,grant:{...base.grant,capabilities}};};
+const isSod=(permission:string)=>(error:unknown)=>error instanceof AuthorizationError&&error.permission===permission;
+const isIssue=(code:string)=>(error:unknown)=>error instanceof CommandValidationError&&error.issues.some(issue=>issue.code===code);
+const publishInput=(reportVersionId:string,reviewedSnapshotId:string)=>({reportVersionId,expectedStatus:"validated" as const,expectedVersion:1,manifestVersion:1,reviewedSnapshotId});
+
+describe("REPORT_REQUIRE_INDEPENDENT_APPROVAL (NZC-022 relaxed, reversibly)",()=>{
+  it("is required unless set to exactly false — unset, true, or anything else keeps NZC-022 on",()=>{
+    for(const value of [undefined,"","true","TRUE","0","no","off","falsey"])assert.equal(independentApprovalRequired(value===undefined?{}:{REPORT_REQUIRE_INDEPENDENT_APPROVAL:value}),true,String(value));
+    for(const value of ["false","FALSE"," false "])assert.equal(independentApprovalRequired({REPORT_REQUIRE_INDEPENDENT_APPROVAL:value}),false,value);
+  });
+
+  for(const flag of [undefined,"true"])it(`flag ${flag??"unset"}: the preparer is refused at approve, validate and publish, and at row approval; a non-preparer proceeds, audited as before`,()=>withFlag(flag,async()=>{
+    const state=lifecyclePool(),snapshot=await createReviewedCrpSnapshot(state.pool,{jobId:"job-a",expectedJobVersion:5},context(`on-${flag}-snapshot`,"francis"));
+    await assert.rejects(()=>approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context(`on-${flag}-self-approve`,"francis")),isSod("snapshot.review"));
+    const approved=await approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context(`on-${flag}-approve`,"reviewer-a"));
+    assert.equal("selfApproved" in approved.data,false);
+    await assert.rejects(()=>validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},context(`on-${flag}-self-validate`,"francis")),isSod("report.publish"));
+    const validated=await validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},context(`on-${flag}-validate`,"reviewer-a"));
+    await assert.rejects(()=>publishCrpReport(state.pool,publishInput(validated.data.reportVersionId,snapshot.data.snapshotId),context(`on-${flag}-self-publish`,"francis")),isSod("report.publish"));
+    const published=await publishCrpReport(state.pool,publishInput(validated.data.reportVersionId,snapshot.data.snapshotId),context(`on-${flag}-publish`,"reviewer-a"));
+    assert.equal(published.data.status,"published");
+    // The audit events carry no self-approval or preparer-release marker: byte-for-byte today's.
+    for(const data of state.state().auditData){assert.equal("selfApproved" in data,false);assert.equal("releasedByPreparer" in data,false);}
+    // Row approval: whoever calculated the row cannot approve it.
+    await assert.rejects(()=>approveScopeRow(state.pool,{jobId:"job-a",rowIds:["row-1"],expectedReviewVersion:4,reviewerNote:"own row"},context(`on-${flag}-self-row`,"consultant-a")),isIssue("INDEPENDENT_REVIEW_REQUIRED"));
+  }));
+
+  it("flag false: an Admin preparer approves, validates and publishes the snapshot they froze (J000663), each act marked in the audit",()=>withFlag("false",async()=>{
+    const state=lifecyclePool(),snapshot=await createReviewedCrpSnapshot(state.pool,{jobId:"job-a",expectedJobVersion:5},context("off-snapshot","francis"));
+    // Approval is still required before release, and it is still one-shot.
+    await assert.rejects(()=>validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},context("off-unapproved","francis")),isIssue("SNAPSHOT_NOT_APPROVED"));
+    const approved=await approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context("off-self-approve","francis"));
+    assert.equal(approved.data.selfApproved,true);assert.equal(approved.data.approvedBy,"francis");assert.equal(state.state().snapshot?.approvedBy,"francis");
+    await assert.rejects(()=>approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context("off-reapprove","francis")),isIssue("ALREADY_APPROVED"));
+    const validated=await validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},context("off-self-validate","francis"));
+    assert.equal(validated.data.releasedByPreparer,true);
+    const published=await publishCrpReport(state.pool,publishInput(validated.data.reportVersionId,snapshot.data.snapshotId),context("off-self-publish","francis"));
+    assert.equal(published.data.status,"published");assert.equal(published.data.releasedByPreparer,true);
+    assert.deepEqual(state.state().audits,["reviewed_snapshot_created","reviewed_snapshot_approved","report_validated","report_published"]);
+    const [,approveAudit,validateAudit,publishAudit]=state.state().auditData;
+    assert.equal(approveAudit?.selfApproved,true);assert.equal(validateAudit?.releasedByPreparer,true);assert.equal(publishAudit?.releasedByPreparer,true);
+  }));
+
+  it("flag false: a non-preparer's approval and release are unchanged — not marked as self-approval",()=>withFlag("false",async()=>{
+    const state=lifecyclePool(),snapshot=await createReviewedCrpSnapshot(state.pool,{jobId:"job-a",expectedJobVersion:5},context("off-other-snapshot","francis"));
+    const approved=await approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context("off-other-approve","reviewer-a"));
+    assert.equal("selfApproved" in approved.data,false);
+    const validated=await validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},context("off-other-validate","reviewer-a"));
+    assert.equal("releasedByPreparer" in validated.data,false);
+  }));
+
+  it("flag false: a preparer without the CRM/admin capability (report.publish) is still refused at approve and at row approval",()=>withFlag("false",async()=>{
+    const state=lifecyclePool(),snapshot=await createReviewedCrpSnapshot(state.pool,{jobId:"job-a",expectedJobVersion:5},withoutRelease("gate-snapshot","preparer-b"));
+    await assert.rejects(()=>approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},withoutRelease("gate-self-approve","preparer-b")),isSod("snapshot.review"));
+    assert.equal(state.state().snapshot?.approvedBy,null);
+    await assert.rejects(()=>approveScopeRow(state.pool,{jobId:"job-a",rowIds:["row-1"],expectedReviewVersion:4,reviewerNote:"own row"},withoutRelease("gate-self-row","consultant-a")),isIssue("INDEPENDENT_REVIEW_REQUIRED"));
+    // And validate/publish keep their own capability: without report.publish there is no release at all.
+    await approveReviewedCrpSnapshot(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId},context("gate-approve","reviewer-a"));
+    await assert.rejects(()=>validateCrpReport(state.pool,{reviewedSnapshotId:snapshot.data.snapshotId,manifestVersion:1},withoutRelease("gate-self-validate","preparer-b")),isSod("report.publish"));
+  }));
+
+  it("flag false: an Admin may approve a row they calculated, recorded as a self-approval",()=>withFlag("false",async()=>{
+    const state=lifecyclePool();
+    const approved=await approveScopeRow(state.pool,{jobId:"job-a",rowIds:["row-1"],expectedReviewVersion:4,reviewerNote:"own row, relaxed"},context("off-self-row","consultant-a"));
+    assert.equal(approved.data.decision,"approved");assert.equal(approved.data.selfApproved,true);
+    assert.equal(state.state().auditData.at(-1)?.selfApproved,true);
+    // Someone else's approval of a row is not a self-approval.
+    const other=await approveScopeRow(state.pool,{jobId:"job-a",rowIds:["row-2"],expectedReviewVersion:4,reviewerNote:"independent"},context("off-other-row","reviewer-a"));
+    assert.equal("selfApproved" in other.data,false);
+  }));
 });

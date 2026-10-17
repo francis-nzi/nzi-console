@@ -81,6 +81,14 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 - `snapshot.review` / `report.publish` — **separation of duties:** cannot be exercised by
   the same user who prepared the snapshot; `report.publish` additionally requires an
   approved snapshot to exist.
+  **Relaxable, reversibly (RULING-NZC022-relax-self-approval, 17 Oct 2026):** while the server
+  variable `REPORT_REQUIRE_INDEPENDENT_APPROVAL` is `false`, a holder of `report.publish` (Admin,
+  Reviewer) may approve, validate and publish a snapshot they prepared, and approve a scope row
+  they captured or calculated. Each such act is marked in its audit event (`selfApproved: true`
+  on an approval, `releasedByPreparer: true` on validate / publish / section-plan change) and a
+  self-approved snapshot is shown as such on the job. Everyone else is refused as above; approval
+  is still required and still one-shot. Unset or any other value = enforced. Reinstating is
+  setting it back to `true`.
 - `training.manage` — the training module's operational capability, a peer of
   `strategy.manage` / `srs.manage`; **not** `job.manage`, so a general job manager does not
   automatically issue NZI-branded verifiable certificates. **Certificate issuance is
