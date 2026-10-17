@@ -88,8 +88,8 @@ export function deactivateClientReportProfile(pool: PoolLike, input: CommandInpu
  * publish's expectedVersion (and F-3's preview hash) stay coherent; re-validated against the rules; refused once published
  * or superseded; held to the same separation of duties as validate and publish; audited before and after.
  */
-export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["report.sectionPlan.update"], context: CommandContext): Promise<StoredOutcome<{ reportVersionId: string; version: number } & ReturnType<typeof planSummary>>> {
-  return runPostgresCommand(pool, "report.sectionPlan.update", input, context, async (db) => {
+export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["report.sectionPlan.update"], context: CommandContext): Promise<StoredOutcome<{ reportVersionId: string; version: number; releasedByPreparer?: true } & ReturnType<typeof planSummary>>> {
+  return runPostgresCommand(pool, "report.sectionPlan.update", input, context, async (db, access) => {
     const row = (await db.query<{ status: string; version: number; reviewed_snapshot_id: string; section_plan: ReportSectionPlan | null; section_plan_origin: string | null; client_id: string }>(
       `SELECT r.status, r.version, r.reviewed_snapshot_id, r.section_plan, r.section_plan_origin, j.client_id
          FROM nzi_console.report_versions r
@@ -103,7 +103,7 @@ export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["
       `SELECT created_by, approved_by, job_id, data_hash, created_at, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`,
       [context.organisationId, row.reviewed_snapshot_id])).rows[0];
     if (!source) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Reviewed snapshot was not found." }]);
-    requireReleasableSnapshot(context, source);
+    const releasedByPreparer = requireReleasableSnapshot(context, source, access);
     const plan = normaliseReportSectionPlan(input.sectionPlan);
     requireValidSectionPlan(plan);
     // R4: a section cannot be put back into a report whose snapshot cannot fill its charts — the same check validate makes.
@@ -116,7 +116,7 @@ export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["
       [context.organisationId, input.reportVersionId, JSON.stringify(plan), origin, input.expectedVersion]);
     if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, row.version);
     return {
-      data: { reportVersionId: input.reportVersionId, version: updated.rows[0].version, ...planSummary(plan, origin) },
+      data: { reportVersionId: input.reportVersionId, version: updated.rows[0].version, ...planSummary(plan, origin), ...(releasedByPreparer ? { releasedByPreparer: true as const } : {}) },
       before: planSummary(row.section_plan ?? defaultReportSectionPlan, row.section_plan_origin ?? "default"),
       entityType: "report_version", entityId: input.reportVersionId, topic: "report.section_plan.updated",
     };

@@ -46,6 +46,7 @@ import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
+import { preparerMayProceed } from "./independentApproval";
 import { resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
 import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 import type { PoolLike, Queryable } from "./postgres";
@@ -2022,6 +2023,8 @@ export type ReviewScopeRowResult = {
   decision: "approved" | "rejected";
   version: number;
   reviewEventId: string;
+  /** Present only when the row's own preparer approved it, under the relaxed NZC-022 — recorded in the audit event. */
+  selfApproved?: true;
 };
 async function reviewScopeRow<
   K extends "scope.review.approve" | "scope.review.reject",
@@ -2031,7 +2034,7 @@ async function reviewScopeRow<
   input: CommandInputMap[K],
   context: CommandContext,
 ): Promise<StoredOutcome<ReviewScopeRowResult>> {
-  return runPostgresCommand(pool, key, input, context, async (db) => {
+  return runPostgresCommand(pool, key, input, context, async (db, access) => {
     await requireCrpJob(db, context.organisationId, input.jobId);
     if (input.rowIds.length !== 1)
       throw new CommandValidationError([
@@ -2067,6 +2070,7 @@ async function reviewScopeRow<
     if (row.version !== input.expectedReviewVersion)
       throw new VersionConflictError();
     const decision = key === "scope.review.approve" ? "approved" : "rejected";
+    let selfApproved = false;
     if (decision === "approved") {
       if (!row.enabled)
         throw new CommandValidationError([
@@ -2093,17 +2097,21 @@ async function reviewScopeRow<
             message: "Set the data-quality tier before approval.",
           },
         ]);
-      // Neither preparer — whoever captured the row nor whoever calculated it — may approve it.
+      // Neither preparer — whoever captured the row nor whoever calculated it — may approve it, unless NZC-022 is
+      // relaxed and they hold the self-approval capability; then the approval is recorded as a self-approval.
       const preparers = [row.provenance_json?.capturedBy, row.provenance_json?.calculatedBy].filter((id) => typeof id === "string");
-      if (preparers.includes(context.actorId))
-        throw new CommandValidationError([
-          {
-            field: "rowIds",
-            code: "INDEPENDENT_REVIEW_REQUIRED",
-            message:
-              "Whoever captured or calculated this row cannot approve it.",
-          },
-        ]);
+      if (preparers.includes(context.actorId)) {
+        if (!preparerMayProceed(context, access))
+          throw new CommandValidationError([
+            {
+              field: "rowIds",
+              code: "INDEPENDENT_REVIEW_REQUIRED",
+              message:
+                "Whoever captured or calculated this row cannot approve it.",
+            },
+          ]);
+        selfApproved = true;
+      }
     }
     const note =
       "reviewerNote" in input ? input.reviewerNote?.trim() || null : null;
@@ -2141,6 +2149,7 @@ async function reviewScopeRow<
         decision,
         version: updated.rows[0].version,
         reviewEventId,
+        ...(selfApproved ? { selfApproved: true as const } : {}),
       },
       entityType: "scope_row",
       entityId: rowId,
@@ -2223,11 +2232,15 @@ async function governJobBaselineChange(db:Queryable,context:CommandContext,acces
 
 /**
  * NZC-022 separation of duties — a report version is validated (and later published)
- * only from an approved snapshot, and never by the snapshot's preparer.
+ * only from an approved snapshot, and never by the snapshot's preparer — unless NZC-022 is relaxed
+ * (RULING-NZC022-relax-self-approval) and the preparer holds the self-approval capability. Approval is
+ * required either way. Returns true when the preparer is releasing their own snapshot, for the audit event.
  */
-export function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:string;approved_by:string|null}){
+export function requireReleasableSnapshot(context:CommandContext,snapshot:{created_by:string;approved_by:string|null},access:ClientAccess|null):boolean{
   if(!snapshot.approved_by)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"SNAPSHOT_NOT_APPROVED",message:"The reviewed snapshot must be approved before a report is released from it."}]);
-  if(snapshot.created_by===context.actorId)throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
+  if(snapshot.created_by!==context.actorId)return false;
+  if(!preparerMayProceed(context,access))throw new SeparationOfDutiesError("report.publish","You prepared this snapshot, so someone else must validate and publish it.");
+  return true;
 }
 /** A reviewed snapshot's stored row, as the report commands read it. */
 export type CrpSnapshotForManifest = { job_id: string; data_hash: string; created_at: Date | string;
@@ -2253,12 +2266,12 @@ export function validateCrpSnapshotManifest(reviewedSnapshotId: string, snapshot
 }
 
 /** The signee is one of the client's active report-signee contacts, frozen onto the version so the published report reproduces exactly. */
-export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope;sectionPlanOrigin:ReportSectionPlanOrigin}>>{return runPostgresCommand(pool,"report.validate",input,context,async db=>{
+export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["report.validate"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"validated";dataHash:string;signeeContactId:string|null;scope:ReportScope;sectionPlanOrigin:ReportSectionPlanOrigin;releasedByPreparer?:true}>>{return runPostgresCommand(pool,"report.validate",input,context,async(db,access)=>{
   if(input.manifestVersion!==crpProfessionalManifest.version)throw new CommandValidationError([{field:"manifestVersion",code:"VERSION_MISMATCH",message:`CRP professional manifest v${crpProfessionalManifest.version} is required.`}]);
   const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];provenance?:{boundary?:{siteIds?:string[]}}|null;measurements:Array<Record<string,unknown>&{siteId?:string|null}>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
   const snapshot=found.rows[0];
   if(!snapshot)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
-  requireReleasableSnapshot(context,snapshot);
+  const releasedByPreparer=requireReleasableSnapshot(context,snapshot,access);
   const signee=input.signeeContactId?(await db.query<{contact_id:string;full_name:string;job_title:string|null}>(`SELECT k.contact_id,k.full_name,k.job_title FROM nzi_console.client_contacts k JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2 AND j.job_id=$3 AND k.status='active' AND 'report_signee'=ANY(k.roles)`,[context.organisationId,input.signeeContactId,snapshot.job_id])).rows[0]:null;
   if(input.signeeContactId&&!signee)throw new CommandValidationError([{field:"signeeContactId",code:"SIGNEE_INVALID",message:"The signee must be one of this client's active report-signee contacts."}]);
   const payload=snapshot.payload_json;
@@ -2294,10 +2307,10 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
     if(isUniqueViolation(error))throw new ScopeConflictError("This snapshot is already validated at this scope — open that report version.");
     throw error;
   }
-  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null,scope,sectionPlanOrigin:sectionPlan.origin},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
+  return{data:{reportVersionId,jobId:snapshot.job_id,reviewedSnapshotId:input.reviewedSnapshotId,manifestVersion:input.manifestVersion,status:"validated",dataHash:snapshot.data_hash,signeeContactId:signee?.contact_id??null,scope,sectionPlanOrigin:sectionPlan.origin,...(releasedByPreparer?{releasedByPreparer:true as const}:{})},entityType:"report_version",entityId:reportVersionId,topic:"report.validated"};
 });}
 
-export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string;compositionId:string;compositionHash:string}>>{return runPostgresCommand(pool,"report.publish",input,context,async db=>{
+export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["report.publish"],context:CommandContext):Promise<StoredOutcome<{reportVersionId:string;jobId:string;reviewedSnapshotId:string;manifestVersion:number;status:"published";publishedAt:string;compositionId:string;compositionHash:string;releasedByPreparer?:true}>>{return runPostgresCommand(pool,"report.publish",input,context,async(db,access)=>{
   const found=await db.query<{job_id:string;status:string;manifest_version:number;reviewed_snapshot_id:string;version:number;scope_key:string}>(`SELECT job_id,status,manifest_version,reviewed_snapshot_id,version,scope_key FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2 FOR UPDATE`,[context.organisationId,input.reportVersionId]);
   const report=found.rows[0];
   if(!report)throw new CommandValidationError([{field:"reportVersionId",code:"NOT_FOUND",message:"Validated report version was not found."}]);
@@ -2307,10 +2320,10 @@ export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["repo
   if(report.version!==input.expectedVersion)throw new VersionConflictError(input.expectedVersion,report.version);
   if(report.status!==input.expectedStatus)throw new CommandValidationError([{field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report version may be published."}]);
   if(report.manifest_version!==input.manifestVersion||report.reviewed_snapshot_id!==input.reviewedSnapshotId)throw new CommandValidationError([{field:"reportVersionId",code:"EVIDENCE_MISMATCH",message:"The report version does not match the reviewed snapshot and manifest supplied."}]);
-  // Checked again at publish: the snapshot is still approved, and the publisher is not its preparer.
+  // Checked again at publish: the snapshot is still approved, and the publisher is not its preparer (unless NZC-022 is relaxed for them).
   const source=(await db.query<{created_by:string;approved_by:string|null}>(`SELECT created_by,approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,report.reviewed_snapshot_id])).rows[0];
   if(!source)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
-  requireReleasableSnapshot(context,source);
+  const releasedByPreparer=requireReleasableSnapshot(context,source,access);
   // S-1 (0163, R-S2 as updated): one published report per job **per scope**. Publishing supersedes the published report of the
   // same scope only; every other scope stays live beside it.
   await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND scope_key=$3 AND status='published'`,[context.organisationId,report.job_id,report.scope_key]);
@@ -2338,13 +2351,17 @@ export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["repo
   const composition=await composeForReportVersion(db,{organisationId:context.organisationId,reportVersionId:input.reportVersionId,issuedAt:publishedAt});
   const frozen=await freezeReportComposition(db,{organisationId:context.organisationId,composition,issuedBy:context.actorId});
 
-  return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt,compositionId:frozen.compositionId,compositionHash:frozen.dataHash},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};
+  return{data:{reportVersionId:input.reportVersionId,jobId:report.job_id,reviewedSnapshotId:report.reviewed_snapshot_id,manifestVersion:report.manifest_version,status:"published",publishedAt,compositionId:frozen.compositionId,compositionHash:frozen.dataHash,...(releasedByPreparer?{releasedByPreparer:true as const}:{})},entityType:"report_version",entityId:input.reportVersionId,topic:"portal.report.published"};
 });}
 
-export type ApproveReviewedSnapshotResult = { snapshotId: string; jobId: string; approvedBy: string; approvedAt: string };
-/** NZC-022 — snapshot.review, by anyone but the snapshot's preparer. Approval is one-shot. */
+/** `selfApproved` is present only when the preparer approved their own snapshot under the relaxed NZC-022 — recorded in the audit event. */
+export type ApproveReviewedSnapshotResult = { snapshotId: string; jobId: string; approvedBy: string; approvedAt: string; selfApproved?: true };
+/**
+ * NZC-022 — snapshot.review, by anyone but the snapshot's preparer; while NZC-022 is relaxed
+ * (RULING-NZC022-relax-self-approval), also by the preparer if they hold the self-approval capability. Approval is one-shot.
+ */
 export async function approveReviewedCrpSnapshot(pool: PoolLike, input: CommandInputMap["report.snapshot.approve"], context: CommandContext): Promise<StoredOutcome<ApproveReviewedSnapshotResult>> {
-  return runPostgresCommand(pool, "report.snapshot.approve", input, context, async (db) => {
+  return runPostgresCommand(pool, "report.snapshot.approve", input, context, async (db, access) => {
     const found = await db.query<{ job_id: string; created_by: string; approved_by: string | null }>(
       `SELECT job_id,created_by,approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2 FOR UPDATE`,
       [context.organisationId, input.reviewedSnapshotId],
@@ -2352,7 +2369,8 @@ export async function approveReviewedCrpSnapshot(pool: PoolLike, input: CommandI
     const snapshot = found.rows[0];
     if (!snapshot) throw new CommandValidationError([{ field: "reviewedSnapshotId", code: "NOT_FOUND", message: "Reviewed snapshot was not found." }]);
     if (snapshot.approved_by) throw new CommandValidationError([{ field: "reviewedSnapshotId", code: "ALREADY_APPROVED", message: "This snapshot is already approved." }]);
-    if (snapshot.created_by === context.actorId) throw new SeparationOfDutiesError("snapshot.review", "You prepared this snapshot, so someone else must approve it.");
+    const selfApproved = snapshot.created_by === context.actorId;
+    if (selfApproved && !preparerMayProceed(context, access)) throw new SeparationOfDutiesError("snapshot.review", "You prepared this snapshot, so someone else must approve it.");
     const approved = await db.query<{ approved_at: Date | string }>(
       `UPDATE nzi_console.reviewed_crp_snapshots SET approved_by=$3,approved_at=now(),approval_note=$4 WHERE organisation_id=$1 AND snapshot_id=$2 AND approved_by IS NULL RETURNING approved_at`,
       [context.organisationId, input.reviewedSnapshotId, context.actorId, input.note?.trim() || null],
@@ -2360,7 +2378,7 @@ export async function approveReviewedCrpSnapshot(pool: PoolLike, input: CommandI
     if (!approved.rows[0]) throw new VersionConflictError();
     const approvedAt = approved.rows[0].approved_at instanceof Date ? approved.rows[0].approved_at.toISOString() : String(approved.rows[0].approved_at);
     return {
-      data: { snapshotId: input.reviewedSnapshotId, jobId: snapshot.job_id, approvedBy: context.actorId, approvedAt },
+      data: { snapshotId: input.reviewedSnapshotId, jobId: snapshot.job_id, approvedBy: context.actorId, approvedAt, ...(selfApproved ? { selfApproved: true as const } : {}) },
       entityType: "reviewed_crp_snapshot",
       entityId: input.reviewedSnapshotId,
       topic: "report.snapshot.approved",

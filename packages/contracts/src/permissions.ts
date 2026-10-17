@@ -184,3 +184,15 @@ export function commandGrantForRole(role: StaffRole, organisationId: string, use
 
 /** Separation of duties: neither may be exercised by the user who prepared the snapshot. */
 export const separationOfDutiesCapabilities = ["snapshot.review", "report.publish"] as const satisfies readonly Capability[];
+
+/**
+ * NZC-022, relaxed for now (RULING-NZC022-relax-self-approval, 17 Oct 2026). While the server's
+ * REPORT_REQUIRE_INDEPENDENT_APPROVAL is false, a holder of `report.publish` — the capability that releases a
+ * report (Admin and Reviewer in matrix v10) — may approve, validate and publish a snapshot they prepared, and
+ * approve a row they captured or calculated. Everyone else is refused as before, and each command still needs its
+ * own capability. The one rule, so the commands and the job's controls cannot disagree.
+ */
+export const SELF_APPROVAL_CAPABILITY = "report.publish" as const satisfies Capability;
+export function maySelfApprove(grants: readonly CapabilityGrant[], independentApprovalRequired: boolean, clientOwnedByActor?: boolean): boolean {
+  return !independentApprovalRequired && grantsAllow(grants, SELF_APPROVAL_CAPABILITY, clientOwnedByActor);
+}
