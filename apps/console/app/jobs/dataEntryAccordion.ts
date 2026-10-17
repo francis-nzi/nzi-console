@@ -104,6 +104,32 @@ export function scopeHasNoData(group: AccordionScopeGroup): boolean {
   return group.categories.every(category => category.noData && category.rows.length === 0) && group.imported.length === 0 && group.unsorted.length === 0;
 }
 
+/** A category with data in it and something that still needs attention. */
+export function categoryHasWork(entry: AccordionCategory): boolean {
+  return !entry.noData && entry.needsAttention > 0;
+}
+
+/**
+ * DESIGN-job-data-entry-usability C: what is open when the page loads. Every category starts collapsed — the capture gate's
+ * at-rest rule (NZC-147), and with it completed and "no data" categories are collapsed and quiet. The first level is the scope:
+ * a scope collapses by default once it has data and nothing in it needs attention, so a finished job reads as a short list. A
+ * scope with work in it, or with nothing in it yet, stays open — so starting a new job is unchanged. A person's own open/close
+ * always wins over these.
+ */
+export function scopeOpenByDefault(group: AccordionScopeGroup): boolean {
+  if (scopeHasNoData(group)) return true;
+  return group.categories.some(categoryHasWork) || group.unsorted.length > 0 || accordionAttentionRows(group.imported).length > 0;
+}
+
+/** A collapsed scope's summary: its entries and tCO₂e (the same server figures as its categories) and its share of the job's total. */
+export function scopeSummary(group: AccordionScopeGroup, groups: AccordionScopeGroup[]): { entries: number; tco2e: number; sharePercent: number | null } {
+  const tco2eOf = (scope: AccordionScopeGroup) => scope.categories.reduce((sum, category) => sum + category.tco2e, 0);
+  const entries = group.categories.reduce((sum, category) => sum + category.entryCount, 0);
+  const tco2e = tco2eOf(group);
+  const total = groups.reduce((sum, scope) => sum + tco2eOf(scope), 0);
+  return { entries, tco2e, sharePercent: total > 0 ? Math.round((tco2e / total) * 100) : null };
+}
+
 /** The flat "Needs attention" lens over the same rows (the CRP's exception-first strength, §1). */
 export function accordionAttentionRows(rows: ScopeRowReadModel[]): ScopeRowReadModel[] {
   return rows.filter(scopeRowNeedsAttention);

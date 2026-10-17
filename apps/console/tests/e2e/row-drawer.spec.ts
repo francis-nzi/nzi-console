@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
 
 // Data-entry UX review (docs/_handoff_DATA_ENTRY_UX_review.md) — the row-detail
 // drawer.
@@ -46,6 +46,9 @@ async function openAccordion(page: Page): Promise<{ accordion: Locator; errors: 
   const failed = page.getByText("The category view is unavailable");
   await accordion.or(failed).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   test.skip((await accordion.count()) === 0, "data-entry-accordion not enabled on target");
+  // C: scopes collapse; open them (scopes only) so the category cards are on screen.
+  await expect(accordion.locator("button.nz-acc-scopehead").first()).toBeVisible({ timeout: 20_000 });
+  await openAccordionScopes(page);
   await expect(accordion.locator("button.nz-acc-h").first()).toBeVisible({ timeout: 20_000 });
   return { accordion, errors };
 }

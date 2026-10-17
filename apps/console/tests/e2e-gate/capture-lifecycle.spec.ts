@@ -30,8 +30,20 @@ const JOB = "/jobs/712";
 
 const drawer = (page: Page) => page.locator("aside.nz-drawer");
 
-/** Open a category card by its visible name. Cards start collapsed, which is itself the at-rest rule. */
+/**
+ * Open a category card by its visible name. Cards start collapsed, which is itself the at-rest rule. A scope whose data is in
+ * with nothing to do starts collapsed too (DESIGN-job-data-entry-usability C), hiding its cards — so any collapsed scope is
+ * opened first. That opens scopes only, never a card, so the card rule is still what is tested.
+ */
 async function openCard(page: Page, name: string) {
+  // By index, not by `[aria-expanded='false']`: a locator re-resolves, so "the first closed scope" would move on after a click.
+  const scopes = page.locator("button.nz-acc-scopehead");
+  for (let index = 0; index < (await scopes.count()); index += 1) {
+    const scope = scopes.nth(index);
+    if ((await scope.getAttribute("aria-expanded")) === "true") continue;
+    await scope.click();
+    await expect(scope).toHaveAttribute("aria-expanded", "true");
+  }
   const header = page.locator("button.nz-acc-h").filter({ hasText: name }).first();
   await expect(header).toBeVisible();
   // Only act if it is closed: clicking an open card would collapse it, and a test that toggles twice

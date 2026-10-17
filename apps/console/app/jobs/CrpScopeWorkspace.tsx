@@ -59,7 +59,7 @@ import { EmissionEntryForm } from "./EmissionEntryForm";
 import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
-import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
+import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
 import {JobSitesDrawer} from "./JobSitesDrawer";
 import {sitesSummary} from "./jobSitesSummary";
@@ -319,13 +319,23 @@ export function CrpScopeWorkspace({
         ? "Configure the reduction pathway"
         : "Create the reviewed reporting snapshot";
   const stageSectionsOn = dataEntryAdapterEnabled("job-stage-sections");
+  const shellOn = dataEntryAdapterEnabled("job-shell");
   const crpStages: readonly string[] = jobWorkflowStages.crp;
   const activeStageIndex = Math.max(0, crpStages.indexOf(job.header.workflowStage));
   const stageStatus = (index: number): StageStatus => (index < activeStageIndex ? "done" : index === activeStageIndex ? "active" : "todo");
   const toggleStage = (name: string) => setOpenStages(current => { const next = new Set(current); next.has(name) ? next.delete(name) : next.add(name); return next; });
+  // DESIGN-job-data-entry-usability B: the stepper and the focus strip jump here. Under the job shell, Setup is its drawer;
+  // every other stage is a place on the page, scrolled to clear of the sticky band (stepper + totals) above it.
   const jumpToStage = (name: string) => {
+    if (shellOn && name === "Setup") { setShellDrawer("setup"); return; }
     setOpenStages(current => new Set(current).add(name));
-    requestAnimationFrame(() => document.getElementById(`stage-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    requestAnimationFrame(() => {
+      const target = document.getElementById(stageAnchorId(name));
+      if (!target) return;
+      const band = document.querySelector<HTMLElement>(".nz-job-emissions");
+      target.style.scrollMarginTop = band && getComputedStyle(band).position === "sticky" ? `${band.offsetHeight + 8}px` : "";
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
   const selectedDatasets = datasets.filter(dataset => dataset.selected).length;
   const noFactorCount = rows.filter(row => row.enabled && !row.factorLabel).length;
@@ -591,7 +601,6 @@ export function CrpScopeWorkspace({
   // Phase 2 job shell (`job-shell`, JOB-REDESIGN-phase2-kickoff): a compact header with the setup as chips and drawer
   // buttons, and data capture directly under it. Setup, Milestones, Time, Sites and Datasets open in one overlay drawer
   // (the Client-home pattern), each holding the panels the page already had — relocated, not rewritten.
-  const shellOn = dataEntryAdapterEnabled("job-shell");
   const shellSummary: JobShellSummary = {
     datasets: datasetsSummary(datasets),
     sites: sitesSummary(sites),
@@ -631,25 +640,28 @@ export function CrpScopeWorkspace({
   const shellBody = (
     <div className="nz-body nz-shell-body">
       {noticeBanner}
-      <section className="nz-shell-capture" aria-label="Data capture">
+      <section className="nz-shell-capture" aria-label="Data capture" id={stageAnchorId("Data entry")}>
         {dataEntrySurface}
         {createForm}
         {sourceRegister}
       </section>
+      {/* A: the job stepper above numbers the stages, so these carry no orphan "3 · " / "4 · ". */}
       {stageSectionsOn ? <>
-        <StageSection n={3} name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+        <StageSection name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
           {assuranceSurface}
           {reviewQueue}
           {flatRegister}
         </StageSection>
-        <StageSection n={4} name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
+        <StageSection name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
           {releaseControl}
         </StageSection>
       </> : <>
-        {assuranceSurface}
-        {reviewQueue}
-        {flatRegister}
-        {releaseControl}
+        <div id={stageAnchorId("Review & QA")}>
+          {assuranceSurface}
+          {reviewQueue}
+          {flatRegister}
+        </div>
+        <div id={stageAnchorId("Report & publish")}>{releaseControl}</div>
       </>}
       {shellDrawerHost}
     </div>
@@ -693,6 +705,7 @@ export function CrpScopeWorkspace({
           from the page it pushed the whole left rail down the screen. Sticky within the column so the
           totals stay in view while entries are typed below them. */}
       <div className="nz-job-emissions">
+        {shellOn ? <JobStageStepper stages={crpStages} status={stageStatus} onJump={jumpToStage} /> : null}
         <EmissionsSummary jobId={job.header.id} siteId={siteId} siteLabel={siteLabel} initial={emissions} />
         <JobSiteTabs
           sites={captureSites.map(site => ({ id: site.id, name: site.name }))}

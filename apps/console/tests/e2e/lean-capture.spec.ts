@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJobAtStage } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // DA4 — lean capture + drawer refine (NZC-058; docs/ACCEPTANCE_DA4_LEAN_CAPTURE.md).
@@ -37,7 +37,8 @@ async function openLeanCapture(page: Page): Promise<{ form: Locator; body: Locat
   await expectHealthyScreen(page);
 
   const accordion = page.locator("section#data-entry-accordion");
-  await accordion.locator("button.nz-acc-h").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
+  await accordion.locator("button.nz-acc-scopehead").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
+  await openAccordionScopes(page);
 
   let body: Locator | null = null;
   for (const name of ["Natural Gas", "Fuel & Energy Related", "Waste in Operations", "Purchased Goods and Services"]) {

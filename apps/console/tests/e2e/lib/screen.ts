@@ -25,6 +25,19 @@ export async function expandJobStage(page: Page, stageId: string): Promise<void>
   }
 }
 
+// DESIGN-job-data-entry-usability C: a scope whose data is in with nothing to do starts collapsed, hiding its category cards.
+// Open every collapsed scope — scopes only, never a card, so a spec's card assertions still start from rest. By index: a
+// `[aria-expanded='false']` locator re-resolves and would move on after each click.
+export async function openAccordionScopes(page: Page): Promise<void> {
+  const scopes = page.locator("section#data-entry-accordion button.nz-acc-scopehead");
+  for (let index = 0; index < (await scopes.count()); index += 1) {
+    const scope = scopes.nth(index);
+    if ((await scope.getAttribute("aria-expanded")) === "true") continue;
+    await scope.click();
+    await expect(scope).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
 // Known, catalogued client errors on the deployed target that the suite records
 // but does not fail on. Keep this list short and tracked — every entry is a bug.
 //  - React #418: a pre-existing SSR/CSR hydration text mismatch on the CRP job

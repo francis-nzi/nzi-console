@@ -14,6 +14,8 @@ import {
   accordionTotals,
   buildDataEntryAccordion,
   scopeHasNoData,
+  scopeOpenByDefault,
+  scopeSummary,
   visibleAccordionRows,
 } from "./dataEntryAccordion";
 import { formatQuantity, formatTonnes } from "../lib/formatNumber";
@@ -88,7 +90,9 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
   const lens = lensProp ?? lensInternal;
   const setLens = (next: AccordionLens) => { setLensInternal(next); onLensChange?.(next); };
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // C: what a person opened or closed, by key (a category code, "imported-1", "unsorted-3", "scope-2"). Anything they have not
+  // touched follows its default — so a category that becomes complete collapses, and one that gains work opens.
+  const [opened, setOpened] = useState<Map<string, boolean>>(new Map());
   const [addingCode, setAddingCode] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<{ title: string; body: ReactNode } | null>(null);
   // SPEC §1: switched-off rows are hidden by default, one click away, never deleted.
@@ -122,11 +126,13 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const groups = buildDataEntryAccordion(visible.rows, applicable);
   const totals = accordionTotals(groups);
   const attentionRows = accordionAttentionRows(rows);
-  const toggle = (code: string) => setOpen(current => {
-    const next = new Set(current);
-    next.has(code) ? next.delete(code) : next.add(code);
-    return next;
-  });
+  const isOpen = (key: string, byDefault = false) => opened.get(key) ?? byDefault;
+  const toggle = (key: string, byDefault = false) => setOpened(current => new Map(current).set(key, !(current.get(key) ?? byDefault)));
+  // Collapse all / Expand all: every scope and every section in it, set explicitly.
+  const setAll = (value: boolean) => setOpened(new Map(groups.flatMap(group => [
+    `scope-${group.scope}`, ...group.categories.map(entry => entry.category.code),
+    ...(group.imported.length ? [`imported-${group.scope}`] : []), ...(group.unsorted.length ? [`unsorted-${group.scope}`] : []),
+  ]).map(key => [key, value])));
 
   return (
     <section aria-label="Data entry by category" id="data-entry-accordion">
@@ -151,6 +157,12 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             {" "}Show switched-off history ({visible.switchedOff} row{visible.switchedOff === 1 ? "" : "s"})
             <InfoTip label="Switched-off rows">Rows that are switched off — deactivated, superseded by a re-ingest, or v7 rows a re-ingest replaced. They are kept, never deleted, and are not in any total or the report.</InfoTip>
           </label>
+        ) : null}
+        {lens === "category" && groups.length ? (
+          <span className="nz-acc-bulk">
+            <button type="button" className="nz-btn" onClick={() => setAll(false)}>Collapse all</button>
+            <button type="button" className="nz-btn" onClick={() => setAll(true)}>Expand all</button>
+          </span>
         ) : null}
       </div>
 
@@ -181,18 +193,26 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
       </TabPanel>
 
       <TabPanel id="category" idBase="crp-data-entry" active={lens === "category"} className="nz-acc">
-          {groups.map(group => (
+          {groups.map(group => {
+            const scopeKey = `scope-${group.scope}`, scopeOpen = isOpen(scopeKey, scopeOpenByDefault(group)), summary = scopeSummary(group, groups);
+            return (
             <div key={group.scope}>
-              <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
+              {/* C: the scope is the first level — its header collapses the whole group and carries its summary. */}
+              <button type="button" className={`nz-acc-scopehead toggle${scopeOpen ? " open" : ""}`} aria-expanded={scopeOpen} onClick={() => toggle(scopeKey, scopeOpenByDefault(group))}>
+                <span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
                 {/* JW-10 — a scope with nothing in it is shown, and says so; it is never left out. */}
-                {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span> : null}</div>
+                {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span>
+                  : <span className="ssum">{summary.entries} {summary.entries === 1 ? "entry" : "entries"} · {num(summary.tco2e)} tCO₂e{summary.sharePercent === null ? "" : ` · ${summary.sharePercent}% of total`}</span>}
+                <svg className="schev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+              {scopeOpen ? <>
               {group.categories.map(entry => {
                 const code = entry.category.code;
-                const isOpen = open.has(code);
+                const categoryOpen = isOpen(code);
                 const imp = categoryImport?.(entry.category) ?? null;
                 return (
-                  <div key={code} className={`nz-acc-cat${isOpen ? " open" : ""}`} style={{ "--cc": scopeColour(group.scope) } as React.CSSProperties}>
-                    <button type="button" className="nz-acc-h" aria-expanded={isOpen} onClick={() => toggle(code)}>
+                  <div key={code} className={`nz-acc-cat${categoryOpen ? " open" : ""}`} style={{ "--cc": scopeColour(group.scope) } as React.CSSProperties}>
+                    <button type="button" className="nz-acc-h" aria-expanded={categoryOpen} onClick={() => toggle(code)}>
                       <span className="nz-acc-badge">{entry.category.name.slice(0, 1)}</span>
                       <span className="nz-acc-tt">
                         <b>{entry.category.name}
@@ -203,7 +223,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                       <span className="nz-acc-compl"><span className="bar"><i style={{ width: `${entry.completeness}%` }} /></span>{entry.completeness}%</span>
                       <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                     </button>
-                    {isOpen ? (
+                    {categoryOpen ? (
                       <div className="nz-acc-body">
                         {entry.rows.length ? (
                           <div className="nz-table-wrap">
@@ -247,13 +267,13 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
               })}
               {group.imported.length ? (
                 <div className="nz-acc-cat" style={{ "--cc": "var(--t3)" } as React.CSSProperties}>
-                  <button type="button" className="nz-acc-h" aria-expanded={open.has(`imported-${group.scope}`)} onClick={() => toggle(`imported-${group.scope}`)}>
+                  <button type="button" className="nz-acc-h" aria-expanded={isOpen(`imported-${group.scope}`)} onClick={() => toggle(`imported-${group.scope}`)}>
                     <span className="nz-acc-badge">v7</span>
                     <span className="nz-acc-tt"><b>Imported from v7<span className="nz-chip-mini">{group.imported.length}</span></b>
                       <span className="sum">This period&rsquo;s figures as recorded in NZ Insights Pro v7 — fixed history, shown under v7&rsquo;s own labels.</span></span>
                     <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                   </button>
-                  {open.has(`imported-${group.scope}`) ? (
+                  {isOpen(`imported-${group.scope}`) ? (
                     <div className="nz-acc-body">
                       <div className="nz-table-wrap">
                         <table className="nz-tbl">
@@ -279,13 +299,13 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
               ) : null}
               {group.unsorted.length ? (
                 <div className="nz-acc-cat" style={{ "--cc": "var(--t3)" } as React.CSSProperties}>
-                  <button type="button" className="nz-acc-h" aria-expanded={open.has(`unsorted-${group.scope}`)} onClick={() => toggle(`unsorted-${group.scope}`)}>
+                  <button type="button" className="nz-acc-h" aria-expanded={isOpen(`unsorted-${group.scope}`)} onClick={() => toggle(`unsorted-${group.scope}`)}>
                     <span className="nz-acc-badge">?</span>
                     <span className="nz-acc-tt"><b>Unsorted<span className="nz-chip-mini todo">{group.unsorted.length}</span></b>
                       <span className="sum">Rows not yet filed under a category — a category is stamped when you next save the row.</span></span>
                     <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                   </button>
-                  {open.has(`unsorted-${group.scope}`) ? (
+                  {isOpen(`unsorted-${group.scope}`) ? (
                     <div className="nz-acc-body">
                       <div className="nz-table-wrap">
                         <table className="nz-tbl">
@@ -309,8 +329,10 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                   ) : null}
                 </div>
               ) : null}
+              </> : null}
             </div>
-          ))}
+            );
+          })}
           {groups.length === 0 ? (
             <div className="nz-acc-empty">No scopes are included for this job yet. Select reporting datasets to populate the category view.</div>
           ) : null}
