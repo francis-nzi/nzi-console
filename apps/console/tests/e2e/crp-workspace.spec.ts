@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expandJobStage, expectHealthyScreen } from "./lib/screen";
+import { collectPageErrors, expandJobStage, expectHealthyScreen, openCategorySources } from "./lib/screen";
 
 test.describe("M2 — CRP job workspace renders end to end", () => {
   test.skip(!staffAccount(), "ACCEPTANCE_STAFF_* not set");
@@ -29,7 +29,10 @@ test.describe("M2 — CRP job workspace renders end to end", () => {
     // entry stage since NZC-057 retired the Factor mapping stage.
     await expandJobStage(page, "stage-setup");
     await expect(page.getByText("Client methodology", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("Per-entity register", { exact: false })).toBeVisible();
+    // Phase 3d (F): the register is read through a category's Sources view; it must load, not fail.
+    const register = await openCategorySources(page, /Company vehicles|Employee commuting|Business travel/i);
+    if (register) await expect(register.getByText("The source register is unavailable")).toHaveCount(0);
+    else await expect(page.getByText("Per-entity register", { exact: false })).toBeVisible();
 
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });

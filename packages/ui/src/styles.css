@@ -1666,6 +1666,12 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-acc-scopehead .schev{flex:none;color:var(--t3);transition:transform .2s;order:3}
 .nz-acc-scopehead.open .schev{transform:rotate(180deg)}
 .nz-acc-tool .nz-acc-bulk{display:inline-flex;gap:6px;margin-left:auto}
+/* D: "Report & publish" is the report's state and one way on. */
+.nz-report-stage{padding:16px 18px}
+.nz-report-stage-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.nz-report-stage-h b{display:block;font-size:15px;margin-top:2px}
+.nz-report-stage .sub{margin:8px 0 12px;color:var(--t2);font-size:13px}
+.nz-report-stage-a{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 
 .nz-site-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px}
 .nz-site-tab{display:inline-flex;align-items:center;gap:8px;flex:none;padding:7px 12px;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--t2);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}

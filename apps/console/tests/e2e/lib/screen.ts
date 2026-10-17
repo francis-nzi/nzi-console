@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // The console renders five explicit states (ARCHITECTURE §6, NZC-006). A healthy
 // rendered screen is one that reached "success" or "empty" — never "failed" or
@@ -36,6 +36,27 @@ export async function openAccordionScopes(page: Page): Promise<void> {
     await scope.click();
     await expect(scope).toHaveAttribute("aria-expanded", "true");
   }
+}
+
+// Phase 3d (F): the per-entity register lives in its categories' Sources views, not as a loose section. Open a source-writing
+// category's view (Company vehicles, Purchased goods and services, Business travel, Employee commuting) and return the scoped
+// register inside it, or null when the category or its view is not on this job.
+export async function openCategorySources(page: Page, category: RegExp): Promise<Locator | null> {
+  const accordion = page.locator("section#data-entry-accordion");
+  await accordion.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
+  if ((await accordion.count()) === 0) return null;
+  await openAccordionScopes(page);
+  const header = accordion.locator("button.nz-acc-h", { hasText: category }).first();
+  if ((await header.count()) === 0) return null;
+  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  const trigger = header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first().getByRole("button", { name: "Sources", exact: true });
+  if ((await trigger.count()) === 0) return null;
+  await trigger.click();
+  const modal = page.locator('[role="dialog"].nz-import-modal');
+  await expect(modal).toBeVisible();
+  const register = modal.locator("section[data-source-register]");
+  await expect(register).toBeVisible();
+  return register;
 }
 
 // Known, catalogued client errors on the deployed target that the suite records

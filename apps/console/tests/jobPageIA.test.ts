@@ -68,7 +68,7 @@ describe("A/B — the job stepper", () => {
     assert.equal(stageAnchorId("Data entry"), "stage-data-entry");
     assert.match(workspace, /<section className="nz-shell-capture" aria-label="Data capture" id=\{stageAnchorId\("Data entry"\)\}>/);
     assert.match(workspace, /<div id=\{stageAnchorId\("Review & QA"\)\}>/);
-    assert.match(workspace, /<div id=\{stageAnchorId\("Report & publish"\)\}>\{releaseControl\}<\/div>/);
+    assert.match(workspace, /<div id=\{stageAnchorId\("Report & publish"\)\}>\{reportStage\}<\/div>/);
   });
 
   it("leaves no orphan 3 / 4 numbers in the shell; the legacy stage layout keeps its 1–4", () => {

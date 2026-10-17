@@ -130,6 +130,18 @@ export function scopeSummary(group: AccordionScopeGroup, groups: AccordionScopeG
   return { entries, tco2e, sharePercent: total > 0 ? Math.round((tco2e / total) * 100) : null };
 }
 
+/** The keys to open to bring one row into view — its scope, and the category (or Imported / Unsorted) it sits in; null if it is in none. */
+export function accordionKeysForRow(groups: AccordionScopeGroup[], rowId: string): string[] | null {
+  for (const group of groups) {
+    const scope = `scope-${group.scope}`;
+    const category = group.categories.find(entry => entry.rows.some(row => row.id === rowId));
+    if (category) return [scope, category.category.code];
+    if (group.imported.some(row => row.id === rowId)) return [scope, `imported-${group.scope}`];
+    if (group.unsorted.some(row => row.id === rowId)) return [scope, `unsorted-${group.scope}`];
+  }
+  return null;
+}
+
 /** The flat "Needs attention" lens over the same rows (the CRP's exception-first strength, §1). */
 export function accordionAttentionRows(rows: ScopeRowReadModel[]): ScopeRowReadModel[] {
   return rows.filter(scopeRowNeedsAttention);

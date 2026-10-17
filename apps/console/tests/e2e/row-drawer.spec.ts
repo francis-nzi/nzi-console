@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
+import { collectPageErrors, expectHealthyScreen, openAccordionScopes, openCategorySources } from "./lib/screen";
 
 // Data-entry UX review (docs/_handoff_DATA_ENTRY_UX_review.md) — the row-detail
 // drawer.
@@ -83,17 +83,23 @@ test.describe("Data-entry row-detail drawer", () => {
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([]);
   });
 
-  test("item 1 — a synced source in the per-entity register opens its canonical row in the drawer", async ({ page }) => {
+  test("item 1 — a synced source in a category's Sources view opens its canonical row in the drawer", async ({ page }) => {
     await openAccordion(page);
-    const register = page.locator("section#emission-source-register");
-    await expect(register).toBeVisible();
+    // Phase 3d (F): the register is each source-writing category's own Sources view.
+    let register: Locator | null = null;
+    for (const name of [/Company vehicles/i, /Employee commuting/i, /Business travel/i, /Purchased goods and services/i]) {
+      const view = await openCategorySources(page, name);
+      if (view && (await view.locator("td button.nz-linkish").count()) > 0) { register = view; break; }
+      if (view) await page.keyboard.press("Escape");
+    }
+    test.skip(register === null, "no synced per-entity source on this job");
 
     // A synced source renders its name as a link-style button (`.nz-linkish`);
     // an unsynced one stays plain text.
-    const linked = register.locator("td button.nz-linkish").first();
-    test.skip((await linked.count()) === 0, "no synced per-entity source on this job");
-
+    const linked = register!.locator("td button.nz-linkish").first();
     await linked.click();
+    // The view closes as the row opens, so the drawer is not behind it.
+    await expect(page.locator('[role="dialog"].nz-import-modal')).toHaveCount(0);
 
     const drawer = page.locator("aside.nz-drawer");
     await expect(drawer).toBeVisible();
