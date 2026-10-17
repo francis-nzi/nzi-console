@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // UX1 flip acceptance — the CRP scope→category data-entry accordion
@@ -39,6 +39,9 @@ async function openJobAccordion(page: Page): Promise<{ accordion: Locator; error
     (await accordion.count()) === 0,
     "data-entry-accordion not enabled on target, or its category view failed to load",
   );
+  // C: scopes collapse; open them (scopes only) so the category cards are on screen.
+  await expect(accordion.locator("button.nz-acc-scopehead").first()).toBeVisible({ timeout: 20_000 });
+  await openAccordionScopes(page);
   await expect(accordion.locator("button.nz-acc-h").first()).toBeVisible({ timeout: 20_000 });
   return { accordion, errors };
 }

@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expandJobStage } from "./lib/screen";
+import { collectPageErrors, expandJobStage, openCategorySources } from "./lib/screen";
 
 // S1 gate §9 — rendered a11y + responsive of the per-entity source register with
 // the group roll-up + Company Vehicles / Employee Commuting framing
@@ -25,18 +25,17 @@ test.describe("S1 — source register rendered acceptance (gate §9)", () => {
     const errors = collectPageErrors(page);
     await page.goto(`/jobs/${job!.id}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load").catch(() => undefined);
-    // NZC-057 — the per-entity register moved from the retired Factor mapping
-    // stage into Data entry (open by default; expand is a no-op if the flag is off).
+    // NZC-057 put the register in Data entry; Phase 3d (F) folds it into its categories' Sources views — Company vehicles here.
     await expandJobStage(page, "stage-data-entry");
-
-    const panel = page.locator("#emission-source-register");
-    await expect(panel).toBeVisible();
+    const found = await openCategorySources(page, /Company vehicles/i);
+    test.skip(found === null, "Company vehicles is not included on this job, or its Sources view is absent");
+    const panel = found!;
     const addButton = panel.getByRole("button", { name: "Add source" });
     test.skip((await addButton.count()) === 0, "commuting/vehicle not enabled on target (NEXT_PUBLIC_FEATURE_DATA_ENTRY_V2 has neither)");
     await addButton.click();
     await expect(panel.getByRole("combobox", { name: "Type" })).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).include("#emission-source-register").withTags(WCAG).analyze();
+    const results = await new AxeBuilder({ page }).include("section[data-source-register]").withTags(WCAG).analyze();
     mkdirSync(OUT, { recursive: true });
     writeFileSync(`${OUT}/source-register.json`, JSON.stringify(results.violations, null, 2));
 

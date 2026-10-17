@@ -46,7 +46,8 @@ import {CrpAssuranceStage} from "./CrpAssuranceStage";
 import {filterScopeRows,resolveSelectedScopeRow,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
 import {ClientFactorPanel} from "./ClientFactorPanel";
-import {EmissionSourceRegister} from "./EmissionSourceRegister";
+import {categorySourceKinds,EmissionSourceRegister} from "./EmissionSourceRegister";
+import {CrpReportStageCard} from "./CrpReportStageCard";
 import {CommutingBulkPanel} from "./CommutingBulkPanel";
 import {VehicleBulkPanel} from "./VehicleBulkPanel";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
@@ -59,7 +60,7 @@ import { EmissionEntryForm } from "./EmissionEntryForm";
 import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
-import {StageSection,StageFocusStrip,type StageStatus} from "./CrpStageSections";
+import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
 import {JobSitesDrawer} from "./JobSitesDrawer";
 import {sitesSummary} from "./jobSitesSummary";
@@ -247,6 +248,8 @@ export function CrpScopeWorkspace({
     [openStages,setOpenStages]=useState<Set<string>>(()=>new Set([job.header.workflowStage,"Data entry"])),
     // Phase 2 job shell: the drawer open over the page, or none — one at a time, as on the Client home.
     [shellDrawer,setShellDrawer]=useState<JobShellDrawer|null>(null),
+    // E: a row just added from the Setup drawer, for the accordion to open and scroll to.
+    [revealRowId,setRevealRowId]=useState<string|null>(null),
     [notice, setNotice] = useState<{
       kind: "ok" | "warn";
       text: string;
@@ -300,6 +303,11 @@ export function CrpScopeWorkspace({
     if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
     return null;
   };
+  // F (Phase 3d, per category): a source-writing category's Sources view — its register records, opened from the category.
+  const categorySources=(category:ApplicableCategory,done:()=>void):{title:string;body:React.ReactNode}|null=>{
+    const kind=categorySourceKinds[category.code];
+    return kind?{title:`${category.name} — sources`,body:<EmissionSourceRegister jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={rowId=>{done();setSelectedId(rowId);}} only={{kinds:[kind]}}/>}:null;
+  };
   const totalTco2e = rows.reduce((sum, row) => sum + (row.enabled ? (row.overrideTco2e ?? row.calculatedTco2e ?? 0) : 0), 0);
   const readinessChecks = [
     { label: "Reporting datasets", complete: datasets.some((dataset) => dataset.selected), detail: `${datasets.filter((dataset) => dataset.selected).length} selected` },
@@ -319,13 +327,23 @@ export function CrpScopeWorkspace({
         ? "Configure the reduction pathway"
         : "Create the reviewed reporting snapshot";
   const stageSectionsOn = dataEntryAdapterEnabled("job-stage-sections");
+  const shellOn = dataEntryAdapterEnabled("job-shell");
   const crpStages: readonly string[] = jobWorkflowStages.crp;
   const activeStageIndex = Math.max(0, crpStages.indexOf(job.header.workflowStage));
   const stageStatus = (index: number): StageStatus => (index < activeStageIndex ? "done" : index === activeStageIndex ? "active" : "todo");
   const toggleStage = (name: string) => setOpenStages(current => { const next = new Set(current); next.has(name) ? next.delete(name) : next.add(name); return next; });
+  // DESIGN-job-data-entry-usability B: the stepper and the focus strip jump here. Under the job shell, Setup is its drawer;
+  // every other stage is a place on the page, scrolled to clear of the sticky band (stepper + totals) above it.
   const jumpToStage = (name: string) => {
+    if (shellOn && name === "Setup") { setShellDrawer("setup"); return; }
     setOpenStages(current => new Set(current).add(name));
-    requestAnimationFrame(() => document.getElementById(`stage-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    requestAnimationFrame(() => {
+      const target = document.getElementById(stageAnchorId(name));
+      if (!target) return;
+      const band = document.querySelector<HTMLElement>(".nz-job-emissions");
+      target.style.scrollMarginTop = band && getComputedStyle(band).position === "sticky" ? `${band.offsetHeight + 8}px` : "";
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
   const selectedDatasets = datasets.filter(dataset => dataset.selected).length;
   const noFactorCount = rows.filter(row => row.enabled && !row.factorLabel).length;
@@ -355,7 +373,10 @@ export function CrpScopeWorkspace({
       setSelectedId(r.data.rowId);
       setCreating(false);
       setDraft(blank());
-      setNotice({ kind: "ok", text: "Scope row created." });
+      // E: added from the Setup drawer, the drawer steps aside so the new row is seen where it lives — opened in the
+      // detail drawer, and its section opened and scrolled to on the page.
+      if (shellOn) { setShellDrawer(null); setRevealRowId(r.data.rowId); }
+      setNotice({ kind: "ok", text: shellOn ? `Emissions source “${draft.sourceLabel}” added — it is open in the detail drawer and shown in Data entry.` : "Scope row created." });
       router.refresh();
     } else setNotice({ kind: "warn", text: errorText(r) });
   }
@@ -457,6 +478,12 @@ export function CrpScopeWorkspace({
         notice={setNotice}
         onDiscarded={() => { setSelectedId(""); router.refresh(); }}
       />
+      {/* F (Phase 3d, from the row): a register-managed row is fixed through its source, a roll-up through its members —
+          the GROUP_ROLLUP / SOURCE_MANAGED refusals' place to go — so its register records open here, with the row. */}
+      {accordionOn && (detailRow.sourceId || detailRow.groupId) ? (
+        <EmissionSourceRegister key={`register-${detailRow.id}`} jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}
+          only={detailRow.groupId ? { groupId: detailRow.groupId } : { sourceId: detailRow.sourceId ?? null }} />
+      ) : null}
     </EvidenceDrawer>
   ))(drawerState.row)) : undefined;
 
@@ -494,6 +521,8 @@ export function CrpScopeWorkspace({
       reportingMonths={spendReportingMonths}
       purchasedGoodsCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
       categoryImport={categoryImport}
+      categorySources={categorySources}
+      revealRowId={revealRowId}
       lens={accordionLens}
       onLensChange={setAccordionLens}
       notice={setNotice}
@@ -507,12 +536,17 @@ export function CrpScopeWorkspace({
       {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
     </>
   );
-  const sourceRegister = <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
+  // F (Phase 3d): with the accordion, the register lives in its categories' Sources views and in a managed row's drawer; the
+  // loose section is only for the layouts without one.
+  const sourceRegister = accordionOn ? null : <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
   const releaseControl = <>
     {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
+  // D: under the job shell, with the Report Studio on, "Report & publish" is the report's state and "Open in Report Studio" —
+  // the inline narrative editor and the release panel are unmounted here (their routes stay; RULING-report-studio-B2-4).
+  const reportStage = reportFeatureEnabled("report-sections") ? <CrpReportStageCard jobId={job.header.id} readyForReporting={qa.readyForReporting}/> : releaseControl;
   const assuranceSurface = dataEntryAdapterEnabled("data-assurance") ? <CrpAssuranceStage jobId={job.header.id} onGoToRow={(rowId) => { setSelectedId(rowId); if (accordionOn) setAccordionLens("category"); jumpToStage("Data entry"); }}/> : null;
   const createForm = creating ? (
     <form className="nz-panel nz-scope-create" id="scope-row-editor" onSubmit={create}>
@@ -591,7 +625,6 @@ export function CrpScopeWorkspace({
   // Phase 2 job shell (`job-shell`, JOB-REDESIGN-phase2-kickoff): a compact header with the setup as chips and drawer
   // buttons, and data capture directly under it. Setup, Milestones, Time, Sites and Datasets open in one overlay drawer
   // (the Client-home pattern), each holding the panels the page already had — relocated, not rewritten.
-  const shellOn = dataEntryAdapterEnabled("job-shell");
   const shellSummary: JobShellSummary = {
     datasets: datasetsSummary(datasets),
     sites: sitesSummary(sites),
@@ -607,6 +640,13 @@ export function CrpScopeWorkspace({
       <div className="nz-shell-period"><span>Reporting period</span><b>{period ?? "Not set"}</b>
         <button type="button" className="nz-btn" onClick={() => setShellDrawer("milestones")}>Change it in Milestones…</button></div>
       <WorkflowStageControl job={job} />
+      {/* E: adding a source is a structure action, so it lives with the job's setup rather than surfacing mid-page. */}
+      <section className="nz-panel nz-config-panel nz-add-source" aria-label="Add emissions source">
+        <div className="nz-config-head"><div><span className="nz-eyebrow">Data structure</span><b>Add emissions source</b>
+          <div className="sub">A row of its own, beside the client&rsquo;s reporting template. Entries within a category are added from that category on the page.</div></div>
+          <button type="button" className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close" : "+ Add emissions source"}</button></div>
+        {createForm}
+      </section>
       {setupPanels}
     </> },
     milestones: { kicker: "Job", title: "Milestones", body: shell?.milestonesPanel ?? null },
@@ -631,25 +671,27 @@ export function CrpScopeWorkspace({
   const shellBody = (
     <div className="nz-body nz-shell-body">
       {noticeBanner}
-      <section className="nz-shell-capture" aria-label="Data capture">
+      <section className="nz-shell-capture" aria-label="Data capture" id={stageAnchorId("Data entry")}>
         {dataEntrySurface}
-        {createForm}
         {sourceRegister}
       </section>
+      {/* A: the job stepper above numbers the stages, so these carry no orphan "3 · " / "4 · ". */}
       {stageSectionsOn ? <>
-        <StageSection n={3} name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
+        <StageSection name="Review & QA" status={stageStatus(2)} summary={stageSummary.review} open={openStages.has("Review & QA")} onToggle={() => toggleStage("Review & QA")}>
           {assuranceSurface}
           {reviewQueue}
           {flatRegister}
         </StageSection>
-        <StageSection n={4} name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
-          {releaseControl}
+        <StageSection name="Report & publish" status={stageStatus(3)} summary={stageSummary.report} open={openStages.has("Report & publish")} onToggle={() => toggleStage("Report & publish")}>
+          {reportStage}
         </StageSection>
       </> : <>
-        {assuranceSurface}
-        {reviewQueue}
-        {flatRegister}
-        {releaseControl}
+        <div id={stageAnchorId("Review & QA")}>
+          {assuranceSurface}
+          {reviewQueue}
+          {flatRegister}
+        </div>
+        <div id={stageAnchorId("Report & publish")}>{reportStage}</div>
       </>}
       {shellDrawerHost}
     </div>
@@ -668,7 +710,6 @@ export function CrpScopeWorkspace({
         <span className={`nz-readiness-pill ${qa.readyForReporting ? "ready" : "progress"}`}><i />{qa.readyForReporting ? "Report ready" : `${readinessPercent}% ready`}</span>
         <JobReportLink jobId={job.header.id} />
         <JobReportStudioLink jobId={job.header.id} />
-        <button className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close editor" : "+ Add emissions source"}</button>
       </>} /> : <>
       <div className="nz-head">
         <div className="nz-job-titleline">
@@ -693,6 +734,7 @@ export function CrpScopeWorkspace({
           from the page it pushed the whole left rail down the screen. Sticky within the column so the
           totals stay in view while entries are typed below them. */}
       <div className="nz-job-emissions">
+        {shellOn ? <JobStageStepper stages={crpStages} status={stageStatus} onJump={jumpToStage} /> : null}
         <EmissionsSummary jobId={job.header.id} siteId={siteId} siteLabel={siteLabel} initial={emissions} />
         <JobSiteTabs
           sites={captureSites.map(site => ({ id: site.id, name: site.name }))}

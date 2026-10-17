@@ -9,7 +9,41 @@ import type { ReactNode } from "react";
 
 export type StageStatus = "done" | "active" | "todo";
 
-const badge = (status: StageStatus, n: number) => (status === "done" ? "✓" : String(n));
+const badge = (status: StageStatus, n?: number) => (status === "done" ? "✓" : n === undefined ? "" : String(n));
+
+/** The page element a stage jumps to — the section's own id, so the stepper, the focus strip and the sections agree. */
+export const stageAnchorId = (name: string) => `stage-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+/**
+ * DESIGN-job-data-entry-usability A/B: the job's 1–4 workflow stepper, persistent at the top of the job page and the
+ * page's own navigation — each stage jumps to its place. State-driven from the recorded workflow stage, the same
+ * reading as the Setup drawer's stepper: done = coloured and ticked, current = highlighted, to do = muted. The
+ * stepper owns the numbering, so the sections below it carry none.
+ */
+export function JobStageStepper({ stages, status, onJump }: {
+  stages: readonly string[];
+  status: (index: number) => StageStatus;
+  onJump: (name: string) => void;
+}) {
+  return (
+    <nav className="nz-job-stepper" aria-label="Job stages">
+      <ol className="nz-stepper">
+        {stages.map((stage, index) => {
+          const state = status(index);
+          return (
+            <li key={stage} className={`nz-step ${state}`} aria-current={state === "active" ? "step" : undefined}>
+              <button type="button" onClick={() => onJump(stage)} aria-label={`${stage} — ${state === "done" ? "complete" : state === "active" ? "current stage" : "to do"}`}>
+                <span className="n">{state === "done" ? "✓" : index + 1}</span>
+                <span className="lb">{stage}</span>
+              </button>
+              {index < stages.length - 1 ? <span className="bar" /> : null}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
 
 /** One collapsible workflow stage. Controlled open state so the focus strip can jump to a stage. */
 export function StageSection({
@@ -21,7 +55,8 @@ export function StageSection({
   onToggle,
   children,
 }: {
-  n: number;
+  /** The stage's number, where the sections are the page's only stepper; omitted under the job stepper, which numbers them. */
+  n?: number;
   name: string;
   status: StageStatus;
   /** One-line summary shown in the collapsed header (prior/later stages). */
@@ -30,9 +65,9 @@ export function StageSection({
   onToggle: () => void;
   children: ReactNode;
 }) {
-  const id = `stage-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const id = stageAnchorId(name);
   return (
-    <section className={`nz-stage-sec ${status}${open ? " open" : ""}`} id={id}>
+    <section className={`nz-stage-sec ${status}${open ? " open" : ""}${n === undefined ? " unnumbered" : ""}`} id={id}>
       <button
         type="button"
         className="nz-stage-sec-h"
@@ -43,7 +78,7 @@ export function StageSection({
         <span className="nz-stage-sec-n">{badge(status, n)}</span>
         <span className="nz-stage-sec-tt">
           <b>
-            {n} · {name}
+            {n === undefined ? name : `${n} · ${name}`}
             <span className={`nz-st ${status === "done" ? "done" : status === "active" ? "est" : "nof"}`}>
               {status === "done" ? "Complete" : status === "active" ? "Active" : "To do"}
             </span>

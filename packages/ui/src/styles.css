@@ -1648,6 +1648,30 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
    left rail down the page. */
 .nz-job-emissions{position:sticky;top:0;z-index:5;background:var(--paper);padding-top:10px;margin-bottom:6px}
 @media (max-width:900px){.nz-job-emissions{position:static}}
+/* DESIGN-job-data-entry-usability A/B: the job's 1–4 stepper rides the sticky band, so it stays in view and doubles as the
+   page's navigation. The shared .nz-step states colour it (done emerald + ✓, current midnight, to do muted). */
+.nz-job-stepper{border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:8px}
+.nz-job-stepper .nz-stepper{padding:6px 10px;gap:4px;margin:0;list-style:none}
+.nz-job-stepper .nz-step button{display:flex;align-items:center;gap:9px;border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:6px 8px;border-radius:8px;white-space:nowrap}
+.nz-job-stepper .nz-step button:hover{background:var(--paper)}
+.nz-job-stepper .nz-step button:focus-visible{outline:2px solid var(--emerald);outline-offset:1px}
+.nz-job-stepper .nz-step.active .lb{font-weight:700}
+@media (max-width:760px){.nz-job-stepper .nz-stepper{overflow-x:auto}.nz-job-stepper .nz-step{flex:none}.nz-job-stepper .nz-step .bar{min-width:12px}}
+/* Under the job stepper the stage sections carry no number: a done stage keeps its tick, the others no badge. */
+.nz-stage-sec.unnumbered:not(.done) .nz-stage-sec-n{display:none}
+/* C: a scope group collapses to its header, which carries the scope's summary. */
+.nz-acc-scopehead.toggle{width:calc(100% - 4px);border:0;background:transparent;font-family:inherit;cursor:pointer;padding:0;text-align:left}
+.nz-acc-scopehead.toggle:focus-visible{outline:2px solid var(--emerald);outline-offset:2px;border-radius:4px}
+.nz-acc-scopehead .ssum{font-weight:600;letter-spacing:0;text-transform:none;color:var(--t3);font-size:11.5px}
+.nz-acc-scopehead .schev{flex:none;color:var(--t3);transition:transform .2s;order:3}
+.nz-acc-scopehead.open .schev{transform:rotate(180deg)}
+.nz-acc-tool .nz-acc-bulk{display:inline-flex;gap:6px;margin-left:auto}
+/* D: "Report & publish" is the report's state and one way on. */
+.nz-report-stage{padding:16px 18px}
+.nz-report-stage-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.nz-report-stage-h b{display:block;font-size:15px;margin-top:2px}
+.nz-report-stage .sub{margin:8px 0 12px;color:var(--t2);font-size:13px}
+.nz-report-stage-a{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 
 .nz-site-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px}
 .nz-site-tab{display:inline-flex;align-items:center;gap:8px;flex:none;padding:7px 12px;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--t2);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}

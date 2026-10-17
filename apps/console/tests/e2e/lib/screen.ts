@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // The console renders five explicit states (ARCHITECTURE §6, NZC-006). A healthy
 // rendered screen is one that reached "success" or "empty" — never "failed" or
@@ -23,6 +23,40 @@ export async function expandJobStage(page: Page, stageId: string): Promise<void>
     await section.locator("button.nz-stage-sec-h").click();
     await expect(page.locator(`section#${stageId}.open`)).toHaveCount(1);
   }
+}
+
+// DESIGN-job-data-entry-usability C: a scope whose data is in with nothing to do starts collapsed, hiding its category cards.
+// Open every collapsed scope — scopes only, never a card, so a spec's card assertions still start from rest. By index: a
+// `[aria-expanded='false']` locator re-resolves and would move on after each click.
+export async function openAccordionScopes(page: Page): Promise<void> {
+  const scopes = page.locator("section#data-entry-accordion button.nz-acc-scopehead");
+  for (let index = 0; index < (await scopes.count()); index += 1) {
+    const scope = scopes.nth(index);
+    if ((await scope.getAttribute("aria-expanded")) === "true") continue;
+    await scope.click();
+    await expect(scope).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
+// Phase 3d (F): the per-entity register lives in its categories' Sources views, not as a loose section. Open a source-writing
+// category's view (Company vehicles, Purchased goods and services, Business travel, Employee commuting) and return the scoped
+// register inside it, or null when the category or its view is not on this job.
+export async function openCategorySources(page: Page, category: RegExp): Promise<Locator | null> {
+  const accordion = page.locator("section#data-entry-accordion");
+  await accordion.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
+  if ((await accordion.count()) === 0) return null;
+  await openAccordionScopes(page);
+  const header = accordion.locator("button.nz-acc-h", { hasText: category }).first();
+  if ((await header.count()) === 0) return null;
+  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  const trigger = header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first().getByRole("button", { name: "Sources", exact: true });
+  if ((await trigger.count()) === 0) return null;
+  await trigger.click();
+  const modal = page.locator('[role="dialog"].nz-import-modal');
+  await expect(modal).toBeVisible();
+  const register = modal.locator("section[data-source-register]");
+  await expect(register).toBeVisible();
+  return register;
 }
 
 // Known, catalogued client errors on the deployed target that the suite records

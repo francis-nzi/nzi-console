@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openAccordionScopes } from "./screen";
 
 // Data-entry UX review item 4: the bulk adapters (spend ledger / spend import /
 // roll-forward / commuting / vehicle) moved from the always-open category card
@@ -19,6 +20,7 @@ export async function openImportModal(
   const failed = page.getByText("The category view is unavailable");
   await accordion.or(failed).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   if ((await accordion.count()) === 0) return true; // legacy flat surface — panel is inline
+  await openAccordionScopes(page); // C: a collapsed scope hides its cards
 
   const header = accordion.locator("button.nz-acc-h", { hasText: category }).first();
   if ((await header.count()) === 0) return false;

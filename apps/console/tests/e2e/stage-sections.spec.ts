@@ -70,11 +70,12 @@ test.describe("UX1e-1 — CRP stage-as-section layout", () => {
   test("renders the four workflow stages as sections, Data entry expanded", async ({ page }) => {
     const { errors } = await openStageShell(page);
 
-    // Data Entry holds the accordion (or the legacy adapters) and the re-homed
-    // per-entity source register (NZC-057).
+    // Data Entry holds the accordion (or the legacy adapters). With the accordion, the per-entity register is folded into its
+    // categories' Sources views (Phase 3d), so there is no loose register section; without it, the register is still here.
     const dataEntry = page.locator("section#stage-data-entry");
     await expect(dataEntry.locator("#data-entry-accordion, .nz-config-panel").first()).toBeVisible();
-    await expect(dataEntry.locator("#emission-source-register")).toHaveCount(1);
+    const accordionOn = (await dataEntry.locator("#data-entry-accordion").count()) > 0;
+    await expect(dataEntry.locator("#emission-source-register")).toHaveCount(accordionOn ? 0 : 1);
 
     // A collapsed later stage expands on click and shows its panel.
     const review = page.locator("section#stage-review-qa");

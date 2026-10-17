@@ -10,7 +10,8 @@ import { useJobReportRow } from "../lib/useJobReportRow";
  * list and the picker use, read from the job's own row of the register. Published → the composed report; a reviewed snapshot →
  * preparation; imported v7 → its record of account, from its unsealed metadata, with no link to sealed content (Q1 (b));
  * otherwise → add evidence. Never a link to an empty preview. If the state cannot be read, nothing is offered rather than a
- * guess. (The job's "Report & publish" section is untouched — approve, validate and publish stay there.)
+ * guess. (Under the job shell with the Report Studio on, the job's "Report & publish" stage is the report's state and "Open in
+ * Report Studio" — the snapshot is approved in Review & QA, and validated and published in the studio.)
  */
 export function JobReportLink({ jobId }: { jobId: string }) {
   const row = useJobReportRow(jobId);
