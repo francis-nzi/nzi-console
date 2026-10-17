@@ -747,6 +747,12 @@ jobs:
       # a frozen composition; run again, nothing changes.
       - name: Migration 0167 turns the standalone narrative sections on in the plans that feed new reports, never an issued one
         run: npx tsx --test packages/isolated-backend/tests/migration0167Real.test.ts
+      # Migration 0168 (FINDING-self-approval-db-constraint): the relaxed NZC-022 path against real Postgres, which the mock pool
+      # never enforced — with the flag false an Admin preparer self-approves (self_approved on the row, in the audit), validates and
+      # publishes; unset or true the command refuses the preparer and the CHECK still backstops a direct write; a preparer without
+      # report.publish is refused; the per-row approve both ways. The commands run as nzi_console_app, so 0168's grant is tested too.
+      - name: Migration 0168 lets a reviewed snapshot carry an explicit self-approval, and the database still backstops every other write
+        run: npx tsx --test packages/isolated-backend/tests/selfApprovalReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.
