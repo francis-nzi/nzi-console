@@ -71,7 +71,9 @@
 .nzs-stage.mode-page .nzr-doc{max-width:794px;padding-left:0;padding-right:0}
 .nzs-stage.mode-page .nzr-page{min-height:1123px;margin-bottom:26px;border-radius:2px;box-shadow:0 10px 30px -12px rgba(11,27,43,.35)}
 @media print{.nzs-subnav,.nzs-toolbar,.nzs-rail{display:none}.nzs-studio{margin:0;background:none}.nzs-body{display:block}.nzs-stage{padding:0;overflow:visible}}
-@media (max-width:900px){.nzs-body{grid-template-columns:1fr}.nzs-rail{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--nzs-line)}.nzs-stage{padding:14px 8px}.nzs-studio{margin:-12px -8px}}
+/* Screen only: a printed A4 page is ~680–794px wide, so an unscoped max-width query matched in print, and its negative studio
+   margin shifted the printed document 8px past the left margin, clipping the first letter of every line. */
+@media screen and (max-width:900px){.nzs-body{grid-template-columns:1fr}.nzs-rail{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--nzs-line)}.nzs-stage{padding:14px 8px}.nzs-studio{margin:-12px -8px}}
 .nzs-empty{margin:12vh auto 0;max-width:620px}
 
 /* B2-2: the rail edits the plan — reorder arrows, a real include switch, the save bar; and the draft's status and blockers. */
