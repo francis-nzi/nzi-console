@@ -69,9 +69,9 @@ describe("composed@4 freezes its period and signee, and reads stored plans compl
   });
   after(async () => { await database?.end(); });
 
-  it("a report composed now is drawn composed@5 (composed@4 the layout before it), with its plan complete and the stamp's reporting period", async () => {
+  it("a report composed now is drawn composed@6 (composed@4 a layout before it), with its plan complete and the stamp's reporting period", async () => {
     const drawn = await preview(signedId);
-    assert.equal(drawn.renderer, "composed@5");
+    assert.equal(drawn.renderer, "composed@6", "B2-4: a new composition carries its narrative, so it is drawn composed@6");
     assert.deepEqual(reportSectionPlanIssues(drawn.sectionPlan), [], "a complete plan, by the rules");
     assert.deepEqual(drawn.sectionPlan, defaultReportSectionPlan.map(({ key, included }) => ({ key, included })));
     assert.deepEqual(drawn.reportingPeriod, { from: "2025-04-01", to: "2026-03-31" });

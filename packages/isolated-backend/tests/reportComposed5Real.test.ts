@@ -88,9 +88,10 @@ describe("composed@5 freezes the mockup's fields, against a real database", { sk
   });
   after(async () => { await database?.end(); });
 
-  it("a report composed now is drawn composed@5; the stamp's period and the signee the version named are frozen", async () => {
+  it("a report composed now is drawn composed@6 (composed@5's layout, the narrative frozen); the stamp's period and the signee the version named are frozen", async () => {
     const drawn = await preview(signedId);
-    assert.equal(drawn.renderer, "composed@5");
+    assert.equal(drawn.renderer, "composed@6", "B2-4: a new composition carries its narrative, so it is drawn composed@6");
+    assert.ok(Array.isArray(drawn.narrative), "the frozen narrative rides with it");
     assert.deepEqual(drawn.reportingPeriod, { from: "2025-04-01", to: "2026-03-31" });
     assert.deepEqual(drawn.signee, { name: "Sam Taylor", jobTitle: "Head of Sustainability" });
   });
