@@ -92,6 +92,26 @@ describe("the Report Studio's draft of a job's report, against a real database",
     assert.deepEqual(uk.scopeChoices.sites.map((site) => site.siteId), ["s-uk"], "the scope selector's choices are the snapshot's own sites");
   });
 
+  it("names every boundary site in the selector the way the report body does — a migrated site with no rows by its name, never `v7-site-…` (small-fixes B)", async () => {
+    // J000663's shape: the boundary holds migrated sites with no frozen row of their own; the client's site record names them.
+    const job = "draft-v7sites";
+    await q(`INSERT INTO nzi_console.client_sites (organisation_id, client_id, site_id, name, in_service_from, created_by) VALUES ($1, $2, 'v7-site-375', 'Dubai Office', '2020-01-01', 'seed')`, [ORG, CLIENT]);
+    await q(`INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year) VALUES ($1, $2, $3, 9905, 'crp', 'CRP', 'open', 'delivery', 2025)`, [ORG, job, CLIENT]);
+    await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, '2025-01-01', '2025-12-31', 'GB')`, [ORG, job]);
+    const payload = { jobNumber: "J009905", client: "Draft Co", reportingYear: 2025,
+      measurements: [{ rowId: "v7s-a", scope: "1", scopeCode: "1", siteId: "s-uk", siteLabel: "UK Office", sourceLabel: "Gas", tco2e: 10, qualityTier: "measured", factorSet: "Gas · upload.xlsx" }],
+      annualComparison: [{ year: 2025, values: [{ scope: "1", value: 10 }] }],
+      provenance: { resolver: "crp.snapshot.issue@2", reportingPeriod: { from: "2025-01-01", to: "2025-12-31" }, boundary: { siteIds: ["s-uk", "v7-site-375"], excludedRowIds: [] }, factorSets: [] } };
+    await q(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by, approved_by, approved_at)
+             VALUES ($1, 'draft-v7sites-1', $2, 1, 1, $3, $4::jsonb, 'prep', 'rev', now())`, [ORG, job, `sha256:${createHash("sha256").update("draft-v7sites-1").digest("hex")}`, JSON.stringify(payload)]);
+
+    const whole = (await draft({ jobId: job, sectionPlan: firstYearPlan }))!;
+    assert.deepEqual(whole.scopeChoices.sites.map((site) => [site.siteId, site.label]), [["s-uk", "UK Office"], ["v7-site-375", "Dubai Office"]]);
+    // The body, scoped to that site, names it the same.
+    const dubai = (await draft({ jobId: job, sectionPlan: firstYearPlan, scope: { kind: "sites", siteIds: ["v7-site-375"] } }))!;
+    assert.deepEqual(dubai.composition.scope, { kind: "sites", siteIds: ["v7-site-375"], siteLabels: ["Dubai Office"] });
+  });
+
   it("stores nothing and runs read only: a write in the same transaction is refused", async () => {
     await draft({ sectionPlan: firstYearPlan });
     assert.equal(await n(`SELECT count(*) AS n FROM nzi_console.report_versions WHERE organisation_id = $1`, [ORG]), 0, "no version");

@@ -91,6 +91,9 @@ export async function draftReportComposition(db: Queryable, input: {
   return {
     composition, draftedAt, snapshotId: snapshot.snapshot_id, snapshotVersion: snapshot.snapshot_version,
     sectionPlan: resolved.plan, planOrigin: resolved.origin, scope,
-    scopeChoices: reportScopeChoices(snapshot.payload_json as never), blockers,
+    // B: the selector names a boundary site the way the composition does — the client's site record, where no frozen row names it.
+    scopeChoices: reportScopeChoices(snapshot.payload_json as never, new Map((await db.query<{ site_id: string; name: string }>(
+      `SELECT site_id, name FROM nzi_console.client_sites WHERE client_id = $1`, [snapshot.client_id])).rows.map((site) => [site.site_id, site.name]))),
+    blockers,
   };
 }

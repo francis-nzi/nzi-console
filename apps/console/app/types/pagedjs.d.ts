@@ -6,6 +6,11 @@
 // so it is its own lazy-loaded chunk, never part of the default report bundle.
 declare module "pagedjs" {
   export type PagedFlow = { pages: unknown[]; total?: number; performance?: number };
+  /** A layout hook module (the studio's repeating table headers). Only the hooks it implements are listed. */
+  export class Handler {
+    constructor(chunker: unknown, polisher: unknown, caller: unknown);
+  }
+  export function registerHandlers(...handlers: Array<new (chunker: unknown, polisher: unknown, caller: unknown) => Handler>): unknown;
   export class Previewer {
     constructor(options?: Record<string, unknown>);
     preview(

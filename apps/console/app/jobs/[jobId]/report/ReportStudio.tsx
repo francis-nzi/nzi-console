@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { crpProfessionalManifest } from "@nzi/charts";
 import {
-  moveReportSection, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
+  moveReportSection, reportRendererOf, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
   type ReportComposition, type ReportScope, type ReportSectionPlan,
 } from "@nzi/contracts";
 import type { ReportDraftComposition } from "@nzi/isolated-backend";
@@ -17,6 +17,9 @@ import { useReportSignees } from "../../../lib/useReportSignees";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
 import { ReportScopeSelector } from "../../../report-preview/ReportScopeSelector";
 import { ReportComposedView } from "../../../reports/[versionId]/ReportComposedView";
+import { reportingYearLabel } from "../../../reports/[versionId]/ReportComposedV5";
+import { StudioPagedView } from "./StudioPagedView";
+import { buildStudioPagedCss, buildStudioPrintCss, studioPrintMark } from "./studioPrint";
 import { samePlan, studioDraftQuery, studioRail, studioRailLegend, type StudioVersion } from "./studio";
 
 /**
@@ -80,7 +83,14 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
 }) {
   const [mode, setMode] = useState<ViewMode>("flow");
   const stage = useRef<HTMLDivElement | null>(null);
+  const flowSource = useRef<HTMLDivElement | null>(null);
   const kind: "draft" | "validated" | "published" = draft || !version ? "draft" : version.status;
+  // D/E: composed@5 is paged for real — Page · A4 is Paged.js over the flow document, with the rules Print uses. Older
+  // renderers (a version validated before composed@5) keep the view they have always had.
+  const paged = reportRendererOf(composition) === "composed@5";
+  const printMeta = { client: composition.client, title: `Carbon Reduction Plan ${reportingYearLabel(composition)}`, mark: studioPrintMark(kind) };
+  // A draft or a validated preview prints here, marked as what it is; the issued report keeps its own immutable print.
+  const printable = kind !== "published";
   // The plan the document draws, and the plan the rail is editing (they differ only while a validated version's change is unsaved).
   const drawnPlan = reportSectionPlanOf(composition);
   const [plan, setPlan] = useState<ReportSectionPlan>(drawnPlan);
@@ -172,9 +182,11 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   const goTo = (key: string, title: string) => {
     const root = stage.current;
     if (!root) return;
+    // The copy on screen: in Page · A4 the flow document is the hidden source, so a section is found in the paged copy.
+    const visible = <T extends HTMLElement>(nodes: NodeListOf<T> | T[]) => Array.from(nodes).find((node) => node.offsetParent !== null) ?? null;
     const target = key === "cover"
-      ? root.querySelector<HTMLElement>(".nzr-cover, .r5-cover")
-      : root.querySelector<HTMLElement>(`[data-section="${CSS.escape(key)}"]`)
+      ? visible(root.querySelectorAll<HTMLElement>(".nzr-cover, .r5-cover"))
+      : visible(root.querySelectorAll<HTMLElement>(`[data-section="${CSS.escape(key)}"]`))
         ?? Array.from(root.querySelectorAll<HTMLElement>("section.nzr-page")).find((page) => page.querySelector("h2")?.textContent?.trim() === title) ?? null;
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -187,11 +199,11 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
       {kind === "draft" && draft
         ? <div className="nzs-ctl nzs-scope-live"><ReportScopeSelector choices={draft.scopeChoices} scope={scope} onChange={changeScope} disabled={pending !== null} /></div>
         : <div className="nzs-ctl">
-          <span className="nzs-ctl-label">Scope</span>
-          <div className="nzs-seg" aria-disabled="true" title="The scope is fixed when the version is validated">
+          <span className="nzs-ctl-label">Sites</span>
+          <div className="nzs-seg" aria-disabled="true" title="The sites are fixed when the version is validated">
             <span className={whole ? "on" : ""}>Whole client</span><span className={whole ? "" : "on"}>By site</span>
           </div>
-          {whole ? null : <span className="nzs-hint">{version?.scopeLabel}</span>}
+          <span className="nzs-hint">{whole ? "Whole client · all sites" : version?.scopeLabel}</span>
         </div>}
       <span className="nzs-spacer" />
       <span className={`nzs-status ${kind === "published" ? "issued" : kind}`} data-studio-status={kind}>{status}</span>
@@ -215,6 +227,8 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         <button type="button" className="nz-btn pri" disabled={pending !== null || dirty} onClick={publish}>{pending === "publish" ? "Publishing…" : "Publish"}</button>
         <button type="button" className="nz-btn" disabled={pending !== null} onClick={() => setConfirming(false)}>Cancel</button>
       </span> : null}
+      {printable ? <button type="button" className="nz-btn" data-studio-print onClick={() => window.print()}
+        title={`Prints exactly this document${printMeta.mark ? `, marked "${printMeta.mark}" on every page` : ""}. Choose "Save as PDF" in the print dialog.`}>Print / Save as PDF</button> : null}
       <div className="nzs-seg" role="group" aria-label="View">
         <button type="button" className={mode === "flow" ? "on" : ""} aria-pressed={mode === "flow"} onClick={() => setMode("flow")}>Continuous</button>
         <button type="button" className={mode === "page" ? "on" : ""} aria-pressed={mode === "page"} onClick={() => setMode("page")}>Page · A4</button>
@@ -266,7 +280,13 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         </div> : kind === "validated" ? <div className="report-preview-band" role="note" data-report-preview="not-issued">
           <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it. Nothing here is stored or sent.
         </div> : null}
-        <ReportComposedView composition={composition} preview={kind !== "published"} mode={mode} />
+        {paged ? <>
+          <div className="nzs-paged-source" ref={flowSource} hidden={mode === "page"}>
+            <ReportComposedView composition={composition} preview={kind !== "published"} mode="flow" />
+          </div>
+          {mode === "page" ? <StudioPagedView source={flowSource} css={buildStudioPagedCss(printMeta)} readKey={composition} /> : null}
+        </> : <ReportComposedView composition={composition} preview={kind !== "published"} mode={mode} />}
+        {printable ? <style data-studio-print-css>{buildStudioPrintCss(printMeta)}</style> : null}
       </div>
     </div>
   </ReportStudioFrame>;
