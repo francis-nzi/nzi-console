@@ -101,12 +101,15 @@ describe("Report Studio: what it may write", () => {
     const studio = read("apps/console/app/jobs/[jobId]/report/ReportStudio.tsx");
     assert.deepEqual([...studio.matchAll(/postBrowserCommand<[^>]*>\("([^"]+)"/g)].map((match) => match[1]).sort(),
       ["/api/isolated/reports/publish", "/api/isolated/reports/section-plan", "/api/isolated/reports/validate"]);
-    // B2-4: narrative editing lands, in its own editor, through exactly the existing report.section.* commands — never the page.
-    assert.doesNotMatch(studio, /reports\/sections\//, "the page itself sends no section edit");
+    // B2-4: narrative editing lands in its own editor, never the page — on a draft through exactly the report.section.* commands,
+    // and (d)(ii) on a validated version through report.narrative.update alone.
+    assert.doesNotMatch(studio, /reports\/sections\/|reports\/narrative/, "the page itself sends no narrative change");
     const editor = read("apps/console/app/jobs/[jobId]/report/StudioNarrativeEditor.tsx");
-    assert.match(editor, /const path = `\/api\/isolated\/reports\/sections\/\$\{kind\}`;/);
+    assert.deepEqual([...editor.matchAll(/postBrowserCommand<[^>]*>\(([`"][^`"]+[`"])/g)].map((match) => match[1]).sort(),
+      ['"/api/isolated/reports/narrative"', "`/api/isolated/reports/sections/${kind}`"]);
     assert.match(editor, /kind: "edit" \| "regenerate" \| "reset"/);
-    assert.match(editor, /expectedVersion: element\.sectionVersion/, "pinned by the section version the draft was composed at");
+    assert.match(editor, /expectedVersion: element\.sectionVersion/, "a draft's change is pinned by the section version the draft was composed at");
+    assert.match(editor, /reportVersionId: target\.reportVersionId, expectedVersion: target\.version/, "a validated version's, by the version");
     assert.doesNotMatch(studio, /method:\s*"POST"|fetch\(/, "no write outside the command client");
     assert.match(studio, /expectedVersion: version\.version, sectionPlan: plan/, "the plan update pins the version the studio opened");
     assert.match(studio, /reportVersionId: version\.reportVersionId, expectedStatus: "validated", expectedVersion: version\.version,\s*manifestVersion: version\.manifestVersion, reviewedSnapshotId: version\.snapshotId/,

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   crpReportSectionCatalogue, defaultReportSectionPlan, isMoneyShaped, REPORT_NARRATIVE_NUMBER_ALLOWLIST, REPORT_RENDERER_LATEST, reportIssuerLineIssues,
   reportNarrativeBodyIssues, reportNarrativeDrawnKeys, reportRendererFor, reportTokenCatalogue, setReportSectionIncluded,
+  commandDefinitions, commandGrantForRole, validateCommand,
 } from "../src/index";
 
 // B2-4 (RULING-report-studio-B2-4): the narrative's integrity rule, the catalogue's wording, what a plan draws, and the renderer stamp.
@@ -91,5 +92,33 @@ describe("what a plan draws, and the renderer it is stamped with (a)", () => {
     assert.equal(reportRendererFor({ narrative: [{ key: "executive-summary", bodyHtml: "<p>x</p>", contentSource: "default", sectionVersion: 0 }] }), "composed@6");
     assert.equal(reportRendererFor({ narrative: null }), "composed@5", "validated before B2-4");
     assert.equal(reportRendererFor({}), "composed@5");
+  });
+});
+
+describe("report.narrative.update (B2-4 (d)(ii)): a validated version's narrative, changed in place", () => {
+  const context = { organisationId: "o", actorId: "a", principal: "staff" as const, idempotencyKey: "k", correlationId: "c", grant: commandGrantForRole("admin", "o", "a") };
+  const issues = (input: Record<string, unknown>) => validateCommand("report.narrative.update",
+    { reportVersionId: "r", expectedVersion: 1, sectionKey: "executive-summary", change: "edit", ...input } as never, context).map((issue) => `${issue.field}:${issue.code}`);
+
+  it("is preparer work: report.edit, as the section edits are — never report.publish", () => {
+    assert.equal(commandDefinitions["report.narrative.update"].permission, "report.edit");
+    assert.equal(commandDefinitions["report.narrative.update"].permission, commandDefinitions["report.section.edit"].permission);
+  });
+
+  it("an edit carries a body held to the narrative's strict rule — tokens for figures, the allowlist, no money", () => {
+    assert.deepEqual(issues({ bodyHtml: p(`Our footprint was ${tok("total")} under the GHG Protocol and ISO 14064-1.`) }), []);
+    assert.deepEqual(issues({ bodyHtml: p("We emitted 13157 tonnes.") }), ["bodyHtml:TYPED_FIGURE"]);
+    assert.ok(issues({ bodyHtml: p("It cost £40,000.") }).includes("bodyHtml:MONEY"));
+    assert.deepEqual(issues({ bodyHtml: p(tok("turnover")) }), ["bodyHtml:UNKNOWN_TOKEN"]);
+    assert.deepEqual(issues({}), ["bodyHtml:REQUIRED"]);
+  });
+
+  it("Generate and Reset take the catalogue's wording and carry no body; the change, version and section are checked", () => {
+    assert.deepEqual(issues({ change: "regenerate" }), []);
+    assert.deepEqual(issues({ change: "reset" }), []);
+    assert.deepEqual(issues({ change: "reset", bodyHtml: p("x") }), ["bodyHtml:INVALID"]);
+    assert.deepEqual(issues({ change: "rewrite" }), ["change:INVALID"]);
+    assert.deepEqual(issues({ change: "reset", expectedVersion: 0 }), ["expectedVersion:INVALID"], "a validated version is at version 1 or later");
+    assert.deepEqual(issues({ change: "reset", sectionKey: "no-such-section" }), ["sectionKey:INVALID"]);
   });
 });

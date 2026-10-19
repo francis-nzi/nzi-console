@@ -3,10 +3,12 @@ import { createHash } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import { commandGrantForRole, crpReportSectionTemplate, defaultReportSectionPlan, setReportSectionIncluded, type CommandContext, type ReportNarrativeElement, type ReportSectionPlan, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { CommandValidationError, editReportSection, publishCrpReport, validateCrpReport } from "../src/postgresCommands";
+import { CommandValidationError, editReportSection, publishCrpReport, updateReportNarrative, validateCrpReport } from "../src/postgresCommands";
 import { draftReportComposition } from "../src/reportDraftComposition";
 import { getReportComposition, previewReportComposition } from "../src/reportCompositions";
 import { SeparationOfDutiesError } from "../src/access";
+import { AuthorizationError } from "../src/auth";
+import { VersionConflictError } from "../src/errors";
 import { withTenantRead } from "../src/postgres";
 
 /**
@@ -56,7 +58,7 @@ describe("B2-4: the frozen narrative, against a real database", { skip: TEST_DAT
   before(async () => {
     database = (await createDisposableDatabase("reportnarrative"))!;
     await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [ORG]);
-    await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada'), ($1, 'rev', 'reviewer', 'active', 'Rev'), ($1, 'prep', 'admin', 'active', 'Prep')`, [ORG]);
+    await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada'), ($1, 'rev', 'reviewer', 'active', 'Rev'), ($1, 'prep', 'admin', 'active', 'Prep'), ($1, 'con', 'consultant', 'active', 'Con')`, [ORG]);
     await q(`INSERT INTO nzi_console.clients (organisation_id, client_id, name, status, currency) VALUES ($1, $2, 'Narrative Co', 'active', 'GBP')`, [ORG, CLIENT]);
     await q(`INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year) VALUES ($1, $2, $3, 9904, 'crp', 'CRP', 'open', 'delivery', 2025)`, [ORG, JOB, CLIENT]);
     await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, '2025-01-01', '2025-12-31', 'GB')`, [ORG, JOB]);
@@ -143,5 +145,116 @@ describe("B2-4: the frozen narrative, against a real database", { skip: TEST_DAT
   it("validate stays the reviewer's: the snapshot's preparer is still refused (reviewer ≠ preparer)", async () => {
     const snapshotId = await snapshot();
     await assert.rejects(validate(snapshotId, "prep", "admin"), (error: unknown) => error instanceof SeparationOfDutiesError && error.permission === "report.publish");
+  });
+
+  // ── B2-4 (d)(ii): report.narrative.update — a validated version's narrative, changed in place ─────────────────────────
+
+  const working = async (sectionKey: string) => (await q(`SELECT version, content_source, body_html FROM nzi_console.report_sections WHERE organisation_id = $1 AND job_id = $2 AND section_key = $3`, [ORG, JOB, sectionKey]))[0] as
+    { version: number; content_source: string; body_html: string } | undefined;
+  const versionRow = async (reportVersionId: string) => (await q(`SELECT status, version FROM nzi_console.report_versions WHERE report_version_id = $1`, [reportVersionId]))[0] as { status: string; version: number };
+  const update = (input: { reportVersionId: string; expectedVersion: number; sectionKey: string; change: "edit" | "regenerate" | "reset"; bodyHtml?: string }, actor = "prep", role: StaffRole = "admin") =>
+    updateReportNarrative(database.pool, input, context(actor, role));
+  const validationCode = (code: string) => (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === code);
+
+  it("report.narrative.update changes one section on the validated version in place: the working section, only that frozen element, the version bumped", async () => {
+    const snapshotId = await snapshot();
+    const validated = await validate(snapshotId);
+    const reportVersionId = validated.data.reportVersionId;
+    const before = (await narrativeOf(reportVersionId))!;
+    const workingBefore = (await working("executive-summary"))!.version;
+    // A draft-only change to another section after validate — it must not leak into the validated version.
+    await editReportSection(database.pool, { jobId: JOB, sectionKey: "background", expectedVersion: 0, bodyHtml: "<p>Draft-only background.</p>" }, context("ada", "admin"));
+
+    // The snapshot's own preparer: editing is preparer work.
+    const body = "<p>Edited on the validated version: <span data-token=\"total\"></span>.</p>";
+    const updated = await update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "edit", bodyHtml: body });
+    assert.deepEqual([updated.data.version, updated.data.contentSource, updated.data.sectionVersion], [2, "client-edited", workingBefore + 1]);
+
+    const after = (await narrativeOf(reportVersionId))!;
+    assert.deepEqual(after.find((element) => element.key === "executive-summary"),
+      { key: "executive-summary", bodyHtml: body, contentSource: "client-edited", sectionVersion: workingBefore + 1 });
+    assert.deepEqual(after.filter((element) => element.key !== "executive-summary"), before.filter((element) => element.key !== "executive-summary"),
+      "every other frozen section is exactly as validated — the draft's later background edit did not leak in");
+    assert.deepEqual(await versionRow(reportVersionId), { status: "validated", version: 2 }, "still validated — nothing re-validated — and the version bumped");
+    assert.deepEqual(await working("executive-summary"), { version: workingBefore + 1, content_source: "client-edited", body_html: body }, "made in the working store, the editable source");
+    const history = (await q(`SELECT note, actor_id FROM nzi_console.report_section_versions WHERE organisation_id = $1 AND job_id = $2 AND section_key = 'executive-summary' AND version = $3`, [ORG, JOB, workingBefore + 1]))[0];
+    assert.deepEqual(history, { note: "Edited by consultant (validated version)", actor_id: "prep" });
+    const audit = (await q(`SELECT before_json, after_json FROM nzi_console.audit_events WHERE action = 'report_narrative_updated' AND entity_id = $1`, [reportVersionId]))[0] as
+      { before_json: { version: number; bodyHtml: string }; after_json: { version: number; bodyHtml: string } };
+    assert.deepEqual([audit.before_json.version, audit.after_json.version, audit.after_json.bodyHtml], [1, 2, body]);
+    assert.equal(audit.before_json.bodyHtml, before.find((element) => element.key === "executive-summary")!.bodyHtml);
+
+    // The preview draws it; 0163 is untouched — one validated version for the snapshot, and validating again is still refused.
+    assert.deepEqual((await preview(reportVersionId))!.composition.narrative, after);
+    assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.report_versions WHERE reviewed_snapshot_id = $1`, [snapshotId]))[0]!.n, 1);
+    await assert.rejects(validate(snapshotId));
+
+    // Publish pins the version: the old one is refused; the snapshot's preparer is refused; the reviewer issues exactly what is frozen.
+    const publish = (expectedVersion: number, actor = "rev", role: StaffRole = "reviewer") =>
+      publishCrpReport(database.pool, { reportVersionId, expectedStatus: "validated", manifestVersion: 1, reviewedSnapshotId: snapshotId, expectedVersion }, context(actor, role));
+    await assert.rejects(publish(1), (error: unknown) => error instanceof VersionConflictError);
+    await assert.rejects(publish(2, "prep", "admin"), (error: unknown) => error instanceof SeparationOfDutiesError);
+    await publish(2);
+    const issued = (await withTenantRead(database.pool, ORG, (db) => getReportComposition(db, reportVersionId)))!;
+    assert.deepEqual(issued.narrative, after, "the published report says exactly what was frozen on the version");
+
+    // Issued is immutable.
+    await assert.rejects(update({ reportVersionId, expectedVersion: 3, sectionKey: "executive-summary", change: "edit", bodyHtml: "<p>Too late.</p>" }), validationCode("PRECONDITION"));
+    assert.deepEqual(issued.narrative, (await withTenantRead(database.pool, ORG, (db) => getReportComposition(db, reportVersionId)))!.narrative);
+  });
+
+  it("Generate and Reset on a validated version take the catalogue's wording; a Reset with nothing to reset changes nothing", async () => {
+    const snapshotId = await snapshot();
+    const reportVersionId = (await validate(snapshotId)).data.reportVersionId;
+    const template = crpReportSectionTemplate("background")!;
+    const generated = await update({ reportVersionId, expectedVersion: 1, sectionKey: "background", change: "regenerate" }, "con", "consultant");
+    assert.deepEqual([generated.data.version, generated.data.contentSource, generated.data.bodyHtml], [2, "ai", template.aiBodyHtml]);
+    const reset = await update({ reportVersionId, expectedVersion: 2, sectionKey: "background", change: "reset" }, "con", "consultant");
+    assert.deepEqual([reset.data.version, reset.data.contentSource, reset.data.bodyHtml], [3, "default", template.defaultBodyHtml]);
+    assert.equal((await narrativeOf(reportVersionId))!.find((element) => element.key === "background")!.contentSource, "default");
+
+    // net-zero-commitment has never been edited: no working row, frozen as the template — Reset is a no-op that moves nothing.
+    const noop = await update({ reportVersionId, expectedVersion: 3, sectionKey: "net-zero-commitment", change: "reset" }, "con", "consultant");
+    assert.equal(noop.data.version, 3);
+    assert.deepEqual(await versionRow(reportVersionId), { status: "validated", version: 3 });
+    assert.equal(await working("net-zero-commitment"), undefined, "no working row was made");
+  });
+
+  it("refuses, writing nothing: a stale version, a typed figure or money, a section the plan does not draw, a version with no frozen narrative, and a reviewer", async () => {
+    const snapshotId = await snapshot();
+    const plan = setReportSectionIncluded(defaultReportSectionPlan, "narrative:background", false, { allowExclusion: true });
+    const reportVersionId = (await validate(snapshotId, "rev", "reviewer", plan)).data.reportVersionId;
+    const frozen = await narrativeOf(reportVersionId);
+    const workingSummary = await working("executive-summary");
+
+    await assert.rejects(update({ reportVersionId, expectedVersion: 2, sectionKey: "executive-summary", change: "edit", bodyHtml: "<p>Stale.</p>" }),
+      (error: unknown) => error instanceof VersionConflictError);
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "edit", bodyHtml: "<p>We emitted 13157 tonnes.</p>" }), validationCode("TYPED_FIGURE"));
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "edit", bodyHtml: "<p>It cost £40,000.</p>" }), validationCode("MONEY"));
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "edit", bodyHtml: "<p><span data-token=\"turnover\"></span></p>" }), validationCode("UNKNOWN_TOKEN"));
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "background", change: "regenerate" }), validationCode("NOT_DRAWN"));
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "regenerate", bodyHtml: "<p>x</p>" }), validationCode("INVALID"),
+      "regenerate carries no body");
+    // The reviewer releases; it does not write (no report.edit).
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "regenerate" }, "rev", "reviewer"),
+      (error: unknown) => error instanceof AuthorizationError && error.permission === "report.edit");
+    assert.deepEqual(await narrativeOf(reportVersionId), frozen, "nothing frozen moved");
+    assert.deepEqual(await working("executive-summary"), workingSummary, "nothing in the working store moved");
+    assert.deepEqual(await versionRow(reportVersionId), { status: "validated", version: 1 });
+
+    // Validated before B2-4: no frozen narrative, so it stays composed@5 as issued — nothing to change in place.
+    await q(`UPDATE nzi_console.report_versions SET narrative = NULL WHERE report_version_id = $1`, [reportVersionId]);
+    await assert.rejects(update({ reportVersionId, expectedVersion: 1, sectionKey: "executive-summary", change: "regenerate" }), validationCode("NO_FROZEN_NARRATIVE"));
+    assert.equal(await narrativeOf(reportVersionId), null);
+  });
+
+  it("is idempotent: the same command replayed changes the version once", async () => {
+    const reportVersionId = (await validate(await snapshot())).data.reportVersionId;
+    const once: CommandContext = { organisationId: ORG, actorId: "prep", principal: "staff", idempotencyKey: "narr-replay", correlationId: "corr-narr-replay", grant: commandGrantForRole("admin", ORG, "prep") };
+    const input = { reportVersionId, expectedVersion: 1, sectionKey: "category-analysis", change: "regenerate" as const };
+    const first = await updateReportNarrative(database.pool, input, once);
+    const replay = await updateReportNarrative(database.pool, input, once);
+    assert.deepEqual(replay.data, first.data);
+    assert.deepEqual(await versionRow(reportVersionId), { status: "validated", version: 2 });
   });
 });

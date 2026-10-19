@@ -19,7 +19,7 @@ import { ReportScopeSelector } from "../../../report-preview/ReportScopeSelector
 import { ReportComposedView } from "../../../reports/[versionId]/ReportComposedView";
 import type { NarrativeEditor } from "../../../reports/[versionId]/ReportComposedV5";
 import { reportFeatureEnabled } from "../../../lib/reportFlags";
-import { StudioNarrativeEditor } from "./StudioNarrativeEditor";
+import { StudioNarrativeEditor, type NarrativeEditTarget } from "./StudioNarrativeEditor";
 import { reportingYearLabel } from "../../../reports/[versionId]/ReportComposedV5";
 import { StudioPagedView } from "./StudioPagedView";
 import { buildStudioPagedCss, buildStudioPrintCss, studioPrintMark } from "./studioPrint";
@@ -120,15 +120,20 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
     : accessFor(me, "report.publish");
   const [confirming, setConfirming] = useState(false);
 
-  // B2-4 (C): the narrative is edited where it is drawn — on a draft, behind `report-edit`, for someone holding `report.edit`
-  // (preparer work; validate stays the reviewer's). Each edit goes through `report.section.*` and the draft recomposes.
+  // B2-4 (C): the narrative is edited where it is drawn, behind `report-edit`, for someone holding `report.edit` (preparer work;
+  // validate and publish stay the reviewer's, and publish still refuses the snapshot's preparer). On a draft each edit goes
+  // through `report.section.*` and the draft recomposes; on a validated version (d)(ii) through `report.narrative.update`,
+  // pinned by this version and bumping it, so it changes in place. A published version is never editable.
   const narrativeOn = reportFeatureEnabled("report-edit") && Boolean(composition.narrative);
+  const narrativeTarget: NarrativeEditTarget | null = kind === "draft" ? { kind: "draft", jobId }
+    : kind === "validated" && version ? { kind: "validated", reportVersionId: version.reportVersionId, version: version.version }
+    : null;
   const editAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
     : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to edit the narrative." }
     : me === null ? { state: "unavailable", reason: "Your permissions could not be checked, so editing is unavailable." }
     : accessFor(me, "report.edit");
-  const narrativeEditor: NarrativeEditor | undefined = kind === "draft" && narrativeOn
-    ? (_key, element, drawn) => <StudioNarrativeEditor jobId={jobId} composition={composition} element={element} drawn={drawn}
+  const narrativeEditor: NarrativeEditor | undefined = narrativeTarget && narrativeOn
+    ? (_key, element, drawn) => <StudioNarrativeEditor target={narrativeTarget} composition={composition} element={element} drawn={drawn}
         canEdit={editAccess.state === "allowed" && pending === null} {...(editAccess.state === "allowed" ? {} : { blockedReason: editAccess.reason })} />
     : undefined;
 
@@ -293,8 +298,10 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
           <b>Draft — not validated, not issued.</b> Composed {formatDateTime(draft.draftedAt)} from this job&rsquo;s latest approved snapshot (version {draft.snapshotVersion}) with the plan and scope chosen here. Nothing here is stored or sent; validating holds it.
           {draft.blockers.length > 0 ? <ul className="nzs-blockers" data-studio-blockers>{draft.blockers.map((blocker, index) => <li key={`${blocker.field}-${index}`}>{blocker.message}</li>)}</ul> : null}
         </div> : kind === "validated" ? <div className="report-preview-band" role="note" data-report-preview="not-issued">
-          <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it. Nothing here is stored or sent.
-          {composition.narrative ? <> The narrative was frozen with this version when it was validated (B2-4): <b>changing it means validating the report again</b> — edit the narrative on the job&rsquo;s draft, then validate a new version.</> : null}
+          <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it.{narrativeEditor ? null : " Nothing here is stored or sent."}
+          {composition.narrative ? narrativeEditor
+            ? <> The narrative was frozen with this version when it was validated, and <b>is editable here, on this validated version</b>: each save changes it in place and bumps the version — nothing is re-validated. Publishing issues exactly the narrative frozen on it.</>
+            : <> The narrative was frozen with this version when it was validated; publishing issues exactly that.</> : null}
         </div> : null}
         {paged ? <>
           <div className="nzs-paged-source" ref={flowSource} hidden={mode === "page"}>

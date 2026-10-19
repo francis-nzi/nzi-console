@@ -41,6 +41,7 @@ import { loadSpendImportContext, reviewSpendImportRows } from "./spendImport";
 import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendImportIdentity";
 import { isCheckViolation, isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
 import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveReportSectionPlan, selectableScopeSites, type ReportScope, type ReportSectionPlanOrigin } from "@nzi/contracts";
+import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrativeElement } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
@@ -2828,6 +2829,77 @@ export async function regenerateReportSection(
       entityType: "report_section",
       entityId: `${input.jobId}:${input.sectionKey}`,
       topic: "report.section.regenerated",
+    };
+  });
+}
+
+/**
+ * B2-4 (d)(ii) — change one narrative section on a **validated** version, in place (RULING-report-studio-B2-4 (d); REVIEW option
+ * (2)). The sibling of `report.sectionPlan.update`: pinned to the version and bumping it, so publish's `expectedVersion` stays
+ * honest and a studio holding the old version is refused, not overwritten. `report.validate` and 0163's one-validated-version
+ * rule are untouched — nothing is re-validated.
+ *
+ * The working store stays the editable source (the ruling's confirmation): the change is made to the job's working section,
+ * exactly as `report.section.edit / regenerate / reset` make it — same history row, same strict body rule (figures as tokens,
+ * the allowlist, no money) — and then **only that section** is re-frozen onto the version, through the resolver validate
+ * freezes with. Every other frozen section stays as validated, whatever the draft has since. Editing is preparer work
+ * (`report.edit`); the reviewer's separation is where it was — publish still refuses the snapshot's preparer, and still pins the
+ * version, so whoever releases releases exactly what is now frozen. A published, superseded or withdrawn version is refused, and
+ * so is one validated before B2-4 (no frozen narrative: it stays composed@5, as issued).
+ */
+export async function updateReportNarrative(
+  pool: PoolLike,
+  input: CommandInputMap["report.narrative.update"],
+  context: CommandContext,
+): Promise<StoredOutcome<{ reportVersionId: string; version: number; sectionKey: string; contentSource: ReportNarrativeElement["contentSource"]; sectionVersion: number; bodyHtml: string }>> {
+  return runPostgresCommand(pool, "report.narrative.update", input, context, async (db) => {
+    const row = (await db.query<{ status: string; version: number; job_id: string; section_plan: ReportSectionPlan | null; narrative: ReportNarrativeElement[] | null }>(
+      `SELECT status, version, job_id, section_plan, narrative FROM nzi_console.report_versions
+        WHERE organisation_id = $1 AND report_version_id = $2 FOR UPDATE`, [context.organisationId, input.reportVersionId])).rows[0];
+    if (!row) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Report version was not found." }]);
+    if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
+    if (row.status !== "validated") throw new CommandValidationError([{ field: "reportVersionId", code: "PRECONDITION", message: "Only a validated report's narrative can be changed — a published report is fixed as it was issued." }]);
+    if (!row.narrative) throw new CommandValidationError([{ field: "reportVersionId", code: "NO_FROZEN_NARRATIVE", message: "This version was validated before its narrative was frozen with it, so it is issued with the template wording as it stands. Validate a new version to edit its narrative." }]);
+    const frozen = row.narrative.find((element) => element.key === input.sectionKey);
+    if (!frozen) throw new CommandValidationError([{ field: "sectionKey", code: "NOT_DRAWN", message: "This report does not draw that narrative section." }]);
+
+    // The change, made to the working section exactly as the section commands make it.
+    const { template, currentVersion } = await loadEditableReportSection(db, context.organisationId, row.job_id, input.sectionKey);
+    const change = input.change === "edit"
+      ? { source: "client-edited" as const, body: input.bodyHtml!.trim(), note: "Edited by consultant (validated version)" }
+      : input.change === "regenerate"
+        ? { source: "ai" as const, body: template.aiBodyHtml, note: "AI redraft (Regenerate, validated version)" }
+        : { source: "default" as const, body: template.defaultBodyHtml, note: "Reset to template (validated version)" };
+    const summary = (element: ReportNarrativeElement) => ({ sectionKey: element.key, contentSource: element.contentSource, sectionVersion: element.sectionVersion, bodyHtml: element.bodyHtml });
+    // Reset on a section with no working row is already the template, and the frozen copy says so: nothing changes, so the
+    // version does not move either.
+    if (input.change === "reset" && currentVersion === 0 && frozen.contentSource === "default") {
+      return {
+        data: { reportVersionId: input.reportVersionId, version: row.version, sectionKey: input.sectionKey, contentSource: frozen.contentSource, sectionVersion: frozen.sectionVersion, bodyHtml: frozen.bodyHtml },
+        before: { version: row.version, ...summary(frozen) },
+        entityType: "report_version", entityId: input.reportVersionId, topic: "report.narrative.updated",
+      };
+    }
+    await writeReportSectionVersion(db, context.organisationId, row.job_id, input.sectionKey, currentVersion, change.source, change.body, context.actorId, change.note);
+
+    // Re-frozen through validate's own resolver, for this section alone — its rule refusing what validate would refuse.
+    const plan = normaliseReportPlanKeys(row.section_plan ?? defaultReportSectionPlan);
+    const resolved = await resolveReportNarrative(db, row.job_id, plan);
+    const issues = resolved.issues.filter((issue) => issue.field === `narrative.${input.sectionKey}`);
+    if (issues.length) throw new CommandValidationError(issues);
+    const refrozen = resolved.narrative.find((element) => element.key === input.sectionKey);
+    if (!refrozen) throw new CommandValidationError([{ field: "sectionKey", code: "NOT_DRAWN", message: "This report does not draw that narrative section." }]);
+    const narrative = row.narrative.map((element) => element.key === input.sectionKey ? refrozen : element);
+
+    const updated = await db.query<{ version: number }>(
+      `UPDATE nzi_console.report_versions SET narrative = $3::jsonb, version = version + 1
+        WHERE organisation_id = $1 AND report_version_id = $2 AND status = 'validated' AND version = $4 RETURNING version`,
+      [context.organisationId, input.reportVersionId, JSON.stringify(narrative), input.expectedVersion]);
+    if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, row.version);
+    return {
+      data: { reportVersionId: input.reportVersionId, version: updated.rows[0].version, sectionKey: input.sectionKey, contentSource: refrozen.contentSource, sectionVersion: refrozen.sectionVersion, bodyHtml: refrozen.bodyHtml },
+      before: { version: row.version, ...summary(frozen) },
+      entityType: "report_version", entityId: input.reportVersionId, topic: "report.narrative.updated",
     };
   });
 }

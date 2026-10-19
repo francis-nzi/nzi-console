@@ -65,6 +65,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "report.publish": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.validate": (input) => ({ kind: "snapshot", id: input.reviewedSnapshotId }),
   "report.sectionPlan.update": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "report.narrative.update": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "client.reportProfile.set": client,
   "client.reportProfile.deactivate": client,
   "report.snapshot.create": job,

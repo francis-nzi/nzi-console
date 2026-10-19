@@ -11,10 +11,19 @@ import { narrativeForEditing, resolveComposedToken } from "../../../reports/[ver
  * the section version the draft was composed at. Figures stay locked tokens: the editor shows them as chips that typing goes
  * around, a figure is inserted from the palette, and a body with a typed figure or an amount of money is refused here with the
  * server's own words before it is sent. On success the draft recomposes. Screen-only chrome: none of it prints.
+ *
+ * B2-4 (d)(ii): on a **validated** version the same controls drive `report.narrative.update` instead, pinned by the version, so
+ * the change is made in place and the version bumps — nothing is re-validated, and publish issues exactly what is now frozen.
  */
-export function StudioNarrativeEditor({ jobId, composition, element, drawn, canEdit, blockedReason }: {
-  jobId: string; composition: ReportComposition; element: ReportNarrativeElement; drawn: ReactNode;
-  /** The draft, the `report-edit` flag and the person's `report.edit` all allow it. */
+export type NarrativeEditTarget =
+  /** The job's draft: the working sections, through `report.section.*`, pinned by the section version the draft was composed at. */
+  | { kind: "draft"; jobId: string }
+  /** A validated version: `report.narrative.update`, pinned by the version this screen opened. */
+  | { kind: "validated"; reportVersionId: string; version: number };
+
+export function StudioNarrativeEditor({ target, composition, element, drawn, canEdit, blockedReason }: {
+  target: NarrativeEditTarget; composition: ReportComposition; element: ReportNarrativeElement; drawn: ReactNode;
+  /** The draft or validated version, the `report-edit` flag and the person's `report.edit` all allow it. */
   canEdit: boolean;
   /** Why editing is unavailable, when it is. */
   blockedReason?: string;
@@ -28,15 +37,21 @@ export function StudioNarrativeEditor({ jobId, composition, element, drawn, canE
   async function send(kind: "edit" | "regenerate" | "reset", bodyHtml?: string) {
     if (busy) return;
     setBusy(kind); setProblem(null);
-    const path = `/api/isolated/reports/sections/${kind}`;
-    const payload = kind === "edit"
-      ? { jobId, sectionKey: element.key, bodyHtml, expectedVersion: element.sectionVersion }
-      : { jobId, sectionKey: element.key, expectedVersion: element.sectionVersion };
-    const result = await postBrowserCommand<{ version: number }>(path, payload, crypto.randomUUID());
+    const result = target.kind === "draft"
+      ? await postBrowserCommand<{ version: number }>(`/api/isolated/reports/sections/${kind}`, kind === "edit"
+          ? { jobId: target.jobId, sectionKey: element.key, bodyHtml, expectedVersion: element.sectionVersion }
+          : { jobId: target.jobId, sectionKey: element.key, expectedVersion: element.sectionVersion }, crypto.randomUUID())
+      : await postBrowserCommand<{ version: number }>("/api/isolated/reports/narrative", {
+          reportVersionId: target.reportVersionId, expectedVersion: target.version, sectionKey: element.key, change: kind,
+          ...(kind === "edit" ? { bodyHtml } : {}),
+        }, crypto.randomUUID());
     setBusy(null);
     if (result.state === "success") { window.location.reload(); return; }
     setProblem(result.state === "validation_failed" ? result.issues?.map((issue) => issue.message).join(" ") || result.message || "The section was not saved."
-      : result.state === "conflict" ? "This section changed since the draft was composed — reload to see it, then edit again." : result.message || "The section was not saved.");
+      : result.state === "conflict" ? (target.kind === "draft"
+        ? "This section changed since the draft was composed — reload to see it, then edit again."
+        : "This version changed since you opened it — reload to see it, then edit again.")
+      : result.message || "The section was not saved.");
   }
 
   function save() {
