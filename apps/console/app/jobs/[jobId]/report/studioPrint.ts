@@ -34,6 +34,11 @@ export const STUDIO_R5_PAGED_RULES = [
   ".nzr5 .r5-chartcard,.nzr5 figure,.nzr5 [data-chart],.nzr5 svg,.nzr5 .r5-kvbox,.nzr5 .r5-metacard{break-inside:avoid;page-break-inside:avoid}",
   ".nzr5 table tr{break-inside:avoid;page-break-inside:avoid}",
   ".nzr5 table thead{display:table-header-group}",
+  // Nothing wider than the page. The overview's site table sits beside the total in a wrapping flex row, and the row's fixed
+  // `min-width:260px` let the table's column shrink below the table's own narrowest width — so with a wider font (CI's Linux
+  // fallbacks, ~7px; Courier, ~43px) the table spilled past the page's edge. Its narrowest width is now its minimum: when the two
+  // cannot sit side by side, the table wraps onto its own full-width line instead of overflowing.
+  ".nzr5 .r5-overview-sites{min-width:min-content!important}",
   ".nzr5 .r5-h2,.nzr5 .r5-kicker,.nzr5 h3{break-after:avoid}",
   // Screen-only provenance chrome, stripped as `reportPrintRules.ts` strips source pills: the template pill, the header note, and
   // the figure-token chip (the figure stays; its lock styling does not).

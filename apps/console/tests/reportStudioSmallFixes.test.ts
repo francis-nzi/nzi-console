@@ -91,6 +91,9 @@ describe("D — a draft prints and previews exactly what is on screen, marked as
     const queries = [...studioCss.matchAll(/@media([^{]*)\{/g)].map((match) => match[1]!.trim());
     assert.ok(queries.length > 0);
     for (const query of queries.filter((query) => /max-width/.test(query))) assert.match(query, /^screen and /, `"@media ${query}" applies in print`);
+    // The overview's site table never shrinks below its own narrowest width: it wraps under the total instead of spilling past
+    // the page (7px on CI's Linux fonts). Shared by Page · A4 and print.
+    assert.match(STUDIO_R5_PAGED_RULES, /\.nzr5 \.r5-overview-sites\{min-width:min-content!important\}/);
   });
 
   it("Page · A4 repeats a continued table's header, as print does — only inside the studio's composed@5 document", () => {

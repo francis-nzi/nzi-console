@@ -34,7 +34,7 @@ const A4_CONTENT_WIDTH = 680;
 const DOCUMENT = css("tests/fixtures/composition-composed6-whole.html").replace("nzr5 r5-mode-page", "nzr5 r5-mode-flow");
 
 /** The chain the studio page actually renders (measured in the browser), with the chrome print must strip beside it. */
-const page = (printCss: string) => `<!doctype html><html><head><style>${STYLES}</style><style>${printCss}</style></head><body>
+const page = (printCss: string, fontCss = "") => `<!doctype html><html><head><style>${STYLES}</style><style>${printCss}</style><style>${fontCss}</style></head><body>
 <div class="nz-app no-drawer"><nav class="nz-rail">rail</nav><main class="nz-main"><header class="nz-topbar">top bar</header>
 <div class="nz-preview-canvas"><div class="nzs-studio"><nav class="nzs-subnav">Sections · Printing</nav>
 <div class="nzs-toolbar">toolbar</div><div class="nzs-body"><aside class="nzs-rail">rail</aside>
@@ -50,7 +50,8 @@ test("a draft prints as paper: no grey ground, nothing past the page edge, no st
 
   await browser.setViewportSize({ width: A4_CONTENT_WIDTH, height: 1000 });
   await browser.emulateMedia({ media: "print" });
-  await browser.setContent(page(buildStudioPrintCss({ client: "Bushy Tails Ltd", title: "Carbon Reduction Plan 2025–2026", mark: studioPrintMark("draft") })));
+  const printCss = buildStudioPrintCss({ client: "Bushy Tails Ltd", title: "Carbon Reduction Plan 2025–2026", mark: studioPrintMark("draft") });
+  await browser.setContent(page(printCss));
 
   const measured = await browser.evaluate(() => {
     const paper = (colour: string) => colour === "rgb(255, 255, 255)" || colour === "rgba(0, 0, 0, 0)";
@@ -81,4 +82,18 @@ test("a draft prints as paper: no grey ground, nothing past the page edge, no st
   expect(measured.documentRight, "and ends inside its right edge").toBeLessThanOrEqual(A4_CONTENT_WIDTH);
   expect(measured.scrollWidth, "nothing overflows the printed width").toBeLessThanOrEqual(A4_CONTENT_WIDTH);
   expect(measured.chrome, "no console or studio chrome, no provenance pill, no simulated running head or foot").toBe(0);
+
+  // Fit must not depend on the runner's fonts. This passed on Windows and failed on CI's Linux by 7px: the overview's site table
+  // overflowed under the wider fallback face. So the width is held again with every glyph forced to `monospace` — the widest
+  // generic family on either platform, ~43px wider here than the default — and any offender is named.
+  await browser.setContent(page(printCss, "*{font-family:monospace!important}"));
+  const wide = await browser.evaluate((limit) => {
+    const offenders = [...document.querySelectorAll("main.nzr5 *")]
+      .filter((el) => getComputedStyle(el).display !== "none" && el.getBoundingClientRect().right > limit + 0.5 && !el.closest("svg"))
+      .filter((el, _index, all) => !all.some((other) => other !== el && other.contains(el)))
+      .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} in "${el.closest(".r5-page")?.querySelector(".r5-h2")?.textContent ?? ""}"`);
+    return { scrollWidth: document.documentElement.scrollWidth, offenders };
+  }, A4_CONTENT_WIDTH);
+  expect(wide.offenders, "under the widest fonts, nothing reaches past the page's right edge").toEqual([]);
+  expect(wide.scrollWidth, "and nothing overflows the printed width").toBeLessThanOrEqual(A4_CONTENT_WIDTH);
 });
