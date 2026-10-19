@@ -59,8 +59,11 @@ export function selectableScopeSites(snapshot: {
 export function reportScopeChoices(snapshot: {
   provenance?: { boundary?: { siteIds?: string[] } } | null;
   measurements: ReadonlyArray<{ siteId?: string | null; siteLabel?: string | null; tco2e: number }>;
-}): { sites: Array<{ siteId: string; label: string; tco2e: number }>; unallocatedTco2e: number; totalTco2e: number } {
-  const label = new Map<string, string>();
+}, siteNames: ReadonlyMap<string, string> = new Map()): { sites: Array<{ siteId: string; label: string; tco2e: number }>; unallocatedTco2e: number; totalTco2e: number } {
+  // A boundary site with no frozen row carries no label of its own, so its name is the client's site record's — the same
+  // fallback the composition uses (`composeScopedEmissions`), so the selector and the report body agree. A frozen row's label
+  // still wins, as it does there. The id is the last resort, never the first (DESIGN-report-studio-small-fixes B).
+  const label = new Map<string, string>([...siteNames].filter(([, name]) => name.trim()).map(([id, name]) => [id, name.trim()]));
   for (const row of snapshot.measurements) if (row.siteId && row.siteLabel?.trim()) label.set(row.siteId, row.siteLabel.trim());
   const sum = (rows: ReadonlyArray<{ tco2e: number }>) => rows.reduce((total, row) => total + row.tco2e, 0);
   return {

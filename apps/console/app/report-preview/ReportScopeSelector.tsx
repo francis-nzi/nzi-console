@@ -17,8 +17,9 @@ export function ReportScopeSelector({ choices, scope, onChange, disabled }: { ch
     onChange({ kind: "sites", siteIds: [...next].sort() });
   };
   return <div className="nz-scope-select">
-    <span className="nz-eyebrow">Scope</span>
-    <div className="nz-filters" role="group" aria-label="Report scope">
+    {/* A (DESIGN-report-studio-small-fixes): "Sites", not "Scope" — Scope means GHG Scope 1/2/3 everywhere else, this report included. */}
+    <span className="nz-eyebrow">Sites</span>
+    <div className="nz-filters" role="group" aria-label="Report sites">
       <button type="button" aria-pressed={scope.kind === "whole"} className={scope.kind === "whole" ? "on" : undefined} disabled={disabled} onClick={() => onChange({ kind: "whole" })}>Whole client</button>
       <button type="button" aria-pressed={scope.kind === "sites"} className={scope.kind === "sites" ? "on" : undefined} disabled={disabled || choices.sites.length === 0}
         onClick={() => onChange({ kind: "sites", siteIds: choices.sites.map((site) => site.siteId) })}>By site</button>

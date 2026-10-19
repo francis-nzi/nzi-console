@@ -54,8 +54,9 @@ describe("the one path: composed@5 inside the studio", async () => {
 
   it("the rail finds composed@5's sections by data-section and its cover, and composed@1–4's by heading, as before", () => {
     const studio = read("apps/console/app/jobs/[jobId]/report/ReportStudio.tsx");
-    assert.match(studio, /root\.querySelector<HTMLElement>\("\.nzr-cover, \.r5-cover"\)/);
-    assert.match(studio, /root\.querySelector<HTMLElement>\(`\[data-section="\$\{CSS\.escape\(key\)\}"\]`\)/);
+    // Small-fixes D: the copy on screen — in Page · A4 the flow document is the hidden source, so the paged copy is the one found.
+    assert.match(studio, /visible\(root\.querySelectorAll<HTMLElement>\("\.nzr-cover, \.r5-cover"\)\)/);
+    assert.match(studio, /visible\(root\.querySelectorAll<HTMLElement>\(`\[data-section="\$\{CSS\.escape\(key\)\}"\]`\)\)/);
     assert.match(studio, /\?\? Array\.from\(root\.querySelectorAll<HTMLElement>\("section\.nzr-page"\)\)\.find\(\(page\) => page\.querySelector\("h2"\)\?\.textContent\?\.trim\(\) === title\)/);
     const html = renderToStaticMarkup(createElement(ReportComposedView, { composition: composed5() }));
     for (const key of ["executive-summary", "narrative:background", "sites", "methodology", "appendix-sites"]) assert.match(html, new RegExp(`data-section="${key}"`), key);

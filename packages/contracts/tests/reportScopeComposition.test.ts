@@ -81,6 +81,20 @@ describe("the scope choice and its flags (S-2)", () => {
     assert.match(reportScopeSummary(choices, { kind: "whole" }), /^Whole client · 3 sites · 39 tCO₂e, including 20 tCO₂e organisation-level$/);
   });
 
+  it("names a boundary site with no frozen row from the client's site record, as the report body does — never by its id (small-fixes B)", () => {
+    const boundary = { provenance: { boundary: { siteIds: ["v7-site-375", "v7-site-376", "works"] } }, measurements: rows };
+    const names = new Map([["v7-site-375", "Dubai Office"], ["v7-site-376", " Singapore Office "], ["works", "Works (renamed since)"]]);
+    const labels = Object.fromEntries(reportScopeChoices(boundary, names).sites.map((site) => [site.siteId, site.label]));
+    assert.equal(labels["v7-site-375"], "Dubai Office");
+    assert.equal(labels["v7-site-376"], "Singapore Office", "trimmed");
+    // A frozen row's own label still wins, exactly as composeScopedEmissions resolves it — the selector and the body agree.
+    assert.equal(labels.works, composeScopedEmissions(rows, { kind: "sites", siteIds: ["works"] }, names).siteLabels[0]);
+    // Without a name anywhere the id is the last resort, and a blank name is no name.
+    const unnamed = reportScopeChoices(boundary, new Map([["v7-site-375", "  "]])).sites.find((site) => site.siteId === "v7-site-375");
+    assert.equal(unnamed?.label, "v7-site-375");
+    assert.deepEqual(reportScopeChoices(boundary).sites.map((site) => site.siteId), reportScopeChoices(boundary, names).sites.map((site) => site.siteId), "the names change labels only");
+  });
+
   it("flags site sections with their sites, client sections as client-level, and nothing at whole-client scope", () => {
     const scope = { kind: "sites" as const, siteIds: ["works"], siteLabels: ["Works"] };
     assert.equal(reportScopeFlag(scope, "site"), "Recomposed for: Works");
