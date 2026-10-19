@@ -81,6 +81,18 @@ describe("D — a draft prints and previews exactly what is on screen, marked as
     assert.match(STUDIO_R5_PAGED_RULES, /\.nzr5 \.r5-page\{[^}]*break-before:page;break-after:auto!important;/);
   });
 
+  it("prints on paper, inside the page: no grey ground under the sections, no screen-width margin past the edge", () => {
+    // The browser proof is the capture gate's studio-print spec; these pin the two rules it rests on.
+    const print = buildStudioPrintCss({ client: "Acme", title: "Carbon Reduction Plan 2025", mark: studioPrintMark("draft") });
+    assert.match(print, /@media print\{[^]*html,body\{background:#fff!important\}/, "the console's ground is not printed");
+    assert.match(print, /@media print\{[^]*\.nzs-studio\{margin:0!important;background:none!important\}\}$/, "the studio frame keeps no margin");
+    // A printed A4 page is ~680–794px wide: any studio max-width query must be screen-only, or it lays the PDF out too.
+    const studioCss = read("jobs/[jobId]/report/report-studio.css");
+    const queries = [...studioCss.matchAll(/@media([^{]*)\{/g)].map((match) => match[1]!.trim());
+    assert.ok(queries.length > 0);
+    for (const query of queries.filter((query) => /max-width/.test(query))) assert.match(query, /^screen and /, `"@media ${query}" applies in print`);
+  });
+
   it("Page · A4 repeats a continued table's header, as print does — only inside the studio's composed@5 document", () => {
     assert.match(paged, /export function repeatingTableHeaders\(Handler: typeof import\("pagedjs"\)\.Handler\)/);
     assert.match(paged, /if \(!headersRegistered\) \{ registerHandlers\(repeatingTableHeaders\(Handler\)\); headersRegistered = true; \}/);

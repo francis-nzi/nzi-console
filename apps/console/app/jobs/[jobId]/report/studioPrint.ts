@@ -77,5 +77,10 @@ export function buildStudioPrintCss(meta: StudioPrintMeta): string {
     // on-screen draft band — every page carries the mark instead, so page one is the same in the PDF as in Page · A4.
     + `.nz-rail,.nz-topbar,.nz-skip-link,.nzs-subnav,[data-report-draft],[data-report-preview]{display:none!important}`
     + `.nz-app,.nz-main,.nz-preview-canvas{display:block!important;padding:0!important;margin:0!important;background:none!important}`
-    + `.nzs-stage{background:none!important;padding:0!important}}`;
+    + `.nzs-stage{background:none!important;padding:0!important}`
+    // The page itself is paper. The console's ground (`html,body` — @nzi/ui's grey) printed under every section, because the
+    // rules above force backgrounds to print: a grey block from the end of each section's content to the foot of the page, the
+    // cover included. And the studio frame keeps no margin in print, whatever a screen-width query says.
+    + `html,body{background:#fff!important}`
+    + `.nzs-studio{margin:0!important;background:none!important}}`;
 }
