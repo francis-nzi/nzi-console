@@ -8,8 +8,9 @@
 // rendered as a locked chip carrying the resolved value.
 
 import type { ReportSectionReadModel } from "./reportSections";
+import { isMoneyShaped } from "./reportComposition";
 
-export type ReportTokenGroup = "totals" | "shares" | "targets" | "intensity" | "dates";
+export type ReportTokenGroup = "totals" | "shares" | "targets" | "intensity" | "dates" | "organisation" | "clauses";
 
 export type ReportTokenKey =
   | "total"
@@ -18,9 +19,20 @@ export type ReportTokenKey =
   | "reportingYear"
   | "baselineYear" | "baselineTotal"
   | "interimYear" | "interimReductionPct" | "netZeroYear"
-  | "intensityValue" | "intensityUnit";
+  | "intensityValue" | "intensityUnit"
+  // B2-4 (composed@6): the composed@5 template's own data, resolved from the frozen composition at draw.
+  | "client" | "siteCount" | "employees" | "reportingPeriod" | "intensityMeasures"
+  | "largestScope" | "largestTotal" | "largestPct" | "secondScope" | "secondTotal" | "thirdScope" | "thirdTotal"
+  | "actionCount" | "actionsPlural"
+  // Phrases: a clause composed@5 says only when the data holds it — resolved to the clause (its figures still locked), or to nothing.
+  | "baselineAnchor" | "siteClause" | "actionsTarget" | "progressReview";
 
-export type ReportTokenDefinition = { key: ReportTokenKey; label: string; group: ReportTokenGroup };
+/**
+ * `figure` — a locked chip holding one value. `phrase` (B2-4) — a data-bound clause, drawn as text with its own figures locked,
+ * that resolves to nothing when the data does not hold it (a paragraph left empty is not drawn).
+ */
+export type ReportTokenKind = "figure" | "phrase";
+export type ReportTokenDefinition = { key: ReportTokenKey; label: string; group: ReportTokenGroup; kind?: ReportTokenKind };
 
 /** Palette shown to the consultant / drawn on by the AI drafter. */
 export const reportTokenCatalogue: readonly ReportTokenDefinition[] = [
@@ -39,7 +51,30 @@ export const reportTokenCatalogue: readonly ReportTokenDefinition[] = [
   { key: "netZeroYear", label: "Net zero year", group: "dates" },
   { key: "intensityValue", label: "Emissions intensity", group: "intensity" },
   { key: "intensityUnit", label: "Intensity unit", group: "intensity" },
+  // B2-4 (composed@6): the palette grows by the figures the composed@5 template draws (RULING-report-studio-B2-4 (b)).
+  { key: "client", label: "Client name", group: "organisation" },
+  { key: "siteCount", label: "Sites in the boundary", group: "organisation" },
+  { key: "employees", label: "Employees", group: "organisation" },
+  { key: "reportingPeriod", label: "Reporting period", group: "dates" },
+  { key: "intensityMeasures", label: "Intensity measures reported", group: "intensity", kind: "phrase" },
+  { key: "largestScope", label: "Largest scope", group: "shares", kind: "phrase" },
+  { key: "largestTotal", label: "Largest scope's emissions", group: "totals" },
+  { key: "largestPct", label: "Largest scope's share", group: "shares" },
+  { key: "secondScope", label: "Second-largest scope", group: "shares", kind: "phrase" },
+  { key: "secondTotal", label: "Second-largest scope's emissions", group: "totals" },
+  { key: "thirdScope", label: "Third-largest scope", group: "shares", kind: "phrase" },
+  { key: "thirdTotal", label: "Third-largest scope's emissions", group: "totals" },
+  { key: "actionCount", label: "Reduction actions", group: "targets" },
+  { key: "actionsPlural", label: "Plural ending for the actions", group: "clauses", kind: "phrase" },
+  { key: "baselineAnchor", label: "Baseline clause (when a baseline is set)", group: "clauses", kind: "phrase" },
+  { key: "siteClause", label: "Sites clause (when the boundary has sites)", group: "clauses", kind: "phrase" },
+  { key: "actionsTarget", label: "Emissions clause for the actions", group: "clauses", kind: "phrase" },
+  { key: "progressReview", label: "Progress review sentence (when a net zero target is set)", group: "clauses", kind: "phrase" },
 ] as const;
+
+/** B2-4: the keys only a composition can resolve — the composed report draws them; the snapshot-based resolver below cannot. */
+const COMPOSITION_ONLY = new Set<string>(["client", "siteCount", "employees", "reportingPeriod", "intensityMeasures", "largestScope", "largestTotal", "largestPct",
+  "secondScope", "secondTotal", "thirdScope", "thirdTotal", "actionCount", "actionsPlural", "baselineAnchor", "siteClause", "actionsTarget", "progressReview"]);
 
 const catalogueByKey = new Map(reportTokenCatalogue.map((token) => [token.key, token]));
 export const isReportTokenKey = (key: string): key is ReportTokenKey => catalogueByKey.has(key as ReportTokenKey);
@@ -77,6 +112,7 @@ export function resolveReportToken(key: string, snapshot: TokenSnapshot): Resolv
   const label = definition?.label ?? key;
   const unresolved = (detail: string): ResolvedReportToken => ({ key, label, value: "—", ok: false, detail });
   if (!definition) return unresolved(`"${key}" is not a known report figure token.`);
+  if (COMPOSITION_ONLY.has(key)) return unresolved(`${label} is drawn by the composed report, from its frozen composition.`);
 
   const rows = snapshot.measurements;
   const total = rows.reduce((sum, row) => sum + row.tco2e, 0);
@@ -147,6 +183,46 @@ export function serializeReportSectionBody(html: string): string {
     .replace(ALLOWED_TAGS, "")
     .replace(/<span(?!\s+data-token=)[^>]*>/gi, "")
     .trim();
+}
+
+/**
+ * B2-4 (RULING-report-studio-B2-4 (b)): the non-figure numbers prose may type — a short, published allowlist, each tested. Scope
+ * labels; standard identifiers (ISO 14064, ISO 14064-1, ISO 14001, ISO 50001, PAS 2060); the temperature goals (1.5°C, 2°C). Nothing
+ * else numeric is typed: a year, a count, an emission, a share, an amount is a token.
+ */
+export const REPORT_NARRATIVE_NUMBER_ALLOWLIST: ReadonlyArray<{ name: string; pattern: RegExp }> = [
+  { name: "a scope label", pattern: /\bScope [123]\b/g },
+  { name: "an ISO standard", pattern: /\bISO \d{4,5}(?:-\d{1,2})?(?::\d{4})?\b/g },
+  { name: "PAS 2060", pattern: /\bPAS 2060\b/g },
+  { name: "a temperature goal", pattern: /(?:\b1\.5|\b2)\s?°C/g },
+];
+
+export type ReportNarrativeBodyIssue = { code: "TYPED_FIGURE" | "MONEY" | "UNKNOWN_TOKEN"; message: string };
+
+/**
+ * A narrative body's integrity (B2-4): every figure is a token. Refuses a digit run outside a `data-token` span — unless the
+ * allowlist names it — an amount of money (NZC-120, the shared check), and a token the palette does not hold. Run on every
+ * `report.section.*` write and again on each body validate freezes, so a body edited before the rule cannot be issued.
+ */
+export function reportNarrativeBodyIssues(bodyHtml: string): ReportNarrativeBodyIssue[] {
+  const issues: ReportNarrativeBodyIssue[] = [];
+  const unknown = [...new Set([...bodyHtml.matchAll(/<span\b[^>]*\bdata-token="([^"]*)"[^>]*>/g)].map((match) => match[1]!).filter((key) => !isReportTokenKey(key)))];
+  if (unknown.length) issues.push({ code: "UNKNOWN_TOKEN", message: `${unknown.map((key) => `"${key}"`).join(", ")} ${unknown.length === 1 ? "is not a report figure" : "are not report figures"} — insert figures from the palette.` });
+  // The prose outside the tokens, as a reader sees it: token spans (and anything inside them) out, tags out, entities read.
+  const prose = bodyHtml
+    .replace(/<span\b[^>]*\bdata-token="[^"]*"[^>]*>[\s\S]*?<\/span>/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, dec: string) => String.fromCodePoint(Number(dec)));
+  if (isMoneyShaped(prose)) issues.push({ code: "MONEY", message: "A narrative never states an amount of money (NZC-120). Take the amount out." });
+  const unlisted = REPORT_NARRATIVE_NUMBER_ALLOWLIST.reduce((text, allowed) => text.replace(allowed.pattern, " "), prose);
+  const typed = unlisted.match(/\d[\d,.]*/g);
+  if (typed) {
+    const shown = [...new Set(typed)].slice(0, 3).map((figure) => `"${figure}"`).join(", ");
+    issues.push({ code: "TYPED_FIGURE", message: `${shown} ${typed.length === 1 ? "is a typed figure" : "are typed figures"}. Every figure in the report is a locked token, so it always equals the reviewed evidence — insert it from the palette instead.` });
+  }
+  return issues;
 }
 
 export type SectionTokenVerification = {

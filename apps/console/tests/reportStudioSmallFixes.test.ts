@@ -104,8 +104,9 @@ describe("D — a draft prints and previews exactly what is on screen, marked as
   });
 
   it("Page · A4 for composed@5 is Paged.js over the flow document; older renderers keep their view", () => {
-    assert.match(studio, /const paged = reportRendererOf\(composition\) === "composed@5";/);
-    assert.match(studio, /<div className="nzs-paged-source" ref=\{flowSource\} hidden=\{mode === "page"\}>\n\s+<ReportComposedView composition=\{composition\} preview=\{kind !== "published"\} mode="flow" \/>/);
+    // B2-4: composed@6 is composed@5 drawing its frozen narrative — the same document, so it pages the same way.
+    assert.match(studio, /const paged = drawsMockupDocument\(composition\);/);
+    assert.match(studio, /<div className="nzs-paged-source" ref=\{flowSource\} hidden=\{mode === "page"\}>\n\s+<ReportComposedView composition=\{composition\} preview=\{kind !== "published"\} mode="flow" narrativeEditor=\{narrativeEditor\} \/>/);
     assert.match(studio, /\{mode === "page" \? <StudioPagedView source=\{flowSource\} css=\{buildStudioPagedCss\(printMeta\)\} readKey=\{composition\} \/> : null\}/);
     assert.match(studio, /: <ReportComposedView composition=\{composition\} preview=\{kind !== "published"\} mode=\{mode\} \/>\}/);
     // A copy is paginated; the renderer's own markup is never changed, and a failure is said, not hidden.

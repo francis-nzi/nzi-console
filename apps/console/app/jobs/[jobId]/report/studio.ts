@@ -69,7 +69,8 @@ export function studioRail(composition: ReportComposition, plan: ReportSectionPl
   // The renderer's own "present" test and titles (B2-3): composed@4 draws its further sections by its own headings; earlier
   // renderers never draw them.
   const renderer = reportRendererOf(composition), meta = reportSectionMetaFor(composition);
-  const v4 = renderer === "composed@4", v5 = renderer === "composed@5";
+  // composed@6 (B2-4) is composed@5 drawing its frozen narrative: the same document, rail and numbers.
+  const v4 = renderer === "composed@4", v5 = renderer === "composed@5" || renderer === "composed@6";
   // composed@5 numbers by its own "draws" test and heads by its own titles, its standalone narrative sections included. Its
   // cover is drawn always, outside that set (the layout never numbers a cover, so counting it here moves no number).
   const present = v5

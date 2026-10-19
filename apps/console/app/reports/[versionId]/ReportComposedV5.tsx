@@ -1,9 +1,13 @@
 import { Fragment, type ReactNode } from "react";
 import {
-  crpScopeCategoryLabel, isReportGap, reportSectionLayout, reportSectionPlanOf, strategyControlLevelLabels, strategyControlLevels, strategyStatusLabels,
-  type ReportComposition,
+  crpScopeCategoryLabel, isReportGap, reportRendererOf, reportSectionLayout, reportSectionPlanOf, strategyControlLevelLabels, strategyControlLevels, strategyStatusLabels,
+  type ReportComposition, type ReportNarrativeElement,
 } from "@nzi/contracts";
+import { drawNarrativeBody } from "./composedNarrative";
 import { LogoMark } from "../../lib/LogoMark";
+import { dd, employeesOf, f1, pc, reportingYearLabel, siteCount, targetPoints, yearLabel } from "./composed5Helpers";
+// The studio imports the year label from here, as before.
+export { reportingYearLabel } from "./composed5Helpers";
 
 /**
  * `composed@5` (BUILD-report-studio-composed5): the Report Studio mockup (`_handoff/MOCKUP-report-studio.html`), rendered —
@@ -19,22 +23,11 @@ import { LogoMark } from "../../lib/LogoMark";
 /** Where an asset is served from: the staff routes by default; the portal passes its grant-checked ones. */
 export type LogoSrc = (assetId: string) => string;
 
-// The mockup's formatters, exactly: one decimal with thousands separators; a share to one decimal, ".0" dropped.
-const f1 = (value: number) => value.toLocaleString("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const pc = (value: number, total: number) => (total ? Math.round((value / total) * 1000) / 10 : 0);
-const dd = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 // Brand-locked scope identity (S1 coral, S2 amber, S3 emerald) — explicit hex for print determinism.
 const SCOPE_COLOUR: Record<string, string> = { "1": "#FF5C48", "2": "#FFC24B", "3": "#0BA75E" };
 const INK = "#0B1B2B", MUTED = "#616B65", PAPER = "#FFFFFF";
 
-/** The reporting year as the mockup names it: "2025–2026" for a split year, "2025" for a calendar one. */
-export function reportingYearLabel(composition: ReportComposition): string {
-  const period = composition.reportingPeriod;
-  if (!period) return String(composition.reportingYear);
-  const [from, to] = [period.from.slice(0, 4), period.to.slice(0, 4)];
-  return from === to ? from : `${from}–${to}`;
-}
 
 const reportTitle = (composition: ReportComposition) => `Carbon Reduction Plan ${reportingYearLabel(composition)}`;
 
@@ -101,6 +94,31 @@ function SrcLine({ composition }: { composition: ReportComposition }) {
 const Narrative = ({ children }: { children: ReactNode }) =>
   <div className="r5-editblock"><span className="r5-spill">Default template</span><div className="r5-prose">{children}</div></div>;
 
+/**
+ * B2-4: the studio's hook onto a drawn narrative block — it wraps the block with its Edit / Generate / Reset controls. Passed only
+ * by the Report Studio on a draft; an issued report, a preview and the portal never pass it, so their markup is the renderer's own.
+ */
+export type NarrativeEditor = (sectionKey: string, element: ReportNarrativeElement, drawn: ReactNode) => ReactNode;
+
+const SOURCE_LABEL: Record<ReportNarrativeElement["contentSource"], string> = { default: "Default template", ai: "AI-drafted", "client-edited": "Edited by client" };
+
+/**
+ * B2-4 (`composed@6`; RULING-report-studio-B2-4 (a)): a narrative block. Under `composed@6` with the narrative present it draws the
+ * frozen body — its tokens resolved from this composition — and says where the wording came from (the pill; an edited block is
+ * marked, on screen only). Anything else is `composed@5`: the template, byte for byte as before. A section the version does not
+ * draw has no frozen body, and nothing is drawn for it.
+ */
+function NarrativeSection({ composition, sectionKey, editor, children }: { composition: ReportComposition; sectionKey: string; editor?: NarrativeEditor; children: ReactNode }) {
+  if (reportRendererOf(composition) !== "composed@6" || !composition.narrative) return <Narrative children={children} />;
+  const element = composition.narrative.find((entry) => entry.key === sectionKey);
+  if (!element) return null;
+  const drawn = <div className={`r5-editblock r5-src-${element.contentSource}`} data-narrative={sectionKey}>
+    <span className={`r5-spill r5-spill-${element.contentSource}`}>{SOURCE_LABEL[element.contentSource]}</span>
+    <div className="r5-prose" dangerouslySetInnerHTML={{ __html: drawNarrativeBody(element.bodyHtml, composition) }} />
+  </div>;
+  return editor ? <>{editor(sectionKey, element, drawn)}</> : drawn;
+}
+
 function Cover({ composition, issuerLogoSrc, clientLogoSrc, preview }: { composition: ReportComposition; issuerLogoSrc: LogoSrc; clientLogoSrc: LogoSrc; preview: boolean }) {
   const issuer = composition.issuer;
   const rows: Array<[string, ReactNode]> = [
@@ -125,7 +143,7 @@ function Cover({ composition, issuerLogoSrc, clientLogoSrc, preview }: { composi
   </div>;
 }
 
-function ExecutiveSummary({ composition, number }: { composition: ReportComposition; number: string }) {
+function ExecutiveSummary({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const scopes = scopesOf(composition);
   const flag = composition.scope?.kind === "sites" ? <div className="r5-scopeflag">Recomposed for: {scopeLabel(composition)}</div> : null;
   const head = <><div className="r5-kicker">{number} · Overview</div><h2 className="r5-h2">Executive Summary</h2>{flag}</>;
@@ -137,10 +155,10 @@ function ExecutiveSummary({ composition, number }: { composition: ReportComposit
   const year = reportingYearLabel(composition);
   return <>
     {head}
-    <Narrative>
+    <NarrativeSection composition={composition} sectionKey="executive-summary" editor={editor}>
       <p>{composition.client} recorded total greenhouse gas emissions of <Tok>{f1(total)} tCO₂e</Tok> for the <Tok>{year}</Tok> reporting year, comprising <Tok>{f1(s1)} tCO₂e</Tok> from Scope 1, <Tok>{f1(s2)} tCO₂e</Tok> from Scope 2 and <Tok>{f1(s3)} tCO₂e</Tok> from Scope 3, prepared under the GHG Protocol Corporate Standard on an operational control boundary.</p>
       <p>Scope 3 value-chain activity represents <Tok>{pc(s3, total)}%</Tok> of total emissions. This report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure is derived.</p>
-    </Narrative>
+    </NarrativeSection>
     <div className="r5-chartcard">
       <div className="r5-chead"><b>Emissions summary by scope</b><SvgTag /></div>
       <div className="r5-donutwrap"><Donut scopes={scopes} total={total} /><DonutLegend scopes={scopes} total={total} /></div>
@@ -152,23 +170,12 @@ function ExecutiveSummary({ composition, number }: { composition: ReportComposit
 /** The mockup's `flag(kind)`: a client-level section says so, whatever the scope; a site section names a site scope. */
 const ClientFlag = () => <div className="r5-scopeflag r5-client">Client-level — shown for the whole client regardless of site scope</div>;
 
-/** The year a target or baseline is named by, in the report's own convention (a split reporting year reads "2022–2023"). */
-function yearLabel(composition: ReportComposition, year: number): string {
-  const period = composition.reportingPeriod;
-  return period && period.from.slice(0, 4) !== period.to.slice(0, 4) ? `${year}–${year + 1}` : String(year);
-}
 
-/** The frozen targets' interim (near-term) and net-zero points, and the baseline they are measured from. */
-function targetPoints(composition: ReportComposition) {
-  if (isReportGap(composition.targets)) return null;
-  const { trajectory, benchmark } = composition.targets;
-  return { interim: trajectory.find((point) => point.kind === "near-term") ?? null, netZero: trajectory.find((point) => point.kind === "net-zero") ?? null, benchmark };
-}
 
 const COMMITMENTS = ["Achieve the reduction targets set out in this plan.", "Set realistic short- and long-term targets consistent with the net zero commitment.",
   "Report total greenhouse gas emissions at least annually."];
 
-function NetZeroCommitment({ composition, number }: { composition: ReportComposition; number: string }) {
+function NetZeroCommitment({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const points = targetPoints(composition);
   const head = <><div className="r5-kicker">{number} · Commitment</div><h2 className="r5-h2">Net Zero Commitment</h2><ClientFlag /></>;
   if (!points || !points.netZero) {
@@ -177,9 +184,9 @@ function NetZeroCommitment({ composition, number }: { composition: ReportComposi
   const { interim, netZero, benchmark } = points;
   return <>
     {head}
-    <Narrative>
+    <NarrativeSection composition={composition} sectionKey="net-zero-commitment" editor={editor}>
       <p>{composition.client} is committed to achieving net zero greenhouse gas emissions across all scopes by <Tok>{netZero.year}</Tok>, supported by a credible, evidence-led reduction pathway{benchmark ? <> anchored to the client&apos;s <Tok>{yearLabel(composition, benchmark.year)}</Tok> baseline set in its targets</> : null}.</p>
-    </Narrative>
+    </NarrativeSection>
     <ul className="r5-commit-list">{COMMITMENTS.map((line) => <li key={line}>{line}</li>)}</ul>
     <h3 className="r5-h3">Reduction targets</h3>
     <table className="r5-rt">
@@ -193,27 +200,19 @@ function NetZeroCommitment({ composition, number }: { composition: ReportComposi
 }
 
 /** The sites the report covers: the frozen site rows (the organisation-level line is not a site). */
-const siteCount = (composition: ReportComposition) =>
-  isReportGap(composition.emissions) ? 0 : (composition.emissions.sites ?? []).filter((site) => site.siteId !== null).length;
 
-/** The employees the report states: the frozen wording of the client's employees measure ("240 employees"), when it has one. */
-function employeesOf(composition: ReportComposition): string | null {
-  if (isReportGap(composition.intensity)) return null;
-  const text = composition.intensity.metrics.find((metric) => metric.key === "employees")?.denominatorText ?? null;
-  return text ? text.split(" ")[0]! : null;
-}
 
 const NOT_RECORDED = <span className="r5-nr">Not recorded</span>;
 
-function Background({ composition, number }: { composition: ReportComposition; number: string }) {
+function Background({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const sites = siteCount(composition), employees = employeesOf(composition);
   const period = composition.reportingPeriod;
   return <>
     <div className="r5-kicker">{number} · Background</div><h2 className="r5-h2">Background &amp; Organisation</h2>
-    <Narrative>
+    <NarrativeSection composition={composition} sectionKey="background" editor={editor}>
       <p>{composition.client} reports its greenhouse gas emissions for the <Tok>{reportingYearLabel(composition)}</Tok> reporting year under the operational control approach{sites > 0 ? <>, across <Tok>{sites} site{sites === 1 ? "" : "s"}</Tok> in its reporting boundary</> : null}.</p>
       <p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>
-    </Narrative>
+    </NarrativeSection>
     <div className="r5-kv">
       <div className="r5-kvbox">
         <div className="r5-kr"><span>Organisation</span><b>{composition.client}</b></div>
@@ -446,7 +445,7 @@ function IntensityTargetsChart({ actual, target, interimYear, endYear }: { actua
   </svg>;
 }
 
-function IntensitySection({ composition, number }: { composition: ReportComposition; number: string }) {
+function IntensitySection({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const head = <><div className="r5-kicker">{number} · Performance</div><h2 className="r5-h2">Intensity Metric Analysis</h2><SiteFlag composition={composition} /></>;
   if (isReportGap(composition.intensity) || composition.intensity.metrics.length === 0) {
     return <>{head}<p className="r5-unavailable">{isReportGap(composition.intensity) ? composition.intensity.reason : "No intensity measures were set up for this client when the report was issued."}</p></>;
@@ -469,9 +468,9 @@ function IntensitySection({ composition, number }: { composition: ReportComposit
   })() : null;
   return <>
     {head}
-    <Narrative>
+    <NarrativeSection composition={composition} sectionKey="intensity-analysis" editor={editor}>
       <p>Intensity metrics normalise emissions against business activity so performance can be compared year on year regardless of changes in scale. {composition.client} reports {metrics.length === 1 ? "one intensity measure" : `${metrics.length} intensity measures`}: {metrics.map((metric) => metric.label.toLowerCase()).join(", ")}.</p>
-    </Narrative>
+    </NarrativeSection>
     <div className="r5-imrows">
       {metrics.map((metric) => <div className="r5-imrow" key={metric.key}>
         <div className="r5-im-ic">{iconFor(metric.iconKey)}</div>
@@ -633,7 +632,7 @@ function scopeOrder(scopes: Scopes) {
   return [...scopes].sort((a, b) => b.value - a.value);
 }
 
-function CategoryAnalysis({ composition, number }: { composition: ReportComposition; number: string }) {
+function CategoryAnalysis({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const head = <><div className="r5-kicker">{number} · Analysis</div><h2 className="r5-h2">Emissions by Scope &amp; Category</h2><SiteFlag composition={composition} /></>;
   const scopes = scopesOf(composition);
   const { comparison, head: columnsHead, cells } = comparisonColumns(composition);
@@ -652,10 +651,10 @@ function CategoryAnalysis({ composition, number }: { composition: ReportComposit
       </tbody>
     </table>
     <div className="r5-gap">
-      <Narrative>
+      <NarrativeSection composition={composition} sectionKey="category-analysis" editor={editor}>
         <p>For the <Tok>{reportingYearLabel(composition)}</Tok> reporting year total measured carbon emissions are <Tok>{f1(total)} tCO₂e</Tok>. {largest.label} is the largest share at <Tok>{f1(largest.value)} tCO₂e</Tok> (<Tok>{pc(largest.value, total)}%</Tok>), followed by {second.label} at <Tok>{f1(second.value)} tCO₂e</Tok> and {third.label} at <Tok>{f1(third.value)} tCO₂e</Tok>.</p>
         <p>The largest categories are the focus of the reduction actions.</p>
-      </Narrative>
+      </NarrativeSection>
     </div>
   </>;
 }
@@ -676,7 +675,7 @@ const actionIcon = (strategy: PlanStrategy) =>
 /** The chip the mockup puts beside an action: who does it. */
 const CONTROL_CHIP: Record<string, string> = { direct_control: "Operational", supply_chain: "Value chain", influence: "Influence" };
 
-function ActionsSection({ composition, number }: { composition: ReportComposition; number: string }) {
+function ActionsSection({ composition, number, editor }: { composition: ReportComposition; number: string; editor?: NarrativeEditor }) {
   const head = <><div className="r5-kicker">{number} · Plan</div><h2 className="r5-h2">Carbon Reduction Actions</h2><ClientFlag /></>;
   if (isReportGap(composition.plan)) return <>{head}<p className="r5-unavailable">{composition.plan.reason}</p></>;
   const strategies = composition.plan.groups.flatMap((group) => group.strategies);
@@ -687,10 +686,10 @@ function ActionsSection({ composition, number }: { composition: ReportCompositio
   const total = isReportGap(composition.emissions) ? null : composition.emissions.totalTco2e;
   return <>
     {head}
-    <Narrative>
+    <NarrativeSection composition={composition} sectionKey="reduction-actions" editor={editor}>
       <p>{composition.client} has identified <Tok>{strategies.length}</Tok> carbon reduction action{strategies.length === 1 ? "" : "s"}, grouped by how much of each the client controls{total !== null ? <> and targeted at the categories that drive its <Tok>{f1(total)} tCO₂e</Tok> emissions</> : null}.</p>
       {points?.netZero ? <p>Progress is reviewed at least annually alongside the recalculated emissions{points.interim ? <>, on the pathway to <Tok>−{points.interim.pct}% by {points.interim.year}</Tok></> : null} and net zero by <Tok>{points.netZero.year}</Tok>.</p> : null}
-    </Narrative>
+    </NarrativeSection>
     {groups.map((group) => <div key={group.level ?? "none"}>
       <div className="r5-control-level">{group.level ? strategyControlLevelLabels[group.level] : "Not classified by control level"}</div>
       {group.items.map((strategy) => <div className="r5-act" key={strategy.title}>
@@ -896,17 +895,17 @@ export const COMPOSED5_TITLES: Readonly<Record<string, string>> = {
 export const composed5Draws = (key: string): boolean => key in DRAWN;
 
 /** The sections composed@5 draws so far, by plan key — the rest arrive at later checkpoints. */
-const DRAWN: Record<string, (composition: ReportComposition, number: string) => ReactNode> = {
-  "executive-summary": (composition, number) => <ExecutiveSummary composition={composition} number={number} />,
-  "narrative:net-zero-commitment": (composition, number) => <NetZeroCommitment composition={composition} number={number} />,
-  "narrative:background": (composition, number) => <Background composition={composition} number={number} />,
+const DRAWN: Record<string, (composition: ReportComposition, number: string, editor?: NarrativeEditor) => ReactNode> = {
+  "executive-summary": (composition, number, editor) => <ExecutiveSummary composition={composition} number={number} editor={editor} />,
+  "narrative:net-zero-commitment": (composition, number, editor) => <NetZeroCommitment composition={composition} number={number} editor={editor} />,
+  "narrative:background": (composition, number, editor) => <Background composition={composition} number={number} editor={editor} />,
   sites: (composition, number) => <SitesSection composition={composition} number={number} />,
   emissions: (composition, number) => <OverviewSection composition={composition} number={number} />,
-  intensity: (composition, number) => <IntensitySection composition={composition} number={number} />,
+  intensity: (composition, number, editor) => <IntensitySection composition={composition} number={number} editor={editor} />,
   targets: (composition, number) => <TargetsSection composition={composition} number={number} />,
   "scope-analysis": (composition, number) => <ScopeAnalysis composition={composition} number={number} />,
-  "category-analysis": (composition, number) => <CategoryAnalysis composition={composition} number={number} />,
-  plan: (composition, number) => <ActionsSection composition={composition} number={number} />,
+  "category-analysis": (composition, number, editor) => <CategoryAnalysis composition={composition} number={number} editor={editor} />,
+  plan: (composition, number, editor) => <ActionsSection composition={composition} number={number} editor={editor} />,
   srs: (composition, number) => <SrsSection composition={composition} number={number} />,
   methodology: (composition, number) => <MethodologySection composition={composition} number={number} />,
   glossary: () => <GlossarySection />,
@@ -915,8 +914,10 @@ const DRAWN: Record<string, (composition: ReportComposition, number: string) => 
 };
 
 
-export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetId) => `/api/isolated/logo-assets/${encodeURIComponent(assetId)}`, preview = false, mode = "page" }: {
+export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetId) => `/api/isolated/logo-assets/${encodeURIComponent(assetId)}`, preview = false, mode = "page", narrativeEditor }: {
   composition: ReportComposition; issuerLogoSrc: LogoSrc; clientLogoSrc?: LogoSrc; preview?: boolean;
+  /** B2-4: the Report Studio's narrative editor on a draft; never passed on an issued report, a preview or the portal. */
+  narrativeEditor?: NarrativeEditor;
   /** The mockup's two views: A4 pages with running head and foot, or one continuous flow with page-break markers. */
   mode?: "page" | "flow";
 }) {
@@ -924,7 +925,7 @@ export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetI
   const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
   const pages = layout.length + 1;
   const title = reportTitle(composition);
-  return <main className={`nzr5 r5-mode-${mode}`} data-renderer="composed@5">
+  return <main className={`nzr5 r5-mode-${mode}`} data-renderer={reportRendererOf(composition) === "composed@6" ? "composed@6" : "composed@5"}>
     <div className="r5-pageflow">
       <section className="r5-page"><Cover composition={composition} issuerLogoSrc={issuerLogoSrc} clientLogoSrc={clientLogoSrc} preview={preview} /></section>
       {layout.map((entry, index) => {
@@ -933,7 +934,7 @@ export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetI
           <div className="r5-pbreak"><span className="r5-pb-num">Page {page} break</span></div>
           <section className="r5-page" data-section={entry.key}>
             <div className="r5-runhead"><b>{composition.client}</b>{title}</div>
-            {DRAWN[entry.key]!(composition, entry.number ?? "")}
+            {DRAWN[entry.key]!(composition, entry.number ?? "", narrativeEditor)}
             <div className="r5-runfoot"><span>Private &amp; Confidential</span><span>{composition.client}</span><span className="r5-tnum">Page {page} of {pages}</span></div>
           </section>
         </div>;

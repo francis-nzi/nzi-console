@@ -41,9 +41,27 @@ describe("report section commands (NZC-048)", () => {
 
   it("a subsequent edit updates the row and bumps the version", async () => {
     const state = sectionPool({ currentVersion: 3 });
-    const result = await editReportSection(state.pool, { jobId: "job-a", sectionKey: "background", bodyHtml: "<p>v4.</p>", expectedVersion: 3 }, context);
+    // B2-4: a body holds no typed digit (the old fixture's "v4" would now be refused), so the edit is words.
+    const result = await editReportSection(state.pool, { jobId: "job-a", sectionKey: "background", bodyHtml: "<p>Version four of the wording.</p>", expectedVersion: 3 }, context);
     assert.equal(result.data.version, 4);
     assert.ok(state.writes.some((w) => w.sql.startsWith("UPDATE nzi_console.report_sections")));
+  });
+
+  it("B2-4: refuses a typed figure, an amount of money and an unknown token before anything is written", async () => {
+    for (const [bodyHtml, code] of [
+      ["<p>Emissions fell to 13157 tonnes.</p>", "TYPED_FIGURE"],
+      ["<p>The programme cost £40k.</p>", "MONEY"],
+      ["<p>Total <span data-token=\"madeUp\"></span>.</p>", "UNKNOWN_TOKEN"],
+    ] as const) {
+      const state = sectionPool({ currentVersion: 3 });
+      await assert.rejects(editReportSection(state.pool, { jobId: "job-a", sectionKey: "background", bodyHtml, expectedVersion: 3 }, context),
+        (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === code), code);
+      assert.equal(state.writes.length, 0, `${code}: nothing written`);
+    }
+    // The allowlist and the tokens pass: scope labels, a standard, a temperature goal, and every figure as a token.
+    const state = sectionPool({ currentVersion: 3 });
+    await editReportSection(state.pool, { jobId: "job-a", sectionKey: "background", expectedVersion: 3,
+      bodyHtml: "<p>Scope 3 dominates; reporting follows ISO 14064-1 and the 1.5°C goal; the total is <span data-token=\"total\"></span>.</p>" }, context);
   });
 
   it("an AI redraft records content-source ai", async () => {

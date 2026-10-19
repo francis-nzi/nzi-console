@@ -54,68 +54,71 @@ export type ReportSectionReadModel = {
 // `<span data-token="KEY"></span>` markers are resolved to locked figure chips at
 // render time (R3 / NZC-049, @nzi/contracts renderReportSectionBody).
 export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
+  // B2-4 (RULING-report-studio-B2-4 (c)): each default is composed@5's own wording — the template the report draws — so "Reset"
+  // returns exactly what the report shows. Every figure is a token; where composed@5 says a clause only when the data holds it
+  // (a baseline, sites, a net zero target), a phrase token carries the clause and resolves to nothing otherwise. No typed digit
+  // outside a token but the published allowlist ("Scope 1/2/3") — `reportNarrativeBodyIssues` holds every body to that.
   {
     key: "executive-summary",
     title: "Executive summary",
     ordinal: 10,
     defaultBodyHtml:
-      "<p>The organisation recorded total greenhouse gas emissions of <span data-token=\"total\"></span> for the <span data-token=\"reportingYear\"></span> reporting year, comprising <span data-token=\"scope1\"></span> from Scope 1, <span data-token=\"scope2\"></span> from Scope 2 and <span data-token=\"scope3\"></span> from Scope 3. This report is prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard, under the operational control boundary.</p>" +
-      "<p>Scope 3 value-chain activity represents <span data-token=\"scope3Pct\"></span> of the total emissions. The report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure in this document is derived.</p>",
+      "<p><span data-token=\"client\"></span> recorded total greenhouse gas emissions of <span data-token=\"total\"></span> for the <span data-token=\"reportingYear\"></span> reporting year, comprising <span data-token=\"scope1\"></span> from Scope 1, <span data-token=\"scope2\"></span> from Scope 2 and <span data-token=\"scope3\"></span> from Scope 3, prepared under the GHG Protocol Corporate Standard on an operational control boundary.</p>" +
+      "<p>Scope 3 value-chain activity represents <span data-token=\"scope3Pct\"></span> of total emissions. This report sets out the reduction pathway to net zero and the prioritised carbon reduction actions, and records the reviewed evidence from which every figure is derived.</p>",
     aiBodyHtml:
-      "<p>In the <span data-token=\"reportingYear\"></span> reporting year the organisation's measured emissions totalled <span data-token=\"total\"></span>, of which value-chain (Scope 3) emissions represent <span data-token=\"scope3Pct\"></span>. Direct emissions were modest — <span data-token=\"scope1\"></span> in Scope 1 and <span data-token=\"scope2\"></span> in Scope 2.</p>" +
-      "<p>This report sets a pathway to net zero by <span data-token=\"netZeroYear\"></span> with an interim milestone of <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span>, using this year as the immutable baseline for tracking reductions.</p>",
+      "<p>In the <span data-token=\"reportingYear\"></span> reporting year <span data-token=\"client\"></span> measured emissions of <span data-token=\"total\"></span>: <span data-token=\"scope1\"></span> direct (Scope 1), <span data-token=\"scope2\"></span> from purchased energy (Scope 2) and <span data-token=\"scope3\"></span> across the value chain (Scope 3).</p>" +
+      "<p>With the value chain at <span data-token=\"scope3Pct\"></span> of the total, the reduction plan concentrates on suppliers and purchased goods alongside the organisation's own operations. Every figure in this report is drawn from the reviewed evidence.</p>",
   },
   {
     key: "net-zero-commitment",
     title: "Net zero commitment",
     ordinal: 20,
     defaultBodyHtml:
-      "<p>The organisation is committed to achieving net zero greenhouse gas emissions across all scopes by <span data-token=\"netZeroYear\"></span>, supported by a credible, evidence-led reduction pathway with an interim milestone of <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span>. These targets are anchored to the <span data-token=\"baselineTotal\"></span> baseline established for <span data-token=\"baselineYear\"></span>.</p>" +
-      "<ul><li>Achieve the reduction targets set out in this plan.</li><li>Set realistic short- and long-term targets consistent with the net zero commitment.</li><li>Report total greenhouse gas emissions at least annually.</li></ul>",
+      "<p><span data-token=\"client\"></span> is committed to achieving net zero greenhouse gas emissions across all scopes by <span data-token=\"netZeroYear\"></span>, supported by a credible, evidence-led reduction pathway<span data-token=\"baselineAnchor\"></span>.</p>",
     aiBodyHtml:
-      "<p>The organisation has set a clear ambition: net zero across every scope by <span data-token=\"netZeroYear\"></span>, underpinned by an interim <span data-token=\"interimReductionPct\"></span> reduction by <span data-token=\"interimYear\"></span>. Both targets are measured against the <span data-token=\"baselineTotal\"></span> baseline for <span data-token=\"baselineYear\"></span> and are reported at least annually.</p>",
+      "<p><span data-token=\"client\"></span> has set a clear ambition: net zero across every scope by <span data-token=\"netZeroYear\"></span>, on an evidence-led reduction pathway<span data-token=\"baselineAnchor\"></span>.</p>",
   },
   {
     key: "background",
     title: "Background & organisation",
     ordinal: 30,
     defaultBodyHtml:
-      "<p>This section describes the reporting organisation, the nature of its operations and the organisational boundary applied to this assessment. Emissions are consolidated using the operational control approach unless stated otherwise, for the <span data-token=\"reportingYear\"></span> reporting year.</p>" +
-      "<p>The methodology and boundary decisions are recorded in the standards and methodology section and in the assurance record.</p>",
+      "<p><span data-token=\"client\"></span> reports its greenhouse gas emissions for the <span data-token=\"reportingYear\"></span> reporting year under the operational control approach<span data-token=\"siteClause\"></span>.</p>" +
+      "<p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>",
     aiBodyHtml:
-      "<p>Emissions are reported for the <span data-token=\"reportingYear\"></span> reporting year under the operational control boundary, following the GHG Protocol Corporate Standard. As a limited-asset organisation, the emissions profile is dominated by value-chain activity rather than direct operations — a pattern reflected throughout this report.</p>",
+      "<p>This report covers <span data-token=\"client\"></span>'s greenhouse gas emissions for the <span data-token=\"reportingYear\"></span> reporting year, consolidated under the operational control approach<span data-token=\"siteClause\"></span>.</p>" +
+      "<p>The standards and methodology section sets out the boundary and the methods applied.</p>",
   },
   {
     key: "intensity-analysis",
     title: "Intensity metric analysis",
     ordinal: 40,
     defaultBodyHtml:
-      "<p>Intensity metrics normalise emissions against a measure of business activity so that performance can be compared year on year regardless of changes in the scale of operations.</p>" +
-      "<p>For the <span data-token=\"reportingYear\"></span> reporting year the emissions intensity is <span data-token=\"intensityValue\"></span> <span data-token=\"intensityUnit\"></span>, projected forward on the same pathway as absolute emissions.</p>",
+      "<p>Intensity metrics normalise emissions against business activity so performance can be compared year on year regardless of changes in scale. <span data-token=\"client\"></span> reports <span data-token=\"intensityMeasures\"></span>.</p>",
     aiBodyHtml:
-      "<p>Normalised to activity, the <span data-token=\"reportingYear\"></span> baseline sits at <span data-token=\"intensityValue\"></span> <span data-token=\"intensityUnit\"></span>. This per-unit measure is the fairest way to judge progress as the organisation changes scale, and is projected to fall on the same pathway as absolute emissions to <span data-token=\"netZeroYear\"></span>.</p>",
+      "<p>Normalising emissions to business activity shows performance independent of growth or contraction. <span data-token=\"client\"></span> reports <span data-token=\"intensityMeasures\"></span>.</p>",
   },
   {
     key: "category-analysis",
     title: "Emissions by scope & category",
     ordinal: 50,
     defaultBodyHtml:
-      "<p>For the <span data-token=\"reportingYear\"></span> reporting year total measured carbon emissions are <span data-token=\"total\"></span>. Scope 3 dominates the profile at <span data-token=\"scope3\"></span> (<span data-token=\"scope3Pct\"></span>), followed by Scope 1 at <span data-token=\"scope1\"></span> and Scope 2 at <span data-token=\"scope2\"></span>.</p>" +
-      "<p>Where a category is included in the boundary but no activity was recorded, it is shown with a nil value rather than omitted, so the completeness of the assessment is visible. The categories that contribute most to the total are the focus of the reduction actions.</p>",
+      "<p>For the <span data-token=\"reportingYear\"></span> reporting year total measured carbon emissions are <span data-token=\"total\"></span>. <span data-token=\"largestScope\"></span> is the largest share at <span data-token=\"largestTotal\"></span> (<span data-token=\"largestPct\"></span>), followed by <span data-token=\"secondScope\"></span> at <span data-token=\"secondTotal\"></span> and <span data-token=\"thirdScope\"></span> at <span data-token=\"thirdTotal\"></span>.</p>" +
+      "<p>The largest categories are the focus of the reduction actions.</p>",
     aiBodyHtml:
-      "<p>The category profile for <span data-token=\"reportingYear\"></span> is weighted toward the value chain: Scope 3 contributes <span data-token=\"scope3\"></span> (<span data-token=\"scope3Pct\"></span>) of the <span data-token=\"total\"></span> total, against <span data-token=\"scope1\"></span> in Scope 1 and <span data-token=\"scope2\"></span> in Scope 2.</p>" +
-      "<p>Categories included in the boundary with no recorded activity are shown at nil rather than omitted, so the completeness of the assessment is visible. The largest categories are the highest-leverage targets for reduction.</p>",
+      "<p>The <span data-token=\"reportingYear\"></span> profile totals <span data-token=\"total\"></span>, led by <span data-token=\"largestScope\"></span> at <span data-token=\"largestTotal\"></span> (<span data-token=\"largestPct\"></span>).</p>" +
+      "<p>The reduction actions target the categories that drive the largest share.</p>",
   },
   {
     key: "reduction-actions",
     title: "Carbon reduction actions",
     ordinal: 60,
     defaultBodyHtml:
-      "<p>The organisation has identified a set of carbon reduction actions, classified by term, and targeted at the categories that drive the <span data-token=\"total\"></span> emissions. Each action is owned, scheduled and tracked against the baseline established by this report.</p>" +
-      "<p>Progress against these actions is reviewed at least annually alongside the recalculated emissions, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
+      "<p><span data-token=\"client\"></span> has identified <span data-token=\"actionCount\"></span> carbon reduction action<span data-token=\"actionsPlural\"></span>, grouped by how much of each the client controls<span data-token=\"actionsTarget\"></span>.</p>" +
+      "<p><span data-token=\"progressReview\"></span></p>",
     aiBodyHtml:
-      "<p>The action plan addresses the <span data-token=\"total\"></span> emissions, concentrating effort on the categories that drive it. Each action is owned, scheduled and tracked against this year's baseline.</p>" +
-      "<p>Progress is reviewed at least annually alongside the recalculated emissions, on the pathway to <span data-token=\"interimReductionPct\"></span> by <span data-token=\"interimYear\"></span> and net zero by <span data-token=\"netZeroYear\"></span>.</p>",
+      "<p>The plan sets out <span data-token=\"actionCount\"></span> carbon reduction action<span data-token=\"actionsPlural\"></span>, each owned, scheduled and grouped by how much of it the client controls<span data-token=\"actionsTarget\"></span>.</p>" +
+      "<p><span data-token=\"progressReview\"></span></p>",
   },
 ] as const;
 

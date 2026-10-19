@@ -36,6 +36,7 @@ import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
 import { staffRoles, type Capability, type CommandGrant, type StaffRole } from "./permissions";
 import { isCrpReportSectionKey } from "./reportSections";
+import { reportNarrativeBodyIssues } from "./reportTokens";
 import type { LcaAssessmentType, LcaAssessmentWriteFields, LcaGapFillWriteFields, LcaLifecycleBoundary, LcaLineItemWriteFields, LcaModuleCode, LcaScenarioMultiplierWriteFields, LcaScenarioWriteFields, LcaTransportLegWriteFields } from "./jobFamilies";
 import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 
@@ -1302,6 +1303,8 @@ const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   if (typeof bodyHtml !== "string" || bodyHtml.trim().length === 0) { issues.push({ field: "bodyHtml", code: "REQUIRED", message: "Section body is required." }); return issues; }
   if (bodyHtml.length > 20_000) issues.push({ field: "bodyHtml", code: "TOO_LONG", message: "Section body must be 20,000 characters or fewer." });
   if (/<script\b|<\/script>|javascript:|\son\w+\s*=/i.test(bodyHtml)) issues.push({ field: "bodyHtml", code: "UNSAFE", message: "Section body must not contain scripts or event handlers." });
+  // B2-4 (RULING-report-studio-B2-4 (b)): every figure is a token — no typed figure outside the allowlist, no money, no unknown token.
+  for (const issue of reportNarrativeBodyIssues(bodyHtml)) issues.push({ field: "bodyHtml", code: issue.code, message: issue.message });
   return issues;
 };
 /**

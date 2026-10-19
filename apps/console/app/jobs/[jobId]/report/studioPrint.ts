@@ -38,6 +38,9 @@ export const STUDIO_R5_PAGED_RULES = [
   // Screen-only provenance chrome, stripped as `reportPrintRules.ts` strips source pills: the template pill, the header note, and
   // the figure-token chip (the figure stays; its lock styling does not).
   ".nzr5 .r5-spill,.nzr5 .r5-thead-note{display:none!important}",
+  // B2-4: the edit marker (a client-edited block's amber rule) and the studio's narrative controls are screen-only too.
+  ".nzr5 .r5-editblock{border-left:0!important;padding-left:0!important;margin-left:0!important}",
+  ".nzs-narr-tools,.nzs-narr-note{display:none!important}",
   ".nzr5 .r5-tok{background:none!important;border:0!important;padding:0!important;color:inherit!important}",
   ".nzr5 .r5-tok::before{display:none!important}",
   "*{-webkit-print-color-adjust:exact;print-color-adjust:exact}",

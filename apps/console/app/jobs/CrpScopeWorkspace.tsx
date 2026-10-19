@@ -41,7 +41,6 @@ import { RowStateControl } from "./RowStateControl";
 import { DatasetUpdateBanner } from "./DatasetUpdateBanner";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
-import {CrpReportSectionEditor} from "./CrpReportSectionEditor";
 import {CrpAssuranceStage} from "./CrpAssuranceStage";
 import {filterScopeRows,resolveSelectedScopeRow,scopeRowNeedsAttention,type ScopeRegisterFilter} from "./scopeRegister";
 import {PortalDataEntryReviewQueue} from "../platform/PortalDataEntryReviewQueue";
@@ -539,8 +538,9 @@ export function CrpScopeWorkspace({
   // F (Phase 3d): with the accordion, the register lives in its categories' Sources views and in a managed row's drawer; the
   // loose section is only for the layouts without one.
   const sourceRegister = accordionOn ? null : <EmissionSourceRegister jobId={job.header.id} factors={factors} sites={captureSites} categories={purchasedGoodsCategories} notice={setNotice} onOpenRow={setSelectedId}/>;
+  // B2-4 (RULING-report-studio-B2-4): the Jobs §4 narrative editor is unmounted — the narrative is edited in the Report Studio,
+  // where it is drawn and frozen at validate. Its component and API routes stay.
   const releaseControl = <>
-    {reportFeatureEnabled("report-edit") && <CrpReportSectionEditor jobId={job.header.id}/>}
     <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;

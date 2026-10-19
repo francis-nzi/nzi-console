@@ -96,3 +96,13 @@ button.nzs-switch:disabled{cursor:default}
 .nzs-signee{flex-wrap:nowrap}
 .nzs-signee .nz-sel{width:auto;min-width:220px;max-width:320px}
 .nzs-confirm{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-radius:8px;background:#FFF7E3;border:1px solid #FFC24B;color:#5C4300;font-size:12.5px}
+
+/* B2-4 (C): a draft's narrative, edited where it is drawn. The controls are screen-only (studioPrint.ts strips them in print). */
+.nzs-narr{position:relative}
+.nzs-narr-tools{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin:-6px 0 12px}
+.nzs-narr-tools .nz-btn{padding:4px 10px;font-size:12px}
+.nzs-narr-tools .nz-sel{font-size:12px;max-width:220px}
+.nzs-narr.editing .nzs-narr-body{outline:2px solid var(--nzs-amber,#FFC24B);outline-offset:4px;border-radius:4px;min-height:48px}
+.nzs-narr.editing .r5-phrase{background:#F1F5F2;border-radius:4px;padding:0 3px}
+.nzs-narr.editing .r5-phrase:empty::before{content:"(clause)";color:#616B65;font-size:11px}
+.nzs-narr-note{margin:0 0 12px;color:#B4261A;font-size:12.5px}

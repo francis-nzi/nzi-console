@@ -1,0 +1,1133 @@
+{
+  "srs": {
+    "radar": {
+      "series": [
+        {
+          "key": "S2",
+          "label": "Climate",
+          "values": [
+            3.09,
+            2.11,
+            1.11,
+            3
+          ]
+        },
+        {
+          "key": "S1",
+          "label": "General",
+          "values": [
+            3,
+            2.17,
+            1.5,
+            3.07
+          ]
+        }
+      ],
+      "target": [
+        2,
+        2,
+        2,
+        3
+      ],
+      "maxLevel": 4
+    },
+    "pillars": [
+      {
+        "label": "Governance",
+        "maturity": 3.06,
+        "maturityLabel": "Advanced"
+      },
+      {
+        "label": "Strategy",
+        "maturity": 2.12,
+        "maturityLabel": "Established"
+      },
+      {
+        "label": "Risk management",
+        "maturity": 1.23,
+        "maturityLabel": "Developing"
+      },
+      {
+        "label": "Metrics & targets",
+        "maturity": 3.02,
+        "maturityLabel": "Advanced"
+      }
+    ],
+    "roadmap": {
+      "pillars": [
+        {
+          "key": "risk",
+          "gaps": [
+            {
+              "code": "S2 R3",
+              "title": "Process to monitor and manage climate risks",
+              "shortfall": 2,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Not started"
+            },
+            {
+              "code": "S1 R1",
+              "title": "Process to identify, assess and prioritise sustainability risks",
+              "shortfall": 1,
+              "strategies": [
+                {
+                  "title": "Product take-back & recycled content",
+                  "status": "planned",
+                  "statusLabel": "Planned"
+                }
+              ],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            },
+            {
+              "code": "S2 R1",
+              "title": "Process to identify and assess climate risks",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            },
+            {
+              "code": "S2 R4",
+              "title": "Integration into enterprise risk management",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            }
+          ],
+          "label": "Risk management"
+        },
+        {
+          "key": "strategy",
+          "gaps": [
+            {
+              "code": "S1 S3",
+              "title": "Time horizons defined and applied consistently",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            },
+            {
+              "code": "S2 S3",
+              "title": "Effects on strategy and decision-making",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            },
+            {
+              "code": "S2 S6",
+              "title": "Scenario method, inputs and assumptions disclosed",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Established",
+              "maturityLabel": "Developing"
+            }
+          ],
+          "label": "Strategy"
+        },
+        {
+          "key": "metrics",
+          "gaps": [
+            {
+              "code": "S2 M3",
+              "title": "Scope 3 GHG emissions disclosed by category",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Advanced",
+              "maturityLabel": "Established"
+            },
+            {
+              "code": "S2 M6",
+              "title": "Climate-related targets disclosed",
+              "shortfall": 1,
+              "strategies": [],
+              "targetLabel": "Advanced",
+              "maturityLabel": "Established"
+            }
+          ],
+          "label": "Metrics & targets"
+        }
+      ],
+      "unaddressedCount": 8
+    },
+    "assessedOn": "2026-02-20",
+    "overallPct": 64,
+    "overallLabel": "Advanced",
+    "frameworkVersion": 1
+  },
+  "plan": {
+    "groups": [
+      {
+        "label": "Other",
+        "leverId": "__unallocated",
+        "strategies": [
+          {
+            "owner": "Facilities",
+            "scope": "2",
+            "title": "Factory to a renewable electricity tariff",
+            "status": "in_progress",
+            "category": "Energy",
+            "targetDate": null,
+            "progressPct": 60,
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S1 M1"
+            ]
+          },
+          {
+            "owner": "Logistics",
+            "scope": "1",
+            "title": "HGV & van fleet transition to lower-carbon",
+            "status": "planned",
+            "category": "Transport",
+            "targetDate": null,
+            "progressPct": 0,
+            "controlLevel": "direct_control",
+            "srsRequirementCodes": [
+              "S2 G1"
+            ]
+          },
+          {
+            "owner": "Procurement",
+            "scope": "3",
+            "title": "Supplier engagement — top 20 by spend",
+            "status": "in_progress",
+            "category": "Purchased goods",
+            "targetDate": null,
+            "progressPct": 35,
+            "controlLevel": "supply_chain",
+            "srsRequirementCodes": [
+              "S1 S1"
+            ]
+          },
+          {
+            "owner": "Commercial",
+            "scope": "3",
+            "title": "Product take-back & recycled content",
+            "status": "planned",
+            "category": "Materials",
+            "targetDate": null,
+            "progressPct": 0,
+            "controlLevel": "influence",
+            "srsRequirementCodes": [
+              "S1 R1"
+            ]
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "total": 4,
+      "planned": 2,
+      "complete": 0,
+      "inProgress": 2
+    },
+    "excludedCount": 0,
+    "qualitativeOnly": true
+  },
+  "audit": {
+    "rows": [
+      {
+        "site": "Head Office & Factory",
+        "scope": "1",
+        "tco2e": 3100,
+        "factor": "Natural gas · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Natural gas",
+        "category": "Direct emissions",
+        "scopeCode": "1",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Head Office & Factory",
+        "scope": "1",
+        "tco2e": 900,
+        "factor": "Fleet diesel · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Fleet diesel",
+        "category": "Direct emissions",
+        "scopeCode": "1",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Distribution Centre",
+        "scope": "1",
+        "tco2e": 800,
+        "factor": "Natural gas · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Natural gas",
+        "category": "Direct emissions",
+        "scopeCode": "1",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Regional Depot",
+        "scope": "1",
+        "tco2e": 620,
+        "factor": "Fleet diesel · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Fleet diesel",
+        "category": "Direct emissions",
+        "scopeCode": "1",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Head Office & Factory",
+        "scope": "2",
+        "tco2e": 1500,
+        "factor": "Purchased electricity · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Purchased electricity",
+        "category": "Purchased energy",
+        "scopeCode": "2",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Distribution Centre",
+        "scope": "2",
+        "tco2e": 620,
+        "factor": "Purchased electricity · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Purchased electricity",
+        "category": "Purchased energy",
+        "scopeCode": "2",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Regional Depot",
+        "scope": "2",
+        "tco2e": 360,
+        "factor": "Purchased electricity · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Purchased electricity",
+        "category": "Purchased energy",
+        "scopeCode": "2",
+        "qualityTier": "measured"
+      },
+      {
+        "site": "Head Office & Factory",
+        "scope": "3",
+        "tco2e": 2400,
+        "factor": "Purchased goods · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Purchased goods",
+        "category": "Purchased goods and services",
+        "scopeCode": "3.1",
+        "qualityTier": "spend-based"
+      },
+      {
+        "site": "Distribution Centre",
+        "scope": "3",
+        "tco2e": 600,
+        "factor": "Packaging · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Packaging",
+        "category": "Purchased goods and services",
+        "scopeCode": "3.1",
+        "qualityTier": "spend-based"
+      },
+      {
+        "site": "Distribution Centre",
+        "scope": "3",
+        "tco2e": 1100,
+        "factor": "Upstream transport · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Upstream transport",
+        "category": "Upstream transportation and distribution",
+        "scopeCode": "3.4",
+        "qualityTier": "estimated"
+      },
+      {
+        "site": "Head Office & Factory",
+        "scope": "3",
+        "tco2e": 900,
+        "factor": "Upstream transport · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Upstream transport",
+        "category": "Upstream transportation and distribution",
+        "scopeCode": "3.4",
+        "qualityTier": "estimated"
+      },
+      {
+        "site": "Regional Depot",
+        "scope": "3",
+        "tco2e": 256,
+        "factor": "Waste · DESNZ GB 2025",
+        "source": "Not recorded",
+        "activity": "Waste",
+        "category": "Waste generated in operations",
+        "scopeCode": "3.5",
+        "qualityTier": "estimated"
+      }
+    ],
+    "totalTco2e": 13156
+  },
+  "jobId": "712",
+  "scope": {
+    "kind": "whole"
+  },
+  "client": "Bushy Tails Ltd",
+  "issuer": {
+    "footer": "NZI Console Synthetic Demonstrator",
+    "shortName": "NZI Console Synthetic Demonstrator",
+    "displayName": "NZI Console Synthetic Demonstrator",
+    "logoAssetId": "c5-issuer-logo"
+  },
+  "sources": {
+    "sets": [
+      {
+        "id": "uk-ghg-gb-2025",
+        "label": "DESNZ GB 2025",
+        "source": "dataset"
+      }
+    ],
+    "summary": "Reviewed snapshot J000712 · DESNZ GB 2025"
+  },
+  "targets": {
+    "setAt": "2026-10-15T21:30:44.880Z",
+    "benchmark": {
+      "year": 2022,
+      "source": "client-record",
+      "reference": null,
+      "totalTco2e": 14020
+    },
+    "provenance": {
+      "asAt": "2026-10-15",
+      "dataHash": "sha256:2ef1c6bf1a22e5b1bca090eb58e017ce25eb1931c0125fd90c1957dbf79bc9d2",
+      "factorSets": [
+        "Fleet diesel · DESNZ GB 2025",
+        "Natural gas · DESNZ GB 2025",
+        "Packaging · DESNZ GB 2025",
+        "Purchased electricity · DESNZ GB 2025",
+        "Purchased goods · DESNZ GB 2025",
+        "Upstream transport · DESNZ GB 2025",
+        "Waste · DESNZ GB 2025"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 3
+        },
+        {
+          "tier": "measured",
+          "count": 7
+        },
+        {
+          "tier": "spend-based",
+          "count": 2
+        }
+      ]
+    },
+    "trajectory": [
+      {
+        "pct": 0,
+        "kind": "benchmark",
+        "year": 2022,
+        "tco2e": 14020
+      },
+      {
+        "pct": 50,
+        "kind": "near-term",
+        "year": 2035,
+        "tco2e": 7010
+      },
+      {
+        "pct": 90,
+        "kind": "net-zero",
+        "year": 2050,
+        "tco2e": 1401.9999999999998
+      }
+    ],
+    "benchmarkStale": false
+  },
+  "issuedAt": "2026-10-15T21:30:57.038Z",
+  "renderer": "composed@6",
+  "assurance": {
+    "kind": "internal-review",
+    "statement": "Reviewed snapshot (internal review); not third-party assured",
+    "reviewedAt": "2026-10-15T21:30:44.909Z",
+    "reviewedBy": "prep-other"
+  },
+  "emissions": {
+    "sites": [
+      {
+        "label": "Head Office & Factory",
+        "siteId": "c5-site-a",
+        "byScope": [
+          {
+            "scope": "1",
+            "tco2e": 4000
+          },
+          {
+            "scope": "2",
+            "tco2e": 1500
+          },
+          {
+            "scope": "3",
+            "tco2e": 3300
+          }
+        ],
+        "activities": [
+          {
+            "label": "Natural gas",
+            "scope": "1",
+            "tco2e": 3100
+          },
+          {
+            "label": "Purchased goods",
+            "scope": "3",
+            "tco2e": 2400
+          },
+          {
+            "label": "Purchased electricity",
+            "scope": "2",
+            "tco2e": 1500
+          },
+          {
+            "label": "Fleet diesel",
+            "scope": "1",
+            "tco2e": 900
+          },
+          {
+            "label": "Upstream transport",
+            "scope": "3",
+            "tco2e": 900
+          }
+        ],
+        "totalTco2e": 8800,
+        "floorAreaM2": 18000,
+        "inServiceFrom": "2019-04-01"
+      },
+      {
+        "label": "Distribution Centre",
+        "siteId": "c5-site-b",
+        "byScope": [
+          {
+            "scope": "1",
+            "tco2e": 800
+          },
+          {
+            "scope": "2",
+            "tco2e": 620
+          },
+          {
+            "scope": "3",
+            "tco2e": 1700
+          }
+        ],
+        "activities": [
+          {
+            "label": "Upstream transport",
+            "scope": "3",
+            "tco2e": 1100
+          },
+          {
+            "label": "Natural gas",
+            "scope": "1",
+            "tco2e": 800
+          },
+          {
+            "label": "Purchased electricity",
+            "scope": "2",
+            "tco2e": 620
+          },
+          {
+            "label": "Packaging",
+            "scope": "3",
+            "tco2e": 600
+          }
+        ],
+        "totalTco2e": 3120,
+        "floorAreaM2": 9500,
+        "inServiceFrom": "2021-09-01"
+      },
+      {
+        "label": "Regional Depot",
+        "siteId": "c5-site-c",
+        "byScope": [
+          {
+            "scope": "1",
+            "tco2e": 620
+          },
+          {
+            "scope": "2",
+            "tco2e": 360
+          },
+          {
+            "scope": "3",
+            "tco2e": 256
+          }
+        ],
+        "activities": [
+          {
+            "label": "Fleet diesel",
+            "scope": "1",
+            "tco2e": 620
+          },
+          {
+            "label": "Purchased electricity",
+            "scope": "2",
+            "tco2e": 360
+          },
+          {
+            "label": "Waste",
+            "scope": "3",
+            "tco2e": 256
+          }
+        ],
+        "totalTco2e": 1236,
+        "floorAreaM2": 3200,
+        "inServiceFrom": "2023-06-01"
+      }
+    ],
+    "byScope": [
+      {
+        "scope": "1",
+        "tco2e": 5420
+      },
+      {
+        "scope": "2",
+        "tco2e": 2480
+      },
+      {
+        "scope": "3",
+        "tco2e": 5256
+      }
+    ],
+    "priorYear": {
+      "year": 2024,
+      "totalTco2e": 14200
+    },
+    "comparison": {
+      "rows": [
+        {
+          "scope": "1",
+          "values": [
+            5700,
+            5820,
+            5420
+          ]
+        },
+        {
+          "scope": "2",
+          "values": [
+            2660,
+            2720,
+            2480
+          ]
+        },
+        {
+          "scope": "3",
+          "values": [
+            5660,
+            5570,
+            5256
+          ]
+        }
+      ],
+      "notes": [],
+      "sites": [
+        {
+          "siteId": "c5-site-a",
+          "values": [
+            10200,
+            9400,
+            8800
+          ]
+        },
+        {
+          "siteId": "c5-site-b",
+          "values": [
+            3820,
+            3390,
+            3120
+          ]
+        },
+        {
+          "siteId": "c5-site-c",
+          "values": [
+            null,
+            1320,
+            1236
+          ]
+        }
+      ],
+      "totals": [
+        14020,
+        14110,
+        13156
+      ],
+      "columns": [
+        {
+          "key": "baseline",
+          "year": 2022,
+          "label": "Baseline (FY2022)"
+        },
+        {
+          "key": "previous",
+          "year": 2024,
+          "label": "Previous (FY2024)"
+        },
+        {
+          "key": "current",
+          "year": 2025,
+          "label": "Current (FY2025)"
+        }
+      ],
+      "categories": [
+        {
+          "scope": "1",
+          "values": [
+            5700,
+            5820,
+            5420
+          ],
+          "scopeCode": "1"
+        },
+        {
+          "scope": "2",
+          "values": [
+            2660,
+            2720,
+            2480
+          ],
+          "scopeCode": "2"
+        },
+        {
+          "scope": "3",
+          "values": [
+            3160,
+            3070,
+            3000
+          ],
+          "scopeCode": "3.1"
+        },
+        {
+          "scope": "3",
+          "values": [
+            2500,
+            2200,
+            2000
+          ],
+          "scopeCode": "3.4"
+        },
+        {
+          "scope": "3",
+          "values": [
+            null,
+            300,
+            256
+          ],
+          "scopeCode": "3.5"
+        }
+      ],
+      "changeVsBaselinePct": -6.162624821683309
+    },
+    "provenance": {
+      "asAt": "2026-10-15",
+      "dataHash": "sha256:2ef1c6bf1a22e5b1bca090eb58e017ce25eb1931c0125fd90c1957dbf79bc9d2",
+      "factorSets": [
+        "Fleet diesel · DESNZ GB 2025",
+        "Natural gas · DESNZ GB 2025",
+        "Packaging · DESNZ GB 2025",
+        "Purchased electricity · DESNZ GB 2025",
+        "Purchased goods · DESNZ GB 2025",
+        "Upstream transport · DESNZ GB 2025",
+        "Waste · DESNZ GB 2025"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 3
+        },
+        {
+          "tier": "measured",
+          "count": 7
+        },
+        {
+          "tier": "spend-based",
+          "count": 2
+        }
+      ]
+    },
+    "totalTco2e": 13156
+  },
+  "intensity": {
+    "metrics": [
+      {
+        "key": "turnover",
+        "unit": "tCO₂e per £m",
+        "label": "Turnover",
+        "value": 1174.642857142857,
+        "iconKey": "currency",
+        "reported": true,
+        "denominatorText": null,
+        "unavailableReason": null
+      },
+      {
+        "key": "employees",
+        "unit": "tCO₂e / employee",
+        "label": "Employees",
+        "value": 54.81666666666667,
+        "iconKey": "people",
+        "reported": false,
+        "denominatorText": "240 employees",
+        "unavailableReason": null
+      }
+    ],
+    "provenance": {
+      "asAt": "2026-10-15",
+      "dataHash": "sha256:2ef1c6bf1a22e5b1bca090eb58e017ce25eb1931c0125fd90c1957dbf79bc9d2",
+      "factorSets": [
+        "Fleet diesel · DESNZ GB 2025",
+        "Natural gas · DESNZ GB 2025",
+        "Packaging · DESNZ GB 2025",
+        "Purchased electricity · DESNZ GB 2025",
+        "Purchased goods · DESNZ GB 2025",
+        "Upstream transport · DESNZ GB 2025",
+        "Waste · DESNZ GB 2025"
+      ],
+      "qualityTiers": [
+        {
+          "tier": "estimated",
+          "count": 3
+        },
+        {
+          "tier": "measured",
+          "count": 7
+        },
+        {
+          "tier": "spend-based",
+          "count": 2
+        }
+      ]
+    },
+    "reportedMetricKey": "turnover"
+  },
+  "jobNumber": "J000712",
+  "chartBasis": {
+    "id": "c5-snap",
+    "jobId": "712",
+    "client": "Bushy Tails Ltd",
+    "dataHash": "sha256:2ef1c6bf1a22e5b1bca090eb58e017ce25eb1931c0125fd90c1957dbf79bc9d2",
+    "jobNumber": "J000712",
+    "generatedAt": "2026-10-15T21:30:44.909Z",
+    "measurements": [
+      {
+        "rowId": "c5-snap-r0",
+        "scope": "1",
+        "tco2e": 3100,
+        "siteId": "c5-site-a",
+        "factorSet": "Natural gas · DESNZ GB 2025",
+        "scopeCode": "1",
+        "siteLabel": "Head Office & Factory",
+        "sourceLabel": "Natural gas"
+      },
+      {
+        "rowId": "c5-snap-r1",
+        "scope": "1",
+        "tco2e": 900,
+        "siteId": "c5-site-a",
+        "factorSet": "Fleet diesel · DESNZ GB 2025",
+        "scopeCode": "1",
+        "siteLabel": "Head Office & Factory",
+        "sourceLabel": "Fleet diesel"
+      },
+      {
+        "rowId": "c5-snap-r2",
+        "scope": "2",
+        "tco2e": 1500,
+        "siteId": "c5-site-a",
+        "factorSet": "Purchased electricity · DESNZ GB 2025",
+        "scopeCode": "2",
+        "siteLabel": "Head Office & Factory",
+        "sourceLabel": "Purchased electricity"
+      },
+      {
+        "rowId": "c5-snap-r3",
+        "scope": "3",
+        "tco2e": 2400,
+        "siteId": "c5-site-a",
+        "factorSet": "Purchased goods · DESNZ GB 2025",
+        "scopeCode": "3.1",
+        "siteLabel": "Head Office & Factory",
+        "sourceLabel": "Purchased goods",
+        "purchasedGoodsCategoryId": "pg-materials",
+        "purchasedGoodsCategoryLabel": "Materials"
+      },
+      {
+        "rowId": "c5-snap-r4",
+        "scope": "3",
+        "tco2e": 900,
+        "siteId": "c5-site-a",
+        "factorSet": "Upstream transport · DESNZ GB 2025",
+        "scopeCode": "3.4",
+        "siteLabel": "Head Office & Factory",
+        "sourceLabel": "Upstream transport"
+      },
+      {
+        "rowId": "c5-snap-r5",
+        "scope": "1",
+        "tco2e": 800,
+        "siteId": "c5-site-b",
+        "factorSet": "Natural gas · DESNZ GB 2025",
+        "scopeCode": "1",
+        "siteLabel": "Distribution Centre",
+        "sourceLabel": "Natural gas"
+      },
+      {
+        "rowId": "c5-snap-r6",
+        "scope": "2",
+        "tco2e": 620,
+        "siteId": "c5-site-b",
+        "factorSet": "Purchased electricity · DESNZ GB 2025",
+        "scopeCode": "2",
+        "siteLabel": "Distribution Centre",
+        "sourceLabel": "Purchased electricity"
+      },
+      {
+        "rowId": "c5-snap-r7",
+        "scope": "3",
+        "tco2e": 1100,
+        "siteId": "c5-site-b",
+        "factorSet": "Upstream transport · DESNZ GB 2025",
+        "scopeCode": "3.4",
+        "siteLabel": "Distribution Centre",
+        "sourceLabel": "Upstream transport"
+      },
+      {
+        "rowId": "c5-snap-r8",
+        "scope": "3",
+        "tco2e": 600,
+        "siteId": "c5-site-b",
+        "factorSet": "Packaging · DESNZ GB 2025",
+        "scopeCode": "3.1",
+        "siteLabel": "Distribution Centre",
+        "sourceLabel": "Packaging",
+        "purchasedGoodsCategoryId": "pg-packaging",
+        "purchasedGoodsCategoryLabel": "Packaging"
+      },
+      {
+        "rowId": "c5-snap-r9",
+        "scope": "1",
+        "tco2e": 620,
+        "siteId": "c5-site-c",
+        "factorSet": "Fleet diesel · DESNZ GB 2025",
+        "scopeCode": "1",
+        "siteLabel": "Regional Depot",
+        "sourceLabel": "Fleet diesel"
+      },
+      {
+        "rowId": "c5-snap-r10",
+        "scope": "2",
+        "tco2e": 360,
+        "siteId": "c5-site-c",
+        "factorSet": "Purchased electricity · DESNZ GB 2025",
+        "scopeCode": "2",
+        "siteLabel": "Regional Depot",
+        "sourceLabel": "Purchased electricity"
+      },
+      {
+        "rowId": "c5-snap-r11",
+        "scope": "3",
+        "tco2e": 256,
+        "siteId": "c5-site-c",
+        "factorSet": "Waste · DESNZ GB 2025",
+        "scopeCode": "3.5",
+        "siteLabel": "Regional Depot",
+        "sourceLabel": "Waste"
+      }
+    ],
+    "reportingYear": 2025,
+    "intensityTarget": {
+      "jobId": "712",
+      "metric": "turnover",
+      "source": "client-target",
+      "version": 1,
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "targetYear": 2050,
+      "interimYear": 2035,
+      "metricLabel": "Turnover",
+      "netZeroYear": null,
+      "baselineYear": 2023,
+      "denominatorUnit": "£m",
+      "baselineIntensity": 1400,
+      "reportingIntensity": 1174.642857142857,
+      "targetReductionPercent": 100,
+      "interimReductionPercent": 50
+    },
+    "annualComparison": [
+      {
+        "year": 2024,
+        "values": [
+          {
+            "scope": "1",
+            "value": 5900
+          },
+          {
+            "scope": "2",
+            "value": 2700
+          },
+          {
+            "scope": "3",
+            "value": 5600
+          }
+        ]
+      },
+      {
+        "year": 2025,
+        "values": [
+          {
+            "scope": "1",
+            "value": 5420
+          },
+          {
+            "scope": "2",
+            "value": 2480
+          },
+          {
+            "scope": "3",
+            "value": 5256
+          }
+        ]
+      }
+    ]
+  },
+  "snapshotId": "c5-snap",
+  "sectionPlan": [
+    {
+      "key": "cover",
+      "included": true
+    },
+    {
+      "key": "executive-summary",
+      "included": true
+    },
+    {
+      "key": "narrative:executive-summary",
+      "included": false
+    },
+    {
+      "key": "narrative:net-zero-commitment",
+      "included": true
+    },
+    {
+      "key": "narrative:background",
+      "included": true
+    },
+    {
+      "key": "sites",
+      "included": true
+    },
+    {
+      "key": "emissions",
+      "included": true
+    },
+    {
+      "key": "intensity",
+      "included": true
+    },
+    {
+      "key": "narrative:intensity-analysis",
+      "included": false
+    },
+    {
+      "key": "targets",
+      "included": true
+    },
+    {
+      "key": "scope-analysis",
+      "included": true
+    },
+    {
+      "key": "category-analysis",
+      "included": true
+    },
+    {
+      "key": "narrative:category-analysis",
+      "included": false
+    },
+    {
+      "key": "plan",
+      "included": true
+    },
+    {
+      "key": "narrative:reduction-actions",
+      "included": false
+    },
+    {
+      "key": "srs",
+      "included": true
+    },
+    {
+      "key": "methodology",
+      "included": true
+    },
+    {
+      "key": "glossary",
+      "included": true
+    },
+    {
+      "key": "audit",
+      "included": true
+    },
+    {
+      "key": "appendix-sites",
+      "included": true
+    }
+  ],
+  "organisation": {
+    "industry": "Manufacturing",
+    "location": "Birmingham, United Kingdom"
+  },
+  "reportingYear": 2025,
+  "reportVersionId": "11f229ca-a567-4a1e-be45-dfd7630a95d0",
+  "reportingPeriod": {
+    "to": "2026-03-31",
+    "from": "2025-04-01"
+  },
+  "snapshotDataHash": "sha256:2ef1c6bf1a22e5b1bca090eb58e017ce25eb1931c0125fd90c1957dbf79bc9d2",
+  "clientLogoAssetId": "c5-client-logo",
+  "narrative": [
+    {
+      "key": "executive-summary",
+      "contentSource": "client-edited",
+      "sectionVersion": 2,
+      "bodyHtml": "<p><span data-token=\"client\"></span> measured <span data-token=\"total\"></span> in the <span data-token=\"reportingYear\"></span> year: <span data-token=\"scope1\"></span> from Scope 1, <span data-token=\"scope2\"></span> from Scope 2 and <span data-token=\"scope3\"></span> from Scope 3.</p><p>Scope 3 is <span data-token=\"scope3Pct\"></span> of the total.</p>"
+    },
+    {
+      "key": "net-zero-commitment",
+      "bodyHtml": "<p><span data-token=\"client\"></span> is committed to achieving net zero greenhouse gas emissions across all scopes by <span data-token=\"netZeroYear\"></span>, supported by a credible, evidence-led reduction pathway<span data-token=\"baselineAnchor\"></span>.</p>",
+      "contentSource": "default",
+      "sectionVersion": 0
+    },
+    {
+      "key": "background",
+      "bodyHtml": "<p><span data-token=\"client\"></span> reports its greenhouse gas emissions for the <span data-token=\"reportingYear\"></span> reporting year under the operational control approach<span data-token=\"siteClause\"></span>.</p><p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>",
+      "contentSource": "default",
+      "sectionVersion": 0
+    },
+    {
+      "key": "intensity-analysis",
+      "bodyHtml": "<p>Intensity metrics normalise emissions against business activity so performance can be compared year on year regardless of changes in scale. <span data-token=\"client\"></span> reports <span data-token=\"intensityMeasures\"></span>.</p>",
+      "contentSource": "default",
+      "sectionVersion": 0
+    },
+    {
+      "key": "category-analysis",
+      "bodyHtml": "<p>For the <span data-token=\"reportingYear\"></span> reporting year total measured carbon emissions are <span data-token=\"total\"></span>. <span data-token=\"largestScope\"></span> is the largest share at <span data-token=\"largestTotal\"></span> (<span data-token=\"largestPct\"></span>), followed by <span data-token=\"secondScope\"></span> at <span data-token=\"secondTotal\"></span> and <span data-token=\"thirdScope\"></span> at <span data-token=\"thirdTotal\"></span>.</p><p>The largest categories are the focus of the reduction actions.</p>",
+      "contentSource": "default",
+      "sectionVersion": 0
+    },
+    {
+      "key": "reduction-actions",
+      "bodyHtml": "<p><span data-token=\"client\"></span> has identified <span data-token=\"actionCount\"></span> carbon reduction action<span data-token=\"actionsPlural\"></span>, grouped by how much of each the client controls<span data-token=\"actionsTarget\"></span>.</p><p><span data-token=\"progressReview\"></span></p>",
+      "contentSource": "default",
+      "sectionVersion": 0
+    }
+  ]
+}

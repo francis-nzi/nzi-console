@@ -44,6 +44,7 @@ import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveR
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
+import { resolveReportNarrative } from "./reportNarrative";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { preparerMayProceed } from "./independentApproval";
@@ -2287,6 +2288,11 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   if(planIssues.length)throw new CommandValidationError(input.sectionPlan?planIssues:planIssues.map(issue=>({...issue,field:"reportProfile",message:`The client's report profile no longer fits the report: ${issue.message} Update the profile, or choose the order for this report.`})));
   const validation=validateCrpSnapshotManifest(input.reviewedSnapshotId,snapshot,sectionPlan.plan);
   if(!validation.valid)throw new CommandValidationError(validation.issues.map(issue=>({field:issue.chartId,code:issue.code.toUpperCase(),message:issue.message})));
+  // B2-4 (0169): the narrative this version issues, frozen here — the job's working sections for each narrative its plan draws —
+  // so the preview and publish compose from exactly what was validated. A body holding a typed figure, money or an unknown token
+  // (one edited before the rule) is refused by section, never issued.
+  const narrative=await resolveReportNarrative(db,snapshot.job_id,sectionPlan.plan);
+  if(narrative.issues.length)throw new CommandValidationError(narrative.issues);
   // S-1 (0163): the view this version issues. A site scope may pick only the snapshot's own sites — its boundary stamp, or for a
   // snapshot frozen before the stamp, the sites its frozen rows carry (sub-ruling 3). "Every site" stays a site scope: it
   // excludes organisation-level emissions, so it is not the whole client (ruled), and is never normalised into it.
@@ -2301,7 +2307,7 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   // a later change to the profile never alters a document already validated.
   const issuer=await readOrganisationBrand(db,context.organisationId);
   try{
-    await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids,section_plan,section_plan_origin,client_issuer_line) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null,JSON.stringify(sectionPlan.plan),sectionPlan.origin,profile?.issuerLine??null]);
+    await db.query(`INSERT INTO nzi_console.report_versions(organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash,validated_by,signee_contact_id,signee_name,signee_job_title,client_logo_asset_id,issuer_display_name,issuer_short_name,issuer_footer,issuer_logo_asset_id,scope_kind,scope_site_ids,section_plan,section_plan_origin,client_issuer_line,narrative) VALUES($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,(SELECT c.logo_asset_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$3),$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20::jsonb)`,[context.organisationId,reportVersionId,snapshot.job_id,input.manifestVersion,input.reviewedSnapshotId,snapshot.data_hash,context.actorId,signee?.contact_id??null,signee?.full_name??null,signee?.job_title??null,issuer.displayName,issuer.shortName,issuer.footer,issuer.logoAssetId,scope.kind,scope.kind==="sites"?scope.siteIds:null,JSON.stringify(sectionPlan.plan),sectionPlan.origin,profile?.issuerLine??null,JSON.stringify(narrative.narrative)]);
   }catch(error){
     // 0016, keyed on scope: this snapshot is already validated (or published) at this scope.
     if(isUniqueViolation(error))throw new ScopeConflictError("This snapshot is already validated at this scope — open that report version.");
@@ -2627,7 +2633,7 @@ export async function createReviewedCrpSnapshot(
         })),
       };
       const dataHash = `sha256:${createHash("sha256")
-        .update(JSON.stringify(stable(payload)))
+        .update(JSON.stringify(stable(snapshotHashBasis(payload))))
         .digest("hex")}`;
       const existing = await db.query<{
         snapshot_id: string;
@@ -2685,6 +2691,17 @@ export async function createReviewedCrpSnapshot(
       };
     },
   );
+}
+
+/**
+ * B2-4 (RULING-report-studio-B2-4 (c)): what a reviewed snapshot's evidence hash is taken over. The hash is the seal over the
+ * reviewed figures and their provenance, not over editable boilerplate — so a section still at its catalogue template (version 0,
+ * no working row) enters it as its key alone, never its wording, title or place. Changing template wording then never moves a data
+ * seal, and two snapshots of the same evidence under different template wording are the same evidence. An edited section is the
+ * job's own text and is sealed as before. The stored payload is unchanged: it still carries every section's text.
+ */
+export function snapshotHashBasis<T extends { sections: ReadonlyArray<{ key: string; version: number }> }>(payload: T): Omit<T, "sections"> & { sections: unknown[] } {
+  return { ...payload, sections: payload.sections.map((section) => section.version === 0 ? { key: section.key, version: 0 } : section) };
 }
 
 // R2 (NZC-048) — editable report sections. A working row exists only once a

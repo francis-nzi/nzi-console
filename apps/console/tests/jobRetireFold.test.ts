@@ -55,7 +55,9 @@ describe("D — Report & publish is the report's state and Open in Report Studio
     assert.match(shellBody, /<div id=\{stageAnchorId\("Report & publish"\)\}>\{reportStage\}<\/div>/);
     assert.doesNotMatch(shellBody, /\{releaseControl\}/);
     // The editor's routes and component stay (RULING-report-studio-B2-4) — only the shell stops mounting them.
-    assert.match(workspace, /const releaseControl = <>\n\s+\{reportFeatureEnabled\("report-edit"\) && <CrpReportSectionEditor jobId=\{job\.header\.id\}\/>\}/);
+    // B2-4: the Jobs §4 editor is unmounted everywhere now — the narrative is edited in the Report Studio; its component and routes stay.
+    assert.doesNotMatch(workspace, /<CrpReportSectionEditor/);
+    assert.match(workspace, /const releaseControl = <>\n\s+<CrpReleaseControl /);
     assert.match(between(workspace, "const stageBody = (", "const shellSummary"), /\{releaseControl\}/);
   });
 });
