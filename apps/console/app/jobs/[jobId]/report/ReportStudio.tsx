@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { crpProfessionalManifest } from "@nzi/charts";
 import {
-  moveReportSection, reportRendererOf, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
+  drawsMockupDocument, moveReportSection, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
   type ReportComposition, type ReportScope, type ReportSectionPlan,
 } from "@nzi/contracts";
 import type { ReportDraftComposition } from "@nzi/isolated-backend";
@@ -17,6 +17,9 @@ import { useReportSignees } from "../../../lib/useReportSignees";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
 import { ReportScopeSelector } from "../../../report-preview/ReportScopeSelector";
 import { ReportComposedView } from "../../../reports/[versionId]/ReportComposedView";
+import type { NarrativeEditor } from "../../../reports/[versionId]/ReportComposedV5";
+import { reportFeatureEnabled } from "../../../lib/reportFlags";
+import { StudioNarrativeEditor } from "./StudioNarrativeEditor";
 import { reportingYearLabel } from "../../../reports/[versionId]/ReportComposedV5";
 import { StudioPagedView } from "./StudioPagedView";
 import { buildStudioPagedCss, buildStudioPrintCss, studioPrintMark } from "./studioPrint";
@@ -87,7 +90,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   const kind: "draft" | "validated" | "published" = draft || !version ? "draft" : version.status;
   // D/E: composed@5 is paged for real — Page · A4 is Paged.js over the flow document, with the rules Print uses. Older
   // renderers (a version validated before composed@5) keep the view they have always had.
-  const paged = reportRendererOf(composition) === "composed@5";
+  const paged = drawsMockupDocument(composition);
   const printMeta = { client: composition.client, title: `Carbon Reduction Plan ${reportingYearLabel(composition)}`, mark: studioPrintMark(kind) };
   // A draft or a validated preview prints here, marked as what it is; the issued report keeps its own immutable print.
   const printable = kind !== "published";
@@ -110,12 +113,24 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
 
   // Publishing (report.publish) on a validated version: shown with its access reason up front; the server stays authoritative
   // (it refuses the snapshot's preparer — NZC-022 — and a version that moved since this screen opened).
-  const me = useStaffMe(kind === "validated");
+  const me = useStaffMe(kind !== "published");
   const publishAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
     : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to publish." }
     : me === null ? { state: "unavailable", reason: "Your permissions could not be checked, so publishing is unavailable." }
     : accessFor(me, "report.publish");
   const [confirming, setConfirming] = useState(false);
+
+  // B2-4 (C): the narrative is edited where it is drawn — on a draft, behind `report-edit`, for someone holding `report.edit`
+  // (preparer work; validate stays the reviewer's). Each edit goes through `report.section.*` and the draft recomposes.
+  const narrativeOn = reportFeatureEnabled("report-edit") && Boolean(composition.narrative);
+  const editAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
+    : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to edit the narrative." }
+    : me === null ? { state: "unavailable", reason: "Your permissions could not be checked, so editing is unavailable." }
+    : accessFor(me, "report.edit");
+  const narrativeEditor: NarrativeEditor | undefined = kind === "draft" && narrativeOn
+    ? (_key, element, drawn) => <StudioNarrativeEditor jobId={jobId} composition={composition} element={element} drawn={drawn}
+        canEdit={editAccess.state === "allowed" && pending === null} {...(editAccess.state === "allowed" ? {} : { blockedReason: editAccess.reason })} />
+    : undefined;
 
   // A draft is re-read with the rail's choice: the server composes the draft the studio shows, from the plan and scope in the
   // URL. A plan is carried once it has been chosen here (or was already), so validate otherwise applies its own fallbacks.
@@ -279,10 +294,11 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
           {draft.blockers.length > 0 ? <ul className="nzs-blockers" data-studio-blockers>{draft.blockers.map((blocker, index) => <li key={`${blocker.field}-${index}`}>{blocker.message}</li>)}</ul> : null}
         </div> : kind === "validated" ? <div className="report-preview-band" role="note" data-report-preview="not-issued">
           <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it. Nothing here is stored or sent.
+          {composition.narrative ? <> The narrative was frozen with this version when it was validated (B2-4): <b>changing it means validating the report again</b> — edit the narrative on the job&rsquo;s draft, then validate a new version.</> : null}
         </div> : null}
         {paged ? <>
           <div className="nzs-paged-source" ref={flowSource} hidden={mode === "page"}>
-            <ReportComposedView composition={composition} preview={kind !== "published"} mode="flow" />
+            <ReportComposedView composition={composition} preview={kind !== "published"} mode="flow" narrativeEditor={narrativeEditor} />
           </div>
           {mode === "page" ? <StudioPagedView source={flowSource} css={buildStudioPagedCss(printMeta)} readKey={composition} /> : null}
         </> : <ReportComposedView composition={composition} preview={kind !== "published"} mode={mode} />}

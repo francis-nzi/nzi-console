@@ -118,10 +118,16 @@ export const reportSectionMetaV4: Record<ReportCompositionSectionKey, { eyebrow:
 export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> =>
   drawsMockupSectionSet(composition) ? reportSectionMetaV4 : reportCompositionSectionMeta;
 
-/** `composed@4` and its successor `composed@5` draw the mockup's section set and read their plans complete. */
+/** `composed@4` and its successors `composed@5` and `composed@6` draw the mockup's section set and read their plans complete. */
 export const drawsMockupSectionSet = (composition: { renderer?: string }): boolean => {
   const renderer = reportRendererOf(composition);
-  return renderer === "composed@4" || renderer === "composed@5";
+  return renderer === "composed@4" || renderer === "composed@5" || renderer === "composed@6";
+};
+
+/** `composed@5` and `composed@6` are the mockup's own document (`ComposedV5`): pages, cover, narrative with locked tokens. */
+export const drawsMockupDocument = (composition: { renderer?: string }): boolean => {
+  const renderer = reportRendererOf(composition);
+  return renderer === "composed@5" || renderer === "composed@6";
 };
 
 /* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
@@ -134,7 +140,7 @@ export const drawsMockupSectionSet = (composition: { renderer?: string }): boole
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5", "composed@6"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -157,8 +163,22 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * BUILD-report-studio-composed5: `composed@5` is the mockup (`_handoff/MOCKUP-report-studio.html`) rendered — its own document
  * (pages, cover, narrative with locked data tokens, charts, tables), bound to the frozen composition and never to the mockup's
  * sample figures; no turnover amount anywhere (NZC-120). A fork: every `composed@1/2/3/4` report draws exactly as before.
+ *
+ * B2-4 (RULING-report-studio-B2-4 (a)): `composed@6` is `composed@5` drawing a **frozen narrative** — each narrative block's body
+ * as validate froze it (the job's working sections), its tokens resolved from the frozen composition — in place of the template.
+ * Not a file fork: a branch inside `ComposedV5`, reached only with the renderer `composed@6` **and** the narrative present. Every
+ * `composed@1–5` report draws exactly as before.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@5";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@6";
+
+/**
+ * The renderer a composition is stamped with: `composed@6` exactly when it carries a narrative, else `composed@5`. One rule, at
+ * the one compose path, so a `composed@6` composition without a narrative cannot be made — a version validated before B2-4
+ * (no frozen narrative) composes, previews and publishes as `composed@5`, as the rollout requires.
+ */
+export function reportRendererFor(input: { narrative?: readonly ReportNarrativeElement[] | null }): ReportRenderer {
+  return input.narrative ? REPORT_RENDERER_LATEST : "composed@5";
+}
 
 /**
  * F-2: the charts' input, frozen at publish — the reviewed snapshot's chart fields as the portal passes them to
@@ -226,6 +246,24 @@ export const reportNarrativeSectionMeta: Record<ReportNarrativePlanKey, { title:
   "narrative:category-analysis": { title: "Category analysis" },
   "narrative:reduction-actions": { title: "Reduction actions" },
 };
+/** B2-4: the data section each riding narrative is drawn inside (composed@5 decision 3) — it is drawn when its host is. */
+export const reportNarrativeHost: Readonly<Partial<Record<ReportNarrativePlanKey, ReportCompositionSectionKey>>> = {
+  "narrative:executive-summary": "executive-summary", "narrative:intensity-analysis": "intensity",
+  "narrative:category-analysis": "category-analysis", "narrative:reduction-actions": "plan",
+};
+
+/**
+ * B2-4 (RULING-report-studio-B2-4, "freeze a body for the sections the version includes"): the narrative sections a report with
+ * this plan draws, as catalogue keys — a standalone one (Net Zero Commitment, Background) when the plan includes it, a riding one
+ * when the plan includes its host. Validate freezes a body for exactly these; an excluded section needs none.
+ */
+export function reportNarrativeDrawnKeys(plan: ReportSectionPlan): Set<string> {
+  const included = new Set(plan.filter((entry) => entry.included).map((entry) => entry.key as string));
+  return new Set(reportNarrativePlanKeys
+    .filter((key) => isReportStandaloneNarrativeSection(key) ? included.has(key) : included.has(reportNarrativeHost[key] ?? ""))
+    .map((key) => key.slice("narrative:".length)));
+}
+
 export const reportPlanSectionTitle = (key: ReportPlanSectionKey): string =>
   isReportDataSection(key) ? reportCompositionSectionMeta[key].title : reportNarrativeSectionMeta[key].title;
 
@@ -447,12 +485,18 @@ export function setReportSectionIncluded(
  * a figure. Trimmed, and short enough to sit on a cover.
  */
 export const REPORT_ISSUER_LINE_MAX = 160;
+/**
+ * NZC-120's money check, shared: a currency symbol, or a currency code beside a figure. The issuer line and the report narrative
+ * (B2-4) refuse what it matches — words that name an amount never reach a client page.
+ */
+export const isMoneyShaped = (text: string): boolean =>
+  /[£$€¥₹]|\b(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\s?\d|\d\s?(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\b/i.test(text);
 export function reportIssuerLineIssues(line: unknown): ReportSectionPlanIssue[] {
   if (line === null || line === undefined) return [];
   if (typeof line !== "string" || !line.trim()) return [{ field: "issuerLine", code: "INVALID", message: "An issuer line is words, or none at all." }];
   if (line !== line.trim()) return [{ field: "issuerLine", code: "INVALID", message: "An issuer line has no leading or trailing spaces." }];
   if (line.length > REPORT_ISSUER_LINE_MAX) return [{ field: "issuerLine", code: "TOO_LONG", message: `An issuer line is at most ${REPORT_ISSUER_LINE_MAX} characters.` }];
-  if (/[£$€¥₹]|\b(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\s?\d|\d\s?(GBP|USD|EUR|AED|CHF|JPY|AUD|CAD|NZD|SAR|INR)\b/i.test(line)) {
+  if (isMoneyShaped(line)) {
     return [{ field: "issuerLine", code: "MONEY_SHAPED", message: "An issuer line names who the report is for, never an amount." }];
   }
   return [];
@@ -805,7 +849,17 @@ export type ReportComposition = {
    * Background & Organisation. Absent when the record has neither; a missing one reads "Not recorded", never guessed.
    */
   organisation?: { industry: string | null; location: string | null };
+  /**
+   * B2-4 (`composed@6`; RULING-report-studio-B2-4): the narrative this report says — frozen at validate onto the version (0169),
+   * the job's working sections (a draft). One element per narrative the report draws, in catalogue order; its body holds token
+   * keys (`<span data-token="…">`), never a typed figure, resolved at draw from this composition. Present exactly when the
+   * renderer is `composed@6` (`reportRendererFor`); a composition without it is `composed@5` and draws the template.
+   */
+  narrative?: ReportNarrativeElement[];
 };
+
+/** One frozen narrative section: its catalogue key, its body (token keys, no typed figures), where it came from, its version. */
+export type ReportNarrativeElement = { key: string; bodyHtml: string; contentSource: "default" | "ai" | "client-edited"; sectionVersion: number };
 
 export type ReportIssuer = { displayName: string; shortName: string; footer: string; logoAssetId: string | null };
 

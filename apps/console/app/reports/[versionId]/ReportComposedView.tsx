@@ -16,7 +16,7 @@ import {
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import { LogoMark } from "../../lib/LogoMark";
-import { ComposedV5 } from "./ReportComposedV5";
+import { ComposedV5, type NarrativeEditor } from "./ReportComposedV5";
 import { reportPathway, siteActivities, siteScopeDonut, sitesDonut } from "./scopeCharts";
 
 /**
@@ -43,7 +43,7 @@ const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractio
 export type IssuerLogoSrc = (assetId: string) => string;
 export const staffIssuerLogoSrc: IssuerLogoSrc = (assetId) => `/api/isolated/organisation/logo?asset=${encodeURIComponent(assetId)}`;
 
-export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc, clientLogoSrc, preview = false, mode = "page" }: {
+export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLogoSrc, clientLogoSrc, preview = false, mode = "page", narrativeEditor }: {
   composition: ReportComposition; issuerLogoSrc?: IssuerLogoSrc;
   /** composed@5: where the client's frozen logo is served from (the staff route by default; the portal passes its own). */
   clientLogoSrc?: IssuerLogoSrc;
@@ -51,6 +51,8 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   preview?: boolean;
   /** composed@5: the mockup's page view (A4 sheets) or continuous view. Earlier layouts ignore it. */
   mode?: "page" | "flow";
+  /** B2-4 (composed@6): the Report Studio's narrative editor, on a draft only. Every other caller leaves it out. */
+  narrativeEditor?: NarrativeEditor;
 }) {
   // F-0 (RULING-reporting-F Q4): the layout is chosen by the composition, not by whichever view is deployed. A layout
   // change that would alter an issued report forks to a new renderer; it never redraws this one.
@@ -71,6 +73,8 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   // BUILD-report-studio-composed5: the mockup's document, its own renderer (ReportComposedV5.tsx) — composed@1/2/3/4 above
   // are untouched by it.
   if (renderer === "composed@5") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} />;
+  // B2-4 (RULING-report-studio-B2-4 (a)): composed@6 is composed@5 drawing its frozen narrative — the same renderer, its own branch.
+  if (renderer === "composed@6") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} narrativeEditor={narrativeEditor} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 

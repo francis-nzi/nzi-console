@@ -67,7 +67,8 @@ describe("the portal serves a published report's frozen client logo to its own c
     const view = await withTenantRead(database.pool, ORG, (db) => getGrantedPortalReport(db, { portalUserId: "p-user", clientId: CLIENT, jobId: JOB }));
     assert.equal(view?.state, "composed");
     if (view?.state !== "composed") throw new Error("expected a composed report");
-    assert.equal(view.composition.renderer, "composed@5");
+    assert.equal(view.composition.renderer, "composed@6", "B2-4: a new composition carries its narrative, so it is drawn composed@6");
+    assert.ok(Array.isArray(view.composition.narrative), "the frozen narrative rides with it");
     assert.equal(view.composition.clientLogoAssetId, "logo-issued", "the version's frozen logo, not the client's later one");
     const asset = await served(CLIENT, view.composition.clientLogoAssetId!);
     assert.equal(asset?.assetId, "logo-issued");

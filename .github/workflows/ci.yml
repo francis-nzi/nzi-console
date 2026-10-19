@@ -753,6 +753,12 @@ jobs:
       # report.publish is refused; the per-row approve both ways. The commands run as nzi_console_app, so 0168's grant is tested too.
       - name: Migration 0168 lets a reviewed snapshot carry an explicit self-approval, and the database still backstops every other write
         run: npx tsx --test packages/isolated-backend/tests/selfApprovalReal.test.ts
+      # B2-4 (RULING-report-studio-B2-4; migration 0169): the draft carries the working narrative (composed@6); validate freezes it —
+      # token keys, never numerals, for the narrative the plan draws; the preview and publish draw the frozen copy; a version
+      # validated before B2-4 stays composed@5 (composed@6 is unreachable without a narrative); a typed figure edited before the rule
+      # is refused at validate and shown on the draft; validate still refuses the snapshot's preparer.
+      - name: Migration 0169 freezes a version's narrative at validate, and the report draws exactly what was frozen
+        run: npx tsx --test packages/isolated-backend/tests/reportNarrativeReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.

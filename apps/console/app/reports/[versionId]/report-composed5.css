@@ -191,6 +191,21 @@
 .nzr5 table.r5-audit .r5-prov-line{font-size:9.5px;color:var(--r5-muted);margin-top:2px}
 .nzr5 table.r5-audit thead{display:table-header-group}
 
+/* B2-4 (composed@6): where a narrative's wording came from, on screen — the default as composed@5 draws its pill (grey), AI-drafted
+   blue, edited by the client amber, with an amber rule down its left edge so a reviewer sees an edit at a glance. The body text stays
+   ink: the marker, not the prose, carries the colour. A token the composition cannot resolve is marked, never filled. Never printed. */
+.nzr5 .r5-spill-ai{background:var(--r5-sky-bg);color:var(--r5-sky-ink);border-color:var(--r5-sky-line)}
+.nzr5 .r5-spill-client-edited{background:#FFF4DB;color:#7A4F00;border-color:#F5D58A}
+.nzr5 .r5-editblock.r5-src-client-edited{border-left:3px solid #FFC24B;padding-left:12px;margin-left:-15px}
+.nzr5 .r5-tok.r5-tok-missing{color:#7A4F00;background:#FFF4DB;border:1px dashed #F5D58A}
+.nzr5 .r5-tok.r5-tok-missing::before{display:none}
+@media print{
+  .nzr5[data-renderer="composed@6"] .r5-spill{display:none!important}
+  .nzr5[data-renderer="composed@6"] .r5-editblock{border-left:0!important;padding-left:0!important;margin-left:0!important}
+  .nzr5[data-renderer="composed@6"] .r5-tok{background:none!important;border:0!important;padding:0!important;color:inherit!important}
+  .nzr5[data-renderer="composed@6"] .r5-tok::before{display:none!important}
+}
+
 /* Print: the page view, one sheet per page, no ground or shadow. */
 @media print{
   .nzr5{background:none;padding:0}

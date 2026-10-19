@@ -4,6 +4,7 @@ import {
 } from "@nzi/contracts";
 import { composeForSnapshot } from "./reportCompositions";
 import { readOrganisationBrand } from "./organisationSettings";
+import { resolveReportNarrative } from "./reportNarrative";
 import { validateCrpSnapshotManifest, type CrpSnapshotForManifest } from "./postgresCommands";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import type { Queryable } from "./postgres";
@@ -78,6 +79,11 @@ export async function draftReportComposition(db: Queryable, input: {
   const manifest = validateCrpSnapshotManifest(snapshot.snapshot_id, snapshot, resolved.plan);
   if (!manifest.valid) blockers.push(...manifest.issues.map((issue) => ({ field: issue.chartId, code: issue.code.toUpperCase(), message: issue.message })));
 
+  // B2-4: the narrative validate would freeze — the job's working sections for each narrative this plan draws — and, as blockers,
+  // any body validate would refuse (a typed figure, money, an unknown token), by section.
+  const narrative = await resolveReportNarrative(db, input.jobId, resolved.plan);
+  blockers.push(...narrative.issues);
+
   const brand = await readOrganisationBrand(db, input.organisationId);
   const draftedAt = (input.now ?? new Date()).toISOString();
   const composition = await composeForSnapshot(db, {
@@ -87,6 +93,8 @@ export async function draftReportComposition(db: Queryable, input: {
     issuerLine: profile?.issuerLine ?? null,
     // composed@5: the client's logo as validate would freeze it (the client record's, now).
     clientLogoAssetId: (await db.query<{ logo_asset_id: string | null }>(`SELECT logo_asset_id FROM nzi_console.clients WHERE client_id = $1`, [snapshot.client_id])).rows[0]?.logo_asset_id ?? null,
+    // B2-4: a draft always carries its working narrative, so it draws composed@6 — the narrative validating would freeze.
+    narrative: narrative.narrative,
   });
   return {
     composition, draftedAt, snapshotId: snapshot.snapshot_id, snapshotVersion: snapshot.snapshot_version,

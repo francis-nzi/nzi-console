@@ -62,11 +62,16 @@ describe("report figure tokens (NZC-049)", () => {
     assert.match(html, /title="[^"]*"/);
   });
 
-  it("verifies every token in the section catalogue resolves against a complete snapshot", () => {
+  it("verifies every token in the section catalogue resolves against a complete snapshot — the composed report's own draw from its composition (B2-4)", () => {
     const sections = resolveReportSections([]);
     const result = verifyReportSectionTokens(sections, snapshot);
-    assert.equal(result.ok, true, JSON.stringify(result.tokens.filter((t) => !t.ok), null, 2));
-    assert.ok(result.tokens.length >= 10);
+    // B2-4: the catalogue is composed@5's wording, whose client name, sites, ranked scopes, actions and clauses the composed report
+    // resolves from its frozen composition. The snapshot resolver says so for those, and resolves every other token as before.
+    const composedOnly = result.tokens.filter((t) => /drawn by the composed report/.test(t.detail));
+    const rest = result.tokens.filter((t) => !composedOnly.includes(t));
+    assert.ok(rest.every((t) => t.ok), JSON.stringify(rest.filter((t) => !t.ok), null, 2));
+    assert.ok(rest.length >= 10);
+    assert.ok(composedOnly.length > 0 && composedOnly.every((t) => !t.ok && t.value === "—"), "never a guessed value");
   });
 
   it("fails verification when a section token cannot resolve", () => {

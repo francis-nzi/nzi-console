@@ -70,9 +70,9 @@ describe("composed@3 freezes its sources and audit appendix, against a real data
   });
   after(async () => { await database?.end(); });
 
-  it("a report composed now is drawn composed@5 (composed@3's freeze carried forward) and names its sources by dataset id, frozen", async () => {
+  it("a report composed now is drawn composed@6 (composed@3's freeze carried forward) and names its sources by dataset id, frozen", async () => {
     const issued = await frozen(wholeId);
-    assert.equal(issued.renderer, "composed@5");
+    assert.equal(issued.renderer, "composed@6", "B2-4: a new composition carries its narrative, so it is drawn composed@6");
     assert.deepEqual(issued.sources, {
       summary: "Reviewed snapshot J-c3 · DESNZ GB 2025 · DESNZ GB 2026",
       sets: [{ source: "dataset", id: "uk-ghg-gb-2025", label: "DESNZ GB 2025" }, { source: "dataset", id: "uk-ghg-gb-2026", label: "DESNZ GB 2026" }],
@@ -93,7 +93,7 @@ describe("composed@3 freezes its sources and audit appendix, against a real data
 
   it("a site view's appendix is its own: only its sites' rows, summing to its total", async () => {
     const issued = await frozen(annexId);
-    assert.equal(issued.renderer, "composed@5");
+    assert.equal(issued.renderer, "composed@6", "B2-4: a new composition carries its narrative, so it is drawn composed@6");
     assert.deepEqual(issued.audit!.rows.map((entry) => entry.activity), ["Electricity"]);
     assert.equal(issued.audit!.totalTco2e, (issued.emissions as { totalTco2e: number }).totalTco2e);
   });

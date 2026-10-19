@@ -101,7 +101,12 @@ describe("Report Studio: what it may write", () => {
     const studio = read("apps/console/app/jobs/[jobId]/report/ReportStudio.tsx");
     assert.deepEqual([...studio.matchAll(/postBrowserCommand<[^>]*>\("([^"]+)"/g)].map((match) => match[1]).sort(),
       ["/api/isolated/reports/publish", "/api/isolated/reports/section-plan", "/api/isolated/reports/validate"]);
-    assert.doesNotMatch(studio, /reports\/sections\/|report\.section\./, "narrative editing is B2-4");
+    // B2-4: narrative editing lands, in its own editor, through exactly the existing report.section.* commands — never the page.
+    assert.doesNotMatch(studio, /reports\/sections\//, "the page itself sends no section edit");
+    const editor = read("apps/console/app/jobs/[jobId]/report/StudioNarrativeEditor.tsx");
+    assert.match(editor, /const path = `\/api\/isolated\/reports\/sections\/\$\{kind\}`;/);
+    assert.match(editor, /kind: "edit" \| "regenerate" \| "reset"/);
+    assert.match(editor, /expectedVersion: element\.sectionVersion/, "pinned by the section version the draft was composed at");
     assert.doesNotMatch(studio, /method:\s*"POST"|fetch\(/, "no write outside the command client");
     assert.match(studio, /expectedVersion: version\.version, sectionPlan: plan/, "the plan update pins the version the studio opened");
     assert.match(studio, /reportVersionId: version\.reportVersionId, expectedStatus: "validated", expectedVersion: version\.version,\s*manifestVersion: version\.manifestVersion, reviewedSnapshotId: version\.snapshotId/,
