@@ -130,6 +130,19 @@ export const availableVariants = (registry: readonly CategoryVariant[]): Categor
   registry.filter((variant) => variant.status === "active")
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
+/**
+ * A category one base factor may be filed under, held once for every year (BUILD-dataset-factor-dedup slice 1, migration 0170).
+ *
+ * Applicability, not a value: the number stays on the factor's own row, one per edition. NZI-curated, so it may name a category
+ * the source never shipped a row for. Retired keeps the record and withholds the category from new use.
+ */
+export type FactorApplicability = {
+  factorId: string;
+  suffixCode: string;
+  status: VariantStatus;
+  source: "migration" | "admin";
+};
+
 /** The variant id a fan-out would write for one base and one suffix. */
 export const variantFactorId = (base: string, variant: CategoryVariant): string =>
   `${base}${variant.suffixCode}`;

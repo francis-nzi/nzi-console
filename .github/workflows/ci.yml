@@ -759,6 +759,13 @@ jobs:
       # is refused at validate and shown on the draft; validate still refuses the snapshot's preparer.
       - name: Migration 0169 freezes a version's narrative at validate, and the report draws exactly what was frozen
         run: npx tsx --test packages/isolated-backend/tests/reportNarrativeReal.test.ts
+      # BUILD-dataset-factor-dedup slice 1 (migration 0170): a variant carries its base's value — refused for every identity, the
+      # owner included, and serialised across two writers; the freight -d defect corrected to each base, one audit event a value,
+      # and 0170 refusing any divergence it was not ruled for; applicability backfilled (J000663's set) and held once per factor
+      # under forced RLS, never deleted; the SQL parser held to parseFactorId; factor.manage alone writes it. Seeded between 0169
+      # and 0170, so the migration meets the library's shapes — the mock pool enforces none of this.
+      - name: Migration 0170 holds a variant to its base's value, corrects the freight -d defect, and records applicability once
+        run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.
