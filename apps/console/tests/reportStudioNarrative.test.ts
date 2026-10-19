@@ -14,21 +14,31 @@ const css = read("reports/[versionId]/report-composed5.css");
 const studioPrint = read("jobs/[jobId]/report/studioPrint.ts");
 
 describe("C — Edit / Generate / Reset on the composed narrative", () => {
-  it("is offered on a draft only, behind report-edit, to someone holding report.edit — never on a validated or published version", () => {
+  it("is offered on a draft and (d)(ii) a validated version, behind report-edit, to someone holding report.edit — never a published one", () => {
     assert.match(studio, /const narrativeOn = reportFeatureEnabled\("report-edit"\) && Boolean\(composition\.narrative\);/);
     assert.match(studio, /: accessFor\(me, "report\.edit"\);/);
-    assert.match(studio, /const narrativeEditor: NarrativeEditor \| undefined = kind === "draft" && narrativeOn\n\s+\? \(_key, element, drawn\) => <StudioNarrativeEditor /);
+    assert.match(studio, /const narrativeTarget: NarrativeEditTarget \| null = kind === "draft" \? \{ kind: "draft", jobId \}\n\s+: kind === "validated" && version \? \{ kind: "validated", reportVersionId: version\.reportVersionId, version: version\.version \}\n\s+: null;/,
+      "a published version has no target, so no editor");
+    assert.match(studio, /const narrativeEditor: NarrativeEditor \| undefined = narrativeTarget && narrativeOn\n\s+\? \(_key, element, drawn\) => <StudioNarrativeEditor target=\{narrativeTarget\} /);
     assert.match(studio, /canEdit=\{editAccess\.state === "allowed" && pending === null\}/);
   });
 
-  it("says, on a validated version, that changing its frozen narrative means validating again", () => {
-    assert.match(studio, /The narrative was frozen with this version when it was validated \(B2-4\): <b>changing it means validating the report again<\/b>/);
+  it("says, on a validated version, that its narrative is editable in place, bumps the version, and is issued exactly as frozen", () => {
+    assert.match(studio, /<b>is editable here, on this validated version<\/b>: each save changes it in place and bumps the version — nothing is re-validated\. Publishing issues exactly the narrative frozen on it\./);
+    assert.doesNotMatch(studio, /changing it means validating the report again/, "the first cut's note is gone");
+    assert.match(studio, /exactly as publishing would issue it\.\{narrativeEditor \? null : " Nothing here is stored or sent\."\}/,
+      "with the editor on, the band no longer says nothing is stored — a save stores");
+    assert.match(studio, /: <> The narrative was frozen with this version when it was validated; publishing issues exactly that\.<\/>/,
+      "without the editor (flag off) it claims nothing editable");
   });
 
-  it("drives the existing report.section.* commands, pinned by the section version the draft was composed at; a conflict is said", () => {
-    assert.match(editor, /const path = `\/api\/isolated\/reports\/sections\/\$\{kind\}`;/);
-    assert.match(editor, /\{ jobId, sectionKey: element\.key, bodyHtml, expectedVersion: element\.sectionVersion \}/);
+  it("a draft drives report.section.*, pinned by the section version it was composed at; a validated version report.narrative.update, pinned by the version", () => {
+    assert.match(editor, /`\/api\/isolated\/reports\/sections\/\$\{kind\}`, kind === "edit"\n\s+\? \{ jobId: target\.jobId, sectionKey: element\.key, bodyHtml, expectedVersion: element\.sectionVersion \}/);
+    assert.match(editor, /"\/api\/isolated\/reports\/narrative", \{\n\s+reportVersionId: target\.reportVersionId, expectedVersion: target\.version, sectionKey: element\.key, change: kind,\n\s+\.\.\.\(kind === "edit" \? \{ bodyHtml \} : \{\}\),/);
     assert.match(editor, /This section changed since the draft was composed — reload to see it, then edit again\./);
+    assert.match(editor, /This version changed since you opened it — reload to see it, then edit again\./);
+    // And which path a target takes: only a draft reaches the section commands.
+    assert.match(editor, /const result = target\.kind === "draft"\n\s+\? await postBrowserCommand<\{ version: number \}>\(`\/api\/isolated\/reports\/sections\/\$\{kind\}`/);
   });
 
   it("keeps figures locked: the editor shows chips, a figure comes from the palette, and a typed figure or money is refused before sending", () => {
