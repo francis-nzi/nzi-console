@@ -45,7 +45,8 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
 
   it("writes every dataset, identity and value row the plan holds", async () => {
     const outcome = await loadV7Plan(database.pool, plan);
-    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 15 }); // the fixture's -w row is excluded (retired-w)
+    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 15,
+      factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 }); // the fixture's -w row is excluded (retired-w)
     assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
   });
 
@@ -75,7 +76,8 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
 
   it("changes nothing on a second run", async () => {
     const outcome = await loadV7Plan(database.pool, plan);
-    assert.deepEqual(outcome, { datasetsInserted: 0, datasetsUnchanged: 8, identitiesInserted: 0, identitiesKept: plan.identities.length, factorsInserted: 0 });
+    assert.deepEqual(outcome, { datasetsInserted: 0, datasetsUnchanged: 8, identitiesInserted: 0, identitiesKept: plan.identities.length, factorsInserted: 0,
+      factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 });
     assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
   });
 

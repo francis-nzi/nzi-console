@@ -779,6 +779,13 @@ jobs:
       # the three DESNZ cases; 0172 relocating each variant identity's curated strings; roll-forward dropping a retired pair.
       - name: Migration 0172 files a base under a category by applicability, and J000663 reads exactly as today
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityResolutionReal.test.ts
+      # Dedup slice 4 (0173, REPORT_FACTOR_APPLICABILITY): the v7 import folds a same-value, same-unit, same-scope `<base><suffix>`
+      # row into its base's applicability — the variant's exact strings and its lineage, an audit event per pair — and writes no
+      # value row. The gate: the same J000663-shaped extract loaded today's way and folded, then J000663's entries priced on each,
+      # must price, total, label and compose byte-identically. Flag off is today's import exactly; a different number is never
+      # folded; a folding plan needs the flag; a tampered fold is refused in SQL; 0173's lineage CHECK and permanence.
+      - name: Migration 0173 folds same-value variants into applicability at import, and J000663 reads exactly as today
+        run: npx tsx --test packages/isolated-backend/tests/v7ReferenceFoldReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.

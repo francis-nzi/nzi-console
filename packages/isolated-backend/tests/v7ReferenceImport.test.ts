@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { clean, EXCLUSION_REASONS, normaliseCode, parseCsv, planV7Load, type ExtractRow } from "../src/v7ReferenceImport";
+import { clean, EXCLUSION_REASONS, normaliseCode, parseCsv, planV7Load, sameDecimal, type ExtractRow } from "../src/v7ReferenceImport";
+import { DIVERGENT_EXTRACT, FOLD_EXTRACT, FOLDED_IDS } from "./support/v7FoldExtract";
 import { countryCodeFor } from "../src/v7Countries";
 
 /**
@@ -372,5 +373,76 @@ describe("the dry-run rulings of 25 Sep 2026", () => {
     it("leaves the merge guard unchanged for any other row: the same clash on an unruled db_id refuses", () => {
       assert.deepEqual(codes(plan([xlsx, { ...tmp, db_id: "21799" }]).refusals), ["merge-conflict"]);
     });
+  });
+});
+
+describe("dedup slice 4: the fold (REPORT_FACTOR_APPLICABILITY)", () => {
+  const off = planV7Load(FOLD_EXTRACT, REGISTRY);
+  const on = planV7Load(FOLD_EXTRACT, REGISTRY, { fold: true });
+  const ids = (factors: { datasetId: string; factorId: string }[]) => factors.map((factor) => factor.factorId).sort();
+
+  it("compares values as numeric does — 0170's guard — not as strings", () => {
+    for (const [a, b] of [["0.26187", "0.261870"], ["0.1", ".10"], ["1e-3", "0.001"], ["1000", "1E3"], ["-0.5", "-.50"], ["0", "-0.000"], ["12", "+12"]]) {
+      assert.ok(sameDecimal(a!, b!), `${a} = ${b}`);
+    }
+    for (const [a, b] of [["0.26187", "0.26188"], ["1", "-1"], ["0.1", "0.01"], ["1e3", "100"], ["NaN", "NaN"], ["", ""], ["0x10", "16"]]) {
+      assert.ok(!sameDecimal(a!, b!), `${a} ≠ ${b}`);
+    }
+  });
+
+  it("off, the plan is today's exactly: every variant row, every identity, no pair", () => {
+    assert.deepEqual(planV7Load(FOLD_EXTRACT, REGISTRY, { fold: false }), off);
+    assert.deepEqual([off.folded, off.applicability], [[], []]);
+    assert.equal(off.factors.length, FOLD_EXTRACT.length);
+    assert.deepEqual(plan().folded, [], "the synthetic extract, as every existing suite builds it");
+  });
+
+  it("on, folds exactly the same-value, same-unit, same-scope copies — and nothing else changes", () => {
+    assert.deepEqual(ids(on.folded), FOLDED_IDS);
+    // The value rows are today's minus the folded ones, field for field.
+    assert.deepEqual(on.factors, off.factors.filter((factor) => !FOLDED_IDS.includes(factor.factorId)));
+    // Datasets — and their content hashes, which are of the source edition — are identical, so a fold never makes a loaded
+    // dataset look changed.
+    assert.deepEqual(on.datasets, off.datasets);
+    // A variant identity whose every row folded has nothing left to describe; every other identity is today's.
+    assert.deepEqual(on.identities, off.identities.filter((identity) => !FOLDED_IDS.includes(identity.factorId)));
+    assert.deepEqual(on.refusals, off.refusals);
+    const reported = codes(on.reports);
+    assert.ok(reported.includes("variant-folded") && reported.includes("variant-not-folded-scope"));
+  });
+
+  it("records each pair with the variant identity's exact strings and its v7 lineage", () => {
+    const pair = (factorId: string, suffixCode: string) => on.applicability.find((entry) => entry.factorId === factorId && entry.suffixCode === suffixCode);
+    assert.deepEqual(pair("uk-ghg-25_301_3070_9_1", "-c"), {
+      factorId: "uk-ghg-25_301_3070_9_1", suffixCode: "-c", variantFactorId: "uk-ghg-25_301_3070_9_1-c",
+      reportLabel: "Employee Commuting: Average Car Petrol", label: "Employee commuting- land - Cars (by size) - Average car - Petrol",
+      legacyOriginalId: "25_301_3070_9_1-c", legacyDbId: "502",
+    }, "the commuting copy's own strings — not the business-travel base's");
+    assert.equal(pair("uk-ghg-SPEND-SIC-49.3-5", "-p")!.reportLabel, null, "no curated report label: none, never the base's");
+    assert.deepEqual(on.applicability.map((entry) => `${entry.factorId}${entry.suffixCode}`).sort(), FOLDED_IDS);
+    // Two editions folded into one pair: its lineage is the lowest db_id of them, as an identity's is.
+    const next = FOLD_EXTRACT.map((entry) => ({ ...entry, db_id: String(Number(entry.db_id) + 1000), dataset_id: "10", year: "2026", valid_from: "2026-01-01", valid_to: "2026-12-31" }));
+    const both = planV7Load([...next, ...FOLD_EXTRACT], REGISTRY, { fold: true });
+    assert.equal(both.folded.filter((row) => row.factorId === "uk-ghg-25_301_3070_9_1-c").length, 2);
+    assert.equal(both.applicability.find((entry) => entry.variantFactorId === "uk-ghg-25_301_3070_9_1-c")!.legacyDbId, "502");
+    for (const entry of on.applicability) {
+      const variant = off.identities.find((identity) => identity.factorId === entry.variantFactorId)!;
+      assert.deepEqual([entry.reportLabel, entry.label, entry.legacyOriginalId], [variant.reportLabel, variant.label, variant.legacyOriginalId], entry.variantFactorId);
+    }
+  });
+
+  it("leaves alone: a copy in another scope, a copy without its base, a different number, a retired suffix", () => {
+    const loaded = ids(on.factors);
+    for (const kept of ["uk-ghg-4_301_3070_4_1-bcp", "uk-ghg-77_700_7000_1_1-b", "uk-ghg-WTT-25_301_3070_9_1", "uk-ghg-25_301_3070_4_1"]) {
+      assert.ok(loaded.includes(kept), `${kept} was folded`);
+    }
+    // The fixture's company-car commuting copy is Scope 3 over a Scope 1 base: kept, as -bcp is.
+    assert.ok(ids(plan().factors).includes("uk-ghg-10_100_1000_1_1-c"));
+    assert.ok(ids(planV7Load(FIXTURE, REGISTRY, { fold: true }).factors).includes("uk-ghg-10_100_1000_1_1-c"));
+    const divergent = planV7Load(DIVERGENT_EXTRACT, REGISTRY, { fold: true });
+    assert.deepEqual([divergent.folded, ids(divergent.factors)], [[], ["uk-ghg-26_400_4000_1_1", "uk-ghg-26_400_4000_1_1-u"]], "a different number is never folded");
+    assert.ok(codes(divergent.reports).includes("variant-differs"));
+    const retired = REGISTRY.map((entry: { suffixCode: string }) => (entry.suffixCode === "-d" ? { ...entry, status: "retired" } : entry)) as never;
+    assert.ok(!ids(planV7Load(FOLD_EXTRACT, retired, { fold: true }).folded).includes("uk-ghg-27_320_3235_14_1-d"), "folded under a retired suffix");
   });
 });
