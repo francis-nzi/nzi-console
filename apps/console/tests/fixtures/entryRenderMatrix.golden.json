@@ -20,6 +20,13 @@
         "hint": "Smart search — Scope 1 · Company Vehicles factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -118,6 +125,13 @@
         "hint": "Smart search — Scope 1 · Company Vehicles factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -214,6 +228,13 @@
         "label": "Activity / source",
         "control": "smart-search",
         "hint": "Smart search — Scope 1 · Company Vehicles factors only."
+      },
+      {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
       },
       {
         "key": "quantity",
@@ -10684,6 +10705,13 @@
         "hint": "Smart search — Scope 3 · Business Travel factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -10786,6 +10814,13 @@
         "hint": "Smart search — Scope 3 · Business Travel factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -10886,6 +10921,13 @@
         "label": "Activity / source",
         "control": "smart-search",
         "hint": "Smart search — Scope 3 · Business Travel factors only."
+      },
+      {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
       },
       {
         "key": "quantity",
@@ -11372,6 +11414,13 @@
         "hint": "Smart search — Scope 3 · Employee Commuting factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -11473,6 +11522,13 @@
         "hint": "Smart search — Scope 3 · Employee Commuting factors only."
       },
       {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
+      },
+      {
         "key": "quantity",
         "label": "Quantity",
         "control": "number"
@@ -11572,6 +11628,13 @@
         "label": "Activity / source",
         "control": "smart-search",
         "hint": "Smart search — Scope 3 · Employee Commuting factors only."
+      },
+      {
+        "key": "usageType",
+        "label": "Usage type",
+        "control": "select",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true
       },
       {
         "key": "quantity",

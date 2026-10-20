@@ -79,5 +79,15 @@ export function resolveReportLabel(sources: ReportLabelSources): ResolvedReportL
   return { label: sources.sourceLabel.trim(), from: "source" };
 }
 
+/**
+ * Dedup slice 2 (0171): a line's label with its usage type — "Diesel — HGV" — so one factor reports as several usages without a
+ * factor per label. With no usage the label is returned exactly as it was, which is what keeps every composition without one
+ * byte-identical.
+ */
+export const withUsage = (label: string, usageLabel?: string | null): string => {
+  const usage = usageLabel?.trim();
+  return usage ? `${label} — ${usage}` : label;
+};
+
 /** The alias key: one client's name for one shared factor, across every edition of it (0125). */
 export const factorAliasKey = (factorId: string) => factorId;

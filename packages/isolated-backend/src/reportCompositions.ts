@@ -73,6 +73,8 @@ export type SnapshotForComposition = {
     siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
     /** B1: the audit appendix's — the row's scope code, and whether its factor is a client's. */
     scopeCode?: string | null; factorSource?: string | null;
+    /** Dedup slice 2 (0171): the row's usage type label, frozen in the snapshot only when the row had one. */
+    usageLabel?: string | null;
   }>;
   /** B1 (`composed@3`): the snapshot's provenance stamp, which names its datasets by id. Absent on a snapshot issued before stamping. */
   provenance?: SnapshotProvenanceStamp | null;

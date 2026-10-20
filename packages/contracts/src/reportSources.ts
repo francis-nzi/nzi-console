@@ -10,6 +10,7 @@ import { crpScopeCategoryLabel } from "./commands";
 import { datasetLabelFromId } from "./datasetSources";
 import { snapshotSourceSummary, type SnapshotProvenanceStamp } from "./evidence";
 import type { ReportScope } from "./reportScope";
+import { withUsage } from "./reportLabelResolution";
 
 export type ReportSources = {
   /** "Reviewed snapshot J000663 · DESNZ GB 2025 · DESNZ GB 2026": the one line under every chart and section. */
@@ -51,6 +52,8 @@ export type AuditMeasurement = {
   scope: string; scopeCode?: string | null; tco2e: number;
   sourceLabel?: string | null; reportLabel?: string | null; siteId?: string | null; siteLabel?: string | null;
   factorSet?: string | null; factorSource?: string | null; qualityTier?: string | null;
+  /** Dedup slice 2 (0171): the row's usage type, as frozen — the audit line reads "<activity> — <usage>". */
+  usageLabel?: string | null;
 };
 
 const SEPARATOR = " · ";
@@ -88,7 +91,7 @@ export function composeReportAudit(input: { measurements: readonly AuditMeasurem
     const scope = (["1", "2", "3"].includes(row.scope) ? row.scope : "3") as ReportCompositionAuditRow["scope"];
     const scopeCode = row.scopeCode ?? scope;
     return {
-      scope, scopeCode, category: crpScopeCategoryLabel(scopeCode), activity: row.reportLabel?.trim() || row.sourceLabel?.trim() || NOT_RECORDED,
+      scope, scopeCode, category: crpScopeCategoryLabel(scopeCode), activity: withUsage(row.reportLabel?.trim() || row.sourceLabel?.trim() || NOT_RECORDED, row.usageLabel),
       site: row.siteId ? row.siteLabel ?? row.siteId : null, factor, source, qualityTier: row.qualityTier ?? null, tco2e: Number(row.tco2e),
     };
   }).sort((a, b) => a.scopeCode.localeCompare(b.scopeCode, "en", { numeric: true }) || b.tco2e - a.tco2e || a.activity.localeCompare(b.activity));

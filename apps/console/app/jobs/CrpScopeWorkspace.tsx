@@ -56,6 +56,7 @@ import type { DatasetUpdate, JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
 import { EmissionEntryForm } from "./EmissionEntryForm";
+import { useUsageTypes } from "./usageTypes";
 import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
@@ -220,6 +221,8 @@ export function CrpScopeWorkspace({
         kind: "warn",
         text: `QA pending: ${qa.calculationMissing} calculations missing · ${qa.qualityMissing} quality tiers missing · ${qa.independentReviewPending} rows awaiting independent approval.`,
       };
+  // Dedup slice 2 (0171): the organisation's usage types, for the entry form's governed `usageType` field.
+  const usageTypes = useUsageTypes();
   const router = useRouter(),
     // Empty on purpose: the detail drawer is a deliberate act, so nothing is selected until a row is
     // clicked or an entry is added. Seeding this with "the first row needing attention" is what opened a
@@ -455,6 +458,7 @@ export function CrpScopeWorkspace({
         onSubmit={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
         onSaveDraft={async (draft) => { await saveQuickAdd(addingCategory, draft); }}
         onLookupRegistration={lookupRegistration}
+        usageTypes={usageTypes}
         onOpenDatasets={() => { setAddingCategory(null); setOpenStages(current => new Set(current).add("Setup")); requestAnimationFrame(() => document.getElementById("job-datasets")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}
         leanCapture={dataEntryAdapterEnabled("entry-lean-capture")}
       />

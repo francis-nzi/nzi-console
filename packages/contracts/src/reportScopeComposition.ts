@@ -3,10 +3,13 @@
 // figure: a site scope is a filter of the snapshot's per-row measurements, and organisation-level (unallocated) emissions are
 // excluded from it and stated, never split across sites (sub-ruling 1).
 import type { ReportScope } from "./reportScope";
+import { withUsage } from "./reportLabelResolution";
 import type { ReportComparisonColumn, ReportEmissionsComparison, ReportSiteEmissions } from "./reportComposition";
 
 export type ScopedMeasurement = {
   scope: string; tco2e: number; siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
+  /** Dedup slice 2 (0171): the row's usage type, as frozen. A line per (activity, usage); none, one line as before. */
+  usageLabel?: string | null;
 };
 export type ScopedHistoryPeriod = { year: number; rows: ReadonlyArray<{ siteId: string | null; scope: string; scopeCode?: string; tco2e: number }>; sitesKnown: boolean };
 
@@ -29,7 +32,7 @@ export const unallocatedStatement = (tco2e: number) =>
 function activitiesOf(rows: readonly ScopedMeasurement[]): ReportSiteEmissions["activities"] {
   const grouped = new Map<string, { label: string; scope: string; tco2e: number }>();
   for (const row of rows) {
-    const label = (row.reportLabel ?? row.sourceLabel ?? "").trim() || "Unlabelled activity";
+    const label = withUsage((row.reportLabel ?? row.sourceLabel ?? "").trim() || "Unlabelled activity", row.usageLabel);
     const key = `${row.scope}\u0000${label}`;
     const entry = grouped.get(key) ?? { label, scope: row.scope, tco2e: 0 };
     entry.tco2e += row.tco2e;

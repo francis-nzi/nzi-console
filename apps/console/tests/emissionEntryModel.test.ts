@@ -172,6 +172,15 @@ describe("UX1c — draft ↔ scope row mapping", () => {
     assert.equal(row.isCustomEntry, true);
   });
 
+  it("sends a usage type only when the draft carries one — never clearing a row's usage the draft did not know (dedup slice 2)", () => {
+    const write = (over: Partial<EmissionEntryDraft>) => emissionEntryDraftToScopeRow(draft(over), cat("Company Vehicles"), { id: null, label: null }, factors, months);
+    assert.ok(!("usageTypeId" in write({})), "absent on the draft → absent on the command, so the server keeps the row's");
+    assert.equal(write({ usageTypeId: "" }).usageTypeId, null, "chosen as none → cleared");
+    assert.equal(write({ usageTypeId: "emission_usage_type:van" }).usageTypeId, "emission_usage_type:van");
+    // And an edit round-trips what the row holds.
+    assert.equal(scopeRowToEmissionEntryDraft({ ...({} as ScopeRowReadModel), sourceLabel: "Fleet", usageTypeId: "emission_usage_type:hgv" } as ScopeRowReadModel).usageTypeId, "emission_usage_type:hgv");
+  });
+
   it("only writes monthly slots when the disclosure is open", () => {
     assert.deepEqual(emissionEntryDraftToScopeRow(draft({ quantity: "30" }), cat("Natural Gas"), { id: null, label: null }, factors, months).monthlyActivity, []);
     const withMonthly = emissionEntryDraftToScopeRow(draft({ monthlyOpen: true, monthly: { "2026-01": "10", "2026-02": "20" } }), cat("Natural Gas"), { id: null, label: null }, factors, months);
