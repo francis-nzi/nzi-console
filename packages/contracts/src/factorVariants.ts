@@ -141,7 +141,37 @@ export type FactorApplicability = {
   suffixCode: string;
   status: VariantStatus;
   source: "migration" | "admin";
+  /** Dedup slice 3 (0172): what a line filed under this (factor, category) prints — the variant identity's label, relocated. */
+  reportLabel?: string | null;
+  /** Dedup slice 3 (0172): the factor's curated label under this category — what a row filed so stores as its factor label. */
+  label?: string | null;
 };
+
+/**
+ * Dedup slice 3: which categories a base factor may be filed under, by base factor id — the active suffixes of its applicability
+ * (`factor_identity_categories`, 0170). Undefined for a factor with none.
+ */
+export type ApplicabilityLookup = (baseFactorId: string) => ReadonlySet<string> | undefined;
+
+/** The GHG category a scope row's category code files under, in the registry's terms: `3.7` → `3.7`, `1.company-vehicles` → `1`. */
+export const categoryGhgOf = (categoryCode: string): string => (/^3\.\d+$/.test(categoryCode) ? categoryCode : categoryCode.split(".")[0]!);
+
+/**
+ * Dedup slice 3: the suffix a dataset factor is filed under in a category by applicability, or null.
+ *
+ * Only a **base** is filed so — a variant id already says what it is. The base must be applicable under a suffix whose GHG category
+ * is the category's own, and that suffix must be active in the registry. Several (a business-travel `-b` and `-bcp`) resolve to
+ * the registry's first by its stated order, so the answer never depends on the order rows arrived in. Null means the factor is used
+ * as itself — natively, as before — and says nothing about whether it may be (that is the D1 rule's to decide).
+ */
+export function filedSuffixFor(input: { factorId: string; categoryCode: string; applicability: ApplicabilityLookup; registry: readonly CategoryVariant[] }): string | null {
+  if (parseFactorId(input.factorId, input.registry).variant) return null;
+  const applicable = input.applicability(input.factorId);
+  if (!applicable || applicable.size === 0) return null;
+  const ghg = categoryGhgOf(input.categoryCode);
+  const candidate = availableVariants(input.registry).find((variant) => variant.ghgCategory === ghg && applicable.has(variant.suffixCode));
+  return candidate?.suffixCode ?? null;
+}
 
 /** The variant id a fan-out would write for one base and one suffix. */
 export const variantFactorId = (base: string, variant: CategoryVariant): string =>

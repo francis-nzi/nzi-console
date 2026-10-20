@@ -594,7 +594,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
   const { rows } = await db.query<ScopeRow>(`SELECT r.scope_row_id, r.job_id, r.scope, r.source_label, r.quantity,
       r.unit, r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.dataset_id, r.factor_id, r.factor_version, r.factor_label, r.quality_tier,
       r.calculated_tco2e, r.override_tco2e, r.override_reason, r.review_status,r.reviewed_row_version,r.reviewed_by,r.reviewed_at,r.reviewer_note, r.version, r.enabled,
-      r.provenance_json, r.lineage_json,r.report_label,cfa.label AS alias_label,fi.report_label AS identity_report_label,cfl.report_label AS client_factor_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.usage_type_id,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.category_code,
+      r.provenance_json, r.lineage_json,r.report_label,cfa.label AS alias_label,CASE WHEN r.filed_suffix_code IS NOT NULL THEN fic.report_label ELSE fi.report_label END AS identity_report_label,cfl.report_label AS client_factor_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.asset_identifier,r.usage_type_id,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.category_code,
       (r.factor_source='client' AND r.client_factor_id IS NOT NULL AND EXISTS(SELECT 1 FROM nzi_console.client_factors cf WHERE cf.organisation_id=r.organisation_id AND cf.client_factor_id=r.client_factor_id AND 'v'||cf.version::text <> coalesce(r.factor_version,''))) AS client_factor_version_moved,
       -- H4, as ruled: a 3.3 entry — mostly spend-based — may not include transmission & distribution losses, so every
       -- one carries a prompt to consider adding them. A completeness nudge, ungated: it does not depend on companions or
@@ -608,7 +608,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id)
     -- What the client calls the factor, and NZI's curated wording for it — both held once for every edition (0125).
     LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,j.client_id,r.factor_id) AND cfa.active
-    LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset'
+    LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.factor_identity_categories fic ON (fic.organisation_id,fic.factor_id,fic.suffix_code)=(r.organisation_id,r.factor_id,r.filed_suffix_code)
     LEFT JOIN nzi_console.client_factors cfl ON (cfl.organisation_id,cfl.client_factor_id)=(r.organisation_id,r.client_factor_id)
     WHERE r.job_id=$1 AND j.job_family='crp'
     ORDER BY r.enabled DESC, split_part(r.scope,'.',1)::int, nullif(split_part(r.scope,'.',2),'')::int NULLS FIRST, lower(r.source_label), r.scope_row_id`, [jobId]);

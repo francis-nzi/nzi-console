@@ -52,7 +52,7 @@ import { preparerMayProceed } from "./independentApproval";
 import { resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
 import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 import type { PoolLike, Queryable } from "./postgres";
-import { applyDeclarativeResolution, variantBaseRefusal } from "./declarativeResolution";
+import { applyDeclarativeResolution, filedSuffixForRow, variantBaseRefusal, type ResolvedFactorFields } from "./declarativeResolution";
 import { withTenantWrite } from "./postgres";
 
 export class IdempotencyConflictError extends Error {
@@ -1353,10 +1353,12 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   const priorRes=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=(SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$3) AND job_family='crp'`,[context.organisationId,input.priorJobId,input.jobId]);
   const priorJob=priorRes.rows[0];
   if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
-  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null}>(
+  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null}>(
     `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
             -- Dedup slice 2 (0171): a new row carries the prior usage type only while it is still offered (a withdrawn one drops to null).
-            (SELECT v.value_id FROM nzi_console.reference_values v WHERE v.organisation_id=r.organisation_id AND v.value_id=r.usage_type_id AND v.active) AS usage_type_id
+            (SELECT v.value_id FROM nzi_console.reference_values v WHERE v.organisation_id=r.organisation_id AND v.value_id=r.usage_type_id AND v.active) AS usage_type_id,
+            -- Dedup slice 3: filed by applicability only while the pair is still applicable.
+            (SELECT a.suffix_code FROM nzi_console.factor_identity_categories a WHERE a.organisation_id=r.organisation_id AND a.factor_id=r.factor_id AND a.suffix_code=r.filed_suffix_code AND a.status='active') AS filed_suffix_code
      FROM nzi_console.job_scope_rows r
      WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=ANY($3::text[]) AND enabled=true
        -- A migrated row is v7's history: it never seeds a live row, so it is skipped (§5.1).
@@ -1401,9 +1403,9 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
     try{
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-         (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,column_text,category_code,rolled_forward_from_row_id,usage_type_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'[]'::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
-        [context.organisationId,rowId,input.jobId,row.scope,row.source_label.trim(),siteId,categoryId,row.unit,row.dataset_id,row.factor_id,row.factor_version,row.factor_label,JSON.stringify(evidence.provenance),JSON.stringify(lineage),row.report_label?.trim()||row.source_label.trim(),categoryPath[0],categoryPath[1],row.asset_identifier,row.factor_source,row.client_factor_id,row.is_custom_entry,Number(row.apply_pct),row.column_text,categoryCode,row.scope_row_id,row.usage_type_id],
+         (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,column_text,category_code,rolled_forward_from_row_id,usage_type_id,filed_suffix_code)
+         VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'[]'::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+        [context.organisationId,rowId,input.jobId,row.scope,row.source_label.trim(),siteId,categoryId,row.unit,row.dataset_id,row.factor_id,row.factor_version,row.factor_label,JSON.stringify(evidence.provenance),JSON.stringify(lineage),row.report_label?.trim()||row.source_label.trim(),categoryPath[0],categoryPath[1],row.asset_identifier,row.factor_source,row.client_factor_id,row.is_custom_entry,Number(row.apply_pct),row.column_text,categoryCode,row.scope_row_id,row.usage_type_id,row.filed_suffix_code],
       );
       createdRowIds.push(rowId);
       rolledForward+=1;
@@ -1476,19 +1478,40 @@ async function declarativeFactorFor(db: Queryable, context: CommandContext, inpu
   if (baseRefusal) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_IS_VARIANT_BASE", message: baseRefusal }]);
   // The v7 re-ingest names v7's own factor (rulings 1, 3, 4): the capture-time declared pick is not its step
   // (RULING-v7-reingest-declared-factor (a); gated in `refuseUnlessReingest`). The factor is then checked as any other.
-  if (declaredResolutionExempt) return { kind: "not-enabled" as const, factor: { datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, factorLabel: input.factorLabel } };
+  // Dedup slice 3, behind REPORT_FACTOR_APPLICABILITY (null off it): the suffix the row's base is filed under by applicability —
+  // and, filed so, the row stores the pair's own curated factor label (0172, relocated from the variant identity), so the audit names
+  // the factor exactly as the variant row did. The value is the base's own; nothing else about the factor moves.
+  const filed = async <F extends ResolvedFactorFields>(factor: F): Promise<{ factor: F; filedSuffixCode: string | null }> => {
+    const filedSuffixCode = await filedSuffixForRow(db, context.organisationId, { factorId: factor.factorId, factorSource: input.factorSource }, categoryCode);
+    return { factor: await withPairLabel(factor, filedSuffixCode), filedSuffixCode };
+  };
+  const withPairLabel = async <F extends ResolvedFactorFields>(factor: F, suffixCode: string | null): Promise<F> => {
+    if (!suffixCode || !factor.factorId) return factor;
+    const pair = (await db.query<{ label: string | null }>(
+      `SELECT label FROM nzi_console.factor_identity_categories WHERE organisation_id=$1 AND factor_id=$2 AND suffix_code=$3`,
+      [context.organisationId, factor.factorId, suffixCode])).rows[0];
+    return pair?.label ? { ...factor, factorLabel: pair.label } : factor;
+  };
+  const sent = { datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, factorLabel: input.factorLabel };
+  if (declaredResolutionExempt) return { kind: "not-enabled" as const, ...await filed(sent) };
   const result = await applyDeclarativeResolution(db, context.organisationId, input.jobId, input, categoryCode, context.actorId);
   if (result.kind === "refuse") throw new CommandValidationError([{ field: result.field, code: result.code, message: result.message }]);
-  return result.kind === "apply" ? result
-    : { kind: "not-enabled" as const, factor: { datasetId: input.datasetId, factorId: input.factorId, factorVersion: input.factorVersion, factorLabel: input.factorLabel } };
+  if (result.kind === "apply") {
+    if (!result.filedSuffixCode) return { ...result, ...await filed(result.factor) };
+    return { ...result, factor: await withPairLabel(result.factor, result.filedSuffixCode), filedSuffixCode: result.filedSuffixCode };
+  }
+  return { kind: "not-enabled" as const, ...await filed(sent) };
 }
 
 /** Evidence with the resolution recorded. Unchanged — not one key added — when the category is off. */
 function withDeclarative(evidence: ReturnType<typeof scopeEvidence>, declared: Awaited<ReturnType<typeof declarativeFactorFor>>) {
-  if (declared.kind !== "apply") return evidence;
+  // Dedup slice 3: what was measured (the base) and how it was classified (the suffix it is filed under by applicability). No key
+  // is added when the row is not filed so — the flag off, every row is byte-for-byte what it was.
+  const filed = declared.filedSuffixCode ? { filedUnder: { suffixCode: declared.filedSuffixCode, by: "applicability" } } : {};
+  if (declared.kind !== "apply") return declared.filedSuffixCode ? { provenance: { ...evidence.provenance, ...filed }, lineage: evidence.lineage } : evidence;
   const trail = declared.provenance.declarativeResolution as { decision?: string; ruleKey?: string | null } | undefined;
   return {
-    provenance: { ...evidence.provenance, ...declared.provenance },
+    provenance: { ...evidence.provenance, ...filed, ...declared.provenance },
     lineage: trail?.decision === "filled"
       ? [...evidence.lineage, { title: "Factor resolved by declared rule", detail: `${trail.ruleKey ?? "rule"} · no factor was sent, so the category's declared factor was used` }]
       : evidence.lineage,
@@ -1609,8 +1632,8 @@ function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], conte
       });
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report,supply_source,reingested_from_row_id,usage_type_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)`,
+      (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,quality_tier,override_tco2e,override_reason,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,notes,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,data_confidence,source_quantity,source_unit,column_text,category_code,activity_frequency,activity_distributed,scope2_method,show_in_report,supply_source,reingested_from_row_id,usage_type_id,filed_suffix_code)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)`,
         [
           context.organisationId,
           rowId,
@@ -1656,6 +1679,7 @@ function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], conte
           input.supplySource ?? null,
           allowances.reingestedFrom ?? null,
           await usageTypeFor(db, context.organisationId, input.usageTypeId, null),
+          declared.filedSuffixCode,
         ],
       );
       return {
@@ -1710,7 +1734,7 @@ export async function updateScopeRow(
         `UPDATE nzi_console.job_scope_rows SET scope=$4,source_label=$5,site_id=$6,purchased_goods_category_id=$7,
       quantity=$8,unit=$9,dataset_id=$10,factor_id=$11,factor_version=$12,factor_label=$13,quality_tier=$14,override_tco2e=$15,override_reason=$16,
       provenance_json=$17::jsonb,lineage_json=$18::jsonb,enabled=$19,calculated_tco2e=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,
-      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,activity_frequency=$36,activity_distributed=$37,scope2_method=$38,show_in_report=$39,supply_source=$40,usage_type_id=CASE WHEN $41::boolean THEN usage_type_id ELSE $42 END,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
+      report_label=$21,level_1=$22,level_2=$23,level_3=NULL,level_4=NULL,monthly_activity_json=$24::jsonb,notes=$25,asset_identifier=$26,factor_source=$27,client_factor_id=$28,is_custom_entry=$29,apply_pct=$30,data_confidence=$31,source_quantity=$32,source_unit=$33,column_text=$34,category_code=$35,activity_frequency=$36,activity_distributed=$37,scope2_method=$38,show_in_report=$39,supply_source=$40,usage_type_id=CASE WHEN $41::boolean THEN usage_type_id ELSE $42 END,filed_suffix_code=$43,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$20 RETURNING version`,
         [
           context.organisationId,
           input.jobId,
@@ -1761,6 +1785,7 @@ export async function updateScopeRow(
           input.usageTypeId === undefined,
           input.usageTypeId === undefined ? null : await usageTypeFor(db, context.organisationId, input.usageTypeId,
             (await db.query<{ usage_type_id: string | null }>(`SELECT usage_type_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND scope_row_id=$2`, [context.organisationId, input.rowId])).rows[0]?.usage_type_id ?? null),
+          declared.filedSuffixCode,
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
@@ -1874,6 +1899,16 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
           "The factor is not active, selected for this job, or valid for this scope.",
       },
     ]);
+  // Dedup slice 3 (0172): a row filed by applicability is the base priced under a category, and keeps the pair's own curated factor
+  // label (relocated from its variant identity) — never the base's. Read whatever the flag, so a row filed while it was on keeps
+  // its label after it is turned off. A row not filed so (every row before 0172) finds nothing and keeps the base's, as before.
+  if (row.factor_source !== "client") {
+    const pairLabel = (await db.query<{ label: string | null }>(
+      `SELECT a.label FROM nzi_console.job_scope_rows r JOIN nzi_console.factor_identity_categories a
+          ON (a.organisation_id, a.factor_id, a.suffix_code) = (r.organisation_id, r.factor_id, r.filed_suffix_code)
+        WHERE r.organisation_id = $1 AND r.scope_row_id = $2`, [context.organisationId, input.rowId])).rows[0]?.label;
+    if (pairLabel) matched.label = pairLabel;
+  }
   if (
     row.unit.trim().toLowerCase() !==
     matched.activity_unit.trim().toLowerCase()
@@ -1922,6 +1957,9 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     synthetic: matched.synthetic,
     applyPct: Number(row.apply_pct),
     monthlyActivity:row.monthly_activity_json??[],
+    // Dedup slice 3: what was measured (the base, above) and how it was classified survives the calculation, as who captured it
+    // does. Absent on every row not filed by applicability, so their calculated provenance is exactly as before.
+    ...((row.provenance_json as { filedUnder?: unknown } | null)?.filedUnder ? { filedUnder: (row.provenance_json as { filedUnder: unknown }).filedUnder } : {}),
   };
   const updated = await db.query<{
     version: number;
@@ -2518,7 +2556,7 @@ export async function createReviewedCrpSnapshot(
         identity_report_label: string | null;
         usage_label: string | null;
       }>(
-        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.origin,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label,fi.report_label AS identity_report_label,ut.label AS usage_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.reference_values ut ON (ut.organisation_id,ut.value_id)=(r.organisation_id,r.usage_type_id) LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
+        `SELECT scope_row_id,r.version,r.scope,r.source_label,r.asset_identifier,r.factor_source,r.client_factor_id,r.is_custom_entry,r.apply_pct,r.data_confidence,r.source_quantity,r.source_unit,r.column_text,r.report_label,r.level_1,r.level_2,r.level_3,r.level_4,r.monthly_activity_json,r.notes,r.site_id,s.name AS site_label,r.purchased_goods_category_id,pgc.name AS purchased_goods_category_label,r.calculated_tco2e,r.override_tco2e,r.factor_label,r.factor_version,r.quality_tier,r.review_status,r.reviewed_by,r.enabled,r.origin,r.dataset_id,d.name AS dataset_name,d.version AS dataset_version,cf.report_label AS client_factor_label,cf.version::text AS client_factor_version,cfa.label AS alias_label,CASE WHEN r.filed_suffix_code IS NOT NULL THEN fic.report_label ELSE fi.report_label END AS identity_report_label,ut.label AS usage_label FROM nzi_console.job_scope_rows r LEFT JOIN nzi_console.reference_values ut ON (ut.organisation_id,ut.value_id)=(r.organisation_id,r.usage_type_id) LEFT JOIN nzi_console.jobs jb ON (jb.organisation_id,jb.job_id)=(r.organisation_id,r.job_id) LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,jb.client_id,r.factor_id) AND cfa.active LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.factor_identity_categories fic ON (fic.organisation_id,fic.factor_id,fic.suffix_code)=(r.organisation_id,r.factor_id,r.filed_suffix_code) LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id) LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id) LEFT JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(r.organisation_id,r.dataset_id) LEFT JOIN nzi_console.client_factors cf ON (cf.organisation_id,cf.client_factor_id)=(r.organisation_id,r.client_factor_id) WHERE r.organisation_id=$1 AND r.job_id=$2 ORDER BY r.scope_row_id FOR SHARE OF r`,
         [context.organisationId, input.jobId],
       );
       // Decision 12 (ruled 28 Sep 2026): an imported period's record of account is its signed v7 report, kept in

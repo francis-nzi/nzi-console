@@ -1,7 +1,8 @@
 import {
-  parseFactorId, resolveFactorForEntry, variantFactorId,
+  filedSuffixFor, parseFactorId, resolveFactorForEntry, variantFactorId,
   type AssertedVehicleAttributes, type FactorRule, type MappingOutcome, type ScopeRowWriteFields,
 } from "@nzi/contracts";
+import { factorApplicabilityResolution, loadApplicability } from "./factorApplicability";
 import type { Queryable } from "./postgres";
 import { listCategoryVariants } from "./factorCategoryVariants";
 import { companionRulesFor, factorRulesFor, listFactorRules } from "./inputSpecFactorRules";
@@ -43,7 +44,9 @@ export type ResolvedFactorFields = Pick<ScopeRowWriteFields, "datasetId" | "fact
 
 export type DeclarativeResolution =
   | { kind: "not-enabled" }
-  | { kind: "apply"; factor: ResolvedFactorFields; provenance: Record<string, unknown> }
+  | { kind: "apply"; factor: ResolvedFactorFields; provenance: Record<string, unknown>;
+      /** Dedup slice 3: the declared base is filed under this suffix by applicability (the flag's path only). */
+      filedSuffixCode?: string }
   | { kind: "refuse"; field: string; code: string; message: string };
 
 type AvailableFactor = { factorId: string; datasetId: string; datasetVersion: string; label: string; unit: string; scopes: string[] };
@@ -102,6 +105,8 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
       category: attributes.category ?? null, fallback: attributes.fallbackCategory ?? null } } : undefined,
     rulesByCategory,
     reconcileUnit: reconcileUnitForMapping,
+    // Dedup slice 3: behind the flag, a sub-flow files the base by applicability rather than needing its variant row.
+    ...(factorApplicabilityResolution() ? { applicability: await loadApplicability(db, organisationId) } : {}),
   });
   const carriers = outcome.kind === "resolved" ? factors.filter((factor) => factor.factorId === outcome.factorId) : [];
   return { outcome, factors, declared: carriers.length === 1 ? carriers[0]! : null, ambiguous: carriers.length > 1, attributes };
@@ -134,6 +139,7 @@ export async function variantBasesRefused(db: Queryable, organisationId: string,
   const subFlows = (await factorRulesFor(db, categoryCode)).filter((rule) => rule.kind === "sub-flow");
   if (subFlows.length === 0) return [];
   const registry = await listCategoryVariants(db);
+  if (factorApplicabilityResolution()) return applicabilityBasesRefused(db, organisationId, jobId, subFlows, registry);
   const offered = new Set((await db.query<{ factor_id: string }>(
     `SELECT f.factor_id FROM nzi_console.job_dataset_selections s
        JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
@@ -158,9 +164,50 @@ export async function variantBaseRefusal(db: Queryable, organisationId: string, 
   const sent = input.factorId?.trim();
   if (!sent || (input.factorSource ?? "dataset") !== "dataset") return null;
   const hit = (await variantBasesRefused(db, organisationId, jobId, categoryCode)).find((pair) => pair.baseFactorId === sent);
-  return hit
-    ? `'${sent}' is the base factor this category files as '${hit.variantFactorId}'. The base belongs to the scope it was measured for; use '${hit.variantFactorId}'.`
-    : null;
+  if (!hit) return null;
+  return factorApplicabilityResolution()
+    ? `'${sent}' is a Scope 1 factor and is not applicable under this category ('${hit.variantFactorId.slice(sent.length)}'), so it cannot be filed here. Ask an admin to mark it applicable, or choose this category's own factor.`
+    : `'${sent}' is the base factor this category files as '${hit.variantFactorId}'. The base belongs to the scope it was measured for; use '${hit.variantFactorId}'.`;
+}
+
+/**
+ * Dedup slice 3, behind REPORT_FACTOR_APPLICABILITY: the D1 guard expressed as applicability rather than as the existence of a
+ * second row. A base that can be a Scope 1 figure (its scopes include 1) is refused in a category that files under a suffix unless
+ * that suffix is in its applicability — then it is filed so, priced off its own value. A factor native to the category, or one
+ * that is applicable, is never refused; so unlike today's rule this also closes the leak for bases with no variant row at all.
+ */
+async function applicabilityBasesRefused(db: Queryable, organisationId: string, jobId: string,
+  subFlows: readonly FactorRule[], registry: Awaited<ReturnType<typeof listCategoryVariants>>)
+  : Promise<Array<{ baseFactorId: string; variantFactorId: string }>> {
+  const offered = (await db.query<{ factor_id: string; scopes: string[] }>(
+    `SELECT DISTINCT f.factor_id, f.scopes FROM nzi_console.job_dataset_selections s
+       JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
+      WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows;
+  const applicability = await loadApplicability(db, organisationId);
+  const refused: Array<{ baseFactorId: string; variantFactorId: string }> = [];
+  for (const rule of subFlows) {
+    if (rule.kind !== "sub-flow") continue;
+    const variant = registry.find((entry) => entry.suffixCode === rule.suffixCode && entry.status === "active");
+    if (!variant) continue;
+    for (const factor of offered) {
+      if (!factor.scopes.includes("1")) continue; // not a Scope 1 figure: nothing to leak
+      if (parseFactorId(factor.factor_id, registry).variant) continue; // a variant id says what it is
+      if (applicability(factor.factor_id)?.has(rule.suffixCode)) continue; // filed by applicability
+      refused.push({ baseFactorId: factor.factor_id, variantFactorId: variantFactorId(factor.factor_id, variant) });
+    }
+  }
+  return refused;
+}
+
+/**
+ * Dedup slice 3: the suffix a scope row's dataset factor is filed under by applicability, or null — the flag off, a client
+ * factor, a variant id, or a base used natively. The row records it (`filed_suffix_code`, 0172), which is what labels the line by
+ * the pair's own report label rather than the base's.
+ */
+export async function filedSuffixForRow(db: Queryable, organisationId: string, factor: { factorId: string | null; factorSource?: string | null }, categoryCode: string | null)
+  : Promise<string | null> {
+  if (!factorApplicabilityResolution() || !categoryCode || !factor.factorId || (factor.factorSource ?? "dataset") !== "dataset") return null;
+  return filedSuffixFor({ factorId: factor.factorId, categoryCode, applicability: await loadApplicability(db, organisationId), registry: await listCategoryVariants(db) });
 }
 
 /**
@@ -202,6 +249,8 @@ export async function applyDeclarativeResolution(
     outcome: outcome.kind,
     ruleKey: outcome.kind === "resolved" ? outcome.rule.ruleKey : null,
     declaredFactorId: outcome.kind === "resolved" ? outcome.factorId : null,
+    // Dedup slice 3: the declared factor is a base filed under this suffix by applicability (absent off the flag's path).
+    ...(outcome.kind === "resolved" && outcome.filedSuffixCode ? { filedSuffixCode: outcome.filedSuffixCode } : {}),
     reason: outcome.kind === "free-search" ? outcome.reason : null,
     declined: outcome.declined,
     // F3: what the lookup said, and that it was asserted by whoever captured the entry rather than re-checked.
@@ -224,13 +273,14 @@ export async function applyDeclarativeResolution(
     return { kind: "refuse", field: "factorId", code: "DECLARED_FACTOR_AMBIGUOUS",
       message: `'${outcome.factorId}' is carried by more than one selected dataset, so which one is declared cannot be settled here.` };
   }
+  const filed = outcome.filedSuffixCode ? { filedSuffixCode: outcome.filedSuffixCode } : {};
   if (!sent) {
     return { kind: "apply",
       factor: { datasetId: declared.datasetId, factorId: declared.factorId, factorVersion: declared.datasetVersion, factorLabel: declared.label },
-      provenance: { declarativeResolution: { ...trail, decision: "filled" } } };
+      provenance: { declarativeResolution: { ...trail, decision: "filled" } }, ...filed };
   }
   if (sent === declared.factorId && (input.datasetId ?? null) === declared.datasetId) {
-    return { kind: "apply", factor: pick(input), provenance: { declarativeResolution: { ...trail, decision: "matched" } } };
+    return { kind: "apply", factor: pick(input), provenance: { declarativeResolution: { ...trail, decision: "matched" } }, ...filed };
   }
   if (overrideKind) {
     return { kind: "apply", factor: pick(input),

@@ -773,6 +773,12 @@ jobs:
       # summing to one, and nothing without a usage moves.
       - name: Migration 0171 puts a governed usage type on the record, and the report labels a line by it
         run: npx tsx --test packages/isolated-backend/tests/usageTypeReal.test.ts
+      # BUILD-dataset-factor-dedup slice 3 (migration 0172, REPORT_FACTOR_APPLICABILITY): the resolver files a (base, category) pair by
+      # applicability, priced off the base. THE GATE: J000663 written today's way (variant ids, flag off) and the new way (bases, flag
+      # on) prices, totals, labels (report and factor) and composes byte-identically. Flag off is today exactly; D1 as applicability;
+      # the three DESNZ cases; 0172 relocating each variant identity's curated strings; roll-forward dropping a retired pair.
+      - name: Migration 0172 files a base under a category by applicability, and J000663 reads exactly as today
+        run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityResolutionReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.
