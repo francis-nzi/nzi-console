@@ -152,6 +152,20 @@ export type PlannedFactor = {
    */
   isRemoval: boolean;
 };
+/**
+ * A `<base><suffix>` row folded into its base's applicability (dedup slice 4, REPORT_FACTOR_APPLICABILITY): the same value, unit
+ * and scopes as its base in the same dataset, so it is not a different factor — only the base used under another category. No
+ * value row is written for it; it is kept here, every field, for the dry run and the import's audit event.
+ */
+export type PlannedFold = PlannedFactor & { base: string; suffixCode: string };
+/**
+ * One (base, suffix) pair the fold records, with the variant identity's curated strings — the exact ones its identity would have
+ * carried — and where it came from: the variant's v7 code, verbatim, and the lowest db_id folded into it (as an identity's).
+ */
+export type PlannedApplicability = {
+  factorId: string; suffixCode: string; variantFactorId: string;
+  reportLabel: string | null; label: string; legacyOriginalId: string; legacyDbId: string;
+};
 export type Finding = { code: string; message: string; count: number; examples: string[] };
 
 /**
@@ -182,6 +196,8 @@ export type ExcludedRow = { dbId: string; reason: ExclusionReason; originalId: s
 export type LoadPlan = {
   organisationId: string;
   datasets: PlannedDataset[]; identities: PlannedIdentity[]; factors: PlannedFactor[];
+  /** The rows folded into applicability, and the pairs they record. Empty unless the plan was built with `fold`. */
+  folded: PlannedFold[]; applicability: PlannedApplicability[];
   /** Refusals block the load. Exclusions do not: each excluded row is listed in `excluded`. Reports are shown. */
   refusals: Finding[]; exclusions: Finding[]; excluded: ExcludedRow[]; reports: Finding[];
   summary: {
@@ -210,10 +226,33 @@ const licenceFor = (sourceName: string) =>
 
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
+/**
+ * Two factor values as `numeric` compares them — the equality 0170's guard tests — not as strings: "0.10" equals "0.1", and
+ * "1e-3" equals "0.001". Exact, on the decimal digits; never through a float. Anything that is not a decimal is equal to nothing.
+ */
+export function sameDecimal(a: string, b: string): boolean {
+  const canonical = (text: string): string | null => {
+    const match = /^([-+]?)(\d*)(?:\.(\d*))?(?:[eE]([-+]?\d+))?$/.exec(text.trim());
+    if (!match || (match[2] === "" && (match[3] ?? "") === "")) return null;
+    const fraction = match[3] ?? "";
+    let digits = `${match[2]}${fraction}`.replace(/^0+/, "");
+    let exponent = Number(match[4] ?? "0") - fraction.length;
+    if (digits === "") return "0";
+    while (digits.endsWith("0")) { digits = digits.slice(0, -1); exponent += 1; }
+    return `${match[1] === "-" ? "-" : ""}${digits}e${exponent}`;
+  };
+  const [x, y] = [canonical(a), canonical(b)];
+  return x !== null && x === y;
+}
+
 export function planV7Load(
   rows: readonly ExtractRow[],
   registry: readonly CategoryVariant[],
-  options: { organisationId?: string; precedence?: Precedence } = {},
+  /**
+   * `fold` (dedup slice 4): record a same-value `<base><suffix>` row as its base's applicability instead of writing it. The load
+   * script sets it from REPORT_FACTOR_APPLICABILITY, the one switch for the new regime; absent, the plan is today's exactly.
+   */
+  options: { organisationId?: string; precedence?: Precedence; fold?: boolean } = {},
 ): LoadPlan {
   const refusals = new Map<string, Finding>(), reports = new Map<string, Finding>();
   const precedence: Precedence = { ...RULED_PRECEDENCE, ...options.precedence };
@@ -484,11 +523,54 @@ export function planV7Load(
     }
   }
 
-  const factors = (kept as Row[]).map(({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }) =>
-    ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }));
+  const asFactor = ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }: Row): PlannedFactor =>
+    ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval });
+
+  // 7. The fold (dedup slice 4), only when asked. A variant is folded when it is the base under another category and nothing
+  //    else: the base is in the same dataset, at the same value (as `numeric` compares — 0170's guard), unit and scopes, and the
+  //    suffix is active. Scopes too, though the guard does not compare them: write validity and the pick lists read a factor's
+  //    scopes, so folding a Scope 3 `-bcp` into its Scope 1 base would leave business travel nothing to file. Anything else is
+  //    not folded and loads as today — a genuinely different number (WTT, per-distance) carries its own id and is no variant.
+  //    Dataset hashes are of the source edition, taken above, so a fold never makes a loaded dataset look changed.
+  const folded: PlannedFold[] = [];
+  if (options.fold) {
+    for (const row of kept as Row[]) {
+      const parsed = parseFactorId(row.factorId, registry);
+      if (!parsed.variant) continue;
+      const base = byDatasetId.get(`${row.datasetId}|${parsed.base}`);
+      if (!base || !sameDecimal(base.kgco2ePerUnit, row.kgco2ePerUnit) || base.activityUnit !== row.activityUnit) continue;
+      if (base.scopes.join("+") !== row.scopes.join("+")) {
+        report("variant-not-folded-scope", "a variant at its base's value in a different scope: loaded as its own row, since folding it would leave only the base's scope",
+          `${row.datasetId}: ${row.factorId} S${row.scopes.join("+")}, base S${base.scopes.join("+")}`);
+        continue;
+      }
+      if (parsed.variant.status !== "active") {
+        report("variant-not-folded-retired", "a variant under a retired suffix: loaded as its own row, since nothing new is filed under a retired category", `${row.datasetId}: ${row.factorId}`);
+        continue;
+      }
+      folded.push({ ...asFactor(row), base: parsed.base, suffixCode: parsed.variant.suffixCode });
+      report("variant-folded", "a variant at its base's value, unit and scopes: recorded as the base's applicability, with the variant's labels, and no value row", `${row.datasetId}: ${row.factorId} → ${parsed.base} under ${parsed.variant.suffixCode}`);
+    }
+  }
+  const foldedKeys = new Set(folded.map((row) => `${row.datasetId}|${row.factorId}`));
+  const factors = (kept as Row[]).filter((row) => !foldedKeys.has(`${row.datasetId}|${row.factorId}`)).map(asFactor);
+  // A variant identity describes value rows; one whose every row was folded has none left to describe, and its curated strings
+  // move to the pair. One with a row left (a dataset without its base, say) stays, as today.
+  const remaining = new Set(factors.map((row) => row.factorId));
+  const identityOf = new Map(identities.map((identity) => [identity.factorId, identity]));
+  const applicability = [...new Map(folded.map((row) => [`${row.base}${row.suffixCode}`, row])).values()]
+    .sort((a, b) => a.base.localeCompare(b.base) || a.suffixCode.localeCompare(b.suffixCode))
+    .map((row): PlannedApplicability => {
+      const variant = identityOf.get(row.factorId)!;
+      const rowsOf = folded.filter((other) => other.factorId === row.factorId);
+      return { factorId: row.base, suffixCode: row.suffixCode, variantFactorId: row.factorId, reportLabel: variant.reportLabel, label: variant.label,
+        legacyOriginalId: variant.legacyOriginalId, legacyDbId: rowsOf.map((other) => other.legacyDbId).sort((a, b) => Number(a) - Number(b))[0]! };
+    });
+  const keptIdentities = options.fold ? identities.filter((identity) => remaining.has(identity.factorId)) : identities;
+
   return {
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
-    datasets, identities, factors,
+    datasets, identities: keptIdentities, factors, folded, applicability,
     refusals: [...refusals.values()], exclusions: [...exclusions.values()], excluded, reports: [...reports.values()],
     summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily,
       nulledCells, rowsWithNulledCells },
