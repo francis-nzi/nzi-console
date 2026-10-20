@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { parseFactorId, type FactorApplicability, type VariantStatus } from "@nzi/contracts";
+import { parseFactorId, type ApplicabilityLookup, type FactorApplicability, type VariantStatus } from "@nzi/contracts";
 import { requireCapability, type StaffPrincipal } from "./auth";
 import { listCategoryVariants } from "./factorCategoryVariants";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
@@ -29,20 +29,21 @@ import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
  * `<base>-b` already *is* a category of `<base>`.
  */
 
-type ApplicabilityRow = { factor_id: string; suffix_code: string; status: VariantStatus; source: "migration" | "admin" };
+type ApplicabilityRow = { factor_id: string; suffix_code: string; status: VariantStatus; source: "migration" | "admin"; report_label: string | null; label: string | null };
 
 const asApplicability = (row: ApplicabilityRow): FactorApplicability => ({
   factorId: row.factor_id, suffixCode: row.suffix_code, status: row.status, source: row.source,
+  reportLabel: row.report_label ?? null, label: row.label ?? null,
 });
 
-const COLUMNS = "factor_id, suffix_code, status, source";
+const COLUMNS = "factor_id, suffix_code, status, source, report_label, label";
 
 /** Every category recorded for one factor, active and retired, in the registry's order — or for every factor when none is named. */
 export async function listFactorApplicability(
   db: Queryable, organisationId: string, factorId?: string,
 ): Promise<FactorApplicability[]> {
   const { rows } = await db.query<ApplicabilityRow>(
-    `SELECT a.factor_id, a.suffix_code, a.status, a.source
+    `SELECT a.factor_id, a.suffix_code, a.status, a.source, a.report_label, a.label
        FROM nzi_console.factor_identity_categories a
        JOIN nzi_console.factor_category_variants v ON v.suffix_code = a.suffix_code
       WHERE a.organisation_id = $1 AND ($2::text IS NULL OR a.factor_id = $2)
@@ -79,7 +80,7 @@ const audit = (
 export async function addFactorApplicability(
   pool: PoolLike,
   principal: StaffPrincipal,
-  input: { organisationId: string; factorId: string; suffixCode: string },
+  input: { organisationId: string; factorId: string; suffixCode: string; reportLabel?: string | null; label?: string | null },
 ): Promise<{ applicability: FactorApplicability; outcome: "added" | "reinstated" | "already-applicable" }> {
   // First, so an unauthorised caller learns nothing about what would have been accepted.
   requireCapability(principal, "factor.manage");
@@ -115,14 +116,15 @@ export async function addFactorApplicability(
       ? await db.query<ApplicabilityRow>(
           `UPDATE nzi_console.factor_identity_categories
               SET status = 'active', retired_at = NULL, retired_by = NULL, retired_reason = NULL,
+                  report_label = coalesce($5, report_label), label = coalesce($6, label),
                   version = version + 1, updated_at = now(), updated_by = $4
             WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3
-            RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId])
+            RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null])
       : await db.query<ApplicabilityRow>(
           `INSERT INTO nzi_console.factor_identity_categories
-             (organisation_id, factor_id, suffix_code, source, created_by, updated_by)
-           VALUES ($1, $2, $3, 'admin', $4, $4)
-           RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId]);
+             (organisation_id, factor_id, suffix_code, source, created_by, updated_by, report_label, label)
+           VALUES ($1, $2, $3, 'admin', $4, $4, $5, $6)
+           RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null]);
     const outcome = existing ? "reinstated" : "added";
     await audit(db, {
       organisationId: input.organisationId, actorId, action: `factor.applicability.${outcome}`, factorId, suffixCode,
@@ -169,4 +171,23 @@ export async function retireFactorApplicability(
     });
     return { applicability: asApplicability(rows[0]!), alreadyRetired: false };
   });
+}
+
+/**
+ * Dedup slice 3: whether the resolver files a (base, category) pair by applicability — the server's REPORT_FACTOR_APPLICABILITY,
+ * **off unless it is exactly "true"** (fail-closed). Off, resolution and the D1 guard are today's, byte for byte: a sub-flow needs
+ * its materialised `<base><suffix>` row, and a manual pick of a base is refused only where its own variant row is on offer. Read at
+ * the moment of the act, never cached, so the flag flips without a deploy.
+ */
+export function factorApplicabilityResolution(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return env.REPORT_FACTOR_APPLICABILITY?.trim().toLowerCase() === "true";
+}
+
+/** This organisation's active applicability, by base factor — what the resolver files a base under (only on the flag's path). */
+export async function loadApplicability(db: Queryable, organisationId: string): Promise<ApplicabilityLookup> {
+  const { rows } = await db.query<{ factor_id: string; suffix_code: string }>(
+    `SELECT factor_id, suffix_code FROM nzi_console.factor_identity_categories WHERE organisation_id = $1 AND status = 'active'`, [organisationId]);
+  const byBase = new Map<string, Set<string>>();
+  for (const row of rows) byBase.set(row.factor_id, (byBase.get(row.factor_id) ?? new Set()).add(row.suffix_code));
+  return (baseFactorId) => byBase.get(baseFactorId);
 }

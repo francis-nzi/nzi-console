@@ -1,4 +1,4 @@
-import { parseFactorId, variantFactorId, type CategoryVariant } from "./factorVariants";
+import { parseFactorId, variantFactorId, type ApplicabilityLookup, type CategoryVariant } from "./factorVariants";
 
 /**
  * Resolving a capture category to a factor in the selected dataset, declaratively (NZC-149).
@@ -158,6 +158,8 @@ export type MappingOutcome =
     scope: ScopeDecision;
     /** Rules ahead of this one that declined, so a surprising answer can be traced. */
     declined: readonly RuleDeclined[];
+    /** Dedup slice 3: `factorId` is a base, filed under this suffix's category by applicability (only on the applicability path). */
+    filedSuffixCode?: string;
   }
   | {
     kind: "free-search";
@@ -209,6 +211,12 @@ export type MappingInputs = {
    * caller already knows which categories are in play and can load them in one read.
    */
   rulesByCategory?: Readonly<Record<string, readonly FactorRule[]>>;
+  /**
+   * Dedup slice 3, behind REPORT_FACTOR_APPLICABILITY: each base factor's applicability (0170). Supplied, a sub-flow files the base
+   * it resolves under its suffix when the suffix is applicable — no `<base><suffix>` row needed — and stops when it is not (D1).
+   * Absent, a sub-flow needs the materialised variant row, exactly as before.
+   */
+  applicability?: ApplicabilityLookup;
 };
 
 const normalise = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
@@ -410,6 +418,7 @@ function resolveWithin(inputs: MappingInputs, resolving: ReadonlySet<string>): M
         rule,
         declined,
         scope: decideScope(outcome.ghgCategory, "suffix-variant", scopesOf(outcome.factorId)),
+        ...(outcome.filedSuffixCode ? { filedSuffixCode: outcome.filedSuffixCode } : {}),
       };
     }
 
@@ -636,7 +645,7 @@ function resolveSubFlow(
   rule: Extract<FactorRule, { kind: "sub-flow" }>,
   inputs: MappingInputs,
   resolving: ReadonlySet<string>,
-): { kind: "resolved"; factorId: string; ghgCategory: string } | { kind: "declined"; reason: string; stop: boolean } {
+): { kind: "resolved"; factorId: string; ghgCategory: string; filedSuffixCode?: string } | { kind: "declined"; reason: string; stop: boolean } {
   const { available, registry, rulesByCategory } = inputs;
 
   if (resolving.has(rule.subFlowCategory)) {
@@ -678,6 +687,19 @@ function resolveSubFlow(
   // variant and composes an id nobody registered (NZC-145). Taking the base also means a flow that already
   // resolved a variant is re-filed rather than double-suffixed.
   const base = parseFactorId(inner.factorId, registry).base;
+
+  // Dedup slice 3: on the applicability path the base itself is filed under this category when the category is in its
+  // applicability — priced off the base's own value (0170 holds every variant to it), no materialised row needed. Not applicable,
+  // it stops exactly as a missing variant does: the D1 guard, expressed as applicability rather than as the existence of a row.
+  if (inputs.applicability) {
+    if (!inputs.applicability(base)?.has(rule.suffixCode)) {
+      return { kind: "declined", stop: true,
+        reason: `'${base}' is not applicable under '${rule.suffixCode}', so it cannot be filed under this category` };
+    }
+    // The inner flow already reconciled the base's unit.
+    return { kind: "resolved", factorId: base, ghgCategory: variant.ghgCategory, filedSuffixCode: rule.suffixCode };
+  }
+
   const composed = variantFactorId(base, variant);
 
   if (!available.some((factor) => factor.factorId === composed)) {
