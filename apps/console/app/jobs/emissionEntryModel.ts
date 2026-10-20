@@ -19,6 +19,8 @@ export type EmissionEntryDraft = {
   glCode: string;
   spendCategoryId: string;
   registration: string;
+  /** Dedup slice 2 (0171): an `emission_usage_type` value id (Car, Van, HGV…), or "" for none. Offered by the spec, never required. */
+  usageTypeId?: string;
   manualMode: boolean;
   manualDetail: string;
   factorId: string;
@@ -73,6 +75,7 @@ export type EmissionEntryFieldKey =
   | "siteBanner"
   | "registrationFinder"
   | "activity"
+  | "usageType"
   | "quantity"
   | "unit"
   | "monthly"
@@ -375,6 +378,9 @@ export function emissionEntryDraftToScopeRow(
     sourceLabel: label,
     reportLabel: label,
     assetIdentifier: draft.registration.trim() || null,
+    // Seeded from the row when editing, so a save sends back what it holds; blank is no usage type. A draft that never carried
+    // the field sends nothing, and the server keeps what the row holds.
+    ...(draft.usageTypeId !== undefined ? { usageTypeId: draft.usageTypeId.trim() || null } : {}),
     siteId: site.id,
     siteLabel: site.label,
     // Blank means not answered, which is a different thing from any of the values and must stay
@@ -416,6 +422,7 @@ export function scopeRowToEmissionEntryDraft(
     quantity: row.quantity == null ? "" : String(row.quantity),
     unit: row.unit ?? "",
     registration: row.assetIdentifier ?? "",
+    usageTypeId: row.usageTypeId ?? "",
     factorId: row.factorId ?? "",
     qualityTier: row.qualityTier ? TIER_TO_QUALITY[row.qualityTier] ?? "Measured" : "Measured",
     dataConfidence: row.dataConfidence ? CODE_TO_CONFIDENCE[row.dataConfidence] ?? "M — Medium" : "M — Medium",

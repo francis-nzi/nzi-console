@@ -58,6 +58,12 @@ export type EmissionEntryFormProps = {
   onCancel: () => void;
   onReject?: () => void | Promise<void>;
   onApprove?: () => void | Promise<void>;
+  /**
+   * Dedup slice 2 (0171): the organisation's active usage types, for the spec's `usageType` field. Only the consultant's data
+   * entry passes them; without them the field is not drawn (the spec offers it to `crm` only, and the portal never reads the
+   * staff vocabulary).
+   */
+  usageTypes?: Array<{ id: string; label: string }>;
   /** Two-step DVLA lookup: resolve a registration to a vehicle spec (+ a suggested factor for CRM). */
   onLookupRegistration?: (registration: string) => Promise<RegistrationLookupOutcome>;
   /** JW-13 — open the job's datasets (the Setup stage may be collapsed, so a plain link would land nowhere). */
@@ -93,6 +99,7 @@ const blankDraft = (units: string[], seed?: Partial<EmissionEntryDraft> | null, 
   glCode: seed?.glCode ?? "",
   spendCategoryId: seed?.spendCategoryId ?? "",
   registration: seed?.registration ?? "",
+  usageTypeId: seed?.usageTypeId ?? "",
   manualMode: seed?.manualMode ?? false,
   manualDetail: seed?.manualDetail ?? "",
   factorId: seed?.factorId ?? "",
@@ -466,6 +473,21 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 <label key={field.key} className="nz-fl">Data confidence <span className="muted">· NZC-044</span>
                   <select className="nz-sel" value={draft.dataConfidence} onChange={event => patch({ dataConfidence: event.target.value })}>
                     {DATA_CONFIDENCE.map(level => <option key={level} value={level}>{level}</option>)}
+                  </select>
+                </label>
+              );
+            }
+            if (field.key === "usageType") {
+              if (!props.usageTypes) return null;
+              // A value the row already holds stays shown even if it has since been withdrawn — the record still names it.
+              const held = Boolean(draft.usageTypeId) && !props.usageTypes.some(option => option.id === draft.usageTypeId);
+              return (
+                <label key={field.key} className="nz-fl">{field.label} <span className="muted">· optional</span>
+                  {field.hint ? <span className="muted"> · {field.hint}</span> : null}
+                  <select className="nz-sel" data-usage-type value={draft.usageTypeId ?? ""} onChange={event => patch({ usageTypeId: event.target.value })}>
+                    <option value="">Not specified</option>
+                    {props.usageTypes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    {held ? <option value={draft.usageTypeId}>Withdrawn usage type</option> : null}
                   </select>
                 </label>
               );

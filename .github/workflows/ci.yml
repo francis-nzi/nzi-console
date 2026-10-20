@@ -766,6 +766,13 @@ jobs:
       # and 0170, so the migration meets the library's shapes — the mock pool enforces none of this.
       - name: Migration 0170 holds a variant to its base's value, corrects the freight -d defect, and records applicability once
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityReal.test.ts
+      # BUILD-dataset-factor-dedup slice 2 (migration 0171): a record's usage type — a governed emission_usage_type vocabulary seeded
+      # per organisation, a usage_type_id on scope rows and register sources held to it by a CHECK and a foreign key for every
+      # writer, asked for by the governed input spec (three categories, staff only), carried by sync and roll-forward (a withdrawn
+      # one dropped), and frozen into the snapshot only when a row has one — so one diesel factor reports as three labelled lines
+      # summing to one, and nothing without a usage moves.
+      - name: Migration 0171 puts a governed usage type on the record, and the report labels a line by it
+        run: npx tsx --test packages/isolated-backend/tests/usageTypeReal.test.ts
       # RULING-report-denominator (NZC-120): a currency measure's denominator (the client's turnover) crosses neither client
       # boundary — the composition's chart basis, the client's copy of the published report — the year's intensity goes in its
       # place, equal at full precision to the Intensity section's figure; a non-currency denominator is kept at both.

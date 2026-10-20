@@ -453,6 +453,20 @@
         ]
       },
       {
+        "fieldKey": "usageType",
+        "ordering": 35,
+        "control": "select",
+        "label": "Usage type",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
         "fieldKey": "quantity",
         "ordering": 40,
         "control": "number",
@@ -2292,6 +2306,20 @@
         ]
       },
       {
+        "fieldKey": "usageType",
+        "ordering": 35,
+        "control": "select",
+        "label": "Usage type",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
         "fieldKey": "quantity",
         "ordering": 40,
         "control": "number",
@@ -2499,6 +2527,20 @@
             "label": "Activity"
           }
         ]
+      },
+      {
+        "fieldKey": "usageType",
+        "ordering": 35,
+        "control": "select",
+        "label": "Usage type",
+        "hint": "What this is used as — the report shows the line as \"<activity> — <usage>\", so one factor can be reported for several usages.",
+        "optional": true,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
       },
       {
         "fieldKey": "quantity",

@@ -30,6 +30,8 @@ export const LOOKUP_CONSUMERS: Partial<Record<LookupCategory, { table: string; c
   portfolios: { table: "clients", column: "portfolio_value_id", label: "clients" },
   // TIME (0155): an activity counts the time entries logged as it, voided ones included — they still resolve it.
   activity_types: { table: "time_entries", column: "activity_value_id", label: "time entries" },
+  // Dedup slice 2 (0171): counted on the scope rows, the record the report reads (a register source copies its usage there on sync).
+  emission_usage_type: { table: "job_scope_rows", column: "usage_type_id", label: "emission entries" },
 };
 
 const inUseSql = (value: string) => `CASE ${value}.category_key ${Object.entries(LOOKUP_CONSUMERS).map(([category, consumer]) =>

@@ -15,6 +15,8 @@ export const LOOKUP_CATEGORIES = [
   "activity_types",
   "client_teams", "action_categories", "governance_subjects", "bd_bin_reasons", "units_of_measure", "job_item_categories",
   "crm_tags", "bd_service_lines",
+  // Dedup slice 2 (0171): what an emission record is used as — Car, Van, HGV… — so the report can label a line by it.
+  "emission_usage_type",
 ] as const;
 export type LookupCategory = (typeof LOOKUP_CATEGORIES)[number];
 export const isLookupCategory = (value: unknown): value is LookupCategory =>
