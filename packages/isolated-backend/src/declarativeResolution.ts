@@ -2,7 +2,7 @@ import {
   categoryGhgOf, filedSuffixFor, parseFactorId, resolveFactorForEntry, variantFactorId,
   type AssertedVehicleAttributes, type FactorRule, type MappingOutcome, type ScopeRowWriteFields,
 } from "@nzi/contracts";
-import { factorApplicabilityResolution, loadApplicability } from "./factorApplicability";
+import { loadApplicability } from "./factorApplicability";
 import type { Queryable } from "./postgres";
 import { listCategoryVariants } from "./factorCategoryVariants";
 import { companionRulesFor, factorRulesFor, listFactorRules } from "./inputSpecFactorRules";
@@ -45,7 +45,7 @@ export type ResolvedFactorFields = Pick<ScopeRowWriteFields, "datasetId" | "fact
 export type DeclarativeResolution =
   | { kind: "not-enabled" }
   | { kind: "apply"; factor: ResolvedFactorFields; provenance: Record<string, unknown>;
-      /** Dedup slice 3: the declared base is filed under this suffix by applicability (the flag's path only). */
+      /** Dedup slice 3: the declared base is filed under this suffix by applicability. */
       filedSuffixCode?: string }
   | { kind: "refuse"; field: string; code: string; message: string };
 
@@ -105,8 +105,8 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
       category: attributes.category ?? null, fallback: attributes.fallbackCategory ?? null } } : undefined,
     rulesByCategory,
     reconcileUnit: reconcileUnitForMapping,
-    // Dedup slice 3: behind the flag, a sub-flow files the base by applicability rather than needing its variant row.
-    ...(factorApplicabilityResolution() ? { applicability: await loadApplicability(db, organisationId) } : {}),
+    // Dedup slice 3 (unconditional since slice 5 Step E): a sub-flow files the base by applicability, never needing a variant row.
+    applicability: await loadApplicability(db, organisationId),
   });
   const carriers = outcome.kind === "resolved" ? factors.filter((factor) => factor.factorId === outcome.factorId) : [];
   return { outcome, factors, declared: carriers.length === 1 ? carriers[0]! : null, ambiguous: carriers.length > 1, attributes };
@@ -121,7 +121,7 @@ export type DeclaredFactorPreview = PickListFiling & (
   | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds: string[] });
 
 /**
- * Dedup slice 5 Step D: how the category's pick list reads, by applicability. Empty with the flag off, and for a category with no pairs.
+ * Dedup slice 5 Step D: how the category's pick list reads, by applicability. Empty for a category with no pairs.
  *
  * - `optionLabels`: a base this category files under a pair, labelled by the pair's own curated label (0172) — so a commuting list
  *   offers the business-travel car as "Employee commuting- …", what the row will store and print, not as "Business travel- …".
@@ -132,14 +132,14 @@ export type DeclaredFactorPreview = PickListFiling & (
 export type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }> };
 
 /**
- * The factors a variant category refuses, because the category's own variant of each is on offer (Stop 2c).
+ * The factors a variant category refuses (Stop 2c, the D1 guard).
  *
  * Business travel reuses the vehicle flow and files what it finds under `-b`; commuting under `-c` (NZC-158). A
  * base factor picked by hand in either — `diesel-demo` in business travel — is the Scope 1 figure filed under Scope
- * 3: the D1 leak on the manual path. Scope tags do not catch it, because the base is tagged `{1,3}`. So the rule is
- * the precise one: a factor is refused in a category that files under a suffix when that category's variant of it
- * is among the job's factors. Where no variant exists nothing is refused, so the category is never left with
- * nothing to pick — the dual-tagged per-distance factors stay open until distance-priced variants exist.
+ * 3: the D1 leak on the manual path. Scope tags do not catch it, because the base is tagged `{1,3}`. Since dedup slice 5
+ * Step E the rule is applicability's, unconditionally (`applicabilityBasesRefused`): a base that can be a Scope 1 figure is
+ * refused in a category that files under a suffix unless the suffix is in its applicability — then it is filed so. The
+ * materialised-variant rule it replaced ("refused where its own variant row is on offer") went with the variants.
  *
  * Applies whether or not the category resolves declaratively: this is what a variant category may carry, not a
  * decision about resolution. The write refuses these; the form's pick list leaves them out.
@@ -149,24 +149,7 @@ export async function variantBasesRefused(db: Queryable, organisationId: string,
   if (!categoryCode) return [];
   const subFlows = (await factorRulesFor(db, categoryCode)).filter((rule) => rule.kind === "sub-flow");
   if (subFlows.length === 0) return [];
-  const registry = await listCategoryVariants(db);
-  if (factorApplicabilityResolution()) return applicabilityBasesRefused(db, organisationId, jobId, subFlows, registry);
-  const offered = new Set((await db.query<{ factor_id: string }>(
-    `SELECT f.factor_id FROM nzi_console.job_dataset_selections s
-       JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
-      WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows.map((row) => row.factor_id));
-  const refused: Array<{ baseFactorId: string; variantFactorId: string }> = [];
-  for (const rule of subFlows) {
-    if (rule.kind !== "sub-flow") continue;
-    const variant = registry.find((entry) => entry.suffixCode === rule.suffixCode && entry.status === "active");
-    if (!variant) continue;
-    for (const factorId of offered) {
-      if (parseFactorId(factorId, registry).base !== factorId) continue; // already a variant of something
-      const own = variantFactorId(factorId, variant);
-      if (offered.has(own)) refused.push({ baseFactorId: factorId, variantFactorId: own });
-    }
-  }
-  return refused;
+  return applicabilityBasesRefused(db, organisationId, jobId, subFlows, await listCategoryVariants(db));
 }
 
 /** Why the sent factor is the base of this category's own variant, or null (Stop 2c). */
@@ -176,13 +159,11 @@ export async function variantBaseRefusal(db: Queryable, organisationId: string, 
   if (!sent || (input.factorSource ?? "dataset") !== "dataset") return null;
   const hit = (await variantBasesRefused(db, organisationId, jobId, categoryCode)).find((pair) => pair.baseFactorId === sent);
   if (!hit) return null;
-  return factorApplicabilityResolution()
-    ? `'${sent}' is a Scope 1 factor and is not applicable under this category ('${hit.variantFactorId.slice(sent.length)}'), so it cannot be filed here. Ask an admin to mark it applicable, or choose this category's own factor.`
-    : `'${sent}' is the base factor this category files as '${hit.variantFactorId}'. The base belongs to the scope it was measured for; use '${hit.variantFactorId}'.`;
+  return `'${sent}' is a Scope 1 factor and is not applicable under this category ('${hit.variantFactorId.slice(sent.length)}'), so it cannot be filed here. Ask an admin to mark it applicable, or choose this category's own factor.`;
 }
 
 /**
- * Dedup slice 3, behind REPORT_FACTOR_APPLICABILITY: the D1 guard expressed as applicability rather than as the existence of a
+ * Dedup slice 3 (unconditional since slice 5 Step E): the D1 guard expressed as applicability rather than as the existence of a
  * second row. A base that can be a Scope 1 figure (its scopes include 1) is refused in a category that files under a suffix unless
  * that suffix is in its applicability — then it is filed so, priced off its own value. A factor native to the category, or one
  * that is applicable, is never refused; so unlike today's rule this also closes the leak for bases with no variant row at all.
@@ -211,13 +192,13 @@ async function applicabilityBasesRefused(db: Queryable, organisationId: string, 
 }
 
 /**
- * Dedup slice 3: the suffix a scope row's dataset factor is filed under by applicability, or null — the flag off, a client
- * factor, a variant id, or a base used natively. The row records it (`filed_suffix_code`, 0172), which is what labels the line by
+ * Dedup slice 3: the suffix a scope row's dataset factor is filed under by applicability, or null — a client factor, a variant
+ * id, or a base used natively. The row records it (`filed_suffix_code`, 0172), which is what labels the line by
  * the pair's own report label rather than the base's.
  */
 export async function filedSuffixForRow(db: Queryable, organisationId: string, factor: { factorId: string | null; factorSource?: string | null }, categoryCode: string | null)
   : Promise<string | null> {
-  if (!factorApplicabilityResolution() || !categoryCode || !factor.factorId || (factor.factorSource ?? "dataset") !== "dataset") return null;
+  if (!categoryCode || !factor.factorId || (factor.factorSource ?? "dataset") !== "dataset") return null;
   return filedSuffixFor({ factorId: factor.factorId, categoryCode, applicability: await loadApplicability(db, organisationId), registry: await listCategoryVariants(db) });
 }
 
@@ -234,11 +215,11 @@ export async function withPairLabel<F extends { factorId: string | null; factorL
 }
 
 /**
- * Dedup slice 5, Step A, behind REPORT_FACTOR_APPLICABILITY: what any write files, by applicability — the one rule every write path
+ * Dedup slice 5, Step A (unconditional since Step E): what any write files, by applicability — the one rule every write path
  * calls (create and update, the v7 re-ingest, register sync, portal acceptance, the group roll-up, roll-forward), so that once the
  * flag is the default nothing new writes a variant id that slice 5's retirement would leave dangling.
  *
- * - The flag off, a client factor, no factor or no category: the factor exactly as sent.
+ * - A client factor, no factor or no category: the factor exactly as sent.
  * - A **base**: filed exactly as slice 3 files it (`filedSuffixForRow`).
  * - A **variant id** `<base><suffix>`: written as its base, filed under the suffix, when the pair is this category's own (the
  *   suffix slice 3 would file the base under here) and the variant is covered — its base active in the row's dataset and, if the
@@ -252,7 +233,7 @@ export async function fileByApplicability<F extends { datasetId?: string | null;
   db: Queryable, organisationId: string, factor: F, factorSource: string | null | undefined, categoryCode: string | null,
 ): Promise<{ factor: F; filedSuffixCode: string | null }> {
   const unchanged = { factor, filedSuffixCode: null };
-  if (!factorApplicabilityResolution() || !categoryCode || !factor.factorId || (factorSource ?? "dataset") !== "dataset") return unchanged;
+  if (!categoryCode || !factor.factorId || (factorSource ?? "dataset") !== "dataset") return unchanged;
   const registry = await listCategoryVariants(db);
   const parsed = parseFactorId(factor.factorId, registry);
   if (!parsed.variant) {
@@ -281,7 +262,7 @@ export async function fileByApplicability<F extends { datasetId?: string | null;
  * rule `fileByApplicability` applies to one factor at the write, batched, so a list of thousands costs four queries, not thousands.
  */
 async function pickListFiling(db: Queryable, organisationId: string, jobId: string, categoryCode: string | null): Promise<PickListFiling> {
-  if (!factorApplicabilityResolution() || !categoryCode) return {};
+  if (!categoryCode) return {};
   const registry = await listCategoryVariants(db);
   const applicability = await loadApplicability(db, organisationId);
   const offered = (await db.query<{ dataset_id: string; factor_id: string; kgco2e_per_unit: string; activity_unit: string; scopes: string[] }>(
@@ -357,7 +338,7 @@ export async function applyDeclarativeResolution(
     outcome: outcome.kind,
     ruleKey: outcome.kind === "resolved" ? outcome.rule.ruleKey : null,
     declaredFactorId: outcome.kind === "resolved" ? outcome.factorId : null,
-    // Dedup slice 3: the declared factor is a base filed under this suffix by applicability (absent off the flag's path).
+    // Dedup slice 3: the declared factor is a base filed under this suffix by applicability.
     ...(outcome.kind === "resolved" && outcome.filedSuffixCode ? { filedSuffixCode: outcome.filedSuffixCode } : {}),
     reason: outcome.kind === "free-search" ? outcome.reason : null,
     declined: outcome.declined,

@@ -14,13 +14,14 @@ import { withTenantRead, withTenantWrite } from "../src/postgres";
 import type { PortalPrincipal, StaffPrincipal } from "../src/index";
 
 /**
- * Dedup slice 5, Step A (REPORT_FACTOR_APPLICABILITY): every write path files by applicability — a create, the v7 re-ingest, register
- * sync, portal acceptance, the group roll-up and roll-forward. Each is handed J000663's **variant ids**, as it is today; with the flag on
- * each writes the base filed under the pair instead, so once the variants retire nothing new cites one.
+ * Dedup slice 5, Step A (unconditional since Step E): every write path files by applicability — a create, the v7 re-ingest, register
+ * sync, portal acceptance, the group roll-up and roll-forward. Since Step E retired the covered variants, a variant id still on offer is
+ * one kept because something cites it (J000663, ruled 21 Oct 2026); the suite holds its seeded variants active to stand for those.
  *
- * **The gate**: the same inputs, through the same paths, written flag off into one job and flag on into another, price, label, freeze and
- * compose byte-identically. A scope-shifted `-bcp` copy is never folded, on any path. Seeded between 0169 and 0170, so 0170's
- * applicability backfill and 0172's label relocation run on it as they ran on the library (slice 3's shapes).
+ * **The gate**: J000663's **variant ids** through every path into one job, its **bases** through the same paths into another — each
+ * variant id is filed as its base under the pair, and the two price, label, freeze and compose byte-identically. A scope-shifted `-bcp`
+ * copy is never folded, on any path. Seeded between 0169 and 0170, so 0170's applicability backfill and 0172's label relocation run on
+ * it as they ran on the library (slice 3's shapes).
  */
 const ORG = "org-s5a", CLIENT = "client-s5a", ACTOR = "ada", PORTAL_USER = "portal-s5a";
 const OLD = "job-s5a-old", NEW = "job-s5a-new", PRIOR = "job-s5a-prior", ROLL_OLD = "job-s5a-roll-old", ROLL_NEW = "job-s5a-roll-new", REIN_OLD = "job-s5a-rein-old", REIN_NEW = "job-s5a-rein-new";
@@ -45,7 +46,7 @@ const FACTORS: Factor[] = [
 ];
 const byId = new Map(FACTORS.map((factor) => [factor.id, factor]));
 
-/** Each path's J000663 entry: the variant id it is handed, the base it files as with the flag on (null: never folded). */
+/** Each path's J000663 entry: the variant id it is handed, the base it files as (null: never folded). */
 const PATHS = {
   create: { key: "Car commute (create)", scope: "3.7", variant: "uk-ghg-25_301_3070_9_1-c", base: "uk-ghg-25_301_3070_9_1", suffix: "-c", quantity: 1200 },
   reingest: { key: "Rail commute (re-ingest)", scope: "3.7", variant: "uk-ghg-25_315_3147_11_1-c", base: "uk-ghg-25_315_3147_11_1", suffix: "-c", quantity: 5000 },
@@ -57,7 +58,7 @@ const PATHS = {
 } as const;
 type Path = typeof PATHS[keyof typeof PATHS];
 
-describe("dedup slice 5 Step A: every write path files by applicability (REPORT_FACTOR_APPLICABILITY)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+describe("dedup slice 5 Step A: every write path files by applicability (unconditional since Step E)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
   const context = (actorId = ACTOR, principal: "staff" | "system" = "staff", reason?: string): CommandContext => {
@@ -70,19 +71,17 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
-  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
-    const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    process.env.REPORT_FACTOR_APPLICABILITY = value;
-    try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
-  };
   type Stored = { scope_row_id: string; factor_id: string | null; filed_suffix_code: string | null; factor_label: string | null; calculated_tco2e: string | null; provenance_json: Record<string, unknown>; version: number };
   const rowOf = async (jobId: string, sourceLabel: string) => (await q<Stored>(
     `SELECT scope_row_id, factor_id, filed_suffix_code, factor_label, calculated_tco2e, provenance_json, version FROM nzi_console.job_scope_rows WHERE job_id=$1 AND source_label=$2 AND origin='live'`, [jobId, sourceLabel]))[0]!;
   const entry = (path: Path) => byId.get(path.variant)!;
 
   /** The v7 re-ingest's own write, into a job of its own: a job holding v7 history is never snapshotted (decision 12). */
-  const writeReingest = async (jobId: string, tag: string) => {
+  // Runs a block of work. (The blocks once ran under a flag; there is no flag since Step E, but they stay grouped as they were.)
+  const run = <T>(work: () => Promise<T>): Promise<T> => work();
+  /** The id a path is handed: its variant, or its base where it has one (the -bcp has none: it is always its own). */
+  const idFor = (path: Path, sent: "variant" | "base") => (sent === "base" && path.base ? path.base : path.variant);
+  const writeReingest = async (jobId: string, tag: string, sent: "variant" | "base") => {
     // v7's variant id, the declared pick exempt, as `reingestV7JobInTransaction` makes it, then calculated.
     const reingest = PATHS.reingest;
     await q(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,quantity,unit,calculated_tco2e,enabled,origin,migrated_record,source_system,legacy_db_id)
@@ -91,7 +90,7 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const system = context(V7_REINGEST_ACTOR, "system", "v7 re-ingest (test)");
     await withTenantWrite(database.pool, ORG, async (db) => {
       const created = await createScopeRowInTransaction(db, { jobId, scope: reingest.scope, categoryCode: reingest.scope, sourceLabel: reingest.key, reportLabel: reingest.key, quantity: reingest.quantity,
-        unit: entry(reingest).unit, datasetId: DS, factorId: reingest.variant, factorVersion: DS_VERSION, factorLabel: null, qualityTier: "measured", factorSource: "dataset", applyPct: 100 } as never,
+        unit: entry(reingest).unit, datasetId: DS, factorId: idFor(reingest, sent), factorVersion: DS_VERSION, factorLabel: null, qualityTier: "measured", factorSource: "dataset", applyPct: 100 } as never,
         system, { reingestedFrom: `v7-${tag}`, historicalUnit: true, declaredResolutionExempt: true });
       const calc = { jobId, rowId: created.data.rowId, expectedVersion: created.data.version };
       await runPostgresCommandInTransaction(db, "scope.row.calculate", calc, { ...system, idempotencyKey: `${system.idempotencyKey}:calc` },
@@ -100,16 +99,16 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
   };
 
   /** Every other path, writing its entry into `jobId` — the same inputs whatever the flag. */
-  const writeAll = async (jobId: string, tag: string) => {
+  const writeAll = async (jobId: string, tag: string, sent: "variant" | "base") => {
     // A create, as the CRM writes it.
     const create = PATHS.create;
     await createScopeRow(database.pool, { jobId, scope: create.scope, categoryCode: create.scope, sourceLabel: create.key, reportLabel: create.key, quantity: create.quantity,
-      unit: entry(create).unit, datasetId: DS, factorId: create.variant, factorVersion: DS_VERSION, factorLabel: entry(create).label, qualityTier: "measured" } as never, context());
+      unit: entry(create).unit, datasetId: DS, factorId: idFor(create, sent), factorVersion: DS_VERSION, factorLabel: entry(create).label, qualityTier: "measured" } as never, context());
     // Register sync: the register holds the variant id.
     for (const [path, type] of [[PATHS.sync, "travel"], [PATHS.syncShifted, "travel"]] as const) {
       const sourceId = `src-${tag}-${path.variant}`;
       await q(`INSERT INTO nzi_console.job_emission_sources (organisation_id,source_id,job_id,scope,source_type,source_name,dataset_id,factor_id,factor_source,quantity,unit,data_source)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'dataset',$9,$10,'Test')`, [ORG, sourceId, jobId, path.scope, type, path.key, DS, path.variant, path.quantity, entry(path).unit]);
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'dataset',$9,$10,'Test')`, [ORG, sourceId, jobId, path.scope, type, path.key, DS, idFor(path, sent), path.quantity, entry(path).unit]);
       await syncEmissionSourceToScope(database.pool, { jobId, sourceId }, context());
     }
     // Portal acceptance: the client picks the variant on a row granted to them.
@@ -117,16 +116,16 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const portalRow = `row-${tag}-portal`;
     await q(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,category_code) VALUES ($1,$2,$3,'3.9',$4,$4,'Scope 3','Downstream transport',$5)`,
       [ORG, portalRow, jobId, portalPath.key, portalPath.scope]);
-    const bucket = (await setPortalDataEntryBucketGrant(database.pool, staff, { portalUserId: PORTAL_USER, jobId, scopeRowId: portalRow, entryKind: "manual_activity", factorIds: [portalPath.variant], siteIds: [] })).bucketGrantId;
-    const saved = await createPortalDataEntryRecord(database.pool, portal, jobId, { bucketGrantId: bucket, quantity: portalPath.quantity, unit: entry(portalPath).unit, factorId: portalPath.variant, siteId: null, note: "" });
+    const bucket = (await setPortalDataEntryBucketGrant(database.pool, staff, { portalUserId: PORTAL_USER, jobId, scopeRowId: portalRow, entryKind: "manual_activity", factorIds: [idFor(portalPath, sent)], siteIds: [] })).bucketGrantId;
+    const saved = await createPortalDataEntryRecord(database.pool, portal, jobId, { bucketGrantId: bucket, quantity: portalPath.quantity, unit: entry(portalPath).unit, factorId: idFor(portalPath, sent), siteId: null, note: "" });
     const submitted = await submitPortalDataEntryRecord(database.pool, portal, jobId, saved.recordId, saved.version);
     await decidePortalDataEntryReview(database.pool, staff, { queueId: submitted.queueId, expectedSubmittedVersion: submitted.version, decision: "accept", note: "" });
     // The group roll-up: the group's factor is the variant.
     const rollup = PATHS.rollup, groupId = `grp-${tag}`;
-    await q(`INSERT INTO nzi_console.job_emission_groups (organisation_id,group_id,job_id,name,dataset_id,factor_id,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [ORG, groupId, jobId, rollup.key, DS, rollup.variant, ACTOR]);
+    await q(`INSERT INTO nzi_console.job_emission_groups (organisation_id,group_id,job_id,name,dataset_id,factor_id,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [ORG, groupId, jobId, rollup.key, DS, idFor(rollup, sent), ACTOR]);
     for (const [index, share] of [[1, 5000], [2, 3000]] as const) {
       await q(`INSERT INTO nzi_console.job_emission_sources (organisation_id,source_id,job_id,group_id,scope,source_type,source_name,dataset_id,factor_id,factor_source,quantity,unit,data_source)
-               VALUES ($1,$2,$3,$4,'3.4','spend',$5,$6,$7,'dataset',$8,'GBP','Test')`, [ORG, `src-${tag}-g${index}`, jobId, groupId, `Haulier ${index}`, DS, rollup.variant, share]);
+               VALUES ($1,$2,$3,$4,'3.4','spend',$5,$6,$7,'dataset',$8,'GBP','Test')`, [ORG, `src-${tag}-g${index}`, jobId, groupId, `Haulier ${index}`, DS, idFor(rollup, sent), share]);
     }
     await syncEmissionSourceGroupToScope(database.pool, { jobId, groupId }, context());
   };
@@ -159,12 +158,15 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
       await q(`INSERT INTO nzi_console.portal_access_grants (organisation_id,grant_id,client_id,portal_user_id,job_id,data_entry_starts_at,data_entry_expires_at)
                VALUES ($1,$2,$3,$4,$5,now() - interval '1 day', now() + interval '30 days')`, [ORG, `grant-${job}`, CLIENT, PORTAL_USER, job]);
     }
+    // 0175 retired the seeded variants as the database was built (nothing cited them then). Held active again, as the variants a
+    // citation keeps materialised (J000663's) are: a variant id still on offer is exactly what every path must file as its base.
+    await q(`UPDATE nzi_console.emission_factors SET active = true WHERE organisation_id = $1 AND NOT active`, [ORG]);
   });
   after(async () => { await database?.end(); });
 
-  it("J000663 through every path: flag off writes the variant ids as today; flag on files the bases — and both price, label, freeze and compose identically", async () => {
-    await withFlag("false", () => writeAll(OLD, "old"));
-    await withFlag("true", () => writeAll(NEW, "new"));
+  it("J000663 through every path: each variant id is filed as its base — and variant ids and bases price, label, freeze and compose identically", async () => {
+    await writeAll(OLD, "old", "variant");
+    await writeAll(NEW, "new", "base");
     const paths = Object.values(PATHS).filter((path) => path !== PATHS.rollforward && path !== PATHS.reingest);
 
     for (const job of [OLD, NEW]) {
@@ -177,13 +179,13 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     }
     for (const path of paths) {
       const before = await rowOf(OLD, path.key), now = await rowOf(NEW, path.key);
-      assert.deepEqual([before.factor_id, before.filed_suffix_code], [path.variant, null], `${path.key}: flag off, the variant id exactly as today`);
-      assert.ok(!("filedUnder" in before.provenance_json), `${path.key}: flag off adds no provenance key`);
       if (path.base) {
-        assert.deepEqual([now.factor_id, now.filed_suffix_code], [path.base, path.suffix], `${path.key}: flag on, the base filed under the pair`);
-        assert.deepEqual(now.provenance_json.filedUnder, { suffixCode: path.suffix, by: "applicability" }, `${path.key}: provenance records the filing`);
+        for (const [stored, sent] of [[before, "the variant id"], [now, "the base"]] as const) {
+          assert.deepEqual([stored.factor_id, stored.filed_suffix_code], [path.base, path.suffix], `${path.key}: ${sent}, filed as the base under the pair`);
+          assert.deepEqual(stored.provenance_json.filedUnder, { suffixCode: path.suffix, by: "applicability" }, `${path.key}: provenance records the filing`);
+        }
       } else {
-        assert.deepEqual([now.factor_id, now.filed_suffix_code], [path.variant, null], `${path.key}: a scope-shifted copy is never folded`);
+        for (const stored of [before, now]) assert.deepEqual([stored.factor_id, stored.filed_suffix_code], [path.variant, null], `${path.key}: a scope-shifted copy is never folded`);
       }
       assert.equal(now.calculated_tco2e, before.calculated_tco2e, `${path.key}: priced identically`);
       assert.equal(now.factor_label, before.factor_label, `${path.key}: the factor label the audit names`);
@@ -214,13 +216,13 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     assert.deepEqual(compose(now), compose(before), "the composed emissions and audit are identical");
   });
 
-  it("the v7 re-ingest: v7's variant id written as today flag off, and as its base filed under the pair flag on — priced and labelled identically", async () => {
-    await withFlag("false", () => writeReingest(REIN_OLD, "old"));
-    await withFlag("true", () => writeReingest(REIN_NEW, "new"));
+  it("the v7 re-ingest: v7's variant id is filed as its base under the pair — priced and labelled as the base sent", async () => {
+    await writeReingest(REIN_OLD, "old", "variant");
+    await writeReingest(REIN_NEW, "new", "base");
     const path = PATHS.reingest;
     const [before, now] = [await rowOf(REIN_OLD, path.key), await rowOf(REIN_NEW, path.key)];
-    assert.deepEqual([before.factor_id, before.filed_suffix_code], [path.variant, null], "flag off: v7's own variant id");
-    assert.deepEqual([now.factor_id, now.filed_suffix_code], [path.base, path.suffix], "flag on: the base, filed");
+    assert.deepEqual([before.factor_id, before.filed_suffix_code], [path.base, path.suffix], "v7's own variant id, filed as its base");
+    assert.deepEqual([now.factor_id, now.filed_suffix_code], [path.base, path.suffix], "the base, filed");
     assert.ok(before.calculated_tco2e !== null && now.calculated_tco2e === before.calculated_tco2e, "priced identically, by the re-ingest's own calculation");
     assert.equal(now.factor_label, before.factor_label);
     assert.deepEqual(now.provenance_json.filedUnder, { suffixCode: path.suffix, by: "applicability" });
@@ -229,17 +231,18 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     assert.equal(await label(REIN_NEW), "Employee Commuting: Rail National Rail");
   });
 
-  it("roll-forward: a prior row on a variant id rolls forward as today flag off, and as its base filed under the pair flag on", async () => {
+  it("roll-forward: a prior row sent as a variant id is filed as its base, and rolls forward filed under the pair", async () => {
     const path = PATHS.rollforward;
-    const prior = await withFlag("false", async () => (await createScopeRow(database.pool, { jobId: PRIOR, scope: path.scope, categoryCode: path.scope, sourceLabel: path.key, reportLabel: path.key,
+    const prior = await run(async () => (await createScopeRow(database.pool, { jobId: PRIOR, scope: path.scope, categoryCode: path.scope, sourceLabel: path.key, reportLabel: path.key,
       quantity: path.quantity, unit: entry(path).unit, datasetId: DS, factorId: path.variant, factorVersion: DS_VERSION, factorLabel: entry(path).label, qualityTier: "spend-based" } as never, context())).data.rowId);
     const rolled = {
-      old: (await withFlag("false", () => rollforwardScopeRows(database.pool, { jobId: ROLL_OLD, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!,
-      new: (await withFlag("true", () => rollforwardScopeRows(database.pool, { jobId: ROLL_NEW, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!,
+      old: (await rollforwardScopeRows(database.pool, { jobId: ROLL_OLD, priorJobId: PRIOR, rowIds: [prior] }, context())).data.createdRowIds[0]!,
+      new: (await rollforwardScopeRows(database.pool, { jobId: ROLL_NEW, priorJobId: PRIOR, rowIds: [prior] }, context())).data.createdRowIds[0]!,
     };
     const [before, now] = [await rowOf(ROLL_OLD, path.key), await rowOf(ROLL_NEW, path.key)];
-    assert.deepEqual([before.scope_row_id, before.factor_id, before.filed_suffix_code], [rolled.old, path.variant, null], "flag off: today's roll-forward");
-    assert.deepEqual([now.scope_row_id, now.factor_id, now.filed_suffix_code], [rolled.new, path.base, path.suffix], "flag on: the base, filed");
+    for (const [stored, id] of [[before, rolled.old], [now, rolled.new]] as const) {
+      assert.deepEqual([stored.scope_row_id, stored.factor_id, stored.filed_suffix_code], [id, path.base, path.suffix], "rolled forward as the base, filed");
+    }
     assert.equal(now.factor_label, before.factor_label);
     assert.deepEqual(now.provenance_json.filedUnder, { suffixCode: path.suffix, by: "applicability" });
     const label = async (jobId: string) => (await withTenantRead(database.pool, ORG, (db) => listScopeRows(db, jobId))).find((row) => row.sourceLabel === path.key)!.reportLabel;
@@ -254,12 +257,12 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const bucket = (await setPortalDataEntryBucketGrant(database.pool, staff, { portalUserId: PORTAL_USER, jobId: NEW, scopeRowId: rowId, entryKind: "manual_activity", factorIds: [PATHS.portal.base!], siteIds: [] })).bucketGrantId;
     const saved = await createPortalDataEntryRecord(database.pool, portal, NEW, { bucketGrantId: bucket, quantity: 100, unit: "tonne.km", factorId: PATHS.portal.base!, siteId: null, note: "" });
     const submitted = await submitPortalDataEntryRecord(database.pool, portal, NEW, saved.recordId, saved.version);
-    await withFlag("true", () => decidePortalDataEntryReview(database.pool, staff, { queueId: submitted.queueId, expectedSubmittedVersion: submitted.version, decision: "accept", note: "" }));
+    await run(() => decidePortalDataEntryReview(database.pool, staff, { queueId: submitted.queueId, expectedSubmittedVersion: submitted.version, decision: "accept", note: "" }));
     const stored = (await q<{ factor_id: string; filed_suffix_code: string | null }>(`SELECT factor_id, filed_suffix_code FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId]))[0]!;
     assert.deepEqual([stored.factor_id, stored.filed_suffix_code], [PATHS.portal.base, null], "upstream: the base natively, its old -d pair cleared");
   });
 
-  it("a folded edition (bases only, as slice 4 imports it): a variant id files as its base with the pair's labels; flag off it is refused as today", async () => {
+  it("a folded edition (bases only, as slice 4 imports it): a variant id files as its base with the pair's labels", async () => {
     // 2026: the bases alone — no category copy, as a folded import leaves it. The pairs are per factor, so they already apply.
     const FOLDED = "gb-2026", FOLD_JOB = "job-s5a-folded";
     await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
@@ -275,10 +278,7 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const create = (factorId: string, scope: string, sourceLabel: string, unit: string) => createScopeRow(database.pool, { jobId: FOLD_JOB, scope, categoryCode: scope, sourceLabel, reportLabel: sourceLabel,
       quantity: 100, unit, datasetId: FOLDED, factorId, factorVersion: "2026.1", factorLabel: null, qualityTier: "measured" } as never, context());
 
-    await withFlag("false", async () => {
-      await assert.rejects(create("uk-ghg-25_301_3070_9_1-c", "3.7", "Commute (folded, flag off)", "miles"), /Command validation failed/, "flag off: the variant id is not in a folded edition — refused, as today");
-    });
-    await withFlag("true", async () => {
+    await run(async () => {
       const commute = (await create("uk-ghg-25_301_3070_9_1-c", "3.7", "Commute (folded)", "miles")).data.rowId;
       const stored = (await q<Stored>(`SELECT factor_id, filed_suffix_code, factor_label FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [commute]))[0]!;
       assert.deepEqual([stored.factor_id, stored.filed_suffix_code, stored.factor_label], ["uk-ghg-25_301_3070_9_1", "-c", "Employee commuting- land - Cars (by size) - Average car - Petrol"],
@@ -310,17 +310,17 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
   });
 
   it("a variant id under a category that is not its own is written as sent", async () => {
-    await withFlag("true", async () => {
+    await run(async () => {
       const rowId = (await createScopeRow(database.pool, { jobId: NEW, scope: "3.4", categoryCode: "3.4", sourceLabel: "Haulage (a -d copy, upstream)", reportLabel: "Haulage (a -d copy, upstream)",
         quantity: 10, unit: "GBP", datasetId: DS, factorId: "uk-ghg-SPEND-SIC-49.3-5-d", factorVersion: DS_VERSION, factorLabel: "Land transport services", qualityTier: "spend-based" } as never, context())).data.rowId;
       const stored = (await q<Stored>(`SELECT factor_id, filed_suffix_code FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId]))[0]!;
       assert.deepEqual([stored.factor_id, stored.filed_suffix_code], ["uk-ghg-SPEND-SIC-49.3-5-d", null], "upstream files the base under -u, never this -d copy");
     });
   });
-  it("Step D, the pick list: a category's preview labels a filed base by its pair and folds the variant that files as it; off, neither", async () => {
+  it("Step D, the pick list: a category's preview labels a filed base by its pair and folds the still-materialised variant that files as it", async () => {
     const preview = (categoryCode: string, scope: string) => withTenantRead(database.pool, ORG, (db) => previewDeclaredFactor(db, ORG, NEW,
       { scope, unit: null, supplySource: null, assertedVehicleAttributes: null }, categoryCode));
-    await withFlag("true", async () => {
+    await run(async () => {
       const commuting = await preview("3.7", "3.7");
       assert.deepEqual(commuting.optionLabels, {
         "uk-ghg-25_301_3070_9_1": "Employee commuting- land - Cars (by size) - Average car - Petrol",
@@ -335,10 +335,6 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
       const upstream = await preview("3.4", "3.4");
       assert.ok(!("uk-ghg-27_320_3235_14_1" in upstream.optionLabels!), "the container ship upstream is used natively: no pair, no relabel");
       assert.ok(!upstream.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-d"), "a -d copy is not 3.4's pair");
-    });
-    await withFlag("false", async () => {
-      const off = await preview("3.7", "3.7");
-      assert.ok(!("optionLabels" in off) && !("foldedOptions" in off), "the kill-switch: the preview is as it was");
     });
   });
 });

@@ -45,9 +45,9 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
 
   it("writes every dataset, identity and value row the plan holds", async () => {
     const outcome = await loadV7Plan(database.pool, plan);
-    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 15,
-      factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 }); // the fixture's -w row is excluded (retired-w)
-    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
+    assert.deepEqual(outcome, { datasetsInserted: 8, datasetsUnchanged: 0, identitiesInserted: plan.identities.length, identitiesKept: 0, factorsInserted: 13,
+      factorsFolded: 2, applicabilityInserted: 2, applicabilityKept: 0 }); // the fixture's -w row is excluded (retired-w); its -vcp and spend -d copies fold (slice 5 Step E)
+    assert.deepEqual(await counts(), { datasets: 8, factors: 13, identities: plan.identities.length });
   });
 
   it("lands v7's curated identity, the code verbatim and the lookup row, not the trigger's fallback", async () => {
@@ -78,13 +78,13 @@ describe("loading v7 reference data into net-zero-international", { skip: DATABA
     const outcome = await loadV7Plan(database.pool, plan);
     assert.deepEqual(outcome, { datasetsInserted: 0, datasetsUnchanged: 8, identitiesInserted: 0, identitiesKept: plan.identities.length, factorsInserted: 0,
       factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 });
-    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
+    assert.deepEqual(await counts(), { datasets: 8, factors: 13, identities: plan.identities.length });
   });
 
   it("refuses a changed edition of a loaded dataset, and writes nothing", async () => {
     const changed: LoadPlan = { ...plan, datasets: plan.datasets.map((dataset) => dataset.datasetId === "ice-gb-2026" ? { ...dataset, contentSha256: "f".repeat(64) } : dataset) };
     await assert.rejects(() => loadV7Plan(database.pool, changed), (error) => error instanceof V7LoadRefused && /ice-gb-2026 is already loaded with different content/.test(error.message));
-    assert.deepEqual(await counts(), { datasets: 8, factors: 15, identities: plan.identities.length });
+    assert.deepEqual(await counts(), { datasets: 8, factors: 13, identities: plan.identities.length });
   });
 
   it("writes nothing from a plan that carries a refusal", async () => {

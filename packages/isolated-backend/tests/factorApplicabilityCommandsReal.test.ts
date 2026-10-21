@@ -33,11 +33,8 @@ describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manag
   const audits = async (entityId: string) => q<{ action: string; actor_id: string; reason: string | null; before_json: Record<string, unknown> | null; after_json: Record<string, unknown> | null }>(
     `SELECT action, actor_id, reason, before_json, after_json FROM nzi_console.audit_events WHERE organisation_id=$1 AND entity_id=$2 ORDER BY occurred_at, audit_event_id`, [ORG, entityId]);
   const refused = (code: string) => (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === code);
-  const withFlag = async <T>(work: () => Promise<T>): Promise<T> => {
-    const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    process.env.REPORT_FACTOR_APPLICABILITY = "true";
-    try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
-  };
+  // Runs a block of work. (The blocks once ran under a flag; there is no flag since dedup slice 5 Step E.)
+  const run = <T>(work: () => Promise<T>): Promise<T> => work();
 
   before(async () => {
     database = (await createDisposableDatabase("s5bcommands"))!;
@@ -72,7 +69,7 @@ describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manag
     const [event] = await audits(`${LARGE_CAR}-c`);
     assert.deepEqual([event!.action, event!.actor_id, event!.before_json], ["factor.applicability.added", ADMIN, null], "the runner's audit, nothing before it");
     // The labels reach the row: a commuting entry on the Scope 1 car is filed under the pair and prints the pair's strings.
-    await withFlag(async () => {
+    await run(async () => {
       const rowId = (await createScopeRow(database.pool, { jobId: JOB, scope: "3.7", categoryCode: "3.7", sourceLabel: "Large car commute", reportLabel: "Large car commute",
         quantity: 400, unit: "km", datasetId: DS, factorId: LARGE_CAR, factorVersion: DS_VERSION, factorLabel: "Passenger vehicles - Large car - Diesel", qualityTier: "measured" } as never, context())).data.rowId;
       const stored = (await q<{ factor_label: string; filed_suffix_code: string; version: number }>(`SELECT factor_label, filed_suffix_code, version FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId]))[0]!;
@@ -86,7 +83,7 @@ describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manag
   it("a pair added without labels is NULL, and a row filed under it never prints the base's label", async () => {
     await addFactorApplicabilityCommand(database.pool, { factorId: LARGE_CAR, suffixCode: "-b" }, context());
     assert.deepEqual([(await pair(LARGE_CAR, "-b"))!.report_label, (await pair(LARGE_CAR, "-b"))!.label], [null, null]);
-    await withFlag(async () => {
+    await run(async () => {
       const rowId = (await createScopeRow(database.pool, { jobId: JOB, scope: "3.6", categoryCode: "3.6", sourceLabel: "Large car trip", reportLabel: "Large car trip",
         quantity: 10, unit: "km", datasetId: DS, factorId: LARGE_CAR, factorVersion: DS_VERSION, factorLabel: "Passenger vehicles - Large car - Diesel", qualityTier: "measured" } as never, context())).data.rowId;
       const read = (await withTenantRead(database.pool, ORG, (db) => listScopeRows(db, JOB))).find((row) => row.id === rowId)!;

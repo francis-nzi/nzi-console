@@ -160,9 +160,9 @@ export async function decidePortalDataEntryReview(pool:PoolLike,principal:StaffP
       }
       // NZC-164: who said how the electricity arrived — the client, as with a vehicle's attributes.
       if(row.supply_source)provenance.supplySourceStatedBy=row.portal_user_id;
-      // Dedup slice 5 Step A, behind REPORT_FACTOR_APPLICABILITY: the accepted factor filed by applicability, as every write files it —
+      // Dedup slice 5 Step A: the accepted factor filed by applicability, as every write files it —
       // a base under the row's category, a covered variant id as its base. The row's suffix is always written (null when not filed), so
-      // a row once filed never keeps a pair for a factor it no longer carries. The flag off, the factor exactly as accepted.
+      // a row once filed never keeps a pair for a factor it no longer carries.
       const filing=await fileByApplicability(db,principal.organisationId,{datasetId:chosen.datasetId,factorId:chosen.factorId,factorLabel:chosen.label},"dataset",target.category_code?.trim()||(/^3\.\d+$/.test(target.scope)?target.scope:null));
       if(filing.filedSuffixCode)provenance.filedUnder={suffixCode:filing.filedSuffixCode,by:"applicability"};
       if(spend){

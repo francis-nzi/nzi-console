@@ -7,6 +7,8 @@ import pg from "pg";
 import { commandGrantForRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { calculateScopeRow, createScopeRow, lookupVehicleByRegistration, previewDeclaredFactor, withTenantRead } from "../src/index";
+import { addFactorApplicability } from "../src/factorApplicability";
+import type { StaffPrincipal } from "../src/auth";
 import { listJobFactorOptions } from "../src/readModels";
 // NZC-162: the capture path as production runs it — the console's lookup suggestion, its option builder, pick-list
 // filter and draft mapping — imported across the package seam as the other capture suites do.
@@ -61,8 +63,8 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
   }) as any;
   const save = async (category: never, d: any, opts: any[]) => {
     const created = await createScopeRow(database.pool, { ...form.emissionEntryDraftToScopeRow(d, category, { id: null, label: null }, opts, []), jobId: JOB }, context());
-    return (await db.query<{ scope_row_id: string; factor_id: string | null; version: number; provenance_json: Record<string, any> }>(
-      `SELECT scope_row_id, factor_id, version, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
+    return (await db.query<{ scope_row_id: string; factor_id: string | null; filed_suffix_code: string | null; version: number; provenance_json: Record<string, any> }>(
+      `SELECT scope_row_id, factor_id, filed_suffix_code, version, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [created.data.rowId])).rows[0]!;
   };
   const calculate = async (row: { scope_row_id: string; version: number }) => {
     await calculateScopeRow(database.pool, { jobId: JOB, rowId: row.scope_row_id, expectedVersion: row.version }, context());
@@ -90,12 +92,6 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
        VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
   });
 
-  // These are characterisations of the flag-OFF path (today's D1 rule, the sub-flow needing its materialised variant row, the refusal
-  // naming it). Since dedup slice 5 Step D the flag is on unless it is exactly "false", so the suite sets the kill-switch explicitly
-  // for its whole run — the off path survives only until Step E removes it, and these pins with it.
-  const savedFlag = process.env.REPORT_FACTOR_APPLICABILITY;
-  before(() => { process.env.REPORT_FACTOR_APPLICABILITY = "false"; });
-  after(() => { if (savedFlag === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = savedFlag; });
   after(async () => { await db?.end(); await database?.end(); });
 
   // ── Company vehicles, switched on ────────────────────────────────────────────────────────────────────
@@ -132,12 +128,14 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     assert.ok(ids.includes("uk-ghg-13_402_4000_5_1") || ids.length > 1, "the list was emptied rather than filtered");
   });
 
-  it("refuses that base at the write, naming the variant — in business travel and in commuting", async () => {
+  it("refuses that base at the write, naming the category it is not applicable under — in business travel and in commuting", async () => {
     const baseOption = form.entryFactorRefsFor((await read((reader) => listJobFactorOptions(reader, JOB))) as never)
       .find((option) => option.factorId === "uk-ghg-1_101_1011_8_1")!;
-    for (const [category, variant] of [[TRAVEL, "uk-ghg-1_101_1011_8_1-b"], [COMMUTING, "uk-ghg-1_101_1011_8_1-c"]] as const) {
+    // D1 as applicability (unconditional since dedup slice 5 Step E): a Scope 1 figure is refused under a sub-flow category until it is
+    // applicable there, and the refusal names the category's suffix.
+    for (const [category, suffix] of [[TRAVEL, "-b"], [COMMUTING, "-c"]] as const) {
       await assert.rejects(() => save(category, draft({ factorId: baseOption.id, unit: "km" }), [baseOption]),
-        (error: any) => error.issues?.[0]?.code === "FACTOR_IS_VARIANT_BASE" && error.issues[0].message.includes(variant));
+        (error: any) => error.issues?.[0]?.code === "FACTOR_IS_VARIANT_BASE" && error.issues[0].message.includes(`not applicable under this category ('${suffix}')`));
     }
   });
 
@@ -149,15 +147,15 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
   // ── Sub-flow propagation, through the write path ──────────────────────────────────────────────────────
 
   it("carries a change to the vehicle flow into business travel and commuting, through the write", async () => {
-    // The flow's Class III diesel van is per mile, and the synthetic dataset has no -b or -c variant of it, so 3.6
-    // and 3.7 resolve nothing. Give the flow a per-km diesel factor with its own -b and -c variants, point the
-    // vehicle rule at it, switch the two sub-flow categories on for this test, and the same write that resolved
-    // nothing now files each under its own variant. Restored afterwards, so nothing here outlives the test.
+    // The flow's Class III diesel van is per mile, and nothing makes it applicable under business travel or commuting, so 3.6
+    // and 3.7 resolve nothing. Give the flow a per-km diesel factor applicable under -b and -c, point the vehicle rule at it,
+    // switch the two sub-flow categories on for this test, and the same write that resolved nothing now files the base under
+    // each category's pair (since dedup slice 5 Step E, applicability — not a variant row — is what a sub-flow files by).
+    // Restored afterwards, so nothing here outlives the test.
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES
-        ($1,'synthetic-gb-2026','van-km-test','Van, diesel, per km — test','km',0.25,ARRAY['1','3']),
-        ($1,'synthetic-gb-2026','van-km-test-b','Van, diesel, per km — business travel','km',0.25,ARRAY['3']),
-        ($1,'synthetic-gb-2026','van-km-test-c','Van, diesel, per km — commuting','km',0.25,ARRAY['3'])`, [ORG]);
+        ($1,'synthetic-gb-2026','van-km-test','Van, diesel, per km — test','km',0.25,ARRAY['1','3'])`, [ORG]);
+    const admin = { userId: "admin-1", organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
     const attributes = { source: "stub", fuel: "diesel", vehicleClass: "van", category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" };
     const RULE = `category_code = '1.company-vehicles' AND rule_key = 'dvla-van-class-iii-diesel'`;
     const entry = (category: never) => save(category, draft({ unit: "km", assertedVehicleAttributes: attributes }), []);
@@ -169,10 +167,11 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
         "business travel resolved before the flow could price a distance");
 
       await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'van-km-test' WHERE ${RULE}`);
+      for (const suffixCode of ["-b", "-c"]) await addFactorApplicability(database.pool, admin, { organisationId: ORG, factorId: "van-km-test", suffixCode });
       const travel = await entry(TRAVEL);
       const commute = await entry(COMMUTING);
-      assert.equal(travel.factor_id, "van-km-test-b", "the change to the vehicle flow did not reach business travel");
-      assert.equal(commute.factor_id, "van-km-test-c", "the change to the vehicle flow did not reach commuting");
+      assert.deepEqual([travel.factor_id, travel.filed_suffix_code], ["van-km-test", "-b"], "the change to the vehicle flow did not reach business travel");
+      assert.deepEqual([commute.factor_id, commute.filed_suffix_code], ["van-km-test", "-c"], "the change to the vehicle flow did not reach commuting");
       assert.equal(await calculate(travel), 0.25);
     } finally {
       await db.query(`UPDATE nzi_console.input_spec_factor_rules SET factor_base = 'uk-ghg-5_303_3095_9_1' WHERE ${RULE}`);

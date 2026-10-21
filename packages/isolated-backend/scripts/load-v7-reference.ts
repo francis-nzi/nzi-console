@@ -9,8 +9,8 @@
  * target organisation (net-zero-international unless told otherwise). Re-running is safe: a dataset already loaded with
  * the same content is left alone, one loaded with different content is refused.
  *
- * With REPORT_FACTOR_APPLICABILITY=true (dedup slice 4) a `<base><suffix>` row at its base's value, unit and scopes is folded:
- * recorded as the base's applicability with the variant's labels and lineage, and no value row. Off, every row loads as before.
+ * A `<base><suffix>` row at its base's value, unit and scopes is folded (dedup slice 4; always, since slice 5 Step E): recorded as
+ * the base's applicability with the variant's labels and lineage, and no value row.
  *
  * `--precedence` adds rulings for editions that fold together, per dataset slug: `"<active v7 dataset_id>"` or `"merge"`.
  * The rulings already made (uk-ghg 2022–2025 merge) are applied by default; a file entry for the same slug overrides one.
@@ -21,7 +21,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
-import { factorApplicabilityResolution } from "../src/factorApplicability";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
 import { DEFAULT_ORGANISATION, parseCsv, planV7Load, type Finding, type Precedence } from "../src/v7ReferenceImport";
 import { loadV7Plan } from "../src/v7ReferenceLoad";
@@ -53,14 +52,14 @@ async function main(): Promise<void> {
   const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-v7-reference-load" });
   try {
     const registry = await listCategoryVariants(pool as never);
-    const plan = planV7Load(parseCsv(readFileSync(file, "utf8")), registry, { organisationId, precedence, fold: factorApplicabilityResolution() });
+    const plan = planV7Load(parseCsv(readFileSync(file, "utf8")), registry, { organisationId, precedence });
 
     log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run, nothing will be written"}`);
     log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e}`);
     log(`  null spellings read as NULL: ${Object.entries(plan.summary.nulledCells).map(([spelling, n]) => `"${spelling}" ${n}`).join(" · ") || "none"} cells, in ${plan.summary.rowsWithNulledCells} rows`);
     log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
-    log(`  dedup fold (REPORT_FACTOR_APPLICABILITY): ${factorApplicabilityResolution() ? `on — ${plan.folded.length} variant rows folded into ${plan.applicability.length} (factor, category) pairs` : "off — every variant row loads as its own row"}`);
+    log(`  dedup fold: ${plan.folded.length} variant rows folded into ${plan.applicability.length} (factor, category) pairs`);
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
     printFindings(`Excluded — ${plan.excluded.length} rows skipped for a named reason, not blocking`, plan.exclusions);
     printFindings("Reports — shown, not blocking", plan.reports);

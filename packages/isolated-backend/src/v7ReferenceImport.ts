@@ -153,7 +153,7 @@ export type PlannedFactor = {
   isRemoval: boolean;
 };
 /**
- * A `<base><suffix>` row folded into its base's applicability (dedup slice 4, REPORT_FACTOR_APPLICABILITY): the same value, unit
+ * A `<base><suffix>` row folded into its base's applicability (dedup slice 4): the same value, unit
  * and scopes as its base in the same dataset, so it is not a different factor — only the base used under another category. No
  * value row is written for it; it is kept here, every field, for the dry run and the import's audit event.
  */
@@ -196,7 +196,7 @@ export type ExcludedRow = { dbId: string; reason: ExclusionReason; originalId: s
 export type LoadPlan = {
   organisationId: string;
   datasets: PlannedDataset[]; identities: PlannedIdentity[]; factors: PlannedFactor[];
-  /** The rows folded into applicability, and the pairs they record. Empty unless the plan was built with `fold`. */
+  /** The rows folded into applicability, and the pairs they record (dedup slice 4). */
   folded: PlannedFold[]; applicability: PlannedApplicability[];
   /** Refusals block the load. Exclusions do not: each excluded row is listed in `excluded`. Reports are shown. */
   refusals: Finding[]; exclusions: Finding[]; excluded: ExcludedRow[]; reports: Finding[];
@@ -248,11 +248,8 @@ export function sameDecimal(a: string, b: string): boolean {
 export function planV7Load(
   rows: readonly ExtractRow[],
   registry: readonly CategoryVariant[],
-  /**
-   * `fold` (dedup slice 4): record a same-value `<base><suffix>` row as its base's applicability instead of writing it. The load
-   * script sets it from REPORT_FACTOR_APPLICABILITY, the one switch for the new regime; absent, the plan is today's exactly.
-   */
-  options: { organisationId?: string; precedence?: Precedence; fold?: boolean } = {},
+  /** Dedup slice 4, unconditional since slice 5 Step E: a same-value `<base><suffix>` row is folded into its base's applicability. */
+  options: { organisationId?: string; precedence?: Precedence } = {},
 ): LoadPlan {
   const refusals = new Map<string, Finding>(), reports = new Map<string, Finding>();
   const precedence: Precedence = { ...RULED_PRECEDENCE, ...options.precedence };
@@ -526,14 +523,14 @@ export function planV7Load(
   const asFactor = ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval }: Row): PlannedFactor =>
     ({ datasetId, factorId, label, activityUnit, kgco2ePerUnit, scopes, sourceLevels, sourceCategory, ghgUnit, legacyOriginalId, legacyDbId, isRemoval });
 
-  // 7. The fold (dedup slice 4), only when asked. A variant is folded when it is the base under another category and nothing
+  // 7. The fold (dedup slice 4; always, since slice 5 Step E retired the materialised variants). A variant is folded when it is the base under another category and nothing
   //    else: the base is in the same dataset, at the same value (as `numeric` compares — 0170's guard), unit and scopes, and the
   //    suffix is active. Scopes too, though the guard does not compare them: write validity and the pick lists read a factor's
   //    scopes, so folding a Scope 3 `-bcp` into its Scope 1 base would leave business travel nothing to file. Anything else is
   //    not folded and loads as today — a genuinely different number (WTT, per-distance) carries its own id and is no variant.
   //    Dataset hashes are of the source edition, taken above, so a fold never makes a loaded dataset look changed.
   const folded: PlannedFold[] = [];
-  if (options.fold) {
+  {
     for (const row of kept as Row[]) {
       const parsed = parseFactorId(row.factorId, registry);
       if (!parsed.variant) continue;
@@ -566,7 +563,7 @@ export function planV7Load(
       return { factorId: row.base, suffixCode: row.suffixCode, variantFactorId: row.factorId, reportLabel: variant.reportLabel, label: variant.label,
         legacyOriginalId: variant.legacyOriginalId, legacyDbId: rowsOf.map((other) => other.legacyDbId).sort((a, b) => Number(a) - Number(b))[0]! };
     });
-  const keptIdentities = options.fold ? identities.filter((identity) => remaining.has(identity.factorId)) : identities;
+  const keptIdentities = identities.filter((identity) => remaining.has(identity.factorId));
 
   return {
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,

@@ -6,7 +6,9 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { commandGrantForRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { createScopeRow, updateScopeRow } from "../src/index";
+import { CommandValidationError, createScopeRow, updateScopeRow } from "../src/index";
+import { addFactorApplicability } from "../src/factorApplicability";
+import type { StaffPrincipal } from "../src/auth";
 
 /**
  * The write path consuming the declarative resolver, through the real commands (Stop 2, slice 2a).
@@ -55,8 +57,8 @@ describe("the write path resolves declaratively where a category is switched on,
   });
   const gridFactor = { datasetId: "synthetic-gb-2026", factorId: "uk-ghg-7_400_4000_5_1", factorVersion: "2026 demo v1", factorLabel: "UK electricity — demonstration factor" };
 
-  const stored = async (rowId: string) => (await db.query<{ factor_id: string | null; dataset_id: string | null; factor_version: string | null; provenance_json: Record<string, any>; lineage_json: Array<{ title: string }> }>(
-    `SELECT factor_id, dataset_id, factor_version, provenance_json, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0]!;
+  const stored = async (rowId: string) => (await db.query<{ factor_id: string | null; dataset_id: string | null; factor_version: string | null; filed_suffix_code: string | null; provenance_json: Record<string, any>; lineage_json: Array<{ title: string }> }>(
+    `SELECT factor_id, dataset_id, factor_version, filed_suffix_code, provenance_json, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0]!;
   const rowCount = async () => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id=$1`, [JOB])).rows[0]!.n;
 
   /** What the migrations switched on: electricity's two primaries (0121) and company vehicles (0123), no companion. */
@@ -101,12 +103,6 @@ describe("the write path resolves declaratively where a category is switched on,
        VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
   });
 
-  // These are characterisations of the flag-OFF path (today's D1 rule, the sub-flow needing its materialised variant row, the refusal
-  // naming it). Since dedup slice 5 Step D the flag is on unless it is exactly "false", so the suite sets the kill-switch explicitly
-  // for its whole run — the off path survives only until Step E removes it, and these pins with it.
-  const savedFlag = process.env.REPORT_FACTOR_APPLICABILITY;
-  before(() => { process.env.REPORT_FACTOR_APPLICABILITY = "false"; });
-  after(() => { if (savedFlag === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = savedFlag; });
   after(async () => { await db?.end(); await database?.end(); });
 
   // ── The switches ─────────────────────────────────────────────────────────────────────────────────────
@@ -322,20 +318,23 @@ describe("the write path resolves declaratively where a category is switched on,
     });
   });
 
-  it("PINNED until per-distance factors: an unplated business-travel entry can take a factor tagged Scope 1 and 3, per km", async () => {
-    // D3 #1's leak in the shape the write path allows: a per-km passenger-vehicle factor tagged {1,3}, as
-    // libraries tag them, passes the validity gate for a Scope 3 row and nothing declared stands in its way.
-    // 2c refuses the base of a category's own variant — but this factor has no variant, so it stays open, as ruled:
-    // restricting to variants before distance-priced ones exist would leave nothing to pick. It closes when the
-    // per-distance business-travel and commuting factors are authored.
+  it("CLOSED by D1 as applicability (dedup slice 5 Step E): an unplated business-travel entry may take a Scope 1 and 3 per-km factor only once it is applicable there", async () => {
+    // D3 #1's leak, once pinned open here: a per-km passenger-vehicle factor tagged {1,3}, as libraries tag them, passed the validity
+    // gate for a Scope 3 row because the old D1 rule refused a base only where its own variant row was on offer — and this one had none.
+    // Since Step E D1 is applicability's, unconditionally: a base that can be a Scope 1 figure is refused in a category that files under a
+    // suffix until an admin marks it applicable there — then it is filed so, priced off its own value.
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
        VALUES ($1,'synthetic-gb-2026','car-km-test','Average car — test factor','km',0.17,ARRAY['1','3'])`, [ORG]);
     try {
       await enabled(["1.company-vehicles", "3.6"], async () => {
-        const created = await createScopeRow(pool, travel({ datasetId: "synthetic-gb-2026", factorId: "car-km-test", factorVersion: "2026 demo v1", factorLabel: "Car" }), context());
-        const row = await stored(created.data.rowId);
-        assert.equal(row.factor_id, "car-km-test");
+        const send = () => createScopeRow(pool, travel({ datasetId: "synthetic-gb-2026", factorId: "car-km-test", factorVersion: "2026 demo v1", factorLabel: "Car" }), context());
+        await assert.rejects(send(), (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "FACTOR_IS_VARIANT_BASE"),
+          "a Scope 1 figure under business travel, not applicable there: refused");
+        const admin = { userId: "admin-1", organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
+        await addFactorApplicability(pool, admin, { organisationId: ORG, factorId: "car-km-test", suffixCode: "-b", reportLabel: "Business Travel: Average Car" });
+        const row = await stored((await send()).data.rowId);
+        assert.deepEqual([row.factor_id, row.filed_suffix_code], ["car-km-test", "-b"], "applicable: filed under business travel by applicability");
         assert.equal(row.provenance_json.declarativeResolution.decision, "search");
       });
     } finally {

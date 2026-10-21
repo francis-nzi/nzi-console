@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { factorApplicabilityResolution } from "./factorApplicability";
 import type { PoolLike } from "./postgres";
 import { withTenantWrite } from "./postgres";
 import { SOURCE_SYSTEM, type LoadPlan } from "./v7ReferenceImport";
@@ -13,7 +12,7 @@ import { SOURCE_SYSTEM, type LoadPlan } from "./v7ReferenceImport";
  * refused (a changed edition is a new dataset, never an overwrite). An identity already in place — curated or not — is
  * never touched.
  *
- * A plan built with `fold` (dedup slice 4) writes no value row for a folded variant. For each pair with a folded row in a dataset
+ * A folded variant (dedup slice 4; unconditional since slice 5 Step E) gets no value row. For each pair with a folded row in a dataset
  * written now, it records (base, suffix) as `source = 'import'` with the variant's curated strings and its v7 lineage (0173), and
  * an audit event listing every row folded into it. A pair already in place is kept as it stands, as an identity is. Before any
  * of that, every folded row is re-checked against the base just written, in SQL — the same `numeric` value, unit and scopes — so
@@ -35,11 +34,6 @@ const BATCH = 2000;
 export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOutcome> {
   if (plan.refusals.length > 0) {
     throw new V7LoadRefused(`The plan carries ${plan.refusals.length} refusal(s): ${plan.refusals.map((finding) => finding.code).join(", ")}. Nothing was written.`);
-  }
-  // A folded factor has no value row of its own: only the applicability resolver (slice 3) can price it. So a folding plan is
-  // written only under the same switch, or the load would leave factors nothing resolves.
-  if (plan.folded.length > 0 && !factorApplicabilityResolution()) {
-    throw new V7LoadRefused(`The plan folds ${plan.folded.length} category variant row(s) into applicability, which only resolves with REPORT_FACTOR_APPLICABILITY on. Nothing was written.`);
   }
   // The application role holds no privilege on organisations (0092), so existence is left to the datasets table's
   // foreign key — and its error is said plainly.
