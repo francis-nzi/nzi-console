@@ -36,7 +36,7 @@ export type AdminOverview = {
  */
 export const ADMIN_AUDIT_ACTIONS = [
   "reference.%", "team.%", "staff.role.%", "staff.invite%", "staff.enrolment.issue", "staff.enrolment.revoke",
-  "strategy.library.%", "factor.variant.%", "milestones.imported",
+  "strategy.library.%", "factor.variant.%", "factor.applicability.%", "milestones.imported",
   // Jobs configuration (admin C): the job-type and template commands, and the import that fills them.
   "job_type.%", "milestone_template.%", "job_file_type.%", "jobs_config.imported",
   // Commercial lookups (admin E1): the VAT-rate and currency commands, and the currency import.

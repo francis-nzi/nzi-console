@@ -130,6 +130,8 @@ export * from "./jobSiteInclusions";
 export { seedJobFromTemplate, getJobTemplateSeeding } from "./jobTemplateSeeding";
 export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";
+export * from "./factorApplicability";
+export * from "./factorApplicabilityCommands";
 export {
   assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
   removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy,

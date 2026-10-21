@@ -140,7 +140,8 @@ export type FactorApplicability = {
   factorId: string;
   suffixCode: string;
   status: VariantStatus;
-  source: "migration" | "admin";
+  /** Who wrote the pair: 0170's backfill, an admin, or (0173, dedup slice 4) the reference import's fold. */
+  source: "migration" | "admin" | "import";
   /** Dedup slice 3 (0172): what a line filed under this (factor, category) prints — the variant identity's label, relocated. */
   reportLabel?: string | null;
   /** Dedup slice 3 (0172): the factor's curated label under this category — what a row filed so stores as its factor label. */
