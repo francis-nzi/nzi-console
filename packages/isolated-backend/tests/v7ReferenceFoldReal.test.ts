@@ -46,9 +46,10 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  const withFlag = async <T>(value: "true" | undefined, work: () => Promise<T>): Promise<T> => {
+  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
+  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
     const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    if (value === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = value;
+    process.env.REPORT_FACTOR_APPLICABILITY = value;
     try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
   };
   const ids = async (organisationId: string) => (await q<{ factor_id: string }>(
@@ -76,7 +77,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
   // ── The import ───────────────────────────────────────────────────────────────────────────────────────────────
 
   it("a folding plan is written only with the flag on: off, it is refused and nothing is written", async () => {
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       await assert.rejects(loadV7Plan(database.pool, plans.new), (error) => error instanceof V7LoadRefused && /only resolves with REPORT_FACTOR_APPLICABILITY on/.test(error.message));
     });
     assert.deepEqual(await ids(NEW), []);
@@ -91,7 +92,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
   });
 
   it("flag off: today's import exactly — every variant row written, no pair, nothing folded", async () => {
-    const outcome = await withFlag(undefined, () => loadV7Plan(database.pool, plans.old));
+    const outcome = await withFlag("false", () => loadV7Plan(database.pool, plans.old));
     assert.deepEqual(outcome, { datasetsInserted: 1, datasetsUnchanged: 0, identitiesInserted: FOLD_EXTRACT.length, identitiesKept: 0, factorsInserted: FOLD_EXTRACT.length,
       factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 });
     assert.deepEqual(await ids(OLD), plans.old.factors.map((factor) => factor.factorId).sort());
@@ -145,7 +146,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
   });
 
   it("a copy at a different number is never folded: 0170's guard refuses it on either path, as today", async () => {
-    for (const flag of [undefined, "true"] as const) {
+    for (const flag of ["false", "true"] as const) {
       const divergent = planV7Load(DIVERGENT_EXTRACT, registry, { organisationId: "org-s4-guard", fold: flag === "true" });
       assert.deepEqual(divergent.folded, []);
       await withFlag(flag, async () => {
@@ -196,7 +197,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
       `SELECT factor_id, filed_suffix_code, factor_label, calculated_tco2e, version FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND scope_row_id=$2`, [organisationId, rowId]))[0]!;
 
     const created = { old: new Map<string, string>(), new: new Map<string, string>() };
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       for (const entry of ENTRIES) created.old.set(entry.key, (await createScopeRow(database.pool, write(entry.variant, entry), context(OLD))).data.rowId);
     });
     await withFlag("true", async () => {

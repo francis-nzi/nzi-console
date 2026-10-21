@@ -218,19 +218,38 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
   }));
 }
 
+/**
+ * Dedup slice 5 Step D: how the category's list reads by applicability — a base filed under the category's pair, labelled by the pair;
+ * a still-materialised variant whose pick files as that base, hidden. Absent with the flag off.
+ */
+type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }> };
+
 /** What the declared-factor preview returns — the shape of the backend's `DeclaredFactorPreview`. */
-export type DeclaredFactorPreviewResult =
+export type DeclaredFactorPreviewResult = PickListFiling & (
   | { enabled: false; excludedFactorIds?: string[] }
-  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds?: string[] };
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds?: string[] });
 
 /**
  * The options a category's quick-add may offer (Stop 2c): all of them, less the bases the category refuses — a
  * variant category never offers the base of its own variant. Mirrors the write's refusal, so a person is not
  * offered what the server would turn away.
+ *
+ * Dedup slice 5 Step D: and read as the write files them. A base the category files under a pair is labelled by the pair — the
+ * label the row will store and print ("Employee commuting- …", never the business-travel base's) — and a still-materialised variant
+ * whose pick files as that same base is not offered twice. A client factor is never touched.
  */
 export function optionsForCategory(options: readonly EntryFactorRef[], preview: DeclaredFactorPreviewResult | null): EntryFactorRef[] {
   const excluded = new Set(preview?.excludedFactorIds ?? []);
-  return options.filter((option) => option.factorSource === "client" || !excluded.has(option.factorId ?? ""));
+  const folded = new Set((preview?.foldedOptions ?? []).map((option) => `${option.datasetId}|${option.factorId}`));
+  const labels = preview?.optionLabels ?? {};
+  return options
+    .filter((option) => option.factorSource === "client" || (!excluded.has(option.factorId ?? "") && !folded.has(`${option.datasetId}|${option.factorId}`)))
+    .map((option) => {
+      const pairLabel = option.factorSource !== "client" && option.factorId ? labels[option.factorId] : undefined;
+      if (!pairLabel) return option;
+      // The option's label is `<label> · <unit>[ · DEMO]` (entryFactorRefsFor): only the factor's own wording is replaced.
+      return { ...option, label: `${pairLabel}${option.unit ? ` · ${option.unit}` : ""}${option.label.endsWith(" · DEMO") ? " · DEMO" : ""}` };
+    });
 }
 
 /** The declared factor, as one of the form's own options. */

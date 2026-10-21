@@ -79,9 +79,10 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
     const db = await database.admin();
     try { await db.query("BEGIN"); await db.query(MIGRATION); await db.query("COMMIT"); } catch (error) { await db.query("ROLLBACK"); throw error; } finally { await db.end(); }
   };
-  const withFlag = async <T>(value: "true" | undefined, work: () => Promise<T>): Promise<T> => {
+  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
+  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
     const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    if (value === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = value;
+    process.env.REPORT_FACTOR_APPLICABILITY = value;
     try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
   };
   type Stored = { scope_row_id: string; source_label: string; factor_id: string; filed_suffix_code: string | null; factor_label: string | null; calculated_tco2e: string | null;
@@ -136,7 +137,7 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
 
   it("J000663: rows on variant ids re-filed onto their bases — the report frozen before and the one frozen after are identical; nothing else moves", async () => {
     // As written before Step A: variant ids, flag off.
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       for (const job of [OLD, NEW]) for (const entry of ENTRIES) await write(job, entry);
       // A re-ingested row (attest-only): v7's -c, linked to its migrated v7 row.
       // The migrated v7 row itself names the variant too: v7 history, immutable (0133) — 0174 reads live rows only.
@@ -236,12 +237,12 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
       .map((row) => [row.factor_id, row.filed_suffix_code])[0], ["uk-ghg-25_315_3147_11_1", "-c"], "the prior row is filed under -c");
     const admin = { userId: ACTOR, organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
     await retireFactorApplicability(database.pool, admin, { organisationId: ORG, factorId: "uk-ghg-25_315_3147_11_1", suffixCode: "-c", reason: "Rail commuting moved to its own factor." });
-    for (const flag of [undefined, "true"] as const) {
+    for (const flag of ["false", "true"] as const) {
       const rolledId = (await withFlag(flag, () => rollforwardScopeRows(database.pool, { jobId: NEXT, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!;
       const rolled = (await q<{ factor_id: string; filed_suffix_code: string | null; factor_label: string; provenance_json: Record<string, unknown> }>(
         `SELECT factor_id, filed_suffix_code, factor_label, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rolledId]))[0]!;
-      assert.deepEqual([rolled.factor_id, rolled.filed_suffix_code], ["uk-ghg-25_315_3147_11_1", null], `flag ${flag ?? "off"}: the retired pair is dropped, and nothing else is applicable here`);
-      assert.equal(rolled.factor_label, "Business travel- land - Rail - National rail", `flag ${flag ?? "off"}: the factor's own label — never the retired pair's`);
+      assert.deepEqual([rolled.factor_id, rolled.filed_suffix_code], ["uk-ghg-25_315_3147_11_1", null], `flag ${flag === "true" ? "on" : "off"}: the retired pair is dropped, and nothing else is applicable here`);
+      assert.equal(rolled.factor_label, "Business travel- land - Rail - National rail", `flag ${flag === "true" ? "on" : "off"}: the factor's own label — never the retired pair's`);
       assert.ok(!("filedUnder" in rolled.provenance_json));
       await q(`DELETE FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rolledId]);
     }

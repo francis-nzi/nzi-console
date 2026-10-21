@@ -116,9 +116,20 @@ async function resolveDeclared(db: Queryable, organisationId: string, jobId: str
  * What the form's preview is told: whether the category is on, and if so what it declares for this entry — and,
  * whatever the switch, which factors this category refuses as the base of its own variant (Stop 2c).
  */
-export type DeclaredFactorPreview =
+export type DeclaredFactorPreview = PickListFiling & (
   | { enabled: false; excludedFactorIds: string[] }
-  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds: string[] };
+  | { enabled: true; declared: { datasetId: string; factorId: string; label: string; unit: string; version: string } | null; reason: string | null; excludedFactorIds: string[] });
+
+/**
+ * Dedup slice 5 Step D: how the category's pick list reads, by applicability. Empty with the flag off, and for a category with no pairs.
+ *
+ * - `optionLabels`: a base this category files under a pair, labelled by the pair's own curated label (0172) — so a commuting list
+ *   offers the business-travel car as "Employee commuting- …", what the row will store and print, not as "Business travel- …".
+ * - `foldedOptions`: a still-materialised variant whose pick would file as its base (Step A's rule: the category's own pair, the base
+ *   offered in the same dataset at the same value, unit and scopes) — hidden, since its base, now labelled by the pair, is the same
+ *   choice. Transitional: Step E retires these rows out of every list.
+ */
+export type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }> };
 
 /**
  * The factors a variant category refuses, because the category's own variant of each is on offer (Stop 2c).
@@ -266,6 +277,46 @@ export async function fileByApplicability<F extends { datasetId?: string | null;
 }
 
 /**
+ * Dedup slice 5 Step D: the category's pick list by applicability (`PickListFiling`), over the job's offered factors at once — the same
+ * rule `fileByApplicability` applies to one factor at the write, batched, so a list of thousands costs four queries, not thousands.
+ */
+async function pickListFiling(db: Queryable, organisationId: string, jobId: string, categoryCode: string | null): Promise<PickListFiling> {
+  if (!factorApplicabilityResolution() || !categoryCode) return {};
+  const registry = await listCategoryVariants(db);
+  const applicability = await loadApplicability(db, organisationId);
+  const offered = (await db.query<{ dataset_id: string; factor_id: string; kgco2e_per_unit: string; activity_unit: string; scopes: string[] }>(
+    `SELECT f.dataset_id, f.factor_id, f.kgco2e_per_unit::text, f.activity_unit, f.scopes
+       FROM nzi_console.job_dataset_selections s
+       JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
+      WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows;
+  const byKey = new Map(offered.map((row) => [`${row.dataset_id}|${row.factor_id}`, row]));
+  // Each offered base this category files under a pair, and the pair it files under.
+  const filedBases = new Map<string, string>();
+  for (const row of offered) {
+    if (filedBases.has(row.factor_id) || parseFactorId(row.factor_id, registry).variant) continue;
+    const suffixCode = filedSuffixFor({ factorId: row.factor_id, categoryCode, applicability, registry });
+    if (suffixCode) filedBases.set(row.factor_id, suffixCode);
+  }
+  if (filedBases.size === 0) return {};
+  const optionLabels: Record<string, string> = {};
+  for (const pair of (await db.query<{ factor_id: string; suffix_code: string; label: string }>(
+    `SELECT factor_id, suffix_code, label FROM nzi_console.factor_identity_categories
+      WHERE organisation_id = $1 AND factor_id = ANY($2::text[]) AND status = 'active' AND label IS NOT NULL`,
+    [organisationId, [...filedBases.keys()]])).rows) {
+    if (filedBases.get(pair.factor_id) === pair.suffix_code) optionLabels[pair.factor_id] = pair.label;
+  }
+  const sameScopes = (a: readonly string[], b: readonly string[]) => [...a].sort().join("+") === [...b].sort().join("+");
+  const foldedOptions = offered.flatMap((row) => {
+    const parsed = parseFactorId(row.factor_id, registry);
+    if (!parsed.variant || filedBases.get(parsed.base) !== parsed.variant.suffixCode) return [];
+    const base = byKey.get(`${row.dataset_id}|${parsed.base}`);
+    const covered = base && base.kgco2e_per_unit === row.kgco2e_per_unit && base.activity_unit === row.activity_unit && sameScopes(base.scopes, row.scopes);
+    return covered ? [{ datasetId: row.dataset_id, factorId: row.factor_id }] : [];
+  });
+  return { optionLabels, foldedOptions };
+}
+
+/**
  * The declared factor for an entry as it stands, for the capture form (Stop 2b, H3).
  *
  * Read-only. The CRM shows this factor, and its unit, before a quantity is typed — the unit comes from the
@@ -275,9 +326,11 @@ export async function fileByApplicability<F extends { datasetId?: string | null;
 export async function previewDeclaredFactor(db: Queryable, organisationId: string, jobId: string, entry: ResolutionEntry, categoryCode: string | null): Promise<DeclaredFactorPreview> {
   const resolved = await resolveDeclared(db, organisationId, jobId, entry, categoryCode);
   const excludedFactorIds = (await variantBasesRefused(db, organisationId, jobId, categoryCode)).map((pair) => pair.baseFactorId);
-  if (!resolved) return { enabled: false, excludedFactorIds };
+  const filing = await pickListFiling(db, organisationId, jobId, categoryCode);
+  if (!resolved) return { enabled: false, excludedFactorIds, ...filing };
   const { declared, outcome } = resolved;
   return {
+    ...filing,
     enabled: true,
     excludedFactorIds,
     declared: declared ? { datasetId: declared.datasetId, factorId: declared.factorId, label: declared.label, unit: declared.unit, version: declared.datasetVersion } : null,

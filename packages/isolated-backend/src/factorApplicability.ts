@@ -205,13 +205,15 @@ export async function retireFactorApplicability(
 }
 
 /**
- * Dedup slice 3: whether the resolver files a (base, category) pair by applicability — the server's REPORT_FACTOR_APPLICABILITY,
- * **off unless it is exactly "true"** (fail-closed). Off, resolution and the D1 guard are today's, byte for byte: a sub-flow needs
- * its materialised `<base><suffix>` row, and a manual pick of a base is refused only where its own variant row is on offer. Read at
- * the moment of the act, never cached, so the flag flips without a deploy.
+ * Whether applicability is the system of record — the server's REPORT_FACTOR_APPLICABILITY, the one switch for the resolver
+ * (slice 3), every write path (slice 5 Step A) and the importer's fold (slice 4).
+ *
+ * Slice 5 Step D: **on unless it is exactly "false"**. Absent — or anything else — is on. "false" is the kill-switch, kept only until
+ * Step E retires the materialised variants and removes the off path with it: off, resolution, the D1 guard, every write and the import
+ * are what they were before slice 3, byte for byte. Read at the moment of the act, never cached, so the switch flips without a deploy.
  */
 export function factorApplicabilityResolution(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  return env.REPORT_FACTOR_APPLICABILITY?.trim().toLowerCase() === "true";
+  return env.REPORT_FACTOR_APPLICABILITY?.trim().toLowerCase() !== "false";
 }
 
 /** This organisation's active applicability, by base factor — what the resolver files a base under (only on the flag's path). */
