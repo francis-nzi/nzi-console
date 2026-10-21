@@ -213,6 +213,9 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "subject.review.decide": organisation,
   "client.category.visibility.set": client,
   "client.factor.alias.set": client,
+  // Dedup slice 5 Step B: a factor's applicability is organisation-wide reference data, as the category registry is.
+  "factor.applicability.add": organisation,
+  "factor.applicability.retire": organisation,
   "client.factor.create": job,
   "client.factor.update": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
   "client.factor.archive": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),

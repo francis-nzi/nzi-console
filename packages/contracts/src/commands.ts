@@ -211,6 +211,8 @@ export type CommandKey =
   | "subject.review.decide"
   | "client.category.visibility.set"
   | "client.factor.alias.set"
+  | "factor.applicability.add"
+  | "factor.applicability.retire"
   | "client.factor.create"
   | "client.factor.update"
   | "client.factor.archive"
@@ -975,6 +977,14 @@ export type CommandInputMap = {
   "client.category.visibility.set":{clientId:string;categoryCode:string;visible:boolean|null;note?:string|null};
   /** What this client calls a shared dataset factor. `label: null` withdraws the alias. */
   "client.factor.alias.set":{clientId:string;factorId:string;label:string|null};
+  /**
+   * Dedup slice 5 Step B: mark a base factor usable under a registered category (its applicability), with the pair's own curated
+   * report label and factor label — what a row filed under it prints. Absent or null labels: none set (a filed line then falls through
+   * past the identity, never the base's). Reinstates a retired pair, keeping any label it had unless a new one is given.
+   */
+  "factor.applicability.add":{factorId:string;suffixCode:string;reportLabel?:string|null;label?:string|null};
+  /** Withhold a category from a base factor's new use, keeping the record. The reason is required, in the command's reason. */
+  "factor.applicability.retire":{factorId:string;suffixCode:string};
   "client.factor.create":{jobId:string;scope:string;reportLabel:string;description:string;unit:string;kgco2ePerUnit:number;geography:string;vintageYear:number;source:string;reusable:boolean;evidenceFileName:string|null;evidenceStorageProvider:"local"|"sharepoint"|null;evidenceUrl:string|null;evidenceExternalItemId:string|null;evidenceHash:string|null};
   "client.factor.update":{clientFactorId:string;expectedVersion:number;reportLabel:string;description:string;unit:string;kgco2ePerUnit:number;geography:string;vintageYear:number;source:string;evidenceFileName:string|null;evidenceStorageProvider:"local"|"sharepoint"|null;evidenceUrl:string|null;evidenceExternalItemId:string|null;evidenceHash:string|null};
   "client.factor.archive":{clientFactorId:string;archived:boolean};
@@ -1079,6 +1089,12 @@ const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
   else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
+/** Dedup slice 5 Step B: a (factor, suffix) pair's shape. Whether the factor is a base is the registry's question, asked by the handler. */
+const applicabilityKeyIssues = (issues: CommandIssue[], input: { factorId: string; suffixCode: string }) => {
+  required(issues, "factorId", input.factorId);
+  required(issues, "suffixCode", input.suffixCode);
+  if (text(input.suffixCode) && !/^-[a-z]+$/.test(input.suffixCode.trim())) issues.push({ field: "suffixCode", code: "INVALID", message: "A category suffix is a hyphen and lower-case letters, such as -c." });
+};
 /** JW-14 — a row-state command names the row and the version it acts on. */
 const scopeRowStateIssues = (input: { jobId: string; rowId: string; expectedVersion: number }, context: CommandContext, reasonRequired: boolean) => {
   const issues = baseIssues(context, reasonRequired);
@@ -2634,6 +2650,14 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * a new capability would produce an identical row in the matrix.
    */
   "client.factor.alias.set":{key:"client.factor.alias.set",label:"Name a factor for a client",permission:"clientfactor.manage",reasonRequired:false,transaction:"client factor alias + audit + outbox + idempotency",auditAction:"client_factor_alias_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"factorId",input.factorId);if(input.label!==null&&input.label.trim()==="")issues.push({field:"label",code:"REQUIRED",message:"Give the factor a name, or withdraw the one it has."});if(input.label!==null&&input.label.trim().length>200)issues.push({field:"label",code:"TOO_LONG",message:"A factor name is at most 200 characters."});return issues;}},
+  /**
+   * Dedup slice 5 Step B: applicability, curated as the system of record. `factor.manage` — Admin alone, as the category registry
+   * is; a consultant's `clientfactor.manage` is a different capability over a different thing. That the factor is a base (never a
+   * variant id), that it exists and that the suffix is registered and active are checked against the registry by the handler, and
+   * the 0170/0173 trigger refuses a variant id again for every writer.
+   */
+  "factor.applicability.add":{key:"factor.applicability.add",label:"Mark a factor applicable under a category",permission:"factor.manage",reasonRequired:false,transaction:"factor applicability (added or reinstated) + audit + outbox + idempotency",auditAction:"factor.applicability.added",validate:(input,context)=>{const issues=baseIssues(context,false);applicabilityKeyIssues(issues,input);for(const [field,value] of [["reportLabel",input.reportLabel],["label",input.label]] as const){if(value===undefined||value===null)continue;if(typeof value!=="string"||value.trim()==="")issues.push({field,code:"REQUIRED",message:"Give the label some text, or leave it out."});else if(value.trim().length>300)issues.push({field,code:"TOO_LONG",message:"A label is at most 300 characters."});}return issues;}},
+  "factor.applicability.retire":{key:"factor.applicability.retire",label:"Retire a factor's category",permission:"factor.manage",reasonRequired:true,transaction:"factor applicability retired (never deleted) + audit + outbox + idempotency",auditAction:"factor.applicability.retired",validate:(input,context)=>{const issues=baseIssues(context,true);applicabilityKeyIssues(issues,input);return issues;}},
   "client.factor.create":{key:"client.factor.create",label:"Create client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"client factor + audit + outbox + idempotency",auditAction:"client_factor_created",validate:(input,context)=>{const issues=baseIssues(context,false);for(const [field,value] of [["jobId",input.jobId],["scope",input.scope],["reportLabel",input.reportLabel],["unit",input.unit],["geography",input.geography],["source",input.source]] as const)required(issues,field,value);if(!crpScopeOptions.some(option=>option.value===input.scope))issues.push({field:"scope",code:"INVALID",message:"Select a controlled CRP scope category."});if(typeof input.kgco2ePerUnit!=="number"||!Number.isFinite(input.kgco2ePerUnit)||input.kgco2ePerUnit<0)issues.push({field:"kgco2ePerUnit",code:"INVALID",message:"Factor value must be zero or greater."});if(!Number.isInteger(input.vintageYear)||input.vintageYear<1990||input.vintageYear>2100)issues.push({field:"vintageYear",code:"INVALID",message:"Factor vintage year is invalid."});if(input.evidenceFileName&&(!input.evidenceHash||!input.evidenceStorageProvider))issues.push({field:"evidenceHash",code:"REQUIRED",message:"Evidence files require a storage provider and integrity hash."});return issues;}},
   "client.factor.update":{key:"client.factor.update",label:"Update client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"versioned client factor + audit + outbox + idempotency",auditAction:"client_factor_updated",validate:(input,context)=>{const issues=baseIssues(context,false);for(const [field,value] of [["clientFactorId",input.clientFactorId],["reportLabel",input.reportLabel],["unit",input.unit],["geography",input.geography],["source",input.source]] as const)required(issues,field,value);if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});if(typeof input.kgco2ePerUnit!=="number"||!Number.isFinite(input.kgco2ePerUnit)||input.kgco2ePerUnit<0)issues.push({field:"kgco2ePerUnit",code:"INVALID",message:"Factor value must be zero or greater."});if(!Number.isInteger(input.vintageYear)||input.vintageYear<1990||input.vintageYear>2100)issues.push({field:"vintageYear",code:"INVALID",message:"Factor vintage year is invalid."});if(input.evidenceFileName&&(!input.evidenceHash||!input.evidenceStorageProvider))issues.push({field:"evidenceHash",code:"REQUIRED",message:"Evidence files require a storage provider and integrity hash."});return issues;}},
   "client.factor.archive":{key:"client.factor.archive",label:"Archive client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"client factor archived flag + reference guard + audit + outbox",auditAction:"client_factor_archived",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientFactorId",input.clientFactorId);if(typeof input.archived!=="boolean")issues.push({field:"archived",code:"INVALID",message:"Archived flag must be true or false."});return issues;}},

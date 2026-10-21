@@ -29,7 +29,7 @@ import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
  * `<base>-b` already *is* a category of `<base>`.
  */
 
-type ApplicabilityRow = { factor_id: string; suffix_code: string; status: VariantStatus; source: "migration" | "admin"; report_label: string | null; label: string | null };
+type ApplicabilityRow = { factor_id: string; suffix_code: string; status: VariantStatus; source: FactorApplicability["source"]; report_label: string | null; label: string | null };
 
 const asApplicability = (row: ApplicabilityRow): FactorApplicability => ({
   factorId: row.factor_id, suffixCode: row.suffix_code, status: row.status, source: row.source,
@@ -71,12 +71,68 @@ const audit = (
   [entry.organisationId, `audit-${randomUUID()}`, entry.actorId, entry.action, `${entry.factorId}${entry.suffixCode}`,
     JSON.stringify({ factorId: entry.factorId, suffixCode: entry.suffixCode, ...entry.detail })]);
 
+/** What an add did, and the pair as it stood before — for the audit, whichever way the change arrived. */
+export type ApplicabilityAdded = { applicability: FactorApplicability; outcome: "added" | "reinstated" | "already-applicable"; ghgCategory: string; before: FactorApplicability | null };
+/** What a retire did, and the pair as it stood before. */
+export type ApplicabilityRetired = { applicability: FactorApplicability; alreadyRetired: boolean; before: FactorApplicability };
+
 /**
- * Mark a base factor usable under a category.
+ * Mark a base factor usable under a category, inside the caller's transaction. Dedup slice 5 Step B: the registered
+ * `factor.applicability.add` command and `addFactorApplicability` share it, and each records the change in its own way — so this
+ * writes no audit of its own.
  *
  * Idempotent: already applicable reports so rather than failing. A retired one is reinstated, which is what bringing a category
  * back means — the record of it was never removed.
  */
+export async function addApplicabilityIn(
+  db: Queryable,
+  organisationId: string,
+  actorId: string,
+  input: { factorId: string; suffixCode: string; reportLabel?: string | null; label?: string | null },
+): Promise<ApplicabilityAdded> {
+  const factorId = input.factorId.trim();
+  const suffixCode = input.suffixCode.trim();
+  const registry = await listCategoryVariants(db);
+  const variant = registry.find((entry) => entry.suffixCode === suffixCode);
+  if (!variant) throw new FactorApplicabilityError(`${suffixCode} is not a registered category variant.`, "unknown-suffix");
+  if (variant.status === "retired") {
+    throw new FactorApplicabilityError(
+      `${suffixCode} (${variant.label}) is retired in the registry, so nothing new may be filed under it.`, "retired-suffix");
+  }
+  // The trigger refuses this too; said here in the caller's terms, before anything is written.
+  const parsed = parseFactorId(factorId, registry);
+  if (parsed.variant) {
+    throw new FactorApplicabilityError(
+      `Applicability belongs to the base factor: ${factorId} is itself the ${parsed.variant.label} variant of ${parsed.base}.`, "variant-id");
+  }
+  const identity = await db.query(
+    `SELECT 1 FROM nzi_console.factor_identities WHERE organisation_id = $1 AND factor_id = $2`, [organisationId, factorId]);
+  if (!identity.rows[0]) throw new FactorApplicabilityError(`No factor ${factorId} in this organisation.`, "unknown-factor");
+
+  const existing = (await db.query<ApplicabilityRow>(
+    `SELECT ${COLUMNS} FROM nzi_console.factor_identity_categories
+      WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3 FOR UPDATE`,
+    [organisationId, factorId, suffixCode])).rows[0];
+  const before = existing ? asApplicability(existing) : null;
+  if (existing?.status === "active") return { applicability: before!, outcome: "already-applicable", ghgCategory: variant.ghgCategory, before };
+
+  const written = existing
+    ? await db.query<ApplicabilityRow>(
+        `UPDATE nzi_console.factor_identity_categories
+            SET status = 'active', retired_at = NULL, retired_by = NULL, retired_reason = NULL,
+                report_label = coalesce($5, report_label), label = coalesce($6, label),
+                version = version + 1, updated_at = now(), updated_by = $4
+          WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3
+          RETURNING ${COLUMNS}`, [organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null])
+    : await db.query<ApplicabilityRow>(
+        `INSERT INTO nzi_console.factor_identity_categories
+           (organisation_id, factor_id, suffix_code, source, created_by, updated_by, report_label, label)
+         VALUES ($1, $2, $3, 'admin', $4, $4, $5, $6)
+         RETURNING ${COLUMNS}`, [organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null]);
+  return { applicability: asApplicability(written.rows[0]!), outcome: existing ? "reinstated" : "added", ghgCategory: variant.ghgCategory, before };
+}
+
+/** Mark a base factor usable under a category — the principal-gated form, in a transaction of its own (slices 1–3). */
 export async function addFactorApplicability(
   pool: PoolLike,
   principal: StaffPrincipal,
@@ -84,92 +140,67 @@ export async function addFactorApplicability(
 ): Promise<{ applicability: FactorApplicability; outcome: "added" | "reinstated" | "already-applicable" }> {
   // First, so an unauthorised caller learns nothing about what would have been accepted.
   requireCapability(principal, "factor.manage");
-  const actorId = principal.userId;
-  const factorId = input.factorId.trim();
-  const suffixCode = input.suffixCode.trim();
-
   return withTenantWrite(pool, input.organisationId, async (db) => {
-    const registry = await listCategoryVariants(db);
-    const variant = registry.find((entry) => entry.suffixCode === suffixCode);
-    if (!variant) throw new FactorApplicabilityError(`${suffixCode} is not a registered category variant.`, "unknown-suffix");
-    if (variant.status === "retired") {
-      throw new FactorApplicabilityError(
-        `${suffixCode} (${variant.label}) is retired in the registry, so nothing new may be filed under it.`, "retired-suffix");
+    const added = await addApplicabilityIn(db, input.organisationId, principal.userId, input);
+    if (added.outcome !== "already-applicable") {
+      await audit(db, {
+        organisationId: input.organisationId, actorId: principal.userId, action: `factor.applicability.${added.outcome}`,
+        factorId: added.applicability.factorId, suffixCode: added.applicability.suffixCode, detail: { ghgCategory: added.ghgCategory },
+      });
     }
-    // The trigger refuses this too; said here in the caller's terms, before anything is written.
-    const parsed = parseFactorId(factorId, registry);
-    if (parsed.variant) {
-      throw new FactorApplicabilityError(
-        `Applicability belongs to the base factor: ${factorId} is itself the ${parsed.variant.label} variant of ${parsed.base}.`, "variant-id");
-    }
-    const identity = await db.query(
-      `SELECT 1 FROM nzi_console.factor_identities WHERE organisation_id = $1 AND factor_id = $2`, [input.organisationId, factorId]);
-    if (!identity.rows[0]) throw new FactorApplicabilityError(`No factor ${factorId} in this organisation.`, "unknown-factor");
-
-    const existing = (await db.query<ApplicabilityRow>(
-      `SELECT ${COLUMNS} FROM nzi_console.factor_identity_categories
-        WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3 FOR UPDATE`,
-      [input.organisationId, factorId, suffixCode])).rows[0];
-    if (existing?.status === "active") return { applicability: asApplicability(existing), outcome: "already-applicable" };
-
-    const written = existing
-      ? await db.query<ApplicabilityRow>(
-          `UPDATE nzi_console.factor_identity_categories
-              SET status = 'active', retired_at = NULL, retired_by = NULL, retired_reason = NULL,
-                  report_label = coalesce($5, report_label), label = coalesce($6, label),
-                  version = version + 1, updated_at = now(), updated_by = $4
-            WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3
-            RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null])
-      : await db.query<ApplicabilityRow>(
-          `INSERT INTO nzi_console.factor_identity_categories
-             (organisation_id, factor_id, suffix_code, source, created_by, updated_by, report_label, label)
-           VALUES ($1, $2, $3, 'admin', $4, $4, $5, $6)
-           RETURNING ${COLUMNS}`, [input.organisationId, factorId, suffixCode, actorId, input.reportLabel?.trim() || null, input.label?.trim() || null]);
-    const outcome = existing ? "reinstated" : "added";
-    await audit(db, {
-      organisationId: input.organisationId, actorId, action: `factor.applicability.${outcome}`, factorId, suffixCode,
-      detail: { ghgCategory: variant.ghgCategory },
-    });
-    return { applicability: asApplicability(written.rows[0]!), outcome };
+    return { applicability: added.applicability, outcome: added.outcome };
   });
 }
 
 /**
- * Withhold a category from a factor's new use, keeping the record.
+ * Withhold a category from a factor's new use, keeping the record, inside the caller's transaction (shared as the add is).
  *
  * Idempotent, and a reason is required: a retirement nobody can explain later is a change nobody can review.
  */
+export async function retireApplicabilityIn(
+  db: Queryable,
+  organisationId: string,
+  actorId: string,
+  input: { factorId: string; suffixCode: string; reason: string },
+): Promise<ApplicabilityRetired> {
+  const reason = input.reason.trim();
+  if (!reason) throw new FactorApplicabilityError("Say why the category is being retired.", "no-reason");
+  const current = (await db.query<ApplicabilityRow>(
+    `SELECT ${COLUMNS} FROM nzi_console.factor_identity_categories
+      WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3 FOR UPDATE`,
+    [organisationId, input.factorId, input.suffixCode])).rows[0];
+  if (!current) {
+    throw new FactorApplicabilityError(`${input.factorId} is not recorded as applicable under ${input.suffixCode}.`, "unknown");
+  }
+  const before = asApplicability(current);
+  if (current.status === "retired") return { applicability: before, alreadyRetired: true, before };
+
+  const { rows } = await db.query<ApplicabilityRow>(
+    `UPDATE nzi_console.factor_identity_categories
+        SET status = 'retired', retired_at = now(), retired_by = $4, retired_reason = $5,
+            version = version + 1, updated_at = now(), updated_by = $4
+      WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3
+      RETURNING ${COLUMNS}`, [organisationId, input.factorId, input.suffixCode, actorId, reason]);
+  return { applicability: asApplicability(rows[0]!), alreadyRetired: false, before };
+}
+
+/** Withhold a category from a factor's new use — the principal-gated form, in a transaction of its own (slices 1–3). */
 export async function retireFactorApplicability(
   pool: PoolLike,
   principal: StaffPrincipal,
   input: { organisationId: string; factorId: string; suffixCode: string; reason: string },
 ): Promise<{ applicability: FactorApplicability; alreadyRetired: boolean }> {
   requireCapability(principal, "factor.manage");
-  const actorId = principal.userId;
-  const reason = input.reason.trim();
-  if (!reason) throw new FactorApplicabilityError("Say why the category is being retired.", "no-reason");
-
+  if (!input.reason.trim()) throw new FactorApplicabilityError("Say why the category is being retired.", "no-reason");
   return withTenantWrite(pool, input.organisationId, async (db) => {
-    const current = (await db.query<ApplicabilityRow>(
-      `SELECT ${COLUMNS} FROM nzi_console.factor_identity_categories
-        WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3 FOR UPDATE`,
-      [input.organisationId, input.factorId, input.suffixCode])).rows[0];
-    if (!current) {
-      throw new FactorApplicabilityError(`${input.factorId} is not recorded as applicable under ${input.suffixCode}.`, "unknown");
+    const retired = await retireApplicabilityIn(db, input.organisationId, principal.userId, input);
+    if (!retired.alreadyRetired) {
+      await audit(db, {
+        organisationId: input.organisationId, actorId: principal.userId, action: "factor.applicability.retired",
+        factorId: input.factorId, suffixCode: input.suffixCode, detail: { reason: input.reason.trim() },
+      });
     }
-    if (current.status === "retired") return { applicability: asApplicability(current), alreadyRetired: true };
-
-    const { rows } = await db.query<ApplicabilityRow>(
-      `UPDATE nzi_console.factor_identity_categories
-          SET status = 'retired', retired_at = now(), retired_by = $4, retired_reason = $5,
-              version = version + 1, updated_at = now(), updated_by = $4
-        WHERE organisation_id = $1 AND factor_id = $2 AND suffix_code = $3
-        RETURNING ${COLUMNS}`, [input.organisationId, input.factorId, input.suffixCode, actorId, reason]);
-    await audit(db, {
-      organisationId: input.organisationId, actorId, action: "factor.applicability.retired",
-      factorId: input.factorId, suffixCode: input.suffixCode, detail: { reason },
-    });
-    return { applicability: asApplicability(rows[0]!), alreadyRetired: false };
+    return { applicability: retired.applicability, alreadyRetired: retired.alreadyRetired };
   });
 }
 

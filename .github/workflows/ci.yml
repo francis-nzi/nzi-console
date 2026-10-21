@@ -772,6 +772,12 @@ jobs:
       # edition (bases only) files a variant id with the pair's labels; portal acceptance never keeps a stale pair.
       - name: Every write path files by applicability, and J000663 reads exactly as today
         run: npx tsx --test packages/isolated-backend/tests/fileByApplicabilityPathsReal.test.ts
+      # BUILD-dataset-factor-dedup slice 5 Step B: factor.applicability.add / .retire as registered commands — factor.manage (a consultant
+      # refused), validated against the registry (a variant id, an unknown factor, an unknown or retired suffix refused), audited by the
+      # runner with the pair before, idempotent; the add carries the pair's labels to a filed row, and a pair without them never prints
+      # the base's; a retire keeps the record and an add reinstates it.
+      - name: Applicability is curated through registered, audited commands
+        run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityCommandsReal.test.ts
       # BUILD-dataset-factor-dedup slice 2 (migration 0171): a record's usage type — a governed emission_usage_type vocabulary seeded
       # per organisation, a usage_type_id on scope rows and register sources held to it by a CHECK and a foreign key for every
       # writer, asked for by the governed input spec (three categories, staff only), carried by sync and roll-forward (a withdrawn
