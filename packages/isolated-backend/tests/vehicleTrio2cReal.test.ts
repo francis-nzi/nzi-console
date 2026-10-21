@@ -90,6 +90,12 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
        VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
   });
 
+  // These are characterisations of the flag-OFF path (today's D1 rule, the sub-flow needing its materialised variant row, the refusal
+  // naming it). Since dedup slice 5 Step D the flag is on unless it is exactly "false", so the suite sets the kill-switch explicitly
+  // for its whole run — the off path survives only until Step E removes it, and these pins with it.
+  const savedFlag = process.env.REPORT_FACTOR_APPLICABILITY;
+  before(() => { process.env.REPORT_FACTOR_APPLICABILITY = "false"; });
+  after(() => { if (savedFlag === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = savedFlag; });
   after(async () => { await db?.end(); await database?.end(); });
 
   // ── Company vehicles, switched on ────────────────────────────────────────────────────────────────────

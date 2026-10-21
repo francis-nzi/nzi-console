@@ -8,6 +8,7 @@ import {
 } from "../src/postgresCommands";
 import { setPortalDataEntryBucketGrant } from "../src/portalDataEntry";
 import { createPortalDataEntryRecord, decidePortalDataEntryReview, submitPortalDataEntryRecord } from "../src/portalDataEntryRecords";
+import { previewDeclaredFactor } from "../src/declarativeResolution";
 import { listScopeRows } from "../src/readModels";
 import { withTenantRead, withTenantWrite } from "../src/postgres";
 import type { PortalPrincipal, StaffPrincipal } from "../src/index";
@@ -69,9 +70,10 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  const withFlag = async <T>(value: "true" | undefined, work: () => Promise<T>): Promise<T> => {
+  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
+  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
     const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    if (value === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = value;
+    process.env.REPORT_FACTOR_APPLICABILITY = value;
     try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
   };
   type Stored = { scope_row_id: string; factor_id: string | null; filed_suffix_code: string | null; factor_label: string | null; calculated_tco2e: string | null; provenance_json: Record<string, unknown>; version: number };
@@ -161,7 +163,7 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
   after(async () => { await database?.end(); });
 
   it("J000663 through every path: flag off writes the variant ids as today; flag on files the bases — and both price, label, freeze and compose identically", async () => {
-    await withFlag(undefined, () => writeAll(OLD, "old"));
+    await withFlag("false", () => writeAll(OLD, "old"));
     await withFlag("true", () => writeAll(NEW, "new"));
     const paths = Object.values(PATHS).filter((path) => path !== PATHS.rollforward && path !== PATHS.reingest);
 
@@ -213,7 +215,7 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
   });
 
   it("the v7 re-ingest: v7's variant id written as today flag off, and as its base filed under the pair flag on — priced and labelled identically", async () => {
-    await withFlag(undefined, () => writeReingest(REIN_OLD, "old"));
+    await withFlag("false", () => writeReingest(REIN_OLD, "old"));
     await withFlag("true", () => writeReingest(REIN_NEW, "new"));
     const path = PATHS.reingest;
     const [before, now] = [await rowOf(REIN_OLD, path.key), await rowOf(REIN_NEW, path.key)];
@@ -229,10 +231,10 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
 
   it("roll-forward: a prior row on a variant id rolls forward as today flag off, and as its base filed under the pair flag on", async () => {
     const path = PATHS.rollforward;
-    const prior = await withFlag(undefined, async () => (await createScopeRow(database.pool, { jobId: PRIOR, scope: path.scope, categoryCode: path.scope, sourceLabel: path.key, reportLabel: path.key,
+    const prior = await withFlag("false", async () => (await createScopeRow(database.pool, { jobId: PRIOR, scope: path.scope, categoryCode: path.scope, sourceLabel: path.key, reportLabel: path.key,
       quantity: path.quantity, unit: entry(path).unit, datasetId: DS, factorId: path.variant, factorVersion: DS_VERSION, factorLabel: entry(path).label, qualityTier: "spend-based" } as never, context())).data.rowId);
     const rolled = {
-      old: (await withFlag(undefined, () => rollforwardScopeRows(database.pool, { jobId: ROLL_OLD, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!,
+      old: (await withFlag("false", () => rollforwardScopeRows(database.pool, { jobId: ROLL_OLD, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!,
       new: (await withFlag("true", () => rollforwardScopeRows(database.pool, { jobId: ROLL_NEW, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!,
     };
     const [before, now] = [await rowOf(ROLL_OLD, path.key), await rowOf(ROLL_NEW, path.key)];
@@ -273,7 +275,7 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
     const create = (factorId: string, scope: string, sourceLabel: string, unit: string) => createScopeRow(database.pool, { jobId: FOLD_JOB, scope, categoryCode: scope, sourceLabel, reportLabel: sourceLabel,
       quantity: 100, unit, datasetId: FOLDED, factorId, factorVersion: "2026.1", factorLabel: null, qualityTier: "measured" } as never, context());
 
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       await assert.rejects(create("uk-ghg-25_301_3070_9_1-c", "3.7", "Commute (folded, flag off)", "miles"), /Command validation failed/, "flag off: the variant id is not in a folded edition — refused, as today");
     });
     await withFlag("true", async () => {
@@ -313,6 +315,30 @@ describe("dedup slice 5 Step A: every write path files by applicability (REPORT_
         quantity: 10, unit: "GBP", datasetId: DS, factorId: "uk-ghg-SPEND-SIC-49.3-5-d", factorVersion: DS_VERSION, factorLabel: "Land transport services", qualityTier: "spend-based" } as never, context())).data.rowId;
       const stored = (await q<Stored>(`SELECT factor_id, filed_suffix_code FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId]))[0]!;
       assert.deepEqual([stored.factor_id, stored.filed_suffix_code], ["uk-ghg-SPEND-SIC-49.3-5-d", null], "upstream files the base under -u, never this -d copy");
+    });
+  });
+  it("Step D, the pick list: a category's preview labels a filed base by its pair and folds the variant that files as it; off, neither", async () => {
+    const preview = (categoryCode: string, scope: string) => withTenantRead(database.pool, ORG, (db) => previewDeclaredFactor(db, ORG, NEW,
+      { scope, unit: null, supplySource: null, assertedVehicleAttributes: null }, categoryCode));
+    await withFlag("true", async () => {
+      const commuting = await preview("3.7", "3.7");
+      assert.deepEqual(commuting.optionLabels, {
+        "uk-ghg-25_301_3070_9_1": "Employee commuting- land - Cars (by size) - Average car - Petrol",
+        "uk-ghg-25_315_3147_11_1": "Employee commuting- land - Rail - National rail",
+      }, "each commuting base under its pair's own label — never the business-travel wording");
+      assert.deepEqual([...commuting.foldedOptions!].sort((a, b) => a.factorId.localeCompare(b.factorId)),
+        [{ datasetId: DS, factorId: "uk-ghg-25_301_3070_9_1-c" }, { datasetId: DS, factorId: "uk-ghg-25_315_3147_11_1-c" }]);
+      const travel = await preview("3.6", "3.6");
+      assert.equal(travel.optionLabels!["uk-ghg-SPEND-SIC-49.3-5"], "Land transport services");
+      assert.ok(travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-b"));
+      assert.ok(!travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-4_301_3070_4_1-bcp"), "a scope-shifted copy is never folded");
+      const upstream = await preview("3.4", "3.4");
+      assert.ok(!("uk-ghg-27_320_3235_14_1" in upstream.optionLabels!), "the container ship upstream is used natively: no pair, no relabel");
+      assert.ok(!upstream.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-d"), "a -d copy is not 3.4's pair");
+    });
+    await withFlag("false", async () => {
+      const off = await preview("3.7", "3.7");
+      assert.ok(!("optionLabels" in off) && !("foldedOptions" in off), "the kill-switch: the preview is as it was");
     });
   });
 });

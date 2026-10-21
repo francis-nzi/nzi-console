@@ -67,9 +67,10 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  const withFlag = async <T>(value: "true" | undefined, work: () => Promise<T>): Promise<T> => {
+  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
+  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
     const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    if (value === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = value;
+    process.env.REPORT_FACTOR_APPLICABILITY = value;
     try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
   };
   // Typed loosely: a command input; the command validates it.
@@ -134,7 +135,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
 
   it("J000663: the new path prices, totals, labels and composes byte-identically to today's", async () => {
     const created = { old: new Map<string, string>(), new: new Map<string, string>() };
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       for (const entry of ENTRIES) created.old.set(entry.key, (await createScopeRow(database.pool, write(OLD, entry.variant, entry.scope, entry.categoryCode, entry.key, entry.quantity), context())).data.rowId);
     });
     await withFlag("true", async () => {
@@ -187,7 +188,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
   // ── Validity: applicability, and D1 ──────────────────────────────────────────────────────────────────────────
 
   it("the flag off is today exactly: a base whose own variant row is offered is refused; a Scope 1 base with none is let through", async () => {
-    await withFlag(undefined, async () => {
+    await withFlag("false", async () => {
       await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1", "3.7", "3.7", "Commute (base, flag off)", 10), context()), refusedAs("FACTOR_IS_VARIANT_BASE"));
       const leak = (await createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Commute in a company car (flag off)", 10), context())).data.rowId;
       const stored = await row(leak);
@@ -249,7 +250,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
     try {
       const attributes = { source: "stub", fuel: "petrol", vehicleClass: "car", category: "car|small|petrol", fallbackCategory: "car|average|petrol" };
       const entry = (label: string) => write(MISC, "uk-ghg-4_301_3046_9_1", "3.7", "3.7", label, 100, { factorId: null, datasetId: null, factorVersion: null, factorLabel: null, assertedVehicleAttributes: attributes });
-      await withFlag(undefined, async () => {
+      await withFlag("false", async () => {
         await assert.rejects(createScopeRow(database.pool, entry("Commute by small car (flag off)"), context()), refusedAs("FACTOR_REQUIRED"),
           "today: no -c row, so the sub-flow stops and the entry is left for a person");
       });
