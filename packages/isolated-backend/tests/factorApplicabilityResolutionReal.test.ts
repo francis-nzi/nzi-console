@@ -204,9 +204,11 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
       await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Commute in a company car (flag on)", 10), context()),
         (error: unknown) => error instanceof CommandValidationError
           && error.issues.some((issue) => issue.code === "FACTOR_IS_VARIANT_BASE" && /not applicable under this category \('-c'\)/.test(issue.message)));
-      // A variant id still works on either path until slice 5 retires the rows: it says what it is, and is not filed.
+      // Slice 5 Step A: a covered variant id sent with the flag on is written as its base, filed under the pair — so nothing new
+      // writes a variant id the retirement would leave dangling. (Flag off it is written as sent: the J000663 gate's old path.)
       const variant = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1-c", "3.7", "3.7", "Commute (variant, flag on)", 10), context())).data.rowId;
-      assert.deepEqual([(await row(variant)).factor_id, (await row(variant)).filed_suffix_code], ["uk-ghg-25_301_3070_9_1-c", null]);
+      assert.deepEqual([(await row(variant)).factor_id, (await row(variant)).filed_suffix_code, (await row(variant)).factor_label],
+        ["uk-ghg-25_301_3070_9_1", "-c", "Employee commuting- land - Cars (by size) - Average car - Petrol"]);
     });
   });
 

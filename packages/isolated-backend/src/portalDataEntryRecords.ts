@@ -13,7 +13,7 @@ const portalRefusal=(message:string)=>new PortalAccessValidationError(message);
 import {VersionConflictError} from "./errors";
 import {reingestedRowMessage} from "./postgresCommands";
 import {primaryFactorFor} from "./portalPrimaryFactor";
-import {applyDeclarativeResolution,previewDeclaredFactor,variantBaseRefusal} from "./declarativeResolution";
+import {applyDeclarativeResolution,fileByApplicability,previewDeclaredFactor,variantBaseRefusal} from "./declarativeResolution";
 import type {ScopeRowWriteFields,SupplySource} from "@nzi/contracts";
 import {SUPPLY_SOURCES} from "@nzi/contracts";
 
@@ -160,6 +160,11 @@ export async function decidePortalDataEntryReview(pool:PoolLike,principal:StaffP
       }
       // NZC-164: who said how the electricity arrived — the client, as with a vehicle's attributes.
       if(row.supply_source)provenance.supplySourceStatedBy=row.portal_user_id;
+      // Dedup slice 5 Step A, behind REPORT_FACTOR_APPLICABILITY: the accepted factor filed by applicability, as every write files it —
+      // a base under the row's category, a covered variant id as its base. The row's suffix is always written (null when not filed), so
+      // a row once filed never keeps a pair for a factor it no longer carries. The flag off, the factor exactly as accepted.
+      const filing=await fileByApplicability(db,principal.organisationId,{datasetId:chosen.datasetId,factorId:chosen.factorId,factorLabel:chosen.label},"dataset",target.category_code?.trim()||(/^3\.\d+$/.test(target.scope)?target.scope:null));
+      if(filing.filedSuffixCode)provenance.filedUnder={suffixCode:filing.filedSuffixCode,by:"applicability"};
       if(spend){
         const category=await db.query<{name:string}>(`SELECT name FROM nzi_console.purchased_goods_categories WHERE organisation_id=$1 AND category_id=$2`,[principal.organisationId,spend.pgsCategoryId]);
         if(!category.rows[0])throw new PortalAccessValidationError("The submitted purchased-goods category is no longer configured for this client.");
@@ -167,7 +172,7 @@ export async function decidePortalDataEntryReview(pool:PoolLike,principal:StaffP
         provenance.spendDetail={kind:"spend",netValue:spend.netValue,vatPercent:spend.vatPercent,glCode:spend.glCode,category:category.rows[0].name};
         provenance.dataSource=`Client portal spend · ${row.portal_user_id} · v${row.submitted_version}`;
       }
-      const updated=await db.query<{version:number}>(`UPDATE nzi_console.job_scope_rows SET quantity=$3,monthly_activity_json=$4::jsonb,notes=nullif(trim($5),''),unit=$6,dataset_id=$7,factor_id=$8,factor_version=$9,factor_label=$10,site_id=$11,quality_tier=$12,purchased_goods_category_id=$13,provenance_json=$14::jsonb,lineage_json=jsonb_build_array(jsonb_build_object('reviewState','pending-staff-review')),calculated_tco2e=NULL,override_tco2e=NULL,override_reason=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=$15,enabled=true,supply_source=$17 WHERE organisation_id=$1 AND scope_row_id=$2 AND job_id=$16 AND origin='live' RETURNING version`,[principal.organisationId,row.scope_row_id,Number(row.quantity),monthlyJson,row.note,row.unit,chosen.datasetId,chosen.factorId,chosen.version,chosen.label,row.site_id,qualityTier,pgsCategoryId,JSON.stringify(provenance),reviewedAt,row.job_id,row.supply_source??null]);
+      const updated=await db.query<{version:number}>(`UPDATE nzi_console.job_scope_rows SET quantity=$3,monthly_activity_json=$4::jsonb,notes=nullif(trim($5),''),unit=$6,dataset_id=$7,factor_id=$8,factor_version=$9,factor_label=$10,site_id=$11,quality_tier=$12,purchased_goods_category_id=$13,provenance_json=$14::jsonb,lineage_json=jsonb_build_array(jsonb_build_object('reviewState','pending-staff-review')),calculated_tco2e=NULL,override_tco2e=NULL,override_reason=NULL,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=$15,enabled=true,supply_source=$17,filed_suffix_code=$18 WHERE organisation_id=$1 AND scope_row_id=$2 AND job_id=$16 AND origin='live' RETURNING version`,[principal.organisationId,row.scope_row_id,Number(row.quantity),monthlyJson,row.note,row.unit,chosen.datasetId,filing.factor.factorId,chosen.version,filing.factor.factorLabel,row.site_id,qualityTier,pgsCategoryId,JSON.stringify(provenance),reviewedAt,row.job_id,row.supply_source??null,filing.filedSuffixCode]);
       if(!updated.rows[0])throw new PortalAccessValidationError("The canonical scope row is unavailable.");scopeRowVersion=updated.rows[0].version;
     }
     const status=input.decision==="accept"?"accepted":"rejected";
