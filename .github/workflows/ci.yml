@@ -766,6 +766,12 @@ jobs:
       # and 0170, so the migration meets the library's shapes — the mock pool enforces none of this.
       - name: Migration 0170 holds a variant to its base's value, corrects the freight -d defect, and records applicability once
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityReal.test.ts
+      # BUILD-dataset-factor-dedup slice 5 Step A (REPORT_FACTOR_APPLICABILITY): every write path files by applicability — create, the v7
+      # re-ingest, register sync, portal acceptance, the group roll-up, roll-forward. THE GATE: J000663's variant ids through every path,
+      # flag off into one job and on into another, price, label, freeze and compose identically; the -bcp copy is never folded; a folded
+      # edition (bases only) files a variant id with the pair's labels; portal acceptance never keeps a stale pair.
+      - name: Every write path files by applicability, and J000663 reads exactly as today
+        run: npx tsx --test packages/isolated-backend/tests/fileByApplicabilityPathsReal.test.ts
       # BUILD-dataset-factor-dedup slice 2 (migration 0171): a record's usage type — a governed emission_usage_type vocabulary seeded
       # per organisation, a usage_type_id on scope rows and register sources held to it by a CHECK and a foreign key for every
       # writer, asked for by the governed input spec (three categories, staff only), carried by sync and roll-forward (a withdrawn

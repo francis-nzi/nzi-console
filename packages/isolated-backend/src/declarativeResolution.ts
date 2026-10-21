@@ -1,5 +1,5 @@
 import {
-  filedSuffixFor, parseFactorId, resolveFactorForEntry, variantFactorId,
+  categoryGhgOf, filedSuffixFor, parseFactorId, resolveFactorForEntry, variantFactorId,
   type AssertedVehicleAttributes, type FactorRule, type MappingOutcome, type ScopeRowWriteFields,
 } from "@nzi/contracts";
 import { factorApplicabilityResolution, loadApplicability } from "./factorApplicability";
@@ -208,6 +208,61 @@ export async function filedSuffixForRow(db: Queryable, organisationId: string, f
   : Promise<string | null> {
   if (!factorApplicabilityResolution() || !categoryCode || !factor.factorId || (factor.factorSource ?? "dataset") !== "dataset") return null;
   return filedSuffixFor({ factorId: factor.factorId, categoryCode, applicability: await loadApplicability(db, organisationId), registry: await listCategoryVariants(db) });
+}
+
+/**
+ * Dedup slice 3: a row filed under a pair stores the pair's own curated factor label (0172, relocated from the variant identity),
+ * so the audit names the factor exactly as the variant row did. A pair with no label leaves the factor's own.
+ */
+export async function withPairLabel<F extends { factorId: string | null; factorLabel?: string | null }>(db: Queryable, organisationId: string, factor: F, suffixCode: string | null): Promise<F> {
+  if (!suffixCode || !factor.factorId) return factor;
+  const pair = (await db.query<{ label: string | null }>(
+    `SELECT label FROM nzi_console.factor_identity_categories WHERE organisation_id=$1 AND factor_id=$2 AND suffix_code=$3`,
+    [organisationId, factor.factorId, suffixCode])).rows[0];
+  return pair?.label ? { ...factor, factorLabel: pair.label } : factor;
+}
+
+/**
+ * Dedup slice 5, Step A, behind REPORT_FACTOR_APPLICABILITY: what any write files, by applicability — the one rule every write path
+ * calls (create and update, the v7 re-ingest, register sync, portal acceptance, the group roll-up, roll-forward), so that once the
+ * flag is the default nothing new writes a variant id that slice 5's retirement would leave dangling.
+ *
+ * - The flag off, a client factor, no factor or no category: the factor exactly as sent.
+ * - A **base**: filed exactly as slice 3 files it (`filedSuffixForRow`).
+ * - A **variant id** `<base><suffix>`: written as its base, filed under the suffix, when the pair is this category's own (the
+ *   suffix slice 3 would file the base under here) and the variant is covered — its base active in the row's dataset and, if the
+ *   variant row is there too, at the same value, unit and scopes (slice 4's fold condition, so the price is the variant's own); with
+ *   no variant row (a folded edition), the base's own scopes cover the row's. Anything else — a scope-shifted copy (`-bcp`), a pair
+ *   the category doesn't file under — is written as sent, as today.
+ *
+ * Filed, the row takes the pair's factor label (`withPairLabel`); its report label comes from the pair (`filed_suffix_code`).
+ */
+export async function fileByApplicability<F extends { datasetId?: string | null; factorId: string | null; factorLabel?: string | null }>(
+  db: Queryable, organisationId: string, factor: F, factorSource: string | null | undefined, categoryCode: string | null,
+): Promise<{ factor: F; filedSuffixCode: string | null }> {
+  const unchanged = { factor, filedSuffixCode: null };
+  if (!factorApplicabilityResolution() || !categoryCode || !factor.factorId || (factorSource ?? "dataset") !== "dataset") return unchanged;
+  const registry = await listCategoryVariants(db);
+  const parsed = parseFactorId(factor.factorId, registry);
+  if (!parsed.variant) {
+    const filedSuffixCode = await filedSuffixForRow(db, organisationId, { factorId: factor.factorId, factorSource }, categoryCode);
+    return { factor: await withPairLabel(db, organisationId, factor, filedSuffixCode), filedSuffixCode };
+  }
+  const suffixCode = parsed.variant.suffixCode;
+  if (!factor.datasetId) return unchanged;
+  if (filedSuffixFor({ factorId: parsed.base, categoryCode, applicability: await loadApplicability(db, organisationId), registry }) !== suffixCode) return unchanged;
+  const rows = (await db.query<{ factor_id: string; kgco2e_per_unit: string; activity_unit: string; scopes: string[]; active: boolean }>(
+    `SELECT factor_id, kgco2e_per_unit::text, activity_unit, scopes, active FROM nzi_console.emission_factors
+      WHERE organisation_id=$1 AND dataset_id=$2 AND factor_id = ANY($3::text[])`,
+    [organisationId, factor.datasetId, [parsed.base, factor.factorId]])).rows;
+  const base = rows.find((row) => row.factor_id === parsed.base), variant = rows.find((row) => row.factor_id === factor.factorId);
+  if (!base?.active) return unchanged;
+  // `numeric`'s own text, so equal values compare equal (0170's guard holds a base and its variants to one value per dataset).
+  const covered = variant
+    ? variant.kgco2e_per_unit === base.kgco2e_per_unit && variant.activity_unit === base.activity_unit && [...variant.scopes].sort().join("+") === [...base.scopes].sort().join("+")
+    : base.scopes.some((claim) => claim === categoryGhgOf(categoryCode) || categoryGhgOf(categoryCode).startsWith(`${claim}.`));
+  if (!covered) return unchanged;
+  return { factor: await withPairLabel(db, organisationId, { ...factor, factorId: parsed.base }, suffixCode), filedSuffixCode: suffixCode };
 }
 
 /**
