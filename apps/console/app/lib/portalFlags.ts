@@ -12,7 +12,8 @@ export type PortalFeature =
   | "portal-analytics"
   | "portal-actions"
   | "portal-plan"
-  | "portal-readiness";
+  | "portal-readiness"
+  | "portal-reports";
 
 const enabled = (): Set<string> =>
   new Set(

@@ -410,6 +410,26 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-pd-figures{border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .nz-pd-figures>summary{padding:12px 16px;cursor:pointer;font-size:13px;font-weight:650;color:var(--pine)}
 .nz-pd-figures>.nz-portal-dash-tables{padding:4px 16px 16px}
+/* BUILD-client-portal-reports: the Reports view (MOCKUP-client-portal.html), on the same light tokens and the Dashboard's header
+   band. A report awaiting the client's approval is marked by its eyebrow's words and an amber edge — the portfolio's own
+   "needs attention" tint (`.nz-st.need`), never a scope colour. */
+.nz-pr-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.nz-pr-card{display:grid;align-content:start;gap:10px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--card);min-width:0}
+.nz-pr-card.awaiting{border-color:#F1D79A;border-left:3px solid #E7B547}
+.nz-pr-head{display:grid;gap:4px}
+.nz-pr-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--pine)}
+.nz-pr-card.awaiting .nz-pr-eyebrow{color:#8A6410}
+.nz-pr-head h4{margin:0;font-size:16px;font-weight:700;color:var(--t1)}
+.nz-pr-doc{margin:0;font-size:12.5px;color:var(--t2)}
+.nz-pr-note{margin:0;padding:9px 12px;border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:9px;font-size:12px;line-height:1.5;color:var(--t2)}
+.nz-pr-actions{display:flex;flex-wrap:wrap;gap:8px}
+.nz-pr-actions .nz-btn{height:32px;text-decoration:none}
+.nz-pr-src{margin:0;padding-top:10px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--t3);overflow-wrap:anywhere}
+.nz-pr-evidence>summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--pine)}
+.nz-pr-evidence dl{display:grid;gap:6px;margin:10px 0 0}
+.nz-pr-evidence dl>div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;font-size:12px}
+.nz-pr-evidence dt{color:var(--t2)}.nz-pr-evidence dd{margin:0;color:var(--t1);overflow-wrap:anywhere}
+@media (max-width:760px){.nz-pr-grid{grid-template-columns:1fr}.nz-pr-evidence dl>div{grid-template-columns:1fr;gap:2px}}
 @media(max-width:900px){.nz-pd-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.nz-pd-metric:nth-child(3){border-left:0}.nz-pd-metric:nth-child(n+3){border-top:1px solid var(--line2)}}
 @media(max-width:520px){.nz-pd-metrics{grid-template-columns:minmax(0,1fr)}.nz-pd-metric+.nz-pd-metric{border-left:0;border-top:1px solid var(--line2)}.nz-pd-client{font-size:22px}}
 .nz-portal-header{background:var(--midnight);color:#fff}.nz-portal-header-inner{display:flex;align-items:center;justify-content:space-between;max-width:1160px;height:72px;margin:auto;padding:0 24px}
