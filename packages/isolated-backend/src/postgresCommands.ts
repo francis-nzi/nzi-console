@@ -1361,12 +1361,16 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   const priorRes=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=(SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$3) AND job_family='crp'`,[context.organisationId,input.priorJobId,input.jobId]);
   const priorJob=priorRes.rows[0];
   if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
-  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null}>(
+  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null}>(
     `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
             -- Dedup slice 2 (0171): a new row carries the prior usage type only while it is still offered (a withdrawn one drops to null).
             (SELECT v.value_id FROM nzi_console.reference_values v WHERE v.organisation_id=r.organisation_id AND v.value_id=r.usage_type_id AND v.active) AS usage_type_id,
             -- Dedup slice 3: filed by applicability only while the pair is still applicable.
-            (SELECT a.suffix_code FROM nzi_console.factor_identity_categories a WHERE a.organisation_id=r.organisation_id AND a.factor_id=r.factor_id AND a.suffix_code=r.filed_suffix_code AND a.status='active') AS filed_suffix_code
+            (SELECT a.suffix_code FROM nzi_console.factor_identity_categories a WHERE a.organisation_id=r.organisation_id AND a.factor_id=r.factor_id AND a.suffix_code=r.filed_suffix_code AND a.status='active') AS filed_suffix_code,
+            -- Slice 5 Step C (the review's active-recheck): the pair the prior row was filed under, whatever its status, and the factor's
+            -- own label in its dataset — so a row whose pair has since been retired carries neither the pair nor its label forward.
+            r.filed_suffix_code AS prior_filed_suffix_code,
+            (SELECT f.label FROM nzi_console.emission_factors_display f WHERE f.organisation_id=r.organisation_id AND f.dataset_id=r.dataset_id AND f.factor_id=r.factor_id) AS factor_own_label
      FROM nzi_console.job_scope_rows r
      WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=ANY($3::text[]) AND enabled=true
        -- A migrated row is v7's history: it never seeds a live row, so it is skipped (§5.1).
@@ -1407,9 +1411,13 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
     const categoryCode=row.category_code?.trim()||(/^3\.\d+$/.test(row.scope)?row.scope:null);
     // Dedup slice 5 Step A, behind REPORT_FACTOR_APPLICABILITY: a rolled-forward row is a new row, so it is filed as every write files
     // — a prior row on a covered variant id rolls forward as its base, filed under the pair. A row already filed keeps its pair while
-    // the pair is active (slice 3, whatever the flag).
-    const filing=row.filed_suffix_code?null:await fileByApplicability(db,context.organisationId,{datasetId:row.dataset_id,factorId:row.factor_id,factorLabel:row.factor_label},row.factor_source,categoryCode);
-    const rolledFactor=filing?.filedSuffixCode?filing.factor:{factorId:row.factor_id,factorLabel:row.factor_label};
+    // the pair is active (slice 3, whatever the flag). Slice 5 Step C, the active-recheck: a prior row whose pair has since been retired
+    // is never copied forward — the pair is dropped with its curated label (the factor's own label in its dataset stands instead), and
+    // the row is filed afresh by today's applicability: under another active pair for the category if there is one, else natively.
+    const pairRetired=Boolean(row.prior_filed_suffix_code)&&!row.filed_suffix_code;
+    const ownLabel=pairRetired?(row.factor_own_label??row.factor_label):row.factor_label;
+    const filing=row.filed_suffix_code?null:await fileByApplicability(db,context.organisationId,{datasetId:row.dataset_id,factorId:row.factor_id,factorLabel:ownLabel},row.factor_source,categoryCode);
+    const rolledFactor=filing?.filedSuffixCode?filing.factor:{factorId:row.factor_id,factorLabel:ownLabel};
     const rolledSuffixCode=row.filed_suffix_code??filing?.filedSuffixCode??null;
     const writeFields:ScopeRowWriteFields={scope:row.scope,categoryCode:row.category_code,sourceLabel:row.source_label,reportLabel:row.report_label,assetIdentifier:row.asset_identifier,siteId,purchasedGoodsCategoryId:categoryId,quantity:null,unit:row.unit,datasetId:row.dataset_id,factorId:rolledFactor.factorId,factorVersion:row.factor_version,factorLabel:rolledFactor.factorLabel,qualityTier:null,factorSource:row.factor_source,clientFactorId:row.client_factor_id,isCustomEntry:row.is_custom_entry,applyPct:Number(row.apply_pct),columnText:row.column_text};
     const scoped=scopeEvidence(writeFields,context);

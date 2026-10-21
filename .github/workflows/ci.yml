@@ -778,6 +778,12 @@ jobs:
       # the base's; a retire keeps the record and an add reinstates it.
       - name: Applicability is curated through registered, audited commands
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityCommandsReal.test.ts
+      # BUILD-dataset-factor-dedup slice 5 Step C (migration 0174): live rows on a covered variant id re-filed onto the base under the pair
+      # — the report frozen before and the one frozen after are identical; a scope-shifted -bcp, a variant under another category's pair,
+      # a withdrawn base, a re-ingested row (ruled: revert and re-run) and v7 history are never touched; no frozen snapshot moves; a re-run
+      # is a no-op. And roll-forward's active-recheck: a retired pair is dropped with its label, never copied forward.
+      - name: Migration 0174 moves live rows off variant ids, and J000663's report reads exactly as before
+        run: npx tsx --test packages/isolated-backend/tests/scopeRowsRefiledReal.test.ts
       # BUILD-dataset-factor-dedup slice 2 (migration 0171): a record's usage type — a governed emission_usage_type vocabulary seeded
       # per organisation, a usage_type_id on scope rows and register sources held to it by a CHECK and a foreign key for every
       # writer, asked for by the governed input spec (three categories, staff only), carried by sync and roll-forward (a withdrawn
