@@ -12,7 +12,7 @@ import { listScopeRows } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
 
 /**
- * Dedup slice 5 Step C (migration 0174): every live row on a covered variant id is re-filed as its base under the pair — base,
+ * Dedup slice 5 Steps C and E (migrations 0174, 0175). C: every live row on a covered variant id is re-filed as its base under the pair — base,
  * `filed_suffix_code`, the pair's factor label, `filedUnder` — with nothing priced or printed moving, and nothing else touched:
  * not a scope-shifted `-bcp` row, not a variant under a category that isn't its pair's, not a re-ingested row (ruled 21 Oct: those
  * move by revert and re-run), and never a frozen snapshot.
@@ -21,11 +21,19 @@ import { withTenantRead } from "../src/postgres";
  * identical, measurement for measurement, in totals and in the composed report. 0174 is pure data, so its own SQL is run here over
  * rows written as they were before it (the migration itself already ran, over an empty table, when the database was built).
  *
+ * E: then every covered variant row nothing cites is retired (`active = false`, never deleted) — not the scope-shifted `-bcp`, not one a
+ * live row still cites (J000663's re-ingested rows, ruled 21 Oct 2026 "Option 2"), not one whose base is withdrawn or whose pair is
+ * retired — and the inert scope-mismatched pair is retired. The report frozen after both is the report frozen before either.
+ *
+ * Rows "as written before Step A" are written through the commands (which file them, since Step A) and put back on their variant ids
+ * in SQL — exactly the representation 0174 reverses.
+ *
  * Also here, from the Step B review: roll-forward's active-recheck — a prior row whose pair has since been retired carries neither the
  * pair nor its label forward.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATION = readFileSync(resolve(here, "../migrations/0174_scope_rows_filed_by_applicability.sql"), "utf8");
+const RETIREMENT = readFileSync(resolve(here, "../migrations/0175_retire_covered_variants.sql"), "utf8");
 const ORG = "org-s5c", CLIENT = "client-s5c", ACTOR = "ada";
 const OLD = "job-s5c-frozen-before", NEW = "job-s5c-frozen-after", REIN = "job-s5c-reingested", PRIOR = "job-s5c-prior", NEXT = "job-s5c-next", MISC = "job-s5c-misc";
 const DS = "gb-2025", DS_VERSION = "2025.1", DS_ALT = "gb-2025-alt";
@@ -48,6 +56,9 @@ const FACTORS: Factor[] = [
   // A commuting copy whose pair is retired before 0174 runs.
   F("uk-ghg-25_301_3071_9_1", "miles", 0.27, ["3"], "Business travel- land - Cars (by size) - Average car - Diesel", "Business Travel: Average Car Diesel"),
   F("uk-ghg-25_301_3071_9_1-c", "miles", 0.27, ["3"], "Employee commuting- land - Cars (by size) - Average car - Diesel", "Employee Commuting: Average Car Diesel"),
+  // A commuting copy nothing cites, whose pair is retired before 0175: not covered, so it stays.
+  F("uk-ghg-25_301_3072_9_1", "miles", 0.28, ["3"], "Business travel- land - Cars (by size) - Average car - Hybrid", "Business Travel: Average Car Hybrid"),
+  F("uk-ghg-25_301_3072_9_1-c", "miles", 0.28, ["3"], "Employee commuting- land - Cars (by size) - Average car - Hybrid", "Employee Commuting: Average Car Hybrid"),
 ];
 const byId = new Map(FACTORS.map((factor) => [factor.id, factor]));
 
@@ -75,16 +86,18 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  const migrate = async () => {
+  /** A migration's own SQL, in one transaction, as the runner applies it. */
+  const migrate = async (sql = MIGRATION) => {
     const db = await database.admin();
-    try { await db.query("BEGIN"); await db.query(MIGRATION); await db.query("COMMIT"); } catch (error) { await db.query("ROLLBACK"); throw error; } finally { await db.end(); }
+    try { await db.query("BEGIN"); await db.query(sql); await db.query("COMMIT"); } catch (error) { await db.query("ROLLBACK"); throw error; } finally { await db.end(); }
   };
-  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
-  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
-    const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    process.env.REPORT_FACTOR_APPLICABILITY = value;
-    try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
-  };
+  /** Rows put back as they were written before Step A: on the variant id, unfiled, with the variant row's label and no `filedUnder`. */
+  const asWrittenBeforeStepA = (jobIds: string[]) => q(
+    `UPDATE nzi_console.job_scope_rows r
+        SET factor_id = r.factor_id || r.filed_suffix_code, filed_suffix_code = NULL, provenance_json = r.provenance_json - 'filedUnder',
+            factor_label = coalesce((SELECT f.label FROM nzi_console.emission_factors f WHERE f.organisation_id = r.organisation_id
+                                       AND f.dataset_id = r.dataset_id AND f.factor_id = r.factor_id || r.filed_suffix_code), r.factor_label)
+      WHERE r.job_id = ANY($1) AND r.origin = 'live' AND r.filed_suffix_code IS NOT NULL`, [jobIds]);
   type Stored = { scope_row_id: string; source_label: string; factor_id: string; filed_suffix_code: string | null; factor_label: string | null; calculated_tco2e: string | null;
     provenance_json: Record<string, unknown>; version: number; review_status: string; reviewed_row_version: number | null; enabled: boolean };
   const rowsOf = async (jobId: string) => new Map((await q<Stored>(
@@ -120,7 +133,8 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
     // A second edition, whose spend base is withdrawn once a row cites its -b copy.
     await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
              VALUES ($1,$2,'DESNZ GB 2025 (alt)','2025.2','2025-01-01','2026-12-31','GB','active','DESNZ','OGL')`, [ORG, DS_ALT]);
-    for (const id of ["uk-ghg-SPEND-SIC-49.3-5", "uk-ghg-SPEND-SIC-49.3-5-b"]) {
+    // Uncited here: a -d copy (its base withdrawn below) and the scope-shifted -bcp over its Scope 1 car — neither may retire.
+    for (const id of ["uk-ghg-SPEND-SIC-49.3-5", "uk-ghg-SPEND-SIC-49.3-5-b", "uk-ghg-SPEND-SIC-49.3-5-d", "uk-ghg-4_301_3070_4_1", "uk-ghg-4_301_3070_4_1-bcp"]) {
       const factor = byId.get(id)!;
       await q(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [ORG, DS_ALT, id, factor.label, factor.unit, factor.value, factor.scopes]);
     }
@@ -132,12 +146,31 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
       await q(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by) VALUES ($1,$2,$3,'automatic','Fixture',$4)`, [ORG, job, DS, ACTOR]);
     }
     await q(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by) VALUES ($1,$2,$3,'manual','Fixture',$4)`, [ORG, MISC, DS_ALT, ACTOR]);
+    // 0175 retired the seeded variants as the database was built (nothing cited them then). Before C and E, the library had them: held
+    // active again, so the rows below are written over the library as it stood.
+    await q(`UPDATE nzi_console.emission_factors SET active = true WHERE organisation_id = $1 AND NOT active`, [ORG]);
+    // …and the inert pair it retired with them, so the 0175 run below is the one that retires it.
+    await q(`UPDATE nzi_console.factor_identity_categories SET status = 'active', retired_at = NULL, retired_by = NULL, retired_reason = NULL
+              WHERE organisation_id = $1 AND retired_by = 'migration:0175'`, [ORG]);
+    // One citation of each other kind 0175 respects, each on a covered variant of its own, so each clause of the guard is observable:
+    // a register source, an emission group and a client alias. (And v7 history naming car -c, which is no citation: it still retires.)
+    await q(`INSERT INTO nzi_console.job_emission_sources (organisation_id,source_id,job_id,scope,source_type,source_name,dataset_id,factor_id,factor_source,data_source)
+             VALUES ($1,'src-cites-freight',$2,'3.9','travel','Shipping (register)',$3,'uk-ghg-27_320_3235_14_1-d','dataset','Test')`, [ORG, MISC, DS]);
+    await q(`INSERT INTO nzi_console.job_emission_groups (organisation_id,group_id,job_id,name,dataset_id,factor_id,created_by)
+             VALUES ($1,'grp-cites-spend-b',$2,'Travel spend (group)',$3,'uk-ghg-SPEND-SIC-49.3-5-b',$4)`, [ORG, MISC, DS, ACTOR]);
+    await q(`INSERT INTO nzi_console.client_factor_aliases (organisation_id,client_id,factor_id,label,created_by)
+             VALUES ($1,$2,'uk-ghg-SPEND-SIC-49.3-5-u','Inbound haulage (our name)',$3)`, [ORG, CLIENT, ACTOR]);
+    await q(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,category_code,quantity,unit,dataset_id,factor_id,factor_source,calculated_tco2e,enabled,origin,migrated_record,source_system,legacy_db_id)
+             VALUES ($1,'v7-car',$2,'3.7','v7 car','v7 car','v7','v7','3.7',100,'miles',$4,'uk-ghg-25_301_3070_9_1-c','dataset',0.026,false,'migrated',$3::jsonb,'nzi-pro-v7','v7-car')`,
+      [ORG, REIN, JSON.stringify({ qty: 100, uom: "miles", factor: 0.26187, ghg_unit: "kgCO2e", original_id: "25_301_3070_9_1-c", reported_tco2e: 0.026, data_source: "Company Data", enabled: true }), DS]);
+    await retireFactorApplicability(database.pool, { userId: ACTOR, organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal,
+      { organisationId: ORG, factorId: "uk-ghg-25_301_3072_9_1", suffixCode: "-c", reason: "Hybrid commuting moved to its own factor." });
   });
   after(async () => { await database?.end(); });
 
-  it("J000663: rows on variant ids re-filed onto their bases — the report frozen before and the one frozen after are identical; nothing else moves", async () => {
-    // As written before Step A: variant ids, flag off.
-    await withFlag("false", async () => {
+  it("J000663: rows on variant ids re-filed (0174), covered variants retired (0175) — the report frozen before and the one frozen after are identical", async () => {
+    // As written before Step A: on variant ids.
+    {
       for (const job of [OLD, NEW]) for (const entry of ENTRIES) await write(job, entry);
       // A re-ingested row (attest-only): v7's -c, linked to its migrated v7 row.
       // The migrated v7 row itself names the variant too: v7 history, immutable (0133) — 0174 reads live rows only.
@@ -159,7 +192,9 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
       await q(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,category_code,quantity,unit,dataset_id,factor_id,factor_version,factor_label,factor_source,reingested_from_row_id)
                VALUES ($1,'row-reingested',$2,'3.7','Rail commute (re-ingested)','Rail commute (re-ingested)','Scope 3','Commuting','3.7',5000,'passenger.km',$3,'uk-ghg-25_315_3147_11_1-c',$4,$5,'dataset','v7-rail')`,
         [ORG, REIN, DS, DS_VERSION, byId.get("uk-ghg-25_315_3147_11_1-c")!.label]);
-    });
+    }
+    await asWrittenBeforeStepA([OLD, NEW, MISC]);
+    await q(`UPDATE nzi_console.job_scope_rows SET factor_label='Employee commuting - Average car - Petrol (2024 wording)' WHERE job_id=$1 AND source_label='Commute (older wording)'`, [MISC]);
     for (const job of [OLD, NEW]) {
       for (const row of (await rowsOf(job)).values()) await calculateScopeRow(database.pool, { jobId: job, rowId: row.scope_row_id, expectedVersion: row.version }, context());
       await q(`UPDATE nzi_console.job_scope_rows SET review_status='approved', reviewed_by=$2, reviewed_row_version=version, reviewed_at=now() WHERE job_id=$1 AND origin='live'`, [job, ACTOR]);
@@ -169,7 +204,10 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
     const [rowsBefore, readsBefore] = [await rowsOf(NEW), await reads(NEW)];
     const reingestedBefore = (await q(`SELECT * FROM nzi_console.job_scope_rows WHERE scope_row_id='row-reingested'`))[0];
 
+    const retirementEvents = async (action: string) => (await q(`SELECT 1 FROM nzi_console.audit_events WHERE organisation_id=$1 AND action=$2 AND actor_id='migration:0175'`, [ORG, action])).length;
+    const eventsBefore = { factors: await retirementEvents("emission_factor.retired"), pairs: await retirementEvents("factor.applicability.retired") };
     await migrate();
+    await migrate(RETIREMENT);
 
     const rowsAfter = await rowsOf(NEW);
     for (const entry of ENTRIES) {
@@ -223,26 +261,61 @@ describe("dedup slice 5 Step C: 0174 re-files live rows off variant ids, byte-id
     assert.deepEqual([car.principal_type, car.before_json.factorId, car.after_json.factorId, car.after_json.filedSuffixCode],
       ["system", "uk-ghg-25_301_3070_9_1-c", "uk-ghg-25_301_3070_9_1", "-c"]);
 
-    // Re-running changes nothing: no row left to re-file, no second event.
+    // 0175: exactly the covered variants nothing cites are retired; everything a row still cites, or that is not covered, stays.
+    const active = new Map((await q<{ dataset_id: string; factor_id: string; active: boolean }>(
+      `SELECT f.dataset_id, f.factor_id, f.active FROM nzi_console.emission_factors f CROSS JOIN LATERAL nzi_console.factor_id_parts(f.factor_id) p WHERE f.organisation_id=$1 AND p.suffix_code IS NOT NULL`, [ORG])).map((row) => [`${row.dataset_id}|${row.factor_id}`, row.active]));
+    const retiredNow = [...active].filter(([, isActive]) => !isActive).map(([key]) => key).sort();
+    assert.deepEqual(retiredNow, [`${DS}|uk-ghg-25_301_3070_9_1-c`],
+      "retired: the one covered variant every row has moved off and nothing else cites — v7 history naming it is no citation");
+    for (const [key, why] of [
+      [`${DS}|uk-ghg-4_301_3070_4_1-bcp`, "the scope-shifted copy (and a row cites it)"],
+      [`${DS}|uk-ghg-25_315_3147_11_1-c`, "a re-ingested row still cites it (J000663, ruled Option 2)"],
+      [`${DS}|uk-ghg-SPEND-SIC-49.3-5-d`, "a row filed upstream still cites the -d copy"],
+      [`${DS}|uk-ghg-25_301_3071_9_1-c`, "its pair is retired, so it is not covered — and a row cites it"],
+      [`${DS_ALT}|uk-ghg-SPEND-SIC-49.3-5-b`, "its base is withdrawn, so it is not covered — and a row cites it"],
+      [`${DS_ALT}|uk-ghg-SPEND-SIC-49.3-5-d`, "its base is withdrawn, so it is not covered (nothing cites it)"],
+      [`${DS_ALT}|uk-ghg-4_301_3070_4_1-bcp`, "the scope-shifted copy — kept although nothing cites it"],
+      [`${DS}|uk-ghg-25_301_3072_9_1-c`, "its pair is retired, so it is not covered (nothing cites it)"],
+      [`${DS}|uk-ghg-27_320_3235_14_1-d`, "a register source cites it"],
+      [`${DS}|uk-ghg-SPEND-SIC-49.3-5-b`, "an emission group cites it"],
+      [`${DS}|uk-ghg-SPEND-SIC-49.3-5-u`, "a client alias names it"],
+    ] as const) assert.equal(active.get(key), true, `kept active: ${why}`);
+    const inert = (await q<{ status: string; retired_by: string | null }>(`SELECT status, retired_by FROM nzi_console.factor_identity_categories WHERE organisation_id=$1 AND factor_id='uk-ghg-4_301_3070_4_1' AND suffix_code='-bcp'`, [ORG]))[0]!;
+    assert.deepEqual([inert.status, inert.retired_by], ["retired", "migration:0175"], "the inert Scope 1 / business-travel pair is retired");
+    const live = (await q<{ status: string }>(`SELECT status FROM nzi_console.factor_identity_categories WHERE organisation_id=$1 AND factor_id='uk-ghg-25_301_3070_9_1' AND suffix_code='-c'`, [ORG]))[0]!;
+    assert.equal(live.status, "active", "a pair its base can be filed under is untouched");
+    assert.equal(await retirementEvents("emission_factor.retired") - eventsBefore.factors, 1, "one event per retired variant row");
+    assert.equal(await retirementEvents("factor.applicability.retired") - eventsBefore.pairs, 1, "one event for the inert pair");
+    // After E a row prices off the base (the variant is retired), and a retired variant id sent is still filed as its base.
+    const older = (await rowsOf(MISC)).get("Commute (older wording)")!;
+    await calculateScopeRow(database.pool, { jobId: MISC, rowId: older.scope_row_id, expectedVersion: older.version }, context());
+    assert.equal(Number((await rowsOf(MISC)).get("Commute (older wording)")!.calculated_tco2e), Number((10 * 0.26187 / 1000).toFixed(12)), "priced off the base's own value");
+    const sent = (await write(MISC, ENTRIES[0])).data.rowId;
+    assert.deepEqual((await q<{ factor_id: string; filed_suffix_code: string }>(`SELECT factor_id, filed_suffix_code FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [sent]))
+      .map((row) => [row.factor_id, row.filed_suffix_code])[0], ["uk-ghg-25_301_3070_9_1", "-c"], "a retired variant id sent is filed as its base");
+
+    // Re-running either changes nothing: no row left to re-file, no variant left to retire, no second event.
     const settled = await rowsOf(NEW);
     await migrate();
+    await migrate(RETIREMENT);
     assert.deepEqual(await rowsOf(NEW), settled);
+    assert.equal(await retirementEvents("emission_factor.retired") - eventsBefore.factors, 1, "no second event on a re-run");
     assert.equal((await q(`SELECT 1 FROM nzi_console.audit_events WHERE organisation_id=$1 AND action='scope_row.factor.refiled'`, [ORG])).length, refiledCount);
   });
 
   it("roll-forward's active-recheck: a prior row whose pair has since been retired carries neither the pair nor its label forward", async () => {
     const rail = ENTRIES[1];
-    const prior = (await withFlag("true", () => write(PRIOR, rail))).data.rowId;
+    const prior = (await write(PRIOR, rail)).data.rowId;
     assert.deepEqual((await q<{ factor_id: string; filed_suffix_code: string }>(`SELECT factor_id, filed_suffix_code FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [prior]))
       .map((row) => [row.factor_id, row.filed_suffix_code])[0], ["uk-ghg-25_315_3147_11_1", "-c"], "the prior row is filed under -c");
     const admin = { userId: ACTOR, organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
     await retireFactorApplicability(database.pool, admin, { organisationId: ORG, factorId: "uk-ghg-25_315_3147_11_1", suffixCode: "-c", reason: "Rail commuting moved to its own factor." });
-    for (const flag of ["false", "true"] as const) {
-      const rolledId = (await withFlag(flag, () => rollforwardScopeRows(database.pool, { jobId: NEXT, priorJobId: PRIOR, rowIds: [prior] }, context()))).data.createdRowIds[0]!;
+    {
+      const rolledId = (await rollforwardScopeRows(database.pool, { jobId: NEXT, priorJobId: PRIOR, rowIds: [prior] }, context())).data.createdRowIds[0]!;
       const rolled = (await q<{ factor_id: string; filed_suffix_code: string | null; factor_label: string; provenance_json: Record<string, unknown> }>(
         `SELECT factor_id, filed_suffix_code, factor_label, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rolledId]))[0]!;
-      assert.deepEqual([rolled.factor_id, rolled.filed_suffix_code], ["uk-ghg-25_315_3147_11_1", null], `flag ${flag === "true" ? "on" : "off"}: the retired pair is dropped, and nothing else is applicable here`);
-      assert.equal(rolled.factor_label, "Business travel- land - Rail - National rail", `flag ${flag === "true" ? "on" : "off"}: the factor's own label — never the retired pair's`);
+      assert.deepEqual([rolled.factor_id, rolled.filed_suffix_code], ["uk-ghg-25_315_3147_11_1", null], "the retired pair is dropped, and nothing else is applicable here");
+      assert.equal(rolled.factor_label, "Business travel- land - Rail - National rail", "the factor's own label — never the retired pair's");
       assert.ok(!("filedUnder" in rolled.provenance_json));
       await q(`DELETE FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rolledId]);
     }

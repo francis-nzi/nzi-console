@@ -607,7 +607,7 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
     LEFT JOIN nzi_console.client_sites s ON (s.organisation_id,s.site_id)=(r.organisation_id,r.site_id)
     LEFT JOIN nzi_console.purchased_goods_categories pgc ON (pgc.organisation_id,pgc.category_id)=(r.organisation_id,r.purchased_goods_category_id)
     -- What the client calls the factor, and NZI's curated wording for it — both held once for every edition (0125).
-    LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,j.client_id,r.factor_id) AND cfa.active
+    LEFT JOIN nzi_console.client_factor_aliases cfa ON (cfa.organisation_id,cfa.client_id,cfa.factor_id)=(r.organisation_id,j.client_id,r.factor_id||coalesce(r.filed_suffix_code,'')) AND cfa.active
     LEFT JOIN nzi_console.factor_identities fi ON (fi.organisation_id,fi.factor_id)=(r.organisation_id,r.factor_id) AND r.factor_source='dataset' LEFT JOIN nzi_console.factor_identity_categories fic ON (fic.organisation_id,fic.factor_id,fic.suffix_code)=(r.organisation_id,r.factor_id,r.filed_suffix_code)
     LEFT JOIN nzi_console.client_factors cfl ON (cfl.organisation_id,cfl.client_factor_id)=(r.organisation_id,r.client_factor_id)
     WHERE r.job_id=$1 AND j.job_family='crp'

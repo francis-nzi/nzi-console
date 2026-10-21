@@ -10,11 +10,12 @@ import { listScopeRows } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
 
 /**
- * Dedup slice 3 (migration 0172, REPORT_FACTOR_APPLICABILITY): the resolver prices a (base, category) pair off the base's own
+ * Dedup slice 3 (migration 0172; unconditional since slice 5 Step E): the resolver prices a (base, category) pair off the base's own
  * value, filed under the row's category because the category is in the base's applicability — no `<base><suffix>` row needed.
  *
- * **The gate is the J000663 characterisation**: the same entries written today's way (variant ids, flag off) and the new way
- * (bases, flag on) must price, total, label and compose byte-identically. The data is seeded between 0169 and 0170 so 0170's
+ * **The gate is the J000663 characterisation**: the same entries sent as variant ids and as bases must price, total, label and compose
+ * byte-identically — each variant id filed as its base under the pair (slice 5 Step A; unconditional since Step E, which retired the
+ * covered variants — the suite holds its seeded ones active, as the variants a citation keeps materialised are). The data is seeded between 0169 and 0170 so 0170's
  * applicability backfill and 0172's label relocation run on it as they ran on the library — with staging's J000663 shapes: spend
  * variants whose labels equal their base's, and commuting copies of DESNZ's *business travel* factors whose curated labels do not.
  */
@@ -56,7 +57,7 @@ const ENTRIES: Array<{ key: string; scope: string; categoryCode: string; variant
   { key: "Outbound shipping", scope: "3.9", categoryCode: "3.9", variant: "uk-ghg-27_320_3235_14_1-d", base: "uk-ghg-27_320_3235_14_1", suffix: "-d", quantity: 20000 },
 ];
 
-describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_APPLICABILITY)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+describe("dedup slice 3: (base, category) by applicability (0172; unconditional since slice 5 Step E)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
   const context = (): CommandContext => {
@@ -67,12 +68,8 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
     const db = await database.admin();
     try { return (await db.query(sql, params)).rows as T[]; } finally { await db.end(); }
   };
-  // Both states set explicitly: absent is on since slice 5 Step D, and "false" is the kill-switch (kept until Step E).
-  const withFlag = async <T>(value: "true" | "false", work: () => Promise<T>): Promise<T> => {
-    const saved = process.env.REPORT_FACTOR_APPLICABILITY;
-    process.env.REPORT_FACTOR_APPLICABILITY = value;
-    try { return await work(); } finally { if (saved === undefined) delete process.env.REPORT_FACTOR_APPLICABILITY; else process.env.REPORT_FACTOR_APPLICABILITY = saved; }
-  };
+  // Runs a block of work. (The blocks once ran under a flag; there is no flag since slice 5 Step E, but they stay grouped as they were.)
+  const run = <T>(work: () => Promise<T>): Promise<T> => work();
   // Typed loosely: a command input; the command validates it.
   const write = (jobId: string, factorId: string, scope: string, categoryCode: string, sourceLabel: string, quantity: number, over: Record<string, unknown> = {}): any => {
     const factor = byId.get(factorId)!;
@@ -108,6 +105,9 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
       await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [ORG, job, `${year}-01-01`, `${year}-12-31`]);
       await q(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by) VALUES ($1,$2,$3,'automatic','Fixture',$4)`, [ORG, job, DS, ACTOR]);
     }
+    // 0175 retired the seeded variants as the database was built (nothing cited them then); held active again, as the variants a
+    // citation keeps materialised (J000663's) are.
+    await q(`UPDATE nzi_console.emission_factors SET active = true WHERE organisation_id = $1 AND NOT active`, [ORG]);
   });
   after(async () => { await database?.end(); });
 
@@ -133,12 +133,12 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
 
   // ── The gate: J000663, today's way and the new way ───────────────────────────────────────────────────────────
 
-  it("J000663: the new path prices, totals, labels and composes byte-identically to today's", async () => {
+  it("J000663: variant ids sent are filed as their bases, and price, total, label and compose byte-identically to the bases sent", async () => {
     const created = { old: new Map<string, string>(), new: new Map<string, string>() };
-    await withFlag("false", async () => {
+    await run(async () => {
       for (const entry of ENTRIES) created.old.set(entry.key, (await createScopeRow(database.pool, write(OLD, entry.variant, entry.scope, entry.categoryCode, entry.key, entry.quantity), context())).data.rowId);
     });
-    await withFlag("true", async () => {
+    await run(async () => {
       for (const entry of ENTRIES) created.new.set(entry.key, (await createScopeRow(database.pool, write(NEW, entry.base, entry.scope, entry.categoryCode, entry.key, entry.quantity), context())).data.rowId);
     });
     // Priced (the flag plays no part in arithmetic), approved, frozen.
@@ -146,15 +146,15 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
       for (const id of ids.values()) await calculate(job, id);
       await q(`UPDATE nzi_console.job_scope_rows SET review_status='approved', reviewed_by=$2, reviewed_row_version=version, reviewed_at=now() WHERE job_id=$1`, [job, ACTOR]);
     }
-    // What each path stored: today's names the variant; the new path names the base, and records the pair.
+    // What each stored: both the base, filed under the pair — the variant id is filed as its base.
     for (const entry of ENTRIES) {
       const before = await row(created.old.get(entry.key)!), now = await row(created.new.get(entry.key)!);
-      assert.deepEqual([before.factor_id, before.filed_suffix_code], [entry.variant, null], `${entry.key}: today`);
+      assert.deepEqual([before.factor_id, before.filed_suffix_code], [entry.base, entry.suffix], `${entry.key}: the variant id, filed as its base`);
       assert.deepEqual([now.factor_id, now.filed_suffix_code], [entry.base, entry.suffix], `${entry.key}: the base, filed by applicability`);
       assert.equal(now.calculated_tco2e, before.calculated_tco2e, `${entry.key}: priced identically, off the base's own value`);
       assert.equal(now.factor_label, before.factor_label, `${entry.key}: the factor label the audit names`);
       assert.deepEqual(now.provenance_json.filedUnder, { suffixCode: entry.suffix, by: "applicability" });
-      assert.ok(!("filedUnder" in before.provenance_json), "today's row carries no new key");
+      assert.deepEqual(before.provenance_json.filedUnder, { suffixCode: entry.suffix, by: "applicability" });
     }
 
     const snapshot = async (jobId: string) => {
@@ -187,27 +187,17 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
 
   // ── Validity: applicability, and D1 ──────────────────────────────────────────────────────────────────────────
 
-  it("the flag off is today exactly: a base whose own variant row is offered is refused; a Scope 1 base with none is let through", async () => {
-    await withFlag("false", async () => {
-      await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1", "3.7", "3.7", "Commute (base, flag off)", 10), context()), refusedAs("FACTOR_IS_VARIANT_BASE"));
-      const leak = (await createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Commute in a company car (flag off)", 10), context())).data.rowId;
-      const stored = await row(leak);
-      assert.deepEqual([stored.factor_id, stored.filed_suffix_code], ["uk-ghg-4_301_3070_4_1", null], "today's open leak — a Scope 1 car under commuting — pinned as it stands");
-      assert.ok(!("filedUnder" in stored.provenance_json));
-    });
-  });
-
-  it("the flag on: a base applicable under the category is filed; a Scope 1 base that is not is refused (D1, as applicability)", async () => {
-    await withFlag("true", async () => {
-      const filed = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1", "3.7", "3.7", "Commute (base, flag on)", 10), context())).data.rowId;
+  it("a base applicable under the category is filed; a Scope 1 base that is not is refused (D1, as applicability)", async () => {
+    await run(async () => {
+      const filed = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1", "3.7", "3.7", "Commute (base)", 10), context())).data.rowId;
       assert.deepEqual([(await row(filed)).factor_id, (await row(filed)).filed_suffix_code], ["uk-ghg-25_301_3070_9_1", "-c"]);
       assert.equal((await row(filed)).factor_label, "Employee commuting- land - Cars (by size) - Average car - Petrol", "stored at the write, before any calculation: the pair's factor label");
-      await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Commute in a company car (flag on)", 10), context()),
+      await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Commute in a company car", 10), context()),
         (error: unknown) => error instanceof CommandValidationError
           && error.issues.some((issue) => issue.code === "FACTOR_IS_VARIANT_BASE" && /not applicable under this category \('-c'\)/.test(issue.message)));
-      // Slice 5 Step A: a covered variant id sent with the flag on is written as its base, filed under the pair — so nothing new
-      // writes a variant id the retirement would leave dangling. (Flag off it is written as sent: the J000663 gate's old path.)
-      const variant = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1-c", "3.7", "3.7", "Commute (variant, flag on)", 10), context())).data.rowId;
+      // Slice 5 Step A: a covered variant id sent is written as its base, filed under the pair — so nothing new
+      // writes a variant id the retirement would leave dangling.
+      const variant = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_301_3070_9_1-c", "3.7", "3.7", "Commute (variant)", 10), context())).data.rowId;
       assert.deepEqual([(await row(variant)).factor_id, (await row(variant)).filed_suffix_code, (await row(variant)).factor_label],
         ["uk-ghg-25_301_3070_9_1", "-c", "Employee commuting- land - Cars (by size) - Average car - Petrol"]);
     });
@@ -216,7 +206,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
   // ── The DESNZ cases ──────────────────────────────────────────────────────────────────────────────────────────
 
   it("commuting priced off a car factor the source never shipped a commuting row for, once an admin marks it applicable", async () => {
-    await withFlag("true", async () => {
+    await run(async () => {
       await assert.rejects(createScopeRow(database.pool, write(MISC, "uk-ghg-4_301_3070_4_1", "3.7", "3.7", "Large car commute", 400), context()), refusedAs("FACTOR_IS_VARIANT_BASE"),
         "a Scope 1 car is not a commuting factor until NZI says so");
       const admin = { userId: ACTOR, organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
@@ -233,7 +223,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
   });
 
   it("upstream and downstream freight both priced off the one container-ship base", async () => {
-    await withFlag("true", async () => {
+    await run(async () => {
       const upstream = (await createScopeRow(database.pool, write(MISC, "uk-ghg-27_320_3235_14_1", "3.4", "3.4", "Inbound shipping", 1000), context())).data.rowId;
       const downstream = (await createScopeRow(database.pool, write(MISC, "uk-ghg-27_320_3235_14_1", "3.9", "3.9", "Outbound shipping", 1000), context())).data.rowId;
       await calculate(MISC, upstream);
@@ -250,11 +240,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
     try {
       const attributes = { source: "stub", fuel: "petrol", vehicleClass: "car", category: "car|small|petrol", fallbackCategory: "car|average|petrol" };
       const entry = (label: string) => write(MISC, "uk-ghg-4_301_3046_9_1", "3.7", "3.7", label, 100, { factorId: null, datasetId: null, factorVersion: null, factorLabel: null, assertedVehicleAttributes: attributes });
-      await withFlag("false", async () => {
-        await assert.rejects(createScopeRow(database.pool, entry("Commute by small car (flag off)"), context()), refusedAs("FACTOR_REQUIRED"),
-          "today: no -c row, so the sub-flow stops and the entry is left for a person");
-      });
-      await withFlag("true", async () => {
+      await run(async () => {
         await assert.rejects(createScopeRow(database.pool, entry("Commute by small car (not applicable)"), context()), refusedAs("FACTOR_REQUIRED"),
           "not applicable: it stops too — never the Scope 1 base under Scope 3");
         const admin = { userId: ACTOR, organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
@@ -271,7 +257,7 @@ describe("dedup slice 3: (base, category) by applicability (0172, REPORT_FACTOR_
   });
 
   it("roll-forward keeps a row filed while the pair is applicable, and drops the pair once it is retired", async () => {
-    await withFlag("true", async () => {
+    await run(async () => {
       const kept = (await createScopeRow(database.pool, write(MISC, "uk-ghg-25_315_3147_11_1", "3.7", "3.7", "Rail commute (roll)", 100), context())).data.rowId;
       const rolled = await rollforwardScopeRows(database.pool, { jobId: NEXT, priorJobId: MISC, rowIds: [kept] }, context());
       assert.equal((await row(rolled.data.createdRowIds[0]!)).filed_suffix_code, "-c");

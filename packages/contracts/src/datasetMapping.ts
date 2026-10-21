@@ -212,9 +212,9 @@ export type MappingInputs = {
    */
   rulesByCategory?: Readonly<Record<string, readonly FactorRule[]>>;
   /**
-   * Dedup slice 3, behind REPORT_FACTOR_APPLICABILITY: each base factor's applicability (0170). Supplied, a sub-flow files the base
-   * it resolves under its suffix when the suffix is applicable — no `<base><suffix>` row needed — and stops when it is not (D1).
-   * Absent, a sub-flow needs the materialised variant row, exactly as before.
+   * Dedup slice 3: each base factor's applicability (0170). Supplied, a sub-flow files the base it resolves under its suffix when the
+   * suffix is applicable — no `<base><suffix>` row needed — and stops when it is not (D1). The console always supplies it (dedup
+   * slice 5 Step E removed the switch); absent — the pure function called without it — a sub-flow needs the materialised variant row.
    */
   applicability?: ApplicabilityLookup;
 };

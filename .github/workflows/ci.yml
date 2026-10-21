@@ -778,11 +778,13 @@ jobs:
       # the base's; a retire keeps the record and an add reinstates it.
       - name: Applicability is curated through registered, audited commands
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityCommandsReal.test.ts
-      # BUILD-dataset-factor-dedup slice 5 Step C (migration 0174): live rows on a covered variant id re-filed onto the base under the pair
-      # — the report frozen before and the one frozen after are identical; a scope-shifted -bcp, a variant under another category's pair,
-      # a withdrawn base, a re-ingested row (ruled: revert and re-run) and v7 history are never touched; no frozen snapshot moves; a re-run
-      # is a no-op. And roll-forward's active-recheck: a retired pair is dropped with its label, never copied forward.
-      - name: Migration 0174 moves live rows off variant ids, and J000663's report reads exactly as before
+      # BUILD-dataset-factor-dedup slice 5 Steps C and E (migrations 0174, 0175): live rows on a covered variant id re-filed onto the base
+      # under the pair (0174), then every covered variant nothing cites retired, never deleted, and the inert scope-mismatched pair retired
+      # (0175) — the report frozen before and the one frozen after both are identical. Kept: the scope-shifted -bcp (cited or not), and any
+      # variant a live row, register source, emission group or client alias still names (J000663, ruled Option 2), a withdrawn base's, a
+      # retired pair's. v7 history is no citation; a client alias follows a filed row to its variant identity. Re-runs are no-ops. And
+      # roll-forward's active-recheck: a retired pair is dropped with its label, never copied forward.
+      - name: Migrations 0174 and 0175 move live rows off variant ids and retire the covered variants, and the report reads exactly as before
         run: npx tsx --test packages/isolated-backend/tests/scopeRowsRefiledReal.test.ts
       # BUILD-dataset-factor-dedup slice 2 (migration 0171): a record's usage type — a governed emission_usage_type vocabulary seeded
       # per organisation, a usage_type_id on scope rows and register sources held to it by a CHECK and a foreign key for every
