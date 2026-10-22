@@ -62,11 +62,15 @@ services:
       #   portal-actions    the qualitative action tracker on the job dashboard
       #   portal-plan       the live reduction plan on the portal home (#173)
       #   portal-readiness  the live UK SRS readiness statement (#177)
-      # The last two were added retrospectively (NZC-080): both surfaces shipped ungated, so
-      # there was no way to withdraw either short of a revert. Both tokens are set in the
-      # dashboard, so the gate changed nothing a client sees.
+      #   portal-reports    the client's Reports index (#501) — shipped dark, switched on in the
+      #                     dashboard after; added here 22 Oct 2026 so the file matches again
+      # The plan and readiness tokens were added retrospectively (NZC-080): both surfaces shipped
+      # ungated, so there was no way to withdraw either short of a revert. Both tokens are set in
+      # the dashboard, so the gate changed nothing a client sees.
+      # Not here by design: the Portal Management token (#502), dark until it is switched on — at
+      # which point it is added to this value in the same change, so the file never drifts again.
       - key: NEXT_PUBLIC_FEATURE_PORTAL
-        value: portal-analytics,portal-actions,portal-plan,portal-readiness
+        value: portal-analytics,portal-actions,portal-plan,portal-readiness,portal-reports
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
