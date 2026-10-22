@@ -57,10 +57,11 @@ describe("Portal Management (portal data-entry phase 1)", () => {
     assert.match(view, /area === "portal" && canManagePortal \? <PortalManagementArea/);
   });
 
-  it("ships dark: the token is declared, and staging's flag value does not carry it", () => {
+  it("is gated on its own token, which is declared — and, switched on, carried by staging's flag value", () => {
     // Phase 2 adds `portal-data` after it, so the token no longer ends the union.
     assert.match(read("apps/console/app/lib/portalFlags.ts"), /\| "portal-management"(?=[;\s])/);
-    assert.doesNotMatch(read("render.yaml"), /portal-management/);
+    // Shipped dark (#502), switched on in the dashboard and added to render.yaml in step; the full value is the rollout pin's.
+    assert.match(read("render.yaml"), /value: [^\n]*\bportal-management\b/);
   });
 
   it("shows every setting's effective value and where it comes from — the default, or a decision with who, when and why", () => {

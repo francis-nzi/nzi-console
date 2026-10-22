@@ -89,6 +89,6 @@ describe("the portal home gates both surfaces", () => {
   it("keeps render.yaml in step with the dashboard value", () => {
     // NZC-079: the file is documentation, but it must not be wrong about what is running.
     // The whole value, anchored at the line's end: a prefix match let portal-reports go missing here unnoticed (#501).
-    assert.match(read("render.yaml"), /value: portal-analytics,portal-actions,portal-plan,portal-readiness,portal-reports\r?$/m);
+    assert.match(read("render.yaml"), /value: portal-analytics,portal-actions,portal-plan,portal-readiness,portal-reports,portal-management,portal-data\r?$/m);
   });
 });
