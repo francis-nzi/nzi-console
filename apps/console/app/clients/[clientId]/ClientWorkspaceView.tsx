@@ -29,6 +29,8 @@ import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
 import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { HistoryArea } from "./HistoryArea";
+import { PortalManagementArea } from "./PortalManagementArea";
+import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
 import { AddressForm, ComplianceForm, FactorsDrawerBody, PortalDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
@@ -81,6 +83,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const canPreviewPortal = useHasCapability("support.portal_impersonate", client.ownerUserId);
   // CLIENT-12 — the History area is offered only to whoever may read this client's audit history.
   const canReadHistory = useHasCapability("audit.view", client.ownerUserId);
+  // Portal data-entry phase 1: behind `portal-management` (ships dark), and only to a holder of portal.admin on this client.
+  const canManagePortal = useHasCapability("portal.admin", client.ownerUserId) && portalFeatureEnabled("portal-management");
 
   const meta = clientStatusMeta[client.status];
   const source = evidence.latest.source;
@@ -142,7 +146,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     areas={<ClientWorkspaceNav groups={clientAreaGroups({
       analytics: history.length || null, reporting: workspace.reports.length || null,
       comms: workspace.messages.length || null, files: workspace.files.length || null,
-    }, canReadHistory)} activeId={area} onSelect={selectArea} />}
+    }, canReadHistory, canManagePortal)} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
     {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
     <TopBar crumbs={crumbTrail(clientCrumbs(client))} />
@@ -194,6 +198,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         : area === "ai" ? <AiProfileArea workspace={workspace} />
         : area === "financials" ? <FinancialsHeldArea />
         : area === "history" ? <HistoryArea result={auditHistory} />
+        : area === "portal" && canManagePortal ? <PortalManagementArea clientId={client.id} clientOwnerUserId={client.ownerUserId ?? null} writeEnabled={writeEnabled} />
+        : area === "portal" ? <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>
         : <UnavailableArea area={area} clientId={client.id} />}
     </div>
 

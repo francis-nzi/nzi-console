@@ -7,6 +7,7 @@ import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./a
 import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { reportScopeIssues, type ReportScope } from "./reportScope";
+import { isPortalProfileKey, isPortalProfileValue, isPortalScope, type PortalProfileKey } from "./portalProfile";
 import { CUSTOM_FIELD_DEFAULT_MAX, CUSTOM_FIELD_KEY_PATTERN, CUSTOM_FIELD_LABEL_MAX, customFieldOptionIssues, customFieldValueIssue, isCustomFieldEntityType, isCustomFieldType, type CustomFieldEditableFields, type CustomFieldEntityType, type CustomFieldType } from "./adminCustomFields";
 import { isIsoCountryCode } from "./iso3166";
 import { isTimeEntryMinutes, isTimeQuantity, JOB_BUDGET_MAX_HOURS, JOB_FEE_MAX, TIME_ACTIVITY_CATEGORY, TIME_CAPACITY_MAX_HOURS, TIME_ENTRY_NOTE_MAX } from "./time";
@@ -210,6 +211,8 @@ export type CommandKey =
   | "purchased.goods.category.create"
   | "subject.review.decide"
   | "client.category.visibility.set"
+  | "client.portal.profile.set"
+  | "client.portal.scope.visibility.set"
   | "client.factor.alias.set"
   | "factor.applicability.add"
   | "factor.applicability.retire"
@@ -975,6 +978,13 @@ export type CommandInputMap = {
    * the category to the default, which is visible.
    */
   "client.category.visibility.set":{clientId:string;categoryCode:string;visible:boolean|null;note?:string|null};
+  /**
+   * Portal data-entry phase 1: one of the portal's fixed toggles for this client (`PORTAL_PROFILE_KEYS`). `value: null`
+   * withdraws the decision and returns the key to the org default — the `client.category.visibility.set` shape.
+   */
+  "client.portal.profile.set":{clientId:string;profileKey:string;value:string|null;note?:string|null};
+  /** Whether this client sees a scope (and so its categories) at all. `visible: null` withdraws, back to the default: visible. */
+  "client.portal.scope.visibility.set":{clientId:string;scope:string;visible:boolean|null;note?:string|null};
   /** What this client calls a shared dataset factor. `label: null` withdraws the alias. */
   "client.factor.alias.set":{clientId:string;factorId:string;label:string|null};
   /**
@@ -2643,6 +2653,17 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * version rather than a stretch of `portal.admin`.
    */
   "client.category.visibility.set":{key:"client.category.visibility.set",label:"Decide whether a client sees a category",permission:"category.visibility",reasonRequired:false,transaction:"client category visibility + audit + outbox + idempotency",auditAction:"client_category_visibility_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"categoryCode",input.categoryCode);if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
+  /**
+   * Portal data-entry phase 1 (RULING-portal-dataentry-01, decision 2). What the portal *offers* a client — its areas, the
+   * entry drawer, the detailed drawer's sections, the deactivate action — is portal administration, so `portal.admin`, as
+   * the brief has it. Milestones is never `edit`: refused here and by the table (decision 3).
+   */
+  "client.portal.profile.set":{key:"client.portal.profile.set",label:"Decide what a client's portal offers",permission:"portal.admin",reasonRequired:false,transaction:"client portal profile decision + audit + outbox + idempotency",auditAction:"client_portal_profile_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"profileKey",input.profileKey);if(input.profileKey&&!isPortalProfileKey(input.profileKey))issues.push({field:"profileKey",code:"UNKNOWN",message:"That is not a portal setting."});else if(input.profileKey&&input.value!==null&&!isPortalProfileValue(input.profileKey as PortalProfileKey,input.value))issues.push({field:"value",code:input.profileKey==="milestones"&&input.value==="edit"?"MILESTONES_VIEW_ONLY":"INVALID",message:input.profileKey==="milestones"&&input.value==="edit"?"Milestones are view-only for a client: they can be shown or hidden, never edited.":"That value is not one this setting takes."});if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
+  /**
+   * The scope above the category switch, and the same kind of decision — what a client is shown — so the same capability
+   * as `client.category.visibility.set`: `category.visibility` (NZC-110; settled 22 Oct, portal-dataentry-phase1-GROUNDING).
+   */
+  "client.portal.scope.visibility.set":{key:"client.portal.scope.visibility.set",label:"Decide whether a client sees a scope",permission:"category.visibility",reasonRequired:false,transaction:"client portal scope visibility + audit + outbox + idempotency",auditAction:"client_portal_scope_visibility_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"scope",input.scope);if(input.scope&&!isPortalScope(input.scope))issues.push({field:"scope",code:"UNKNOWN",message:"A scope is 1, 2 or 3."});if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   /**
    * Naming, not measuring. It carries `clientfactor.manage` rather than a capability of its own:
    * that permission already allows creating a client factor *with its own emission value*, so a

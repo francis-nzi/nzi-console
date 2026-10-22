@@ -5,6 +5,7 @@ import type { PortalPreviewReadModel } from "@nzi/isolated-backend";
 import { portalFeatureEnabled } from "../../../lib/portalFlags";
 import { PortalReadiness } from "../../../portal/PortalReadiness";
 import { PortalReductionPlan } from "../../../portal/PortalReductionPlan";
+import { portalProfileDifferences } from "@nzi/contracts";
 
 /**
  * The staff preview of a client's portal.
@@ -50,6 +51,10 @@ export function PortalPreview({ preview }: { preview: PortalPreviewReadModel }) 
             : null}
         </p>
 
+        {/* Portal data-entry phase 1: why this client's portal may differ from the default — the decisions themselves, from
+            the resolver Portal Management reads. Staff-only and labelled so: it is the explanation, not part of the view. */}
+        <ProfileDifferences preview={preview} />
+
         {plan ? <PortalReductionPlan model={preview.strategies} /> : null}
         {readiness ? <PortalReadiness model={preview.readiness} /> : null}
 
@@ -67,5 +72,20 @@ export function PortalPreview({ preview }: { preview: PortalPreviewReadModel }) 
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ProfileDifferences({ preview }: { preview: PortalPreviewReadModel }) {
+  const differences = portalProfileDifferences(preview.profile);
+  return (
+    <aside className="nz-preview-profile" aria-label="How this client's portal differs from the default">
+      <b>Staff only — this client&rsquo;s portal profile.</b>{" "}
+      {differences.length === 0
+        ? "It is your organisation's default: nothing has been decided differently for this client."
+        : <>It differs from your organisation&rsquo;s default where somebody decided so:
+          <ul>{differences.map((line) => <li key={line}>{line}</li>)}</ul></>}
+      {" "}Who decided each, when and why is in Portal Management. Category visibility applies in the portal now; the other
+      settings take effect with the next phase of portal data entry.
+    </aside>
   );
 }

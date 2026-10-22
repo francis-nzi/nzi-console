@@ -37,6 +37,9 @@ const PHRASES: Array<[RegExp, string]> = [
   [/^job_stage_changed$/, "moved a job to another stage"],
   [/^report_published$/, "released a report"],
   [/^portal_access_granted$/, "granted portal access"],
+  [/^client_portal_profile_set$/, "decided a portal setting"],
+  [/^client_portal_scope_visibility_set$/, "decided whether the client sees a scope"],
+  [/^client_category_visibility_set$/, "decided whether the client sees a category"],
 ];
 /** A recognised action in words; any other is shown as its code, words split, rather than guessed at. */
 const phrase = (action: string) => PHRASES.find(([pattern]) => pattern.test(action))?.[1] ?? action.replace(/^client[._]/, "").replace(/[._]+/g, " ");

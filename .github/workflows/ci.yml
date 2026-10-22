@@ -199,6 +199,11 @@ jobs:
       # between the response and its contract — a place no test of a part can see.
       - name: The portal preview satisfies its screen contract
         run: npx tsx --test packages/isolated-backend/tests/portalPreviewContract.test.ts
+      # Portal data-entry phase 1 (0176): a client's portal profile and scope switch are decisions over a default, held
+      # to their value sets at the table as well as the command (milestones never edit), composed scope AND category,
+      # and told to the portal without naming or counting anything withheld (NZC-110). Each decision emits its topic.
+      - name: A client's portal profile is decided, composed, and never leaked
+        run: npx tsx --test packages/isolated-backend/tests/clientPortalProfileReal.test.ts
       # The reference-data import (NZC-089), held to §14: run twice, and once over a dirtied
       # database. The lists come from a live export, so a second import is routine — a corrected
       # file, an edited list, a later loader — and every one arrives as state the first run left.

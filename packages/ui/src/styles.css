@@ -2239,3 +2239,31 @@ details.nz-job-report-link{white-space:normal}
 .nz-main>.nz-preview-canvas>.nz-preview-empty{margin-top:8vh}
 /* With the rail beside it, two fixed 360 px chart columns would overflow mid-width screens; they wrap instead. */
 .nz-main>.nz-preview-canvas .nz-preview-grid{grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))}
+/* Portal data-entry phase 1: Portal Management (client workspace, Manage). Each setting is a row — what it is, where its
+   value comes from (the default, or a decision: who, when, why), and its control — wrapping to one column on a phone. */
+.nz-pm .sub{margin:4px 0 10px;font-size:12.5px;line-height:1.5;color:var(--t2)}
+.nz-pm-note{margin:0 0 14px;padding:9px 12px;border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:9px;font-size:12.5px;line-height:1.5;color:var(--t2)}
+.nz-pm-reason{display:grid;gap:5px;margin:0 0 14px;font-size:12px;font-weight:600;color:var(--t2)}
+.nz-pm-reason .nz-in{max-width:520px}
+.nz-pm-group{margin-top:18px}
+.nz-pm-group h3{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--t1)}
+.nz-pm-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:11px 0;border-top:1px solid var(--line2)}
+.nz-pm-what{display:grid;gap:2px;min-width:0;flex:1 1 260px}
+.nz-pm-what b{font-size:13px;color:var(--t1)}
+.nz-pm-what>span{font-size:12px;color:var(--t2)}
+.nz-pm-src{font-size:11.5px;color:var(--t3);overflow-wrap:anywhere}
+.nz-pm-src.decided{color:var(--pine)}
+.nz-pm-src q{color:var(--t2)}
+.nz-pm-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.nz-pm-ctl .nz-seg{margin-left:0}
+.nz-pm-ctl [aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+.nz-pm-scope{border-top:1px solid var(--line2)}
+.nz-pm-scope>.nz-pm-row{border-top:0}
+.nz-pm-cats{margin:0 0 10px}
+.nz-pm-cats>summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--pine)}
+.nz-pm-cats ul{margin:8px 0 0;padding:0;list-style:none}
+.nz-pm-cats li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:8px 0 8px 12px;border-top:1px solid var(--line2)}
+.nz-pm-later{margin:18px 0 0;font-size:12px;color:var(--t3)}
+.nz-preview-profile{margin:0 0 16px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:12.5px;color:var(--t2)}
+.nz-preview-profile b{color:var(--t1)}
+.nz-preview-profile ul{margin:6px 0 0;padding-left:18px}

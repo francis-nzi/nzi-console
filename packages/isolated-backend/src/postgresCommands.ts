@@ -44,6 +44,7 @@ import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveR
 import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrativeElement } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
+import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { resolveReportNarrative } from "./reportNarrative";
 import { insertClientContact } from "./clientContactRecords";
@@ -1132,6 +1133,74 @@ export async function setClientCategoryVisibility(pool:PoolLike,input:CommandInp
     [context.organisationId,input.clientId,input.categoryCode,input.visible,input.note?.trim()??"",context.actorId]);
 
   return{data:decision(input.visible),entityType:"client_category_visibility",entityId:`${input.clientId}|${input.categoryCode}`,topic:"client.category.visibility.set",...(before?{before}:{})};
+});}
+
+/**
+ * Portal data-entry phase 1 — one of the portal's fixed toggles for one client (RULING-portal-dataentry-01, decision 2), in
+ * exactly the shape of `setClientCategoryVisibility`: a row is a decision, `value: null` withdraws it (deactivates the row,
+ * so the record of having decided survives) and the key returns to the org default. The value must be one the key takes;
+ * milestones is never `edit` (decision 3) — refused by the registry's validation and, behind it, by 0176's CHECK.
+ */
+export async function setClientPortalProfile(pool:PoolLike,input:CommandInputMap["client.portal.profile.set"],context:CommandContext):Promise<StoredOutcome<{clientId:string;profileKey:string;value:string|null}>>{return runPostgresCommand(pool,"client.portal.profile.set",input,context,async db=>{
+  const client=await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,[context.organisationId,input.clientId]);
+  if(!client.rows[0])throw new CommandValidationError([{field:"clientId",code:"NOT_FOUND",message:"Client was not found."}]);
+  if(!isPortalProfileKey(input.profileKey))throw new CommandValidationError([{field:"profileKey",code:"UNKNOWN",message:"That is not a portal setting."}]);
+  if(input.value!==null&&!isPortalProfileValue(input.profileKey,input.value))throw new CommandValidationError([{field:"value",code:"INVALID",message:"That value is not one this setting takes."}]);
+
+  const existing=await db.query<{value:string;note:string;active:boolean}>(`SELECT value,note,active FROM nzi_console.client_portal_profile_decisions WHERE organisation_id=$1 AND client_id=$2 AND profile_key=$3`,[context.organisationId,input.clientId,input.profileKey]);
+  const previous=existing.rows[0];
+  const before=previous?{value:previous.value,note:previous.note,active:previous.active}:null;
+  const decision=(value:string|null)=>({clientId:input.clientId,profileKey:input.profileKey,value});
+  const entityId=`${input.clientId}|${input.profileKey}`;
+
+  if(input.value===null){
+    if(previous?.active){
+      await db.query(`UPDATE nzi_console.client_portal_profile_decisions SET active=false,decided_by=$4,decided_at=now() WHERE organisation_id=$1 AND client_id=$2 AND profile_key=$3`,[context.organisationId,input.clientId,input.profileKey,context.actorId]);
+    }
+    return{data:decision(null),entityType:"client_portal_profile_decisions",entityId,topic:"client.portal.profile.withdrawn",...(before?{before}:{})};
+  }
+
+  await db.query(
+    `INSERT INTO nzi_console.client_portal_profile_decisions(organisation_id,client_id,profile_key,value,note,decided_by)
+     VALUES($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (organisation_id,client_id,profile_key)
+     DO UPDATE SET value=EXCLUDED.value,note=EXCLUDED.note,active=true,decided_by=EXCLUDED.decided_by,decided_at=now()`,
+    [context.organisationId,input.clientId,input.profileKey,input.value,input.note?.trim()??"",context.actorId]);
+
+  return{data:decision(input.value),entityType:"client_portal_profile_decisions",entityId,topic:"client.portal.profile.set",...(before?{before}:{})};
+});}
+
+/**
+ * Portal data-entry phase 1 — whether one client sees a scope, and so every category in it (BUILD §3). The same decision
+ * record as a category's, one level up; the two compose by AND (`categoryShown`), so switching a scope back on restores
+ * exactly the category decisions that were there.
+ */
+export async function setClientPortalScopeVisibility(pool:PoolLike,input:CommandInputMap["client.portal.scope.visibility.set"],context:CommandContext):Promise<StoredOutcome<{clientId:string;scope:string;visible:boolean|null}>>{return runPostgresCommand(pool,"client.portal.scope.visibility.set",input,context,async db=>{
+  const client=await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,[context.organisationId,input.clientId]);
+  if(!client.rows[0])throw new CommandValidationError([{field:"clientId",code:"NOT_FOUND",message:"Client was not found."}]);
+  if(!isPortalScope(input.scope))throw new CommandValidationError([{field:"scope",code:"UNKNOWN",message:"A scope is 1, 2 or 3."}]);
+
+  const existing=await db.query<{visible:boolean;note:string;active:boolean}>(`SELECT visible,note,active FROM nzi_console.client_portal_scope_visibility WHERE organisation_id=$1 AND client_id=$2 AND scope=$3`,[context.organisationId,input.clientId,input.scope]);
+  const previous=existing.rows[0];
+  const before=previous?{visible:previous.visible,note:previous.note,active:previous.active}:null;
+  const decision=(value:boolean|null)=>({clientId:input.clientId,scope:input.scope,visible:value});
+  const entityId=`${input.clientId}|${input.scope}`;
+
+  if(input.visible===null){
+    if(previous?.active){
+      await db.query(`UPDATE nzi_console.client_portal_scope_visibility SET active=false,decided_by=$4,decided_at=now() WHERE organisation_id=$1 AND client_id=$2 AND scope=$3`,[context.organisationId,input.clientId,input.scope,context.actorId]);
+    }
+    return{data:decision(null),entityType:"client_portal_scope_visibility",entityId,topic:"client.portal.scope.visibility.withdrawn",...(before?{before}:{})};
+  }
+
+  await db.query(
+    `INSERT INTO nzi_console.client_portal_scope_visibility(organisation_id,client_id,scope,visible,note,decided_by)
+     VALUES($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (organisation_id,client_id,scope)
+     DO UPDATE SET visible=EXCLUDED.visible,note=EXCLUDED.note,active=true,decided_by=EXCLUDED.decided_by,decided_at=now()`,
+    [context.organisationId,input.clientId,input.scope,input.visible,input.note?.trim()??"",context.actorId]);
+
+  return{data:decision(input.visible),entityType:"client_portal_scope_visibility",entityId,topic:"client.portal.scope.visibility.set",...(before?{before}:{})};
 });}
 
 /**

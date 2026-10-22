@@ -4,6 +4,8 @@ import { assertCapabilityOnClient } from "./access";
 import { getPortalClientStrategies, type PortalStrategiesReadModel } from "./portalStrategies";
 import { getPortalClientReadiness, type PortalReadinessReadModel } from "./portalReadiness";
 import { readOrganisationBrand } from "./organisationSettings";
+import { portalProfileStaffView } from "./portalProfile";
+import type { PortalProfileStaffView } from "@nzi/contracts";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -50,6 +52,11 @@ export type PortalPreviewReadModel = {
   client: { id: string; name: string };
   strategies: PortalStrategiesReadModel;
   readiness: PortalReadinessReadModel;
+  /**
+   * Portal data-entry phase 1: the client's portal profile — default, decisions and effective result — so the preview can
+   * explain why this client's portal differs from the default (NZC-087). The same resolver Portal Management reads.
+   */
+  profile: PortalProfileStaffView;
   /** Stamped server-side so the banner cannot be dated by a staff member's device clock. */
   previewedAt: string;
 };
@@ -78,6 +85,7 @@ export async function getPortalPreview(
     const strategies = await getPortalClientStrategies(db, { clientId: input.clientId, today: input.today });
     const { shortName: organisationShortName } = await readOrganisationBrand(db, principal.organisationId);
     const readiness = await getPortalClientReadiness(db, { clientId: input.clientId, organisationShortName });
+    const profile = await portalProfileStaffView(db, input.clientId);
 
     // Audited on open, not per fetch: the event a reviewer wants is "who looked at this client's
     // portal, and when", and one row per surface would bury that in noise.
@@ -91,7 +99,7 @@ export async function getPortalPreview(
 
     return {
       client: { id: found.client_id, name: found.name },
-      strategies, readiness,
+      strategies, readiness, profile,
       previewedAt: now.toISOString(),
     };
   });

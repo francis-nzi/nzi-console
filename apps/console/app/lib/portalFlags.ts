@@ -13,7 +13,10 @@ export type PortalFeature =
   | "portal-actions"
   | "portal-plan"
   | "portal-readiness"
-  | "portal-reports";
+  | "portal-reports"
+  // Portal data-entry phase 1: the staff Portal Management area. Ships dark — off until the token is added to
+  // NEXT_PUBLIC_FEATURE_PORTAL (portal-dataentry-phase1-GROUNDING, point 2).
+  | "portal-management";
 
 const enabled = (): Set<string> =>
   new Set(
