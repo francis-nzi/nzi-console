@@ -64,7 +64,18 @@ describe("the declarative resolver is reached from the scope-row create and upda
       assert.match(bodyOf(commands, name), /scopeRowCreateHandler\(/, `${name} does not write through the create's one handler`);
     }
     assert.match(bodyOf(commands, "scopeRowCreateHandler"), /declarativeFactorFor\(/, "the scope-row create does not resolve declaratively");
-    assert.match(bodyOf(commands, "updateScopeRow"), /declarativeFactorFor\(/, "updateScopeRow does not resolve declaratively");
+    // Portal data-entry phase 2: the update's body is likewise one handler, `scopeRowUpdateHandler`, shared with the client's
+    // portal command — so the update resolves through it, and the count below is unchanged.
+    assert.match(bodyOf(commands, "updateScopeRow"), /scopeRowUpdateHandler\(/, "updateScopeRow does not write through the update's one handler");
+    assert.match(bodyOf(commands, "scopeRowUpdateHandler"), /declarativeFactorFor\(/, "the scope-row update does not resolve declaratively");
+  });
+
+  it("is reached by the client's portal writes only through the CRM's own handlers (portal data-entry phase 2)", () => {
+    const capture = read("portalCapture.ts");
+    assert.match(bodyOf(capture, "createPortalScopeRow"), /scopeRowCreateHandler\(/, "the client's create does not write through the CRM's create");
+    assert.match(bodyOf(capture, "updatePortalScopeRow"), /scopeRowUpdateHandler\(/, "the client's update does not write through the CRM's update");
+    assert.doesNotMatch(capture, /declarativeFactorFor\(|applyDeclarativeResolution\(|resolveFactorForEntry\(|reconcileUnitWithFactor\(|INSERT INTO nzi_console\.job_scope_rows|UPDATE nzi_console\.job_scope_rows/,
+      "the portal resolves, reconciles or writes a row by itself — it must go through the CRM's handlers");
   });
 
   it("is reached by template seeding only through the scope-row create (Phase 3b)", () => {

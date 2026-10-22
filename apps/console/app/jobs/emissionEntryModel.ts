@@ -140,7 +140,10 @@ export const isSpendKind = (category: EmissionCategory): boolean =>
 export function emissionEntryActions(
   audience: EntryAudience,
   mode: EntryMode,
+  /** Portal data-entry phase 2: the client writes the shared row directly, so there is no draft — one save, pending review. */
+  portalDirect = false,
 ): EmissionEntryAction[] {
+  if (audience === "portal" && portalDirect) return [{ key: "submit", label: "Save for review", variant: "primary" }];
   if (audience === "portal") {
     return [
       { key: "saveDraft", label: "Save draft", variant: "ghost" },

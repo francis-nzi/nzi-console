@@ -70,6 +70,20 @@ export async function portalFacingProfile(db: Queryable, clientId: string): Prom
 }
 
 /**
+ * Portal data-entry phase 2: the scope ∧ category gate as a predicate, for the reads and writes on the shared rows. A row's
+ * category is its `category_code`, or its scope for a granular Scope 3 row; a row with no category (an older Scope 1/2 line)
+ * is shown when its scope is. The same rule as `categoryShown`, from the same registers.
+ */
+export async function clientCategoryGate(db: Queryable, clientId: string): Promise<{ shows: (categoryCode: string | null, scope: string) => boolean }> {
+  const [scopes, categories] = await Promise.all([scopeDecisions(db, clientId), categoryDecisions(db, clientId)]);
+  const hidden = {
+    scopes: new Set(scopes.filter((row) => !row.visible).map((row) => row.scope)),
+    categories: new Set(categories.filter((row) => !row.visible).map((row) => row.category_code)),
+  };
+  return { shows: (categoryCode, scope) => categoryShown({ categoryCode: categoryCode ?? "", scope: scope.split(".")[0]! }, hidden) };
+}
+
+/**
  * The staff reading, unguarded: callers check their own capability first (Portal Management: `portal.admin`; the preview:
  * `support.portal_impersonate`), each on this client, inside its own transaction.
  */

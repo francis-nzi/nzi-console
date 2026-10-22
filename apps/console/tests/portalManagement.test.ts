@@ -58,7 +58,8 @@ describe("Portal Management (portal data-entry phase 1)", () => {
   });
 
   it("ships dark: the token is declared, and staging's flag value does not carry it", () => {
-    assert.match(read("apps/console/app/lib/portalFlags.ts"), /\| "portal-management";/);
+    // Phase 2 adds `portal-data` after it, so the token no longer ends the union.
+    assert.match(read("apps/console/app/lib/portalFlags.ts"), /\| "portal-management"(?=[;\s])/);
     assert.doesNotMatch(read("render.yaml"), /portal-management/);
   });
 

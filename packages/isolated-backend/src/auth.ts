@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Capability, CapabilityGrant, CapabilityScope, CommandGrant, CommandKey, StaffRole } from "@nzi/contracts";
-import { commandDefinitions, grantFor, isCapability, isStaffRole } from "@nzi/contracts";
+import { grantFor, isCapability, isStaffRole, staffCapabilityOf } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
 import { withAuthTransaction } from "./postgres";
 
@@ -110,7 +110,10 @@ export function requireCapability(principal: Pick<StaffPrincipal, "capabilities"
 }
 
 export function authorizeCommand(principal: StaffPrincipal, key: CommandKey): void {
-  requireCapability(principal, commandDefinitions[key].permission);
+  // A portal command (portal data-entry phase 2) is never a member of staff's to run, whatever they hold.
+  const capability = staffCapabilityOf(key);
+  if (capability === null) throw new AuthorizationError("portal.dataentry", "This is a client portal action.");
+  requireCapability(principal, capability);
 }
 
 export function assertSameOrigin(origin: string | null, configuredBaseUrl: string | undefined): void {

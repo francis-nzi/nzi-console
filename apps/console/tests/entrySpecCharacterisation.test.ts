@@ -71,16 +71,17 @@ describe("electricity — the exemplar, spelled out", () => {
       ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "factor", "qualityTier", "dataConfidence", "note", "documents"]);
   });
 
-  it("gives the client none of the factor internals", () => {
-    // The portal parity rule: the same renderer, a narrower field set. A client never sees or sets
-    // the factor, the quality tier or the data confidence.
+  it("gives the client the factor pick and none of the factor internals", () => {
+    // The portal parity rule: the same renderer, a narrower field set. Portal data-entry phase 2 (0177; settled 22 Oct) adds the
+    // factor pick — with bucket grants retired the client picks the factor as staff do, pre-selected to the declared one — and
+    // nothing else: a client never sees or sets the quality tier, the data confidence or the lineage.
     const portal: string[] = fields("portal", "new");
-    for (const withheld of ["factor", "qualityTier", "dataConfidence", "lineage"]) {
+    for (const withheld of ["qualityTier", "dataConfidence", "lineage"]) {
       assert.ok(!portal.includes(withheld), `the portal must not render ${withheld}`);
     }
     // The client is asked the supply question too: whether the electricity came over the grid is
     // something the site knows and the consultant often does not (NZC-157).
-    assert.deepEqual(portal, ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "note", "documents"]);
+    assert.deepEqual(portal, ["siteBanner", "activity", "supplySource", "quantity", "unit", "monthly", "factor", "note", "documents"]);
   });
 
   it("labels quantity and unit plainly, not as spend", () => {

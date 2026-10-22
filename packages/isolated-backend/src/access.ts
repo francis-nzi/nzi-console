@@ -7,7 +7,7 @@
 // command touches is in the caller's organisation (assert_client_access /
 // assert_job_access); and (4) an `own_clients` grant is exercised only on a client
 // the caller owns. UI gating reads the same capabilities but is never relied on.
-import { commandDefinitions, grantFor, grantsAllow, type Capability, type CapabilityGrant, type CapabilityScope, type CommandContext, type CommandInputMap, type CommandKey } from "@nzi/contracts";
+import { grantFor, grantsAllow, staffCapabilityOf, type Capability, type CapabilityGrant, type CapabilityScope, type CommandContext, type CommandInputMap, type CommandKey } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
 import type { Queryable } from "./postgres";
 
@@ -60,6 +60,11 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "scope.row.discard": job,
   "scope.row.deactivate": job,
   "scope.row.reactivate": job,
+  // Portal data-entry phase 2: a client's writes concern the job, resolved as any job command — and then held to the portal
+  // user's own access grant on it (`authorizePortalCommand`), never a staff scope.
+  "portal.scope.row.create": job,
+  "portal.scope.row.update": job,
+  "portal.scope.row.deactivate": job,
   "scope.review.approve": job,
   "scope.review.reject": job,
   "report.publish": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
@@ -313,7 +318,11 @@ export function assertJobAccess(db: Queryable, organisationId: string, actorId: 
  * further conditional checks (baseline.rebaseline, separation of duties).
  */
 export async function authorizeCommandInTransaction<K extends CommandKey>(db: Queryable, key: K, input: CommandInputMap[K], context: CommandContext): Promise<ClientAccess | null> {
-  const capability = commandDefinitions[key].permission;
+  const capability = staffCapabilityOf(key);
+  // Portal data-entry phase 2: two kinds of principal, never interchangeable. A portal command runs only for a portal user;
+  // a staff command never does, whatever it is sent with.
+  if (capability === null) return authorizePortalCommand(db, key, input, context);
+  if (context.principal === "portal") throw new AuthorizationError(capability, "A client portal user cannot run this command.");
   const grant = context.grant;
   if (!grant) throw new AuthorizationError(capability, "No staff grant accompanies this command.");
   if (grant.organisationId !== context.organisationId || grant.userId !== context.actorId) throw new AuthorizationError("tenant", "The command's grant belongs to a different user or organisation.");
@@ -327,6 +336,31 @@ export async function authorizeCommandInTransaction<K extends CommandKey>(db: Qu
   const access = await resolveAccess(db, context.organisationId, context.actorId, subject.kind, subject.id);
   if (held.scope === "own_clients" && !access.ownedByActor && subject.kind !== "ownTimeEntry") throw new AuthorizationError(capability, "This capability is limited to your own clients.");
   return access;
+}
+
+/**
+ * Portal data-entry phase 2 (RULING-portal-dataentry-02 §A2, settled 22 Oct): a portal command's authority. Not a capability —
+ * the portal user's own live access grant on the job's client and job, inside its open data-entry window, read here in the
+ * command's transaction. What the command may then do on the job (which categories, which rows, which actions) is the
+ * client's portal profile, which the handler applies (`portalCapture.ts`).
+ */
+async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: K, input: CommandInputMap[K], context: CommandContext): Promise<ClientAccess> {
+  if (context.principal !== "portal" || !context.portal) throw new AuthorizationError("portal.dataentry", "Only a client portal user can make this entry.");
+  if (context.portal.portalUserId !== context.actorId) throw new AuthorizationError("tenant", "The command's portal identity belongs to a different user.");
+  const subject = subjectOf[key](input);
+  if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
+  const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
+  if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");
+  const grant = (await db.query<{ open: boolean }>(
+    `SELECT (g.data_entry_starts_at IS NOT NULL AND g.data_entry_starts_at <= now() AND g.data_entry_expires_at > now()) AS open
+       FROM nzi_console.portal_access_grants g
+       JOIN nzi_console.portal_users u ON (u.organisation_id, u.portal_user_id, u.client_id) = (g.organisation_id, g.portal_user_id, g.client_id)
+      WHERE g.organisation_id = $1 AND g.portal_user_id = $2 AND g.client_id = $3 AND g.job_id = $4 AND g.revoked_at IS NULL AND u.status = 'active'`,
+    [context.organisationId, context.actorId, context.portal.clientId, subject.id])).rows[0];
+  if (!grant) throw new AuthorizationError("tenant", "This job is not available to your account.");
+  if (!grant.open) throw new AuthorizationError("portal.dataentry", "Data entry for this job is not open just now.");
+  // A portal user owns no client: no own-clients rule applies, and the handler's checks are the profile's.
+  return { ...access, ownedByActor: false };
 }
 
 /** A staff principal's identity and grants — what a non-command check needs. */

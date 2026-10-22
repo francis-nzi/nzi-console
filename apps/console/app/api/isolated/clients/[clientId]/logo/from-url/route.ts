@@ -1,5 +1,5 @@
 import { assertClientAccess, AuthorizationError, capabilityScope, CommandValidationError, fetchLogoFromUrl, setClientLogo, withTenantRead } from "@nzi/isolated-backend";
-import { commandDefinitions } from "@nzi/contracts";
+import { staffCapabilityOf } from "@nzi/contracts";
 import { requireCommandPrincipal } from "../../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../../lib/commandResponse";
 import { isolatedPool } from "../../../../../../lib/isolatedDatabase";
@@ -16,7 +16,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
   try {
     const principal = await requireCommandPrincipal(request, "client.logo.set");
     const { clientId } = await params;
-    const capability = commandDefinitions["client.logo.set"].permission;
+    // client.logo.set is a staff command, so it has a staff capability (portal commands, phase 2, have none).
+    const capability = staffCapabilityOf("client.logo.set")!;
     const access = await withTenantRead(isolatedPool(), principal.organisationId, (db) => assertClientAccess(db, principal.organisationId, principal.userId, clientId));
     if (capabilityScope(principal, capability) === "own_clients" && !access.ownedByActor) throw new AuthorizationError(capability, "This capability is limited to your own clients.");
     const body = await request.json().catch(() => null) as { url?: unknown } | null;

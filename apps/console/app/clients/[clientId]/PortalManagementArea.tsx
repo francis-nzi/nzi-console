@@ -6,6 +6,7 @@ import {
   PORTAL_PROFILE_GROUP_LABELS, PORTAL_PROFILE_VALUE_LABELS, type PortalDecisionRecord, type PortalProfileGroup, type PortalProfileStaffView,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
+import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { useEditAccess, type EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -77,7 +78,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
     <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div>
     <div className="nz-card-b">
       <p className="sub">What this client&apos;s portal offers them, over your organisation&apos;s default. A change is recorded as a decision — who, when and why — and &ldquo;Return to default&rdquo; withdraws it without erasing that it was made.</p>
-      <p className="nz-pm-note" role="note">Category visibility already applies in the client&apos;s portal. The other settings are recorded and explained now; the portal begins to follow them in the next phase of portal data entry.</p>
+      <p className="nz-pm-note" role="note">{portalFeatureEnabled("portal-data") ? "These settings are in force in the client's portal: what they see and enter follows them." : "Category visibility already applies in the client's portal. The other settings are recorded and explained now; the portal begins to follow them in the next phase of portal data entry."}</p>
 
       {load.state === "loading" ? <p className="sub" role="status">Loading this client&apos;s portal profile…</p> : null}
       {load.state === "denied" ? <p className="sub" role="status">Your role does not include portal administration for this client — it needs portal.admin, and for a Consultant, to be the client&apos;s owner.</p> : null}

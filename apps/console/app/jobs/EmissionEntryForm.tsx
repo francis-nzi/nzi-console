@@ -73,6 +73,11 @@ export type EmissionEntryFormProps = {
    * starts on it, with its unit shown before a quantity is typed; choosing a different factor asks why.
    */
   declared?: DeclaredOption | null;
+  /**
+   * Portal data-entry phase 2: the client's Data view writes the job's own scope row on save (pending staff review), not a
+   * staged record — one action, and the hint says so.
+   */
+  portalDirect?: boolean;
 };
 
 const QUALITY_TIERS = ["Measured", "Estimated", "Spend-based", "Survey"] as const;
@@ -136,7 +141,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const fields = useMemo(
     () => (spec ? renderInputSpec(spec, audience, mode, leanCapture) : []),
     [spec, audience, mode, leanCapture]);
-  const actions = useMemo(() => emissionEntryActions(audience, mode), [audience, mode]);
+  const actions = useMemo(() => emissionEntryActions(audience, mode, props.portalDirect === true), [audience, mode, props.portalDirect]);
   const spend = isSpendKind(category);
   const reg = isRegistrationKind(category);
   const scopedTo = `Scope ${category.scope} · ${category.name}`;
@@ -410,7 +415,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 }}>
                   <option value="">Select a factor</option>
                   {factors.map(option => <option key={option.id} value={option.id}>{factorOptionText(option)}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
-                  <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option>
+                  {/* A client factor is staff's to choose: never offered in the portal (the write refuses one too). */}
+                  {audience === "crm" ? <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option> : null}
                 </select>
                 <span className="nz-hint">{declared ? `Declared for this category: ${declared.label}` : field.hint}</span>
                 {divergent ? (
@@ -569,7 +575,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
         ))}
       </div>
       {audience === "portal" ? (
-        <p className="nz-hint">Submitting sends this to NZI. Not counted in emissions until the consultant reviews it.</p>
+        <p className="nz-hint">{props.portalDirect ? "Saving adds this to your data straight away, marked for review. It counts once your adviser has reviewed it." : "Submitting sends this to NZI. Not counted in emissions until the consultant reviews it."}</p>
       ) : null}
       <span className="nz-sr-only">{scopedTo}</span>
     </form>

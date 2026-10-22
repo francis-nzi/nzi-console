@@ -115,7 +115,14 @@ describe("the permission matrix (NZC-022)", () => {
   });
 
   it("names only enum capabilities on commands, and no legacy or ad-hoc permission string survives in source", () => {
-    for (const definition of Object.values(commandDefinitions)) assert.ok(isCapability(definition.permission), definition.key);
+    // Portal data-entry phase 2: a portal command names no staff capability — it runs only for a portal principal, under its
+    // access grant, window and profile — and says so; every other command names an enum capability.
+    for (const definition of Object.values(commandDefinitions)) {
+      if (definition.principal === "portal") assert.equal(definition.permission, "portal.dataentry", definition.key);
+      else assert.ok(isCapability(definition.permission), definition.key);
+    }
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.principal === "portal").map((definition) => definition.key).sort(),
+      ["portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.update"], "only the client's three writes are portal commands");
     const legacy = /["'`](financials\.edit|emissions\.data\.edit|emissions\.review|reports\.publish|clients\.create|jobs\.create|jobs\.stage\.change|datasets\.override|portal\.access\.manage|sales\.convert|staff\.access\.manage)["'`]/;
     const roots = ["../src", "../../contracts/src", "../../../apps/console/app"].map((path) => resolve(here, path));
     const offenders: string[] = [];

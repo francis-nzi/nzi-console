@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { commandGrantForRole, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, type CommandContext, type V7ReingestJobInput } from "@nzi/contracts";
+import { commandGrantForRole, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, type CommandContext, type StaffCommandContext, type V7ReingestJobInput } from "@nzi/contracts";
 import { CommandValidationError, createReviewedCrpSnapshot, createScopeRow, createScopeRowInTransaction, MIGRATED_PERIOD } from "../src/postgresCommands";
 import { getScopeQaReadiness } from "../src/readModels";
 import { withTenantRead, withTenantWrite } from "../src/postgres";
@@ -126,7 +126,7 @@ describe("the v7 re-ingest commit phase, against a real database", { skip: TEST_
 
   it("is refused for any actor but policy:v7-reingest as the system principal (condition 3)", async () => {
     await assert.rejects(run(plan(`v7-reingest-${randomUUID()}`), true, staff()), (error) => codes(error).includes("REINGEST_ACTOR_ONLY"));
-    await assert.rejects(run(plan(`v7-reingest-${randomUUID()}`), true, { ...reingest(), principal: "staff" }), (error) => codes(error).includes("REINGEST_ACTOR_ONLY"));
+    await assert.rejects(run(plan(`v7-reingest-${randomUUID()}`), true, { ...reingest(), principal: "staff" } as StaffCommandContext), (error) => codes(error).includes("REINGEST_ACTOR_ONLY"));
   });
 
   it("before any run, the job is an imported period: the snapshot gate refuses it (decision 12, unchanged)", async () => {

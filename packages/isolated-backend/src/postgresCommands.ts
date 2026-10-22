@@ -766,13 +766,15 @@ const scopeEvidence = (
   context: CommandContext,
 ) => ({
   provenance: {
-    capturedBy: context.actorId,
+    // Portal data-entry phase 2: a client's write runs this same handler as a portal principal, and is recorded as the
+    // accept-write recorded one — `capturedAs: "client-portal"` with the portal user, and no staff `capturedBy` (so the
+    // independent-review check, which compares a reviewer with `capturedBy`, never mistakes a client for staff).
+    ...(context.principal === "portal" ? { portalUserId: context.actorId, source: "client-portal" } : { capturedBy: context.actorId }),
     capturedAt: new Date().toISOString(),
-    // How it got here, and where it came from (NZC-111). `capturedAs` is "staff" on this path
-    // because this path *is* the console: a client's figures reach the store through the portal
-    // review, which records "client-portal" for itself.
+    // How it got here, and where it came from (NZC-111). `capturedAs` is "staff" on the console's own path, and
+    // "client-portal" for a client's entry on the shared rows.
     capturedVia: input.capturedVia ?? "manual",
-    capturedAs: "staff",
+    capturedAs: context.principal === "portal" ? "client-portal" : "staff",
     datasetId: input.datasetId,
     factorId: input.factorId,
     factorVersion: input.factorVersion,
@@ -812,6 +814,8 @@ const scopeEvidence = (
     ...(input.overrideTco2e == null
       ? []
       : [{ title: "Calculated result overridden", detail: `${input.overrideTco2e} tCO₂e · ${input.overrideReason}` }]),
+    // A client's entry says so, and that it waits on staff review (RULING-portal-dataentry-02 §A1, NZC-022).
+    ...(context.principal === "portal" ? [{ title: "Entered by the client", detail: "In the client portal · pending staff review", reviewState: "pending-client-entry" }] : []),
   ],
 });
 /**
@@ -1689,8 +1693,8 @@ function refuseUnlessReingest(input: CommandInputMap["scope.row.create"], contex
     throw new CommandValidationError([{ field: "overrideReason", code: "REPORTED_TOTAL_SHAPE", message: "A reported-total row carries v7's figure as an override, with a reason from the closed set, and no quantity, unit or factor." }]);
 }
 
-/** The scope-row create's one handler, shared by the command and the in-transaction create. */
-function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances = {}) {
+/** The scope-row create's one handler, shared by the command, the in-transaction create and the client's `portal.scope.row.create`. */
+export function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"], context: CommandContext, allowances: ScopeRowCreateAllowances = {}) {
   return async (db: Queryable) => {
       refuseUnlessReingest(input, context, allowances);
       await requireCrpJob(db, context.organisationId, input.jobId);
@@ -1789,12 +1793,16 @@ export async function updateScopeRow(
   input: CommandInputMap["scope.row.update"],
   context: CommandContext,
 ): Promise<StoredOutcome<UpdateScopeRowResult>> {
-  return runPostgresCommand(
-    pool,
-    "scope.row.update",
-    input,
-    context,
-    async (db) => {
+  return runPostgresCommand(pool, "scope.row.update", input, context, scopeRowUpdateHandler(input, context));
+}
+
+/**
+ * The scope-row update's one handler (portal data-entry phase 2): the CRM's own edit — migrated, re-ingested and roll-up rows
+ * refused, the site and PG&S rules, monthly activity, declared-factor resolution, the unit check, back to pending — shared by
+ * `scope.row.update` and the client's `portal.scope.row.update`, so a client's edit is checked exactly as a member of staff's.
+ */
+export function scopeRowUpdateHandler(input: CommandInputMap["scope.row.update"], context: CommandContext) {
+  return async (db: Queryable) => {
       await requireCrpJob(db, context.organisationId, input.jobId);
       await refuseMigratedRow(db, context.organisationId, input.jobId, input.rowId, "edited");
       await refuseReingestedRow(db, context, input.jobId, input.rowId, "edited");
@@ -1885,8 +1893,7 @@ export async function updateScopeRow(
         entityId: input.rowId,
         topic: "scope.row.updated",
       };
-    },
-  );
+  };
 }
 
 export type CalculateScopeRowResult = {

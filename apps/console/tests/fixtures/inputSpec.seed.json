@@ -96,7 +96,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -107,6 +108,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -290,7 +303,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -301,6 +315,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -510,7 +536,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -521,6 +548,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -704,7 +743,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -715,6 +755,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -910,7 +962,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -921,6 +974,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -1116,7 +1181,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -1127,6 +1193,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -1335,7 +1413,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -1346,6 +1425,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -1554,7 +1645,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -1565,6 +1657,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -1748,7 +1852,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -1759,6 +1864,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -1944,7 +2061,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -1955,6 +2073,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -2139,7 +2269,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -2150,6 +2281,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -2363,7 +2506,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -2374,6 +2518,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -2586,7 +2742,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -2597,6 +2754,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -2780,7 +2949,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -2791,6 +2961,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -2975,7 +3157,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -2986,6 +3169,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -3169,7 +3364,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -3180,6 +3376,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -3363,7 +3571,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -3374,6 +3583,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -3557,7 +3778,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -3568,6 +3790,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -3751,7 +3985,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -3762,6 +3997,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -3945,7 +4192,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -3956,6 +4204,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },
@@ -4164,7 +4424,8 @@
         "hint": "Set from the selected activity; limited to {scopedTo}.",
         "optional": null,
         "whenAudiences": [
-          "crm"
+          "crm",
+          "portal"
         ],
         "whenModes": null,
         "whenLean": null,
@@ -4175,6 +4436,18 @@
             "lean": true,
             "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
             "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
           }
         ]
       },

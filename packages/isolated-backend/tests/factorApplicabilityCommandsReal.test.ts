@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
+import { commandGrantForRole, type CommandContext, type StaffCommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { addFactorApplicabilityCommand, retireFactorApplicabilityCommand } from "../src/factorApplicabilityCommands";
 import { calculateScopeRow, CommandValidationError, createScopeRow } from "../src/postgresCommands";
@@ -20,7 +20,7 @@ const LARGE_CAR = "uk-ghg-4_301_3070_4_1", BUS = "uk-ghg-25_315_3150_11_1";
 describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manage)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
-  const context = (actorId = ADMIN, role: "admin" | "consultant" = "admin", over: Partial<CommandContext> = {}): CommandContext => {
+  const context = (actorId = ADMIN, role: "admin" | "consultant" = "admin", over: Partial<StaffCommandContext> = {}): CommandContext => {
     keys += 1;
     return { organisationId: ORG, actorId, principal: "staff", idempotencyKey: `s5b-${keys}`, correlationId: `corr-s5b-${keys}`, grant: commandGrantForRole(role, ORG, actorId), ...over };
   };

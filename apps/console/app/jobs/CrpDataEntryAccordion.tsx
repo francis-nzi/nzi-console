@@ -94,11 +94,20 @@ type Props = {
   lens?: AccordionLens;
   onLensChange?: (lens: AccordionLens) => void;
   notice: Notice;
+  /**
+   * Portal data-entry phase 2: the client's Data view reuses this accordion. It passes the categories already narrowed by the
+   * client's profile (the CRM's own server totals, never recomputed), so nothing here fetches the staff route; it drops the
+   * staff-only template seeding and taxonomy note; and it offers Add only while the data-entry window is open.
+   */
+  applicable?: JobApplicableCategories;
+  audience?: "crm" | "portal";
+  canAdd?: boolean;
 };
 
-export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onAddEntry, sites, siteId, factors, reportingMonths, purchasedGoodsCategories, categoryImport, categorySources, revealRowId, lens: lensProp, onLensChange, notice }: Props) {
-  const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
-  const [applicable, setApplicable] = useState<JobApplicableCategories | null>(null);
+export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpenRow, onAddEntry, sites, siteId, factors, reportingMonths, purchasedGoodsCategories, categoryImport, categorySources, revealRowId, lens: lensProp, onLensChange, notice, applicable: given, audience = "crm", canAdd = true }: Props) {
+  // Given its categories (the portal), it draws them on the first paint; otherwise it reads the CRM route.
+  const [state, setState] = useState<"loading" | "failed" | "ready">(given ? "ready" : "loading");
+  const [applicable, setApplicable] = useState<JobApplicableCategories | null>(given ?? null);
   const [lensInternal, setLensInternal] = useState<AccordionLens>("category");
   const lens = lensProp ?? lensInternal;
   const setLens = (next: AccordionLens) => { setLensInternal(next); onLensChange?.(next); };
@@ -112,6 +121,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
 
 
   const load = useCallback(async () => {
+    if (given) { setApplicable(given); setState("ready"); return; }
     setState("loading");
     try {
       const response = await fetch(`/api/isolated/jobs/${jobId}/applicable-categories`, { cache: "no-store" });
@@ -122,7 +132,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
     } catch {
       setState("failed");
     }
-  }, [jobId]);
+  }, [jobId, given]);
   useEffect(() => { void load(); }, [load]);
   // E: open what holds the row being revealed, then scroll to it once it is drawn.
   useEffect(() => {
@@ -163,7 +173,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
         {/* The site selector lives in the page's site tabs now (v2), which filter the whole surface
             rather than only choosing where a new entry lands. A second control here would be a second
             answer to the same question. The lens below stays: it is a different question. */}
-        <Tabs
+        {/* The lens is staff's work queue (calculate, quality tier, approve): the client's view shows the categories only. */}
+        {audience === "crm" ? <Tabs
           className="nz-seg"
           ariaLabel="Data-entry view"
           idBase="crp-data-entry"
@@ -173,7 +184,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             { id: "category", label: "By category" },
             { id: "attention", label: <>Needs attention <span className="badge att">{totals.needsAttention}</span></> },
           ] satisfies TabDescriptor[]}
-        />
+        /> : null}
         {visible.switchedOff > 0 ? (
           <label className="nz-acc-history">
             <input type="checkbox" checked={showSwitchedOff} onChange={event => setShowSwitchedOff(event.target.checked)} />
@@ -192,7 +203,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
       {/* Phase 3b: the client's reporting template — seed, or fill the gaps. It replaces JW-6's "Add rows from template"
           search and "Reuse Previous Year Rows" (retired: the rows come from the template). Renders nothing when the
           client has no template in force. */}
-      <JobTemplateSeeding jobId={jobId} notice={notice} />
+      {audience === "crm" ? <JobTemplateSeeding jobId={jobId} notice={notice} /> : null}
 
 
       <TabPanel id="attention" idBase="crp-data-entry" active={lens === "attention"} className="nz-panel" style={{ padding: 0 }}>
@@ -240,7 +251,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                       <span className="nz-acc-badge">{entry.category.name.slice(0, 1)}</span>
                       <span className="nz-acc-tt">
                         <b>{entry.category.name}
-                          {entry.noData ? <span className="nz-chip-mini nodata">no data</span> : entry.needsAttention ? <span className="nz-chip-mini todo">{entry.needsAttention} to do</span> : null}
+                          {entry.noData ? <span className="nz-chip-mini nodata">no data</span> : entry.needsAttention && audience === "crm" ? <span className="nz-chip-mini todo">{entry.needsAttention} to do</span> : null}
                         </b>
                         <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"} · {num(entry.tco2e)} tCO₂e</span>
                       </span>
@@ -277,10 +288,10 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                           {/* Opens the drawer's type-aware quick-add for this category. The form used to
                               unfold inside the card, which put a tall form between the row list and the
                               next category and gave the page two places heavy detail could live. */}
-                          <button type="button" className="nz-btn pri"
+                          {canAdd ? <button type="button" className="nz-btn pri"
                             onClick={() => onAddEntry(entry.category)}>
                             + Add entry
-                          </button>
+                          </button> : null}
                           {imp ? <button type="button" className="nz-btn" onClick={() => setImportFor(imp)}>Import &amp; templates</button> : null}
                           {sources ? <button type="button" className="nz-btn" onClick={() => setImportFor(sources)}>Sources</button> : null}
                           {KIND_NOTE[entry.category.kind] ? <InfoTip label={`${entry.category.name} — how data entry works`}>{KIND_NOTE[entry.category.kind]}</InfoTip> : null}
@@ -327,7 +338,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                   <button type="button" className="nz-acc-h" aria-expanded={isOpen(`unsorted-${group.scope}`)} onClick={() => toggle(`unsorted-${group.scope}`)}>
                     <span className="nz-acc-badge">?</span>
                     <span className="nz-acc-tt"><b>Unsorted<span className="nz-chip-mini todo">{group.unsorted.length}</span></b>
-                      <span className="sum">Rows not yet filed under a category — a category is stamped when you next save the row.</span></span>
+                      <span className="sum">{audience === "crm" ? "Rows not yet filed under a category — a category is stamped when you next save the row." : "Entries not yet filed under a category by your adviser."}</span></span>
                     <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                   </button>
                   {isOpen(`unsorted-${group.scope}`) ? (
@@ -362,7 +373,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             <div className="nz-acc-empty">No scopes are included for this job yet. Select reporting datasets to populate the category view.</div>
           ) : null}
       </TabPanel>
-      <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.imported ? ` · ${totals.imported} row${totals.imported === 1 ? "" : "s"} imported from v7` : ""}{totals.unsorted ?` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).</p>
+      <p className="nz-hint" style={{ marginTop: 10 }}>{totals.withData} of {totals.categories} categories have data{totals.imported ? ` · ${totals.imported} row${totals.imported === 1 ? "" : "s"} imported from v7` : ""}{totals.unsorted ?` · ${totals.unsorted} row${totals.unsorted === 1 ? "" : "s"} unsorted` : ""}. {audience === "crm" ? `${emissionCategoryTaxonomy.length}-category GHG taxonomy (NZC-045).` : null}</p>
 
       <Drawer open={importFor !== null} onClose={() => setImportFor(null)} ariaLabel={importFor?.title ?? "Import & templates"} className="nz-import-modal" dismissOnOutsideClick>
         <div className="nz-import-modal-card">

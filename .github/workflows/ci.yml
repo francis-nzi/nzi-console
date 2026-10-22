@@ -204,6 +204,11 @@ jobs:
       # and told to the portal without naming or counting anything withheld (NZC-110). Each decision emits its topic.
       - name: A client's portal profile is decided, composed, and never leaked
         run: npx tsx --test packages/isolated-backend/tests/clientPortalProfileReal.test.ts
+      # Portal data-entry phase 2: the client enters on the job's own scope rows, through the CRM's own handlers, as a portal
+      # principal — always pending and never reviewed (NZC-022), gated at the write by the access grant and its window, the
+      # scope ∧ category profile, the staff-only fields and the client's own pending rows; read without staff identity.
+      - name: A client's entry lands on the shared rows pending, gated and never self-reviewed
+        run: npx tsx --test packages/isolated-backend/tests/portalCaptureReal.test.ts
       # The reference-data import (NZC-089), held to §14: run twice, and once over a dirtied
       # database. The lists come from a live export, so a second import is routine — a corrected
       # file, an edited list, a later loader — and every one arrives as state the first run left.
