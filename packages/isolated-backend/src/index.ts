@@ -29,6 +29,7 @@ export {
 export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./categoryVisibility";
+export * from "./portalProfile";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";
 export * from "./piiInventory";

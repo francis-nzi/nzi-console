@@ -212,6 +212,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // alone and the handler resolves the review's own tenant.
   "subject.review.decide": organisation,
   "client.category.visibility.set": client,
+  "client.portal.profile.set": client,
+  "client.portal.scope.visibility.set": client,
   "client.factor.alias.set": client,
   // Dedup slice 5 Step B: a factor's applicability is organisation-wide reference data, as the category registry is.
   "factor.applicability.add": organisation,

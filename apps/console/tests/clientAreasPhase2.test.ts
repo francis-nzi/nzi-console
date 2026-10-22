@@ -89,7 +89,8 @@ describe("client workspace phase 2 areas", () => {
   it("offers History only under audit.view, resolved with the page, a refusal shown as one (CLIENT-12)", () => {
     const view = area("ClientWorkspaceView.tsx");
     assert.match(view, /useHasCapability\("audit\.view", client\.ownerUserId\)/, "offered by the caller's audit.view for this client");
-    assert.match(view, /clientAreaGroups\(\{[\s\S]*?\}, canReadHistory\)/, "the area is in the nav only when it may be read");
+    // Portal data-entry phase 1 adds the Portal Management gate after it (portalManagement.test.ts); History's is unchanged.
+    assert.match(view, /clientAreaGroups\(\{[\s\S]*?\}, canReadHistory, canManagePortal\)/, "the area is in the nav only when it may be read");
     assert.match(area("page.tsx"), /loadScreen<[^>]*>\("clientHistory"[\s\S]*?clients\/\$\{encodeURIComponent\(clientId\)\}\/history/, "resolved server-side with the rest of the page");
     const history = area("HistoryArea.tsx");
     assert.doesNotMatch(history, /fetch\(|loadScreen/, "the area does not fetch its own truth");
