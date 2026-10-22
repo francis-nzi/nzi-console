@@ -1,4 +1,5 @@
 "use client";
+import { portalFeatureEnabled } from "../lib/portalFlags";
 import {useOrganisationName} from "../lib/OrganisationNameProvider";
 import {FormEvent,type KeyboardEvent,useEffect,useState} from "react";
 import {ManifestChartSet,crpChartSamples,crpProfessionalManifest,resolveCrpCoreCharts,reviewedCrpSnapshotSample,validateManifest} from "@nzi/charts";
@@ -32,7 +33,7 @@ export function PortalWorkspace({specs,report,approval=null,view,clientMode=fals
     {clientMode?<div className="nz-portal-context"><div><a href="/portal">← Reporting jobs</a><span>Published report workspace</span></div><a href="/portal/account">Account security</a></div>:null}
     <div className="nz-portal-tabs"><div role="tablist" aria-label="Published report sections">{tabs.map(item=><button type="button" role="tab" id={`portal-tab-${item.id}`} aria-controls="portal-report-content" key={item.id} aria-selected={tab===item.id} tabIndex={tab===item.id?0:-1} onClick={()=>setTab(item.id)} onKeyDown={event=>moveTab(event,item.id)} className={tab===item.id?"active":undefined}>{item.label}</button>)}</div></div>
     <main className="nz-published-main" id="portal-report-content" role="tabpanel" aria-labelledby={`portal-tab-${tab}`} tabIndex={-1}><div className="nz-published-heading"><div><span className="nz-eyebrow">{snapshot?.jobNumber??"J000712"} · Carbon Reduction Plan</span><h1>{tab==="results"?"Your carbon impact":tab==="data"?"Provide activity data":tab==="documents"?"Reports and documents":"Review messages"}</h1><p>Reporting year {snapshot?.reportingYear??2024} · published and verified by {org.your("consultants")}</p></div><span className="nz-st done">{report?"Current published version":"Published version v1"}</span></div>
-      {tab==="results"&&<Results report={report} view={view} initialApproval={approval} clientMode={clientMode}/>} {report&&clientMode&&tab==="data"?<PortalDataEntryGate specs={specs} jobId={report.snapshot.jobId}/>:!report&&tab==="data"?<DataEntry/>:null}{report&&tab==="documents"?<PublishedDocuments report={report} clientMode={clientMode}/>:!report&&tab==="documents"?<Documents/>:null}{report&&tab==="messages"?<ReportMessages report={report} clientMode={clientMode}/>:!report&&tab==="messages"?<Messages/>:null}
+      {tab==="results"&&<Results report={report} view={view} initialApproval={approval} clientMode={clientMode}/>} {report&&clientMode&&tab==="data"&&portalFeatureEnabled("portal-data")?<DataMoved jobId={report.snapshot.jobId}/>:report&&clientMode&&tab==="data"?<PortalDataEntryGate specs={specs} jobId={report.snapshot.jobId}/>:!report&&tab==="data"?<DataEntry/>:null}{report&&tab==="documents"?<PublishedDocuments report={report} clientMode={clientMode}/>:!report&&tab==="documents"?<Documents/>:null}{report&&tab==="messages"?<ReportMessages report={report} clientMode={clientMode}/>:!report&&tab==="messages"?<Messages/>:null}
     </main>
   </div>;
 }
@@ -95,3 +96,6 @@ const card={background:"white",border:"1px solid #E4EAE7",borderRadius:12,paddin
 const notice={display:"flex",alignItems:"center",background:"#DFF5E9",color:"#0B7A4B",border:"1px solid #BCE8D0",borderRadius:10,padding:"13px 16px",marginBottom:18};
 const small={fontSize:12,color:"#68766F",marginTop:3};
 const foot={fontSize:12,color:"#68766F",marginTop:12};
+
+/** Portal data-entry phase 2: with the Data view on, data entry lives there, on the job's own rows (no staging). */
+function DataMoved({jobId}:{jobId:string}){return <section className="nz-panel" style={{padding:18}}><h2 style={{marginTop:0}}>Data entry has moved</h2><p className="sub">Enter and change your figures on the Data page, where they go straight into this job for review.</p><a className="nz-btn pri" href={`/portal/jobs/${encodeURIComponent(jobId)}/data`}>Open your data</a></section>}

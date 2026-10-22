@@ -122,6 +122,7 @@ export function editTimeEntry(pool: PoolLike, input: CommandInputMap["time.entry
     if (!entry.active) throw new CommandValidationError([{ field: "entryId", code: "VOIDED", message: "This time entry was voided." }]);
     if (input.jobId !== entry.job_id) {
       // Moving the time to another job: that job must be one the person can log against too (T-Q7).
+      if (!context.grant) throw new AuthorizationError("time.log");
       await assertCapabilityOnClient(db, context.grant, "time.log", { jobId: input.jobId });
       await assertLoggableJob(db, context, input.jobId);
     }

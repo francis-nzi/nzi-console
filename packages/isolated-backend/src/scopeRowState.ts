@@ -77,7 +77,8 @@ function discardHandler(input: RowRef, context: CommandContext) {
   };
 }
 
-function enabledHandler(input: RowRef, context: CommandContext, enabled: boolean) {
+/** Deactivate / reactivate's one handler — shared with the client's `portal.scope.row.deactivate` (portal data-entry phase 2). */
+export function enabledHandler(input: RowRef, context: CommandContext, enabled: boolean) {
   return async (db: Queryable) => {
     const row = await lockRow(db, context, input, enabled ? "reactivated" : "deactivated");
     if (row.enabled === enabled) {

@@ -1,4 +1,4 @@
-import { commandDefinitions, grantFor, type CommandContext, type CommandKey, type CommandOutcome } from "@nzi/contracts";
+import { grantFor, staffCapabilityOf, type CommandContext, type CommandKey, type CommandOutcome } from "@nzi/contracts";
 import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
 export * from "./errors";
@@ -30,6 +30,7 @@ export * from "./postgres";
 export * from "./postgresCommands";
 export * from "./categoryVisibility";
 export * from "./portalProfile";
+export * from "./portalCapture";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";
 export * from "./piiInventory";
@@ -188,8 +189,8 @@ export type IsolatedCommandHandler<T extends Record<string, unknown>> = (unit: I
 export async function runIsolatedCommand<T extends Record<string, unknown>>(store: IsolatedStore, key: CommandKey, context: CommandContext, handler: IsolatedCommandHandler<T>): Promise<CommandOutcome<T>> {
   if (!context.organisationId.trim()) return { state: "denied", permission: "tenant.context", message: "Tenant context is required.", correlationId: context.correlationId };
   // NZC-022 — the same grant rule as the Postgres runner: this actor, this tenant, and the command's capability.
-  const capability = commandDefinitions[key].permission;
-  if (!context.grant || context.grant.organisationId !== context.organisationId || context.grant.userId !== context.actorId || !grantFor(context.grant.capabilities, capability)) return { state: "denied", permission: capability, message: "Permission denied.", correlationId: context.correlationId };
+  const capability = staffCapabilityOf(key);
+  if (capability === null || !context.grant || context.grant.organisationId !== context.organisationId || context.grant.userId !== context.actorId || !grantFor(context.grant.capabilities, capability)) return { state: "denied", permission: capability ?? "portal.dataentry", message: "Permission denied.", correlationId: context.correlationId };
   try {
     return await store.transaction(async (unit) => {
       const replay = unit.replay(context.organisationId, context.idempotencyKey) as CommandOutcome<T> | undefined;

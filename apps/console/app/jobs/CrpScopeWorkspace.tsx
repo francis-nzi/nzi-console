@@ -38,6 +38,7 @@ import { useEditAccess } from "../lib/useEditAccess";
 import { datasetAddOptions } from "./datasetAddOptions";
 import { JobAnnualMetrics } from "./JobAnnualMetrics";
 import { RowStateControl } from "./RowStateControl";
+import { RowHistory } from "./RowHistory";
 import { DatasetUpdateBanner } from "./DatasetUpdateBanner";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import {CrpReleaseControl} from "./CrpReleaseControl";
@@ -1109,6 +1110,8 @@ function Editor({
     [pending, setPending] = useState(false),
     [reviewerNote, setReviewerNote] = useState(row.reviewerNote ?? ""),
     [showEvidence, setShowEvidence] = useState(false),
+    // Portal data-entry phase 2 (§4): History is its own container, no longer inside Evidence & provenance.
+    [showHistory, setShowHistory] = useState(false),
     [history,setHistory]=useState<Array<{id:string;at:string;actor:string;action:string;correlationId:string}>>([]),
     [historyState,setHistoryState]=useState<"loading"|"ready"|"failed">("loading");
   useEffect(()=>{const controller=new AbortController();fetch(`/api/isolated/jobs/${jobId}/scope-rows/${row.id}/history`,{cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.json():Promise.reject()).then(body=>{if(!Array.isArray(body.events))throw new Error();setHistory(body.events.filter((event:unknown)=>event&&typeof event==="object"&&"id" in event&&"at" in event&&"actor" in event&&"action" in event&&"correlationId" in event));setHistoryState("ready")}).catch(error=>{if(error?.name!=="AbortError")setHistoryState("failed")});return()=>controller.abort();},[jobId,row.id]);
@@ -1305,17 +1308,17 @@ function Editor({
           <GatedButton className="nz-btn pri" blocked={pending || (row.calculatedTco2e === null && row.overrideTco2e === null) || !row.qualityTier} blockedReason={!pending && (row.calculatedTco2e === null && row.overrideTco2e === null) ? "Calculate the row before approving" : !pending && !row.qualityTier ? "Set a quality tier before approving" : undefined} reasonClassName="hint nz-gated-reason" onClick={() => void review("approved")}>Approve row</GatedButton>
         </div>
 
-        <div className="nz-sect">Activity history</div>
-        {historyState === "loading" ? <p className="muted" role="status">Loading immutable row history…</p> : historyState === "failed" ? <div className="nz-banner warn" role="alert">Row history is unavailable. No events have been inferred.</div> : history.length === 0 ? <p className="muted">No row events are recorded yet.</p> : <div>{history.map((event) => <div className="nz-lin" key={event.id}><div className="stepl"><b>{event.action.replaceAll("_", " ")}</b><small>{formatDateTime(event.at)} · {event.actor}</small><small className="num">{event.correlationId}</small></div></div>)}</div>}
-
         <div className="nz-sect">Reporting snapshot</div>
         <p className="muted" style={{ fontSize: 12 }}>Creates an immutable, content-addressed snapshot only when every enabled row passes QA.</p>
         <button className="nz-btn" disabled={pending} onClick={snapshot}>Create reviewed snapshot</button>
       </Collapsible>
 
+      <RowHistory state={historyState} open={showHistory} onOpenChange={setShowHistory}
+        entries={history.map((event) => ({ id: event.id, at: event.at, action: event.action.replaceAll("_", " "), by: event.actor, detail: event.correlationId }))} />
+
       <div className="nz-rd-foot">
         <button className="nz-btn pri" disabled={pending} onClick={() => void saveAndCalculate()}>{pending ? "Saving…" : "Save & calculate"}</button>
-        <button className="nz-btn" aria-expanded={showEvidence} onClick={() => setShowEvidence((prev) => !prev)}>History</button>
+        <button className="nz-btn" aria-expanded={showHistory} onClick={() => setShowHistory((prev) => !prev)}>History</button>
       </div>
     </div>
   );

@@ -84,8 +84,7 @@ function ProfileDifferences({ preview }: { preview: PortalPreviewReadModel }) {
         ? "It is your organisation's default: nothing has been decided differently for this client."
         : <>It differs from your organisation&rsquo;s default where somebody decided so:
           <ul>{differences.map((line) => <li key={line}>{line}</li>)}</ul></>}
-      {" "}Who decided each, when and why is in Portal Management. Category visibility applies in the portal now; the other
-      settings take effect with the next phase of portal data entry.
+      {" "}Who decided each, when and why is in Portal Management. {portalFeatureEnabled("portal-data") ? "These settings are in force in the portal." : "Category visibility applies in the portal now; the other settings take effect with the next phase of portal data entry."}
     </aside>
   );
 }

@@ -16,7 +16,11 @@ export type PortalFeature =
   | "portal-reports"
   // Portal data-entry phase 1: the staff Portal Management area. Ships dark — off until the token is added to
   // NEXT_PUBLIC_FEATURE_PORTAL (portal-dataentry-phase1-GROUNDING, point 2).
-  | "portal-management";
+  | "portal-management"
+  // Portal data-entry phase 2: the client's Data view on the shared scope rows. Ships dark: off until the token is added to
+  // NEXT_PUBLIC_FEATURE_PORTAL, in the dashboard and in render.yaml in the same change (#503). While it is off the records
+  // path is the client's data entry; once on, the records path stops taking new entries, so there is no gap either way.
+  | "portal-data";
 
 const enabled = (): Set<string> =>
   new Set(

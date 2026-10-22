@@ -2267,3 +2267,25 @@ details.nz-job-report-link{white-space:normal}
 .nz-preview-profile{margin:0 0 16px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:12.5px;color:var(--t2)}
 .nz-preview-profile b{color:var(--t1)}
 .nz-preview-profile ul{margin:6px 0 0;padding-left:18px}
+/* Portal data-entry phase 2: the client's Data view. The CRM's own accordion and entry form, in the portal shell; a header
+   band as the Dashboard's, a site filter, and the client's row drawer — read-only sections by the profile, the entry form for
+   their own pending entries, and History always. Light tokens only; one column on a phone. */
+.nz-pdv{display:grid;gap:14px}
+.nz-pdv-site{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--t2)}
+.nz-pdv-site .nz-sel{height:34px;min-width:180px}
+.nz-pdv-note{margin:0;padding:10px 14px;border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:10px;background:var(--card);font-size:12.5px;line-height:1.5;color:var(--t2)}
+.nz-pdv-drawer{width:min(560px,100vw)}
+.nz-pdv-drawer-b{display:grid;gap:14px;padding:18px 20px 28px;max-height:100vh;overflow-y:auto}
+.nz-pdv-drawer-h{display:grid;gap:4px}
+.nz-pdv-drawer-h h2{margin:0;font-size:18px;color:var(--t1)}
+.nz-pdv-drawer-h .nz-st{justify-self:start}
+.nz-pdv-facts{display:grid;gap:6px;margin:0}
+.nz-pdv-facts>div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;font-size:12.5px}
+.nz-pdv-facts dt{color:var(--t2)}.nz-pdv-facts dd{margin:0;color:var(--t1);overflow-wrap:anywhere}
+.nz-pdv-sec{display:grid;gap:6px;padding-top:12px;border-top:1px solid var(--line2)}
+.nz-pdv-sec h3{margin:0;font-size:13px;font-weight:700;color:var(--t1)}
+.nz-pdv-sec p,.nz-pdv-sec li{margin:0;font-size:12.5px;color:var(--t2)}
+.nz-pdv-sec ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.nz-pdv-sec .nz-btn{justify-self:start}
+.nz-pdv-ro{margin:0;font-size:12.5px}
+@media (max-width:640px){.nz-pdv-facts>div{grid-template-columns:1fr;gap:2px}.nz-pdv-site{width:100%}.nz-pdv-site .nz-sel{flex:1}}

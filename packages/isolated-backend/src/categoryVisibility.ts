@@ -1,4 +1,4 @@
-import type { InputSpecCategory } from "@nzi/contracts";
+import { categoryShown, type InputSpecCategory } from "@nzi/contracts";
 import { listInputSpec } from "./inputSpecRecords";
 import type { Queryable } from "./postgres";
 
@@ -70,6 +70,15 @@ export async function hiddenCategoryCodes(db: Queryable, clientId: string): Prom
  * what it may not. Anything else would disclose the decision to the person it was made about.
  */
 export async function listInputSpecForClient(db: Queryable, clientId: string): Promise<InputSpecCategory[]> {
-  const [spec, hidden] = await Promise.all([listInputSpec(db), hiddenCategoryCodes(db, clientId)]);
-  return spec.filter((category) => !hidden.has(category.categoryCode));
+  // Portal data-entry phase 2 (§6): the phase-1 profile goes live here — a category is in the client's spec only when its scope
+  // is not hidden as well (0176), the one composition rule (`categoryShown`), applied in SQL to the same registers.
+  const [spec, hidden, hiddenScopes] = await Promise.all([listInputSpec(db), hiddenCategoryCodes(db, clientId), hiddenScopeCodes(db, clientId)]);
+  return spec.filter((category) => categoryShown(category, { scopes: hiddenScopes, categories: hidden }));
+}
+
+/** The scopes this client does not see (0176) — every category in them goes too. */
+async function hiddenScopeCodes(db: Queryable, clientId: string): Promise<Set<string>> {
+  const { rows } = await db.query<{ scope: string }>(
+    `SELECT scope FROM nzi_console.client_portal_scope_visibility WHERE client_id=$1 AND active AND visible=false`, [clientId]);
+  return new Set(rows.map((row) => row.scope));
 }
