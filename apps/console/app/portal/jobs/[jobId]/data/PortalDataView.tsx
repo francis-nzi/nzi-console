@@ -11,6 +11,7 @@ import type { ApplicableCategory, InputSpecCategory, ScopeRowReadModel } from "@
 import type { PortalDataView as View, PortalScopeRow } from "@nzi/isolated-backend";
 import { CrpDataEntryAccordion } from "../../../../jobs/CrpDataEntryAccordion";
 import { EmissionsSummary } from "../../../../jobs/EmissionsSummary";
+import { JobSiteTabs } from "../../../../jobs/JobSiteTabs";
 import { portalFeatureEnabled } from "../../../../lib/portalFlags";
 import {
   EmissionEntryForm, categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, optionsForCategory,
@@ -83,6 +84,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
     else setFormError(errorText(result));
   }
 
+  const crmParity = portalFeatureEnabled("portal-shell");
   return (
     <div className="nz-pdv">
       <header className="nz-pd-top">
@@ -91,19 +93,24 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           <h1 className="nz-pd-client">Data entry</h1>
           <p className="nz-pd-meta">{surface.readOnly ? "Staff preview · read-only — each portal user's entry window is set in Portal Management" : view.access ? view.access.state === "open" ? `Open for entry until ${formatDate(view.access.expiresAt.slice(0, 10))}` : `Opens for entry on ${formatDate(view.access.startsAt.slice(0, 10))}` : "Not open for entry just now — you can still see your data"}</p>
         </div>
-        <label className="nz-pdv-site">Site
-          <select className="nz-sel" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
-            <option value="">All sites</option>
-            {view.sites.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          </select>
-        </label>
+        {crmParity ? null : (
+          <label className="nz-pdv-site">Site
+            <select className="nz-sel" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+              <option value="">All sites</option>
+              {view.sites.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+            </select>
+          </label>
+        )}
       </header>
-      {/* BUILD-portal-data-crm-parity R2: the CRM's own totals band, over the rows this client sees, narrowed by the site filter.
-          tCO₂e only. Rides the portal shell (dark by absence). */}
-      {portalFeatureEnabled("portal-shell") ? (
+      {/* BUILD-portal-data-crm-parity: the CRM's own totals band (R2) — over the rows this client sees, narrowed by the site —
+          and the CRM's own site tabs (R3) in place of the dropdown, as the CRM's Data-entry stage lays them out. The tabs are the
+          job's included sites (the read already drops the rest), each counted from the band's all-sites read, so a tab keeps its
+          count while another is chosen. tCO₂e only. Ride the portal shell (dark by absence). */}
+      {crmParity ? <>
         <EmissionsSummary jobId={jobId} siteId={siteId || null} siteLabel={site?.name ?? "All sites"} initial={view.emissions}
           emissionsUrl={`${base}/emissions`} liveLabel={surface.readOnly ? "Read-only preview" : "Updates as you enter data"} />
-      ) : null}
+        {view.sites.length > 0 ? <JobSiteTabs sites={view.sites} emissions={view.emissions} selected={siteId || null} onSelect={(next) => setSiteId(next ?? "")} /> : null}
+      </> : null}
       <p className="nz-pdv-note" role="note">What you enter goes straight into this job&apos;s data and waits for {org.your("adviser")}&apos;s review; it counts once reviewed. You can change an entry you made until it has been reviewed.</p>
       {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "ok" ? "status" : "alert"}>{notice.text}</div> : null}
 

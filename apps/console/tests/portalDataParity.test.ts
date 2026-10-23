@@ -21,7 +21,8 @@ describe("the portal Data view at CRM parity — increment 1", () => {
   it("R2: the band is the CRM's own EmissionsSummary, reading the portal's route, behind the shell flag", () => {
     const view = read("apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx");
     assert.match(view, /import \{ EmissionsSummary \} from "\.\.\/\.\.\/\.\.\/\.\.\/jobs\/EmissionsSummary";/, "the CRM's component, not a portal copy");
-    assert.match(view, /\{portalFeatureEnabled\("portal-shell"\) \? \(\s*<EmissionsSummary jobId=\{jobId\} siteId=\{siteId \|\| null\} siteLabel=\{site\?\.name \?\? "All sites"\} initial=\{view\.emissions\}\s*emissionsUrl=\{`\$\{base\}\/emissions`\}/);
+    assert.match(view, /const crmParity = portalFeatureEnabled\("portal-shell"\);/);
+    assert.match(view, /\{crmParity \? <>\s*<EmissionsSummary jobId=\{jobId\} siteId=\{siteId \|\| null\} siteLabel=\{site\?\.name \?\? "All sites"\} initial=\{view\.emissions\}\s*emissionsUrl=\{`\$\{base\}\/emissions`\}/);
     // The CRM keeps its own read: the new prop defaults to the staff route.
     assert.match(read("apps/console/app/jobs/EmissionsSummary.tsx"), /emissionsUrl = staffEmissionsUrl\(jobId\)/);
   });
@@ -43,6 +44,22 @@ describe("the portal Data view at CRM parity — increment 1", () => {
     assert.match(preview, /getPortalJobEmissionsForStaff\(isolatedPool\(\), principal, clientId, jobId, siteId\)/);
     for (const route of [portal, preview]) assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)/);
     assert.match(read("apps/console/app/portal/data/portalDataView.ts"), /!!view\.emissions && typeof view\.emissions\.headline\?\.tco2e === "number"/, "drawn only from a verified read");
+  });
+
+  it("R3 (increment 2): the CRM's own site tabs replace the dropdown — the job's included sites, counted from the band's all-sites read", async () => {
+    const view = read("apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx");
+    assert.match(view, /import \{ JobSiteTabs \} from "\.\.\/\.\.\/\.\.\/\.\.\/jobs\/JobSiteTabs";/, "the CRM's component");
+    assert.match(view, /<JobSiteTabs sites=\{view\.sites\} emissions=\{view\.emissions\} selected=\{siteId \|\| null\} onSelect=\{\(next\) => setSiteId\(next \?\? ""\)\} \/>/);
+    assert.match(view, /\{crmParity \? null : \(\s*<label className="nz-pdv-site">Site/, "the dropdown only while the shell is off");
+    const { JobSiteTabs } = await import("../app/jobs/JobSiteTabs");
+    const html = renderToStaticMarkup(createElement(JobSiteTabs, {
+      sites: [{ id: "s-a", name: "Bristol bakery" }, { id: "s-b", name: "Avonmouth depot" }],
+      emissions: { ...emissions, bySite: [{ siteId: "s-a", tco2e: 32.8, marketTco2e: 0, entries: 2, marketEntries: 0 }, { siteId: null, tco2e: 1.6, marketTco2e: 0, entries: 1, marketEntries: 0 }] },
+      selected: "s-a", onSelect: () => undefined,
+    }));
+    assert.match(html, /aria-selected="true" class="nz-site-tab on"><span class="nz-site-tab-name">Bristol bakery<\/span><span class="nz-site-tab-count tnum" aria-label="2 entries">2</);
+    assert.match(html, />All sites<\/span><span class="nz-site-tab-count tnum" aria-label="3 entries">3</, "All sites counts every row, whichever tab is chosen");
+    assert.match(html, />Avonmouth depot<\/span><span class="nz-site-tab-count tnum" aria-label="0 entries">0</, "an empty site is still offered");
   });
 
   it("R5: the preview's shell shows the client's own logo, versioned by asset; none, the monogram", () => {
