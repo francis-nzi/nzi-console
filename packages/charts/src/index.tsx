@@ -19,6 +19,8 @@ export { SrsPillarRadar } from "./SrsPillarRadar";
 export { SrsMaturityBullets } from "./SrsMaturityBullets";
 export { SrsGapHeatmap } from "./SrsGapHeatmap";
 export { SrsReadinessTrend } from "./SrsReadinessTrend";
+export { MetricBars, MetricRing, MetricTrend } from "./MetricCharts";
+export type { MetricSeries, MetricSlice } from "./MetricCharts";
 
 export * from "./types";
 export { tokens, TOKENS_VERSION, scopeColor, siteColor, moduleGroupColor, readableInkOn, srsMaturityColor, srsMaturityInk } from "./tokens";

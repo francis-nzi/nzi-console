@@ -32,9 +32,14 @@ const clean = (input: { leverCode?: unknown; title?: unknown; notes?: unknown; p
 export async function getPortalActionTracker(pool: PoolLike, principal: PortalPrincipal, jobId: string): Promise<PortalActionTracker> {
   return withTenantRead(pool, principal.organisationId, async (db) => {
     await requireGrant(db, principal, jobId);
-    const { rows } = await db.query<Row>(`SELECT action_id,lever_code,title,notes,progress_percent,version,updated_at FROM nzi_console.portal_tracker_actions WHERE client_id=$1 AND job_id=$2 ORDER BY updated_at DESC,action_id`, [principal.clientId, jobId]);
-    return { levers: portalActionLevers, actions: rows.map(map) };
+    return assemblePortalActionTracker(db, principal.clientId, jobId);
   });
+}
+
+/** The tracker's assembly, shared by the portal grant path above and the staff preview (`getPortalActionTrackerForStaff`). */
+export async function assemblePortalActionTracker(db: Queryable, clientId: string, jobId: string): Promise<PortalActionTracker> {
+  const { rows } = await db.query<Row>(`SELECT action_id,lever_code,title,notes,progress_percent,version,updated_at FROM nzi_console.portal_tracker_actions WHERE client_id=$1 AND job_id=$2 ORDER BY updated_at DESC,action_id`, [clientId, jobId]);
+  return { levers: portalActionLevers, actions: rows.map(map) };
 }
 
 export async function createPortalTrackerAction(pool: PoolLike, principal: PortalPrincipal, jobId: string, input: Record<string, unknown>): Promise<PortalTrackerAction> {

@@ -5,12 +5,12 @@ export const portalPreviewBase = (clientId: string) => `/clients/${encodeURIComp
 export const portalPreviewApi = (clientId: string) => `/api/isolated/clients/${encodeURIComponent(clientId)}/portal-preview`;
 
 /**
- * A portal path as the preview reaches it: `/portal` → the preview home, `/portal/reports` → its Reports, `/portal/jobs/{id}`
- * (and `/dashboard`, `/data`, with any query or fragment) → the job's preview page. Anything else — the account, intensity, a
+ * A portal path as the preview reaches it: `/portal` → the preview home, `/portal/reports` and `/portal/srs` → their preview
+ * pages, `/portal/jobs/{id}` (and `/dashboard`, `/data`, `/actions`, with any query or fragment) → the job's preview page. Anything else — the account, intensity, a
  * download — has no preview counterpart, and is null, so the control is left out rather than sending a consultant into the portal.
  */
 export function previewLink(clientId: string, path: string): string | null {
-  const match = /^\/portal(\/reports|\/jobs\/[^/?#]+(?:\/dashboard|\/data)?)?\/?([?#].*)?$/.exec(path);
+  const match = /^\/portal(\/reports|\/srs|\/files|\/jobs\/[^/?#]+(?:\/dashboard|\/data|\/actions|\/metrics|\/messages|\/insights)?)?\/?([?#].*)?$/.exec(path);
   if (!match) return null;
   return `${portalPreviewBase(clientId)}${match[1] ?? ""}${match[2] ?? ""}`;
 }

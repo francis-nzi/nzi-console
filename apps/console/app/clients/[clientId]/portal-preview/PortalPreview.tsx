@@ -97,7 +97,7 @@ function PreviewJobs({ preview }: { preview: PortalPreviewReadModel }) {
   );
 }
 
-function ProfileDifferences({ preview }: { preview: PortalPreviewReadModel }) {
+export function ProfileDifferences({ preview }: { preview: PortalPreviewReadModel }) {
   const differences = portalProfileDifferences(preview.profile);
   return (
     <aside className="nz-preview-profile" aria-label="How this client's portal differs from the default">

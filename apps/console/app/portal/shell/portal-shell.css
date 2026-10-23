@@ -1,0 +1,142 @@
+/* The portal shell (BUILD-portal-shell-lookandfeel R1): MOCKUP-client-portal.html's left-rail app shell, ported.
+   The mockup's tokens are carried verbatim but namespaced (--nzp-*) and scoped to the shell, because their names (--line,
+   --card, --bg, --ink…) are the console's own and the views inside the shell are drawn in the console's tokens — an unscoped
+   port would restyle every view under it. Type stays Inter (DECISIONS, locked); the mockup's Hanken Grotesk is not loaded. */
+.nzp-app{
+  --nzp-bg:#eef1f5; --nzp-panel:#f6f8fa; --nzp-card:#ffffff; --nzp-line:#e4e9ef; --nzp-line-2:#eef2f6;
+  --nzp-ink:#14202c; --nzp-muted:#58697a; --nzp-faint:#8695a5;
+  --nzp-rail:#0d1b2a; --nzp-rail-2:#13293e; --nzp-rail-active:#163354; --nzp-rail-ink:#cdd9e6; --nzp-rail-dim:#7f93a8; --nzp-rail-accent:#2fa264;
+  --nzp-green:#1f9d57; --nzp-green-ink:#14713e; --nzp-green-soft:#e4f4ea;
+  --nzp-s1:#e8614d; --nzp-s2:#efa93d; --nzp-s3:#2e9e5b;
+  --nzp-info:#2f6fb0; --nzp-info-soft:#e7eff8; --nzp-staff:#b9892f; --nzp-staff-soft:#f6edd7;
+  --nzp-r:12px; --nzp-r-sm:9px; --nzp-r-lg:18px;
+  --nzp-shadow:0 1px 2px rgba(20,32,44,.05),0 4px 16px rgba(20,32,44,.05);
+  display:grid;grid-template-columns:238px minmax(0,1fr);min-height:100vh;background:var(--nzp-bg);color:var(--nzp-ink)
+}
+.nzp-app *{box-sizing:border-box}
+
+/* ---- rail ---- */
+.nzp-rail{background:var(--nzp-rail);color:var(--nzp-rail-ink);display:flex;flex-direction:column;padding:16px 12px;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto}
+/* Under the staff preview's sticky banner, the rail sticks below it rather than behind it. */
+.nzp-preview{--nzp-preview-offset:53px;min-height:calc(100vh - 53px)}
+.nzp-preview .nzp-rail{top:var(--nzp-preview-offset);height:calc(100vh - var(--nzp-preview-offset))}
+.nzp-logo{display:flex;align-items:center;gap:11px;padding:6px 8px 12px;color:inherit;text-decoration:none}
+.nzp-logo .mk{width:38px;height:38px;border-radius:10px;background:#fff;display:grid;place-items:center;flex:none}
+.nzp-logo .mk svg{width:25px;height:25px}
+.nzp-logo b{font-size:14px;color:#fff;font-weight:800;line-height:1.1;display:block}
+.nzp-logo .sub{font-size:10px;color:var(--nzp-rail-dim);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-top:2px;display:block}
+.nzp-client{display:flex;align-items:center;gap:10px;margin:0 2px 6px;padding:9px 10px;border-radius:10px;background:#0b1622;border:1px solid #1d3147}
+.nzp-client .nz-logo-mark,.nzp-client .nzp-client-mark{width:30px;height:30px;border-radius:8px;flex:none}
+.nzp-client b{display:block;color:#fff;font-size:12.5px;font-weight:700;line-height:1.2;overflow-wrap:anywhere}
+.nzp-client small{display:block;color:var(--nzp-rail-dim);font-size:10.5px;font-weight:600}
+.nzp-jobsel{display:flex;flex-direction:column;gap:4px;margin:4px 2px 2px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--nzp-rail-dim);font-weight:700}
+.nzp-jobsel select{font:inherit;font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:600;color:#fff;background:var(--nzp-rail-2);border:1px solid #1d3147;border-radius:8px;padding:7px 8px;width:100%}
+.nzp-navsec{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--nzp-rail-dim);padding:14px 10px 5px;font-weight:700;display:flex;align-items:center;gap:7px}
+.nzp-navitem{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--nzp-rail-ink);font-weight:600;font-size:13.5px;width:100%;text-align:left;position:relative;text-decoration:none}
+.nzp-navitem:hover{background:var(--nzp-rail-2)}
+.nzp-navitem[aria-current="page"]{background:var(--nzp-rail-active);color:#fff}
+.nzp-navitem[aria-current="page"]::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--nzp-rail-accent)}
+.nzp-navitem svg{width:18px;height:18px;flex:none;opacity:.92}
+.nzp-navitem:focus-visible,.nzp-railcard a:focus-visible,.nzp-railcard button:focus-visible{outline:2px solid var(--nzp-rail-accent);outline-offset:2px}
+.nzp-newtag{font-size:9px;font-weight:800;letter-spacing:.5px;color:#fff;background:var(--nzp-s1);border-radius:5px;padding:2px 6px}
+.nzp-soon{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--nzp-rail-dim);border:1px solid #2a4258;border-radius:5px;padding:1px 5px}
+.nzp-spacer{flex:1}
+.nzp-railcard{margin-top:12px;background:#0b1622;border:1px solid #1d3147;border-radius:11px;padding:11px}
+.nzp-railcard .pv{display:inline-flex;align-items:center;gap:6px;background:var(--nzp-staff-soft);color:var(--nzp-staff);font-weight:800;font-size:10.5px;border-radius:999px;padding:3px 10px}
+.nzp-railcard .pv.client{background:var(--nzp-green-soft);color:var(--nzp-green-ink)}
+.nzp-railcard .who{color:#fff;font-weight:700;font-size:12.5px;margin-top:8px;overflow-wrap:anywhere}
+.nzp-railcard .who small{display:block;color:var(--nzp-rail-dim);font-weight:500}
+.nzp-railcard .acts{display:flex;gap:10px;margin-top:9px;font-size:12px}
+.nzp-railcard .acts a,.nzp-railcard .acts button{color:var(--nzp-rail-ink);font:inherit;font-weight:600;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+
+/* ---- main ---- */
+.nzp-main{min-width:0;display:flex;flex-direction:column}
+.nzp-utilbar{display:flex;align-items:center;gap:12px;padding:11px 20px;border-bottom:1px solid var(--nzp-line);background:var(--nzp-card);min-height:52px}
+.nzp-crumb{font-size:12.5px;color:var(--nzp-muted);font-weight:600;display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap}
+.nzp-crumb b{color:var(--nzp-ink)}
+.nzp-crumb .sep{color:var(--nzp-faint)}
+/* The mockup's body size (14px), for views that inherit it rather than set their own. */
+.nzp-content{padding:20px 20px 44px;display:flex;flex-direction:column;gap:18px;min-width:0;font-size:14px;line-height:1.5}
+/* The views carry their own page frame (`nz-portal-shell`, max-width, padding); inside the shell the shell is the frame. */
+.nzp-app .nzp-content .nz-portal-shell{max-width:none;margin:0;padding:0;display:block}
+.nzp-app .nzp-content > *{max-width:1240px;width:100%}
+/* The report workspace draws its own portal header and "← Reporting jobs" bar; inside the shell the rail is both. */
+/* The SRS maturity bullets are an SVG drawn to its container: in the wide pane, held to a readable size. */
+.nzp-app .nz-portal-readiness-charts > *{max-width:560px}
+/* The issued document is a fixed-width page: on a phone it scrolls in its own box, never the whole portal sideways. */
+.nzp-app .nz-portal-composed{max-width:100%;overflow-x:auto}
+.nzp-app .nz-published-workspace .nz-published-header,.nzp-app .nz-published-workspace .nz-portal-context{display:none}
+
+/* ---- Metrics (R8) ---- */
+.nzp-metrics{display:flex;flex-direction:column;gap:16px}
+.nzp-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--nzp-card);border:1px solid var(--nzp-line);border-radius:var(--nzp-r);padding:10px 14px;box-shadow:var(--nzp-shadow)}
+.nzp-filters label,.nzp-filter-fixed{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--nzp-muted)}
+.nzp-filter-fixed b{color:var(--nzp-ink)}
+.nzp-seg{display:inline-flex;flex-wrap:wrap;background:var(--nzp-panel);border:1px solid var(--nzp-line);border-radius:9px;padding:3px;gap:2px}
+.nzp-seg button{font:inherit;font-size:12.5px;font-weight:700;color:var(--nzp-muted);background:none;border:0;border-radius:7px;padding:6px 12px;cursor:pointer;min-height:30px}
+.nzp-seg.sm button{font-size:11.5px;padding:4px 9px;min-height:26px}
+.nzp-seg button[aria-pressed="true"]{background:var(--nzp-card);color:var(--nzp-ink);box-shadow:var(--nzp-shadow)}
+.nzp-seg button:focus-visible{outline:2px solid var(--nzp-green);outline-offset:1px}
+.nzp-stat{display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap;background:var(--nzp-card);border:1px solid var(--nzp-line);border-radius:var(--nzp-r);padding:14px 18px;box-shadow:var(--nzp-shadow)}
+.nzp-stat span{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--nzp-faint);font-weight:700}
+.nzp-stat b{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.nzp-stat b small{font-size:13px;color:var(--nzp-muted);font-weight:600}
+.nzp-stat em{font-style:normal;font-size:12.5px;color:var(--nzp-muted);font-weight:600}
+.nzp-metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.nzp-metric-card{background:var(--nzp-card);border:1px solid var(--nzp-line);border-radius:var(--nzp-r);box-shadow:var(--nzp-shadow);padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.nzp-metric-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nzp-metric-h h3{font-size:15px;font-weight:800;margin:0}
+.nzp-metric-h .nzp-seg{margin-left:auto}
+.nzp-metric-note{font-size:12.5px;color:var(--nzp-muted);margin:0}
+@media (max-width:1100px){.nzp-metric-grid{grid-template-columns:1fr}}
+
+/* ---- Messages (R7): the mockup's Conversations — thread list and conversation ---- */
+.nzp-early{display:inline-block;vertical-align:middle;margin-left:8px;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--nzp-info);background:var(--nzp-info-soft);border-radius:6px;padding:3px 8px}
+.nzp-msgwrap{display:grid;grid-template-columns:300px minmax(0,1fr);background:var(--nzp-card);border:1px solid var(--nzp-line);border-radius:var(--nzp-r);box-shadow:var(--nzp-shadow);overflow:hidden;min-height:420px}
+.nzp-threadlist{border-right:1px solid var(--nzp-line);display:flex;flex-direction:column;overflow-y:auto}
+.nzp-thread{font:inherit;text-align:left;background:none;border:0;border-bottom:1px solid var(--nzp-line-2);padding:12px 14px;display:flex;flex-direction:column;gap:4px;cursor:pointer;color:var(--nzp-ink)}
+.nzp-thread[aria-current="true"]{background:var(--nzp-panel);box-shadow:inset 3px 0 0 var(--nzp-green)}
+.nzp-thread:focus-visible{outline:2px solid var(--nzp-green);outline-offset:-2px}
+.nzp-thread .tr1{display:flex;align-items:center;gap:8px}
+.nzp-thread .when{margin-left:auto;font-size:11px;color:var(--nzp-faint)}
+.nzp-thread .tt{font-weight:700;font-size:13px}
+.nzp-thread .tp{font-size:12px;color:var(--nzp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nzp-subj{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--nzp-info);background:var(--nzp-info-soft);border-radius:5px;padding:2px 6px}
+.nzp-convo{display:flex;flex-direction:column;min-width:0}
+.nzp-convo-b{flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:520px}
+.nzp-msg{max-width:78%;border-radius:12px;padding:10px 13px;font-size:13.5px;background:var(--nzp-panel);border:1px solid var(--nzp-line-2)}
+.nzp-msg p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.nzp-msg .meta{display:block;margin-top:5px;font-size:11px;color:var(--nzp-faint)}
+.nzp-msg.them{align-self:flex-start}
+.nzp-msg.me{align-self:flex-end;background:var(--nzp-green-soft);border-color:transparent}
+.nzp-composer{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--nzp-line);padding:12px 14px}
+.nzp-composer textarea{flex:1 1 240px;font:inherit;font-size:13.5px;border:1px solid var(--nzp-line);border-radius:9px;padding:9px 11px;resize:vertical;min-height:44px}
+.nzp-convo-ro{margin:0;border-top:1px solid var(--nzp-line);padding:12px 14px;font-size:12.5px;color:var(--nzp-muted);background:var(--nzp-panel)}
+/* ---- Insights & Help, Files (preview) ---- */
+.nzp-insights{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.nzp-insights li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+.nzp-insights .ic{width:34px;height:34px;border-radius:9px;background:var(--nzp-green-soft);color:var(--nzp-green-ink);display:grid;place-items:center;font-size:15px}
+.nzp-insights li.soon .ic{background:var(--nzp-info-soft);color:var(--nzp-info)}
+.nzp-insights b{font-size:14px}
+.nzp-insights p{margin:3px 0 8px;font-size:13px;color:var(--nzp-muted)}
+.nzp-preview-banner{background:var(--nzp-info-soft);border:1px solid var(--nzp-line);border-left:3px solid var(--nzp-info);border-radius:var(--nzp-r-sm);padding:11px 14px;font-size:13px;color:var(--nzp-ink)}
+.nzp-dropzone{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border:2px dashed var(--nzp-line);border-radius:var(--nzp-r);padding:22px;background:var(--nzp-card);color:var(--nzp-muted);font-size:12.5px;opacity:.75}
+.nzp-dropzone b{color:var(--nzp-ink);font-size:14px}
+.nzp-example table{opacity:.6}
+/* A wide table scrolls in its own box on a phone, never the whole portal sideways. */
+.nzp-tablewrap{max-width:100%;overflow-x:auto}
+.nzp-example-tag{margin-left:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--nzp-muted);border:1px solid var(--nzp-line);border-radius:5px;padding:1px 5px}
+
+@media (max-width:900px){.nzp-msgwrap{grid-template-columns:1fr}.nzp-threadlist{border-right:0;border-bottom:1px solid var(--nzp-line);max-height:220px}.nzp-msg{max-width:92%}}
+
+@media (max-width:900px){
+  .nzp-app{grid-template-columns:1fr}
+  .nzp-rail,.nzp-preview .nzp-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px 12px;gap:4px}
+  .nzp-navsec,.nzp-spacer,.nzp-railcard{display:none}
+  .nzp-navitem{width:auto;padding:8px 10px}
+  .nzp-logo{width:100%;padding-bottom:6px}
+  .nzp-client{width:100%}
+  .nzp-jobsel{width:100%}
+  .nzp-content{padding:16px 16px 36px}
+  .nzp-utilbar{padding:10px 16px}
+}
