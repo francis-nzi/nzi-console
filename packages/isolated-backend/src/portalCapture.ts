@@ -138,21 +138,29 @@ export async function getPortalDataView(pool: PoolLike, principal: PortalPrincip
   const access = await getPortalDataEntryAccess(pool, principal, jobId, now);
   return withTenantRead(pool, principal.organisationId, async (db) => {
     await assertPortalJobAccess(db, principal, jobId);
-    const [{ profile }, gate, crm, rows, factors, sites, pgs, months] = await Promise.all([
-      portalFacingProfile(db, principal.clientId), clientCategoryGate(db, principal.clientId), listJobApplicableCategories(db, jobId, "crm"),
-      listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
-    ]);
-    const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
-    return {
-      profile, access,
-      // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
-      categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
-      rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map(clientFacingScopeRow),
-      factors: factors.filter((factor) => factor.factorSource !== "client"),
-      sites: sites.filter((site) => site.included !== false).map((site) => ({ id: site.id, name: site.name })),
-      purchasedGoodsCategories: pgs, reportingMonths: months,
-    };
+    return assemblePortalDataView(db, principal.clientId, jobId, access);
   });
+}
+
+/**
+ * The Data view's assembly, once, for whichever authorizer opened the read — the portal grant (`getPortalDataView`) or the staff
+ * preview (`getPortalDataViewForStaff`). Only who may ask and where `clientId` comes from differ; what the client sees is this.
+ */
+export async function assemblePortalDataView(db: Queryable, clientId: string, jobId: string, access: PortalDataEntryAccess | null): Promise<PortalDataView> {
+  const [{ profile }, gate, crm, rows, factors, sites, pgs, months] = await Promise.all([
+    portalFacingProfile(db, clientId), clientCategoryGate(db, clientId), listJobApplicableCategories(db, jobId, "crm"),
+    listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
+  ]);
+  const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
+  return {
+    profile, access,
+    // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
+    categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
+    rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map(clientFacingScopeRow),
+    factors: factors.filter((factor) => factor.factorSource !== "client"),
+    sites: sites.filter((site) => site.included !== false).map((site) => ({ id: site.id, name: site.name })),
+    purchasedGoodsCategories: pgs, reportingMonths: months,
+  };
 }
 
 /** A row's History, as the client sees it: what happened and when, by "you" or "your adviser" — never a member of staff's name. */
@@ -160,11 +168,16 @@ export type PortalRowHistoryEntry = { at: string; who: "you" | "adviser" | "syst
 export async function getPortalRowHistory(pool: PoolLike, principal: PortalPrincipal, jobId: string, rowId: string): Promise<PortalRowHistoryEntry[]> {
   return withTenantRead(pool, principal.organisationId, async (db) => {
     await assertPortalJobAccess(db, principal, jobId);
-    const row = (await db.query<{ scope: string; category_code: string | null }>(
-      `SELECT scope, category_code FROM nzi_console.job_scope_rows WHERE job_id = $1 AND scope_row_id = $2`, [jobId, rowId])).rows[0];
-    const gate = await clientCategoryGate(db, principal.clientId);
-    if (!row || !gate.shows(categoryOf({ categoryCode: row.category_code, scope: row.scope }), row.scope)) throw new AuthorizationError("tenant", "That entry is not available to your account.");
-    const events = await listScopeRowAuditEvents(db, jobId, rowId);
-    return events.map((event) => ({ at: event.at, who: event.principal === "portal" ? "you" : event.principal === "staff" ? "adviser" : "system", action: event.action }));
+    return assemblePortalRowHistory(db, principal.clientId, jobId, rowId);
   });
+}
+
+/** A row's History assembly, shared by the portal and the staff preview as the Data view's is. */
+export async function assemblePortalRowHistory(db: Queryable, clientId: string, jobId: string, rowId: string): Promise<PortalRowHistoryEntry[]> {
+  const row = (await db.query<{ scope: string; category_code: string | null }>(
+    `SELECT scope, category_code FROM nzi_console.job_scope_rows WHERE job_id = $1 AND scope_row_id = $2`, [jobId, rowId])).rows[0];
+  const gate = await clientCategoryGate(db, clientId);
+  if (!row || !gate.shows(categoryOf({ categoryCode: row.category_code, scope: row.scope }), row.scope)) throw new AuthorizationError("tenant", "That entry is not available to your account.");
+  const events = await listScopeRowAuditEvents(db, jobId, rowId);
+  return events.map((event) => ({ at: event.at, who: event.principal === "portal" ? "you" : event.principal === "staff" ? "adviser" : "system", action: event.action }));
 }

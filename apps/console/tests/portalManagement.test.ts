@@ -122,7 +122,7 @@ describe("Portal Management (portal data-entry phase 1)", () => {
     const { PortalPreview } = await import("../app/clients/[clientId]/portal-preview/PortalPreview");
     const preview = (profile: PortalProfileStaffView) => renderToStaticMarkup(createElement(PortalPreview, { preview: {
       client: { id: "client-a", name: "Client A" }, previewedAt: "2026-10-22T09:00:00.000Z", profile,
-      strategies: { state: "empty" } as never, readiness: { state: "empty" } as never,
+      strategies: { state: "empty" } as never, readiness: { state: "empty" } as never, jobs: [], job: null,
     } }));
     const differs = preview(VIEW);
     assert.match(differs, /Staff only — this client(?:&#x27;|’|&rsquo;)s portal profile\./);

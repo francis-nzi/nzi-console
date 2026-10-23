@@ -52,7 +52,7 @@ describe("the portal dashboard honours the report it is drawn from (F-4c)", () =
   it("the dashboard reads the plan of the very report it shows, and gates each piece on it", () => {
     const dashboard = read("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx");
     assert.match(dashboard, /published-report\/composition\?reportVersionId=\$\{encodeURIComponent\(reportVersionId\)\}/);
-    assert.match(dashboard, /dashboardVisibilityOf\(await planSourceFor\(jobId, dashboard\.reportVersionId\)\)/, "the dashboard's own report version");
+    assert.match(dashboard, /dashboardVisibilityOf\(await planSourceFor\(surface, jobId, dashboard\.reportVersionId\)\)/, "the dashboard's own report version");
     assert.match(dashboard, /\{dashboard\.target && visibility\.targets \?/, "the target-progress tile");
     assert.match(dashboard, /\{dashboard\.bySite\.length > 1 && visibility\.sites \?/, "the site table");
     assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\}/, "the charts, through the manifest view");

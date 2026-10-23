@@ -104,6 +104,7 @@ export * from "./tourSeen";
 export * from "./grounding";
 export * from "./portalAcceptanceSeed";
 export * from "./portalPreview";
+export * from "./portalPreviewReads";
 export * from "./referenceData";
 export * from "./referenceSeedSource";
 export * from "./clientReference";

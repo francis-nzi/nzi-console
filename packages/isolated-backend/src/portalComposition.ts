@@ -4,7 +4,7 @@
 //
 // A version issued before compositions were frozen (pre-0077) has none, and none is ever made for it (D1: composing today's
 // records into a "frozen" report would fabricate a freeze). It is returned as `pre-composition`, for the labelled snapshot render.
-import { clientFacingComposition, type PublishedCrpReportReadModel, type ReportComposition } from "@nzi/contracts";
+import { clientFacingComposition, clientFacingPublishedReport, type PublishedCrpReportReadModel, type ReportComposition } from "@nzi/contracts";
 import type { ClientLogoAsset } from "./clientLogo";
 import { readOrganisationLogoAsset } from "./organisationSettings";
 import type { Queryable } from "./postgres";
@@ -26,10 +26,27 @@ export { clientFacingComposition };
  * the default — whole-client first, then the most recently published (S-1, ruled). Null when there is none to see.
  */
 export async function getGrantedPortalReport(db: Queryable, input: { portalUserId: string; clientId: string; jobId: string; reportVersionId?: string | null }): Promise<PortalReportView | null> {
-  const report = await getGrantedPublishedCrpReport(db, input);
+  return assemblePortalReportView(db, await getGrantedPublishedCrpReport(db, input));
+}
+
+/** The report view's assembly from the report the authorizer resolved — the portal grant, or the staff preview. */
+export async function assemblePortalReportView(db: Queryable, report: PublishedCrpReportReadModel | null): Promise<PortalReportView | null> {
   if (!report) return null;
   const composition = await getReportComposition(db, report.reportVersionId);
   return composition ? { state: "composed", report, composition: clientFacingComposition(composition) } : { state: "pre-composition", report };
+}
+
+/**
+ * The published report as the client's `/published-report` answers it: the one asked for, else the default (S-1: whole-client
+ * first, then the most recent), as the client's copy — every staff identity out (F-4b) — and every published scope for the
+ * switcher. Shared by the portal route and the staff preview; only the approval, which is a portal user's, is added by the caller.
+ */
+export function portalPublishedReportOf(reports: PublishedCrpReportReadModel[], wanted: string | null) {
+  const report = wanted ? reports.find((item) => item.reportVersionId === wanted) ?? null : reports[0] ?? null;
+  return report ? {
+    report: clientFacingPublishedReport(report),
+    reports: reports.map((item) => ({ reportVersionId: item.reportVersionId, scope: item.scope, scopeLabel: item.scopeLabel, publishedAt: item.publishedAt })),
+  } : null;
 }
 
 /**

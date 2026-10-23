@@ -107,6 +107,8 @@ describe("the surface itself", () => {
   /** Comment-stripped for the absence checks — prose about a rule is not the rule, and my own
    *  note that the banner is "not dismissible" would otherwise fail the test asserting it. */
   const preview = () => stripComments(previewSource());
+  /** The banner is on every previewed surface since the preview became job-aware, so it lives in its own component. */
+  const bar = () => stripComments(source("../../../apps/console/app/clients/[clientId]/portal-preview/PreviewBar.tsx"));
 
   it("reuses the client's own components rather than reimplementing them", () => {
     const code = preview();
@@ -121,7 +123,8 @@ describe("the surface itself", () => {
   });
 
   it("carries a persistent banner naming the client and the read-only state", () => {
-    const code = preview();
+    const code = bar();
+    assert.match(code, /preview\.client\.name/);
     assert.match(code, /Staff preview/);
     assert.match(code, /read-only/);
     // Not dismissible: there is no close control and no state that could hide it.
@@ -129,7 +132,7 @@ describe("the surface itself", () => {
   });
 
   it("offers no control that writes", () => {
-    const code = preview();
+    const code = preview() + bar();
     for (const needle of ["<form", "method=\"post\"", "fetch(", "onSubmit"]) {
       assert.ok(!code.includes(needle), `the preview must not contain ${needle}`);
     }

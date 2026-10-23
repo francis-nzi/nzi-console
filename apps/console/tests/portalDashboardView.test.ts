@@ -197,7 +197,8 @@ describe("the client portal Dashboard view (BUILD-client-portal-dashboard)", () 
       assert.doesNotMatch(perTurnover, /[£$€]\s?\d|\d\s?[£$€]|turnover|revenue/i, "no amount of money");
       const source = read("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx");
       assert.ok(!/\/api\/isolated/.test(source), "never a staff route");
-      assert.match(source, /fetch\(`\/api\/portal\/jobs\/\$\{jobId\}\/published-report`/, "the client's copy (clientFacingPublishedReport, applied at the route)");
+      assert.match(source, /fetch\(`\$\{surface\.api\}\/jobs\/\$\{jobId\}\/published-report`/, "the client's copy (clientFacingPublishedReport, applied at the route)");
+      assert.match(read("apps/console/app/portal/portalSurface.tsx"), /CLIENT_PORTAL_SURFACE: PortalSurface = \{ api: "\/api\/portal"/, "the client's routes, unless the staff preview says otherwise");
       assert.ok(!/method:\s*"(POST|PATCH|PUT|DELETE)"/.test(source), "no write path: the view only reads");
     });
   });

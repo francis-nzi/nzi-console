@@ -20,7 +20,7 @@ import { useOrganisationName } from "../../../lib/OrganisationNameProvider";
 import { useCallback, useEffect, useState } from "react";
 import { crpProfessionalManifest, ManifestChartSet, resolveCrpCoreCharts, type AnyChartData } from "@nzi/charts";
 import { crpScopeCategoryLabel, type PortalAssuredDashboard, type ClientFacingPublishedCrpReport, type PortalLiveBroadcast } from "@nzi/contracts";
-import { redirectIfPortalSessionEnded } from "../../portalSessionClient";
+import { usePortalSurface, type PortalSurface } from "../../portalSurface";
 import { isPortalAssuredDashboard } from "./portalAnalyticsValidation";
 import { isPublishedCrpReport } from "./publishedReportValidation";
 import { formatDate } from "../../../lib/formatDate";
@@ -53,9 +53,9 @@ export type { DashboardSurroundings };
  * F-4c: the plan of the report this dashboard is drawn from — the same version, read through F-4a's grant-checked composition
  * route. Anything but a verified answer fails closed (see `dashboardVisibilityOf`).
  */
-async function planSourceFor(jobId: string, reportVersionId: string): Promise<DashboardPlanSource> {
+async function planSourceFor(surface: PortalSurface, jobId: string, reportVersionId: string): Promise<DashboardPlanSource> {
   try {
-    const response = await fetch(`/api/portal/jobs/${jobId}/published-report/composition?reportVersionId=${encodeURIComponent(reportVersionId)}`, { cache: "no-store" });
+    const response = await fetch(`${surface.api}/jobs/${jobId}/published-report/composition?reportVersionId=${encodeURIComponent(reportVersionId)}`, { cache: "no-store" });
     if (!response.ok) return { state: "failed" };
     const view = portalReportViewOf(await response.json(), { reportVersionId, jobId });
     return view.state === "failed" ? { state: "failed" } : view;
@@ -63,15 +63,15 @@ async function planSourceFor(jobId: string, reportVersionId: string): Promise<Da
 }
 
 /** The portfolio, the data-entry window and what was sent in it, and the live broadcasts — read-only, each failing on its own. */
-async function surroundingsFor(jobId: string, reportingYear: number): Promise<DashboardSurroundings> {
+async function surroundingsFor(surface: PortalSurface, jobId: string, reportingYear: number): Promise<DashboardSurroundings> {
   const json = async (url: string): Promise<unknown> => {
     const response = await fetch(url, { cache: "no-store" });
-    if (await redirectIfPortalSessionEnded(response)) throw new Error("session ended");
+    if (await surface.sessionEnded(response)) throw new Error("session ended");
     if (!response.ok) throw new Error(url);
     return response.json();
   };
   const [jobs, access, records, broadcasts] = await Promise.allSettled([
-    json("/api/portal/jobs"), json(`/api/portal/jobs/${jobId}/data-entry-access`), json(`/api/portal/jobs/${jobId}/data-entry-records`), json("/api/portal/broadcasts"),
+    json(`${surface.api}/jobs`), json(`${surface.api}/jobs/${jobId}/data-entry-access`), json(`${surface.api}/jobs/${jobId}/data-entry-records`), json(`${surface.api}/broadcasts`),
   ]);
   const read = (settled: PromiseSettledResult<unknown>): Fetched => settled.status === "fulfilled" ? { ok: true, body: settled.value } : { ok: false };
   return surroundingsFrom({ jobId, reportingYear, jobs: read(jobs), access: read(access), records: read(records), broadcasts: read(broadcasts), formatDate });
@@ -81,6 +81,7 @@ const LOADING_SURROUNDINGS: DashboardSurroundings = { years: { kind: "loading" }
 
 export function PortalDashboard({ jobId }: { jobId: string }) {
   const org = useOrganisationName();
+  const surface = usePortalSurface();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [surroundings, setSurroundings] = useState<DashboardSurroundings>(LOADING_SURROUNDINGS);
 
@@ -88,10 +89,10 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
     setState({ kind: "loading" });
     try {
       const [dashRes, reportRes] = await Promise.all([
-        fetch(`/api/portal/jobs/${jobId}/dashboard`, { cache: "no-store" }),
-        fetch(`/api/portal/jobs/${jobId}/published-report`, { cache: "no-store" }),
+        fetch(`${surface.api}/jobs/${jobId}/dashboard`, { cache: "no-store" }),
+        fetch(`${surface.api}/jobs/${jobId}/published-report`, { cache: "no-store" }),
       ]);
-      if (await redirectIfPortalSessionEnded(dashRes) || await redirectIfPortalSessionEnded(reportRes)) return;
+      if (await surface.sessionEnded(dashRes) || await surface.sessionEnded(reportRes)) return;
       if (!dashRes.ok) { setState({ kind: "failed", message: "Your emissions dashboard could not be loaded." }); return; }
       const dashboard: unknown = await dashRes.json();
       if (!isPortalAssuredDashboard(dashboard)) { setState({ kind: "failed", message: "The assured figures could not be verified." }); return; }
@@ -119,14 +120,14 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
           });
         }
       }
-      const visibility = dashboardVisibilityOf(await planSourceFor(jobId, dashboard.reportVersionId));
+      const visibility = dashboardVisibilityOf(await planSourceFor(surface, jobId, dashboard.reportVersionId));
       setState({ kind: "ready", dashboard, charts, snapshotId, visibility, identity });
       setSurroundings(LOADING_SURROUNDINGS);
-      setSurroundings(await surroundingsFor(jobId, dashboard.reportingYear).catch((): DashboardSurroundings => ({ years: { kind: "failed" }, tasks: { kind: "failed" }, broadcasts: { kind: "failed" } })));
+      setSurroundings(await surroundingsFor(surface, jobId, dashboard.reportingYear).catch((): DashboardSurroundings => ({ years: { kind: "failed" }, tasks: { kind: "failed" }, broadcasts: { kind: "failed" } })));
     } catch (cause) {
       setState({ kind: "failed", message: cause instanceof Error ? cause.message : "Your emissions dashboard could not be loaded." });
     }
-  }, [jobId]);
+  }, [jobId, surface]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -155,6 +156,8 @@ function ChangeLine({ change, against }: { change: Change; against: string }) {
 /** The view itself, from what was loaded — pure, so it renders the same in a test as in the browser. */
 export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId: string; state: ReadyState; surroundings: DashboardSurroundings; org: OrganisationCopy }) {
   const { dashboard, snapshotId, visibility, identity } = state;
+  // Every link through the surface: the preview's own pages, or left out where the preview has no counterpart.
+  const { link } = usePortalSurface();
   // F-4c: only what the report it is drawn from shows — a section the report leaves out is not drawn here either.
   const charts = chartsHonouringPlan(state.charts, visibility);
   const manifest = manifestHonouringPlan(portalDashboardManifest(crpProfessionalManifest), visibility);
@@ -163,7 +166,8 @@ export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId
   const baseline = versusBaseline(dashboard);
   const years = surroundings.years.kind === "ready" ? surroundings.years.value : [];
   const latestYear = years[0]?.year;
-  const reportHref = `/portal/jobs/${encodeURIComponent(jobId)}`;
+  const reportHref = link(`/portal/jobs/${encodeURIComponent(jobId)}`);
+  const intensityHref = link("/portal/intensity");
   const client = identity?.client ?? "Your organisation";
   const initials = client.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]!.toUpperCase()).join("") || "—";
   const asAt = identity ? formatDate(identity.asAt) : formatDate(dashboard.publishedAt);
@@ -185,13 +189,13 @@ export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId
             <label className="nz-pd-year">
               <span>Year</span>
               <select className="nz-sel" value={years.find((entry) => entry.jobId === jobId)?.year ?? dashboard.reportingYear}
-                onChange={(event) => { const next = years.find((entry) => entry.year === Number(event.target.value)); if (next && next.jobId !== jobId) window.location.assign(`/portal/jobs/${encodeURIComponent(next.jobId)}/dashboard`); }}>
+                onChange={(event) => { const next = years.find((entry) => entry.year === Number(event.target.value)); const href = next && next.jobId !== jobId ? link(`/portal/jobs/${encodeURIComponent(next.jobId)}/dashboard`) : null; if (href) window.location.assign(href); }}>
                 {years.map((entry) => <option key={entry.year} value={entry.year}>{entry.year}</option>)}
               </select>
             </label>
           ) : null}
-          <a className="nz-btn" href="/portal/intensity">Emissions intensity</a>
-          <a className="nz-btn pri" href={reportHref}>{latestYear === undefined || latestYear === dashboard.reportingYear ? "Open latest report" : `Open the ${dashboard.reportingYear} report`}</a>
+          {intensityHref ? <a className="nz-btn" href={intensityHref}>Emissions intensity</a> : null}
+          {reportHref ? <a className="nz-btn pri" href={reportHref}>{latestYear === undefined || latestYear === dashboard.reportingYear ? "Open latest report" : `Open the ${dashboard.reportingYear} report`}</a> : null}
         </div>
       </header>
 
@@ -246,7 +250,7 @@ export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId
           : <div className="nz-pd-actions">{surroundings.tasks.value.map((task) => (
               <div key={task.id} className={`nz-pd-action ${task.kind}`}>
                 <span className="ic" aria-hidden="true">{task.kind === "submit-data" ? "!" : task.kind === "approve-report" ? "✓" : "✉"}</span>
-                <div><b>{task.title}</b><span>{task.detail}</span><a className={`nz-btn${task.kind === "submit-data" ? " pri" : ""}`} href={task.href}>{task.action}</a></div>
+                <div><b>{task.title}</b><span>{task.detail}</span>{link(task.href) ? <a className={`nz-btn${task.kind === "submit-data" ? " pri" : ""}`} href={link(task.href)!}>{task.action}</a> : null}</div>
               </div>
             ))}</div>}
       </section>

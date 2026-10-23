@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 import type { OrganisationCopy } from "../../lib/organisationName";
 import { formatDate } from "../../lib/formatDate";
-import { redirectIfPortalSessionEnded } from "../portalSessionClient";
+import { CLIENT_PORTAL_SURFACE, usePortalSurface, type PortalSurface } from "../portalSurface";
 import { isPortalJobList, type PortalJob } from "../portalPortfolioValidation";
 import { portalReportViewOf, type PortalReportView } from "../portalReportView";
 import {
@@ -23,32 +23,33 @@ export type ReportsState =
 
 export class SessionEnded extends Error {}
 
-async function getJson(url: string): Promise<unknown> {
+const getJsonOn = (surface: PortalSurface) => async (url: string): Promise<unknown> => {
   const response = await fetch(url, { cache: "no-store" });
-  if (await redirectIfPortalSessionEnded(response)) throw new SessionEnded();
+  if (await surface.sessionEnded(response)) throw new SessionEnded();
   if (!response.ok) throw new Error(url);
   return response.json();
-}
+};
 
 /**
  * Every published report version of every granted job — each read as the report page reads it, each failing on its own. `json`
- * is the portal GET (a route that does not answer 2xx throws; an ended session throws `SessionEnded`, which ends the load).
+ * is the portal GET (a route that does not answer 2xx throws; an ended session throws `SessionEnded`, which ends the load); `api` is
+ * the surface's base — the client's routes, or the staff preview's mirror of them.
  */
-export async function loadReports(json: (url: string) => Promise<unknown> = getJson): Promise<{ entries: PortalReportEntry[]; unread: UnreadJob[] }> {
-  const body = await json("/api/portal/jobs");
+export async function loadReports(json: (url: string) => Promise<unknown> = getJsonOn(CLIENT_PORTAL_SURFACE), api = CLIENT_PORTAL_SURFACE.api): Promise<{ entries: PortalReportEntry[]; unread: UnreadJob[] }> {
+  const body = await json(`${api}/jobs`);
   const jobs = body && typeof body === "object" ? (body as { jobs?: unknown }).jobs : undefined;
   if (!isPortalJobList(jobs)) throw new Error("The reporting jobs could not be verified.");
   const entries: PortalReportEntry[] = [], unread: UnreadJob[] = [];
   await Promise.all((jobs as PortalJob[]).filter((job) => job.hasPublishedReport).map(async (job) => {
     const named: UnreadJob = { jobId: job.id, jobNumber: job.number, reportingYear: job.reportingYear };
     try {
-      const scopes = publishedScopesOf(await json(`/api/portal/jobs/${encodeURIComponent(job.id)}/published-report`));
+      const scopes = publishedScopesOf(await json(`${api}/jobs/${encodeURIComponent(job.id)}/published-report`));
       if (!scopes) { unread.push(named); return; }
       await Promise.all(scopes.map(async (scope) => {
         const query = `reportVersionId=${encodeURIComponent(scope.reportVersionId)}`;
         const [reportBody, viewBody] = await Promise.allSettled([
-          json(`/api/portal/jobs/${encodeURIComponent(job.id)}/published-report?${query}`),
-          json(`/api/portal/jobs/${encodeURIComponent(job.id)}/published-report/composition?${query}`),
+          json(`${api}/jobs/${encodeURIComponent(job.id)}/published-report?${query}`),
+          json(`${api}/jobs/${encodeURIComponent(job.id)}/published-report/composition?${query}`),
         ]);
         if ([reportBody, viewBody].some((settled) => settled.status === "rejected" && settled.reason instanceof SessionEnded)) throw new SessionEnded();
         const read = reportBody.status === "fulfilled" ? readPublishedReport(reportBody.value, { jobId: job.id, reportVersionId: scope.reportVersionId }) : null;
@@ -70,17 +71,19 @@ export async function loadReports(json: (url: string) => Promise<unknown> = getJ
 
 export function PortalReports() {
   const org = useOrganisationName();
+  const surface = usePortalSurface();
   const [state, setState] = useState<ReportsState>({ kind: "loading" });
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    try { setState({ kind: "ready", ...await loadReports() }); }
+    try { setState({ kind: "ready", ...await loadReports(getJsonOn(surface), surface.api) }); }
     catch (cause) { if (!(cause instanceof SessionEnded)) setState({ kind: "failed" }); }
-  }, []);
+  }, [surface]);
   useEffect(() => { void load(); }, [load]);
   return <PortalReportsView state={state} org={org} onRetry={() => void load()} />;
 }
 
 export function PortalReportsView({ state, org, onRetry }: { state: ReportsState; org: OrganisationCopy; onRetry?: () => void }) {
+  const home = usePortalSurface().link("/portal");
   return (
     <div className="nz-portal-dash nz-pd nz-pr">
       <header className="nz-pd-top">
@@ -89,7 +92,7 @@ export function PortalReportsView({ state, org, onRetry }: { state: ReportsState
           <h1 className="nz-pd-client">Reports</h1>
           <p className="nz-pd-meta">Your Carbon Reduction Plans and certificates, by period</p>
         </div>
-        <div className="nz-pd-top-actions"><a className="nz-btn" href="/portal">Back to reporting jobs</a></div>
+        {home ? <div className="nz-pd-top-actions"><a className="nz-btn" href={home}>Back to reporting jobs</a></div> : null}
       </header>
       {state.kind === "loading" ? <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your reports</b><span>Reading each published report and its approval…</span></div></div>
         : state.kind === "failed" ? <div className="nz-portal-state failed" role="alert"><i>!</i><div><b>Your reports are temporarily unavailable</b><span>Your reporting jobs could not be read. No report or approval has been assumed.</span>{onRetry ? <button className="nz-btn" onClick={onRetry}>Try again</button> : null}</div></div>
@@ -120,6 +123,9 @@ function ReportGroup({ title, intro, entries, org }: { title: string; intro: str
 }
 
 function ReportCard({ entry, org }: { entry: PortalReportEntry; org: OrganisationCopy }) {
+  // Through the surface: in the staff preview there is no approving (R5) and no download; "Open" goes to the preview's report.
+  const { link, readOnly } = usePortalSurface();
+  const open = link(reportHref(entry)), approve = readOnly ? null : link(approveHref(entry)), pdf = link(pdfHref(entry));
   const awaiting = entry.approvedAt === null;
   const unreadable = entry.document.kind === "unreadable";
   return (
@@ -133,9 +139,9 @@ function ReportCard({ entry, org }: { entry: PortalReportEntry; org: Organisatio
         ? `It can't be approved until it can be shown in full — nothing is approved unseen. Try again later, or contact ${org.your("adviser")}.`
         : `It can't be shown just now. Your approval of it stands. Try again later, or contact ${org.your("adviser")}.`}</p> : null}
       <div className="nz-pr-actions">
-        {awaiting && approvable(entry) ? <a className="nz-btn pri" href={approveHref(entry)}>Review &amp; approve</a> : null}
-        <a className="nz-btn" href={reportHref(entry)}>Open</a>
-        {!awaiting ? <a className="nz-btn" href={pdfHref(entry)}>Download PDF</a> : null}
+        {awaiting && approvable(entry) && approve ? <a className="nz-btn pri" href={approve}>Review &amp; approve</a> : null}
+        {open ? <a className="nz-btn" href={open}>Open</a> : null}
+        {!awaiting && pdf ? <a className="nz-btn" href={pdf}>Download PDF</a> : null}
       </div>
       <p className="nz-pr-src">Reviewed snapshot {entry.snapshotId} · {awaiting ? "publication gate passed" : `approved ${formatDate(entry.approvedAt!)}`}</p>
       <details className="nz-pr-evidence">

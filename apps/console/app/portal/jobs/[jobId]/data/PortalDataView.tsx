@@ -19,7 +19,7 @@ import { RowHistory, type RowHistoryEntry, type RowHistoryState } from "../../..
 import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTonnes } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
-import { redirectIfPortalSessionEnded } from "../../../portalSessionClient";
+import { usePortalSurface } from "../../../portalSurface";
 import { historyEntry, isPortalDataView, mayDeactivate, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
@@ -29,6 +29,7 @@ type Load = { state: "loading" } | { state: "failed" } | { state: "ready"; view:
 
 export function PortalDataView({ jobId }: { jobId: string }) {
   const org = useOrganisationName();
+  const surface = usePortalSurface();
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [siteId, setSiteId] = useState("");
   const [adding, setAdding] = useState<ApplicableCategory | null>(null);
@@ -37,18 +38,18 @@ export function PortalDataView({ jobId }: { jobId: string }) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [preview, setPreview] = useState<{ code: string; result: DeclaredFactorPreviewResult } | null>(null);
-  const base = `/api/portal/jobs/${encodeURIComponent(jobId)}`;
+  const base = `${surface.api}/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
     try {
-      const [viewResponse, specResponse] = await Promise.all([fetch(`${base}/data-view`, { cache: "no-store" }), fetch("/api/portal/input-spec", { cache: "no-store" })]);
-      if (await redirectIfPortalSessionEnded(viewResponse) || await redirectIfPortalSessionEnded(specResponse)) return;
+      const [viewResponse, specResponse] = await Promise.all([fetch(`${base}/data-view`, { cache: "no-store" }), fetch(`${surface.api}/input-spec`, { cache: "no-store" })]);
+      if (await surface.sessionEnded(viewResponse) || await surface.sessionEnded(specResponse)) return;
       const view: unknown = viewResponse.ok ? await viewResponse.json() : null;
       const spec = specResponse.ok ? (await specResponse.json() as { spec?: InputSpecCategory[] }).spec : undefined;
       if (!isPortalDataView(view) || !Array.isArray(spec)) { setLoad({ state: "failed" }); return; }
       setLoad({ state: "ready", view, specs: Object.fromEntries(spec.map((category) => [category.categoryCode, category])) });
     } catch { setLoad({ state: "failed" }); }
-  }, [base]);
+  }, [base, surface]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   // The category's declared factor, from the same resolution the write uses (Stop 2b) — a convenience the write never needs.
@@ -86,7 +87,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         <div>
           <span className="nz-eyebrow">Your data</span>
           <h1 className="nz-pd-client">Data entry</h1>
-          <p className="nz-pd-meta">{view.access ? view.access.state === "open" ? `Open for entry until ${formatDate(view.access.expiresAt.slice(0, 10))}` : `Opens for entry on ${formatDate(view.access.startsAt.slice(0, 10))}` : "Not open for entry just now — you can still see your data"}</p>
+          <p className="nz-pd-meta">{surface.readOnly ? "Staff preview · read-only — each portal user's entry window is set in Portal Management" : view.access ? view.access.state === "open" ? `Open for entry until ${formatDate(view.access.expiresAt.slice(0, 10))}` : `Opens for entry on ${formatDate(view.access.startsAt.slice(0, 10))}` : "Not open for entry just now — you can still see your data"}</p>
         </div>
         <label className="nz-pdv-site">Site
           <select className="nz-sel" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
@@ -99,7 +100,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
       {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "ok" ? "status" : "alert"}>{notice.text}</div> : null}
 
       <CrpDataEntryAccordion
-        audience="portal" applicable={view.categories} canAdd={open}
+        audience="portal" applicable={view.categories} canAdd={open && !surface.readOnly}
         specs={specs} jobId={jobId} rows={rows} selectedRowId={openRowId ?? ""}
         onOpenRow={(rowId) => { setAdding(null); setOpenRowId(rowId); }}
         onAddEntry={(category) => { setOpenRowId(null); setFormError(""); setAdding(category); }}
@@ -139,7 +140,8 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reason, setReason] = useState("");
-  const base = `/api/portal/jobs/${encodeURIComponent(jobId)}/scope-rows/${encodeURIComponent(row.id)}`;
+  const surface = usePortalSurface();
+  const base = `${surface.api}/jobs/${encodeURIComponent(jobId)}/scope-rows/${encodeURIComponent(row.id)}`;
   useEffect(() => {
     let live = true;
     void fetch(`${base}/history`, { cache: "no-store" }).then((response) => (response.ok ? response.json() : Promise.reject()))
@@ -204,7 +206,8 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
         <ul>{row.lineage.map((step, index) => <li key={index}><b>{step.title}</b> · {step.detail}</li>)}</ul>
         {typeof row.provenance.capturedAt === "string" ? <p className="muted">Captured {formatDateTime(row.provenance.capturedAt)}{row.provenance.capturedAs === "client-portal" ? " in the client portal" : ""}.</p> : null}</section> : null}
 
-      {row.editable && open && category ? <section className="nz-pdv-sec" aria-label="Change this entry"><h3>Change this entry</h3>
+      {surface.readOnly ? <p className="muted nz-pdv-ro">Read-only preview. {row.editable ? "The client can change this entry while it waits for review and their entry window is open." : "The client cannot change this entry."}</p>
+        : row.editable && open && category ? <section className="nz-pdv-sec" aria-label="Change this entry"><h3>Change this entry</h3>
         <EmissionEntryForm spec={specs[category.code] ?? null} category={category} audience="portal" portalDirect
           site={{ id: row.siteId ?? null, label: row.siteLabel ?? "No particular site" }}
           factors={categoryOptions}
@@ -213,7 +216,7 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
           onCancel={() => undefined} onSubmit={save} /></section>
         : <p className="muted nz-pdv-ro">{row.editable ? "Data entry isn't open just now, so this entry can't be changed." : `This entry can't be changed here. Ask ${adviserInline} if it needs to change.`}</p>}
 
-      {mayDeactivate(view.profile, row, open) ? <section className="nz-pdv-sec" aria-label="Deactivate this entry"><h3>Deactivate this entry</h3>
+      {!surface.readOnly && mayDeactivate(view.profile, row, open) ? <section className="nz-pdv-sec" aria-label="Deactivate this entry"><h3>Deactivate this entry</h3>
         <textarea className="nz-inp" rows={2} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why it no longer applies" />
         <button type="button" className="nz-btn" disabled={busy || !reason.trim()} onClick={() => void deactivate()}>Deactivate</button></section> : null}
       {error && !row.editable ? <div className="nz-banner warn" role="alert">{error}</div> : null}

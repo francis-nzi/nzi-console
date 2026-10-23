@@ -209,6 +209,11 @@ jobs:
       # scope ∧ category profile, the staff-only fields and the client's own pending rows; read without staff identity.
       - name: A client's entry lands on the shared rows pending, gated and never self-reviewed
         run: npx tsx --test packages/isolated-backend/tests/portalCaptureReal.test.ts
+      # The staff portal preview, job-aware (BUILD-staff-portal-preview-job-aware): each job-level client read previewed through a
+      # second authorizer — support.portal_impersonate on the client, the job the client's — returning what the client's own read
+      # returns, with no grant, user or window; never reachable by a portal principal; audited with the job; writing nothing.
+      - name: The staff preview reads a client's job as the client does, without a grant
+        run: npx tsx --test packages/isolated-backend/tests/portalPreviewJobsReal.test.ts
       # The reference-data import (NZC-089), held to §14: run twice, and once over a dirtied
       # database. The lists come from a live export, so a second import is routine — a corrected
       # file, an edited list, a later loader — and every one arrives as state the first run left.

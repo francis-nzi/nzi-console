@@ -1644,6 +1644,19 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-preview-bar .hint{flex:1 1 260px;min-width:0;font-size:11px;color:var(--t3);line-height:1.45}
 .nz-portal-preview .nz-portal-shell{display:grid;gap:14px;padding:16px;max-width:980px;margin:0 auto}
 @media (max-width:640px){.nz-preview-bar .hint{flex-basis:100%}}
+/* Job-aware preview: the job in view, the client's surfaces under the banner, and the client's jobs on the home. Staff chrome,
+   in the console's own tokens — none of it is part of what the client sees. */
+.nz-preview-job{font-size:12px;color:var(--t2)}
+.nz-preview-nav{display:flex;flex-wrap:wrap;gap:4px;padding:6px 14px;border-bottom:1px solid var(--line);background:var(--card)}
+.nz-preview-nav a{padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--t2);text-decoration:none}
+.nz-preview-nav a:hover{background:var(--mint,#DFF5E9);color:var(--t1)}
+.nz-preview-nav a.on{background:var(--mint,#DFF5E9);color:var(--pine,#0B7A4B)}
+.nz-preview-jobs{padding:16px}
+.nz-preview-jobs-h h2{margin:0;font-size:15px}
+.nz-preview-jobs-h p{margin:4px 0 12px;font-size:12px}
+.nz-preview-family{margin-left:4px;padding:1px 6px;border-radius:5px;border:1px solid var(--line);font-size:10px;font-weight:700;color:var(--t2)}
+.nz-preview-links{display:flex;gap:10px;flex-wrap:wrap}
+@media (max-width:640px){.nz-preview-jobs .nz-tbl{display:block;overflow-x:auto}}
 
 /* The one smart-search (NZC-089). Positioned relative so the results hang off the field rather
    than the page, and the list sits above sibling fields without a portal. */
