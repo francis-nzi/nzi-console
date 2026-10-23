@@ -64,13 +64,16 @@ services:
       #   portal-readiness  the live UK SRS readiness statement (#177)
       #   portal-reports    the client's Reports index (#501) — shipped dark, switched on in the
       #                     dashboard after; added here 22 Oct 2026 so the file matches again
+      #   portal-management Portal Management in the client workspace (#502)
+      #   portal-data       the client's Data view on the shared scope rows (#504)
+      #                     — both shipped dark and switched on in the dashboard; added here in step
       # The plan and readiness tokens were added retrospectively (NZC-080): both surfaces shipped
       # ungated, so there was no way to withdraw either short of a revert. Both tokens are set in
       # the dashboard, so the gate changed nothing a client sees.
-      # Not here by design: the Portal Management token (#502), dark until it is switched on — at
-      # which point it is added to this value in the same change, so the file never drifts again.
+      # A token that ships dark stays out of this value until it is switched on, and is added here in
+      # the same change as the dashboard flip, so the file never drifts again.
       - key: NEXT_PUBLIC_FEATURE_PORTAL
-        value: portal-analytics,portal-actions,portal-plan,portal-readiness,portal-reports
+        value: portal-analytics,portal-actions,portal-plan,portal-readiness,portal-reports,portal-management,portal-data
       - key: NZI_DATA_MODE
         value: isolated-api
       - key: NZI_DATABASE_BOUNDARY
