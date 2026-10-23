@@ -27,6 +27,8 @@ const perJob = (suffix: string) => (jobId: string | null) => jobId ? `/portal/jo
  */
 export const SHELL_ITEMS: readonly ItemSpec[] = [
   { view: "dashboard", label: "Dashboard", group: "workspace", path: perJob("/dashboard"), flag: "portal-analytics" },
+  // R8: the job's published figures, filterable and re-formattable — from the same assured read as the dashboard.
+  { view: "metrics", label: "Metrics", group: "workspace", path: perJob("/metrics"), flag: "portal-analytics" },
   { view: "data", label: "Data", group: "workspace", path: perJob("/data"), flag: "portal-data" },
   // The mockup's "Strategy": the client's reduction plan, and the job's action tracker under it. Francis calls it Actions (R2).
   { view: "actions", label: "Actions", group: "workspace", path: perJob("/actions"), flag: "portal-plan" },
@@ -53,7 +55,7 @@ export function defaultShellJob<T extends ShellJob>(jobs: readonly T[]): T | nul
 
 /** Where the job switcher goes: the same per-job view for the chosen job, else that job's dashboard. */
 export function switchJobPath(view: ShellView, jobId: string): string {
-  const suffix = view === "data" ? "/data" : view === "actions" ? "/actions" : "/dashboard";
+  const suffix = view === "data" ? "/data" : view === "actions" ? "/actions" : view === "metrics" ? "/metrics" : "/dashboard";
   return `/portal/jobs/${encodeURIComponent(jobId)}${suffix}`;
 }
 

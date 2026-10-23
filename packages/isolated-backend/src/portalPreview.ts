@@ -70,7 +70,7 @@ export type PortalPreviewReadModel = {
 };
 
 /** Which client surface was opened — recorded on the audit with the job, so the trail says what was looked at. */
-export const PORTAL_PREVIEW_SURFACES = ["home", "dashboard", "data", "report", "reports", "actions", "srs"] as const;
+export const PORTAL_PREVIEW_SURFACES = ["home", "dashboard", "data", "report", "reports", "actions", "srs", "metrics"] as const;
 export type PortalPreviewSurface = (typeof PORTAL_PREVIEW_SURFACES)[number];
 
 export async function getPortalPreview(

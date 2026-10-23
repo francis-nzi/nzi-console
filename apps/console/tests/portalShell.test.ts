@@ -19,15 +19,15 @@ describe("the portal shell", () => {
   describe("the rail (pure)", () => {
     it("offers the wired views, each behind the client's own flag, for the job in context", () => {
       assert.deepEqual(shellNav("663", (path) => path, all).map((item) => [item.view, item.label, item.href]), [
-        ["dashboard", "Dashboard", "/portal/jobs/663/dashboard"], ["data", "Data", "/portal/jobs/663/data"], ["actions", "Actions", "/portal/jobs/663/actions"],
+        ["dashboard", "Dashboard", "/portal/jobs/663/dashboard"], ["metrics", "Metrics", "/portal/jobs/663/metrics"], ["data", "Data", "/portal/jobs/663/data"], ["actions", "Actions", "/portal/jobs/663/actions"],
         ["srs", "SRS Readiness", "/portal/srs"], ["reports", "Reports", "/portal/reports"]]);
-      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data" && flag !== "portal-plan").map((item) => item.view), ["dashboard", "srs", "reports"], "a flag off for clients is off in the rail");
+      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data" && flag !== "portal-plan").map((item) => item.view), ["dashboard", "metrics", "srs", "reports"], "a flag off for clients is off in the rail");
       assert.deepEqual(shellNav(null, (path) => path, all).map((item) => item.view), ["srs", "reports"], "a per-job view needs a job");
     });
 
     it("in the staff preview, every item goes to the preview's own page — never into the portal", () => {
       const items = shellNav("663", (path) => previewLink("c1", path), all);
-      assert.deepEqual(items.map((item) => item.href), ["/clients/c1/portal-preview/jobs/663/dashboard", "/clients/c1/portal-preview/jobs/663/data",
+      assert.deepEqual(items.map((item) => item.href), ["/clients/c1/portal-preview/jobs/663/dashboard", "/clients/c1/portal-preview/jobs/663/metrics", "/clients/c1/portal-preview/jobs/663/data",
         "/clients/c1/portal-preview/jobs/663/actions", "/clients/c1/portal-preview/srs", "/clients/c1/portal-preview/reports"]);
     });
 
@@ -37,6 +37,7 @@ describe("the portal shell", () => {
       assert.equal(defaultShellJob([]), null);
       assert.equal(switchJobPath("data", "612"), "/portal/jobs/612/data");
       assert.equal(switchJobPath("actions", "612"), "/portal/jobs/612/actions");
+      assert.equal(switchJobPath("metrics", "612"), "/portal/jobs/612/metrics");
       assert.equal(switchJobPath("reports", "612"), "/portal/jobs/612/dashboard");
     });
   });

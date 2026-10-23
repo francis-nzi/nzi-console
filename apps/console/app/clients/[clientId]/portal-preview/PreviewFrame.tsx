@@ -56,4 +56,4 @@ export async function PreviewFrame({ clientId, jobId, surface, children }: {
 }
 
 /** The preview surface a page opened, as the shell view it is. The job's report sits under Reports, as in the mockup. */
-const SHELL_VIEW: Record<PortalPreviewSurface, ShellView> = { home: "dashboard", dashboard: "dashboard", data: "data", report: "reports", reports: "reports", actions: "actions", srs: "srs" };
+const SHELL_VIEW: Record<PortalPreviewSurface, ShellView> = { home: "dashboard", dashboard: "dashboard", data: "data", report: "reports", reports: "reports", actions: "actions", srs: "srs", metrics: "metrics" };

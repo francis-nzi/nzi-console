@@ -10,7 +10,7 @@ export const portalPreviewApi = (clientId: string) => `/api/isolated/clients/${e
  * download — has no preview counterpart, and is null, so the control is left out rather than sending a consultant into the portal.
  */
 export function previewLink(clientId: string, path: string): string | null {
-  const match = /^\/portal(\/reports|\/srs|\/jobs\/[^/?#]+(?:\/dashboard|\/data|\/actions)?)?\/?([?#].*)?$/.exec(path);
+  const match = /^\/portal(\/reports|\/srs|\/jobs\/[^/?#]+(?:\/dashboard|\/data|\/actions|\/metrics)?)?\/?([?#].*)?$/.exec(path);
   if (!match) return null;
   return `${portalPreviewBase(clientId)}${match[1] ?? ""}${match[2] ?? ""}`;
 }
