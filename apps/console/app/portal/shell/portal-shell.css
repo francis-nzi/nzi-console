@@ -59,7 +59,11 @@
 .nzp-content{padding:20px 20px 44px;display:flex;flex-direction:column;gap:18px;min-width:0;font-size:14px;line-height:1.5}
 /* The views carry their own page frame (`nz-portal-shell`, max-width, padding); inside the shell the shell is the frame. */
 .nzp-app .nzp-content .nz-portal-shell{max-width:none;margin:0;padding:0;display:block}
-.nzp-app .nzp-content > *{max-width:1240px;width:100%}
+.nzp-app .nzp-content > *{max-width:1240px;width:100%;min-width:0}
+/* The Data view is a grid whose one track would size to its widest content — the CRM accordion's row table (min-width 680px).
+   Let the track shrink, and the table scroll inside its own wrap on a phone, never the whole portal sideways. */
+.nzp-app .nz-pdv{min-width:0;grid-template-columns:minmax(0,1fr)}
+.nzp-app .nz-pdv .nz-table-wrap{max-width:100%;overflow-x:auto}
 /* The report workspace draws its own portal header and "← Reporting jobs" bar; inside the shell the rail is both. */
 /* The SRS maturity bullets are an SVG drawn to its container: in the wide pane, held to a readable size. */
 .nzp-app .nz-portal-readiness-charts > *{max-width:560px}

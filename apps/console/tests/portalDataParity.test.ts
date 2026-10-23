@@ -62,6 +62,66 @@ describe("the portal Data view at CRM parity — increment 1", () => {
     assert.match(html, />Avonmouth depot<\/span><span class="nz-site-tab-count tnum" aria-label="0 entries">0</, "an empty site is still offered");
   });
 
+  describe("R4 (increment 3): the row drawer at CRM parity, gated by the profile", () => {
+    const profileOf = (decisions: Array<{ profileKey: string; value: string }>) => import("@nzi/contracts").then(({ offeredPortalProfile, resolvePortalProfile }) => offeredPortalProfile(resolvePortalProfile(decisions)));
+    const drawer = async (decisions: Array<{ profileKey: string; value: string }>, readOnly = false) => {
+      process.env.NEXT_PUBLIC_FEATURE_PORTAL = "portal-shell,portal-data";
+      const [{ PortalRowDrawer }, { PreviewSurfaceProvider }, profile] = await Promise.all([
+        import("../app/portal/jobs/[jobId]/data/PortalDataView"), import("../app/portal/portalSurface"), profileOf(decisions)]);
+      const row = { id: "r1", jobId: "j", scope: "1", categoryCode: "1.natural-gas", sourceLabel: "Bakery boiler gas", reportLabel: "Bakery boiler gas", categoryPath: ["Scope 1", "Natural Gas"],
+        quantity: 182000, unit: "kWh", datasetId: "ds", factorId: "gas-demo", factorVersion: "v1", factorLabel: "Natural gas", qualityTier: null, dataConfidence: null,
+        calculatedTco2e: 32.76, overrideTco2e: null, overrideReason: null, reviewStatus: "pending", version: 2, enabled: true, siteId: "s-a", siteLabel: "Bristol bakery",
+        monthlyActivity: [], provenance: { capturedAt: "2026-10-22T09:00:00.000Z", capturedAs: "staff" }, lineage: [{ title: "Calculated", detail: "182,000 kWh × factor" }], editable: false, origin: "live" };
+      const view = { profile, access: null, emissions, categories: { audience: "portal", includedScopes: ["1"], categories: [] }, rows: [row], factors: [], sites: [], purchasedGoodsCategories: [], reportingMonths: [] };
+      const element = createElement(PortalRowDrawer, { jobId: "j", row: row as never, view: view as never, specs: {}, refs: [], open: true, adviser: "Your adviser", adviserInline: "your adviser", onSaved: async () => undefined });
+      return renderToStaticMarkup(readOnly ? createElement(PreviewSurfaceProvider, { clientId: "c", children: element }) : element);
+    };
+    const titles = (html: string) => [...html.matchAll(/class="t">([^<]+)</g)].map((match) => match[1]!.replace("&amp;", "&"));
+
+    it("the CRM's frame: its calculation banner and seven key fields, read-only — never Calculate, Review or a snapshot", async () => {
+      const html = await drawer([{ profileKey: "entryDrawer", value: "detailed" }]);
+      assert.match(html, /data-crm-parity=""/);
+      assert.match(html, /class="nz-rd-keys"/);
+      for (const key of ["Site", "Scope", "Category", "Report label", "Quantity", "UoM", "tCO₂e"]) assert.match(html, new RegExp(`<span class="l">${key}</span>`), key);
+      assert.doesNotMatch(html, /class="kv edit"|<input/, "the key fields are read-only for the client");
+      assert.match(html, /Calculated — waiting for your adviser&#x27;s review\./);
+      assert.doesNotMatch(html, /Save &amp; calculate|Approve row|>Reject<|reviewed snapshot|Override tCO|Reviewer note/i, "no staff action (R4)");
+    });
+
+    it("detailed: each of the four sections the profile offers, with the CRM's titles; Apportionment & site, Monthly activity and History always", async () => {
+      const all = titles(await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "visible" }, { profileKey: "factorCalculation", value: "visible" }, { profileKey: "dataQuality", value: "visible" }, { profileKey: "sourceDetail", value: "visible" }]));
+      assert.deepEqual(all.filter((title) => title !== "History"), ["Factor & calculation", "Data quality", "Apportionment & site", all.find((title) => !["Factor & calculation", "Data quality", "Apportionment & site", "Monthly activity", "Evidence & provenance", "History"].includes(title))!, "Monthly activity", "Evidence & provenance"]);
+      assert.ok(all.includes("History"));
+      const none = titles(await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "hidden" }, { profileKey: "factorCalculation", value: "hidden" }, { profileKey: "dataQuality", value: "hidden" }, { profileKey: "sourceDetail", value: "hidden" }]));
+      assert.deepEqual(none, ["Apportionment & site", "Monthly activity", "History"], "a hidden section is simply absent");
+      const simple = titles(await drawer([{ profileKey: "entryDrawer", value: "simple" }, { profileKey: "factorCalculation", value: "visible" }]));
+      assert.deepEqual(simple, ["Apportionment & site", "Monthly activity", "History"], "the simple drawer carries none of the four (phase 2, settled)");
+    });
+
+    it("no staff identity in the drawer, and none of it in preview can act", async () => {
+      const html = await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "visible" }, { profileKey: "deactivate", value: "enabled" }], true);
+      assert.ok(titles(html).includes("Evidence & provenance"));
+      assert.doesNotMatch(html, /reviewedBy|Approved by|capturedBy/);
+      // The section's body mounts on open: its review line is the status only — never who reviewed.
+      const source = read("apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx");
+      assert.match(source, /<div className="nz-sect">Independent review<\/div>\s*<div className=\{`nz-banner \$\{row\.reviewStatus === "approved" \? "ok" : "warn"\}`\}>\{reviewLabel\(row\)\}<\/div>/);
+      assert.doesNotMatch(html, /<textarea|>Deactivate<|<form/, "read-only in preview");
+      assert.match(html, /Read-only preview\./);
+    });
+  });
+
+  it("R4: the drawers open as the CRM's do — the right-hand overlay — while the shell is on", () => {
+    const view = read("apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx");
+    assert.match(view, /const drawerClass = crmParity \? "nz-site-drawer nz-pdv-drawer" : "nz-pdv-drawer";/);
+    assert.equal((view.match(/className=\{drawerClass\}/g) ?? []).length, 2, "the add drawer and the row drawer");
+  });
+
+  it("R4: the CRM's own Editor draws through the same frame (one layout, two drawers)", () => {
+    const crm = read("apps/console/app/jobs/CrpScopeWorkspace.tsx");
+    assert.match(crm, /import \{ RowCalcBanner, RowKeyFields \} from "\.\/RowDrawerFrame";/);
+    assert.match(crm, /<RowKeyFields siteLabel=\{value\.siteLabel \?\? null\}[\s\S]*?quantity=\{\{ edit: <input className="nz-inp" type="number"/);
+  });
+
   it("R5: the preview's shell shows the client's own logo, versioned by asset; none, the monogram", () => {
     const frame = read("apps/console/app/clients/[clientId]/portal-preview/PreviewFrame.tsx");
     assert.match(frame, /client\.logoAssetId \? `\/api\/isolated\/clients\/\$\{encodeURIComponent\(client\.id\)\}\/logo\?v=\$\{encodeURIComponent\(client\.logoAssetId\)\}` : null/);

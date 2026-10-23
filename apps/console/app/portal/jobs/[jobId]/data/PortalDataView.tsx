@@ -5,13 +5,14 @@
 // writing the shared row on save), the source detail (`rowSourceDetail`) and the row History (`RowHistory`) — narrowed by the
 // client's portal profile. Writes go to the portal commands, which hold every gate again at the write boundary.
 import { useCallback, useEffect, useState } from "react";
-import { Drawer } from "@nzi/ui";
+import { Collapsible, Drawer } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import type { ApplicableCategory, InputSpecCategory, ScopeRowReadModel } from "@nzi/contracts";
 import type { PortalDataView as View, PortalScopeRow } from "@nzi/isolated-backend";
 import { CrpDataEntryAccordion } from "../../../../jobs/CrpDataEntryAccordion";
 import { EmissionsSummary } from "../../../../jobs/EmissionsSummary";
 import { JobSiteTabs } from "../../../../jobs/JobSiteTabs";
+import { RowCalcBanner, RowKeyFields, rowDisplayTco2e } from "../../../../jobs/RowDrawerFrame";
 import { portalFeatureEnabled } from "../../../../lib/portalFlags";
 import {
   EmissionEntryForm, categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, optionsForCategory,
@@ -85,6 +86,8 @@ export function PortalDataView({ jobId }: { jobId: string }) {
   }
 
   const crmParity = portalFeatureEnabled("portal-shell");
+  // R4: the CRM's right-hand overlay drawer (`nz-site-drawer`, with its scrim), at the portal drawer's width.
+  const drawerClass = crmParity ? "nz-site-drawer nz-pdv-drawer" : "nz-pdv-drawer";
   return (
     <div className="nz-pdv">
       <header className="nz-pd-top">
@@ -123,7 +126,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         factors={refs} reportingMonths={view.reportingMonths} purchasedGoodsCategories={view.purchasedGoodsCategories}
         notice={setNotice} />
 
-      <Drawer open={adding !== null} onClose={() => setAdding(null)} ariaLabel={adding ? `Add an entry to ${adding.name}` : "Add an entry"} className="nz-pdv-drawer" dismissOnOutsideClick>
+      <Drawer open={adding !== null} onClose={() => setAdding(null)} ariaLabel={adding ? `Add an entry to ${adding.name}` : "Add an entry"} className={drawerClass} dismissOnOutsideClick>
         {adding ? <div className="nz-pdv-drawer-b">
           <div className="nz-pdv-drawer-h"><span className="nz-eyebrow">{adding.name}</span><h2>Add an entry</h2></div>
           <EmissionEntryForm key={adding.code} spec={specs[adding.code] ?? null} category={adding} audience="portal" portalDirect
@@ -135,7 +138,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         </div> : null}
       </Drawer>
 
-      <Drawer open={openRow !== null} onClose={() => setOpenRowId(null)} ariaLabel={openRow ? openRow.sourceLabel : "Entry"} className="nz-pdv-drawer" dismissOnOutsideClick>
+      <Drawer open={openRow !== null} onClose={() => setOpenRowId(null)} ariaLabel={openRow ? openRow.sourceLabel : "Entry"} className={drawerClass} dismissOnOutsideClick>
         {openRow ? <PortalRowDrawer key={`${openRow.id}-${openRow.version}`} jobId={jobId} row={openRow} view={view} specs={specs} refs={refs} open={open}
           adviser={org.Your("adviser")} adviserInline={org.your("adviser")} onSaved={async (text) => { setNotice({ kind: "ok", text }); setOpenRowId(null); await refresh(); }} /> : null}
       </Drawer>
@@ -194,13 +197,88 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
     else setError(errorText(result));
   }
 
+  const header = (
+    <div className="nz-pdv-drawer-h">
+      <span className="nz-eyebrow">{category?.name ?? row.scope}</span>
+      <h2>{row.sourceLabel}</h2>
+      <span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{reviewLabel(row)}</span>
+    </div>
+  );
+  // What the client may do with the entry — the same in both layouts: change it (the client's own entry form), deactivate it
+  // (where the profile offers it), or read why not. Never Calculate, Review or a reviewed snapshot (R4, as ruled).
+  const actions = (
+    <>
+      {surface.readOnly ? <p className="muted nz-pdv-ro">Read-only preview. {row.editable ? "The client can change this entry while it waits for review and their entry window is open." : "The client cannot change this entry."}</p>
+        : row.editable && open && category ? <section className="nz-pdv-sec" aria-label="Change this entry"><h3>Change this entry</h3>
+        <EmissionEntryForm spec={specs[category.code] ?? null} category={category} audience="portal" portalDirect
+          site={{ id: row.siteId ?? null, label: row.siteLabel ?? "No particular site" }}
+          factors={categoryOptions}
+          units={specs[category.code]?.units ?? []} reportingMonths={view.reportingMonths} spendCategories={view.purchasedGoodsCategories}
+          entry={editDraft} busy={busy} error={error}
+          onCancel={() => undefined} onSubmit={save} /></section>
+        : <p className="muted nz-pdv-ro">{row.editable ? "Data entry isn't open just now, so this entry can't be changed." : `This entry can't be changed here. Ask ${adviserInline} if it needs to change.`}</p>}
+
+      {!surface.readOnly && mayDeactivate(view.profile, row, open) ? <section className="nz-pdv-sec" aria-label="Deactivate this entry"><h3>Deactivate this entry</h3>
+        <textarea className="nz-inp" rows={2} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why it no longer applies" />
+        <button type="button" className="nz-btn" disabled={busy || !reason.trim()} onClick={() => void deactivate()}>Deactivate</button></section> : null}
+      {error && !row.editable ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+    </>
+  );
+
+  // BUILD-portal-data-crm-parity R4: the CRM's row drawer — its frame (the calculation banner and the seven key fields, shared
+  // with the CRM's Editor), its section titles and order, collapsed as the CRM's are — each of the four detailed sections shown
+  // or hidden by the profile (`rowDrawerSections`), read-only; Apportionment & site and Monthly activity always (the entry
+  // itself); History always. Rides the portal shell; off, the phase-2 drawer below is as before.
+  if (portalFeatureEnabled("portal-shell")) {
+    const tco2e = rowDisplayTco2e(row);
+    return (
+      <div className="nz-pdv-drawer-b nz-rd" data-portal-row-drawer="" data-crm-parity="">
+        {header}
+        <RowCalcBanner calculated={tco2e !== null} pending={`Not calculated yet — ${adviserInline} calculates it on review.`}
+          done={row.reviewStatus === "approved" ? "Calculated and reviewed." : `Calculated — waiting for ${adviserInline}'s review.`} />
+        <RowKeyFields siteLabel={row.siteLabel ?? null} scope={row.scope} category={category?.name ?? row.categoryPath.at(-1) ?? "—"}
+          reportLabel={row.reportLabel || row.sourceLabel} quantity={{ value: formatQuantity(row.quantity) }} unit={row.unit ?? null} tco2e={tco2e} />
+
+        {sections.includes("factorCalculation") ? <Collapsible title="Factor & calculation">
+          <div className="nz-kv"><span className="k">Emission factor</span><span className="v">{row.factorLabel ?? "No factor"}</span></div>
+          <div className="nz-kv"><span className="k">Factor set</span><span className="v">{row.factorLabel ?? "—"}{row.factorVersion ? ` · ${row.factorVersion}` : ""}</span></div>
+          <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? `Calculated by ${adviserInline} on review` : formatTonnes(row.calculatedTco2e)}</span></div>
+        </Collapsible> : null}
+        {sections.includes("dataQuality") ? <Collapsible title="Data quality">
+          <div className="nz-kv"><span className="k">Quality tier</span><span className="v">{row.qualityTier ?? `Set by ${adviserInline} on review`}</span></div>
+          <div className="nz-kv"><span className="k">Data confidence</span><span className="v">{row.dataConfidence === "H" ? "High" : row.dataConfidence === "M" ? "Medium" : row.dataConfidence === "L" ? "Low" : "Not set"}</span></div>
+        </Collapsible> : null}
+        {sections.includes("site") ? <Collapsible title="Apportionment & site">
+          <div className="nz-kv"><span className="k">Site</span><span className="v">{row.siteLabel ?? "No particular site"}</span></div>
+          <div className="nz-kv"><span className="k">Apportionment</span><span className="v">{row.applyPct ?? 100}%</span></div>
+        </Collapsible> : null}
+        {sections.includes("sourceDetail") ? <Collapsible title={source.title} count={source.fields.length || undefined}>
+          {source.fields.length ? source.fields.map((field) => <div className="nz-kv" key={field.label}><span className="k">{field.label}</span><span className="v">{field.value}</span></div>) : <p className="muted">No further detail recorded.</p>}
+        </Collapsible> : null}
+        {sections.includes("monthly") ? <Collapsible title="Monthly activity">
+          {months.length ? months.map((slot) => <div className="nz-kv" key={slot.month}><span className="k">{slot.month}</span><span className="v">{formatQuantity(slot.quantity)} {row.unit ?? ""}</span></div>) : <p className="muted">Entered as one figure for the year.</p>}
+        </Collapsible> : null}
+        {sections.includes("evidenceProvenance") ? <Collapsible title="Evidence & provenance">
+          <div className="nz-sect">Calculation lineage</div>
+          {row.lineage.length ? row.lineage.map((step, index) => <div className="nz-lin" key={index}><div className="stepl">{step.title}<small>{step.detail}</small></div></div>) : <div className="muted">No calculation lineage yet.</div>}
+          <div className="nz-sect">Provenance</div>
+          {typeof row.provenance.capturedAt === "string" ? <div className="nz-kv"><span className="k">Captured</span><span className="v">{formatDateTime(row.provenance.capturedAt)}{row.provenance.capturedAs === "client-portal" ? " · in the client portal" : ""}</span></div> : <div className="muted">No capture record.</div>}
+          {/* The review's status, as the client may see it — never who reviewed (no staff identity). */}
+          <div className="nz-sect">Independent review</div>
+          <div className={`nz-banner ${row.reviewStatus === "approved" ? "ok" : "warn"}`}>{reviewLabel(row)}</div>
+        </Collapsible> : null}
+
+        {actions}
+
+        {sections.includes("history") ? <RowHistory state={historyState} entries={history} open={showHistory} onOpenChange={setShowHistory} /> : null}
+        <div className="nz-rd-foot"><button type="button" className="nz-btn" aria-expanded={showHistory} onClick={() => setShowHistory((previous) => !previous)}>History</button></div>
+      </div>
+    );
+  }
+
   return (
     <div className="nz-pdv-drawer-b" data-portal-row-drawer="">
-      <div className="nz-pdv-drawer-h">
-        <span className="nz-eyebrow">{category?.name ?? row.scope}</span>
-        <h2>{row.sourceLabel}</h2>
-        <span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{reviewLabel(row)}</span>
-      </div>
+      {header}
       <dl className="nz-pdv-facts">
         <div><dt>Activity</dt><dd>{formatQuantity(row.quantity)} {row.unit ?? ""}</dd></div>
         <div><dt>Factor</dt><dd>{row.factorLabel ?? "—"}</dd></div>
@@ -221,20 +299,7 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
         <ul>{row.lineage.map((step, index) => <li key={index}><b>{step.title}</b> · {step.detail}</li>)}</ul>
         {typeof row.provenance.capturedAt === "string" ? <p className="muted">Captured {formatDateTime(row.provenance.capturedAt)}{row.provenance.capturedAs === "client-portal" ? " in the client portal" : ""}.</p> : null}</section> : null}
 
-      {surface.readOnly ? <p className="muted nz-pdv-ro">Read-only preview. {row.editable ? "The client can change this entry while it waits for review and their entry window is open." : "The client cannot change this entry."}</p>
-        : row.editable && open && category ? <section className="nz-pdv-sec" aria-label="Change this entry"><h3>Change this entry</h3>
-        <EmissionEntryForm spec={specs[category.code] ?? null} category={category} audience="portal" portalDirect
-          site={{ id: row.siteId ?? null, label: row.siteLabel ?? "No particular site" }}
-          factors={categoryOptions}
-          units={specs[category.code]?.units ?? []} reportingMonths={view.reportingMonths} spendCategories={view.purchasedGoodsCategories}
-          entry={editDraft} busy={busy} error={error}
-          onCancel={() => undefined} onSubmit={save} /></section>
-        : <p className="muted nz-pdv-ro">{row.editable ? "Data entry isn't open just now, so this entry can't be changed." : `This entry can't be changed here. Ask ${adviserInline} if it needs to change.`}</p>}
-
-      {!surface.readOnly && mayDeactivate(view.profile, row, open) ? <section className="nz-pdv-sec" aria-label="Deactivate this entry"><h3>Deactivate this entry</h3>
-        <textarea className="nz-inp" rows={2} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why it no longer applies" />
-        <button type="button" className="nz-btn" disabled={busy || !reason.trim()} onClick={() => void deactivate()}>Deactivate</button></section> : null}
-      {error && !row.editable ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+      {actions}
 
       {sections.includes("history") ? <RowHistory state={historyState} entries={history} open={showHistory} onOpenChange={setShowHistory} /> : null}
     </div>
