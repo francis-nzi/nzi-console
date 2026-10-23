@@ -50,7 +50,8 @@ import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
  */
 
 export type PortalPreviewReadModel = {
-  client: { id: string; name: string };
+  /** `logoAssetId`: the client's own logo (0068), for the shell's client identity — the monogram when there is none. */
+  client: { id: string; name: string; logoAssetId: string | null };
   strategies: PortalStrategiesReadModel;
   readiness: PortalReadinessReadModel;
   /**
@@ -92,8 +93,8 @@ export async function getPortalPreview(
     // A job surface: the job must be this client's — the same check the staff-preview reads make (R2).
     if (jobId) await assertStaffPreviewJob(db, principal, input.clientId, jobId);
 
-    const client = await db.query<{ client_id: string; name: string }>(
-      `SELECT client_id, name FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
+    const client = await db.query<{ client_id: string; name: string; logo_asset_id: string | null }>(
+      `SELECT client_id, name, logo_asset_id FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
       [principal.organisationId, input.clientId]);
     const found = client.rows[0];
     if (!found) throw new PortalPreviewError("That client is unavailable.");
@@ -117,7 +118,7 @@ export async function getPortalPreview(
         JSON.stringify({ clientId: input.clientId, clientName: found.name, jobId, jobNumber: job?.number ?? null, surface, readOnly: true, impersonated: false })]);
 
     return {
-      client: { id: found.client_id, name: found.name },
+      client: { id: found.client_id, name: found.name, logoAssetId: found.logo_asset_id ?? null },
       strategies, readiness, profile, jobs, job,
       previewedAt: now.toISOString(),
     };

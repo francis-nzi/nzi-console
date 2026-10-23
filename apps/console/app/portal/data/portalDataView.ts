@@ -11,6 +11,8 @@ export function isPortalDataView(value: unknown): value is PortalDataView {
   return !!view.profile && Array.isArray(view.profile.areas) && Array.isArray(view.profile.rowSections) && Array.isArray(view.profile.actions)
     && !!view.categories && Array.isArray(view.categories.categories) && Array.isArray(view.rows) && Array.isArray(view.factors)
     && Array.isArray(view.sites) && Array.isArray(view.purchasedGoodsCategories) && Array.isArray(view.reportingMonths)
+    // The totals band's read (R2): drawn only from a verified one, never from a missing figure.
+    && !!view.emissions && typeof view.emissions.headline?.tco2e === "number" && Array.isArray(view.emissions.byScope) && Array.isArray(view.emissions.bySite)
     && (view.access === null || (typeof view.access === "object" && (view.access.state === "open" || view.access.state === "scheduled")));
 }
 

@@ -7,6 +7,7 @@ import { listJobApplicableCategories, listJobFactorOptions, listJobPurchasedGood
 import { listScopeRowAuditEvents } from "./scopeRowHistory";
 import { getPortalDataEntryAccess, type PortalDataEntryAccess } from "./portalAccess";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
+import { aggregateJobEmissions, type JobEmissions } from "./emissionsAggregation";
 
 /**
  * Portal data-entry phase 2 — the client enters data on the job's own scope rows (RULING-portal-dataentry-02; BUILD-portal-
@@ -127,6 +128,8 @@ export function clientFacingScopeRow(row: ScopeRowReadModel): PortalScopeRow {
 export type PortalDataView = {
   profile: PortalOfferedProfile;
   access: PortalDataEntryAccess | null;
+  /** The totals band (R2): the CRM's emissions read over the rows the client sees, all sites. */
+  emissions: JobEmissions;
   categories: JobApplicableCategories;
   rows: PortalScopeRow[];
   factors: FactorOption[];
@@ -138,7 +141,29 @@ export async function getPortalDataView(pool: PoolLike, principal: PortalPrincip
   const access = await getPortalDataEntryAccess(pool, principal, jobId, now);
   return withTenantRead(pool, principal.organisationId, async (db) => {
     await assertPortalJobAccess(db, principal, jobId);
-    return assemblePortalDataView(db, principal.clientId, jobId, access);
+    return assemblePortalDataView(db, principal.organisationId, principal.clientId, jobId, access);
+  });
+}
+
+/** The rows of a job the client sees: the profile's scope ∧ category gate, as the Data view applies it. */
+async function visibleRowIds(db: Queryable, clientId: string, jobId: string, rows?: readonly ScopeRowReadModel[]): Promise<string[]> {
+  const gate = await clientCategoryGate(db, clientId);
+  return (rows ?? await listScopeRows(db, jobId)).filter((row) => gate.shows(categoryOf(row), row.scope)).map((row) => row.id);
+}
+
+/**
+ * The client's totals band (BUILD-portal-data-crm-parity R2): the CRM's own emissions aggregation (`aggregateJobEmissions`, the
+ * read behind `EmissionsSummary`), limited to the rows the client sees — so a hidden category is never in a total — and narrowed
+ * to a site when one is chosen. tCO₂e only. Shared by the portal path (`getPortalJobEmissions`) and the staff preview.
+ */
+export async function assemblePortalJobEmissions(db: Queryable, organisationId: string, clientId: string, jobId: string, siteId: string | null): Promise<JobEmissions> {
+  return aggregateJobEmissions(db, { organisationId, jobId, siteId, rowIds: await visibleRowIds(db, clientId, jobId) });
+}
+
+export async function getPortalJobEmissions(pool: PoolLike, principal: PortalPrincipal, jobId: string, siteId: string | null): Promise<JobEmissions> {
+  return withTenantRead(pool, principal.organisationId, async (db) => {
+    await assertPortalJobAccess(db, principal, jobId);
+    return assemblePortalJobEmissions(db, principal.organisationId, principal.clientId, jobId, siteId);
   });
 }
 
@@ -146,14 +171,15 @@ export async function getPortalDataView(pool: PoolLike, principal: PortalPrincip
  * The Data view's assembly, once, for whichever authorizer opened the read — the portal grant (`getPortalDataView`) or the staff
  * preview (`getPortalDataViewForStaff`). Only who may ask and where `clientId` comes from differ; what the client sees is this.
  */
-export async function assemblePortalDataView(db: Queryable, clientId: string, jobId: string, access: PortalDataEntryAccess | null): Promise<PortalDataView> {
+export async function assemblePortalDataView(db: Queryable, organisationId: string, clientId: string, jobId: string, access: PortalDataEntryAccess | null): Promise<PortalDataView> {
   const [{ profile }, gate, crm, rows, factors, sites, pgs, months] = await Promise.all([
     portalFacingProfile(db, clientId), clientCategoryGate(db, clientId), listJobApplicableCategories(db, jobId, "crm"),
     listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
   ]);
   const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
+  const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: await visibleRowIds(db, clientId, jobId, rows) });
   return {
-    profile, access,
+    profile, access, emissions,
     // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
     categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
     rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map(clientFacingScopeRow),

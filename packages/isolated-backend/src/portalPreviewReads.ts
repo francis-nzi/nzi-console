@@ -5,7 +5,8 @@ import { AuthorizationError, requireCapability, type StaffPrincipal } from "./au
 import { assertCapabilityOnClient } from "./access";
 import { listInputSpecForClient } from "./categoryVisibility";
 import { listLivePortalBroadcasts } from "./portalBroadcasts";
-import { assemblePortalDataView, assemblePortalRowHistory, type PortalDataView, type PortalRowHistoryEntry } from "./portalCapture";
+import { assemblePortalDataView, assemblePortalJobEmissions, assemblePortalRowHistory, type PortalDataView, type PortalRowHistoryEntry } from "./portalCapture";
+import type { JobEmissions } from "./emissionsAggregation";
 import { assemblePortalAssuredDashboard } from "./portalAnalytics";
 import { assemblePortalReportView, portalPublishedReportOf, type PortalReportView } from "./portalComposition";
 import { getCurrentPublishedCrpReport, listCurrentPublishedCrpReports } from "./readModels";
@@ -100,7 +101,12 @@ export function listPortalPreviewJobs(pool: PoolLike, principal: StaffPrincipal,
 
 /** The client's Data view for a job. The window is a portal user's, so there is none here — and it never gates a preview. */
 export function getPortalDataViewForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string): Promise<PortalDataView> {
-  return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalDataView(db, clientId, jobId, null));
+  return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalDataView(db, principal.organisationId, clientId, jobId, null));
+}
+
+/** The client's totals band in preview, narrowed to a site (BUILD-portal-data-crm-parity R2) — the client's own assembly. */
+export function getPortalJobEmissionsForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, siteId: string | null): Promise<JobEmissions> {
+  return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalJobEmissions(db, principal.organisationId, clientId, jobId, siteId));
 }
 
 export function getPortalRowHistoryForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, rowId: string): Promise<PortalRowHistoryEntry[]> {

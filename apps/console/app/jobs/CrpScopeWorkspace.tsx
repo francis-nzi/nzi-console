@@ -32,6 +32,7 @@ import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/c
 import type { FamilyJob } from "@nzi/mock-data";
 import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
+import { RowCalcBanner, RowKeyFields } from "./RowDrawerFrame";
 import { NAV, USER } from "../lib/nav";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { useEditAccess } from "../lib/useEditAccess";
@@ -1207,24 +1208,14 @@ function Editor({
   return (
     <div className="nz-rd">
       <RowStateControl jobId={jobId} row={row} notice={notice} onDiscarded={onDiscarded} onChanged={() => router.refresh()} />
-      <div className={`nz-banner ${displayTco2e === null ? "warn" : "ok"}`}>
-        {displayTco2e === null ? "Not calculated yet — edit the fields, then Save & calculate." : "Calculated evidence is available."}
-      </div>
+      <RowCalcBanner calculated={displayTco2e !== null} pending="Not calculated yet — edit the fields, then Save & calculate." done="Calculated evidence is available." />
 
-      {/* The 7 key fields, always visible (item 2). Quantity is the row's primary
+      {/* The 7 key fields, always visible (item 2) — the frame the client portal's drawer shares. Quantity is the row's primary
           editable activity; UoM is fixed by the emission factor's dataset. */}
-      <div className="nz-rd-keys">
-        <div className="kv"><span className="l">Site</span><span className="v">{value.siteLabel ?? "Unallocated"}</span></div>
-        <div className="kv"><span className="l">Scope</span><span className="v">{crpScopeCategoryPath(value.scope).join(" › ")}</span></div>
-        <div className="kv"><span className="l">Category</span><span className="v">{category}</span></div>
-        <div className="kv"><span className="l">Report label</span><span className="v">{value.reportLabel || value.sourceLabel}</span></div>
-        <label className="kv edit"><span className="l">Quantity</span>
-          <input className="nz-inp" type="number" min="0" step="any" value={value.quantity ?? ""} disabled={monthlyOn}
-            onChange={(e) => setValue({ ...value, quantity: e.target.value === "" ? null : Number(e.target.value) })} />
-        </label>
-        <div className="kv"><span className="l">UoM</span><span className="v">{value.unit ?? "—"}</span></div>
-        <div className="kv"><span className="l">tCO₂e</span><span className="v co2">{displayTco2e === null ? "—" : displayTco2e.toLocaleString("en-GB", { maximumFractionDigits: 3 })}</span></div>
-      </div>
+      <RowKeyFields siteLabel={value.siteLabel ?? null} scope={value.scope} category={category} reportLabel={value.reportLabel || value.sourceLabel}
+        quantity={{ edit: <input className="nz-inp" type="number" min="0" step="any" value={value.quantity ?? ""} disabled={monthlyOn}
+          onChange={(e) => setValue({ ...value, quantity: e.target.value === "" ? null : Number(e.target.value) })} /> }}
+        unit={value.unit ?? null} tco2e={displayTco2e} />
       {monthlyOn
         ? <p className="nz-hint">Quantity is the sum of the monthly figures in “Monthly activity” — edit it there. The unit is set by the emission factor.</p>
         : <p className="nz-hint">Enter the activity quantity, then <b>Save &amp; calculate</b>. The unit is set by the emission factor.</p>}
