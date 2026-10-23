@@ -855,6 +855,12 @@ jobs:
       # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
       - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
         run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts
+      # 0178, email phase 1: sendEmail enqueues the log row and the email.send outbox row and sends nothing; the drain
+      # stubs with no key, posts once with one (Resend mocked), fails a refusal finally, retries an outage with backoff,
+      # never re-sends a redelivered row, and on the isolated boundary sends only to the NZI domain; RLS, grants, and a
+      # body that does not outlive its send are the table's own.
+      - name: Queued email is sent once, stubbed without a key, and held to the NZI domain on the isolated boundary
+        run: npx tsx --test packages/isolated-backend/tests/emailOutboxReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #

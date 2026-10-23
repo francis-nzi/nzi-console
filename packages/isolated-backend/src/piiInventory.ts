@@ -257,6 +257,10 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     keyColumns: ["automation_log_id"],
     attribution: { kind: "none", because: "an address with no pointer to a person-row; it is also part of a unique constraint, so it is operational rather than display-only and wants a blind index before anything else" },
   },
+  email_messages: {
+    keyColumns: ["email_message_id"],
+    attribution: { kind: "none", because: "a send log (0178): an address with no pointer to a person-row — phase 1 sends plain system mail, and linking a send to the invitation or contact that caused it is phase 2's" },
+  },
   job_milestones: {
     keyColumns: ["job_id", "kind"],
     attribution: { kind: "none", because: "who completed a milestone is free text as the source recorded it; the id beside it is set only on an exact match and is an id, not the name" },
@@ -386,6 +390,8 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
     storage: sealed("owner_name_sealed"), because: "free text with no user id" },
   { table: "strategy_automation_log", column: "recipient_email", label: "Reminder recipient", stage: "deferred", erasure: "not-attributable",
     storage: sealed("recipient_email_sealed"), because: "operational rather than display-only: part of a unique constraint, so its plaintext cannot be dropped until that moves to a digest" },
+  { table: "email_messages", column: "to_email", label: "An email sent to you", stage: "deferred", erasure: "not-attributable",
+    storage: { kind: "plaintext" }, because: "the address an email went to, kept in the clear while the send log has no subject path (0178); sealing it comes with the phase that links a send to its person. The body is cleared once the send resolves, so the address and subject are all that stay" },
   // Staff, not client data, and unsealed by ruling (PR 2, R4): the name v7 recorded against a completed milestone.
   { table: "job_milestones", column: "completed_by_label", label: "Milestone completed by", stage: "deferred", erasure: "not-attributable",
     storage: { kind: "plaintext" }, because: "a staff member's name as v7 recorded it, kept in the clear by ruling (R4); free text with no reliable subject" },

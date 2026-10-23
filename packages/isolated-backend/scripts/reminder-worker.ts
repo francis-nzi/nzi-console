@@ -1,6 +1,6 @@
 import pg from "pg";
 import {
-  mailDelivery, runReminderTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
+  emailDispatchFromEnv, mailDelivery, runReminderTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
   withTenantWorker, type Mailer,
 } from "../src/index";
 import { smtpMailer } from "../src/smtpMailer";
@@ -17,7 +17,10 @@ import { smtpMailer } from "../src/smtpMailer";
  * answer is always "suppress" — `NZI_DATABASE_BOUNDARY=isolated-non-production` — so the
  * worker composes and records reminders and sends nothing. That is the intended state.
  *
- * **Secrets.** SMTP settings are read from the environment and never logged. The startup
+ * **Email (`email.send`).** The same drain also delivers queued email over Resend (`email.ts`). Its gate is decided once,
+ * here: no `RESEND_API_KEY` stubs every send; with one, the isolated boundary sends only to the NZI domain and stubs the rest.
+ *
+ * **Secrets.** SMTP settings and the Resend key are read from the environment and never logged. The startup
  * line says whether a transport was configured, never what it was configured with.
  */
 
@@ -55,9 +58,13 @@ async function main() {
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
   });
   const { mailer, transport } = buildMailer(delivery);
+  const email = emailDispatchFromEnv(process.env);
   log("worker.started", {
     tickSeconds: TICK_MS / 1000, organisationId, transport,
     delivery: delivery.mode, reason: delivery.mode === "suppress" ? delivery.reason : undefined,
+    email: email.gate.mode,
+    emailReason: email.gate.mode === "stub" ? email.gate.reason : undefined,
+    emailDomains: email.gate.mode === "isolated" ? email.gate.domains : undefined,
   });
 
   const pool = new pg.Pool({ connectionString: url.toString(), max: 2 });
@@ -69,14 +76,14 @@ async function main() {
   while (!stopping) {
     try {
       const summary = await withTenantWorker(pool, organisationId, (db) =>
-        runReminderTick(db, { organisationId, today: londonToday(), mailer, env: {
+        runReminderTick(db, { organisationId, today: londonToday(), mailer, email, env: {
           mailMode: process.env.NZI_MAIL_MODE,
           appEnv: process.env.NEXT_PUBLIC_APP_ENV,
           boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
         } }));
       log("tick.complete", {
         scanned: summary.scanned, claimed: summary.claimed, sent: summary.sent,
-        suppressed: summary.suppressed, failed: summary.failed, skipped: summary.skipped,
+        suppressed: summary.suppressed, failed: summary.failed, skipped: summary.skipped, emails: summary.emails,
       });
     } catch (error) {
       // A tick that throws must not kill the clock: the next one re-reads the same state,
