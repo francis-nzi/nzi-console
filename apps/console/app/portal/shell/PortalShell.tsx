@@ -14,7 +14,7 @@ const ICONS: Record<ShellView, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
   metrics: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
   data: <path d="M4 6h16M4 12h16M4 18h10" />,
-  strategy: <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />,
+  actions: <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />,
   srs: <><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></>,
   reports: <><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v5h5" /></>,
   messages: <path d="M4 5h16v11H8l-4 4V5Z" />,
@@ -23,7 +23,7 @@ const ICONS: Record<ShellView, ReactNode> = {
 };
 
 const VIEW_LABELS: Record<ShellView, string> = {
-  dashboard: "Dashboard", metrics: "Metrics", data: "Data", strategy: "Strategy", srs: "SRS Readiness", reports: "Reports",
+  dashboard: "Dashboard", metrics: "Metrics", data: "Data", actions: "Actions", srs: "SRS Readiness", reports: "Reports",
   messages: "Messages", files: "Files", insights: "Insights & Help",
 };
 

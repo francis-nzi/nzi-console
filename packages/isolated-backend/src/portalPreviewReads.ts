@@ -1,4 +1,5 @@
-import { reportScopeLabel, type InputSpecCategory, type PortalAssuredDashboard, type PortalLiveBroadcast, type ReportScope } from "@nzi/contracts";
+import { reportScopeLabel, type InputSpecCategory, type PortalActionTracker, type PortalAssuredDashboard, type PortalLiveBroadcast, type ReportScope } from "@nzi/contracts";
+import { assemblePortalActionTracker } from "./portalActions";
 import { AuthorizationError, requireCapability, type StaffPrincipal } from "./auth";
 import { assertCapabilityOnClient } from "./access";
 import { listInputSpecForClient } from "./categoryVisibility";
@@ -120,6 +121,11 @@ export function getPortalPublishedReportForStaff(pool: PoolLike, principal: Staf
 
 export function getPortalReportViewForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, reportVersionId: string | null): Promise<PortalReportView | null> {
   return previewRead(pool, principal, clientId, jobId, async (db) => assemblePortalReportView(db, await getCurrentPublishedCrpReport(db, jobId, reportVersionId)));
+}
+
+/** The job's Spheres of Influence action tracker as the client sees it (BUILD-portal-shell-lookandfeel, Actions) — read only. */
+export function getPortalActionTrackerForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string): Promise<PortalActionTracker> {
+  return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalActionTracker(db, clientId, jobId));
 }
 
 /** The input spec as this client sees it (NZC-110) — the client's own resolver. */

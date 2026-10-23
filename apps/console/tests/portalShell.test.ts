@@ -18,15 +18,17 @@ const all = () => true;
 describe("the portal shell", () => {
   describe("the rail (pure)", () => {
     it("offers the wired views, each behind the client's own flag, for the job in context", () => {
-      assert.deepEqual(shellNav("663", (path) => path, all).map((item) => [item.view, item.href]), [
-        ["dashboard", "/portal/jobs/663/dashboard"], ["data", "/portal/jobs/663/data"], ["reports", "/portal/reports"]]);
-      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data").map((item) => item.view), ["dashboard", "reports"], "a flag off for clients is off in the rail");
-      assert.deepEqual(shellNav(null, (path) => path, all).map((item) => item.view), ["reports"], "a per-job view needs a job");
+      assert.deepEqual(shellNav("663", (path) => path, all).map((item) => [item.view, item.label, item.href]), [
+        ["dashboard", "Dashboard", "/portal/jobs/663/dashboard"], ["data", "Data", "/portal/jobs/663/data"], ["actions", "Actions", "/portal/jobs/663/actions"],
+        ["srs", "SRS Readiness", "/portal/srs"], ["reports", "Reports", "/portal/reports"]]);
+      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data" && flag !== "portal-plan").map((item) => item.view), ["dashboard", "srs", "reports"], "a flag off for clients is off in the rail");
+      assert.deepEqual(shellNav(null, (path) => path, all).map((item) => item.view), ["srs", "reports"], "a per-job view needs a job");
     });
 
     it("in the staff preview, every item goes to the preview's own page — never into the portal", () => {
       const items = shellNav("663", (path) => previewLink("c1", path), all);
-      assert.deepEqual(items.map((item) => item.href), ["/clients/c1/portal-preview/jobs/663/dashboard", "/clients/c1/portal-preview/jobs/663/data", "/clients/c1/portal-preview/reports"]);
+      assert.deepEqual(items.map((item) => item.href), ["/clients/c1/portal-preview/jobs/663/dashboard", "/clients/c1/portal-preview/jobs/663/data",
+        "/clients/c1/portal-preview/jobs/663/actions", "/clients/c1/portal-preview/srs", "/clients/c1/portal-preview/reports"]);
     });
 
     it("opens on the newest job with a published report, else the newest job; the switcher keeps the per-job view", () => {
@@ -34,6 +36,7 @@ describe("the portal shell", () => {
       assert.equal(defaultShellJob([job("700", false)])?.id, "700");
       assert.equal(defaultShellJob([]), null);
       assert.equal(switchJobPath("data", "612"), "/portal/jobs/612/data");
+      assert.equal(switchJobPath("actions", "612"), "/portal/jobs/612/actions");
       assert.equal(switchJobPath("reports", "612"), "/portal/jobs/612/dashboard");
     });
   });
@@ -80,6 +83,15 @@ describe("the portal shell", () => {
       assert.match(read("apps/console/app/portal/jobs/[jobId]/data/page.tsx"), /if \(portalFeatureEnabled\("portal-shell"\)\) return <PortalShellClient view="data" jobId=\{jobId\}><PortalDataView jobId=\{jobId\} \/><\/PortalShellClient>;/);
       assert.match(read("apps/console/app/portal/reports/page.tsx"), /if \(portalFeatureEnabled\("portal-shell"\)\) return <PortalShellClient view="reports"><PortalReports \/><\/PortalShellClient>;/);
       assert.match(read("apps/console/app/portal/jobs/[jobId]/page.tsx"), /portalFeatureEnabled\("portal-shell"\)\?<PortalShellClient view="reports" jobId=\{jobId\}>\{page\}<\/PortalShellClient>:page/);
+      // Increment 2: Actions (the plan, and the tracker read only in preview) and SRS — shell views only.
+      const actions = read("apps/console/app/portal/jobs/[jobId]/actions/page.tsx"), srs = read("apps/console/app/portal/srs/page.tsx");
+      assert.match(actions, /if \(!portalFeatureEnabled\("portal-shell"\) \|\| !portalFeatureEnabled\("portal-plan"\)\) redirect\("\/portal"\);/);
+      assert.match(actions, /<PortalReductionPlan \/>\s*\{portalFeatureEnabled\("portal-actions"\) \? <PortalActionTrackerPanel jobId=\{jobId\} \/> : null\}/);
+      assert.match(srs, /if \(!portalFeatureEnabled\("portal-shell"\) \|\| !portalFeatureEnabled\("portal-readiness"\)\) redirect\("\/portal"\);/);
+      const tracker = read("apps/console/app/portal/jobs/[jobId]/PortalActionTracker.tsx");
+      assert.match(tracker, /if \(surface\.readOnly\) return false;/, "no write leaves the preview");
+      assert.match(tracker, /\{surface\.readOnly \? <p className="nz-action-empty" role="note">Read-only preview/, "no add form in preview");
+      assert.match(tracker, /\{readOnly \? null : <button className="nz-btn" disabled=\{busy\} onClick=\{\(\) => setEditing\(true\)\}>Edit action<\/button>\}/, "no edit in preview");
       // The preview frames every surface it opens.
       assert.match(read("apps/console/app/clients/[clientId]/portal-preview/PreviewFrame.tsx"), /\{shell \? \(/);
     });

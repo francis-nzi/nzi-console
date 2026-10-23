@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isPortalActionTracker, type PortalActionTracker, type PortalTrackerAction } from "@nzi/contracts";
-import { redirectIfPortalSessionEnded } from "../../portalSessionClient";
+import { usePortalSurface } from "../../portalSurface";
 
 type LoadState = { kind: "loading" } | { kind: "failed"; message: string } | { kind: "ready"; tracker: PortalActionTracker };
 type Draft = { leverCode: string; title: string; notes: string; progressPercent: number };
 const emptyDraft = { leverCode: "A1.1", title: "", notes: "", progressPercent: 0 };
 
 export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
+  // Read through the surface: the client's route, or the staff preview's GET-only mirror — where it is read only (no add/edit).
+  const surface = usePortalSurface();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [busy, setBusy] = useState(false);
@@ -17,13 +19,13 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const response = await fetch(`/api/portal/jobs/${jobId}/actions`, { cache: "no-store" });
-      if (await redirectIfPortalSessionEnded(response)) return;
+      const response = await fetch(`${surface.api}/jobs/${jobId}/actions`, { cache: "no-store" });
+      if (await surface.sessionEnded(response)) return;
       const body: unknown = await response.json();
       if (!response.ok || !isPortalActionTracker(body)) throw new Error("Your action tracker could not be verified.");
       setState({ kind: "ready", tracker: body });
     } catch (error) { setState({ kind: "failed", message: error instanceof Error ? error.message : "Your action tracker could not be loaded." }); }
-  }, [jobId]);
+  }, [jobId, surface]);
   useEffect(() => { void load(); }, [load]);
 
   const groups = useMemo(() => state.kind !== "ready" ? [] : ["A", "B", "C"].map((code) => ({
@@ -35,8 +37,9 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
   const request = async (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>): Promise<boolean> => {
     setBusy(true); setNotice("");
     try {
-      const response = await fetch(`/api/portal/jobs/${jobId}/actions`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (await redirectIfPortalSessionEnded(response)) return false;
+      if (surface.readOnly) return false;
+      const response = await fetch(`${surface.api}/jobs/${jobId}/actions`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (await surface.sessionEnded(response)) return false;
       const result = await response.json() as { message?: string };
       if (!response.ok) throw new Error(result.message || "The action could not be saved.");
       setNotice(method === "POST" ? "Action added." : method === "DELETE" ? "Action removed." : "Action saved.");
@@ -56,32 +59,32 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
       <span className="nz-engagement-badge">Engagement data · not assured emissions</span>
     </header>
 
-    <div className="nz-action-add">
+    {surface.readOnly ? <p className="nz-action-empty" role="note">Read-only preview: the client adds and updates their actions here.</p> : <div className="nz-action-add">
       <h3>Add an action</h3>
       <label>Lever<select value={draft.leverCode} onChange={(e) => setDraft({ ...draft, leverCode: e.target.value })}>{state.tracker.levers.map((lever) => <option key={lever.code} value={lever.code}>{lever.code} · {lever.subSphereName} — {lever.description}</option>)}</select></label>
       <label>Action title<input value={draft.title} maxLength={240} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
       <label>Notes<textarea rows={3} maxLength={4000} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></label>
       <label>Completion: <output>{draft.progressPercent}%</output><input type="range" min={0} max={100} step={5} value={draft.progressPercent} onChange={(e) => setDraft({ ...draft, progressPercent: Number(e.target.value) })} /></label>
       <button className="nz-btn pri" disabled={busy || !draft.title.trim()} onClick={() => void request("POST", draft)}>Add action</button>
-    </div>
+    </div>}
 
     <p className="nz-sr-status" role="status" aria-live="polite">{notice}</p>
     <div className="nz-spheres">
       {groups.map((group) => <section key={group.code} aria-labelledby={`sphere-${group.code}`}><h3 id={`sphere-${group.code}`}>Sphere {group.code} · {group.name}</h3>{group.levers.map((lever) => {
         const actions = state.tracker.actions.filter((action) => action.leverCode === lever.code);
         const average = actions.length ? Math.round(actions.reduce((sum, action) => sum + action.progressPercent, 0) / actions.length) : null;
-        return <details key={lever.code} className="nz-lever" open={actions.length > 0}><summary><span><b>{lever.code}</b> {lever.description}</span><span>{actions.length} {actions.length === 1 ? "action" : "actions"}{average === null ? "" : ` · ${average}% average completion`}</span></summary><p className="nz-lever-sub">{lever.subSphereCode} · {lever.subSphereName}</p>{actions.length ? <ul>{actions.map((action) => <ActionRow key={action.id} action={action} levers={state.tracker.levers} busy={busy} save={(value) => request("PATCH", { actionId: action.id, expectedVersion: action.version, ...value })} />)}</ul> : <p className="nz-action-empty">No action recorded for this lever.</p>}</details>;
+        return <details key={lever.code} className="nz-lever" open={actions.length > 0}><summary><span><b>{lever.code}</b> {lever.description}</span><span>{actions.length} {actions.length === 1 ? "action" : "actions"}{average === null ? "" : ` · ${average}% average completion`}</span></summary><p className="nz-lever-sub">{lever.subSphereCode} · {lever.subSphereName}</p>{actions.length ? <ul>{actions.map((action) => <ActionRow key={action.id} action={action} levers={state.tracker.levers} busy={busy} readOnly={surface.readOnly} save={(value) => request("PATCH", { actionId: action.id, expectedVersion: action.version, ...value })} />)}</ul> : <p className="nz-action-empty">No action recorded for this lever.</p>}</details>;
       })}</section>)}
     </div>
   </section>;
 }
 
-function ActionRow({ action, levers, busy, save }: { action: PortalTrackerAction; levers: PortalActionTracker["levers"]; busy: boolean; save: (value: Draft) => Promise<boolean> }) {
+function ActionRow({ action, levers, busy, readOnly = false, save }: { action: PortalTrackerAction; levers: PortalActionTracker["levers"]; busy: boolean; readOnly?: boolean; save: (value: Draft) => Promise<boolean> }) {
   const original = (): Draft => ({ leverCode: action.leverCode, title: action.title, notes: action.notes, progressPercent: action.progressPercent });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(original);
   useEffect(() => setDraft(original()), [action]);
-  if (!editing) return <li><div><b>{action.title}</b>{action.notes ? <p>{action.notes}</p> : null}</div><span className="nz-action-progress">{action.progressPercent}% complete</span><button className="nz-btn" disabled={busy} onClick={() => setEditing(true)}>Edit action</button></li>;
+  if (!editing) return <li><div><b>{action.title}</b>{action.notes ? <p>{action.notes}</p> : null}</div><span className="nz-action-progress">{action.progressPercent}% complete</span>{readOnly ? null : <button className="nz-btn" disabled={busy} onClick={() => setEditing(true)}>Edit action</button>}</li>;
   return <li className="editing">
     <label>Lever<select value={draft.leverCode} onChange={(e) => setDraft({ ...draft, leverCode: e.target.value })}>{levers.map((lever) => <option key={lever.code} value={lever.code}>{lever.code} · {lever.subSphereName}</option>)}</select></label>
     <label>Action title<input value={draft.title} maxLength={240} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>

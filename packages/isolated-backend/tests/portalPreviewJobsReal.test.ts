@@ -13,8 +13,9 @@ import { getPortalAssuredDashboard } from "../src/portalAnalytics";
 import { getGrantedPortalReport, portalPublishedReportOf } from "../src/portalComposition";
 import { listGrantedPublishedCrpReports } from "../src/readModels";
 import { getPortalPreview } from "../src/portalPreview";
+import { createPortalTrackerAction, getPortalActionTracker } from "../src/portalActions";
 import {
-  getPortalAssuredDashboardForStaff, getPortalDataViewForStaff, getPortalInputSpecForStaff, getPortalPublishedReportForStaff, getPortalReportViewForStaff,
+  getPortalActionTrackerForStaff, getPortalAssuredDashboardForStaff, getPortalDataViewForStaff, getPortalInputSpecForStaff, getPortalPublishedReportForStaff, getPortalReportViewForStaff,
   getPortalRowHistoryForStaff, listPortalBroadcastsForStaff, listPortalPreviewJobs,
 } from "../src/portalPreviewReads";
 import { withTenantRead, type Queryable } from "../src/postgres";
@@ -161,6 +162,15 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
       const previewView = await getPortalReportViewForStaff(database.pool, staff(), CLIENT, MAIN, null);
       assert.equal(previewView?.state, "composed");
       assert.equal(JSON.stringify(previewView), JSON.stringify(clientView));
+    });
+
+    it("the action tracker: identical, and read only (BUILD-portal-shell-lookandfeel, Actions)", async () => {
+      await createPortalTrackerAction(database.pool, portal, MAIN, { leverCode: "A1.1", title: "Switch the fleet to EVs", notes: "", progressPercent: 40 });
+      const client = await getPortalActionTracker(database.pool, portal, MAIN);
+      assert.equal(client.actions.length, 1);
+      assert.equal(JSON.stringify(await getPortalActionTrackerForStaff(database.pool, staff(), CLIENT, MAIN)), JSON.stringify(client));
+      await assert.rejects(getPortalActionTrackerForStaff(database.pool, staff(), CLIENT, FOREIGN), refused);
+      await assert.rejects(getPortalActionTrackerForStaff(database.pool, staff("viewer", "ppj-view"), CLIENT, MAIN), refused);
     });
 
     it("the input spec and broadcasts: the client's own resolvers", async () => {

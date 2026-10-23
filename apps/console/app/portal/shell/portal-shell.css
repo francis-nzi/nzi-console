@@ -55,11 +55,14 @@
 .nzp-crumb{font-size:12.5px;color:var(--nzp-muted);font-weight:600;display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap}
 .nzp-crumb b{color:var(--nzp-ink)}
 .nzp-crumb .sep{color:var(--nzp-faint)}
-.nzp-content{padding:20px 20px 44px;display:flex;flex-direction:column;gap:18px;min-width:0}
+/* The mockup's body size (14px), for views that inherit it rather than set their own. */
+.nzp-content{padding:20px 20px 44px;display:flex;flex-direction:column;gap:18px;min-width:0;font-size:14px;line-height:1.5}
 /* The views carry their own page frame (`nz-portal-shell`, max-width, padding); inside the shell the shell is the frame. */
 .nzp-app .nzp-content .nz-portal-shell{max-width:none;margin:0;padding:0;display:block}
 .nzp-app .nzp-content > *{max-width:1240px;width:100%}
 /* The report workspace draws its own portal header and "← Reporting jobs" bar; inside the shell the rail is both. */
+/* The SRS maturity bullets are an SVG drawn to its container: in the wide pane, held to a readable size. */
+.nzp-app .nz-portal-readiness-charts > *{max-width:560px}
 /* The issued document is a fixed-width page: on a phone it scrolls in its own box, never the whole portal sideways. */
 .nzp-app .nz-portal-composed{max-width:100%;overflow-x:auto}
 .nzp-app .nz-published-workspace .nz-published-header,.nzp-app .nz-published-workspace .nz-portal-context{display:none}
