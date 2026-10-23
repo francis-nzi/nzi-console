@@ -35,7 +35,9 @@ const row = (over: Partial<PortalScopeRow> = {}): PortalScopeRow => ({
 const view = (over: Partial<PortalDataView> = {}): PortalDataView => ({
   profile: profile(), access: { jobId: "job-1", startsAt: "2026-10-01T00:00:00Z", expiresAt: "2026-12-31T00:00:00Z", state: "open", reportingMonths: [] },
   categories: { audience: "portal", includedScopes: ["1"], categories: [gas] }, rows: [row()], factors: [], sites: [{ id: "s1", name: "Head Office" }],
-  purchasedGoodsCategories: [], reportingMonths: ["2026-01", "2026-02"], ...over,
+  purchasedGoodsCategories: [], reportingMonths: ["2026-01", "2026-02"],
+  emissions: { jobId: "job-1", siteId: null, headline: { tco2e: 0.18, marketTco2e: 0, entries: 1, marketEntries: 0 }, byScope: [{ scope: "1", tco2e: 0.18, marketTco2e: 0, entries: 1, marketEntries: 0 }], byCategory: [], bySite: [] },
+  ...over,
 } as PortalDataView);
 
 describe("the client's Data view (portal data-entry phase 2)", () => {

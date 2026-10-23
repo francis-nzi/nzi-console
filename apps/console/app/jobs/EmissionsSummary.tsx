@@ -56,9 +56,12 @@ const bands = (emissions: JobEmissions): Band[] =>
     };
   });
 
+/** The CRM's own read; the client portal passes its own (BUILD-portal-data-crm-parity R2), over the rows the client sees. */
+const staffEmissionsUrl = (jobId: string) => `/api/isolated/jobs/${encodeURIComponent(jobId)}/emissions`;
+
 export function EmissionsSummary(
-  { jobId, siteId, siteLabel, initial }:
-  { jobId: string; siteId: string | null; siteLabel: string; initial: JobEmissions },
+  { jobId, siteId, siteLabel, initial, emissionsUrl = staffEmissionsUrl(jobId), liveLabel = "Updates as you enter data" }:
+  { jobId: string; siteId: string | null; siteLabel: string; initial: JobEmissions; emissionsUrl?: string; liveLabel?: string },
 ) {
   const [emissions, setEmissions] = useState(initial);
   const [stale, setStale] = useState(false);
@@ -70,14 +73,14 @@ export function EmissionsSummary(
     let live = true;
     setStale(true);
     const query = siteId === null ? "" : `?siteId=${encodeURIComponent(siteId)}`;
-    fetch(`/api/isolated/jobs/${encodeURIComponent(jobId)}/emissions${query}`, { cache: "no-store" })
+    fetch(`${emissionsUrl}${query}`, { cache: "no-store" })
       .then((response) => (response.ok ? response.json() as Promise<JobEmissions> : null))
       .then((next) => { if (live && next) { setEmissions(next); setStale(false); } })
       // A failed refresh leaves the last good figures on screen and says they may be behind, rather than
       // showing a zero or an empty strip — a wrong number is worse than a stale one that admits it.
       .catch(() => { if (live) setStale(true); });
     return () => { live = false; };
-  }, [jobId, siteId]);
+  }, [jobId, siteId, emissionsUrl]);
 
   const split = bands(emissions);
   const headline = emissions.headline;
@@ -88,7 +91,7 @@ export function EmissionsSummary(
       <div className="nz-es-head">
         <span className="nz-eyebrow">{siteLabel} · total emissions</span>
         <span className="nz-es-live" aria-live="polite">
-          {stale ? "Refreshing…" : "Updates as you enter data"}
+          {stale ? "Refreshing…" : liveLabel}
         </span>
       </div>
 

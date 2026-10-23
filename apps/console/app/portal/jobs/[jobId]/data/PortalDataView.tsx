@@ -10,6 +10,8 @@ import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, 
 import type { ApplicableCategory, InputSpecCategory, ScopeRowReadModel } from "@nzi/contracts";
 import type { PortalDataView as View, PortalScopeRow } from "@nzi/isolated-backend";
 import { CrpDataEntryAccordion } from "../../../../jobs/CrpDataEntryAccordion";
+import { EmissionsSummary } from "../../../../jobs/EmissionsSummary";
+import { portalFeatureEnabled } from "../../../../lib/portalFlags";
 import {
   EmissionEntryForm, categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, entryFactorRefsFor, optionsForCategory,
   scopeRowToEmissionEntryDraft, type DeclaredFactorPreviewResult, type EmissionEntryDraft,
@@ -96,6 +98,12 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           </select>
         </label>
       </header>
+      {/* BUILD-portal-data-crm-parity R2: the CRM's own totals band, over the rows this client sees, narrowed by the site filter.
+          tCO₂e only. Rides the portal shell (dark by absence). */}
+      {portalFeatureEnabled("portal-shell") ? (
+        <EmissionsSummary jobId={jobId} siteId={siteId || null} siteLabel={site?.name ?? "All sites"} initial={view.emissions}
+          emissionsUrl={`${base}/emissions`} liveLabel={surface.readOnly ? "Read-only preview" : "Updates as you enter data"} />
+      ) : null}
       <p className="nz-pdv-note" role="note">What you enter goes straight into this job&apos;s data and waits for {org.your("adviser")}&apos;s review; it counts once reviewed. You can change an entry you made until it has been reviewed.</p>
       {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "ok" ? "status" : "alert"}>{notice.text}</div> : null}
 

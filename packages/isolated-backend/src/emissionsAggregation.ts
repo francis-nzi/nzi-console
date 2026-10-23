@@ -1,4 +1,4 @@
-import { withTenantRead, type PoolLike } from "./postgres";
+import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 
 /**
  * The live emissions total, by scope and by category, as a derived read (NZC-143, NZC-144).
@@ -99,44 +99,56 @@ export async function readJobEmissions(
   pool: PoolLike,
   input: { organisationId: string; jobId: string; siteId?: string | null },
 ): Promise<JobEmissions> {
+  return withTenantRead(pool, input.organisationId, (db) => aggregateJobEmissions(db, input));
+}
+
+/**
+ * The aggregation itself, inside a read the caller opened. `rowIds`, when given, limits every tier to exactly those rows: the
+ * client portal passes the rows its Data view shows (the profile's scope ∧ category gate), so the client's totals band counts
+ * nothing the client cannot see — the same SQL, never a second implementation (BUILD-portal-data-crm-parity R2).
+ */
+export async function aggregateJobEmissions(
+  db: Queryable,
+  input: { organisationId: string; jobId: string; siteId?: string | null; rowIds?: readonly string[] },
+): Promise<JobEmissions> {
   const siteId = input.siteId ?? null;
+  // The site filter is applied to the three narrowed tiers and deliberately not to `bySite`: the site
+  // tabs show every site's entry count while one of them is selected.
+  const rows = input.rowIds === undefined ? null : [...input.rowIds];
+  const base = [input.organisationId, input.jobId, ...(rows ? [rows] : [])];
+  const rowClause = rows ? " AND scope_row_id = ANY($3::text[])" : "";
+  const narrowed = siteId === null
+    ? { clause: rowClause, values: base }
+    : { clause: `${rowClause} AND site_id = $${base.length + 1}`, values: [...base, siteId] };
 
-  return withTenantRead(pool, input.organisationId, async (db) => {
-    // The site filter is applied to the three narrowed tiers and deliberately not to `bySite`: the site
-    // tabs show every site's entry count while one of them is selected.
-    const narrowed = siteId === null
-      ? { clause: "", values: [input.organisationId, input.jobId] }
-      : { clause: " AND site_id = $3", values: [input.organisationId, input.jobId, siteId] };
+  const where = `WHERE organisation_id = $1 AND job_id = $2 AND enabled = true${narrowed.clause}`;
 
-    const where = `WHERE organisation_id = $1 AND job_id = $2 AND enabled = true${narrowed.clause}`;
+  const headline = await db.query<TotalsRow>(
+    `SELECT ${TOTALS} FROM nzi_console.job_scope_rows ${where}`, narrowed.values);
 
-    const headline = await db.query<TotalsRow>(
-      `SELECT ${TOTALS} FROM nzi_console.job_scope_rows ${where}`, narrowed.values);
+  const byScope = await db.query<TotalsRow & { scope: string }>(
+    `SELECT scope, ${TOTALS} FROM nzi_console.job_scope_rows ${where}
+      GROUP BY scope ORDER BY scope`, narrowed.values);
 
-    const byScope = await db.query<TotalsRow & { scope: string }>(
-      `SELECT scope, ${TOTALS} FROM nzi_console.job_scope_rows ${where}
-        GROUP BY scope ORDER BY scope`, narrowed.values);
+  const byCategory = await db.query<TotalsRow & { scope: string; category_code: string | null }>(
+    `SELECT scope, category_code, ${TOTALS} FROM nzi_console.job_scope_rows ${where}
+      GROUP BY scope, category_code ORDER BY scope, category_code`, narrowed.values);
 
-    const byCategory = await db.query<TotalsRow & { scope: string; category_code: string | null }>(
-      `SELECT scope, category_code, ${TOTALS} FROM nzi_console.job_scope_rows ${where}
-        GROUP BY scope, category_code ORDER BY scope, category_code`, narrowed.values);
+  const bySite = await db.query<TotalsRow & { site_id: string | null }>(
+    `SELECT site_id, ${TOTALS} FROM nzi_console.job_scope_rows
+      WHERE organisation_id = $1 AND job_id = $2 AND enabled = true${rowClause}
+      GROUP BY site_id ORDER BY site_id NULLS FIRST`, base);
 
-    const bySite = await db.query<TotalsRow & { site_id: string | null }>(
-      `SELECT site_id, ${TOTALS} FROM nzi_console.job_scope_rows
-        WHERE organisation_id = $1 AND job_id = $2 AND enabled = true
-        GROUP BY site_id ORDER BY site_id NULLS FIRST`, [input.organisationId, input.jobId]);
-
-    return {
-      jobId: input.jobId,
-      siteId,
-      headline: totalsOf(headline.rows[0]),
-      byScope: byScope.rows.map((row) => ({ scope: row.scope, ...totalsOf(row) })),
-      byCategory: byCategory.rows.map((row) => ({
-        scope: row.scope, categoryCode: row.category_code, ...totalsOf(row),
-      })),
-      bySite: bySite.rows.map((row) => ({ siteId: row.site_id, ...totalsOf(row) })),
-    };
-  });
+  return {
+    jobId: input.jobId,
+    siteId,
+    headline: totalsOf(headline.rows[0]),
+    byScope: byScope.rows.map((row) => ({ scope: row.scope, ...totalsOf(row) })),
+    byCategory: byCategory.rows.map((row) => ({
+      scope: row.scope, categoryCode: row.category_code, ...totalsOf(row),
+    })),
+    bySite: bySite.rows.map((row) => ({ siteId: row.site_id, ...totalsOf(row) })),
+  };
 }
 
 /**

@@ -41,7 +41,7 @@ export async function PreviewFrame({ clientId, jobId, surface, children }: {
             <PreviewSurfaceProvider clientId={preview.client.id}>
               {shell ? (
                 // BUILD-portal-shell-lookandfeel R5: the client's shell, around the client's own views, under the staff banner.
-                <PortalShell client={{ name: preview.client.name, logoSrc: null }} jobs={preview.jobs} jobId={preview.job?.id ?? defaultShellJob(preview.jobs)?.id ?? null} view={SHELL_VIEW[surface]} person={{ kind: "preview" }}>
+                <PortalShell client={{ name: preview.client.name, logoSrc: previewClientLogoSrc(preview.client) }} jobs={preview.jobs} jobId={preview.job?.id ?? defaultShellJob(preview.jobs)?.id ?? null} view={SHELL_VIEW[surface]} person={{ kind: "preview" }}>
                   {/* Staff-only, on the landing: why this client's portal may differ from the default (NZC-087). */}
                   {surface === "dashboard" ? <ProfileDifferences preview={preview} /> : null}
                   {children(preview)}
@@ -54,6 +54,13 @@ export async function PreviewFrame({ clientId, jobId, surface, children }: {
     )}
   </ScreenState>;
 }
+
+/**
+ * The client's own logo in the preview's shell (BUILD-portal-data-crm-parity R5), through the staff console's own client-logo
+ * read — versioned by asset, so a replaced logo is not served stale. No logo: the shell's monogram.
+ */
+const previewClientLogoSrc = (client: PortalPreviewReadModel["client"]) =>
+  client.logoAssetId ? `/api/isolated/clients/${encodeURIComponent(client.id)}/logo?v=${encodeURIComponent(client.logoAssetId)}` : null;
 
 /** The preview surface a page opened, as the shell view it is. The job's report sits under Reports, as in the mockup. */
 const SHELL_VIEW: Record<PortalPreviewSurface, ShellView> = { home: "dashboard", dashboard: "dashboard", data: "data", report: "reports", reports: "reports", actions: "actions", srs: "srs", metrics: "metrics", messages: "messages", files: "files", insights: "insights" };

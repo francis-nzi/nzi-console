@@ -8,7 +8,8 @@ import { commandGrantForRole, roleCapabilityGrants, type CommandContext, type St
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { AuthorizationError, type PortalPrincipal, type StaffPrincipal } from "../src/auth";
 import { createScopeRow, publishCrpReport, setClientPortalScopeVisibility, validateCrpReport } from "../src/postgresCommands";
-import { getPortalDataView, getPortalRowHistory } from "../src/portalCapture";
+import { getPortalDataView, getPortalJobEmissions, getPortalRowHistory } from "../src/portalCapture";
+import { readJobEmissions } from "../src/emissionsAggregation";
 import { getPortalAssuredDashboard } from "../src/portalAnalytics";
 import { getGrantedPortalReport, portalPublishedReportOf } from "../src/portalComposition";
 import { listGrantedPublishedCrpReports } from "../src/readModels";
@@ -16,7 +17,7 @@ import { getPortalPreview } from "../src/portalPreview";
 import { createPortalTrackerAction, getPortalActionTracker } from "../src/portalActions";
 import { addGrantedReportComment, addStaffReportComment, listGrantedReportComments } from "../src/portalReview";
 import {
-  getPortalActionTrackerForStaff, getPortalAssuredDashboardForStaff, getPortalDataViewForStaff, getPortalInputSpecForStaff, getPortalPublishedReportForStaff, getPortalReportViewForStaff,
+  getPortalActionTrackerForStaff, getPortalAssuredDashboardForStaff, getPortalDataViewForStaff, getPortalJobEmissionsForStaff, getPortalInputSpecForStaff, getPortalPublishedReportForStaff, getPortalReportViewForStaff,
   getPortalRowHistoryForStaff, listPortalBroadcastsForStaff, listPortalPreviewJobs, listReportCommentsForStaff,
 } from "../src/portalPreviewReads";
 import { withTenantRead, type Queryable } from "../src/postgres";
@@ -140,6 +141,25 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
       assert.equal(preview.access, null, "a preview has no portal user, so no window");
       assert.equal(JSON.stringify({ ...preview, access: null }), JSON.stringify({ ...client, access: null }));
       assert.ok(preview.rows.some((row) => row.id === gasRow), "the job's rows are there");
+    });
+
+    it("the totals band: the CRM's own emissions read over the client's rows, identical in preview, narrowed by site (R2)", async () => {
+      const view = await getPortalDataViewForStaff(database.pool, staff(), CLIENT, MAIN);
+      assert.ok(view.emissions.headline.entries > 0 && view.emissions.headline.tco2e >= 0);
+      const client = await getPortalJobEmissions(database.pool, portal, MAIN, null);
+      assert.equal(JSON.stringify(await getPortalJobEmissionsForStaff(database.pool, staff(), CLIENT, MAIN, null)), JSON.stringify(client));
+      assert.equal(JSON.stringify(client.headline), JSON.stringify(view.emissions.headline), "the band's re-read agrees with the view's own");
+      // Unhidden, it is the CRM's read itself: one implementation, not a second.
+      assert.equal(JSON.stringify(client.headline), JSON.stringify((await readJobEmissions(database.pool, { organisationId: ORG, jobId: MAIN })).headline));
+      const nowhere = await getPortalJobEmissions(database.pool, portal, MAIN, "ppj-no-such-site");
+      assert.equal(nowhere.headline.entries, 0, "a site with nothing has nothing");
+      assert.deepEqual(nowhere.bySite, client.bySite, "the site counts stay whole while one is chosen");
+      await assert.rejects(getPortalJobEmissionsForStaff(database.pool, staff(), CLIENT, FOREIGN, null), refused);
+      await assert.rejects(getPortalJobEmissions(database.pool, portal, UNGRANTED, null), refused, "the client's own path needs the grant");
+    });
+
+    it("the preview carries the client's logo asset for the shell (R5), or none", async () => {
+      assert.equal((await getPortalPreview(database.pool, staff(), { clientId: CLIENT, today: "2026-10-23" })).client.logoAssetId, null);
     });
 
     it("a row's History: identical", async () => {
@@ -267,6 +287,10 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
         const client = await getPortalDataView(database.pool, portal, MAIN);
         const preview = await getPortalDataViewForStaff(database.pool, staff(), CLIENT, MAIN);
         assert.ok(!preview.rows.some((row) => row.scope === "1"), "no scope 1 row in the preview");
+        // The totals band (BUILD-portal-data-crm-parity R2) counts nothing the client cannot see: a hidden scope is in no total.
+        assert.ok(!preview.emissions.byScope.some((scope) => scope.scope.startsWith("1")), "no scope 1 in the band");
+        assert.equal(preview.emissions.headline.entries, preview.rows.filter((row) => row.enabled !== false).length, "the band counts exactly the rows shown");
+        assert.equal(JSON.stringify(await getPortalJobEmissionsForStaff(database.pool, staff(), CLIENT, MAIN, null)), JSON.stringify(await getPortalJobEmissions(database.pool, portal, MAIN, null)));
         assert.ok(!preview.categories.categories.some((category) => category.scope === "1"), "no scope 1 category in the preview");
         assert.equal(JSON.stringify({ ...preview, access: null }), JSON.stringify({ ...client, access: null }));
         await assert.rejects(getPortalRowHistoryForStaff(database.pool, staff(), CLIENT, MAIN, gasRow), refused, "a hidden row's History is not the preview's either");
